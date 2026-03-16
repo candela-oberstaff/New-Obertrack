@@ -40,6 +40,14 @@ export interface Task {
   comments?: Comment[]
 }
 
+export interface CreateTaskInput {
+  title: string
+  description?: string
+  priority?: string
+  end_date?: string
+  assignees?: number[]
+}
+
 export interface Comment {
   id: number
   task_id: number

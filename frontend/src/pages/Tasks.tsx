@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import {
+import { useState, useEffect } from 'react'
+import { 
   DndContext,
   DragOverlay,
   closestCorners,
@@ -7,6 +7,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core'
@@ -18,7 +19,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { taskService, userService } from '../services/api'
-import type { Task, User, TaskStatus, TaskPriority } from '../types'
+import type { Task, User, TaskStatus, TaskPriority, CreateTaskInput } from '../types'
 import './Tasks.css'
 
 interface RichTextEditorProps {
@@ -28,70 +29,54 @@ interface RichTextEditorProps {
 }
 
 function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
-  const editorRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== value) {
-      editorRef.current.innerHTML = value
-    }
-  }, [])
-
-  const handleInput = () => {
-    if (editorRef.current) {
-      onChange(editorRef.current.innerHTML)
-    }
-  }
-
-  const execCommand = (command: string, value?: string) => {
-    document.execCommand(command, false, value)
-    if (editorRef.current) {
-      onChange(editorRef.current.innerHTML)
-    }
-    editorRef.current?.focus()
-  }
-
   return (
     <div className="rich-text-editor">
       <div className="rich-text-toolbar">
-        <button type="button" onClick={() => execCommand('bold')} title="Negrita">
+        <button type="button" onClick={() => {
+          const selection = window.getSelection()?.toString() || ''
+          if (selection) onChange(value + `<strong>${selection}</strong>`)
+        }} title="Negrita">
           <strong>B</strong>
         </button>
-        <button type="button" onClick={() => execCommand('italic')} title="Cursiva">
+        <button type="button" onClick={() => {
+          const selection = window.getSelection()?.toString() || ''
+          if (selection) onChange(value + `<em>${selection}</em>`)
+        }} title="Cursiva">
           <em>I</em>
         </button>
-        <button type="button" onClick={() => execCommand('underline')} title="Subrayado">
+        <button type="button" onClick={() => {
+          const selection = window.getSelection()?.toString() || ''
+          if (selection) onChange(value + `<u>${selection}</u>`)
+        }} title="Subrayado">
           <u>U</u>
         </button>
         <span className="toolbar-separator">|</span>
-        <button type="button" onClick={() => execCommand('insertUnorderedList')} title="Viñetas">
+        <button type="button" onClick={() => onChange(value + '<ul>\n  <li>Elemento 1</li>\n  <li>Elemento 2</li>\n</ul>')} title="Viñetas">
           •
         </button>
-        <button type="button" onClick={() => execCommand('insertOrderedList')} title="Numeración">
+        <button type="button" onClick={() => onChange(value + '<ol>\n  <li>Elemento 1</li>\n  <li>Elemento 2</li>\n</ol>')} title="Numeración">
           1.
         </button>
         <span className="toolbar-separator">|</span>
         <button type="button" onClick={() => {
           const url = prompt('Ingresa la URL:')
-          if (url) execCommand('createLink', url)
+          if (url) onChange(value + `<a href="${url}">${url}</a>`)
         }} title="Enlace">
           🔗
         </button>
-        <button type="button" onClick={() => execCommand('formatBlock', 'h2')} title="Título">
+        <button type="button" onClick={() => onChange(value + '<h2>Título</h2>')} title="Título">
           H2
         </button>
-        <button type="button" onClick={() => execCommand('formatBlock', 'p')} title="Párrafo">
+        <button type="button" onClick={() => onChange(value + '<p>Párrafo</p>')} title="Párrafo">
           P
         </button>
       </div>
-      <div
-        ref={editorRef}
+      <textarea
         className="rich-text-content"
-        contentEditable
-        onInput={handleInput}
-        onBlur={handleInput}
-        dangerouslySetInnerHTML={{ __html: value }}
-        data-placeholder={placeholder || 'Escribe aquí...'}
-        style={{ minHeight: '100px' }}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder || 'Escribe aquí...'}
+        rows={8}
       />
     </div>
   )
@@ -188,8 +173,12 @@ interface ColumnProps {
 }
 
 function Column({ column, tasks, onTaskClick }: ColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.id,
+  })
+
   return (
-    <div className="kanban-column">
+    <div className={`kanban-column ${isOver ? 'drag-over' : ''}`}>
       <div className="column-header">
         <div className="column-title">
           <span className="column-dot" style={{ backgroundColor: column.color }} />
@@ -198,7 +187,7 @@ function Column({ column, tasks, onTaskClick }: ColumnProps) {
         <span className="column-count">{tasks.length}</span>
       </div>
       <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="column-content">
+        <div className="column-content" ref={setNodeRef}>
           {tasks.map((task) => (
             <SortableTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
           ))}
@@ -219,6 +208,7 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete }: TaskDetailPanelP
   const [isEditing, setIsEditing] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [isSubmittingComment, setIsSubmittingComment] = useState(false)
+  const [taskComments, setTaskComments] = useState(task?.comments || [])
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -240,8 +230,24 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete }: TaskDetailPanelP
         end_date: task.end_date?.split('T')[0] || '',
         assignees: task.assignees?.map(a => a.id) || [],
       })
+      setTaskComments(task.comments || [])
     }
   }, [task])
+
+  const refreshComments = async () => {
+    try {
+      const updated = await taskService.getById(task!.id)
+      setTaskComments(updated.comments || [])
+    } catch (error) {
+      console.error('Error refreshing comments:', error)
+    }
+  }
+
+  useEffect(() => {
+    if (task?.id) {
+      refreshComments()
+    }
+  }, [task?.id])
 
   if (!task) return null
 
@@ -251,7 +257,7 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete }: TaskDetailPanelP
     try {
       await taskService.addComment(task.id, newComment)
       setNewComment('')
-      onUpdate(task.id, {})
+      await refreshComments()
     } catch (error) {
       console.error('Error adding comment:', error)
     } finally {
@@ -423,7 +429,7 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete }: TaskDetailPanelP
             </div>
 
             <div className="task-section">
-              <h4>Comentarios ({task.comments?.length || 0})</h4>
+              <h4>Comentarios ({taskComments.length || 0})</h4>
               <div className="add-comment">
                 <textarea
                   placeholder="Añadir un comentario..."
@@ -440,8 +446,8 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete }: TaskDetailPanelP
                 </button>
               </div>
               <div className="comments-section">
-                {task.comments && task.comments.length > 0 ? (
-                  task.comments.map((comment) => (
+                {taskComments.length > 0 ? (
+                  taskComments.map((comment) => (
                     <div key={comment.id} className="comment-item">
                       <div className="comment-avatar">
                         {comment.user?.name?.charAt(0).toUpperCase() || '?'}
@@ -488,11 +494,11 @@ export default function Tasks() {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [showNewTaskModal, setShowNewTaskModal] = useState(false)
+  const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [newTaskData, setNewTaskData] = useState({
     title: '',
     description: '',
     priority: 'medium',
-    start_date: '',
     end_date: '',
     assignees: [] as number[],
   })
@@ -542,20 +548,29 @@ export default function Tasks() {
     if (!over) return
 
     const activeId = Number(active.id)
-    const overId = Number(over.id)
-
     const activeTask = tasks.find((t) => t.id === activeId)
 
     if (!activeTask) return
 
-    const overTask = tasks.find((t) => t.id === overId)
-    const overColumnId = String(overId)
-    const newStatus = overTask?.status || (COLUMNS.find(c => c.id === overColumnId)?.id as TaskStatus)
+    const overId = over.id
+    let newStatus: string | undefined
+
+    if (typeof overId === 'string') {
+      const column = COLUMNS.find(c => c.id === overId)
+      if (column) {
+        newStatus = column.id
+      }
+    } else {
+      const overTask = tasks.find((t) => t.id === Number(overId))
+      if (overTask) {
+        newStatus = overTask.status
+      }
+    }
 
     if (newStatus && activeTask.status !== newStatus) {
       setTasks((tasks) =>
         tasks.map((t) =>
-          t.id === activeId ? { ...t, status: newStatus } : t
+          t.id === activeId ? { ...t, status: newStatus as TaskStatus } : t
         )
       )
     }
@@ -568,33 +583,32 @@ export default function Tasks() {
     if (!over) return
 
     const activeId = Number(active.id)
-    const overId = Number(over.id)
-
-    if (activeId === overId) return
+    const overId = over.id
 
     const activeTask = tasks.find((t) => t.id === activeId)
-    const overTask = tasks.find((t) => t.id === overId)
-
     if (!activeTask) return
 
-    let newStatus = activeTask.status
+    let newStatus: string | undefined
 
-    if (overTask) {
-      newStatus = overTask.status
-    } else {
-      const overColumnId = String(overId)
-      const column = COLUMNS.find(col => col.id === overColumnId)
+    if (typeof overId === 'string') {
+      const column = COLUMNS.find(c => c.id === overId)
       if (column) {
-        newStatus = column.id as TaskStatus
+        newStatus = column.id
+      }
+    } else {
+      const overTask = tasks.find((t) => t.id === Number(overId))
+      if (overTask) {
+        newStatus = overTask.status
       }
     }
 
-    if (newStatus !== activeTask.status) {
+    if (newStatus && newStatus !== activeTask.status) {
+      console.log('Updating task status:', activeId, 'to', newStatus)
       try {
-        await taskService.update(activeId, { status: newStatus })
+        await taskService.update(activeId, { status: newStatus as TaskStatus })
         setTasks((tasks) =>
           tasks.map((t) =>
-            t.id === activeId ? { ...t, status: newStatus } : t
+            t.id === activeId ? { ...t, status: newStatus as TaskStatus } : t
           )
         )
       } catch (error) {
@@ -607,26 +621,36 @@ export default function Tasks() {
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await taskService.create({
+      const taskData: CreateTaskInput = {
         title: newTaskData.title,
-        description: newTaskData.description,
-        priority: newTaskData.priority as TaskPriority,
-        start_date: newTaskData.start_date || undefined,
-        end_date: newTaskData.end_date || undefined,
-        assignees: newTaskData.assignees as unknown as User[],
-      })
+        description: newTaskData.description || undefined,
+        priority: newTaskData.priority || undefined,
+      }
+      
+      if (newTaskData.end_date) {
+        taskData.end_date = newTaskData.end_date
+      }
+      
+      if (newTaskData.assignees.length > 0) {
+        taskData.assignees = newTaskData.assignees
+      }
+      
+      console.log('Creating task with data:', taskData)
+      setIsCreatingTask(true)
+      await taskService.create(taskData)
       setShowNewTaskModal(false)
       setNewTaskData({
         title: '',
         description: '',
         priority: 'medium',
-        start_date: '',
         end_date: '',
         assignees: [],
       })
       fetchData()
     } catch (error) {
       console.error('Error creating task:', error)
+    } finally {
+      setIsCreatingTask(false)
     }
   }
 
@@ -760,16 +784,6 @@ export default function Tasks() {
                   </div>
                   
                   <div className="setting-item">
-                    <label>Fecha de inicio</label>
-                    <input
-                      type="date"
-                      value={newTaskData.start_date}
-                      onChange={(e) => setNewTaskData({ ...newTaskData, start_date: e.target.value })}
-                      className="setting-input"
-                    />
-                  </div>
-                  
-                  <div className="setting-item">
                     <label>Fecha límite</label>
                     <input
                       type="date"
@@ -825,11 +839,11 @@ export default function Tasks() {
             </form>
             
             <div className="new-task-footer">
-              <button type="button" onClick={() => setShowNewTaskModal(false)} className="btn-cancel">
+              <button type="button" onClick={() => setShowNewTaskModal(false)} className="btn-cancel" disabled={isCreatingTask}>
                 Cancelar
               </button>
-              <button type="submit" form="create-task-form" className="btn-create">
-                Crear tarea
+              <button type="submit" form="create-task-form" className="btn-create" disabled={isCreatingTask}>
+                {isCreatingTask ? 'Creando...' : 'Crear tarea'}
               </button>
             </div>
           </div>

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -21,12 +22,11 @@ func NewTaskHandler(db *gorm.DB) *TaskHandler {
 }
 
 type CreateTaskRequest struct {
-	Title       string    `json:"title" binding:"required"`
-	Description string    `json:"description"`
-	Priority    string    `json:"priority"`
-	StartDate   time.Time `json:"start_date"`
-	EndDate     time.Time `json:"end_date"`
-	Assignees   []uint    `json:"assignees"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Priority    string  `json:"priority"`
+	EndDate     *string `json:"end_date"`
+	Assignees   []uint  `json:"assignees"`
 }
 
 type UpdateTaskRequest struct {
@@ -34,7 +34,6 @@ type UpdateTaskRequest struct {
 	Description string    `json:"description"`
 	Status      string    `json:"status"`
 	Priority    string    `json:"priority"`
-	StartDate   time.Time `json:"start_date"`
 	EndDate     time.Time `json:"end_date"`
 	Completed   *bool     `json:"completed"`
 	Assignees   []uint    `json:"assignees"`
@@ -113,7 +112,16 @@ func (h *TaskHandler) GetByID(c *gin.Context) {
 func (h *TaskHandler) Create(c *gin.Context) {
 	var req CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("Error binding JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Creating task: title=%s, description=%s, priority=%s, end_date=%v, assignees=%v",
+		req.Title, req.Description, req.Priority, req.EndDate, req.Assignees)
+
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Title is required"})
 		return
 	}
 
@@ -131,15 +139,16 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		task.Priority = models.TaskPriority(req.Priority)
 	}
 
-	if !req.StartDate.IsZero() {
-		task.StartDate = &req.StartDate
-	}
-	if !req.EndDate.IsZero() {
-		task.EndDate = &req.EndDate
+	if req.EndDate != nil && *req.EndDate != "" {
+		endDate, err := time.Parse("2006-01-02", *req.EndDate)
+		if err == nil {
+			task.EndDate = &endDate
+		}
 	}
 
 	if err := h.db.Create(&task).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
+		log.Printf("Error creating task: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task: " + err.Error()})
 		return
 	}
 
@@ -169,9 +178,12 @@ func (h *TaskHandler) Update(c *gin.Context) {
 
 	var req UpdateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("Error binding JSON for update: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	log.Printf("Update task %d: status=%s, priority=%s", id, req.Status, req.Priority)
 
 	updates := map[string]interface{}{}
 	if req.Title != "" {
@@ -189,12 +201,17 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	if req.Completed != nil {
 		updates["completed"] = *req.Completed
 	}
-	if !req.StartDate.IsZero() {
-		updates["start_date"] = req.StartDate
-	}
 	if !req.EndDate.IsZero() {
 		updates["end_date"] = req.EndDate
 	}
+
+	if len(updates) == 0 {
+		log.Printf("No updates to apply")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No fields to update"})
+		return
+	}
+
+	log.Printf("Applying updates: %+v", updates)
 
 	if err := h.db.Model(&task).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update task"})

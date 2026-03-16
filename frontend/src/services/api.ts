@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { User, Task, WorkHour, PaginatedResponse } from '../types'
+import type { User, Task, WorkHour, PaginatedResponse, CreateTaskInput } from '../types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -74,7 +74,7 @@ export const taskService = {
     const { data } = await api.get<Task>(`/tasks/${id}`)
     return data
   },
-  create: async (taskData: Partial<Task>) => {
+  create: async (taskData: CreateTaskInput) => {
     const { data } = await api.post<Task>('/tasks', taskData)
     return data
   },
