@@ -1,0 +1,71 @@
+package models
+
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
+
+type Task struct {
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	Title       string         `gorm:"size:255;not null" json:"title"`
+	Description string         `gorm:"type:text" json:"description"`
+	Status      TaskStatus     `gorm:"type:varchar(20);not null;default:'por_hacer'" json:"status"`
+	Priority    TaskPriority   `gorm:"type:varchar(20);not null;default:'medium'" json:"priority"`
+	StartDate   *time.Time     `gorm:"type:date" json:"start_date,omitempty"`
+	EndDate     *time.Time     `gorm:"type:date" json:"end_date,omitempty"`
+	Completed   bool           `gorm:"default:false" json:"completed"`
+	CreatedBy   uint           `gorm:"not null;index" json:"created_by"`
+	Creator     User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+
+	Assignees   []User           `gorm:"many2many:task_users" json:"assignees,omitempty"`
+	Comments    []Comment        `json:"comments,omitempty"`
+	Attachments []TaskAttachment `json:"attachments,omitempty"`
+}
+
+func (Task) TableName() string {
+	return "tasks"
+}
+
+type TaskUser struct {
+	TaskID uint `gorm:"primaryKey" json:"task_id"`
+	UserID uint `gorm:"primaryKey" json:"user_id"`
+}
+
+func (TaskUser) TableName() string {
+	return "task_users"
+}
+
+type Comment struct {
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	TaskID    uint           `gorm:"not null;index" json:"task_id"`
+	UserID    uint           `gorm:"not null;index" json:"user_id"`
+	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Content   string         `gorm:"type:text;not null" json:"content"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+func (Comment) TableName() string {
+	return "comments"
+}
+
+type TaskAttachment struct {
+	ID             uint           `gorm:"primaryKey" json:"id"`
+	TaskID         uint           `gorm:"not null;index" json:"task_id"`
+	UploadedBy     uint           `gorm:"not null;index" json:"uploaded_by"`
+	Filename       string         `gorm:"size:255;not null" json:"filename"`
+	StoredFilename string         `gorm:"size:255;not null" json:"stored_filename"`
+	MimeType       string         `gorm:"size:100" json:"mime_type"`
+	FileSize       int64          `json:"file_size"`
+	CreatedAt      time.Time      `json:"created_at"`
+	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+func (TaskAttachment) TableName() string {
+	return "task_attachments"
+}
