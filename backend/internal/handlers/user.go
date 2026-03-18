@@ -172,7 +172,7 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.db.Delete(&models.User{}, id).Error; err != nil {
+	if err := h.db.Unscoped().Delete(&models.User{}, id).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
 		return
 	}
@@ -238,4 +238,70 @@ func (h *UserHandler) GetEmployees(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, employees)
+}
+
+func (h *UserHandler) AssignToManager(c *gin.Context) {
+	professionalID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid professional ID"})
+		return
+	}
+
+	var req struct {
+		ManagerID uint `json:"manager_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var professional models.User
+	if err := h.db.First(&professional, professionalID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Professional not found"})
+		return
+	}
+
+	if req.ManagerID == 0 {
+		professional.ManagerID = nil
+	} else {
+		var manager models.User
+		if err := h.db.First(&manager, req.ManagerID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Manager not found"})
+			return
+		}
+		if !manager.IsManager {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "User is not a manager"})
+			return
+		}
+		professional.ManagerID = &req.ManagerID
+	}
+
+	if err := h.db.Save(&professional).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign professional to manager"})
+		return
+	}
+
+	c.JSON(http.StatusOK, professional)
+}
+
+func (h *UserHandler) GetMyTeam(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	var user models.User
+	if err := h.db.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	var team []models.User
+	if user.IsManager {
+		if err := h.db.Where("manager_id = ?", userID).Find(&team).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch team"})
+			return
+		}
+	} else {
+		team = []models.User{}
+	}
+
+	c.JSON(http.StatusOK, team)
 }

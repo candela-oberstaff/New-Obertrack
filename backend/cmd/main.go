@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -13,7 +15,12 @@ import (
 )
 
 func main() {
-	godotenv.Load("../.env")
+	dir, _ := filepath.Abs(filepath.Dir(os.Args[0]))
+	envPath := filepath.Join(dir, ".env")
+	if _, err := os.Stat(envPath); err != nil {
+		envPath = ".env"
+	}
+	godotenv.Load(envPath)
 
 	cfg := config.LoadConfig()
 
@@ -38,6 +45,7 @@ func main() {
 	workHourHandler := handlers.NewWorkHourHandler(db)
 	chatHandler := handlers.NewChatHandler(db)
 	adminHandler := handlers.NewAdminHandler(db)
+	boardHandler := handlers.NewBoardHandler(db)
 
 	api := r.Group("/api")
 	{
@@ -45,6 +53,7 @@ func main() {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.POST("/hash", authHandler.GeneratePasswordHash)
 		}
 
 		seed := api.Group("/seed")
@@ -52,6 +61,7 @@ func main() {
 			seed.POST("/superadmin", adminHandler.CreateSuperAdmin)
 			seed.POST("/reset-superadmin", adminHandler.ResetSuperAdmin)
 			seed.POST("/make-superadmin/:email", adminHandler.MakeSuperAdmin)
+			seed.POST("/create-superadmin", adminHandler.CreateSuperAdminForced)
 		}
 
 		api.Use(middleware.AuthMiddleware(cfg.JWTSecret))
@@ -65,10 +75,12 @@ func main() {
 			{
 				users.GET("", userHandler.GetAll)
 				users.GET("/employees", userHandler.GetEmployees)
+				users.GET("/my-team", userHandler.GetMyTeam)
 				users.GET("/:id", userHandler.GetByID)
 				users.PUT("/:id", userHandler.Update)
 				users.POST("/:id/toggle-status", userHandler.ToggleStatus)
 				users.POST("/:id/promote-manager", userHandler.PromoteToManager)
+				users.POST("/:id/assign-manager", userHandler.AssignToManager)
 			}
 
 			admin := api.Group("/admin")
@@ -83,6 +95,16 @@ func main() {
 				admin.POST("/users", adminHandler.CreateUser)
 				admin.PUT("/users/:id", adminHandler.UpdateUser)
 				admin.DELETE("/users/:id", adminHandler.DeleteUser)
+				admin.POST("/users/:id/reset-password", adminHandler.ResetPassword)
+			}
+
+			boards := api.Group("/boards")
+			{
+				boards.GET("", boardHandler.GetAll)
+				boards.POST("", boardHandler.Create)
+				boards.GET("/:id", boardHandler.GetByID)
+				boards.PUT("/:id", boardHandler.Update)
+				boards.DELETE("/:id", boardHandler.Delete)
 			}
 
 			tasks := api.Group("/tasks")

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -21,12 +22,15 @@ func NewWorkHourHandler(db *gorm.DB) *WorkHourHandler {
 }
 
 type CreateWorkHourRequest struct {
-	WorkDate   string `json:"work_date" binding:"required"`
-	WorkType   string `json:"work_type" binding:"required"`
-	Activities string `json:"activities"`
-	StartTime  string `json:"start_time"`
-	EndTime    string `json:"end_time"`
-	Comments   string `json:"comments"`
+	WorkDate      string  `json:"work_date" binding:"required"`
+	WorkType      string  `json:"work_type" binding:"required"`
+	Activities    string  `json:"activities"`
+	StartTime     string  `json:"start_time"`
+	EndTime       string  `json:"end_time"`
+	Comments      string  `json:"comments"`
+	HoursWorked   float64 `json:"hours_worked"`
+	AbsenceReason string  `json:"absence_reason"`
+	AbsenceHours  float64 `json:"absence_hours"`
 }
 
 type UpdateWorkHourRequest struct {
@@ -45,16 +49,17 @@ func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
-	empleadorID := middleware.GetEmpleadorID(c)
 
-	// Scope por empresa
-	if role == string(models.UserTypeEmployee) && !isSuperadmin {
-		if empleadorID > 0 {
-			subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", empleadorID).Select("id")
-			query = query.Where("user_id IN (?) OR user_id = ?", subquery, userID)
-		} else {
-			query = query.Where("user_id = ?", userID)
-		}
+	// Si es superadmin, ve todo
+	// Si es empresa (empleador), ve las horas de sus empleados
+	if isSuperadmin {
+		// Ve todo
+	} else if role == string(models.UserTypeEmployer) || role == "empleador" {
+		subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", userID).Select("id")
+		query = query.Where("user_id IN (?)", subquery)
+	} else if role == string(models.UserTypeProfessional) || role == "profesional" {
+		// Si es profesional, solo ve SUS PROPIAS horas
+		query = query.Where("user_id = ?", userID)
 	}
 
 	userIDFilter := c.Query("user_id")
@@ -109,26 +114,46 @@ func (h *WorkHourHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// Validar que no sea fecha futura
+	today := time.Now().Truncate(24 * time.Hour)
+	if workDate.After(today) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No puedes registrar horas en fechas futuras"})
+		return
+	}
+
 	var existingWorkHour models.WorkHour
 	if err := h.db.Where("user_id = ? AND work_date = ?", userID, workDate).First(&existingWorkHour).Error; err == nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "Ya existe un registro para esta fecha. Solo puedes registrar un máximo de una jornada por día."})
 		return
 	}
 
-	hoursWorked := 8.0
+	// Si el frontend envía las horas calculadas, usarlas; si no, calcularlas
+	hoursWorked := req.HoursWorked
 	workType := models.WorkTypeComplete
+
 	if req.WorkType == "absence" {
-		hoursWorked = 0
 		workType = models.WorkTypeAbsence
+		// Si no se envió hours_worked, calcular: 8 - absence_hours
+		if hoursWorked == 0 {
+			hoursWorked = 8 - req.AbsenceHours
+			if hoursWorked < 0 {
+				hoursWorked = 0
+			}
+		}
+	} else if hoursWorked == 0 {
+		// Si es jornada completa y no se enviaron horas, usar 8
+		hoursWorked = 8
 	}
 
 	workHour := models.WorkHour{
-		UserID:      userID,
-		WorkDate:    workDate,
-		WorkType:    workType,
-		HoursWorked: hoursWorked,
-		Activities:  req.Activities,
-		Comments:    req.Comments,
+		UserID:        userID,
+		WorkDate:      workDate,
+		WorkType:      workType,
+		HoursWorked:   hoursWorked,
+		Activities:    req.Activities,
+		Comments:      req.Comments,
+		AbsenceReason: req.AbsenceReason,
+		AbsenceHours:  req.AbsenceHours,
 	}
 
 	if req.StartTime != "" {
@@ -233,25 +258,23 @@ func (h *WorkHourHandler) GetSummary(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
-	empleadorID := c.GetUint("empleador_id")
-
-	query := h.db.Model(&models.WorkHour{})
-
-	// Scope por empresa
-	if role == string(models.UserTypeEmployee) && !isSuperadmin {
-		if empleadorID > 0 {
-			subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", empleadorID).Select("id")
-			query = query.Where("user_id IN (?) OR user_id = ?", subquery, userID)
-		} else {
-			query = query.Where("user_id = ?", userID)
-		}
-	}
 
 	var totalHours float64
 	var approvedHours float64
 
-	query.Select("COALESCE(SUM(hours_worked), 0)").Scan(&totalHours)
-	query.Where("approved = true").Select("COALESCE(SUM(hours_worked), 0)").Scan(&approvedHours)
+	if isSuperadmin {
+		h.db.Model(&models.WorkHour{}).Select("COALESCE(SUM(hours_worked), 0)").Scan(&totalHours)
+		h.db.Model(&models.WorkHour{}).Where("approved = true").Select("COALESCE(SUM(hours_worked), 0)").Scan(&approvedHours)
+	} else if role == string(models.UserTypeEmployer) || role == "empleador" {
+		subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", userID).Select("id")
+		h.db.Model(&models.WorkHour{}).Where("user_id IN (?)", subquery).Select("COALESCE(SUM(hours_worked), 0)").Scan(&totalHours)
+		h.db.Model(&models.WorkHour{}).Where("user_id IN (?) AND approved = true", subquery).Select("COALESCE(SUM(hours_worked), 0)").Scan(&approvedHours)
+	} else {
+		h.db.Model(&models.WorkHour{}).Where("user_id = ?", userID).Select("COALESCE(SUM(hours_worked), 0)").Scan(&totalHours)
+		h.db.Model(&models.WorkHour{}).Where("user_id = ? AND approved = true", userID).Select("COALESCE(SUM(hours_worked), 0)").Scan(&approvedHours)
+	}
+
+	fmt.Printf("[DEBUG] GetSummary - userID: %d, role: %s, totalHours: %f, approvedHours: %f\n", userID, role, totalHours, approvedHours)
 
 	c.JSON(http.StatusOK, gin.H{
 		"total_hours":    totalHours,
@@ -262,9 +285,28 @@ func (h *WorkHourHandler) GetSummary(c *gin.Context) {
 
 func (h *WorkHourHandler) GetPending(c *gin.Context) {
 	empleadorID := middleware.GetEmpleadorID(c)
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
-	if empleadorID == 0 && !isSuperadmin {
+	// Si es superadmin, puede ver todas las horas pendientes
+	if isSuperadmin {
+		var workHours []models.WorkHour
+		query := h.db.Model(&models.WorkHour{}).Where("approved = false")
+		if err := query.Preload("User").Order("work_date DESC").Find(&workHours).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch pending work hours"})
+			return
+		}
+		c.JSON(http.StatusOK, workHours)
+		return
+	}
+
+	// Si es empresa (empleador), usa su propio ID
+	if role == "empresa" || role == "empleador" {
+		empleadorID = userID
+	}
+
+	if empleadorID == 0 {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Only employers can access this resource"})
 		return
 	}
@@ -272,10 +314,8 @@ func (h *WorkHourHandler) GetPending(c *gin.Context) {
 	var workHours []models.WorkHour
 	query := h.db.Model(&models.WorkHour{}).Where("approved = false")
 
-	if !isSuperadmin && empleadorID > 0 {
-		subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", empleadorID).Select("id")
-		query = query.Where("user_id IN (?)", subquery)
-	}
+	subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", empleadorID).Select("id")
+	query = query.Where("user_id IN (?)", subquery)
 
 	if err := query.Preload("User").Order("work_date DESC").Find(&workHours).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch pending work hours"})

@@ -67,17 +67,23 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	userType := models.UserTypeEmployee
-	if req.UserType == "empleador" {
+	userType := models.UserTypeProfessional
+	isSuperadmin := false
+	if req.UserType == "empresa" {
 		userType = models.UserTypeEmployer
+	} else if req.UserType == "superadmin" {
+		userType = models.UserTypeSuperadmin
+		isSuperadmin = true
 	}
 
 	user := models.User{
-		Name:        req.Name,
-		Email:       req.Email,
-		Password:    string(hashedPassword),
-		UserType:    userType,
-		CompanyName: req.CompanyName,
+		Name:         req.Name,
+		Email:        req.Email,
+		Password:     string(hashedPassword),
+		UserType:     userType,
+		CompanyName:  req.CompanyName,
+		IsSuperadmin: isSuperadmin,
+		IsActive:     true,
 	}
 
 	log.Printf("Creating user: %+v", user)
@@ -113,7 +119,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	log.Printf("Login attempt for: %s, stored hash: %s", req.Email, user.Password)
+
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+		log.Printf("Password mismatch for %s: %v", req.Email, err)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
@@ -128,6 +137,22 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		User:        user,
 		AccessToken: token,
 	})
+}
+
+func (h *AuthHandler) GeneratePasswordHash(c *gin.Context) {
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to hash"})
+		return
+	}
+	c.JSON(200, gin.H{"hash": string(hash), "password": req.Password})
 }
 
 func (h *AuthHandler) Me(c *gin.Context) {

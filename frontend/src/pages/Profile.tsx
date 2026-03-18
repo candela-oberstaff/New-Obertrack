@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { userService, workHourService } from '../services/api'
-import type { WorkHour } from '../types'
+import type { WorkHour, User } from '../types'
 import './Profile.css'
 
 const MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -16,6 +16,12 @@ export default function Profile() {
   const [pendingHours, setPendingHours] = useState<WorkHour[]>([])
   const [selectedPending, setSelectedPending] = useState<number[]>([])
   const [isLoadingPending, setIsLoadingPending] = useState(false)
+  
+  // Team management
+  const [myTeam, setMyTeam] = useState<User[]>([])
+  const [companyStaff, setCompanyStaff] = useState<User[]>([])
+  const [isManager, setIsManager] = useState(false)
+  const [isEmployer, setIsEmployer] = useState(false)
 
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -32,7 +38,49 @@ export default function Profile() {
     if (canApprove) {
       fetchPendingHours()
     }
-  }, [canApprove])
+    
+    // Check if user is manager or employer
+    setIsManager(user?.is_manager || false)
+    setIsEmployer(user?.user_type === 'empleador' || user?.is_superadmin || false)
+    
+    if (user?.is_manager) {
+      fetchMyTeam()
+    }
+    if (user?.user_type === 'empleador' || user?.is_superadmin) {
+      fetchCompanyStaff()
+    }
+  }, [user, canApprove])
+
+  const fetchMyTeam = async () => {
+    try {
+      const data = await userService.getMyTeam()
+      setMyTeam(data)
+    } catch (error) {
+      console.error('Error fetching team:', error)
+    }
+  }
+
+  const fetchCompanyStaff = async () => {
+    try {
+      const data = await userService.getAll()
+      const allUsers = data.data || []
+      setCompanyStaff(allUsers.filter((u: User) => u.user_type === 'profesional' && u.empleador_id === user?.empleador_id))
+    } catch (error) {
+      console.error('Error fetching company staff:', error)
+    }
+  }
+
+  const handlePromoteToManager = async (userId: number) => {
+    if (!confirm('¿Promover a este profesional a Manager?')) return
+    try {
+      await userService.promoteToManager(userId)
+      fetchCompanyStaff()
+      setMessage({ type: 'success', text: 'Usuario promovido a Manager' })
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000)
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Error al promover usuario' })
+    }
+  }
 
   const fetchPendingHours = async () => {
     try {
@@ -108,7 +156,7 @@ export default function Profile() {
   const getRoleLabel = () => {
     if (user?.is_superadmin) return 'Super Administrador'
     if (user?.is_manager) return 'Manager'
-    if (user?.user_type === 'empleador') return 'Empleador'
+    if (user?.user_type === 'empleador') return 'Empresa'
     return 'Profesional'
   }
 
@@ -321,6 +369,62 @@ export default function Profile() {
                 >
                   {isLoadingPending ? 'Aprobando...' : `Aprobar (${selectedPending.length})`}
                 </button>
+              )}
+            </div>
+          )}
+
+          {/* Mi Equipo - Para Managers */}
+          {isManager && myTeam.length > 0 && (
+            <div className="sidebar-card team-card">
+              <h3>👥 Mi Equipo</h3>
+              <p className="team-count">{myTeam.length} profesional(es) a mi cargo</p>
+              <div className="team-list">
+                {myTeam.map(member => (
+                  <div key={member.id} className="team-member">
+                    <div className="member-avatar">
+                      {member.name?.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="member-info">
+                      <span className="member-name">{member.name}</span>
+                      <span className="member-role">{member.job_title || 'Profesional'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Personal de la Empresa - Para Empleadores */}
+          {isEmployer && (
+            <div className="sidebar-card team-card">
+              <h3>🏢 Personal de la Empresa</h3>
+              <p className="team-count">{companyStaff.length} profesional(es) registrado(s)</p>
+              <div className="team-list">
+                {companyStaff.map(member => (
+                  <div key={member.id} className="team-member">
+                    <div className="member-avatar">
+                      {member.name?.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="member-info">
+                      <span className="member-name">{member.name}</span>
+                      <span className="member-role">
+                        {member.is_manager ? '👔 Manager' : '💼 Profesional'}
+                      </span>
+                    </div>
+                    {!member.is_manager && (
+                      <button 
+                        className="btn-promote"
+                        onClick={() => handlePromoteToManager(member.id)}
+                        title="Promover a Manager"
+                      >
+                        ⬆️
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {message.text && (
+                <p className={`message ${message.type}`}>{message.text}</p>
               )}
             </div>
           )}

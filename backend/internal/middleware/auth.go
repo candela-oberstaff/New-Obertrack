@@ -110,8 +110,14 @@ func GetEmpleadorID(c *gin.Context) uint {
 	if !exists || empID == nil {
 		return 0
 	}
-	if id, ok := empID.(*uint); ok && id != nil {
-		return *id
+	// Handle both *uint and uint types
+	switch v := empID.(type) {
+	case uint:
+		return v
+	case *uint:
+		if v != nil {
+			return *v
+		}
 	}
 	return 0
 }

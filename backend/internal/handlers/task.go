@@ -27,6 +27,7 @@ type CreateTaskRequest struct {
 	Priority    string  `json:"priority"`
 	EndDate     *string `json:"end_date"`
 	Assignees   []uint  `json:"assignees"`
+	BoardID     uint    `json:"board_id"`
 }
 
 type UpdateTaskRequest struct {
@@ -49,18 +50,33 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	isSuperadmin := middleware.IsSuperadmin(c)
 	empleadorID := middleware.GetEmpleadorID(c)
 
-	if !isSuperadmin && role == string(models.UserTypeEmployee) {
-		query = query.Joins("JOIN task_users ON task_users.task_id = tasks.id").
-			Where("task_users.user_id = ? OR tasks.created_by = ?", userID, userID)
-	} else if !isSuperadmin && !isManager {
-		query = query.Where("created_by = ?", userID)
+	log.Printf("[GetAll] userID=%d, role=%s, isManager=%v, isSuperadmin=%v, empleadorID=%d", userID, role, isManager, isSuperadmin, empleadorID)
+
+	boardID := c.Query("board_id")
+	if boardID != "" && boardID != "all" {
+		query = query.Where("board_id = ?", boardID)
 	}
 
-	if !isSuperadmin && empleadorID > 0 {
-		subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", empleadorID).Select("id")
-		query = query.Joins("LEFT JOIN task_users ON task_users.task_id = tasks.id").
-			Where("tasks.created_by IN (?) OR task_users.user_id IN (?)", subquery, subquery).
-			Distinct()
+	if isSuperadmin {
+		// Superadmin ve todo
+	} else if role == string(models.UserTypeProfessional) {
+		// Profesional ve tareas donde es creador o asignado
+		query = query.Where("created_by = ?", userID)
+		// También intentar obtener tareas asignadas
+		var assignedTaskIDs []uint
+		h.db.Table("task_users").Where("user_id = ?", userID).Pluck("task_id", &assignedTaskIDs)
+		if len(assignedTaskIDs) > 0 {
+			query = query.Where("id IN (?) OR created_by = ?", assignedTaskIDs, userID)
+		}
+	} else if role == string(models.UserTypeEmployer) || role == "empleador" {
+		// Empleador ve las tareas de sus empleados
+		if empleadorID > 0 {
+			subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", empleadorID).Select("id")
+			query = query.Where("created_by IN (?)", subquery)
+		}
+	} else if !isManager {
+		// Otros usuarios ven solo sus propias tareas
+		query = query.Where("created_by = ?", userID)
 	}
 
 	status := c.Query("status")
@@ -80,8 +96,9 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	if err := query.Preload("Creator").Preload("Assignees").Offset(offset).Limit(limit).Find(&tasks).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tasks"})
+	if err := query.Preload("Creator").Preload("Assignees").Preload("Board").Offset(offset).Limit(limit).Find(&tasks).Error; err != nil {
+		log.Printf("[GetAll] Error fetching tasks: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tasks", "details": err.Error()})
 		return
 	}
 
@@ -133,6 +150,7 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		Status:      models.TaskStatusTodo,
 		Priority:    models.PriorityMedium,
 		CreatedBy:   userID,
+		BoardID:     req.BoardID,
 	}
 
 	if req.Priority != "" {

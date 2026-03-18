@@ -9,6 +9,41 @@ const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio
 
 const JORNADA_COMPLETA = 8
 
+// Simple rich text editor for activities
+function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
+  const formatText = (tag: string) => {
+    const selection = window.getSelection()?.toString() || ''
+    if (selection) {
+      onChange(value + `<${tag}>${selection}</${tag}>`)
+    }
+  }
+
+  return (
+    <div className="rich-editor">
+      <div className="rich-editor-toolbar">
+        <button type="button" onClick={() => formatText('strong')} title="Negrita"><strong>B</strong></button>
+        <button type="button" onClick={() => formatText('em')} title="Cursiva"><em>I</em></button>
+        <button type="button" onClick={() => formatText('u')} title="Subrayado"><u>U</u></button>
+        <span className="toolbar-sep">|</span>
+        <button type="button" onClick={() => onChange(value + '\n• ')} title="Viñeta">•</button>
+        <button type="button" onClick={() => onChange(value + '\n1. ')} title="Número">1.</button>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={5}
+      />
+    </div>
+  )
+}
+
+// Función para parsear fechas sin problema de timezone
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 function CalendarView({ 
   workHours, 
   onDayClick,
@@ -46,7 +81,7 @@ function CalendarView({
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     const info = dayInfo[dateStr]
     const isSelected = selectedDate === dateStr
-    const dayOfWeek = new Date(dateStr).getDay()
+    const dayOfWeek = parseLocalDate(dateStr).getDay()
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
     
     days.push(
@@ -75,18 +110,21 @@ function CalendarView({
 export default function WorkHours() {
   const { user } = useAuth()
   const [workHours, setWorkHours] = useState<WorkHour[]>([])
+  const [, setPendingHours] = useState<WorkHour[]>([])
   const [summary, setSummary] = useState({ total_hours: 0, approved_hours: 0, pending_hours: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
+  const [selectedWorkHour, setSelectedWorkHour] = useState<WorkHour | null>(null)
 
   const [formData, setFormData] = useState({
     work_date: new Date().toISOString().split('T')[0],
     work_type: 'complete' as 'complete' | 'absence',
     activities: '',
+    absence_reason: '',
+    absence_hours: 0,
   })
 
   useEffect(() => {
@@ -95,12 +133,20 @@ export default function WorkHours() {
 
   const fetchData = async () => {
     try {
+      const isEmployer = user?.user_type === 'empleador'
+      const isSuperadmin = user?.is_superadmin
+      
       const [hoursRes, summaryRes] = await Promise.all([
         workHourService.getAll({}),
         workHourService.getSummary(),
       ])
       setWorkHours(hoursRes.data)
       setSummary(summaryRes)
+      
+      if (isEmployer || isSuperadmin) {
+        const pendingRes = await workHourService.getPending()
+        setPendingHours(pendingRes)
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -108,13 +154,22 @@ export default function WorkHours() {
     }
   }
 
+  const today = new Date().toISOString().split('T')[0]
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const hoursWorked = formData.work_type === 'absence' 
+        ? Math.max(0, 8 - (formData.absence_hours || 0))
+        : 8
+      
       await workHourService.create({
         work_date: formData.work_date,
         work_type: formData.work_type,
         activities: formData.activities || undefined,
+        hours_worked: hoursWorked,
+        absence_reason: formData.work_type === 'absence' ? formData.absence_reason : undefined,
+        absence_hours: formData.work_type === 'absence' ? formData.absence_hours : undefined,
       })
       setShowModal(false)
       resetForm()
@@ -124,29 +179,14 @@ export default function WorkHours() {
     }
   }
 
-  const handleApprove = async () => {
-    if (selectedIds.length === 0) return
-    try {
-      await workHourService.approve(selectedIds)
-      setSelectedIds([])
-      fetchData()
-    } catch (error) {
-      console.error('Error approving work hours:', error)
-    }
-  }
-
   const resetForm = () => {
     setFormData({
       work_date: new Date().toISOString().split('T')[0],
       work_type: 'complete',
       activities: '',
+      absence_reason: '',
+      absence_hours: 0,
     })
-  }
-
-  const toggleSelect = (id: number) => {
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    )
   }
 
   const canApprove = user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador'
@@ -154,6 +194,20 @@ export default function WorkHours() {
   const filteredHours = selectedDate 
     ? workHours.filter(wh => wh.work_date.split('T')[0] === selectedDate)
     : workHours
+
+  const pendingForSelectedDate = selectedDate
+    ? filteredHours.filter(wh => !wh.approved && wh.hours_worked > 0)
+    : workHours.filter(wh => !wh.approved && wh.hours_worked > 0)
+
+  const handleBulkApprove = async () => {
+    if (pendingForSelectedDate.length === 0) return
+    try {
+      await workHourService.approve(pendingForSelectedDate.map(wh => wh.id))
+      fetchData()
+    } catch (error) {
+      console.error('Error approving work hours:', error)
+    }
+  }
 
   const prevMonth = () => {
     if (currentMonth === 0) {
@@ -183,9 +237,10 @@ export default function WorkHours() {
     const startOfWeek = new Date(now)
     startOfWeek.setDate(now.getDate() - now.getDay())
     startOfWeek.setHours(0, 0, 0, 0)
+    const startStr = startOfWeek.toISOString().split('T')[0]
     
     return workHours
-      .filter(wh => new Date(wh.work_date) >= startOfWeek)
+      .filter(wh => wh.work_date.split('T')[0] >= startStr)
       .reduce((sum, wh) => sum + wh.hours_worked, 0)
   }, [workHours])
 
@@ -272,12 +327,12 @@ export default function WorkHours() {
           <div className="list-header">
             <h3>
               {selectedDate 
-                ? `Registros del ${new Date(selectedDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}`
+                ? `Registros del ${parseLocalDate(selectedDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}`
                 : 'Mis registros'}
             </h3>
-            {canApprove && selectedIds.length > 0 && (
-              <button className="btn-approve" onClick={handleApprove}>
-                Aprobar ({selectedIds.length})
+            {canApprove && pendingForSelectedDate.length > 0 && (
+              <button className="btn-bulk-approve" onClick={handleBulkApprove}>
+                ✓ Aprobar todos ({pendingForSelectedDate.length})
               </button>
             )}
           </div>
@@ -290,27 +345,21 @@ export default function WorkHours() {
           ) : (
             <div className="hours-list">
               {filteredHours.map((wh) => (
-                <div key={wh.id} className={`hour-card ${wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA ? 'complete' : 'absence'}`}>
+                <div key={wh.id} className={`hour-card ${wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA ? 'complete' : 'absence'} clickable`} onClick={() => setSelectedWorkHour(wh)}>
                   <div className="hour-date">
-                    <span className="day">{new Date(wh.work_date).getDate()}</span>
-                    <span className="month">{MONTHS_ES[new Date(wh.work_date).getMonth()].slice(0, 3)}</span>
+                    <span className="day">{parseLocalDate(wh.work_date).getDate()}</span>
+                    <span className="month">{MONTHS_ES[parseLocalDate(wh.work_date).getMonth()].slice(0, 3)}</span>
                   </div>
                   <div className="hour-info">
+                    {canApprove && wh.user && <span className="hours-user">{wh.user.name}</span>}
                     <span className="hours-value">
                       {wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA 
                         ? 'Jornada Completa' 
-                        : 'Ausencia'}
+                        : `Ausencia (${wh.hours_worked}h)`}
                     </span>
                     {wh.activities && <p className="hours-comments">{wh.activities}</p>}
                   </div>
                   <div className="hour-status">
-                    {canApprove && wh.hours_worked > 0 && !wh.approved && (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(wh.id)}
-                        onChange={() => toggleSelect(wh.id)}
-                      />
-                    )}
                     <span className={`status-pill ${wh.approved ? 'approved' : 'pending'}`}>
                       {wh.approved ? 'Aprobado' : 'Pendiente'}
                     </span>
@@ -335,6 +384,7 @@ export default function WorkHours() {
                 <input
                   type="date"
                   value={formData.work_date}
+                  max={today}
                   onChange={(e) => setFormData({ ...formData, work_date: e.target.value })}
                   required
                 />
@@ -359,19 +409,60 @@ export default function WorkHours() {
                   >
                     <span className="work-type-icon">⚠</span>
                     <span className="work-type-label">Ausencia</span>
-                    <span className="work-type-hours">0h</span>
+                    <span className="work-type-hours">{Math.max(0, 8 - (formData.absence_hours || 0))}h</span>
                   </button>
                 </div>
               </div>
 
+              {formData.work_type === 'absence' && (
+                <>
+                  <div className="form-group">
+                    <label>Motivo de ausencia</label>
+                    <select
+                      value={formData.absence_reason}
+                      onChange={(e) => setFormData({ ...formData, absence_reason: e.target.value })}
+                      required
+                    >
+                      <option value="">Selecciona un motivo</option>
+                      <option value="enfermedad">Enfermedad</option>
+                      <option value="cita_medica">Cita Médica</option>
+                      <option value="emergencia_familiar">Emergencia Familiar</option>
+                      <option value="vacaciones">Vacaciones</option>
+                      <option value="permiso_personal">Permiso Personal</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Horas de ausencia</label>
+                    <select
+                      value={formData.absence_hours}
+                      onChange={(e) => setFormData({ ...formData, absence_hours: Number(e.target.value) })}
+                      required
+                    >
+                      <option value={0}>0 horas</option>
+                      <option value={1}>1 hora</option>
+                      <option value={2}>2 horas</option>
+                      <option value={3}>3 horas</option>
+                      <option value={4}>4 horas</option>
+                      <option value={5}>5 horas</option>
+                      <option value={6}>6 horas</option>
+                      <option value={7}>7 horas</option>
+                      <option value={8}>8 horas (día completo)</option>
+                    </select>
+                    <p className="form-hint">
+                      Horas a registrar: {Math.max(0, 8 - (formData.absence_hours || 0))}h
+                    </p>
+                  </div>
+                </>
+              )}
+
               <div className="form-group">
                 <label>¿Qué actividades realizaste hoy?</label>
-                <textarea
+                <RichTextEditor
                   value={formData.activities}
-                  onChange={(e) => setFormData({ ...formData, activities: e.target.value })}
-                  placeholder="Describe las actividades realizadas durante tu jornada..."
-                  rows={4}
-                  required={formData.work_type === 'complete'}
+                  onChange={(value) => setFormData({ ...formData, activities: value })}
+                  placeholder="Describe las actividades realizadas durante tu jornada...&#10;• Tarea 1&#10;• Tarea 2"
                 />
                 <p className="form-hint">
                   Este registro aparecerá en el reporte de tu empresa.
@@ -387,6 +478,75 @@ export default function WorkHours() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {selectedWorkHour && (
+        <div className="modal-overlay" onClick={() => setSelectedWorkHour(null)}>
+          <div className="modal detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Detalle de Registro</h2>
+              <button className="close-btn" onClick={() => setSelectedWorkHour(null)}>✕</button>
+            </div>
+            <div className="detail-content">
+              <div className="detail-row">
+                <span className="detail-label">Profesional</span>
+                <span className="detail-value">{selectedWorkHour.user?.name || 'Usuario'}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Fecha</span>
+                <span className="detail-value">
+                  {parseLocalDate(selectedWorkHour.work_date).toLocaleDateString('es-ES', { 
+                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+                  })}
+                </span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Tipo</span>
+                <span className={`detail-type ${selectedWorkHour.work_type}`}>
+                  {selectedWorkHour.work_type === 'complete' || selectedWorkHour.hours_worked >= 8 
+                    ? 'Jornada Completa' : `Ausencia (${selectedWorkHour.hours_worked}h)`}
+                </span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Horas</span>
+                <span className="detail-value">{selectedWorkHour.hours_worked}h</span>
+              </div>
+              {selectedWorkHour.absence_reason && (
+                <div className="detail-row">
+                  <span className="detail-label">Motivo</span>
+                  <span className="detail-value">{selectedWorkHour.absence_reason}</span>
+                </div>
+              )}
+              {selectedWorkHour.activities && (
+                <div className="detail-activities">
+                  <span className="detail-label">Actividades del día</span>
+                  <div 
+                    className="detail-text" 
+                    dangerouslySetInnerHTML={{ 
+                      __html: selectedWorkHour.activities.replace(/\n/g, '<br>').replace(/• /g, '<br>• ').replace(/<br>1\./g, '<br>1.') 
+                    }}
+                  />
+                </div>
+              )}
+              <div className="detail-row">
+                <span className="detail-label">Estado</span>
+                <span className={`status-pill ${selectedWorkHour.approved ? 'approved' : 'pending'}`}>
+                  {selectedWorkHour.approved ? 'Aprobado' : 'Pendiente'}
+                </span>
+              </div>
+            </div>
+            <div className="detail-actions">
+              <button className="btn-cancel" onClick={() => setSelectedWorkHour(null)}>Cerrar</button>
+              {canApprove && !selectedWorkHour.approved && (
+                <button className="btn-primary" onClick={async () => {
+                  await workHourService.approve([selectedWorkHour.id])
+                  setSelectedWorkHour(null)
+                  fetchData()
+                }}>✓ Aprobar</button>
+              )}
+            </div>
           </div>
         </div>
       )}

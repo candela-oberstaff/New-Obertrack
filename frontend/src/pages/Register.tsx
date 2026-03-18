@@ -84,8 +84,9 @@ export default function Register() {
               value={userType}
               onChange={(e) => setUserType(e.target.value)}
             >
-              <option value="empleado">Profesional</option>
-              <option value="empleador">Empleador</option>
+              <option value="profesional">Profesional</option>
+              <option value="empleador">Empresa</option>
+              <option value="superadmin">Super Admin</option>
             </select>
           </div>
 

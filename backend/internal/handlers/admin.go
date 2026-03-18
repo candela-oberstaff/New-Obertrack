@@ -126,7 +126,14 @@ func (h *AdminHandler) GetCompanies(c *gin.Context) {
 		var cm CompanyMetric
 		var companyName interface{}
 		rows.Scan(&cm.ID, &companyName, &cm.Professionals, &cm.HoursThisMonth, &cm.TasksCompleted, &cm.ActiveUsers)
-		cm.Name = string(companyName.([]byte))
+		switch v := companyName.(type) {
+		case []byte:
+			cm.Name = string(v)
+		case string:
+			cm.Name = v
+		default:
+			cm.Name = ""
+		}
 		companies = append(companies, cm)
 	}
 
@@ -241,6 +248,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		CompanyName string `json:"company_name"`
 		JobTitle    string `json:"job_title"`
 		EmpleadorID *uint  `json:"empleador_id"`
+		ManagerID   *uint  `json:"manager_id"`
 		IsManager   bool   `json:"is_manager"`
 		PhoneNumber string `json:"phone_number"`
 		Country     string `json:"country"`
@@ -274,6 +282,17 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		user.EmpleadorID = req.EmpleadorID
 	}
 
+	if req.ManagerID != nil {
+		user.ManagerID = req.ManagerID
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+	user.Password = string(hashedPassword)
+
 	if err := h.db.Create(&user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 		return
@@ -305,6 +324,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		IsActive    *bool  `json:"is_active"`
 		IsManager   *bool  `json:"is_manager"`
 		EmpleadorID *uint  `json:"empleador_id"`
+		ManagerID   *uint  `json:"manager_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -340,6 +360,9 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	if req.EmpleadorID != nil {
 		updates["empleador_id"] = *req.EmpleadorID
 	}
+	if req.ManagerID != nil {
+		updates["manager_id"] = *req.ManagerID
+	}
 
 	if err := h.db.Model(&user).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
@@ -356,12 +379,67 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	if err := h.db.Delete(&models.User{}, id).Error; err != nil {
+	tx := h.db.Begin()
+
+	if err := tx.Where("user_id = ?", id).Delete(&models.WorkHour{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user work hours"})
+		return
+	}
+
+	if err := tx.Where("approved_by = ?", id).Update("approved_by", nil).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update approved work hours"})
+		return
+	}
+
+	if err := tx.Unscoped().Delete(&models.User{}, id).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
 		return
 	}
 
+	tx.Commit()
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+}
+
+func (h *AdminHandler) ResetPassword(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	var user models.User
+	if err := h.db.First(&user, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	var req struct {
+		NewPassword string `json:"new_password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("Resetting password for user ID: %d", id)
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	if err := h.db.Model(&user).Update("password", string(hashedPassword)).Error; err != nil {
+		log.Printf("Error updating password: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 }
 
 func (h *AdminHandler) GetStats(c *gin.Context) {
@@ -516,6 +594,49 @@ func (h *AdminHandler) MakeSuperAdmin(c *gin.Context) {
 			"email":         user.Email,
 			"user_type":     user.UserType,
 			"is_superadmin": user.IsSuperadmin,
+		},
+	})
+}
+
+func (h *AdminHandler) CreateSuperAdminForced(c *gin.Context) {
+	var req struct {
+		Name     string `json:"name" binding:"required"`
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	user := models.User{
+		Name:         req.Name,
+		Email:        req.Email,
+		Password:     string(hashedPassword),
+		UserType:     models.UserType("superadmin"),
+		IsSuperadmin: true,
+		IsActive:     true,
+	}
+
+	if err := h.db.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create superadmin: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Superadmin created successfully",
+		"user": gin.H{
+			"id":        user.ID,
+			"name":      user.Name,
+			"email":     user.Email,
+			"user_type": user.UserType,
 		},
 	})
 }

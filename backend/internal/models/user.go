@@ -12,7 +12,6 @@ type TaskPriority string
 
 const (
 	UserTypeEmployer     UserType = "empleador"
-	UserTypeEmployee     UserType = "empleado"
 	UserTypeProfessional UserType = "profesional"
 	UserTypeSuperadmin   UserType = "superadmin"
 
@@ -47,6 +46,7 @@ type User struct {
 	GoogleFormsToken    string         `gorm:"type:text" json:"-"`
 	RememberToken       string         `gorm:"size:100" json:"-"`
 	EmailVerifiedAt     *time.Time     `json:"email_verified_at,omitempty"`
+	ManagerID           *uint          `gorm:"index" json:"manager_id,omitempty"`
 	CreatedAt           time.Time      `json:"created_at"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`

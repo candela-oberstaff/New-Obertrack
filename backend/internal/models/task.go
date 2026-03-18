@@ -6,17 +6,46 @@ import (
 	"gorm.io/gorm"
 )
 
+type Board struct {
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	Name        string         `gorm:"size:255;not null" json:"name"`
+	Description string         `gorm:"type:text" json:"description"`
+	Color       string         `gorm:"size:20;default:'#3b82f6'" json:"color"`
+	CreatedBy   uint           `gorm:"not null;index" json:"created_by"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+
+	Creator User   `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	Members []User `gorm:"many2many:board_members" json:"members,omitempty"`
+}
+
+func (Board) TableName() string {
+	return "boards"
+}
+
+type BoardMember struct {
+	BoardID uint `gorm:"primaryKey" json:"board_id"`
+	UserID  uint `gorm:"primaryKey" json:"user_id"`
+}
+
+func (BoardMember) TableName() string {
+	return "board_members"
+}
+
 type Task struct {
 	ID          uint           `gorm:"primaryKey" json:"id"`
 	Title       string         `gorm:"size:255;not null" json:"title"`
 	Description string         `gorm:"type:text" json:"description"`
-	Status      TaskStatus     `gorm:"type:varchar(20);not null;default:'por_hacer'" json:"status"`
+	Status      TaskStatus     `gorm:"type:varchar(20);not null;default:'por_hacer';index:idx_status_board" json:"status"`
 	Priority    TaskPriority   `gorm:"type:varchar(20);not null;default:'medium'" json:"priority"`
 	StartDate   *time.Time     `gorm:"type:date" json:"start_date,omitempty"`
 	EndDate     *time.Time     `gorm:"type:date" json:"end_date,omitempty"`
 	Completed   bool           `gorm:"default:false" json:"completed"`
 	CreatedBy   uint           `gorm:"not null;index" json:"created_by"`
+	BoardID     uint           `gorm:"index:idx_status_board" json:"board_id"`
 	Creator     User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	Board       Board          `gorm:"foreignKey:BoardID" json:"board,omitempty"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
@@ -55,15 +84,16 @@ func (Comment) TableName() string {
 }
 
 type TaskAttachment struct {
-	ID             uint           `gorm:"primaryKey" json:"id"`
-	TaskID         uint           `gorm:"not null;index" json:"task_id"`
-	UploadedBy     uint           `gorm:"not null;index" json:"uploaded_by"`
-	Filename       string         `gorm:"size:255;not null" json:"filename"`
-	StoredFilename string         `gorm:"size:255;not null" json:"stored_filename"`
-	MimeType       string         `gorm:"size:100" json:"mime_type"`
-	FileSize       int64          `json:"file_size"`
-	CreatedAt      time.Time      `json:"created_at"`
-	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`
+	ID         uint           `gorm:"primaryKey" json:"id"`
+	TaskID     uint           `gorm:"not null;index" json:"task_id"`
+	FileName   string         `gorm:"size:255;not null" json:"file_name"`
+	FileURL    string         `gorm:"size:500;not null" json:"file_url"`
+	FileSize   int64          `json:"file_size"`
+	MimeType   string         `gorm:"size:100" json:"mime_type"`
+	UploadedBy uint           `gorm:"not null" json:"uploaded_by"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (TaskAttachment) TableName() string {

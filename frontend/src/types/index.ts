@@ -12,6 +12,7 @@ export interface User {
   is_superadmin: boolean
   is_active: boolean
   empleador_id?: number
+  manager_id?: number
   company_name?: string
   job_title?: string
   phone_number?: string
@@ -46,6 +47,7 @@ export interface CreateTaskInput {
   priority?: string
   end_date?: string
   assignees?: number[]
+  board_id?: number
 }
 
 export interface Comment {
@@ -72,6 +74,8 @@ export interface WorkHour {
   approved_at?: string
   approved_by_user?: User
   comments?: string
+  absence_reason?: string
+  absence_hours?: number
   created_at: string
   updated_at: string
   user?: User
@@ -93,4 +97,23 @@ export interface PaginatedResponse<T> {
   total: number
   page: number
   limit: number
+}
+
+export interface Board {
+  id: number
+  name: string
+  description: string
+  color: string
+  created_by: number
+  created_at: string
+  updated_at: string
+  creator?: User
+  members?: User[]
+}
+
+export interface CreateBoardInput {
+  name?: string
+  description?: string
+  color?: string
+  member_ids?: number[]
 }

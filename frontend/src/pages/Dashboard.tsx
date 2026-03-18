@@ -8,6 +8,11 @@ import './Dashboard.css'
 const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 const DAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -23,14 +28,25 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [tasksData, workHoursData, summaryData] = await Promise.all([
+      const [tasksData, workHoursData, summaryData] = await Promise.allSettled([
         taskService.getAll({ limit: 10 }),
         workHourService.getAll({ limit: 10 }),
         workHourService.getSummary(),
       ])
-      setTasks(tasksData.data)
-      setWorkHours(workHoursData.data)
-      setSummary(summaryData)
+      
+      console.log('Dashboard - workHours:', workHoursData.status === 'fulfilled' ? workHoursData.value : workHoursData.reason)
+      console.log('Dashboard - summary:', summaryData.status === 'fulfilled' ? summaryData.value : summaryData.reason)
+      console.log('Dashboard - tasks:', tasksData.status === 'fulfilled' ? tasksData.value : tasksData.reason)
+      
+      if (tasksData.status === 'fulfilled') {
+        setTasks(tasksData.value.data)
+      }
+      if (workHoursData.status === 'fulfilled') {
+        setWorkHours(workHoursData.value.data)
+      }
+      if (summaryData.status === 'fulfilled') {
+        setSummary(summaryData.value)
+      }
 
       if (user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') {
         const employeesData = await userService.getEmployees()
@@ -50,11 +66,12 @@ export default function Dashboard() {
     const days = []
     const startOfWeek = new Date(today)
     startOfWeek.setDate(today.getDate() - today.getDay())
+    startOfWeek.setHours(0, 0, 0, 0)
     
     for (let i = 0; i < 7; i++) {
       const date = new Date(startOfWeek)
       date.setDate(startOfWeek.getDate() + i)
-      const dateStr = date.toISOString().split('T')[0]
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
       const dayHours = workHours
         .filter(wh => wh.work_date.split('T')[0] === dateStr)
         .reduce((sum, wh) => sum + wh.hours_worked, 0)
@@ -249,8 +266,8 @@ export default function Dashboard() {
               workHours.slice(0, 5).map(wh => (
                 <div key={wh.id} className="hour-row">
                   <div className="hour-date-badge">
-                    <span className="day">{new Date(wh.work_date).getDate()}</span>
-                    <span className="month">{MONTHS_ES[new Date(wh.work_date).getMonth()].slice(0, 3)}</span>
+                    <span className="day">{parseLocalDate(wh.work_date).getDate()}</span>
+                    <span className="month">{MONTHS_ES[parseLocalDate(wh.work_date).getMonth()].slice(0, 3)}</span>
                   </div>
                   <div className="hour-info">
                     <span className="hours-value">

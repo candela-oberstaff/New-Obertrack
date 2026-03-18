@@ -26,7 +26,7 @@ export default function Layout() {
   const getRoleLabel = () => {
     if (user?.is_superadmin) return 'Super Admin'
     if (user?.is_manager) return 'Manager'
-    if (user?.user_type === 'empleador') return 'Empleador'
+    if (user?.user_type === 'empleador') return 'Empresa'
     return 'Profesional'
   }
 

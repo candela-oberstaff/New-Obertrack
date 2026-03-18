@@ -18,8 +18,8 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { taskService, userService } from '../services/api'
-import type { Task, User, TaskStatus, TaskPriority, CreateTaskInput } from '../types'
+import { taskService, userService, boardService } from '../services/api'
+import type { Task, User, TaskStatus, TaskPriority, CreateTaskInput, Board } from '../types'
 import './Tasks.css'
 
 interface RichTextEditorProps {
@@ -490,11 +490,23 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete }: TaskDetailPanelP
 export default function Tasks() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [users, setUsers] = useState<User[]>([])
+  const [boards, setBoards] = useState<Board[]>([])
+  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null)
+  const [showAllTasks, setShowAllTasks] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [showNewTaskModal, setShowNewTaskModal] = useState(false)
+  const [showBoardModal, setShowBoardModal] = useState(false)
+  const [showBoardMembersModal, setShowBoardMembersModal] = useState(false)
+  const [optimisticMembers, setOptimisticMembers] = useState<number[]>([])
   const [isCreatingTask, setIsCreatingTask] = useState(false)
+  const [newBoardData, setNewBoardData] = useState({
+    name: '',
+    description: '',
+    color: '#3b82f6',
+    member_ids: [] as number[],
+  })
   const [newTaskData, setNewTaskData] = useState({
     title: '',
     description: '',
@@ -518,18 +530,62 @@ export default function Tasks() {
     fetchData()
   }, [])
 
+  useEffect(() => {
+    fetchTasks()
+  }, [selectedBoard])
+
   const fetchData = async () => {
     try {
-      const [tasksRes, usersRes] = await Promise.all([
-        taskService.getAll({}),
+      const [usersRes, boardsRes] = await Promise.all([
         userService.getAll(),
+        boardService.getAll(),
       ])
-      setTasks(tasksRes.data)
       setUsers(usersRes.data)
+      setBoards(boardsRes)
+      if (boardsRes.length > 0 && !selectedBoard) {
+        setSelectedBoard(boardsRes[0])
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const fetchTasks = async () => {
+    try {
+      const params: Record<string, unknown> = {}
+      if (!showAllTasks && selectedBoard) {
+        params.board_id = selectedBoard.id
+      }
+      const tasksRes = await taskService.getAll(params)
+      setTasks(tasksRes.data)
+    } catch (error) {
+      console.error('Error fetching tasks:', error)
+    }
+  }
+
+  useEffect(() => {
+    fetchTasks()
+  }, [selectedBoard, showAllTasks])
+
+  const handleCreateBoard = async () => {
+    if (!newBoardData.name.trim()) return
+    try {
+      const newBoard = await boardService.create({
+        name: newBoardData.name,
+        description: newBoardData.description,
+        color: newBoardData.color,
+        member_ids: newBoardData.member_ids,
+      })
+      setNewBoardData({ name: '', description: '', color: '#3b82f6', member_ids: [] })
+      setShowBoardModal(false)
+      
+      const boardsRes = await boardService.getAll()
+      setBoards(boardsRes)
+      setSelectedBoard(newBoard)
+    } catch (error) {
+      console.error('Error creating board:', error)
     }
   }
 
@@ -613,7 +669,7 @@ export default function Tasks() {
         )
       } catch (error) {
         console.error('Error updating task status:', error)
-        fetchData()
+        fetchTasks()
       }
     }
   }
@@ -625,6 +681,7 @@ export default function Tasks() {
         title: newTaskData.title,
         description: newTaskData.description || undefined,
         priority: newTaskData.priority || undefined,
+        board_id: selectedBoard?.id,
       }
       
       if (newTaskData.end_date) {
@@ -646,7 +703,7 @@ export default function Tasks() {
         end_date: '',
         assignees: [],
       })
-      fetchData()
+      fetchTasks()
     } catch (error) {
       console.error('Error creating task:', error)
     } finally {
@@ -657,7 +714,7 @@ export default function Tasks() {
   const handleUpdateTask = async (id: number, data: Partial<Task>) => {
     try {
       await taskService.update(id, data)
-      fetchData()
+      fetchTasks()
       if (selectedTask && selectedTask.id === id) {
         const updated = await taskService.getById(id)
         setSelectedTask(updated)
@@ -670,7 +727,7 @@ export default function Tasks() {
   const handleDeleteTask = async (id: number) => {
     try {
       await taskService.delete(id)
-      fetchData()
+      fetchTasks()
     } catch (error) {
       console.error('Error deleting task:', error)
     }
@@ -678,9 +735,69 @@ export default function Tasks() {
 
   if (isLoading) {
     return (
-      <div className="tasks-loading">
-        <div className="spinner" />
-        <p>Cargando tareas...</p>
+      <div className="tasks-page">
+        <div className="tasks-loading">
+          <div className="spinner" />
+          <p>Cargando...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (boards.length === 0) {
+    return (
+      <div className="tasks-page">
+        <div className="page-header">
+          <h1>📋 Tareas</h1>
+        </div>
+        <div className="tasks-loading">
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
+          <h2>No tienes tableros</h2>
+          <p>Crea tu primer tablero para organizar tus tareas</p>
+          <button className="btn-primary" onClick={() => setShowBoardModal(true)}>
+            + Crear Tablero
+          </button>
+        </div>
+        {showBoardModal && (
+          <div className="modal-overlay" onClick={() => setShowBoardModal(false)}>
+            <div className="modal board-modal" onClick={(e) => e.stopPropagation()}>
+              <h2>Crear Tablero</h2>
+              <form onSubmit={(e) => { e.preventDefault(); handleCreateBoard() }}>
+                <div className="form-group">
+                  <label>Nombre del tablero</label>
+                  <input
+                    type="text"
+                    value={newBoardData.name}
+                    onChange={(e) => setNewBoardData({ ...newBoardData, name: e.target.value })}
+                    placeholder="Ej: Marketing, IT, Diseño..."
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Descripción</label>
+                  <textarea
+                    value={newBoardData.description}
+                    onChange={(e) => setNewBoardData({ ...newBoardData, description: e.target.value })}
+                    placeholder="Descripción opcional..."
+                    rows={3}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Color</label>
+                  <input
+                    type="color"
+                    value={newBoardData.color}
+                    onChange={(e) => setNewBoardData({ ...newBoardData, color: e.target.value })}
+                  />
+                </div>
+                <div className="modal-actions">
+                  <button type="button" onClick={() => setShowBoardModal(false)}>Cancelar</button>
+                  <button type="submit" className="btn-primary">Crear Tablero</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -688,11 +805,192 @@ export default function Tasks() {
   return (
     <div className="tasks-page">
       <div className="page-header">
-        <h1>📋 Tareas</h1>
+        <div className="header-left">
+          <h1>📋 Tareas</h1>
+          <div className="board-selector">
+            {boards.length > 0 ? (
+              <>
+                <select 
+                  value={showAllTasks ? 'all' : (selectedBoard?.id || '')} 
+                  onChange={(e) => {
+                    if (e.target.value === 'all') {
+                      setShowAllTasks(true)
+                      setSelectedBoard(null)
+                    } else {
+                      setShowAllTasks(false)
+                      const board = boards.find(b => b.id === Number(e.target.value))
+                      setSelectedBoard(board || null)
+                    }
+                  }}
+                  style={{ borderLeftColor: showAllTasks ? '#6366f1' : (selectedBoard?.color || '#3b82f6') }}
+                >
+                  <option value="all">📋 Todos los tableros</option>
+                  {boards.map(board => (
+                    <option key={board.id} value={board.id}>{board.name}</option>
+                  ))}
+                </select>
+                <button className="btn-icon" onClick={() => setShowBoardModal(true)} title="Crear tablero">
+                  ➕
+                </button>
+                {selectedBoard && (
+                  <button 
+                    className="btn-icon" 
+                    onClick={() => {
+                      setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
+                      setShowBoardMembersModal(true)
+                    }}
+                    title="Gestionar miembros"
+                    style={{ marginLeft: '4px' }}
+                  >
+                    👥
+                  </button>
+                )}
+              </>
+            ) : (
+              <button className="btn-primary btn-sm" onClick={() => setShowBoardModal(true)}>
+                + Crear Primer Tablero
+              </button>
+            )}
+          </div>
+        </div>
         <button className="btn-primary" onClick={() => setShowNewTaskModal(true)}>
           + Nueva Tarea
         </button>
       </div>
+
+      {showBoardModal && (
+        <div className="modal-overlay" onClick={() => setShowBoardModal(false)}>
+          <div className="modal board-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Crear Tablero</h2>
+            <form onSubmit={(e) => { e.preventDefault(); handleCreateBoard() }}>
+              <div className="form-group">
+                <label>Nombre del tablero</label>
+                <input
+                  type="text"
+                  value={newBoardData.name}
+                  onChange={(e) => setNewBoardData({ ...newBoardData, name: e.target.value })}
+                  placeholder="Ej: Marketing, IT, Diseño..."
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Descripción</label>
+                <textarea
+                  value={newBoardData.description}
+                  onChange={(e) => setNewBoardData({ ...newBoardData, description: e.target.value })}
+                  placeholder="Descripción opcional..."
+                  rows={2}
+                />
+              </div>
+              <div className="form-group">
+                <label>Color</label>
+                <input
+                  type="color"
+                  value={newBoardData.color}
+                  onChange={(e) => setNewBoardData({ ...newBoardData, color: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Agregar miembros (opcional)</label>
+                <div className="members-select">
+                  {users.map(user => (
+                    <label key={user.id} className="member-checkbox">
+                      <div className="left-section">
+                        <input
+                          type="checkbox"
+                          checked={newBoardData.member_ids.includes(user.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setNewBoardData({
+                                ...newBoardData,
+                                member_ids: [...newBoardData.member_ids, user.id]
+                              })
+                            } else {
+                              setNewBoardData({
+                                ...newBoardData,
+                                member_ids: newBoardData.member_ids.filter(id => id !== user.id)
+                              })
+                            }
+                          }}
+                        />
+                        <span className="checkbox-custom"></span>
+                        <div className="member-avatar">
+                          {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                        </div>
+                        <div className="member-info">
+                          <span className="member-name">{user.name}</span>
+                          <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button type="button" onClick={() => setShowBoardModal(false)}>Cancelar</button>
+                <button type="submit" className="btn-primary">Crear Tablero</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showBoardMembersModal && selectedBoard && (
+        <div className="modal-overlay" onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>
+          <div className="modal board-modal wide" onClick={(e) => e.stopPropagation()}>
+            <h2>Miembros del Tablero</h2>
+            <p style={{ color: '#64748b', marginBottom: '20px', marginTop: '-16px' }}>{selectedBoard.name}</p>
+              <div className="form-group">
+                <label>Selecciona los miembros que quieres agregar al tablero</label>
+                <div className="members-select">
+                  {users.map(user => {
+                    const isMember = optimisticMembers.includes(user.id)
+                    return (
+                      <label key={user.id} className="member-checkbox">
+                        <div className="left-section">
+                          <input
+                            type="checkbox"
+                            checked={isMember}
+                            onChange={async (e) => {
+                              const newOptimisticMembers = e.target.checked
+                                ? [...optimisticMembers, user.id]
+                                : optimisticMembers.filter(id => id !== user.id)
+                              setOptimisticMembers(newOptimisticMembers)
+                              try {
+                                await boardService.update(selectedBoard.id, { member_ids: newOptimisticMembers })
+                                const boardsRes = await boardService.getAll()
+                                setBoards(boardsRes)
+                                const updated = boardsRes.find(b => b.id === selectedBoard.id)
+                                if (updated) setSelectedBoard(updated)
+                              } catch (error) {
+                                console.error('Error updating board members:', error)
+                                setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
+                              }
+                            }}
+                          />
+                          <span className="checkbox-custom"></span>
+                          <div className="member-avatar">
+                            {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="member-info">
+                            <span className="member-name">{user.name}</span>
+                            <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
+                          </div>
+                        </div>
+                        <span className={`member-status ${isMember ? 'active' : 'inactive'}`}>
+                          {isMember ? 'En tablero' : 'No asignado'}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-primary" onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>Listo</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <DndContext
         sensors={sensors}

@@ -457,6 +457,73 @@
   flex: 1;
 }
 
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+.checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: normal !important;
+}
+
+.checkbox-label input {
+  width: 18px !important;
+  height: 18px;
+}
+
+.btn-secondary {
+  padding: 10px 16px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.password-reset-row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.password-reset-row .password-input {
+  flex: 1;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.password-reset-row .password-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.password-reset-row .btn-primary {
+  padding: 12px 20px;
+  white-space: nowrap;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .admin-header {

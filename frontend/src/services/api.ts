@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { User, Task, WorkHour, PaginatedResponse, CreateTaskInput } from '../types'
+import type { User, Task, WorkHour, PaginatedResponse, CreateTaskInput, Board, CreateBoardInput } from '../types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -61,6 +61,18 @@ export const userService = {
   },
   getEmployees: async () => {
     const { data } = await api.get<User[]>('/users/employees')
+    return data
+  },
+  getMyTeam: async () => {
+    const { data } = await api.get<User[]>('/users/my-team')
+    return data
+  },
+  assignToManager: async (professionalId: number, managerId: number | null) => {
+    const { data } = await api.post<User>(`/users/${professionalId}/assign-manager`, { manager_id: managerId })
+    return data
+  },
+  promoteToManager: async (userId: number) => {
+    const { data } = await api.post<User>(`/users/${userId}/promote-manager`)
     return data
   },
 }
@@ -143,7 +155,7 @@ export const adminService = {
     const { data } = await api.get('/admin/stats')
     return data
   },
-  getUsers: async (params?: { user_type?: string; is_active?: string; page?: number; limit?: number }) => {
+  getUsers: async (params?: { user_type?: string; is_active?: string; is_manager?: string; page?: number; limit?: number }) => {
     const { data } = await api.get('/admin/users', { params })
     return data
   },
@@ -157,6 +169,32 @@ export const adminService = {
   },
   deleteUser: async (id: number) => {
     await api.delete(`/admin/users/${id}`)
+  },
+  resetPassword: async (id: number, newPassword: string) => {
+    const { data } = await api.post(`/admin/users/${id}/reset-password`, { new_password: newPassword })
+    return data
+  },
+}
+
+export const boardService = {
+  getAll: async () => {
+    const { data } = await api.get<Board[]>('/boards')
+    return data
+  },
+  getById: async (id: number) => {
+    const { data } = await api.get<Board>(`/boards/${id}`)
+    return data
+  },
+  create: async (boardData: CreateBoardInput) => {
+    const { data } = await api.post<Board>('/boards', boardData)
+    return data
+  },
+  update: async (id: number, boardData: CreateBoardInput) => {
+    const { data } = await api.put<Board>(`/boards/${id}`, boardData)
+    return data
+  },
+  delete: async (id: number) => {
+    await api.delete(`/boards/${id}`)
   },
 }
 
