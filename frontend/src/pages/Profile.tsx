@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { userService, workHourService } from '../services/api'
+import { userService, workHourService, uploadService } from '../services/api'
 import type { WorkHour, User } from '../types'
 import './Profile.css'
 
@@ -16,6 +16,8 @@ export default function Profile() {
   const [pendingHours, setPendingHours] = useState<WorkHour[]>([])
   const [selectedPending, setSelectedPending] = useState<number[]>([])
   const [isLoadingPending, setIsLoadingPending] = useState(false)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   
   // Team management
   const [myTeam, setMyTeam] = useState<User[]>([])
@@ -142,14 +144,45 @@ export default function Profile() {
     setMessage({ type: '', text: '' })
     
     try {
-      await userService.update(user!.id, { password: passwordData.new })
+      await userService.changePassword(user!.id, passwordData.current, passwordData.new)
       setMessage({ type: 'success', text: 'Contraseña actualizada correctamente' })
       setShowPasswordModal(false)
       setPasswordData({ current: '', new: '', confirm: '' })
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Error al cambiar la contraseña' })
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || 'Error al cambiar la contraseña'
+      setMessage({ type: 'error', text: errorMsg })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+    
+    if (!file.type.startsWith('image/')) {
+      setMessage({ type: 'error', text: 'Por favor selecciona una imagen' })
+      return
+    }
+    
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'La imagen debe ser menor a 5MB' })
+      return
+    }
+    
+    setIsUploadingAvatar(true)
+    setMessage({ type: '', text: '' })
+    
+    try {
+      const uploadResult = await uploadService.upload(file)
+      const updatedUser = await userService.update(user.id, { avatar: uploadResult.url })
+      setUser(updatedUser)
+      setMessage({ type: 'success', text: 'Foto de perfil actualizada' })
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Error al subir la imagen' })
+    } finally {
+      setIsUploadingAvatar(false)
+      if (avatarInputRef.current) avatarInputRef.current.value = ''
     }
   }
 
@@ -173,11 +206,23 @@ export default function Profile() {
         <div className="profile-cover"></div>
         <div className="profile-main">
           <div className="profile-avatar-section">
-            <div className="profile-avatar">
-              <div className="avatar-placeholder large">
-                {user?.name?.charAt(0).toUpperCase()}
-              </div>
+            <div className="profile-avatar" onClick={() => !isUploadingAvatar && avatarInputRef.current?.click()}>
+              {user?.avatar ? (
+                <img src={user.avatar} alt={user.name} className="avatar-image large" />
+              ) : (
+                <div className="avatar-placeholder large">
+                  {user?.name?.charAt(0).toUpperCase()}
+                </div>
+              )}
+              {isUploadingAvatar && <div className="avatar-loading">⟳</div>}
             </div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarChange}
+              style={{ display: 'none' }}
+            />
             <div className="profile-title">
               <h1>{user?.name}</h1>
               <p className="profile-role" style={{ color: getRoleColor() }}>

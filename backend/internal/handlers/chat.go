@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -133,26 +132,22 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 
 func (h *ChatHandler) GetMessages(c *gin.Context) {
 	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 	empleadorID := middleware.GetEmpleadorID(c)
-	companyID := c.Query("company_id")
 
 	var messages []models.Message
 	query := h.db.Model(&models.Message{})
 
 	if !isSuperadmin {
-		if empleadorID > 0 {
+		if role == string(models.UserTypeEmployer) || role == "empleador" {
+			subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", userID).Select("id")
+			query = query.Where("user_id IN (?) OR (company_id = ? AND company_id IS NOT NULL)", subquery, userID)
+		} else if empleadorID > 0 {
 			subquery := h.db.Model(&models.User{}).Where("empleador_id = ?", empleadorID).Select("id")
 			query = query.Where("user_id IN (?) OR company_id = ?", subquery, empleadorID)
 		} else {
 			query = query.Where("user_id = ?", userID)
-		}
-	}
-
-	if companyID != "" && isSuperadmin {
-		var cid uint
-		if _, err := fmt.Sscanf(companyID, "%d", &cid); err == nil {
-			query = query.Where("company_id = ?", cid)
 		}
 	}
 
@@ -174,10 +169,13 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
 	empleadorID := middleware.GetEmpleadorID(c)
 
 	var companyID *uint
-	if empleadorID > 0 {
+	if role == string(models.UserTypeEmployer) || role == "empleador" {
+		companyID = &userID
+	} else if empleadorID > 0 {
 		companyID = &empleadorID
 	}
 

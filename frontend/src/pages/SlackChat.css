@@ -355,6 +355,69 @@
   color: #374151;
 }
 
+.mention-highlight {
+  background: #e0e7ff;
+  color: #4f46e5;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.mention-dropdown {
+  position: absolute;
+  bottom: 70px;
+  left: 20px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  min-width: 200px;
+}
+
+.mention-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.mention-option:hover {
+  background: #f1f5f9;
+}
+
+.mention-option:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.mention-option:last-child {
+  border-radius: 0 0 8px 8px;
+}
+
+.mention-user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.mention-user-name {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 500;
+}
+
 .message-item.pinned {
   background: #fffbeb;
   padding: 8px;

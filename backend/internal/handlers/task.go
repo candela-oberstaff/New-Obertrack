@@ -11,6 +11,7 @@ import (
 
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
+	"github.com/obertrack/backend/internal/utils"
 )
 
 type TaskHandler struct {
@@ -145,8 +146,8 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
 	task := models.Task{
-		Title:       req.Title,
-		Description: req.Description,
+		Title:       utils.SanitizeHTML(req.Title),
+		Description: utils.SanitizeHTML(req.Description),
 		Status:      models.TaskStatusTodo,
 		Priority:    models.PriorityMedium,
 		CreatedBy:   userID,
@@ -205,10 +206,10 @@ func (h *TaskHandler) Update(c *gin.Context) {
 
 	updates := map[string]interface{}{}
 	if req.Title != "" {
-		updates["title"] = req.Title
+		updates["title"] = utils.SanitizeHTML(req.Title)
 	}
 	if req.Description != "" {
-		updates["description"] = req.Description
+		updates["description"] = utils.SanitizeHTML(req.Description)
 	}
 	if req.Status != "" {
 		updates["status"] = req.Status
@@ -318,7 +319,7 @@ func (h *TaskHandler) AddComment(c *gin.Context) {
 	comment := models.Comment{
 		TaskID:  uint(id),
 		UserID:  userID,
-		Content: req.Content,
+		Content: utils.SanitizeHTML(req.Content),
 	}
 
 	if err := h.db.Create(&comment).Error; err != nil {

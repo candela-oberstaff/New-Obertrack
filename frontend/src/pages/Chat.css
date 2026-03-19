@@ -334,6 +334,51 @@
   cursor: not-allowed;
 }
 
+.attach-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  font-size: 18px;
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.message-attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.message.own .message-attachment {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.message-attachment:hover {
+  text-decoration: underline;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .chat-sidebar {

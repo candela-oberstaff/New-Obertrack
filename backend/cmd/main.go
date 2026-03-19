@@ -15,12 +15,27 @@ import (
 )
 
 func main() {
-	dir, _ := filepath.Abs(filepath.Dir(os.Args[0]))
-	envPath := filepath.Join(dir, ".env")
-	if _, err := os.Stat(envPath); err != nil {
-		envPath = ".env"
+	cwd, _ := os.Getwd()
+
+	paths := []string{
+		filepath.Join(cwd, ".env"),
+		filepath.Join(cwd, "..", ".env"),
+		filepath.Join(cwd, "..", "..", ".env"),
+		".env",
 	}
-	godotenv.Load(envPath)
+
+	var envPath string
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			envPath = p
+			break
+		}
+	}
+
+	if envPath != "" {
+		godotenv.Load(envPath)
+		log.Printf("Loaded env from: %s", envPath)
+	}
 
 	cfg := config.LoadConfig()
 
@@ -38,6 +53,7 @@ func main() {
 	r := gin.Default()
 
 	r.Use(middleware.CORS())
+	r.Use(middleware.RateLimitMiddleware())
 
 	authHandler := handlers.NewAuthHandler(db, cfg)
 	userHandler := handlers.NewUserHandler(db)
@@ -46,6 +62,9 @@ func main() {
 	chatHandler := handlers.NewChatHandler(db)
 	adminHandler := handlers.NewAdminHandler(db)
 	boardHandler := handlers.NewBoardHandler(db)
+	uploadHandler := handlers.NewUploadHandler(db, os.Getenv("UPLOAD_PATH"))
+	notificationHandler := handlers.NewNotificationHandler(db)
+	channelHandler := handlers.NewChannelHandler(db)
 
 	api := r.Group("/api")
 	{
@@ -81,10 +100,11 @@ func main() {
 				users.POST("/:id/toggle-status", userHandler.ToggleStatus)
 				users.POST("/:id/promote-manager", userHandler.PromoteToManager)
 				users.POST("/:id/assign-manager", userHandler.AssignToManager)
+				users.POST("/:id/change-password", userHandler.ChangePassword)
 			}
 
 			admin := api.Group("/admin")
-			admin.Use(middleware.RoleMiddleware("superadmin"))
+			admin.Use(middleware.RequireSuperadmin())
 			{
 				admin.GET("/dashboard", adminHandler.GetDashboard)
 				admin.GET("/companies", adminHandler.GetCompanies)
@@ -133,11 +153,62 @@ func main() {
 				chat.GET("/messages", chatHandler.GetMessages)
 				chat.POST("/messages", chatHandler.SendMessage)
 			}
+
+			uploads := api.Group("/uploads")
+			{
+				uploads.POST("", uploadHandler.UploadFile)
+			}
+
+			notifications := api.Group("/notifications")
+			{
+				notifications.GET("", notificationHandler.GetNotifications)
+				notifications.GET("/unread-count", notificationHandler.GetUnreadCount)
+				notifications.POST("/:id/read", notificationHandler.MarkAsRead)
+				notifications.POST("/read-all", notificationHandler.MarkAllAsRead)
+			}
+
+			channels := api.Group("/channels")
+			{
+				channels.GET("", channelHandler.GetChannels)
+				channels.POST("", channelHandler.CreateChannel)
+				channels.GET("/all-users", channelHandler.GetAllUsers)
+				channels.GET("/:id", channelHandler.GetChannel)
+				channels.PUT("/:id", channelHandler.UpdateChannel)
+				channels.DELETE("/:id", channelHandler.DeleteChannel)
+				channels.GET("/:id/messages", channelHandler.GetMessages)
+				channels.POST("/:id/messages", channelHandler.SendMessage)
+				channels.PUT("/:id/messages/:messageId", channelHandler.EditMessage)
+				channels.DELETE("/:id/messages/:messageId", channelHandler.DeleteMessage)
+				channels.GET("/:id/messages/:messageId/reactions", channelHandler.GetReactions)
+				channels.POST("/:id/messages/:messageId/reactions", channelHandler.AddReaction)
+				channels.DELETE("/:id/messages/:messageId/reactions", channelHandler.RemoveReaction)
+				channels.GET("/:id/messages/:messageId/replies", channelHandler.GetThreadReplies)
+				channels.POST("/:id/messages/:messageId/replies", channelHandler.SendThreadReply)
+				channels.GET("/:id/members", channelHandler.GetMembers)
+				channels.POST("/:id/members", channelHandler.AddMember)
+				channels.DELETE("/:id/members", channelHandler.RemoveMember)
+				channels.POST("/:id/join", channelHandler.JoinChannel)
+				channels.POST("/:id/leave", channelHandler.LeaveChannel)
+				channels.POST("/:id/pin/:messageId", channelHandler.PinMessage)
+				channels.POST("/:id/unpin/:messageId", channelHandler.UnpinMessage)
+				channels.GET("/:id/pinned", channelHandler.GetPinnedMessages)
+				channels.GET("/:id/search", channelHandler.SearchMessages)
+				channels.POST("/star/:messageId", channelHandler.StarMessage)
+				channels.DELETE("/star/:messageId", channelHandler.UnstarMessage)
+				channels.GET("/starred", channelHandler.GetStarredMessages)
+				channels.POST("/status", channelHandler.UpdateStatus)
+				channels.GET("/statuses", channelHandler.GetStatuses)
+				channels.POST("/dm", channelHandler.CreateDirectMessage)
+			}
 		}
 	}
 
-	r.GET("/ws/chat", func(c *gin.Context) {
+	r.GET("/api/uploads/:filename", uploadHandler.GetFile)
+	r.GET("/ws/chat", middleware.AuthMiddleware(cfg.JWTSecret), func(c *gin.Context) {
 		chatHandler.HandleWebSocket(c)
+	})
+	r.GET("/ws/channels", middleware.AuthMiddleware(cfg.JWTSecret), func(c *gin.Context) {
+		channelHandler.HandleWebSocket(c)
 	})
 
 	r.GET("/health", func(c *gin.Context) {

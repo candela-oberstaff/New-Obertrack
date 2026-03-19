@@ -91,6 +91,9 @@ export default function SlackChat() {
   const [showStarred, setShowStarred] = useState(false)
   const [starredMessages, setStarredMessages] = useState<Message[]>([])
   const [_userStatuses, _setUserStatuses] = useState<Map<number, string>>(new Map())
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false)
+  const [mentionFilterUsers, setMentionFilterUsers] = useState<User[]>([])
+  const mentionInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchChannels()
@@ -102,6 +105,7 @@ export default function SlackChat() {
 
   useEffect(() => {
     if (selectedChannel) {
+      console.log('[DEBUG] Channel selected, fetching data for channel:', selectedChannel.id)
       fetchMessages(selectedChannel.id)
       fetchChannelMembers(selectedChannel.id)
       fetchPinnedMessages(selectedChannel.id)
@@ -110,6 +114,7 @@ export default function SlackChat() {
   }, [selectedChannel])
 
   useEffect(() => {
+    console.log('[DEBUG] Messages state updated, count:', messages.length)
     scrollToBottom()
   }, [messages])
 
@@ -136,6 +141,33 @@ export default function SlackChat() {
     oscillator.stop(audioContext.currentTime + 0.3)
   }
 
+  const highlightMentions = (content: string): React.ReactNode => {
+    const mentionRegex = /@(\w+)/g
+    const parts: React.ReactNode[] = []
+    let lastIndex = 0
+    let match
+    
+    while ((match = mentionRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(content.slice(lastIndex, match.index))
+      }
+      const mentionedName = match[1].toLowerCase()
+      const mentionedUser = allUsers.find(u => u.name.toLowerCase().replace(/\s+/g, '') === mentionedName)
+      if (mentionedUser) {
+        parts.push(<span key={match.index} className="mention-highlight">@{match[1]}</span>)
+      } else {
+        parts.push(`@${match[1]}`)
+      }
+      lastIndex = mentionRegex.lastIndex
+    }
+    
+    if (lastIndex < content.length) {
+      parts.push(content.slice(lastIndex))
+    }
+    
+    return parts.length > 0 ? parts : content
+  }
+
   const fetchChannels = async () => {
     try {
       const data = await channelService.getChannels()
@@ -157,6 +189,7 @@ export default function SlackChat() {
   const fetchMessages = async (channelId: number) => {
     try {
       const data = await channelService.getMessages(channelId)
+      console.log('[DEBUG] fetchMessages received:', data?.length, 'messages', data)
       setMessages(data || [])
     } catch (error) {
       console.error('Error fetching messages:', error)
@@ -183,25 +216,38 @@ export default function SlackChat() {
 
   const connectWebSocket = () => {
     if (wsRef.current) {
+      console.log('[DEBUG] Closing existing WebSocket')
       wsRef.current.close()
     }
 
-    const wsUrl = `ws://${window.location.hostname}:8080/ws/channels`
+    const token = localStorage.getItem('token')
+    const wsUrl = `ws://${window.location.hostname}:8080/ws/channels?token=${token}`
+    console.log('[DEBUG] Connecting WebSocket to:', wsUrl)
     const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
+      console.log('[DEBUG] WebSocket connected')
       setIsConnected(true)
     }
 
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
+        console.log('[DEBUG] WS message received:', msg.type, msg)
         if (msg.channel_id === selectedChannel?.id) {
           if (msg.type === 'message') {
-            setMessages(prev => [...prev.filter(m => m.tempId !== msg.data.tempId), msg.data])
-            if (msg.data.user_id !== user?.id) {
-              playNotificationSound()
+            if (msg.user_id === user?.id) {
+              console.log('[DEBUG] Ignoring own message')
+              return
             }
+            console.log('[DEBUG] Adding message from other user:', msg.data)
+            setMessages(prev => {
+              const filtered = msg.data.tempId 
+                ? prev.filter(m => m.tempId !== msg.data.tempId) 
+                : prev
+              return [...filtered, msg.data]
+            })
+            playNotificationSound()
           } else if (msg.type === 'typing') {
             handleTyping(msg.user_id, msg.user_name, msg.channel_id)
           } else if (msg.type === 'message_pinned') {
@@ -297,6 +343,7 @@ export default function SlackChat() {
 
     channelService.sendMessage(selectedChannel.id, { content, attachment: attachment?.url, file_name: attachment?.filename })
       .then(msg => {
+        console.log('[DEBUG] REST sendMessage response:', msg)
         setMessages(prev => prev.filter(m => m.tempId !== tempId).concat([{ ...msg }]))
         setNewMessage('')
       })
@@ -764,7 +811,7 @@ export default function SlackChat() {
                           </div>
                         ) : (
                           <>
-                            {msg.content && !msg.attachment && <p className="message-text">{msg.content}</p>}
+                            {msg.content && !msg.attachment && <p className="message-text">{highlightMentions(msg.content)}</p>}
                             {msg.is_edited && <span className="edited-indicator">(editado)</span>}
                             {msg.attachment && isVoiceNote(msg) ? (
                               <div className="voice-note">
@@ -881,8 +928,31 @@ export default function SlackChat() {
                 </button>
                 <input
                   type="text"
+                  ref={mentionInputRef}
                   value={newMessage}
-                  onChange={(e) => { setNewMessage(e.target.value); sendTypingIndicator(); }}
+                  onChange={(e) => { 
+                    setNewMessage(e.target.value); 
+                    sendTypingIndicator();
+                    const value = e.target.value;
+                    const cursorPos = e.target.selectionStart || 0;
+                    const textBeforeCursor = value.slice(0, cursorPos);
+                    const atIndex = textBeforeCursor.lastIndexOf('@');
+                    if (atIndex !== -1) {
+                      const textAfterAt = textBeforeCursor.slice(atIndex + 1);
+                      if (!textAfterAt.includes(' ') && textAfterAt.length < 20) {
+                        const search = textAfterAt.toLowerCase();
+                        setMentionFilterUsers(allUsers.filter(u => 
+                          u.name.toLowerCase().replace(/\s+/g, '').startsWith(search) ||
+                          u.name.toLowerCase().includes(search)
+                        ).slice(0, 5));
+                        setShowMentionDropdown(true);
+                      } else {
+                        setShowMentionDropdown(false);
+                      }
+                    } else {
+                      setShowMentionDropdown(false);
+                    }
+                  }}
                   onKeyDown={handleInputKeyDown}
                   placeholder={`Enviar mensaje a #${selectedChannel.name}`}
                 />
@@ -890,6 +960,29 @@ export default function SlackChat() {
                   ➤
                 </button>
               </form>
+              {showMentionDropdown && mentionFilterUsers.length > 0 && (
+                <div className="mention-dropdown">
+                  {mentionFilterUsers.map(u => (
+                    <div 
+                      key={u.id} 
+                      className="mention-option"
+                      onClick={() => {
+                        const cursorPos = mentionInputRef.current?.selectionStart || 0;
+                        const textBeforeCursor = newMessage.slice(0, cursorPos);
+                        const atIndex = textBeforeCursor.lastIndexOf('@');
+                        const textAfterCursor = newMessage.slice(cursorPos);
+                        const mentionName = u.name.split(' ')[0];
+                        setNewMessage(newMessage.slice(0, atIndex) + '@' + mentionName + ' ' + textAfterCursor);
+                        setShowMentionDropdown(false);
+                        mentionInputRef.current?.focus();
+                      }}
+                    >
+                      <span className="mention-user-avatar">{u.name.charAt(0).toUpperCase()}</span>
+                      <span className="mention-user-name">{u.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           ) : (
             <div className="no-channel-selected">

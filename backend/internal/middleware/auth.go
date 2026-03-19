@@ -20,16 +20,22 @@ type Claims struct {
 
 func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		tokenString := ""
+
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
-			c.Abort()
-			return
+		if authHeader != "" {
+			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+			if tokenString == authHeader {
+				tokenString = ""
+			}
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
+		if tokenString == "" {
+			tokenString = c.Query("token")
+		}
+
+		if tokenString == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization token required"})
 			c.Abort()
 			return
 		}
@@ -82,6 +88,17 @@ func RoleMiddleware(allowedRoles ...string) gin.HandlerFunc {
 
 		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
 		c.Abort()
+	}
+}
+
+func RequireSuperadmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !IsSuperadmin(c) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Superadmin access required"})
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
 }
 

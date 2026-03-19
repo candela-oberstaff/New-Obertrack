@@ -19,6 +19,13 @@ func Migrate(db *gorm.DB) error {
 		&Notification{},
 		&MassEmailLog{},
 		&Message{},
+		&Channel{},
+		&ChannelMember{},
+		&ChannelMessage{},
+		&MessageReaction{},
+		&StarredMessage{},
+		&UserStatus{},
+		&Mention{},
 	)
 	if err != nil {
 		log.Printf("Migration warning: %v", err)

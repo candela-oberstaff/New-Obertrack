@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
 	"github.com/obertrack/backend/internal/middleware"
@@ -13,6 +14,11 @@ import (
 
 type UserHandler struct {
 	db *gorm.DB
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=6"`
 }
 
 func NewUserHandler(db *gorm.DB) *UserHandler {
@@ -193,12 +199,13 @@ func (h *UserHandler) ToggleStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.db.Delete(&user).Error; err != nil {
+	user.IsActive = !user.IsActive
+	if err := h.db.Save(&user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to toggle status"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "User status toggled"})
+	c.JSON(http.StatusOK, gin.H{"message": "User status toggled", "is_active": user.IsActive})
 }
 
 func (h *UserHandler) PromoteToManager(c *gin.Context) {
@@ -304,4 +311,49 @@ func (h *UserHandler) GetMyTeam(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, team)
+}
+
+func (h *UserHandler) ChangePassword(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+	if uint(id) != userID && !middleware.IsSuperadmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Can only change your own password"})
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var user models.User
+	if err := h.db.First(&user, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.CurrentPassword)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Current password is incorrect"})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	user.Password = string(hashedPassword)
+	if err := h.db.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }

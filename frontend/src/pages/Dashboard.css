@@ -1,7 +1,7 @@
 .dashboard {
   padding: 0;
   min-height: 100%;
-  background: #f8fafc;
+  background: white;
 }
 
 .dashboard-loading {
@@ -32,8 +32,8 @@
   justify-content: space-between;
   align-items: center;
   padding: 32px;
-  background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
-  color: white;
+  background: white;
+  color: #111827;
 }
 
 .header-content {

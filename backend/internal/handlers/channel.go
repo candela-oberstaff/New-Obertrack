@@ -369,6 +369,38 @@ func (h *ChannelHandler) GetMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, messages)
 }
 
+func (h *ChannelHandler) processMentions(messageID uint, content string, channelID uint) []uint {
+	var mentionedUserIDs []uint
+
+	// Find all @name patterns
+	words := strings.Fields(content)
+	for _, word := range words {
+		if strings.HasPrefix(word, "@") {
+			name := strings.TrimPrefix(word, "@")
+			// Remove trailing punctuation
+			name = strings.TrimRight(name, ".,!?;:")
+			if name != "" {
+				var user models.User
+				if err := h.db.Where("name LIKE ?", name+"%").First(&user).Error; err == nil {
+					// Check if user is a member of the channel
+					var member models.ChannelMember
+					if err := h.db.Where("channel_id = ? AND user_id = ?", channelID, user.ID).First(&member).Error; err == nil {
+						mentionedUserIDs = append(mentionedUserIDs, user.ID)
+						mention := models.Mention{
+							MessageID: messageID,
+							UserID:    user.ID,
+							Notified:  true,
+						}
+						h.db.Create(&mention)
+					}
+				}
+			}
+		}
+	}
+
+	return mentionedUserIDs
+}
+
 func (h *ChannelHandler) SendMessage(c *gin.Context) {
 	channelID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	userID := middleware.GetUserID(c)
@@ -420,6 +452,21 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		UserID:    userID,
 		Timestamp: message.CreatedAt,
 		Data:      message,
+	}
+
+	// Process @mentions
+	mentionedUsers := h.processMentions(message.ID, req.Content, uint(channelID))
+
+	// Send notifications to mentioned users
+	for _, mentionedUserID := range mentionedUsers {
+		notification := models.Notification{
+			UserID:  mentionedUserID,
+			Type:    "mention",
+			Title:   "Te mencionaron en un canal",
+			Message: req.Content,
+			Data:    fmt.Sprintf(`{"channel_id": %d, "message_id": %d}`, channelID, message.ID),
+		}
+		h.db.Create(&notification)
 	}
 
 	c.JSON(http.StatusCreated, message)

@@ -1,6 +1,6 @@
 .profile-page {
   min-height: 100%;
-  background: #f8fafc;
+  background: white;
 }
 
 /* Header */
@@ -11,7 +11,7 @@
 
 .profile-cover {
   height: 120px;
-  background: linear-gradient(135deg, #111827 0%, #1f2937 50%, #3b82f6 100%);
+  background: white;
 }
 
 .profile-main {
@@ -30,6 +30,39 @@
 
 .profile-avatar {
   position: relative;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.profile-avatar:hover {
+  opacity: 0.85;
+}
+
+.profile-avatar .avatar-image.large {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.profile-avatar .avatar-loading {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .profile-avatar .avatar-placeholder.large {

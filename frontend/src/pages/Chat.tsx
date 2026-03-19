@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { userService } from '../services/api'
+import { userService, uploadService } from '../services/api'
 import type { User } from '../types'
 import './Chat.css'
 
@@ -9,6 +9,10 @@ interface Message {
   user_id: number
   content: string
   created_at: string
+  attachment?: {
+    url: string
+    filename: string
+  }
   user?: {
     name: string
   }
@@ -22,8 +26,10 @@ export default function Chat() {
   const [users, setUsers] = useState<User[]>([])
   const [selectedUser, setSelectedUser] = useState<number | null>(null)
   const [showUserList, setShowUserList] = useState(true)
+  const [isUploading, setIsUploading] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchMessages()
@@ -82,6 +88,7 @@ export default function Chat() {
             id: Date.now(),
             user_id: message.user_id,
             content: message.content,
+            attachment: message.attachment,
             created_at: message.timestamp,
             user: message.user_name ? { name: message.user_name } : undefined
           }])
@@ -103,24 +110,45 @@ export default function Chat() {
     wsRef.current = ws
   }
 
-  const sendMessage = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newMessage.trim() || !wsRef.current || !isConnected) return
+  const sendMessage = (e?: React.FormEvent, attachment?: { url: string; filename: string }) => {
+    if (e) e.preventDefault()
+    const content = attachment ? `${newMessage} [Archivo: ${attachment.filename}]` : newMessage
+    if ((!content.trim() && !attachment) || !wsRef.current || !isConnected) return
 
     const message = {
       type: 'chat_message',
-      content: newMessage,
+      content: content,
+      attachment: attachment,
     }
 
     wsRef.current.send(JSON.stringify(message))
     setMessages(prev => [...prev, {
       id: Date.now(),
       user_id: user?.id || 0,
-      content: newMessage,
+      content: content,
+      attachment: attachment,
       created_at: new Date().toISOString(),
       user: { name: user?.name || 'Tú' }
     }])
     setNewMessage('')
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    try {
+      const result = await uploadService.upload(file)
+      sendMessage(undefined, { url: result.url, filename: file.name })
+    } catch (error) {
+      console.error('Error uploading file:', error)
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
   }
 
   const scrollToBottom = () => {
@@ -195,7 +223,7 @@ export default function Chat() {
             </span>
           </div>
 
-          <div className="chat-messages">
+            <div className="chat-messages">
             {filteredMessages.length === 0 ? (
               <div className="empty-chat">
                 <span className="empty-icon">💬</span>
@@ -217,7 +245,17 @@ export default function Chat() {
                     {msg.user_id !== user?.id && (
                       <span className="message-sender">{msg.user?.name || 'Usuario'}</span>
                     )}
-                    <p className="message-text">{msg.content}</p>
+                    {msg.content && <p className="message-text">{msg.content}</p>}
+                    {msg.attachment && (
+                      <a 
+                        href={msg.attachment.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="message-attachment"
+                      >
+                        📎 {msg.attachment.filename}
+                      </a>
+                    )}
                     <span className="message-time">{formatTime(msg.created_at)}</span>
                   </div>
                 </div>
@@ -226,7 +264,7 @@ export default function Chat() {
             <div ref={messagesEndRef} />
           </div>
 
-          <form className="chat-input" onSubmit={sendMessage}>
+          <form className="chat-input" onSubmit={(e) => sendMessage(e)}>
             <input
               type="text"
               value={newMessage}
@@ -234,9 +272,25 @@ export default function Chat() {
               placeholder="Escribe un mensaje..."
               disabled={!isConnected}
             />
-            <button 
-              type="submit" 
-              disabled={!isConnected || !newMessage.trim()}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.webm"
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!isConnected || isUploading}
+              className="attach-btn"
+              title="Adjuntar archivo"
+            >
+              {isUploading ? '⏳' : '📎'}
+            </button>
+            <button
+              type="submit"
+              disabled={!isConnected || (!newMessage.trim() && !isUploading)}
               className="send-btn"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

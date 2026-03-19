@@ -11,6 +11,7 @@ import (
 
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
+	"github.com/obertrack/backend/internal/utils"
 )
 
 type WorkHourHandler struct {
@@ -63,7 +64,7 @@ func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	}
 
 	userIDFilter := c.Query("user_id")
-	if userIDFilter != "" && (isSuperadmin || role == string(models.UserTypeEmployer)) {
+	if userIDFilter != "" && (isSuperadmin || role == string(models.UserTypeEmployer) || role == "empleador") {
 		query = query.Where("user_id = ?", userIDFilter)
 	}
 
@@ -150,8 +151,8 @@ func (h *WorkHourHandler) Create(c *gin.Context) {
 		WorkDate:      workDate,
 		WorkType:      workType,
 		HoursWorked:   hoursWorked,
-		Activities:    req.Activities,
-		Comments:      req.Comments,
+		Activities:    utils.SanitizeHTML(req.Activities),
+		Comments:      utils.SanitizeHTML(req.Comments),
 		AbsenceReason: req.AbsenceReason,
 		AbsenceHours:  req.AbsenceHours,
 	}
@@ -212,10 +213,10 @@ func (h *WorkHourHandler) Update(c *gin.Context) {
 		}
 	}
 	if req.Activities != "" {
-		updates["activities"] = req.Activities
+		updates["activities"] = utils.SanitizeHTML(req.Activities)
 	}
 	if req.Comments != "" {
-		updates["comments"] = req.Comments
+		updates["comments"] = utils.SanitizeHTML(req.Comments)
 	}
 
 	if err := h.db.Model(&workHour).Updates(updates).Error; err != nil {
@@ -238,7 +239,41 @@ func (h *WorkHourHandler) Approve(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
 	now := time.Now()
+
+	var workHours []models.WorkHour
+	if err := h.db.Preload("User").Where("id IN ?", req.IDs).Find(&workHours).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch work hours"})
+		return
+	}
+
+	if len(workHours) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No work hours found"})
+		return
+	}
+
+	for _, wh := range workHours {
+		canApprove := false
+
+		if isSuperadmin {
+			canApprove = true
+		} else if role == string(models.UserTypeEmployer) || role == "empleador" {
+			if wh.User.EmpleadorID != nil && *wh.User.EmpleadorID == userID {
+				canApprove = true
+			}
+		} else if role == "manager" || middleware.IsManager(c) {
+			if wh.User.ManagerID != nil && *wh.User.ManagerID == userID {
+				canApprove = true
+			}
+		}
+
+		if !canApprove {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized to approve work hours for user ID: " + string(rune(wh.UserID))})
+			return
+		}
+	}
 
 	if err := h.db.Model(&models.WorkHour{}).
 		Where("id IN ?", req.IDs).

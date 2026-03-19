@@ -22,10 +22,10 @@ export default function Reports() {
 
   useEffect(() => {
     fetchEmployees()
-  }, [])
+  }, [user])
 
   useEffect(() => {
-    if (selectedEmployee || user?.user_type === 'empleado') {
+    if (selectedEmployee || user?.user_type === 'profesional' || user?.user_type === 'empleador') {
       fetchData()
     }
   }, [selectedEmployee, month, user])
@@ -44,18 +44,32 @@ export default function Reports() {
     setIsLoading(true)
     try {
       const [startDate, endDate] = getMonthRange(month)
-      const userId = selectedEmployee || user?.id
+      
+      let userIdFilter: string | undefined
+      if (selectedEmployee) {
+        userIdFilter = String(selectedEmployee)
+      } else if (user?.user_type === 'profesional') {
+        userIdFilter = String(user.id)
+      }
 
-      const [hoursRes, tasksRes] = await Promise.all([
+      const [hoursRes, tasksRes] = await Promise.allSettled([
         workHourService.getAll({
-          user_id: userId ? String(userId) : undefined,
+          user_id: userIdFilter,
           start_date: startDate,
           end_date: endDate,
         }),
         taskService.getAll({})
       ])
-      setWorkHours(hoursRes.data)
-      setTasks(tasksRes.data)
+      
+      console.log('Reports - hours:', hoursRes.status === 'fulfilled' ? hoursRes.value : hoursRes.reason)
+      console.log('Reports - tasks:', tasksRes.status === 'fulfilled' ? tasksRes.value : tasksRes.reason)
+      
+      if (hoursRes.status === 'fulfilled') {
+        setWorkHours(hoursRes.value.data)
+      }
+      if (tasksRes.status === 'fulfilled') {
+        setTasks(tasksRes.value.data)
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -65,8 +79,9 @@ export default function Reports() {
 
   const getMonthRange = (monthStr: string) => {
     const [year, m] = monthStr.split('-').map(Number)
-    const startDate = new Date(year, m - 1, 1).toISOString().split('T')[0]
-    const endDate = new Date(year, m, 0).toISOString().split('T')[0]
+    const startDate = `${year}-${String(m).padStart(2, '0')}-01`
+    const lastDay = new Date(year, m, 0).getDate()
+    const endDate = `${year}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
     return [startDate, endDate]
   }
 
