@@ -50,7 +50,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  background: white;
   padding: 20px;
 }
 
@@ -291,11 +291,20 @@ button:disabled {
   flex: 1;
   margin-left: 260px;
   height: 100vh;
-  background: var(--white-smoke);
+  background: white;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.top-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 12px 24px;
+  background: white;
+  border-bottom: 1px solid var(--gray-200);
 }
 
 /* Page */

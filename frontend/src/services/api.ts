@@ -59,6 +59,12 @@ export const userService = {
   delete: async (id: number) => {
     await api.delete(`/users/${id}`)
   },
+  changePassword: async (id: number, currentPassword: string, newPassword: string) => {
+    await api.post(`/users/${id}/change-password`, {
+      current_password: currentPassword,
+      new_password: newPassword,
+    })
+  },
   getEmployees: async () => {
     const { data } = await api.get<User[]>('/users/employees')
     return data
@@ -195,6 +201,206 @@ export const boardService = {
   },
   delete: async (id: number) => {
     await api.delete(`/boards/${id}`)
+  },
+}
+
+export interface UploadResponse {
+  url: string
+  filename: string
+  size: number
+  type: string
+}
+
+export const uploadService = {
+  upload: async (file: File): Promise<UploadResponse> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const { data } = await api.post<UploadResponse>('/uploads', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return data
+  },
+}
+
+export interface Notification {
+  id: number
+  user_id: number
+  type: string
+  title: string
+  message: string
+  data?: string
+  read_at?: string
+  created_at: string
+}
+
+export const notificationService = {
+  getAll: async (): Promise<Notification[]> => {
+    const { data } = await api.get<Notification[]>('/notifications')
+    return data
+  },
+  getUnreadCount: async (): Promise<number> => {
+    const { data } = await api.get<{ count: number }>('/notifications/unread-count')
+    return data.count
+  },
+  markAsRead: async (id: number) => {
+    await api.post(`/notifications/${id}/read`)
+  },
+  markAllAsRead: async () => {
+    await api.post('/notifications/read-all')
+  },
+}
+
+export interface Channel {
+  id: number
+  name: string
+  description: string
+  type: 'public' | 'private'
+  created_by: number
+  unread_count: number
+  created_at: string
+}
+
+export interface ChannelMessage {
+  id: number
+  channel_id: number
+  user_id: number
+  content: string
+  attachment?: string
+  file_name?: string
+  file_size?: number
+  file_type?: string
+  is_edited?: boolean
+  is_deleted?: boolean
+  is_pinned?: boolean
+  parent_id?: number
+  reactions?: MessageReaction[]
+  created_at: string
+  user?: User
+  tempId?: string
+}
+
+export interface MessageReaction {
+  id: number
+  message_id: number
+  user_id: number
+  emoji: string
+  user?: User
+}
+
+export interface UserStatus {
+  user_id: number
+  status: 'online' | 'away' | 'offline'
+  last_seen: string
+}
+
+export interface DMChannel extends Channel {
+  recipient?: User
+}
+
+export const channelService = {
+  getChannels: async (): Promise<Channel[]> => {
+    const { data } = await api.get<Channel[]>('/channels')
+    return data
+  },
+  getAllUsers: async (): Promise<User[]> => {
+    const { data } = await api.get<User[]>('/channels/all-users')
+    return data
+  },
+  createChannel: async (channel: { name: string; description?: string; type: string; member_ids?: number[] }) => {
+    const { data } = await api.post<Channel>('/channels', channel)
+    return data
+  },
+  getChannel: async (id: number) => {
+    const { data } = await api.get<Channel>(`/channels/${id}`)
+    return data
+  },
+  updateChannel: async (id: number, channel: { name?: string; description?: string }) => {
+    const { data } = await api.put<Channel>(`/channels/${id}`, channel)
+    return data
+  },
+  deleteChannel: async (id: number) => {
+    await api.delete(`/channels/${id}`)
+  },
+  getMessages: async (channelId: number): Promise<ChannelMessage[]> => {
+    const { data } = await api.get<ChannelMessage[]>(`/channels/${channelId}/messages`)
+    return data
+  },
+  sendMessage: async (channelId: number, message: { content: string; attachment?: string; file_name?: string }) => {
+    const { data } = await api.post<ChannelMessage>(`/channels/${channelId}/messages`, message)
+    return data
+  },
+  editMessage: async (channelId: number, messageId: number, content: string) => {
+    const { data } = await api.put<ChannelMessage>(`/channels/${channelId}/messages/${messageId}`, { content })
+    return data
+  },
+  deleteMessage: async (channelId: number, messageId: number) => {
+    await api.delete(`/channels/${channelId}/messages/${messageId}`)
+  },
+  getMembers: async (channelId: number) => {
+    const { data } = await api.get<User[]>(`/channels/${channelId}/members`)
+    return data
+  },
+  addMember: async (channelId: number, userId: number) => {
+    await api.post(`/channels/${channelId}/members`, { user_id: userId })
+  },
+  removeMember: async (channelId: number, userId: number) => {
+    await api.delete(`/channels/${channelId}/members`, { data: { user_id: userId } })
+  },
+  joinChannel: async (channelId: number) => {
+    await api.post(`/channels/${channelId}/join`)
+  },
+  leaveChannel: async (channelId: number) => {
+    await api.post(`/channels/${channelId}/leave`)
+  },
+  pinMessage: async (channelId: number, messageId: number) => {
+    await api.post(`/channels/${channelId}/pin/${messageId}`)
+  },
+  unpinMessage: async (channelId: number, messageId: number) => {
+    await api.post(`/channels/${channelId}/unpin/${messageId}`)
+  },
+  getPinnedMessages: async (channelId: number): Promise<ChannelMessage[]> => {
+    const { data } = await api.get<ChannelMessage[]>(`/channels/${channelId}/pinned`)
+    return data
+  },
+  addReaction: async (channelId: number, messageId: number, emoji: string) => {
+    const { data } = await api.post<MessageReaction>(`/channels/${channelId}/messages/${messageId}/reactions`, { emoji })
+    return data
+  },
+  removeReaction: async (channelId: number, messageId: number, emoji: string) => {
+    await api.delete(`/channels/${channelId}/messages/${messageId}/reactions`, { data: { emoji } })
+  },
+  getThreadReplies: async (channelId: number, messageId: number): Promise<ChannelMessage[]> => {
+    const { data } = await api.get<ChannelMessage[]>(`/channels/${channelId}/messages/${messageId}/replies`)
+    return data
+  },
+  sendThreadReply: async (channelId: number, messageId: number, content: string) => {
+    const { data } = await api.post<ChannelMessage>(`/channels/${channelId}/messages/${messageId}/replies`, { content })
+    return data
+  },
+  starMessage: async (messageId: number) => {
+    await api.post(`/channels/star/${messageId}`)
+  },
+  unstarMessage: async (messageId: number) => {
+    await api.delete(`/channels/star/${messageId}`)
+  },
+  getStarredMessages: async (): Promise<ChannelMessage[]> => {
+    const { data } = await api.get<ChannelMessage[]>('/channels/starred')
+    return data
+  },
+  updateStatus: async (status: 'online' | 'away' | 'offline') => {
+    await api.post('/channels/status', { status })
+  },
+  getStatuses: async (userIds: number[]): Promise<UserStatus[]> => {
+    const { data } = await api.get<UserStatus[]>('/channels/statuses', { params: { user_ids: userIds.join(',') } })
+    return data
+  },
+  searchMessages: async (channelId: number, query: string): Promise<ChannelMessage[]> => {
+    const { data } = await api.get<ChannelMessage[]>(`/channels/${channelId}/search`, { params: { q: query } })
+    return data
+  },
+  createDM: async (recipientId: number): Promise<DMChannel> => {
+    const { data } = await api.post<DMChannel>('/channels/dm', { recipient_id: recipientId })
+    return data
   },
 }
 

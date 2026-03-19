@@ -9,7 +9,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const WorkHours = lazy(() => import('./pages/WorkHours'))
 const Reports = lazy(() => import('./pages/Reports'))
-const Chat = lazy(() => import('./pages/Chat'))
+const SlackChat = lazy(() => import('./pages/SlackChat'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Admin = lazy(() => import('./pages/Admin'))
 
@@ -36,6 +36,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" replace />
+  }
+
+  return <>{children}</>
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <Loading />
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (!user.is_superadmin) {
+    return <Navigate to="/dashboard" replace />
   }
 
   return <>{children}</>
@@ -74,9 +92,9 @@ function App() {
           <Route path="tasks" element={<Tasks />} />
           <Route path="work-hours" element={<WorkHours />} />
           <Route path="reports" element={<Reports />} />
-          <Route path="chat" element={<Chat />} />
+          <Route path="chat" element={<SlackChat />} />
           <Route path="profile" element={<Profile />} />
-          <Route path="admin" element={<Admin />} />
+          <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
         </Route>
       </Routes>
     </Suspense>
