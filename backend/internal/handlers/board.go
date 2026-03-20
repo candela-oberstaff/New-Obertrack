@@ -48,21 +48,27 @@ func (h *BoardHandler) GetAll(c *gin.Context) {
 	log.Printf("[GetAll] userID=%d, role=%s, isSuperadmin=%v", userID, role, isSuperadmin)
 
 	var boards []models.Board
-	query := h.db.Model(&models.Board{})
 
 	if isSuperadmin || role == "superadmin" {
-		query.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
+		h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
 			return db.Order("\"order\" ASC")
 		}).Find(&boards)
 	} else {
-		query.Joins("LEFT JOIN board_members ON board_members.board_id = boards.id").
+		var boardIDs []uint
+		h.db.Model(&models.Board{}).
+			Select("boards.id").
+			Joins("LEFT JOIN board_members ON board_members.board_id = boards.id").
 			Where("board_members.user_id = ? OR boards.created_by = ?", userID, userID).
 			Group("boards.id").
-			Preload("Members").
-			Preload("Creator").
-			Preload("Phases", func(db *gorm.DB) *gorm.DB {
+			Pluck("boards.id", &boardIDs)
+
+		log.Printf("[GetAll] Found %d unique board IDs: %v", len(boardIDs), boardIDs)
+
+		if len(boardIDs) > 0 {
+			h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
 				return db.Order("\"order\" ASC")
-			}).Find(&boards)
+			}).Where("boards.id IN ?", boardIDs).Find(&boards)
+		}
 	}
 
 	log.Printf("[GetAll] Found %d boards", len(boards))
