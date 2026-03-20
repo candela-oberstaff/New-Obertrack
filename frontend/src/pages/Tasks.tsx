@@ -224,17 +224,19 @@ function Column({ column, tasks, onTaskClick, onMoveLeft, onMoveRight, canMoveLe
 
 interface TaskDetailPanelProps {
   task: Task | null
+  users: User[]
   onClose: () => void
   onUpdate: (id: number, data: Partial<Task>) => Promise<void>
   onDelete: (id: number) => Promise<void>
   columns: ColumnType[]
 }
 
-function TaskDetailPanel({ task, onClose, onUpdate, onDelete, columns }: TaskDetailPanelProps) {
+function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, columns }: TaskDetailPanelProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [isSubmittingComment, setIsSubmittingComment] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
+  const [assigneeSearch, setAssigneeSearch] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
   const [taskComments, setTaskComments] = useState(task?.comments || [])
   const [formData, setFormData] = useState({
@@ -387,6 +389,77 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete, columns }: TaskDet
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                 />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Asignados</label>
+              <div className="assignees-edit-list">
+                {formData.assignees.length > 0 && (
+                  <div className="assigned-chips">
+                    {formData.assignees.map((id) => {
+                      const user = users.find(u => u.id === id)
+                      if (!user) return null
+                      return (
+                        <div key={user.id} className="assignee-chip">
+                          <span>{user.name || user.email}</span>
+                          <button
+                            type="button"
+                            className="remove-assignee"
+                            onClick={() => setFormData({
+                              ...formData,
+                              assignees: formData.assignees.filter(aid => aid !== user.id)
+                            })}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div className="assignee-dropdown-wrapper">
+                  <input
+                    type="text"
+                    className="assignee-search"
+                    placeholder="Buscar usuario..."
+                    value={assigneeSearch}
+                    onChange={(e) => setAssigneeSearch(e.target.value)}
+                  />
+                  <div className="assignee-dropdown">
+                    {users
+                      .filter(u => 
+                        u.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
+                        u.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
+                      )
+                      .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
+                      .map(user => {
+                        const isAssigned = formData.assignees.includes(user.id)
+                        return (
+                          <div
+                            key={user.id}
+                            className={`assignee-option ${isAssigned ? 'assigned' : ''}`}
+                            onClick={() => {
+                              if (isAssigned) {
+                                setFormData({
+                                  ...formData,
+                                  assignees: formData.assignees.filter(aid => aid !== user.id)
+                                })
+                              } else {
+                                setFormData({
+                                  ...formData,
+                                  assignees: [...formData.assignees, user.id]
+                                })
+                              }
+                            }}
+                          >
+                            <div className="chip-avatar">{user.name?.charAt(0).toUpperCase() || '?'}</div>
+                            <span className="assignee-name">{user.name || user.email}</span>
+                            {isAssigned && <span className="assignee-check">✓</span>}
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
               </div>
             </div>
             <div className="form-actions">
@@ -1467,6 +1540,7 @@ const handlePhaseDragEnd = async () => {
       {selectedTask && (
         <TaskDetailPanel
           task={selectedTask}
+          users={users}
           onClose={() => setSelectedTask(null)}
           onUpdate={handleUpdateTask}
           onDelete={handleDeleteTask}

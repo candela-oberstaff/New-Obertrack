@@ -1115,6 +1115,135 @@
   flex: 1;
 }
 
+/* Assignee chips in edit form */
+.assignees-edit-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  min-height: 44px;
+}
+
+.assignee-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #3b82f6;
+  color: white;
+  border-radius: 20px;
+  font-size: 13px;
+}
+
+.assignee-chip .remove-assignee {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.assignee-chip .remove-assignee:hover {
+  opacity: 1;
+}
+
+.assignees-edit-list .no-data {
+  color: #94a3b8;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.assignees-edit-list .assigned-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.assignees-edit-list .assignee-dropdown-wrapper {
+  position: relative;
+}
+
+.assignees-edit-list .assignee-search {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.assignees-edit-list .assignee-search:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.assignees-edit-list .assignee-dropdown {
+  position: relative;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 250px;
+  overflow-y: auto;
+  z-index: 100;
+  margin-top: 6px;
+}
+
+.assignees-edit-list .assignee-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.assignees-edit-list .assignee-option:last-child {
+  border-bottom: none;
+}
+
+.assignees-edit-list .assignee-option:hover {
+  background: #f1f5f9;
+}
+
+.assignees-edit-list .assignee-option.assigned {
+  background: #eff6ff;
+}
+
+.assignees-edit-list .assignee-option .chip-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.assignees-edit-list .assignee-option .assignee-name {
+  flex: 1;
+  font-size: 13px;
+  color: #334155;
+}
+
+.assignees-edit-list .assignee-option .assignee-check {
+  color: #3b82f6;
+  font-weight: bold;
+  font-size: 14px;
+}
+
 /* New Task Modal */
 .modal-overlay {
   position: fixed;
