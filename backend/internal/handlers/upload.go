@@ -8,14 +8,88 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
 
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
 )
+
+type NotificationHub struct {
+	clients    map[uint]*websocket.Conn
+	userIDs    map[*websocket.Conn]uint
+	broadcast  chan NotificationWSMessage
+	register   chan *websocket.Conn
+	unregister chan *websocket.Conn
+	mu         sync.RWMutex
+}
+
+type NotificationWSMessage struct {
+	Type   string      `json:"type"`
+	UserID uint        `json:"user_id,omitempty"`
+	Data   interface{} `json:"data,omitempty"`
+}
+
+var notificationUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+var notifHub = &NotificationHub{
+	clients:    make(map[uint]*websocket.Conn),
+	userIDs:    make(map[*websocket.Conn]uint),
+	broadcast:  make(chan NotificationWSMessage, 100),
+	register:   make(chan *websocket.Conn),
+	unregister: make(chan *websocket.Conn),
+}
+
+func init() {
+	go notifHub.Run()
+}
+
+func (h *NotificationHub) Run() {
+	for {
+		select {
+		case conn := <-h.register:
+			userID := h.userIDs[conn]
+			h.mu.Lock()
+			h.clients[userID] = conn
+			h.mu.Unlock()
+
+		case conn := <-h.unregister:
+			userID := h.userIDs[conn]
+			h.mu.Lock()
+			if _, ok := h.clients[userID]; ok {
+				delete(h.clients, userID)
+			}
+			delete(h.userIDs, conn)
+			h.mu.Unlock()
+
+		case message := <-h.broadcast:
+			h.mu.RLock()
+			if conn, ok := h.clients[message.UserID]; ok {
+				data, _ := json.Marshal(message)
+				conn.WriteMessage(websocket.TextMessage, data)
+			}
+			h.mu.RUnlock()
+		}
+	}
+}
+
+func NotifyUser(userID uint, notifType string, data interface{}) {
+	notifHub.broadcast <- NotificationWSMessage{
+		Type:   notifType,
+		UserID: userID,
+		Data:   data,
+	}
+}
 
 type UploadHandler struct {
 	db          *gorm.DB
@@ -140,7 +214,45 @@ func (h *NotificationHandler) CreateNotification(userID uint, notifType, title, 
 		Data:    dataJSON,
 	}
 
-	return h.db.Create(&notification).Error
+	if err := h.db.Create(&notification).Error; err != nil {
+		return err
+	}
+
+	NotifyUser(userID, notifType, map[string]interface{}{
+		"id":      notification.ID,
+		"type":    notifType,
+		"title":   title,
+		"message": message,
+		"data":    dataJSON,
+	})
+
+	return nil
+}
+
+func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	conn, err := notificationUpgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		return
+	}
+
+	notifHub.register <- conn
+	notifHub.userIDs[conn] = userID
+
+	go func() {
+		defer func() {
+			notifHub.unregister <- conn
+			conn.Close()
+		}()
+
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+		}
+	}()
 }
 
 func (h *NotificationHandler) GetNotifications(c *gin.Context) {

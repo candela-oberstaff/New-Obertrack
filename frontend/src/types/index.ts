@@ -109,6 +109,15 @@ export interface Board {
   updated_at: string
   creator?: User
   members?: User[]
+  phases?: Phase[]
+}
+
+export interface Phase {
+  id: number
+  name: string
+  status?: string
+  color: string
+  order: number
 }
 
 export interface CreateBoardInput {
@@ -116,4 +125,5 @@ export interface CreateBoardInput {
   description?: string
   color?: string
   member_ids?: number[]
+  phases?: { name: string; color?: string }[]
 }

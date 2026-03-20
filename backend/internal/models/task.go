@@ -16,12 +16,34 @@ type Board struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 
-	Creator User   `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
-	Members []User `gorm:"many2many:board_members" json:"members,omitempty"`
+	Creator User    `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	Members []User  `gorm:"many2many:board_members" json:"members,omitempty"`
+	Phases  []Phase `gorm:"many2many:board_phases" json:"phases,omitempty"`
 }
 
 func (Board) TableName() string {
 	return "boards"
+}
+
+type Phase struct {
+	ID     uint   `gorm:"primaryKey" json:"id"`
+	Name   string `gorm:"size:100;not null" json:"name"`
+	Status string `gorm:"size:50" json:"status,omitempty"`
+	Color  string `gorm:"size:20;default:'#6b7280'" json:"color"`
+	Order  int    `gorm:"default:0" json:"order"`
+}
+
+func (Phase) TableName() string {
+	return "phases"
+}
+
+type BoardPhase struct {
+	BoardID uint `gorm:"primaryKey" json:"board_id"`
+	PhaseID uint `gorm:"primaryKey" json:"phase_id"`
+}
+
+func (BoardPhase) TableName() string {
+	return "board_phases"
 }
 
 type BoardMember struct {

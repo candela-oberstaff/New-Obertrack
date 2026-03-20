@@ -202,6 +202,18 @@ export const boardService = {
   delete: async (id: number) => {
     await api.delete(`/boards/${id}`)
   },
+  addPhase: async (boardId: number, phase: { name: string; color?: string }) => {
+    const { data } = await api.post<Board>(`/boards/${boardId}/phases`, phase)
+    return data
+  },
+  removePhase: async (boardId: number, phaseId: number) => {
+    const { data } = await api.delete<Board>(`/boards/${boardId}/phases/${phaseId}`)
+    return data
+  },
+  reorderPhases: async (boardId: number, phaseIds: number[]) => {
+    const { data } = await api.put<Board>(`/boards/${boardId}/phases/reorder`, { phase_ids: phaseIds })
+    return data
+  },
 }
 
 export interface UploadResponse {

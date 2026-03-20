@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { notificationService, type Notification } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 import './Notifications.css'
 
 export default function Notifications() {
@@ -7,12 +8,75 @@ export default function Notifications() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
   const [_isLoading, _setIsLoading] = useState(false)
+  const wsRef = useRef<WebSocket | null>(null)
+  const { token } = useAuth()
 
   useEffect(() => {
     fetchNotifications()
     const interval = setInterval(fetchUnreadCount, 30000)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+    }
   }, [])
+
+  useEffect(() => {
+    if (!token) return
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.hostname}:8080/ws/notifications?token=${token}`
+
+    const connect = () => {
+      wsRef.current = new WebSocket(wsUrl)
+
+      wsRef.current.onopen = () => {
+        console.log('Notifications WebSocket connected')
+      }
+
+      wsRef.current.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          if (message.type === 'task_assigned' || message.type === 'mention') {
+            const newNotification: Notification = {
+              id: message.data?.id || Date.now(),
+              user_id: 0,
+              type: message.type,
+              title: message.data?.title || 'Nueva notificación',
+              message: message.data?.message || '',
+              read_at: undefined,
+              created_at: new Date().toISOString(),
+            }
+            setNotifications(prev => [newNotification, ...prev])
+            setUnreadCount(prev => prev + 1)
+            
+            if (message.type === 'task_assigned') {
+              window.dispatchEvent(new CustomEvent('task-assigned'))
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing notification:', error)
+        }
+      }
+
+      wsRef.current.onclose = () => {
+        console.log('Notifications WebSocket disconnected')
+      }
+
+      wsRef.current.onerror = (error) => {
+        console.error('Notifications WebSocket error:', error)
+      }
+    }
+
+    connect()
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+    }
+  }, [token])
 
   const fetchNotifications = async () => {
     try {

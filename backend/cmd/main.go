@@ -125,6 +125,9 @@ func main() {
 				boards.GET("/:id", boardHandler.GetByID)
 				boards.PUT("/:id", boardHandler.Update)
 				boards.DELETE("/:id", boardHandler.Delete)
+				boards.POST("/:id/phases", boardHandler.AddPhase)
+				boards.DELETE("/:id/phases/:phaseId", boardHandler.RemovePhase)
+				boards.PUT("/:id/phases/reorder", boardHandler.ReorderPhases)
 			}
 
 			tasks := api.Group("/tasks")
@@ -209,6 +212,9 @@ func main() {
 	})
 	r.GET("/ws/channels", middleware.AuthMiddleware(cfg.JWTSecret), func(c *gin.Context) {
 		channelHandler.HandleWebSocket(c)
+	})
+	r.GET("/ws/notifications", middleware.AuthMiddleware(cfg.JWTSecret), func(c *gin.Context) {
+		notificationHandler.HandleWebSocket(c)
 	})
 
 	r.GET("/health", func(c *gin.Context) {

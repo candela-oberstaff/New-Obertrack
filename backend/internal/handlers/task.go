@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -51,23 +53,29 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	isSuperadmin := middleware.IsSuperadmin(c)
 	empleadorID := middleware.GetEmpleadorID(c)
 
-	log.Printf("[GetAll] userID=%d, role=%s, isManager=%v, isSuperadmin=%v, empleadorID=%d", userID, role, isManager, isSuperadmin, empleadorID)
+	boardIDStr := c.Query("board_id")
+	log.Printf("[GetAll] userID=%d, role=%s, boardID=%s, isManager=%v, isSuperadmin=%v", userID, role, boardIDStr, isManager, isSuperadmin)
 
-	boardID := c.Query("board_id")
-	if boardID != "" && boardID != "all" {
-		query = query.Where("board_id = ?", boardID)
+	if boardIDStr != "" && boardIDStr != "all" {
+		boardID, err := strconv.ParseUint(boardIDStr, 10, 32)
+		if err == nil {
+			query = query.Where("board_id = ?", boardID)
+		}
+	} else {
+		// When not filtering by specific board, only show tasks from non-deleted boards
+		query = query.Where("board_id IN (?)", h.db.Model(&models.Board{}).Select("id").Where("deleted_at IS NULL"))
 	}
 
 	if isSuperadmin {
 		// Superadmin ve todo
 	} else if role == string(models.UserTypeProfessional) {
 		// Profesional ve tareas donde es creador o asignado
-		query = query.Where("created_by = ?", userID)
-		// También intentar obtener tareas asignadas
 		var assignedTaskIDs []uint
 		h.db.Table("task_users").Where("user_id = ?", userID).Pluck("task_id", &assignedTaskIDs)
 		if len(assignedTaskIDs) > 0 {
-			query = query.Where("id IN (?) OR created_by = ?", assignedTaskIDs, userID)
+			query = query.Where("(created_by = ? OR id IN (?))", userID, assignedTaskIDs)
+		} else {
+			query = query.Where("created_by = ?", userID)
 		}
 	} else if role == string(models.UserTypeEmployer) || role == "empleador" {
 		// Empleador ve las tareas de sus empleados
@@ -101,6 +109,11 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 		log.Printf("[GetAll] Error fetching tasks: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tasks", "details": err.Error()})
 		return
+	}
+
+	log.Printf("[GetAll] Returning %d tasks for userID=%d, boardID=%s", len(tasks), userID, boardIDStr)
+	for i, t := range tasks {
+		log.Printf("  Task[%d]: id=%d, title=%s, board_id=%d, created_by=%d", i, t.ID, t.Title, t.BoardID, t.CreatedBy)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -145,6 +158,21 @@ func (h *TaskHandler) Create(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 
+	if len(req.Assignees) > 0 && req.BoardID > 0 {
+		var boardMembers []models.BoardMember
+		h.db.Where("board_id = ?", req.BoardID).Find(&boardMembers)
+		memberIDs := make(map[uint]bool)
+		for _, m := range boardMembers {
+			memberIDs[m.UserID] = true
+		}
+		for _, assigneeID := range req.Assignees {
+			if !memberIDs[assigneeID] {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("El usuario %d no es miembro del tablero", assigneeID)})
+				return
+			}
+		}
+	}
+
 	task := models.Task{
 		Title:       utils.SanitizeHTML(req.Title),
 		Description: utils.SanitizeHTML(req.Description),
@@ -175,9 +203,28 @@ func (h *TaskHandler) Create(c *gin.Context) {
 		var assignees []models.User
 		h.db.Find(&assignees, req.Assignees)
 		h.db.Model(&task).Association("Assignees").Append(assignees)
+
+		for _, assignee := range assignees {
+			notificationData, _ := json.Marshal(map[string]interface{}{
+				"task_id":  task.ID,
+				"board_id": task.BoardID,
+			})
+			notification := models.Notification{
+				UserID:  assignee.ID,
+				Type:    "task_assigned",
+				Title:   "Nueva tarea asignada",
+				Message: fmt.Sprintf("Se te asignó la tarea: %s", task.Title),
+				Data:    string(notificationData),
+			}
+			h.db.Create(&notification)
+			NotifyUser(assignee.ID, "task_assigned", notification)
+		}
 	}
 
 	h.db.Preload("Creator").Preload("Assignees").First(&task, task.ID)
+
+	log.Printf("[Create] Task created: id=%d, title=%s, board_id=%d, created_by=%d, assignees=%v",
+		task.ID, task.Title, task.BoardID, task.CreatedBy, task.Assignees)
 
 	c.JSON(http.StatusCreated, task)
 }
@@ -238,9 +285,46 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	}
 
 	if len(req.Assignees) > 0 {
+		var boardMembers []models.BoardMember
+		h.db.Where("board_id = ?", task.BoardID).Find(&boardMembers)
+		memberIDs := make(map[uint]bool)
+		for _, m := range boardMembers {
+			memberIDs[m.UserID] = true
+		}
+		for _, assigneeID := range req.Assignees {
+			if !memberIDs[assigneeID] {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("El usuario %d no es miembro del tablero", assigneeID)})
+				return
+			}
+		}
+
+		var currentAssignees []models.User
+		h.db.Model(&task).Association("Assignees").Find(&currentAssignees)
+		currentAssigneeIDs := make(map[uint]bool)
+		for _, a := range currentAssignees {
+			currentAssigneeIDs[a.ID] = true
+		}
+
 		var assignees []models.User
 		h.db.Find(&assignees, req.Assignees)
 		h.db.Model(&task).Association("Assignees").Replace(assignees)
+
+		for _, assignee := range assignees {
+			if !currentAssigneeIDs[assignee.ID] {
+				notificationData, _ := json.Marshal(map[string]interface{}{
+					"task_id":  task.ID,
+					"board_id": task.BoardID,
+				})
+				notification := models.Notification{
+					UserID:  assignee.ID,
+					Type:    "task_assigned",
+					Title:   "Nueva tarea asignada",
+					Message: fmt.Sprintf("Se te asignó la tarea: %s", task.Title),
+					Data:    string(notificationData),
+				}
+				h.db.Create(&notification)
+			}
+		}
 	}
 
 	h.db.Preload("Creator").Preload("Assignees").First(&task, task.ID)
