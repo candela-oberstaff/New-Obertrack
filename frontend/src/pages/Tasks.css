@@ -78,24 +78,50 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  position: relative;
 }
 
 .board-selector select {
-  padding: 10px 16px;
+  appearance: none;
+  padding: 10px 40px 10px 16px;
   font-size: 14px;
   font-weight: 500;
   border: 1px solid #e2e8f0;
-  border-left: 4px solid #3b82f6;
-  border-radius: 8px;
+  border-radius: 10px;
   background: white;
   color: #1e293b;
   cursor: pointer;
-  min-width: 180px;
+  min-width: 200px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.board-selector select:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
 }
 
 .board-selector select:focus {
   outline: none;
   border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), 0 2px 6px rgba(59, 130, 246, 0.15);
+}
+
+.board-selector::after {
+  content: "▾";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #64748b;
+  font-size: 16px;
+  transition: transform 0.2s ease;
+}
+
+.board-selector select:hover + .board-selector::after,
+.board-selector:hover::after {
+  color: #3b82f6;
 }
 
 .board-selector .btn-sm {

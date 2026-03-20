@@ -55,9 +55,9 @@ func (h *BoardHandler) GetAll(c *gin.Context) {
 			return db.Order("\"order\" ASC")
 		}).Find(&boards)
 	} else {
-		query.Joins("JOIN board_members ON board_members.board_id = boards.id").
+		query.Joins("LEFT JOIN board_members ON board_members.board_id = boards.id").
 			Where("board_members.user_id = ? OR boards.created_by = ?", userID, userID).
-			Distinct().
+			Group("boards.id").
 			Preload("Members").
 			Preload("Creator").
 			Preload("Phases", func(db *gorm.DB) *gorm.DB {

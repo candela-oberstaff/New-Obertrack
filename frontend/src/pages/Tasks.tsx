@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useNotification } from '../context/NotificationContext'
 import { 
   DndContext,
   DragOverlay,
@@ -233,6 +234,8 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete, columns }: TaskDet
   const [isEditing, setIsEditing] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [isSubmittingComment, setIsSubmittingComment] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [taskComments, setTaskComments] = useState(task?.comments || [])
   const [formData, setFormData] = useState({
     title: '',
@@ -291,6 +294,7 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete, columns }: TaskDet
   }
 
   const handleSave = async () => {
+    setIsUpdating(true)
     await onUpdate(task.id, {
       title: formData.title,
       description: formData.description,
@@ -300,6 +304,7 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete, columns }: TaskDet
       end_date: formData.end_date || undefined,
     })
     setIsEditing(false)
+    setIsUpdating(false)
   }
 
   const handleStatusChange = async (newStatus: string) => {
@@ -385,8 +390,10 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete, columns }: TaskDet
               </div>
             </div>
             <div className="form-actions">
-              <button onClick={() => setIsEditing(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave}>Guardar</button>
+              <button onClick={() => setIsEditing(false)} disabled={isUpdating}>Cancelar</button>
+              <button className="btn-primary" onClick={handleSave} disabled={isUpdating}>
+                {isUpdating ? 'Guardando...' : 'Guardar'}
+              </button>
             </div>
           </div>
         ) : (
@@ -467,7 +474,7 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete, columns }: TaskDet
                   onClick={handleAddComment}
                   disabled={!newComment.trim() || isSubmittingComment}
                 >
-                  {isSubmittingComment ? '...' : 'Publicar'}
+                  {isSubmittingComment ? 'Publicando...' : 'Publicar'}
                 </button>
               </div>
               <div className="comments-section">
@@ -498,11 +505,12 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete, columns }: TaskDet
               </button>
               <button className="btn-delete" onClick={() => {
                 if (confirm('¿Eliminar esta tarea?')) {
+                  setIsDeleting(true)
                   onDelete(task.id)
                   onClose()
                 }
-              }}>
-                🗑️ Eliminar
+              }} disabled={isDeleting}>
+                {isDeleting ? 'Eliminando...' : '🗑️ Eliminar'}
               </button>
             </div>
           </>
@@ -514,6 +522,7 @@ function TaskDetailPanel({ task, onClose, onUpdate, onDelete, columns }: TaskDet
 
 export default function Tasks() {
   const { user } = useAuth()
+  const { error: showError } = useNotification()
   const [tasks, setTasks] = useState<Task[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [boards, setBoards] = useState<Board[]>([])
@@ -528,11 +537,16 @@ export default function Tasks() {
   const [showPhasesModal, setShowPhasesModal] = useState(false)
   const [optimisticMembers, setOptimisticMembers] = useState<number[]>([])
   const [isCreatingTask, setIsCreatingTask] = useState(false)
+  const [isCreatingBoard, setIsCreatingBoard] = useState(false)
+  const [isDeletingBoard, setIsDeletingBoard] = useState(false)
+  const [isAddingPhase, setIsAddingPhase] = useState(false)
+  const [isDeletingPhase, setIsDeletingPhase] = useState(false)
   const [draggingPhase, setDraggingPhase] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const phasesOrderRef = useRef<Board['phases']>([])
   const draggingPhaseRef = useRef<number | null>(null)
   const isDraggingPhasesRef = useRef(false)
+  const dragOriginalStatusRef = useRef<string | null>(null)
   const [newBoardData, setNewBoardData] = useState({
     name: '',
     description: '',
@@ -627,6 +641,7 @@ export default function Tasks() {
 
   const handleCreateBoard = async () => {
     if (!newBoardData.name.trim()) return
+    setIsCreatingBoard(true)
     try {
       const newBoard = await boardService.create({
         name: newBoardData.name,
@@ -653,6 +668,8 @@ export default function Tasks() {
       setSelectedBoard(newBoard)
     } catch (error) {
       console.error('Error creating board:', error)
+    } finally {
+      setIsCreatingBoard(false)
     }
   }
 
@@ -674,7 +691,10 @@ export default function Tasks() {
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
     const task = tasks.find((t) => t.id === active.id)
-    if (task) setActiveTask(task)
+    if (task) {
+      setActiveTask(task)
+      dragOriginalStatusRef.current = task.status
+    }
   }
 
   const handleDragOver = (event: { active: { id: unknown }; over: { id: unknown } | null }) => {
@@ -682,37 +702,29 @@ export default function Tasks() {
     if (!over) return
 
     const activeId = Number(active.id)
-    const activeTask = tasks.find((t) => t.id === activeId)
-
-    if (!activeTask) return
-
     const overId = over.id
-    let newStatus: string | undefined
 
-    if (typeof overId === 'string') {
-      const column = getCurrentColumns().find(c => c.id === overId)
-      if (column) {
-        newStatus = column.id
-      }
-    } else {
-      const overTask = tasks.find((t) => t.id === Number(overId))
-      if (overTask) {
-        newStatus = overTask.status
-      }
-    }
+    if (typeof overId !== 'string') return
 
-    if (newStatus && activeTask.status !== newStatus) {
-      setTasks((tasks) =>
-        tasks.map((t) =>
-          t.id === activeId ? { ...t, status: newStatus as TaskStatus } : t
-        )
+    const column = getCurrentColumns().find(c => c.id === overId)
+    if (!column) return
+
+    const activeTask = tasks.find((t) => t.id === activeId)
+    if (!activeTask || activeTask.status === column.id) return
+
+    setTasks((prevTasks) =>
+      prevTasks.map((t) =>
+        t.id === activeId ? { ...t, status: column.id as TaskStatus } : t
       )
-    }
+    )
   }
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
     setActiveTask(null)
+
+    const originalStatus = dragOriginalStatusRef.current
+    dragOriginalStatusRef.current = null
 
     if (!over) return
 
@@ -736,17 +748,18 @@ export default function Tasks() {
       }
     }
 
-    if (newStatus && newStatus !== activeTask.status) {
+    if (newStatus && newStatus !== originalStatus) {
+      console.log('[DragEnd] Updating task:', activeId, 'to status:', newStatus)
       try {
         await taskService.update(activeId, { status: newStatus as TaskStatus })
-        setTasks((tasks) =>
-          tasks.map((t) =>
-            t.id === activeId ? { ...t, status: newStatus as TaskStatus } : t
+        console.log('[DragEnd] Update successful')
+      } catch (error: any) {
+        console.error('[DragEnd] Error updating task status:', error?.response?.data || error)
+        setTasks((prevTasks) =>
+          prevTasks.map((t) =>
+            t.id === activeId ? { ...t, status: activeTask.status } : t
           )
         )
-      } catch (error) {
-        console.error('Error updating task status:', error)
-        fetchTasks()
       }
     }
   }
@@ -829,8 +842,10 @@ const handlePhaseDragEnd = async () => {
         assignees: [],
       })
       fetchTasks()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating task:', error)
+      const errorMsg = error?.response?.data?.error || 'Error al crear la tarea'
+      showError(errorMsg)
     } finally {
       setIsCreatingTask(false)
     }
@@ -860,6 +875,7 @@ const handlePhaseDragEnd = async () => {
 
   const handleDeleteBoard = async (boardId: number) => {
     if (!confirm('¿Eliminar este tablero? Esta acción no se puede deshacer.')) return
+    setIsDeletingBoard(true)
     try {
       await boardService.delete(boardId)
       const boardsRes = await boardService.getAll()
@@ -869,10 +885,12 @@ const handlePhaseDragEnd = async () => {
       }
     } catch (error) {
       console.error('Error deleting board:', error)
+    } finally {
+      setIsDeletingBoard(false)
     }
   }
 
-  if (isLoading) {
+  if (isLoading && boards.length === 0) {
     return (
       <div className="tasks-page">
         <div className="tasks-loading">
@@ -930,7 +948,9 @@ const handlePhaseDragEnd = async () => {
                 </div>
                 <div className="modal-actions">
                   <button type="button" onClick={() => setShowBoardModal(false)}>Cancelar</button>
-                  <button type="submit" className="btn-primary">Crear Tablero</button>
+<button type="submit" className="btn-primary" disabled={isCreatingBoard}>
+                      {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
+                    </button>
                 </div>
               </form>
             </div>
@@ -995,10 +1015,11 @@ const handlePhaseDragEnd = async () => {
                       <button 
                         className="btn-icon delete-board-btn" 
                         onClick={() => handleDeleteBoard(selectedBoard.id)}
-                        title="Eliminar tablero"
+                        title={isDeletingBoard ? "Eliminando..." : "Eliminar tablero"}
+                        disabled={isDeletingBoard}
                         style={{ marginLeft: '4px', color: '#ef4444' }}
                       >
-                        🗑
+                        {isDeletingBoard ? '...' : '🗑'}
                       </button>
                     )}
                   </>
@@ -1179,7 +1200,9 @@ const handlePhaseDragEnd = async () => {
                   setAssigneeSearch('')
                   setNewBoardPhaseSearch('')
                 }}>Cancelar</button>
-                <button type="submit" className="btn-primary">Crear Tablero</button>
+                <button type="submit" className="btn-primary" disabled={isCreatingBoard}>
+                  {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
+                </button>
               </div>
             </form>
           </div>
@@ -1288,6 +1311,7 @@ const handlePhaseDragEnd = async () => {
                     onClick={(e) => {
                       e.stopPropagation()
                       if (!confirm('¿Eliminar esta fase?')) return
+                      setIsDeletingPhase(true)
                       boardService.removePhase(selectedBoard.id, phase.id)
                         .then(() => boardService.getAll())
                         .then((boardsRes) => {
@@ -1298,10 +1322,12 @@ const handlePhaseDragEnd = async () => {
                         .catch((error: any) => {
                           alert(error.response?.data?.error || 'Error al eliminar fase')
                         })
+                        .finally(() => setIsDeletingPhase(false))
                     }}
-                    title="Eliminar fase"
+                    title={isDeletingPhase ? "Eliminando..." : "Eliminar fase"}
+                    disabled={isDeletingPhase}
                   >
-                    ×
+                    {isDeletingPhase ? '...' : '×'}
                   </button>
                 </div>
               ))}
@@ -1323,12 +1349,14 @@ const handlePhaseDragEnd = async () => {
               <button 
                 className="btn-primary"
                 style={{ marginLeft: '8px' }}
+                disabled={isAddingPhase}
                 onClick={async () => {
                   const nameInput = document.getElementById('new-phase-name') as HTMLInputElement
                   const colorInput = document.getElementById('new-phase-color') as HTMLInputElement
                   const name = nameInput.value.trim()
                   const color = colorInput.value
                   if (!name) return
+                  setIsAddingPhase(true)
                   try {
                     await boardService.addPhase(selectedBoard.id, { name, color })
                     const boardsRes = await boardService.getAll()
@@ -1338,10 +1366,12 @@ const handlePhaseDragEnd = async () => {
                     nameInput.value = ''
                   } catch (error) {
                     console.error('Error adding phase:', error)
+                  } finally {
+                    setIsAddingPhase(false)
                   }
                 }}
               >
-                +
+                {isAddingPhase ? 'Agregando...' : '+'}
               </button>
             </div>
           </div>

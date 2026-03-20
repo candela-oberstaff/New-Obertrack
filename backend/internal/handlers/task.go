@@ -63,7 +63,7 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 		}
 	} else {
 		// When not filtering by specific board, only show tasks from non-deleted boards
-		query = query.Where("board_id IN (?)", h.db.Model(&models.Board{}).Select("id").Where("deleted_at IS NULL"))
+		query = query.Where("board_id IN (?)", h.db.Model(&models.Board{}).Select("id"))
 	}
 
 	if isSuperadmin {
@@ -260,6 +260,7 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	}
 	if req.Status != "" {
 		updates["status"] = req.Status
+		log.Printf("[Update] Setting status to: '%s'", req.Status)
 	}
 	if req.Priority != "" {
 		updates["priority"] = req.Priority
@@ -277,9 +278,12 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Applying updates: %+v", updates)
+	log.Printf("Applying updates to task ID %d: %+v", task.ID, updates)
 
-	if err := h.db.Model(&task).Updates(updates).Error; err != nil {
+	result := h.db.Model(&task).Updates(updates)
+	log.Printf("Rows affected: %d, Error: %v", result.RowsAffected, result.Error)
+
+	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update task"})
 		return
 	}
@@ -328,6 +332,7 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	}
 
 	h.db.Preload("Creator").Preload("Assignees").First(&task, task.ID)
+	log.Printf("[Update] Task %d updated successfully. New status: '%s'", task.ID, task.Status)
 
 	c.JSON(http.StatusOK, task)
 }
