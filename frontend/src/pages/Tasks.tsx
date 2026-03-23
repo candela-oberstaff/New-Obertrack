@@ -683,9 +683,9 @@ export default function Tasks() {
         userService.getAll(),
         boardService.getAll(),
       ])
-      setUsers(usersRes.data)
-      setBoards(boardsRes)
-      if (boardsRes.length > 0 && !selectedBoard) {
+      setUsers(usersRes.data || [])
+      setBoards(boardsRes || [])
+      if (boardsRes && boardsRes.length > 0 && !selectedBoard) {
         setSelectedBoard(boardsRes[0])
       }
     } catch (error) {

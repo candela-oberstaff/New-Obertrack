@@ -56,7 +56,7 @@ export default function Chat() {
       })
       if (response.ok) {
         const data = await response.json()
-        setMessages(data.reverse())
+        setMessages(data ? data.reverse() : [])
       }
     } catch (error) {
       console.error('Error fetching messages:', error)

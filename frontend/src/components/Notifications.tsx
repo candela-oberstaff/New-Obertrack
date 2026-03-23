@@ -26,7 +26,7 @@ export default function Notifications() {
     if (!token) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.hostname}:8080/ws/notifications?token=${token}`
+    const wsUrl = `${protocol}//${window.location.hostname}/ws/notifications?token=${token}`
 
     const connect = () => {
       wsRef.current = new WebSocket(wsUrl)
@@ -81,6 +81,11 @@ export default function Notifications() {
   const fetchNotifications = async () => {
     try {
       const data = await notificationService.getAll()
+      if (!data) {
+        setNotifications([])
+        setUnreadCount(0)
+        return
+      }
       setNotifications(data)
       setUnreadCount(data.filter(n => !n.read_at).length)
     } catch (error) {
