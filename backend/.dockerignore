@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.env
+*.log
+main
+server.exe
+main.exe
+bin/
+uploads/
