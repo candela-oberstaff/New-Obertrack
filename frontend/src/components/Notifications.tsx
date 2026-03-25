@@ -26,7 +26,7 @@ export default function Notifications() {
     if (!token) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.hostname}/ws/notifications?token=${token}`
+    const wsUrl = `${protocol}//${window.location.host}/ws/notifications?token=${token}`
 
     const connect = () => {
       wsRef.current = new WebSocket(wsUrl)

@@ -34,7 +34,7 @@ export default function Reports() {
     if (!user?.is_superadmin && !user?.is_manager && user?.user_type !== 'empleador') return
     try {
       const data = await userService.getEmployees()
-      setEmployees(data)
+      setEmployees(data || [])
     } catch (error) {
       console.error('Error fetching employees:', error)
     }
@@ -65,10 +65,10 @@ export default function Reports() {
       console.log('Reports - tasks:', tasksRes.status === 'fulfilled' ? tasksRes.value : tasksRes.reason)
       
       if (hoursRes.status === 'fulfilled') {
-        setWorkHours(hoursRes.value.data)
+        setWorkHours(hoursRes.value?.data || [])
       }
       if (tasksRes.status === 'fulfilled') {
-        setTasks(tasksRes.value.data)
+        setTasks(tasksRes.value?.data || [])
       }
     } catch (error) {
       console.error('Error fetching data:', error)
