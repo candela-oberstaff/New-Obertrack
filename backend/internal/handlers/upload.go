@@ -66,9 +66,7 @@ func (h *NotificationHub) Run() {
 		case conn := <-h.unregister:
 			userID := h.userIDs[conn]
 			h.mu.Lock()
-			if _, ok := h.clients[userID]; ok {
-				delete(h.clients, userID)
-			}
+			delete(h.clients, userID)
 			delete(h.userIDs, conn)
 			h.mu.Unlock()
 

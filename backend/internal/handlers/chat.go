@@ -49,6 +49,9 @@ func NewHub(db *gorm.DB) *Hub {
 }
 
 func (h *Hub) Run() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case client := <-h.register:
@@ -62,6 +65,7 @@ func (h *Hub) Run() {
 			for client := range h.clients {
 				err := client.WriteJSON(message)
 				if err != nil {
+					log.Printf("error: %v", err)
 					client.Close()
 					delete(h.clients, client)
 				}
@@ -69,6 +73,13 @@ func (h *Hub) Run() {
 
 			if message.Type == "chat_message" {
 				h.saveMessage(message)
+			}
+		case <-ticker.C:
+			for client := range h.clients {
+				if err := client.WriteMessage(websocket.PingMessage, nil); err != nil {
+					client.Close()
+					delete(h.clients, client)
+				}
 			}
 		}
 	}
