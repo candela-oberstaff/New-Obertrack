@@ -81,6 +81,8 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			{
 				boards.GET("", boardHandler.GetAll)
 				boards.POST("", boardHandler.Create)
+				boards.GET("/public", boardHandler.GetPublicBoards)
+				boards.POST("/:id/join", boardHandler.JoinBoard)
 				boards.GET("/:id", boardHandler.GetByID)
 				boards.PUT("/:id", boardHandler.Update)
 				boards.DELETE("/:id", boardHandler.Delete)
@@ -98,6 +100,8 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				tasks.DELETE("/:id", taskHandler.Delete)
 				tasks.POST("/:id/toggle-completion", taskHandler.ToggleCompletion)
 				tasks.POST("/:id/comments", taskHandler.AddComment)
+				tasks.POST("/:id/attachments", taskHandler.AddAttachment)
+				tasks.DELETE("/:id/attachments/:attachmentId", taskHandler.DeleteAttachment)
 			}
 
 			workHours := api.Group("/work-hours")

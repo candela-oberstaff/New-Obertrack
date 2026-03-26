@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { taskService } from '../../services/api'
-import type { Task, User, TaskStatus, TaskPriority } from '../../types'
+import type { Task, User, TaskStatus, TaskPriority, TaskAttachment } from '../../types'
 import { RichTextEditor } from './RichTextEditor'
 import { ColumnType } from './types'
 
@@ -21,6 +21,9 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
   const [assigneeSearch, setAssigneeSearch] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
   const [taskComments, setTaskComments] = useState(task?.comments || [])
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([])
+  const [isUploadingFile, setIsUploadingFile] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -43,21 +46,23 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
         assignees: task.assignees?.map(a => a.id) || [],
       })
       setTaskComments(task.comments || [])
+      setAttachments((task as any).attachments || [])
     }
   }, [task])
 
-  const refreshComments = async () => {
+  const refreshTask = async () => {
     try {
       const updated = await taskService.getById(task!.id)
       setTaskComments(updated.comments || [])
+      setAttachments((updated as any).attachments || [])
     } catch (error) {
-      console.error('Error refreshing comments:', error)
+      console.error('Error refreshing task:', error)
     }
   }
 
   useEffect(() => {
     if (task?.id) {
-      refreshComments()
+      refreshTask()
     }
   }, [task?.id])
 
@@ -69,7 +74,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
     try {
       await taskService.addComment(task.id, newComment)
       setNewComment('')
-      await refreshComments()
+      await refreshTask()
     } catch (error) {
       console.error('Error adding comment:', error)
     } finally {
@@ -79,20 +84,64 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
 
   const handleSave = async () => {
     setIsUpdating(true)
-    await onUpdate(task.id, {
-      title: formData.title,
-      description: formData.description,
-      priority: formData.priority as TaskPriority,
-      status: formData.status as TaskStatus,
-      start_date: formData.start_date || undefined,
-      end_date: formData.end_date || undefined,
-    })
-    setIsEditing(false)
-    setIsUpdating(false)
+    try {
+      await onUpdate(task.id, {
+        title: formData.title,
+        description: formData.description,
+        priority: formData.priority as TaskPriority,
+        status: formData.status as TaskStatus,
+        start_date: formData.start_date || undefined,
+        end_date: formData.end_date || undefined,
+        assignees: formData.assignees as any,
+      })
+      setIsEditing(false)
+    } finally {
+      setIsUpdating(false)
+    }
   }
 
   const handleStatusChange = async (newStatus: string) => {
     await onUpdate(task.id, { status: newStatus as Task['status'] })
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIsUploadingFile(true)
+    try {
+      const attachment = await taskService.addAttachment(task.id, file)
+      setAttachments(prev => [...prev, attachment])
+    } catch (error) {
+      console.error('Error uploading file:', error)
+    } finally {
+      setIsUploadingFile(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleDeleteAttachment = async (attachmentId: number) => {
+    if (!confirm('¿Eliminar este archivo?')) return
+    try {
+      await taskService.deleteAttachment(task.id, attachmentId)
+      setAttachments(prev => prev.filter(a => a.id !== attachmentId))
+    } catch (error) {
+      console.error('Error deleting attachment:', error)
+    }
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType?.startsWith('image/')) return '🖼️'
+    if (mimeType?.includes('pdf')) return '📄'
+    if (mimeType?.includes('word')) return '📝'
+    if (mimeType?.includes('excel') || mimeType?.includes('sheet')) return '📊'
+    if (mimeType?.startsWith('audio/')) return '🎵'
+    return '📎'
   }
 
   const getPriorityColor = (priority: string) => {
@@ -104,8 +153,6 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
     }
     return colors[priority] || '#6b7280'
   }
-
-
   return (
     <div className="task-detail-panel">
       <div className="panel-header">
@@ -150,9 +197,9 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                 >
-                  <option value="por_hacer">Por hacer</option>
-                  <option value="en_proceso">En proceso</option>
-                  <option value="finalizado">Finalizado</option>
+                  {columns.map(col => (
+                    <option key={col.id} value={col.id}>{col.title}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -210,7 +257,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                   />
                   <div className="assignee-dropdown">
                     {users
-                      .filter(u => 
+                      .filter(u =>
                         u.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
                         u.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
                       )
@@ -316,6 +363,75 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
               </div>
             </div>
 
+            {/* Attachments Section */}
+            <div className="task-section">
+              <h4>Archivos adjuntos ({attachments.length})</h4>
+              {attachments.length > 0 && (
+                <div className="attachments-list">
+                  {attachments.map((att) => (
+                    <div key={att.id} className="attachment-item">
+                      <a 
+                        href={att.file_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="attachment-link-wrapper"
+                        title={`Ver ${att.file_name}`}
+                      />
+                      <div className="attachment-icon">
+                        {getFileIcon(att.mime_type)}
+                      </div>
+                      <div className="attachment-info">
+                        <span className="attachment-name">{att.file_name}</span>
+                        <span className="attachment-meta">{formatFileSize(att.file_size)}</span>
+                      </div>
+                      <div className="attachment-actions" style={{ position: 'relative', zIndex: 2 }}>
+                        <button
+                          className="btn-delete-att"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleDeleteAttachment(att.id)
+                          }}
+                          title="Eliminar archivo"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                id="task-file-upload"
+                style={{ display: 'none' }}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg"
+                onChange={handleFileUpload}
+              />
+              <label
+                htmlFor="task-file-upload"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  border: '1px dashed #cbd5e1',
+                  borderRadius: '8px',
+                  cursor: isUploadingFile ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  color: '#64748b',
+                  background: 'white',
+                  opacity: isUploadingFile ? 0.6 : 1,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {isUploadingFile ? '⏳ Subiendo...' : '📎 Adjuntar archivo'}
+              </label>
+            </div>
+
             <div className="task-section">
               <h4>Comentarios ({taskComments.length || 0})</h4>
               <div className="add-comment">
@@ -325,8 +441,8 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                   onChange={(e) => setNewComment(e.target.value)}
                   rows={2}
                 />
-                <button 
-                  className="btn-add-comment" 
+                <button
+                  className="btn-add-comment"
                   onClick={handleAddComment}
                   disabled={!newComment.trim() || isSubmittingComment}
                 >

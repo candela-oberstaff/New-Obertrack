@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -40,7 +42,7 @@ type UpdateTaskRequest struct {
 	Priority    string    `json:"priority"`
 	EndDate     time.Time `json:"end_date"`
 	Completed   *bool     `json:"completed"`
-	Assignees   []uint    `json:"assignees"`
+	Assignees   *[]uint   `json:"assignees"`
 }
 
 func (h *TaskHandler) GetAll(c *gin.Context) {
@@ -105,7 +107,7 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	if err := query.Preload("Creator").Preload("Assignees").Preload("Board").Offset(offset).Limit(limit).Find(&tasks).Error; err != nil {
+	if err := query.Preload("Creator").Preload("Assignees").Preload("Board").Preload("Attachments").Offset(offset).Limit(limit).Find(&tasks).Error; err != nil {
 		log.Printf("[GetAll] Error fetching tasks: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tasks", "details": err.Error()})
 		return
@@ -132,7 +134,7 @@ func (h *TaskHandler) GetByID(c *gin.Context) {
 	}
 
 	var task models.Task
-	if err := h.db.Preload("Creator").Preload("Assignees").Preload("Comments").Preload("Comments.User").First(&task, id).Error; err != nil {
+	if err := h.db.Preload("Creator").Preload("Assignees").Preload("Comments").Preload("Comments.User").Preload("Attachments").First(&task, id).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
@@ -159,15 +161,28 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
 	if len(req.Assignees) > 0 && req.BoardID > 0 {
+		var board models.Board
+		h.db.First(&board, req.BoardID)
+
 		var boardMembers []models.BoardMember
 		h.db.Where("board_id = ?", req.BoardID).Find(&boardMembers)
 		memberIDs := make(map[uint]bool)
 		for _, m := range boardMembers {
 			memberIDs[m.UserID] = true
 		}
+		// Also include the creator as a valid member
+		if board.CreatedBy != 0 {
+			memberIDs[board.CreatedBy] = true
+		}
+
 		for _, assigneeID := range req.Assignees {
 			if !memberIDs[assigneeID] {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("El usuario %d no es miembro del tablero", assigneeID)})
+				var assigneeUser models.User
+				userName := fmt.Sprintf("ID %d", assigneeID)
+				if h.db.First(&assigneeUser, assigneeID).Error == nil {
+					userName = assigneeUser.Name
+				}
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s no es miembro del tablero", userName)})
 				return
 			}
 		}
@@ -288,16 +303,29 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		return
 	}
 
-	if len(req.Assignees) > 0 {
+	if req.Assignees != nil {
+		var board models.Board
+		h.db.First(&board, task.BoardID)
+
 		var boardMembers []models.BoardMember
 		h.db.Where("board_id = ?", task.BoardID).Find(&boardMembers)
 		memberIDs := make(map[uint]bool)
 		for _, m := range boardMembers {
 			memberIDs[m.UserID] = true
 		}
-		for _, assigneeID := range req.Assignees {
+		// Also include the creator as a valid member
+		if board.CreatedBy != 0 {
+			memberIDs[board.CreatedBy] = true
+		}
+
+		for _, assigneeID := range *req.Assignees {
 			if !memberIDs[assigneeID] {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("El usuario %d no es miembro del tablero", assigneeID)})
+				var assigneeUser models.User
+				userName := fmt.Sprintf("ID %d", assigneeID)
+				if h.db.First(&assigneeUser, assigneeID).Error == nil {
+					userName = assigneeUser.Name
+				}
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s no es miembro del tablero", userName)})
 				return
 			}
 		}
@@ -309,24 +337,28 @@ func (h *TaskHandler) Update(c *gin.Context) {
 			currentAssigneeIDs[a.ID] = true
 		}
 
-		var assignees []models.User
-		h.db.Find(&assignees, req.Assignees)
-		h.db.Model(&task).Association("Assignees").Replace(assignees)
+		if len(*req.Assignees) == 0 {
+			h.db.Model(&task).Association("Assignees").Clear()
+		} else {
+			var assignees []models.User
+			h.db.Find(&assignees, *req.Assignees)
+			h.db.Model(&task).Association("Assignees").Replace(assignees)
 
-		for _, assignee := range assignees {
-			if !currentAssigneeIDs[assignee.ID] {
-				notificationData, _ := json.Marshal(map[string]interface{}{
-					"task_id":  task.ID,
-					"board_id": task.BoardID,
-				})
-				notification := models.Notification{
-					UserID:  assignee.ID,
-					Type:    "task_assigned",
-					Title:   "Nueva tarea asignada",
-					Message: fmt.Sprintf("Se te asignó la tarea: %s", task.Title),
-					Data:    string(notificationData),
+			for _, assignee := range assignees {
+				if !currentAssigneeIDs[assignee.ID] {
+					notificationData, _ := json.Marshal(map[string]interface{}{
+						"task_id":  task.ID,
+						"board_id": task.BoardID,
+					})
+					notification := models.Notification{
+						UserID:  assignee.ID,
+						Type:    "task_assigned",
+						Title:   "Nueva tarea asignada",
+						Message: fmt.Sprintf("Se te asignó la tarea: %s", task.Title),
+						Data:    string(notificationData),
+					}
+					h.db.Create(&notification)
 				}
-				h.db.Create(&notification)
 			}
 		}
 	}
@@ -419,4 +451,88 @@ func (h *TaskHandler) AddComment(c *gin.Context) {
 	h.db.Preload("User").First(&comment, comment.ID)
 
 	c.JSON(http.StatusCreated, comment)
+}
+
+func (h *TaskHandler) AddAttachment(c *gin.Context) {
+	taskIDStr := c.Param("id")
+	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	var task models.Task
+	if err := h.db.First(&task, taskID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		return
+	}
+
+	const maxSize = 50 << 20
+	if file.Size > maxSize {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File too large (max 50MB)"})
+		return
+	}
+
+	uploadPath := os.Getenv("UPLOAD_PATH")
+	if uploadPath == "" {
+		uploadPath = "./uploads"
+	}
+
+	contentType := file.Header.Get("Content-Type")
+	ext := filepath.Ext(file.Filename)
+	if ext == "" {
+		ext = ".bin"
+	}
+
+	userID := middleware.GetUserID(c)
+	filename := fmt.Sprintf("task_%d_%d_%d%s", taskID, userID, time.Now().UnixNano(), ext)
+	filepath_ := filepath.Join(uploadPath, filename)
+
+	if err := c.SaveUploadedFile(file, filepath_); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
+		return
+	}
+
+	attachment := models.TaskAttachment{
+		TaskID:     uint(taskID),
+		FileName:   file.Filename,
+		FileURL:    fmt.Sprintf("/api/uploads/%s", filename),
+		FileSize:   file.Size,
+		MimeType:   contentType,
+		UploadedBy: userID,
+	}
+
+	if err := h.db.Create(&attachment).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save attachment"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, attachment)
+}
+
+func (h *TaskHandler) DeleteAttachment(c *gin.Context) {
+	attachmentID, err := strconv.ParseUint(c.Param("attachmentId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid attachment ID"})
+		return
+	}
+
+	var attachment models.TaskAttachment
+	if err := h.db.First(&attachment, attachmentID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Attachment not found"})
+		return
+	}
+
+	if err := h.db.Delete(&attachment).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete attachment"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Attachment deleted"})
 }

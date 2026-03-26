@@ -111,6 +111,17 @@ export const taskService = {
     const { data } = await api.post(`/tasks/${id}/comments`, { content })
     return data
   },
+  addAttachment: async (id: number, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const { data } = await api.post(`/tasks/${id}/attachments`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return data
+  },
+  deleteAttachment: async (taskId: number, attachmentId: number) => {
+    await api.delete(`/tasks/${taskId}/attachments/${attachmentId}`)
+  },
 }
 
 export const workHourService = {
@@ -212,6 +223,14 @@ export const boardService = {
   },
   reorderPhases: async (boardId: number, phaseIds: number[]) => {
     const { data } = await api.put<Board>(`/boards/${boardId}/phases/reorder`, { phase_ids: phaseIds })
+    return data
+  },
+  getPublicBoards: async () => {
+    const { data } = await api.get<Board[]>('/boards/public')
+    return data
+  },
+  join: async (boardId: number) => {
+    const { data } = await api.post<Board>(`/boards/${boardId}/join`)
     return data
   },
 }

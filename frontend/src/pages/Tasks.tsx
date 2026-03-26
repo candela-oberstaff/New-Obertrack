@@ -45,6 +45,9 @@ export default function Tasks() {
   const [showBoardModal, setShowBoardModal] = useState(false)
   const [showBoardMembersModal, setShowBoardMembersModal] = useState(false)
   const [showPhasesModal, setShowPhasesModal] = useState(false)
+  const [showJoinBoardModal, setShowJoinBoardModal] = useState(false)
+  const [publicBoards, setPublicBoards] = useState<Board[]>([])
+  const [isJoiningBoard, setIsJoiningBoard] = useState(false)
   const [optimisticMembers, setOptimisticMembers] = useState<number[]>([])
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isCreatingBoard, setIsCreatingBoard] = useState(false)
@@ -70,11 +73,9 @@ export default function Tasks() {
   })
   const [newBoardPhaseSearch, setNewBoardPhaseSearch] = useState('')
   const [newTaskData, setNewTaskData] = useState({
-    title: '',
-    description: '',
-    priority: 'medium',
     end_date: '',
     assignees: [] as number[],
+    attachments: [] as File[],
   })
   const [assigneeSearch, setAssigneeSearch] = useState('')
   const [localColumnOrder, setLocalColumnOrder] = useState<string[] | null>(() => {
@@ -180,6 +181,30 @@ export default function Tasks() {
       console.error('Error creating board:', error)
     } finally {
       setIsCreatingBoard(false)
+    }
+  }
+
+  const fetchPublicBoards = async () => {
+    try {
+      const res = await boardService.getPublicBoards()
+      setPublicBoards(res || [])
+    } catch (error) {
+      console.error('Error fetching public boards:', error)
+    }
+  }
+
+  const handleJoinBoard = async (boardId: number) => {
+    setIsJoiningBoard(true)
+    try {
+      await boardService.join(boardId)
+      await fetchData() // Refresh all data
+      setShowJoinBoardModal(false)
+    } catch (error: any) {
+      console.error('Error joining board:', error)
+      const errorMsg = error?.response?.data?.error || 'Error al unirse al tablero'
+      showError(errorMsg)
+    } finally {
+      setIsJoiningBoard(false)
     }
   }
 
@@ -342,7 +367,19 @@ const handlePhaseDragEnd = async () => {
       
       console.log('Creating task with data:', taskData)
       setIsCreatingTask(true)
-      await taskService.create(taskData)
+      const newTask = await taskService.create(taskData)
+      
+      // Upload attachments if any
+      if (newTaskData.attachments.length > 0) {
+        for (const file of newTaskData.attachments) {
+          try {
+            await taskService.addAttachment(newTask.id, file)
+          } catch (uploadErr) {
+            console.error('Error uploading initial attachment:', uploadErr)
+          }
+        }
+      }
+
       setShowNewTaskModal(false)
       setNewTaskData({
         title: '',
@@ -350,6 +387,7 @@ const handlePhaseDragEnd = async () => {
         priority: 'medium',
         end_date: '',
         assignees: [],
+        attachments: [],
       })
       fetchTasks()
     } catch (error: any) {
@@ -386,15 +424,23 @@ const handlePhaseDragEnd = async () => {
   const handleDeleteBoard = async (boardId: number) => {
     if (!confirm('¿Eliminar este tablero? Esta acción no se puede deshacer.')) return
     setIsDeletingBoard(true)
+    // Clear the task panel and the board immediately to avoid
+    // blank-screen render errors while the delete is in-flight.
+    if (selectedBoard?.id === boardId) {
+      setSelectedTask(null)
+      setSelectedBoard(null)
+    }
     try {
       await boardService.delete(boardId)
       const boardsRes = await boardService.getAll()
       setBoards(boardsRes)
-      if (selectedBoard?.id === boardId) {
-        setSelectedBoard(boardsRes.length > 0 ? boardsRes[0] : null)
-      }
+      setSelectedBoard(boardsRes.length > 0 ? boardsRes[0] : null)
     } catch (error) {
       console.error('Error deleting board:', error)
+      // Restore by refetching on error
+      const boardsRes = await boardService.getAll()
+      setBoards(boardsRes)
+      if (boardsRes.length > 0) setSelectedBoard(boardsRes[0])
     } finally {
       setIsDeletingBoard(false)
     }
@@ -499,6 +545,16 @@ const handlePhaseDragEnd = async () => {
                 </select>
                 <button className="btn-icon" onClick={() => setShowBoardModal(true)} title="Crear tablero">
                   +
+                </button>
+                <button 
+                  className="btn-secondary btn-sm" 
+                  onClick={() => {
+                    fetchPublicBoards()
+                    setShowJoinBoardModal(true)
+                  }} 
+                  style={{ marginLeft: '8px', fontSize: '12px', padding: '6px 10px' }}
+                >
+                  Unirse a Tablero
                 </button>
                 {selectedBoard && (
                   <>
@@ -1049,6 +1105,55 @@ const handlePhaseDragEnd = async () => {
                       className="setting-input"
                     />
                   </div>
+
+                  <div className="setting-item">
+                    <label>Adjuntos</label>
+                    <div className="new-task-attachments">
+                      <input
+                        type="file"
+                        id="new-task-file-input"
+                        multiple
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || [])
+                          setNewTaskData(prev => ({
+                            ...prev,
+                            attachments: [...prev.attachments, ...files]
+                          }))
+                        }}
+                        style={{ display: 'none' }}
+                      />
+                      <button 
+                        type="button" 
+                        className="btn-secondary btn-sm"
+                        onClick={() => document.getElementById('new-task-file-input')?.click()}
+                        style={{ width: '100%', marginBottom: '8px' }}
+                      >
+                        📎 Seleccionar archivos
+                      </button>
+                      
+                      {newTaskData.attachments.length > 0 && (
+                        <div className="selected-files-preview">
+                          {newTaskData.attachments.map((file, idx) => (
+                            <div key={idx} className="selected-file-item">
+                              <span className="file-name" title={file.name}>{file.name}</span>
+                              <button 
+                                type="button" 
+                                className="remove-file-btn"
+                                onClick={() => {
+                                  setNewTaskData(prev => ({
+                                    ...prev,
+                                    attachments: prev.attachments.filter((_, i) => i !== idx)
+                                  }))
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="assign-card">
@@ -1102,6 +1207,45 @@ const handlePhaseDragEnd = async () => {
               <button type="submit" form="create-task-form" className="btn-create" disabled={isCreatingTask}>
                 {isCreatingTask ? 'Creando...' : 'Crear tarea'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showJoinBoardModal && (
+        <div className="modal-overlay" onClick={() => setShowJoinBoardModal(false)}>
+          <div className="modal join-board-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Unirse a un Tablero</h2>
+              <button className="close-btn" onClick={() => setShowJoinBoardModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {publicBoards.length === 0 ? (
+                <div className="no-data-msg">
+                  <p>No hay tableros públicos disponibles para unirse en este momento.</p>
+                </div>
+              ) : (
+                <div className="public-boards-list">
+                  {publicBoards.map(board => (
+                    <div key={board.id} className="public-board-item">
+                      <div className="board-info">
+                        <div className="board-color" style={{ backgroundColor: board.color }}></div>
+                        <div className="board-text">
+                          <span className="board-name">{board.name}</span>
+                          <span className="board-creator">Creado por: {board.creator?.name || 'Sistema'}</span>
+                        </div>
+                      </div>
+                      <button 
+                        className="btn-primary btn-sm" 
+                        onClick={() => handleJoinBoard(board.id)}
+                        disabled={isJoiningBoard}
+                      >
+                        {isJoiningBoard ? 'Uniendo...' : 'Unirse'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

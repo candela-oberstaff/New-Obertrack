@@ -35,9 +35,14 @@ func Run(db *gorm.DB) error {
 					&models.Mention{},
 				)
 			},
+		},
+		{
+			ID: "202603251500_add_task_attachments",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.TaskAttachment{})
+			},
 			Rollback: func(tx *gorm.DB) error {
-				// No need for rollback for the initial migration in this context
-				return nil
+				return tx.Migrator().DropTable(&models.TaskAttachment{})
 			},
 		},
 		// Future migrations go here
