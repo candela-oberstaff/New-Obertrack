@@ -35,6 +35,7 @@ type RegisterRequest struct {
 	Password    string `json:"password" binding:"required,min=6"`
 	UserType    string `json:"user_type"`
 	CompanyName string `json:"company_name"`
+	EmpleadorID *uint  `json:"empleador_id"`
 }
 
 type LoginRequest struct {
@@ -69,7 +70,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	userType := models.UserTypeProfessional
 	isSuperadmin := false
-	if req.UserType == "empresa" {
+	if req.UserType == "empresa" || req.UserType == "empleador" {
 		userType = models.UserTypeEmployer
 	}
 	// Superadmin solo puede ser creado via endpoint de seed, no por registro público
@@ -82,6 +83,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		CompanyName:  req.CompanyName,
 		IsSuperadmin: isSuperadmin,
 		IsActive:     true,
+		EmpleadorID:  req.EmpleadorID,
 	}
 
 	log.Printf("Creating user: %+v", user)
@@ -181,4 +183,20 @@ func (h *AuthHandler) generateToken(user *models.User) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(h.jwtSecret))
+}
+
+// GetEmployers returns a list of all employer users (public endpoint for registration)
+func (h *AuthHandler) GetEmployers(c *gin.Context) {
+	var employers []struct {
+		ID          uint   `json:"id"`
+		Name        string `json:"name"`
+		CompanyName string `json:"company_name"`
+	}
+
+	if err := h.db.Model(&models.User{}).Where("user_type = ? AND is_active = ?", "empleador", true).Select("id, name, company_name").Find(&employers).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch employers"})
+		return
+	}
+
+	c.JSON(http.StatusOK, employers)
 }

@@ -1,17 +1,33 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { authService } from '../services/api'
 
 export default function Register() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [userType, setUserType] = useState('empleado')
+  const [userType, setUserType] = useState('profesional')
   const [companyName, setCompanyName] = useState('')
+  const [empleadorId, setEmpleadorId] = useState<number | undefined>(undefined)
+  const [employers, setEmployers] = useState<{ id: number; name: string; company_name: string }[]>([])
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const { register } = useAuth()
   const navigate = useNavigate()
+
+  // Fetch employers when the component mounts
+  useEffect(() => {
+    const fetchEmployers = async () => {
+      try {
+        const data = await authService.getEmployers()
+        setEmployers(data)
+      } catch (err) {
+        console.error('Error fetching employers:', err)
+      }
+    }
+    fetchEmployers()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,6 +41,7 @@ export default function Register() {
         password,
         user_type: userType,
         company_name: companyName,
+        empleador_id: userType === 'profesional' ? empleadorId : undefined,
       })
       navigate('/dashboard')
     } catch (err: unknown) {
@@ -82,13 +99,35 @@ export default function Register() {
             <select
               id="userType"
               value={userType}
-              onChange={(e) => setUserType(e.target.value)}
+              onChange={(e) => {
+                setUserType(e.target.value)
+                // Reset related fields when changing type
+                setEmpleadorId(undefined)
+                setCompanyName('')
+              }}
             >
               <option value="profesional">Profesional</option>
               <option value="empleador">Empresa</option>
-              <option value="superadmin">Super Admin</option>
             </select>
           </div>
+
+          {userType === 'profesional' && employers.length > 0 && (
+            <div className="form-group">
+              <label htmlFor="empleadorId">Empresa a la que pertenece</label>
+              <select
+                id="empleadorId"
+                value={empleadorId ?? ''}
+                onChange={(e) => setEmpleadorId(e.target.value ? Number(e.target.value) : undefined)}
+              >
+                <option value="">Seleccionar empresa...</option>
+                {employers.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.company_name || emp.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {userType === 'empleador' && (
             <div className="form-group">

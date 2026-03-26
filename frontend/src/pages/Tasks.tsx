@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
-import { 
+import {
   DndContext,
   DragOverlay,
   closestCorners,
@@ -82,7 +82,7 @@ export default function Tasks() {
     return saved ? JSON.parse(saved) : null
   })
 
-  const filteredUsers = users.filter(user => 
+  const filteredUsers = users.filter(user =>
     user.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
     user.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
   )
@@ -160,11 +160,11 @@ export default function Tasks() {
         member_ids: newBoardData.member_ids,
         phases: newBoardData.phases,
       })
-      setNewBoardData({ 
-        name: '', 
-        description: '', 
-        color: '#3b82f6', 
-        member_ids: [], 
+      setNewBoardData({
+        name: '',
+        description: '',
+        color: '#3b82f6',
+        member_ids: [],
         phases: [
           { name: 'Por hacer', color: '#6b7280' },
           { name: 'En proceso', color: '#3b82f6' },
@@ -172,7 +172,7 @@ export default function Tasks() {
         ],
       })
       setShowBoardModal(false)
-      
+
       const boardsRes = await boardService.getAll()
       setBoards(boardsRes)
       setSelectedBoard(newBoard)
@@ -285,14 +285,14 @@ export default function Tasks() {
 
   const handlePhaseDragEnter = (targetIdx: number) => {
     if (!isDraggingPhasesRef.current || draggingPhaseRef.current === null || !selectedBoard?.phases) return
-    
+
     const phases = [...selectedBoard.phases]
     const dragIdx = phases.findIndex(p => p.id === draggingPhaseRef.current)
     if (dragIdx === -1 || dragIdx === targetIdx) return
-    
+
     const [dragged] = phases.splice(dragIdx, 1)
     phases.splice(targetIdx, 0, dragged)
-    
+
     phasesOrderRef.current = phases
     setDragOverIdx(targetIdx)
     setSelectedBoard((prev: Board | null) => {
@@ -301,16 +301,16 @@ export default function Tasks() {
     })
   }
 
-const handlePhaseDragEnd = async () => {
+  const handlePhaseDragEnd = async () => {
     isDraggingPhasesRef.current = false
     setDraggingPhase(null)
     setDragOverIdx(null)
     draggingPhaseRef.current = null
-    
+
     if (!selectedBoard?.phases || !selectedBoard?.id) return
-    
+
     const phaseIds = selectedBoard.phases.map(p => p.id)
-    
+
     try {
       await boardService.reorderPhases(selectedBoard.id, phaseIds)
       const boardsRes = await boardService.getAll()
@@ -331,15 +331,15 @@ const handlePhaseDragEnd = async () => {
         priority: newTaskData.priority || undefined,
         board_id: selectedBoard?.id,
       }
-      
+
       if (newTaskData.end_date) {
         taskData.end_date = newTaskData.end_date
       }
-      
+
       if (newTaskData.assignees.length > 0) {
         taskData.assignees = newTaskData.assignees
       }
-      
+
       console.log('Creating task with data:', taskData)
       setIsCreatingTask(true)
       await taskService.create(taskData)
@@ -458,9 +458,9 @@ const handlePhaseDragEnd = async () => {
                 </div>
                 <div className="modal-actions">
                   <button type="button" onClick={() => setShowBoardModal(false)}>Cancelar</button>
-<button type="submit" className="btn-primary" disabled={isCreatingBoard}>
-                      {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
-                    </button>
+                  <button type="submit" className="btn-primary" disabled={isCreatingBoard}>
+                    {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
+                  </button>
                 </div>
               </form>
             </div>
@@ -478,8 +478,8 @@ const handlePhaseDragEnd = async () => {
           <div className="board-selector">
             {boards.length > 0 ? (
               <>
-                <select 
-                  value={showAllTasks ? 'all' : (selectedBoard?.id || '')} 
+                <select
+                  value={showAllTasks ? 'all' : (selectedBoard?.id || '')}
                   onChange={(e) => {
                     if (e.target.value === 'all') {
                       setShowAllTasks(true)
@@ -502,16 +502,16 @@ const handlePhaseDragEnd = async () => {
                 </button>
                 {selectedBoard && (
                   <>
-                    <button 
-                      className="btn-icon phases-btn" 
+                    <button
+                      className="btn-icon phases-btn"
                       onClick={() => setShowPhasesModal(true)}
                       title="Gestionar fases"
                       style={{ marginLeft: '4px' }}
                     >
                       ≡
                     </button>
-                    <button 
-                      className="btn-icon members-btn" 
+                    <button
+                      className="btn-icon members-btn"
                       onClick={() => {
                         setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
                         setShowBoardMembersModal(true)
@@ -522,8 +522,8 @@ const handlePhaseDragEnd = async () => {
                       ⊕
                     </button>
                     {user?.id === selectedBoard.created_by && (
-                      <button 
-                        className="btn-icon delete-board-btn" 
+                      <button
+                        className="btn-icon delete-board-btn"
                         onClick={() => handleDeleteBoard(selectedBoard.id)}
                         title={isDeletingBoard ? "Eliminando..." : "Eliminar tablero"}
                         disabled={isDeletingBoard}
@@ -593,36 +593,36 @@ const handlePhaseDragEnd = async () => {
                     .slice()
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map(user => (
-                    <label key={user.id} className="member-checkbox">
-                      <div className="left-section">
-                        <input
-                          type="checkbox"
-                          checked={newBoardData.member_ids.includes(user.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setNewBoardData({
-                                ...newBoardData,
-                                member_ids: [...newBoardData.member_ids, user.id]
-                              })
-                            } else {
-                              setNewBoardData({
-                                ...newBoardData,
-                                member_ids: newBoardData.member_ids.filter(id => id !== user.id)
-                              })
-                            }
-                          }}
-                        />
-                        <span className="checkbox-custom"></span>
-                        <div className="member-avatar">
-                          {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                      <label key={user.id} className="member-checkbox">
+                        <div className="left-section">
+                          <input
+                            type="checkbox"
+                            checked={newBoardData.member_ids.includes(user.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewBoardData({
+                                  ...newBoardData,
+                                  member_ids: [...newBoardData.member_ids, user.id]
+                                })
+                              } else {
+                                setNewBoardData({
+                                  ...newBoardData,
+                                  member_ids: newBoardData.member_ids.filter(id => id !== user.id)
+                                })
+                              }
+                            }}
+                          />
+                          <span className="checkbox-custom"></span>
+                          <div className="member-avatar">
+                            {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="member-info">
+                            <span className="member-name">{user.name}</span>
+                            <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
+                          </div>
                         </div>
-                        <div className="member-info">
-                          <span className="member-name">{user.name}</span>
-                          <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
-                        </div>
-                      </div>
-                    </label>
-                  ))}
+                      </label>
+                    ))}
                 </div>
               </div>
 
@@ -724,51 +724,51 @@ const handlePhaseDragEnd = async () => {
           <div className="modal board-modal wide" onClick={(e) => e.stopPropagation()}>
             <h2>Miembros del Tablero</h2>
             <p style={{ color: '#64748b', marginBottom: '20px', marginTop: '-16px' }}>{selectedBoard.name}</p>
-              <div className="form-group">
-                <label>Selecciona los miembros que quieres agregar al tablero</label>
-                <div className="members-select">
-                  {users.map(user => {
-                    const isMember = optimisticMembers.includes(user.id)
-                    return (
-                      <label key={user.id} className="member-checkbox">
-                        <div className="left-section">
-                          <input
-                            type="checkbox"
-                            checked={isMember}
-                            onChange={async (e) => {
-                              const newOptimisticMembers = e.target.checked
-                                ? [...optimisticMembers, user.id]
-                                : optimisticMembers.filter(id => id !== user.id)
-                              setOptimisticMembers(newOptimisticMembers)
-                              try {
-                                await boardService.update(selectedBoard.id, { member_ids: newOptimisticMembers })
-                                const boardsRes = await boardService.getAll()
-                                setBoards(boardsRes)
-                                const updated = boardsRes.find(b => b.id === selectedBoard.id)
-                                if (updated) setSelectedBoard(updated)
-                              } catch (error) {
-                                console.error('Error updating board members:', error)
-                                setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
-                              }
-                            }}
-                          />
-                          <span className="checkbox-custom"></span>
-                          <div className="member-avatar">
-                            {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                          </div>
-                          <div className="member-info">
-                            <span className="member-name">{user.name}</span>
-                            <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
-                          </div>
+            <div className="form-group">
+              <label>Selecciona los miembros que quieres agregar al tablero</label>
+              <div className="members-select">
+                {users.map(user => {
+                  const isMember = optimisticMembers.includes(user.id)
+                  return (
+                    <label key={user.id} className="member-checkbox">
+                      <div className="left-section">
+                        <input
+                          type="checkbox"
+                          checked={isMember}
+                          onChange={async (e) => {
+                            const newOptimisticMembers = e.target.checked
+                              ? [...optimisticMembers, user.id]
+                              : optimisticMembers.filter(id => id !== user.id)
+                            setOptimisticMembers(newOptimisticMembers)
+                            try {
+                              await boardService.update(selectedBoard.id, { member_ids: newOptimisticMembers })
+                              const boardsRes = await boardService.getAll()
+                              setBoards(boardsRes)
+                              const updated = boardsRes.find(b => b.id === selectedBoard.id)
+                              if (updated) setSelectedBoard(updated)
+                            } catch (error) {
+                              console.error('Error updating board members:', error)
+                              setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
+                            }
+                          }}
+                        />
+                        <span className="checkbox-custom"></span>
+                        <div className="member-avatar">
+                          {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                         </div>
-                        <span className={`member-status ${isMember ? 'active' : 'inactive'}`}>
-                          {isMember ? 'En tablero' : 'No asignado'}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
+                        <div className="member-info">
+                          <span className="member-name">{user.name}</span>
+                          <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
+                        </div>
+                      </div>
+                      <span className={`member-status ${isMember ? 'active' : 'inactive'}`}>
+                        {isMember ? 'En tablero' : 'No asignado'}
+                      </span>
+                    </label>
+                  )
+                })}
               </div>
+            </div>
             <div className="modal-actions">
               <button type="button" className="btn-primary" onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>Listo</button>
             </div>
@@ -784,9 +784,9 @@ const handlePhaseDragEnd = async () => {
               <button className="close-btn" onClick={() => setShowPhasesModal(false)}>×</button>
             </div>
             <p className="board-subtitle">{selectedBoard.name}</p>
-            
-            <div 
-              className="phases-list" 
+
+            <div
+              className="phases-list"
               onMouseMove={(e) => {
                 if (!isDraggingPhasesRef.current) return
                 const target = e.target as HTMLElement
@@ -807,8 +807,8 @@ const handlePhaseDragEnd = async () => {
               }}
             >
               {selectedBoard.phases?.map((phase, idx) => (
-                <div 
-                  key={phase.id} 
+                <div
+                  key={phase.id}
                   data-idx={idx}
                   className={`phase-item ${draggingPhase === phase.id ? 'dragging' : ''} ${dragOverIdx === idx ? 'drag-over' : ''}`}
                   onMouseDown={() => handlePhaseDragStart(phase.id)}
@@ -816,7 +816,7 @@ const handlePhaseDragEnd = async () => {
                   <span className="drag-handle" style={{ cursor: 'grab' }}>⋮⋮</span>
                   <div className="phase-color" style={{ backgroundColor: phase.color }}></div>
                   <span className="phase-name">{phase.name}</span>
-                  <button 
+                  <button
                     className="btn-icon phase-delete"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -856,7 +856,7 @@ const handlePhaseDragEnd = async () => {
                 defaultValue="#6b7280"
                 style={{ width: '40px', height: '40px', border: 'none', cursor: 'pointer' }}
               />
-              <button 
+              <button
                 className="btn-primary"
                 style={{ marginLeft: '8px' }}
                 disabled={isAddingPhase}
@@ -895,6 +895,14 @@ const handlePhaseDragEnd = async () => {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
+        {selectedBoard?.description && !showAllTasks && (
+          <div className="board-description-box">
+            <div className="description-content">
+              <strong>Descripción:</strong> {selectedBoard.description}
+            </div>
+          </div>
+        )}
+
         <div className="kanban-board">
           {(selectedBoard?.phases?.length ? selectedBoard.phases : localColumnOrder ? localColumnOrder.map(id => COLUMNS.find(c => c.id === id) || COLUMNS[0]) : COLUMNS).map((p: any, idx: number) => {
             const isPhase = !!p.name
@@ -969,7 +977,7 @@ const handlePhaseDragEnd = async () => {
 
         <DragOverlay>
           {activeTask ? (
-            <TaskCard task={activeTask} onClick={() => {}} />
+            <TaskCard task={activeTask} onClick={() => { }} />
           ) : null}
         </DragOverlay>
       </DndContext>
@@ -996,7 +1004,7 @@ const handlePhaseDragEnd = async () => {
                 </svg>
               </button>
             </div>
-            
+
             <form onSubmit={handleCreateTask} id="create-task-form" className="new-task-content">
               <div className="task-form-main">
                 <div className="form-field">
@@ -1011,7 +1019,7 @@ const handlePhaseDragEnd = async () => {
                     autoFocus
                   />
                 </div>
-                
+
                 <div className="form-field">
                   <label>Descripción</label>
                   <RichTextEditor
@@ -1021,11 +1029,11 @@ const handlePhaseDragEnd = async () => {
                   />
                 </div>
               </div>
-              
+
               <div className="task-form-side">
                 <div className="settings-card">
                   <h3>Configuración</h3>
-                  
+
                   <div className="setting-item">
                     <label>Prioridad</label>
                     <select
@@ -1039,7 +1047,7 @@ const handlePhaseDragEnd = async () => {
                       <option value="urgent">Urgente</option>
                     </select>
                   </div>
-                  
+
                   <div className="setting-item">
                     <label>Fecha límite</label>
                     <input
@@ -1050,7 +1058,7 @@ const handlePhaseDragEnd = async () => {
                     />
                   </div>
                 </div>
-                
+
                 <div className="assign-card">
                   <h3>Asignar a</h3>
                   <input
@@ -1094,7 +1102,7 @@ const handlePhaseDragEnd = async () => {
                 </div>
               </div>
             </form>
-            
+
             <div className="new-task-footer">
               <button type="button" onClick={() => setShowNewTaskModal(false)} className="btn-cancel" disabled={isCreatingTask}>
                 Cancelar

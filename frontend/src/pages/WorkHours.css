@@ -40,6 +40,7 @@
   flex-shrink: 0;
   overflow-x: auto;
   scrollbar-width: none;
+    margin-top: 30px;
 }
 
 .stats-row::-webkit-scrollbar {
@@ -999,4 +1000,92 @@
 
 .detail-actions .btn-primary {
   flex: 1;
+}
+
+/* Profile Incomplete Banner */
+.profile-incomplete-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 32px;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  flex-shrink: 0;
+}
+
+.profile-incomplete-banner .banner-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.profile-incomplete-banner .banner-content {
+  flex: 1;
+}
+
+.profile-incomplete-banner .banner-content strong {
+  font-size: 14px;
+  color: #92400e;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.profile-incomplete-banner .banner-content p {
+  font-size: 13px;
+  color: #a16207;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.profile-incomplete-banner .btn-primary {
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 10px 20px;
+  font-size: 13px;
+}
+
+/* Hours Counter */
+.hours-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.counter-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid #e5e7eb;
+  background: white;
+  font-size: 20px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.counter-btn:hover:not(:disabled) {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.counter-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.counter-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  min-width: 60px;
+  text-align: center;
 }

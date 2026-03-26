@@ -1,5 +1,5 @@
-import React from 'react'
 import { User } from '../../../types'
+import { CountryCitySelector } from '../../common/CountryCitySelector'
 
 interface UserModalProps {
   title: string
@@ -139,24 +139,12 @@ export function UserModal({
                   onChange={e => setForm({ ...form, phone_number: e.target.value })}
                 />
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>País</label>
-                  <input
-                    type="text"
-                    value={form.country}
-                    onChange={e => setForm({ ...form, country: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Ciudad</label>
-                  <input
-                    type="text"
-                    value={form.city}
-                    onChange={e => setForm({ ...form, city: e.target.value })}
-                  />
-                </div>
-              </div>
+              <CountryCitySelector
+                countryValue={form.country}
+                cityValue={form.city}
+                onCountryChange={(val) => setForm({ ...form, country: val, city: '' })}
+                onCityChange={(val) => setForm({ ...form, city: val })}
+              />
               <div className="form-group">
                 <label className="checkbox-label">
                   <input

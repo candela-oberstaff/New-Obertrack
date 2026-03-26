@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { userService, workHourService, uploadService } from '../services/api'
 import type { WorkHour, User } from '../types'
+import { CountryCitySelector } from '../components/common/CountryCitySelector'
 import './Profile.css'
 
 const MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -37,6 +38,19 @@ export default function Profile() {
   const canApprove = user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador'
 
   useEffect(() => {
+    if (user && !isEditing) {
+      setFormData({
+        name: user.name || '',
+        phone_number: user.phone_number || '',
+        country: user.country || '',
+        city: user.city || '',
+        location: user.location || '',
+        job_title: user.job_title || '',
+      })
+    }
+  }, [user, isEditing])
+
+  useEffect(() => {
     if (canApprove) {
       fetchPendingHours()
     }
@@ -64,23 +78,25 @@ export default function Profile() {
 
   const fetchCompanyStaff = async () => {
     try {
-      const data = await userService.getAll()
-      const allUsers = data.data || []
-      setCompanyStaff(allUsers.filter((u: User) => u.user_type === 'profesional' && u.empleador_id === user?.empleador_id))
+      const data = await userService.getEmployees()
+      setCompanyStaff(data)
     } catch (error) {
       console.error('Error fetching company staff:', error)
     }
   }
 
-  const handlePromoteToManager = async (userId: number) => {
-    if (!confirm('¿Promover a este profesional a Manager?')) return
+  const handleToggleManagerRole = async (userId: number, isCurrentlyManager: boolean) => {
+    const action = isCurrentlyManager ? 'quitar el rol de Manager' : 'promover a Manager'
+    if (!confirm(`¿Estás seguro de que quieres ${action} a este profesional?`)) return
+    
     try {
       await userService.promoteToManager(userId)
       fetchCompanyStaff()
-      setMessage({ type: 'success', text: 'Usuario promovido a Manager' })
+      const successMsg = isCurrentlyManager ? 'Rol de Manager quitado' : 'Usuario promovido a Manager'
+      setMessage({ type: 'success', text: successMsg })
       setTimeout(() => setMessage({ type: '', text: '' }), 3000)
     } catch (error) {
-      setMessage({ type: 'error', text: 'Error al promover usuario' })
+      setMessage({ type: 'error', text: 'Error al cambiar el rol del usuario' })
     }
   }
 
@@ -283,24 +299,12 @@ export default function Profile() {
                   </div>
                 </div>
                 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>País</label>
-                    <input
-                      type="text"
-                      value={formData.country}
-                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Ciudad</label>
-                    <input
-                      type="text"
-                      value={formData.city}
-                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    />
-                  </div>
-                </div>
+                <CountryCitySelector
+                  countryValue={formData.country}
+                  cityValue={formData.city}
+                  onCountryChange={(val) => setFormData(prev => ({ ...prev, country: val, city: '' }))}
+                  onCityChange={(val) => setFormData(prev => ({ ...prev, city: val }))}
+                />
                 
                 <div className="form-group">
                   <label>Puesto / Cargo</label>
@@ -442,29 +446,28 @@ export default function Profile() {
           {/* Personal de la Empresa - Para Empleadores */}
           {isEmployer && (
             <div className="sidebar-card team-card">
-              <h3>🏢 Personal de la Empresa</h3>
+              <h3>Personal de la Empresa</h3>
               <p className="team-count">{companyStaff.length} profesional(es) registrado(s)</p>
               <div className="team-list">
                 {companyStaff.map(member => (
                   <div key={member.id} className="team-member">
-                    <div className="member-avatar">
-                      {member.name?.charAt(0).toUpperCase()}
+                    <div className="member-row">
+                      <div className="member-avatar">
+                        {member.name?.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="member-info">
+                        <span className="member-name">{member.name}</span>
+                        <span className="member-role">
+                          {member.is_manager ? 'Manager' : 'Profesional'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="member-info">
-                      <span className="member-name">{member.name}</span>
-                      <span className="member-role">
-                        {member.is_manager ? '👔 Manager' : '💼 Profesional'}
-                      </span>
-                    </div>
-                    {!member.is_manager && (
-                      <button 
-                        className="btn-promote"
-                        onClick={() => handlePromoteToManager(member.id)}
-                        title="Promover a Manager"
-                      >
-                        ⬆️
-                      </button>
-                    )}
+                    <button 
+                      className={`btn-promote ${member.is_manager ? 'btn-demote' : ''}`}
+                      onClick={() => handleToggleManagerRole(member.id, !!member.is_manager)}
+                    >
+                      {member.is_manager ? 'Quitar Rol Manager' : 'Promover'}
+                    </button>
                   </div>
                 ))}
               </div>

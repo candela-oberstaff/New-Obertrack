@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { workHourService } from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import type { WorkHour } from '../types'
 import './WorkHours.css'
 
@@ -8,6 +9,13 @@ const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 const JORNADA_COMPLETA = 8
+
+// Format decimal hours to H:MM (e.g. 1.5 -> "1:30", 0 -> "0:00")
+const formatHoursMinutes = (hours: number): string => {
+  const h = Math.floor(hours)
+  const m = Math.round((hours - h) * 60)
+  return `${h}:${String(m).padStart(2, '0')}`
+}
 
 // Simple rich text editor for activities
 function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
@@ -109,6 +117,7 @@ function CalendarView({
 
 export default function WorkHours() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [workHours, setWorkHours] = useState<WorkHour[]>([])
   const [, setPendingHours] = useState<WorkHour[]>([])
   const [summary, setSummary] = useState({ total_hours: 0, approved_hours: 0, pending_hours: 0 })
@@ -118,6 +127,13 @@ export default function WorkHours() {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
   const [selectedWorkHour, setSelectedWorkHour] = useState<WorkHour | null>(null)
+
+  // Check if profile is complete (employers/superadmins are exempt)
+  const isProfileComplete = useMemo(() => {
+    if (!user) return false
+    if (user.is_superadmin || user.user_type === 'empleador') return true
+    return !!(user.phone_number && user.country && user.city && user.job_title && user.location)
+  }, [user])
 
   const [formData, setFormData] = useState({
     work_date: new Date().toISOString().split('T')[0],
@@ -255,15 +271,33 @@ export default function WorkHours() {
 
   return (
     <div className="work-hours-page">
+
+      {/* 
       <div className="page-header">
-        <div className="header-left">
+        <div className="header-left"> 
           <h1>⏱️ Mi Jornada</h1>
           <p className="header-subtitle">Registra tu día laboral</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
-          + Registrar Día
-        </button>
+        {isProfileComplete && (
+          <button className="btn-primary" onClick={() => setShowModal(true)}>
+            + Registrar Día
+          </button>
+        )}
       </div>
+      */}
+
+      {!isProfileComplete && ( 
+        <div className="profile-incomplete-banner">
+          <div className="banner-icon">⚠️</div>
+          <div className="banner-content">
+            <strong>Completa tu perfil para registrar horas</strong>
+            <p>Debes completar los campos de Teléfono, País, Ciudad, Puesto y Dirección en tu perfil antes de poder registrar tu jornada laboral.</p>
+          </div>
+          <button className="btn-primary" onClick={() => navigate('/profile')}>
+            Completar Perfil
+          </button>
+        </div>
+      )}
 
       <div className="stats-row">
         <div className="stat-card-mini">
@@ -409,7 +443,7 @@ export default function WorkHours() {
                   >
                     <span className="work-type-icon">⚠</span>
                     <span className="work-type-label">Ausencia</span>
-                    <span className="work-type-hours">{Math.max(0, 8 - (formData.absence_hours || 0))}h</span>
+                    <span className="work-type-hours">{formatHoursMinutes(Math.max(0, 8 - (formData.absence_hours || 0)))}</span>
                   </button>
                 </div>
               </div>
@@ -434,25 +468,37 @@ export default function WorkHours() {
                   </div>
 
                   <div className="form-group">
-                    <label>Horas de ausencia</label>
-                    <select
-                      value={formData.absence_hours}
-                      onChange={(e) => setFormData({ ...formData, absence_hours: Number(e.target.value) })}
-                      required
-                    >
-                      <option value={0}>0 horas</option>
-                      <option value={1}>1 hora</option>
-                      <option value={2}>2 horas</option>
-                      <option value={3}>3 horas</option>
-                      <option value={4}>4 horas</option>
-                      <option value={5}>5 horas</option>
-                      <option value={6}>6 horas</option>
-                      <option value={7}>7 horas</option>
-                      <option value={8}>8 horas (día completo)</option>
-                    </select>
-                    <p className="form-hint">
+                    <label>Horas Trabajadas</label>
+                    <div className="hours-counter">
+                      <button
+                        type="button"
+                        className="counter-btn"
+                        onClick={() => setFormData(prev => ({ ...prev, absence_hours: Math.max(0, prev.absence_hours - 0.5) }))}
+                        disabled={formData.absence_hours <= 0}
+                      >
+                        −
+                      </button>
+                      <span className="counter-value">
+                        {formatHoursMinutes(formData.absence_hours)}
+                      </span>
+                      <button
+                        type="button"
+                        className="counter-btn"
+                        onClick={() => setFormData(prev => ({ ...prev, absence_hours: Math.min(7.5, prev.absence_hours + 0.5) }))}
+                        disabled={formData.absence_hours >= 7.5}
+                      >
+                        +
+                      </button>
+                    </div>
+                 {/* 
+                 
+                   <p className="form-hint">
                       Horas a registrar: {Math.max(0, 8 - (formData.absence_hours || 0))}h
                     </p>
+                 
+                 */}
+                  
+
                   </div>
                 </>
               )}

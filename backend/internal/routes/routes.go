@@ -29,6 +29,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.GET("/employers", authHandler.GetEmployers)
 		}
 
 		// Administrative seed routes - should be disabled in production or strictly protected
