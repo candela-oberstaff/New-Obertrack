@@ -143,7 +143,9 @@ body {
   color: var(--gray-400);
 }
 
-button {
+.auth-card button,
+.modal-actions button,
+.create-first-channel {
   width: 100%;
   padding: 14px;
   background: var(--primary);
@@ -156,8 +158,14 @@ button {
   transition: all 0.2s;
 }
 
+button {
+  width: auto;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
 button:hover:not(:disabled) {
-  background: var(--primary-dark);
   transform: translateY(-1px);
 }
 
@@ -192,23 +200,7 @@ button:disabled {
   text-decoration: underline;
 }
 
-/* Layout */
-.app-layout {
-  display: flex;
-  height: 100vh;
-}
-
-.sidebar {
-  width: 260px;
-  background: var(--black);
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  z-index: 50;
-  overflow: visible;
-}
+/* Sidebar and Global Layout moved to Layout.css */
 
 .sidebar-header {
   padding: 24px;
@@ -314,29 +306,12 @@ button:disabled {
 
 .main-content {
   flex: 1;
-  margin-left: 260px;
-  height: 100vh;
+  min-height: 100vh;
   background: white;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-.main-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.main-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.main-content::-webkit-scrollbar-thumb {
-  background: transparent;
-}
-
-.main-content::-webkit-scrollbar-thumb:hover {
-  background: transparent;
 }
 
 .top-bar {
@@ -346,6 +321,7 @@ button:disabled {
   padding: 12px 24px;
   background: white;
   border-bottom: 1px solid var(--gray-200);
+  flex-shrink: 0;
 }
 
 /* Page */

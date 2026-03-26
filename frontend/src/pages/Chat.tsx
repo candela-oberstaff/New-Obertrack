@@ -19,7 +19,7 @@ interface Message {
 }
 
 export default function Chat() {
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [isConnected, setIsConnected] = useState(false)
@@ -51,7 +51,7 @@ export default function Chat() {
     try {
       const response = await fetch('/api/chat/messages', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         }
       })
       if (response.ok) {
@@ -66,7 +66,11 @@ export default function Chat() {
   const fetchUsers = async () => {
     try {
       const data = await userService.getAll()
-      setUsers(data.data.filter(u => u.id !== user?.id))
+      if (data && data.data) {
+        setUsers(data.data.filter(u => u.id !== user?.id))
+      } else {
+        setUsers([])
+      }
     } catch (error) {
       console.error('Error fetching users:', error)
     }
@@ -74,7 +78,7 @@ export default function Chat() {
 
   const connectWebSocket = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat`)
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat?token=${token}`)
 
     ws.onopen = () => {
       setIsConnected(true)

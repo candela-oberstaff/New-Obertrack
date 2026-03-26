@@ -57,6 +57,9 @@ func NewChannelHub(db *gorm.DB) *ChannelHub {
 }
 
 func (h *ChannelHub) Run() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case client := <-h.register:
@@ -70,6 +73,13 @@ func (h *ChannelHub) Run() {
 			for client := range h.clients {
 				err := client.WriteJSON(message)
 				if err != nil {
+					client.Close()
+					delete(h.clients, client)
+				}
+			}
+		case <-ticker.C:
+			for client := range h.clients {
+				if err := client.WriteMessage(websocket.PingMessage, nil); err != nil {
 					client.Close()
 					delete(h.clients, client)
 				}
@@ -157,6 +167,13 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 	channelType := models.ChannelTypePublic
 	if req.Type == "private" {
 		channelType = models.ChannelTypePrivate
+	}
+
+	// Check if channel already exists (idempotency)
+	var existingChannel models.Channel
+	if err := h.db.Where("name = ? AND type = ?", req.Name, channelType).First(&existingChannel).Error; err == nil {
+		c.JSON(http.StatusOK, existingChannel)
+		return
 	}
 
 	channel := models.Channel{

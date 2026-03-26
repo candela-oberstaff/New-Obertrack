@@ -39,18 +39,18 @@ export default function Dashboard() {
       console.log('Dashboard - tasks:', tasksData.status === 'fulfilled' ? tasksData.value : tasksData.reason)
       
       if (tasksData.status === 'fulfilled') {
-        setTasks(tasksData.value.data)
+        setTasks(tasksData.value?.data || [])
       }
       if (workHoursData.status === 'fulfilled') {
-        setWorkHours(workHoursData.value.data)
+        setWorkHours(workHoursData.value?.data || [])
       }
       if (summaryData.status === 'fulfilled') {
-        setSummary(summaryData.value)
+        setSummary(summaryData.value || { total_hours: 0, approved_hours: 0, pending_hours: 0 })
       }
 
       if (user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') {
         const employeesData = await userService.getEmployees()
-        setEmployees(employeesData)
+        setEmployees(employeesData || [])
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error)

@@ -39,6 +39,18 @@ export interface Task {
   creator?: User
   assignees?: User[]
   comments?: Comment[]
+  attachments?: TaskAttachment[]
+}
+
+export interface TaskAttachment {
+  id: number
+  task_id: number
+  file_name: string
+  file_url: string
+  file_size: number
+  mime_type: string
+  uploaded_by: number
+  created_at: string
 }
 
 export interface CreateTaskInput {
