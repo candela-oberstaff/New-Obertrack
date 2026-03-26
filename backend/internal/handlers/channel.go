@@ -98,7 +98,9 @@ func (h *ChannelHandler) GetChannels(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
 	var channels []models.Channel
-	if err := h.db.Where("is_active = ?", true).
+	if err := h.db.Table("channels").
+		Select("DISTINCT channels.*").
+		Where("channels.is_active = ?", true).
 		Joins("JOIN channel_members ON channel_members.channel_id = channels.id").
 		Where("channel_members.user_id = ?", userID).
 		Order("channels.created_at DESC").
@@ -189,12 +191,22 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 		return
 	}
 
+	// Add creator as a member
 	h.db.Model(&channel).Association("Members").Append(&models.User{ID: userID})
 
+	// Add other members if provided, but filter out creator if already included
 	if len(req.MemberIDs) > 0 {
-		var members []models.User
-		h.db.Find(&members, req.MemberIDs)
-		h.db.Model(&channel).Association("Members").Append(&members)
+		var filteredIDs []uint
+		for _, id := range req.MemberIDs {
+			if id != userID {
+				filteredIDs = append(filteredIDs, id)
+			}
+		}
+		if len(filteredIDs) > 0 {
+			var members []models.User
+			h.db.Find(&members, filteredIDs)
+			h.db.Model(&channel).Association("Members").Append(&members)
+		}
 	}
 
 	c.JSON(http.StatusCreated, channel)
