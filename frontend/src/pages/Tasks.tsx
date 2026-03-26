@@ -73,6 +73,9 @@ export default function Tasks() {
   })
   const [newBoardPhaseSearch, setNewBoardPhaseSearch] = useState('')
   const [newTaskData, setNewTaskData] = useState({
+    title: '',
+    description: '',
+    priority: 'medium',
     end_date: '',
     assignees: [] as number[],
     attachments: [] as File[],
