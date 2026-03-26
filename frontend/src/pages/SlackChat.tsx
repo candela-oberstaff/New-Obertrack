@@ -12,8 +12,6 @@ import { NewChannelModal } from '../components/Chat/Modals/NewChannelModal'
 import { ChannelSettingsModal } from '../components/Chat/Modals/ChannelSettingsModal'
 import { AddMembersModal } from '../components/Chat/Modals/AddMembersModal'
 import { PinnedMessagesModal } from '../components/Chat/Modals/PinnedMessagesModal'
-import { SearchModal } from '../components/Chat/Modals/SearchModal'
-import { StarredMessagesModal } from '../components/Chat/Modals/StarredMessagesModal'
 import './SlackChat.css'
 
 // Singleton para AudioContext
@@ -53,11 +51,6 @@ export default function SlackChat() {
   const [editContent, setEditContent] = useState('')
   const [showThread, setShowThread] = useState<Message | null>(null)
   const [threadReplies, setThreadReplies] = useState<Message[]>([])
-  const [showSearch, setShowSearch] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Message[]>([])
-  const [showStarred, setShowStarred] = useState(false)
-  const [starredMessages, setStarredMessages] = useState<Message[]>([])
   const [showMentionDropdown, setShowMentionDropdown] = useState(false)
   const [mentionFilterUsers, setMentionFilterUsers] = useState<User[]>([])
   const [originalFavicon, setOriginalFavicon] = useState<string | null>(null)
@@ -229,10 +222,7 @@ export default function SlackChat() {
             setMessages(prev => prev.map(m => m.id === msg.data.id ? { ...m, ...msg.data, is_edited: true } : m))
           } else if (msg.type === 'message_deleted') {
             setMessages(prev => prev.map(m => m.id === msg.data.id ? { ...m, is_deleted: true, content: '[Mensaje eliminado]' } : m))
-          } else if (msg.type === 'reaction_added') {
-            setMessages(prev => prev.map(m => m.id === msg.data.message_id ? { ...m, reactions: [...(m.reactions || []), msg.data.reaction] } : m))
-          } else if (msg.type === 'reaction_removed') {
-            setMessages(prev => prev.map(m => m.id === msg.data.message_id ? { ...m, reactions: (m.reactions || []).filter(r => !(r.user_id === msg.data.user_id && r.emoji === msg.data.emoji)) } : m))
+
           } else if (msg.type === 'thread_reply') {
             setThreadReplies(prev => [...prev, msg.data])
           }
@@ -351,8 +341,7 @@ export default function SlackChat() {
     else { if (audioRef.current) audioRef.current.pause(); audioRef.current = new Audio(url); audioRef.current.onended = () => setPlayingAudio(null); audioRef.current.play(); setPlayingAudio(url) }
   }
 
-  const addReaction = async (messageId: number, emoji: string) => { if (selectedChannel) try { await channelService.addReaction(selectedChannel.id, messageId, emoji) } catch (e) { console.error(e) } }
-  const removeReaction = async (messageId: number, emoji: string) => { if (selectedChannel) try { await channelService.removeReaction(selectedChannel.id, messageId, emoji) } catch (e) { console.error(e) } }
+
   
   const handleSaveEdit = async () => {
     if (!selectedChannel || !editingMessageId || !editContent.trim()) return
@@ -365,7 +354,7 @@ export default function SlackChat() {
   const deleteMessage = async (id: number) => { if (selectedChannel && confirm('¿Eliminar mensaje?')) { setMessages(prev => prev.map(m => m.id === id ? { ...m, is_deleted: true, content: '[Mensaje eliminado]' } : m)); try { await channelService.deleteMessage(selectedChannel.id, id) } catch (e) { console.error(e) } } }
   const openThread = async (msg: Message) => { if (!selectedChannel) return; setShowThread(msg); try { const replies = await channelService.getThreadReplies(selectedChannel.id, msg.id); setThreadReplies(replies || []) } catch (e) { console.error(e) } }
   const sendThreadReply = async (content: string) => { if (selectedChannel && showThread && content.trim()) try { const reply = await channelService.sendThreadReply(selectedChannel.id, showThread.id, content); setThreadReplies(prev => [...prev, reply]) } catch (e) { console.error(e) } }
-  const handleSearch = async () => { if (selectedChannel && searchQuery.trim()) try { const results = await channelService.searchMessages(selectedChannel.id, searchQuery); setSearchResults(results || []) } catch (e) { console.error(e) } }
+
   const leaveChannel = async (id: number) => { try { await channelService.leaveChannel(id); if (selectedChannel?.id === id) setSelectedChannel(null); fetchChannels() } catch (e) { console.error(e) } }
   const addMember = async (id: number) => { if (selectedChannel) try { await channelService.addMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
   const removeMember = async (id: number) => { if (selectedChannel) try { await channelService.removeMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
@@ -385,19 +374,12 @@ export default function SlackChat() {
         selectedChannel={selectedChannel}
         showMobileChannels={showMobileChannels}
         setShowMobileChannels={setShowMobileChannels}
-        showSearch={showSearch}
-        setShowSearch={setShowSearch}
-        setSearchQuery={setSearchQuery}
-        setSearchResults={setSearchResults}
-        setShowStarred={setShowStarred}
-        loadStarredMessages={async () => { try { const msgs = await channelService.getStarredMessages(); setStarredMessages(msgs || []) } catch (e) { console.error(e) } }}
         showPinnedMessages={showPinnedMessages}
         setShowPinnedMessages={setShowPinnedMessages}
         pinnedMessagesCount={pinnedMessages.length}
         setShowAddMembers={setShowAddMembers}
         setShowChannelSettings={setShowChannelSettings}
         leaveChannel={leaveChannel}
-        setShowNewChannelModal={setShowNewChannelModal}
       />
 
       <div className="chat-body">
@@ -431,8 +413,7 @@ export default function SlackChat() {
                 onPin={pinMessage}
                 onUnpin={unpinMessage}
                 onReply={openThread}
-                onReactionAdd={addReaction}
-                onReactionRemove={removeReaction}
+
                 playingAudio={playingAudio}
                 togglePlayAudio={togglePlayAudio}
                 formatTime={formatTime}
@@ -451,6 +432,14 @@ export default function SlackChat() {
                 startRecording={startRecording}
                 stopRecording={stopRecording}
                 sendTypingIndicator={sendTypingIndicator}
+                onSend={() => {
+                  if (newMessage.trim()) {
+                    const tempId = `temp-${Date.now()}`
+                    const optimisticMsg: Message = { id: 0, channel_id: selectedChannel!.id, user_id: user!.id, content: newMessage, tempId, created_at: new Date().toISOString(), user: user! }
+                    setMessages(prev => [...prev, optimisticMsg])
+                    sendMessage(undefined, undefined, tempId)
+                  }
+                }}
               />
 
               {showMentionDropdown && (
@@ -522,26 +511,7 @@ export default function SlackChat() {
         />
       )}
 
-      {showSearch && (
-        <SearchModal
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          searchResults={searchResults}
-          onSearch={handleSearch}
-          onClose={() => setShowSearch(false)}
-          formatTime={formatTime}
-        />
-      )}
 
-      {showStarred && (
-        <StarredMessagesModal
-          starredMessages={starredMessages}
-          currentUser={user}
-          onUnstar={async (id) => { try { await channelService.unstarMessage(id); const msgs = await channelService.getStarredMessages(); setStarredMessages(msgs || []) } catch (e) { console.error(e) } }}
-          onClose={() => setShowStarred(false)}
-          formatTime={formatTime}
-        />
-      )}
 
       <ThreadPanel
         showThread={showThread}

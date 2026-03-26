@@ -16,8 +16,7 @@ interface MessageListProps {
   onPin: (id: number) => void
   onUnpin: (id: number) => void
   onReply: (msg: Message) => void
-  onReactionAdd: (id: number, emoji: string) => void
-  onReactionRemove: (id: number, emoji: string) => void
+
   playingAudio: string | null
   togglePlayAudio: (url: string) => void
   formatTime: (date: string) => string
@@ -39,8 +38,7 @@ export function MessageList({
   onPin,
   onUnpin,
   onReply,
-  onReactionAdd,
-  onReactionRemove,
+
   playingAudio,
   togglePlayAudio,
   formatTime,
@@ -72,8 +70,7 @@ export function MessageList({
             onPin={onPin}
             onUnpin={onUnpin}
             onReply={onReply}
-            onReactionAdd={onReactionAdd}
-            onReactionRemove={onReactionRemove}
+
             playingAudio={playingAudio}
             togglePlayAudio={togglePlayAudio}
             formatTime={formatTime}

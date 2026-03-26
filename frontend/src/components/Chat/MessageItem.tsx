@@ -1,6 +1,7 @@
 import React from 'react'
-import { Message, MessageReaction } from '../../types/chat'
+import { Message } from '../../types/chat'
 import { User } from '../../types'
+import { ReplyIcon, EditIcon, TrashIcon, PinIcon } from './Icons'
 
 interface MessageItemProps {
   message: Message
@@ -15,8 +16,7 @@ interface MessageItemProps {
   onPin: (id: number) => void
   onUnpin: (id: number) => void
   onReply: (msg: Message) => void
-  onReactionAdd: (id: number, emoji: string) => void
-  onReactionRemove: (id: number, emoji: string) => void
+
   playingAudio: string | null
   togglePlayAudio: (url: string) => void
   formatTime: (date: string) => string
@@ -36,8 +36,7 @@ export function MessageItem({
   onPin,
   onUnpin,
   onReply,
-  onReactionAdd,
-  onReactionRemove,
+
   playingAudio,
   togglePlayAudio,
   formatTime,
@@ -50,25 +49,7 @@ export function MessageItem({
 
   const isOwnMessage = message.user_id === currentUser?.id
 
-  const renderReactions = (reactions: MessageReaction[]) => {
-    const grouped = (reactions || []).reduce((acc, r) => {
-      acc[r.emoji] = (acc[r.emoji] || 0) + 1
-      return acc
-    }, {} as Record<string, number>)
 
-    return Object.entries(grouped).map(([emoji, count]) => {
-      const hasReacted = (reactions || []).some(r => r.user_id === currentUser?.id && r.emoji === emoji)
-      return (
-        <span 
-          key={emoji} 
-          className={`reaction-badge ${hasReacted ? 'active' : ''}`}
-          onClick={() => hasReacted ? onReactionRemove(message.id, emoji) : onReactionAdd(message.id, emoji)}
-        >
-          {emoji} {count}
-        </span>
-      )
-    })
-  }
 
   return (
     <div className={`message-item ${isOwnMessage ? 'own-message' : ''} ${message.is_pinned ? 'pinned' : ''}`}>
@@ -88,10 +69,11 @@ export function MessageItem({
               value={editContent} 
               onChange={(e) => setEditContent(e.target.value)}
               rows={3}
+              autoFocus
             />
             <div className="edit-actions">
-              <button onClick={onCancelEdit}>Cancelar</button>
-              <button className="btn-save" onClick={onSaveEdit}>Guardar</button>
+              <button className="btn-cancel" onClick={onCancelEdit}>Cancelar</button>
+              <button className="btn-save" onClick={onSaveEdit}>Guardar cambios</button>
             </div>
           </div>
         ) : (
@@ -122,27 +104,29 @@ export function MessageItem({
           </div>
         )}
 
+
+
         {!message.is_deleted && (
-          <div className="message-reactions">
-            {renderReactions(message.reactions || [])}
-            <button className="add-reaction-btn" onClick={() => onReactionAdd(message.id, '👍')}>+</button>
+          <div className="message-actions">
+
+            <button className="action-btn" onClick={() => onReply(message)} title="Reply in thread">
+              <ReplyIcon />
+            </button>
+            {isOwnMessage && (
+              <>
+                <button className="action-btn" onClick={() => onStartEdit(message)} title="Edit message">
+                  <EditIcon />
+                </button>
+                <button className="action-btn delete" onClick={() => onDelete(message.id)} title="Delete message">
+                  <TrashIcon />
+                </button>
+              </>
+            )}
+            <button className="action-btn" onClick={() => message.is_pinned ? onUnpin(message.id) : onPin(message.id)} title={message.is_pinned ? "Unpin message" : "Pin message"}>
+              <PinIcon />
+            </button>
           </div>
         )}
-
-        <div className="message-actions">
-          <button onClick={() => onReply(message)}>Reply</button>
-          {!message.is_deleted && isOwnMessage && (
-            <>
-              <button onClick={() => onStartEdit(message)}>Edit</button>
-              <button onClick={() => onDelete(message.id)}>Delete</button>
-            </>
-          )}
-          {!message.is_deleted && (
-            <button onClick={() => message.is_pinned ? onUnpin(message.id) : onPin(message.id)}>
-              {message.is_pinned ? 'Unpin' : 'Pin'}
-            </button>
-          )}
-        </div>
       </div>
     </div>
   )

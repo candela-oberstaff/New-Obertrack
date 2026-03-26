@@ -23,18 +23,9 @@ export interface Message {
   is_edited?: boolean
   is_deleted?: boolean
   parent_id?: number
-  reactions?: MessageReaction[]
   created_at: string
   user?: User
   tempId?: string
-}
-
-export interface MessageReaction {
-  id: number
-  message_id: number
-  user_id: number
-  emoji: string
-  user?: User
 }
 
 export interface ChannelMember {
