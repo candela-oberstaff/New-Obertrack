@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
 import { 
@@ -86,19 +86,65 @@ export default function Tasks() {
     return saved ? JSON.parse(saved) : null
   })
 
-  const filteredUsers = users.filter(user => 
-    user.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
-    user.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
-  )
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = u.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
+                         u.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
+    if (!matchesSearch) return false
+    
+    // In search, if a board is selected, filter by membership
+    const currentBoardId = selectedBoard?.id || (boards.length > 0 ? boards[0].id : null)
+    if (!currentBoardId) return true
+    
+    const board = boards.find(b => b.id === currentBoardId)
+    return board?.members?.some(m => m.id === u.id)
+  })
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  const fetchTasks = useCallback(async () => {
+    try {
+      const params: Record<string, unknown> = {}
+      if (!showAllTasks && selectedBoard) {
+        params.board_id = selectedBoard.id
+      }
+      const tasksRes = await taskService.getAll(params)
+      setTasks(tasksRes.data || [])
+    } catch (error) {
+      console.error('Error fetching tasks:', error)
+    }
+  }, [selectedBoard, showAllTasks])
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const [usersRes, boardsRes] = await Promise.all([
+        userService.getAll(),
+        boardService.getAll(),
+      ])
+      setUsers(usersRes.data || [])
+      setBoards(boardsRes || [])
+      
+      // Select first board if nothing selected and not in "all tasks" mode
+      if (boardsRes && boardsRes.length > 0 && !selectedBoard && !showAllTasks) {
+        setSelectedBoard(boardsRes[0])
+      }
+    } catch (error) {
+      console.error('Error fetching initial data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [selectedBoard, showAllTasks])
+
   useEffect(() => {
     fetchData()
   }, [])
+
+  useEffect(() => {
+    fetchTasks()
+  }, [fetchTasks])
 
   useEffect(() => {
     if (localColumnOrder) {
@@ -112,46 +158,7 @@ export default function Tasks() {
     }
     window.addEventListener('task-assigned', handleTaskAssigned)
     return () => window.removeEventListener('task-assigned', handleTaskAssigned)
-  }, [])
-
-  useEffect(() => {
-    fetchTasks()
-  }, [selectedBoard])
-
-  const fetchData = async () => {
-    try {
-      const [usersRes, boardsRes] = await Promise.all([
-        userService.getAll(),
-        boardService.getAll(),
-      ])
-      setUsers(usersRes.data || [])
-      setBoards(boardsRes || [])
-      if (boardsRes && boardsRes.length > 0 && !selectedBoard) {
-        setSelectedBoard(boardsRes[0])
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const fetchTasks = async () => {
-    try {
-      const params: Record<string, unknown> = {}
-      if (!showAllTasks && selectedBoard) {
-        params.board_id = selectedBoard.id
-      }
-      const tasksRes = await taskService.getAll(params)
-      setTasks(tasksRes.data || [])
-    } catch (error) {
-      console.error('Error fetching tasks:', error)
-    }
-  }
-
-  useEffect(() => {
-    fetchTasks()
-  }, [selectedBoard, showAllTasks])
+  }, [fetchTasks])
 
   const handleCreateBoard = async () => {
     if (!newBoardData.name.trim()) return
@@ -353,11 +360,18 @@ const handlePhaseDragEnd = async () => {
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const boardId = selectedBoard?.id || (boards.length > 0 ? boards[0].id : 0)
+      
+      if (!boardId) {
+        showError('Debes seleccionar o crear un tablero antes de añadir una tarea')
+        return
+      }
+
       const taskData: CreateTaskInput = {
         title: newTaskData.title,
         description: newTaskData.description || undefined,
         priority: newTaskData.priority || undefined,
-        board_id: selectedBoard?.id,
+        board_id: boardId,
       }
       
       if (newTaskData.end_date) {
@@ -427,23 +441,27 @@ const handlePhaseDragEnd = async () => {
   const handleDeleteBoard = async (boardId: number) => {
     if (!confirm('¿Eliminar este tablero? Esta acción no se puede deshacer.')) return
     setIsDeletingBoard(true)
-    // Clear the task panel and the board immediately to avoid
-    // blank-screen render errors while the delete is in-flight.
-    if (selectedBoard?.id === boardId) {
-      setSelectedTask(null)
-      setSelectedBoard(null)
-    }
+    
     try {
       await boardService.delete(boardId)
       const boardsRes = await boardService.getAll()
       setBoards(boardsRes)
-      setSelectedBoard(boardsRes.length > 0 ? boardsRes[0] : null)
+      
+      // Update selection after successful deletion
+      if (selectedBoard?.id === boardId) {
+        setSelectedTask(null)
+        if (boardsRes.length > 0) {
+          setSelectedBoard(boardsRes[0])
+        } else {
+          setSelectedBoard(null)
+          setShowAllTasks(true)
+        }
+      }
     } catch (error) {
       console.error('Error deleting board:', error)
-      // Restore by refetching on error
+      // Refetch to ensure state is consistent on error
       const boardsRes = await boardService.getAll()
       setBoards(boardsRes)
-      if (boardsRes.length > 0) setSelectedBoard(boardsRes[0])
     } finally {
       setIsDeletingBoard(false)
     }
@@ -528,7 +546,7 @@ const handlePhaseDragEnd = async () => {
             {boards.length > 0 ? (
               <>
                 <select 
-                  value={showAllTasks ? 'all' : (selectedBoard?.id || '')} 
+                  value={showAllTasks ? 'all' : (selectedBoard?.id || (boards.length > 0 ? boards[0].id : ''))} 
                   onChange={(e) => {
                     if (e.target.value === 'all') {
                       setShowAllTasks(true)
@@ -536,7 +554,7 @@ const handlePhaseDragEnd = async () => {
                     } else {
                       setShowAllTasks(false)
                       const board = boards.find(b => b.id === Number(e.target.value))
-                      setSelectedBoard(board || null)
+                      if (board) setSelectedBoard(board)
                     }
                   }}
                   style={{ borderLeftColor: showAllTasks ? '#6366f1' : (selectedBoard?.color || '#3b82f6') }}
