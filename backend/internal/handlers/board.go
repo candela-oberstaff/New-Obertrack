@@ -79,6 +79,66 @@ func (h *BoardHandler) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, boards)
 }
 
+// GetPublicBoards returns all boards that the current user is NOT a member of.
+func (h *BoardHandler) GetPublicBoards(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	// Get boards the user already belongs to (as creator or member)
+	var myBoardIDs []uint
+	h.db.Model(&models.Board{}).
+		Select("boards.id").
+		Joins("LEFT JOIN board_members ON board_members.board_id = boards.id").
+		Where("board_members.user_id = ? OR boards.created_by = ?", userID, userID).
+		Group("boards.id").
+		Pluck("boards.id", &myBoardIDs)
+
+	var boards []models.Board
+	query := h.db.Preload("Creator").Preload("Members")
+	if len(myBoardIDs) > 0 {
+		query = query.Where("id NOT IN ?", myBoardIDs)
+	}
+	query.Find(&boards)
+
+	c.JSON(http.StatusOK, boards)
+}
+
+// JoinBoard lets the current user join an existing board as a member.
+func (h *BoardHandler) JoinBoard(c *gin.Context) {
+	boardID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid board ID"})
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+
+	var board models.Board
+	if err := h.db.First(&board, boardID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Board not found"})
+		return
+	}
+
+	// Check if already a member
+	var existing int64
+	h.db.Model(&models.BoardMember{}).Where("board_id = ? AND user_id = ?", boardID, userID).Count(&existing)
+	if existing > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "Ya eres miembro de este tablero"})
+		return
+	}
+
+	bm := models.BoardMember{BoardID: uint(boardID), UserID: userID}
+	if err := h.db.Create(&bm).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to join board"})
+		return
+	}
+
+	h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
+		return db.Order("\"order\" ASC")
+	}).First(&board, boardID)
+
+	c.JSON(http.StatusOK, board)
+}
+
 func (h *BoardHandler) GetByID(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {

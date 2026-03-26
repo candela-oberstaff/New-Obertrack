@@ -9,589 +9,26 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  useDroppable,
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core'
 import {
-  SortableContext,
   sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
 } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { taskService, userService, boardService } from '../services/api'
-import type { Task, User, TaskStatus, TaskPriority, CreateTaskInput, Board } from '../types'
+import type { Task, User, TaskStatus, CreateTaskInput, Board } from '../types'
+import { RichTextEditor } from '../components/Tasks/RichTextEditor'
+import { TaskCard } from '../components/Tasks/TaskCard'
+import { Column } from '../components/Tasks/Column'
+import { TaskDetailPanel } from '../components/Tasks/TaskDetailPanel'
+import { ColumnType } from '../components/Tasks/types'
 import './Tasks.css'
 
-interface RichTextEditorProps {
-  value: string
-  onChange: (value: string) => void
-  placeholder?: string
-}
-
-function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
-  return (
-    <div className="rich-text-editor">
-      <div className="rich-text-toolbar">
-        <button type="button" onClick={() => {
-          const selection = window.getSelection()?.toString() || ''
-          if (selection) onChange(value + `<strong>${selection}</strong>`)
-        }} title="Negrita">
-          <strong>B</strong>
-        </button>
-        <button type="button" onClick={() => {
-          const selection = window.getSelection()?.toString() || ''
-          if (selection) onChange(value + `<em>${selection}</em>`)
-        }} title="Cursiva">
-          <em>I</em>
-        </button>
-        <button type="button" onClick={() => {
-          const selection = window.getSelection()?.toString() || ''
-          if (selection) onChange(value + `<u>${selection}</u>`)
-        }} title="Subrayado">
-          <u>U</u>
-        </button>
-        <span className="toolbar-separator">|</span>
-        <button type="button" onClick={() => onChange(value + '<ul>\n  <li>Elemento 1</li>\n  <li>Elemento 2</li>\n</ul>')} title="Viñetas">
-          •
-        </button>
-        <button type="button" onClick={() => onChange(value + '<ol>\n  <li>Elemento 1</li>\n  <li>Elemento 2</li>\n</ol>')} title="Numeración">
-          1.
-        </button>
-        <span className="toolbar-separator">|</span>
-        <button type="button" onClick={() => {
-          const url = prompt('Ingresa la URL:')
-          if (url) onChange(value + `<a href="${url}">${url}</a>`)
-        }} title="Enlace">
-          Link
-        </button>
-        <button type="button" onClick={() => onChange(value + '<h2>Título</h2>')} title="Título">
-          H2
-        </button>
-        <button type="button" onClick={() => onChange(value + '<p>Párrafo</p>')} title="Párrafo">
-          P
-        </button>
-      </div>
-      <textarea
-        className="rich-text-content"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder || 'Escribe aquí...'}
-        rows={8}
-      />
-    </div>
-  )
-}
-
-const COLUMNS = [
+const COLUMNS: ColumnType[] = [
   { id: 'por_hacer', title: 'Por hacer', color: '#6b7280' },
   { id: 'en_proceso', title: 'En proceso', color: '#3b82f6' },
   { id: 'finalizado', title: 'Finalizado', color: '#22c55e' },
 ]
-
-interface ColumnType {
-  id: string
-  title: string
-  color: string
-}
-
-interface TaskCardProps {
-  task: Task
-  isDragging?: boolean
-  onClick: () => void
-}
-
-function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      urgent: '#ef4444',
-      high: '#f97316',
-      medium: '#eab308',
-      low: '#22c55e',
-    }
-    return colors[priority] || '#6b7280'
-  }
-
-  return (
-    <div
-      className={`kanban-card ${isDragging ? 'dragging' : ''} ${task.completed ? 'completed' : ''}`}
-      onClick={onClick}
-    >
-      <div className="card-priority" style={{ backgroundColor: getPriorityColor(task.priority) }} />
-      <h4 className="card-title">{task.title}</h4>
-      {task.description && (
-        <p className="card-description" dangerouslySetInnerHTML={{ __html: task.description.replace(/<[^>]*>/g, ' ').substring(0, 100) + (task.description.length > 100 ? '...' : '') }} />
-      )}
-      <div className="card-meta">
-        {task.start_date && (
-          <span className="card-date">
-            {new Date(task.start_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
-          </span>
-        )}
-        {task.assignees && task.assignees.length > 0 && (
-          <div className="card-assignees">
-            {task.assignees.slice(0, 3).map((user) => (
-              <div key={user.id} className="assignee-avatar" title={user.name}>
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-            ))}
-            {task.assignees.length > 3 && (
-              <div className="assignee-avatar more">+{task.assignees.length - 3}</div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-interface SortableTaskCardProps {
-  task: Task
-  onClick: () => void
-}
-
-function SortableTaskCard({ task, onClick }: SortableTaskCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task.id })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCard task={task} onClick={onClick} />
-    </div>
-  )
-}
-
-interface ColumnProps {
-  column: ColumnType
-  tasks: Task[]
-  onTaskClick: (task: Task) => void
-  isDragging?: boolean
-}
-
-function Column({ column, tasks, onTaskClick, onMoveLeft, onMoveRight, canMoveLeft, canMoveRight }: ColumnProps & { onMoveLeft?: () => void, onMoveRight?: () => void, canMoveLeft?: boolean, canMoveRight?: boolean }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: column.id,
-  })
-
-  return (
-    <div 
-      className={`kanban-column ${isOver ? 'drag-over' : ''}`}
-    >
-      <div className="column-header">
-        <div className="column-title">
-          <span className="column-dot" style={{ backgroundColor: column.color }} />
-          <span>{column.title}</span>
-        </div>
-        <div className="column-actions">
-          <button 
-            className="column-move-btn" 
-            onClick={onMoveLeft}
-            disabled={!canMoveLeft}
-            title="Mover a la izquierda"
-          >←</button>
-          <button 
-            className="column-move-btn" 
-            onClick={onMoveRight}
-            disabled={!canMoveRight}
-            title="Mover a la derecha"
-          >→</button>
-          <span className="column-count">{tasks.length}</span>
-        </div>
-      </div>
-      <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="column-content" ref={setNodeRef}>
-          {tasks.map((task) => (
-            <SortableTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
-          ))}
-        </div>
-      </SortableContext>
-    </div>
-  )
-}
-
-interface TaskDetailPanelProps {
-  task: Task | null
-  users: User[]
-  onClose: () => void
-  onUpdate: (id: number, data: Partial<Task>) => Promise<void>
-  onDelete: (id: number) => Promise<void>
-  columns: ColumnType[]
-}
-
-function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, columns }: TaskDetailPanelProps) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [newComment, setNewComment] = useState('')
-  const [isSubmittingComment, setIsSubmittingComment] = useState(false)
-  const [isUpdating, setIsUpdating] = useState(false)
-  const [assigneeSearch, setAssigneeSearch] = useState('')
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [taskComments, setTaskComments] = useState(task?.comments || [])
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    priority: 'medium',
-    status: 'por_hacer',
-    start_date: '',
-    end_date: '',
-    assignees: [] as number[],
-  })
-
-  useEffect(() => {
-    if (task) {
-      setFormData({
-        title: task.title,
-        description: task.description || '',
-        priority: task.priority,
-        status: task.status,
-        start_date: task.start_date?.split('T')[0] || '',
-        end_date: task.end_date?.split('T')[0] || '',
-        assignees: task.assignees?.map(a => a.id) || [],
-      })
-      setTaskComments(task.comments || [])
-    }
-  }, [task])
-
-  const refreshComments = async () => {
-    try {
-      const updated = await taskService.getById(task!.id)
-      setTaskComments(updated.comments || [])
-    } catch (error) {
-      console.error('Error refreshing comments:', error)
-    }
-  }
-
-  useEffect(() => {
-    if (task?.id) {
-      refreshComments()
-    }
-  }, [task?.id])
-
-  if (!task) return null
-
-  const handleAddComment = async () => {
-    if (!newComment.trim()) return
-    setIsSubmittingComment(true)
-    try {
-      await taskService.addComment(task.id, newComment)
-      setNewComment('')
-      await refreshComments()
-    } catch (error) {
-      console.error('Error adding comment:', error)
-    } finally {
-      setIsSubmittingComment(false)
-    }
-  }
-
-  const handleSave = async () => {
-    setIsUpdating(true)
-    await onUpdate(task.id, {
-      title: formData.title,
-      description: formData.description,
-      priority: formData.priority as TaskPriority,
-      status: formData.status as TaskStatus,
-      start_date: formData.start_date || undefined,
-      end_date: formData.end_date || undefined,
-    })
-    setIsEditing(false)
-    setIsUpdating(false)
-  }
-
-  const handleStatusChange = async (newStatus: string) => {
-    await onUpdate(task.id, { status: newStatus as Task['status'] })
-  }
-
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      urgent: '#ef4444',
-      high: '#f97316',
-      medium: '#eab308',
-      low: '#22c55e',
-    }
-    return colors[priority] || '#6b7280'
-  }
-
-  return (
-    <div className="task-detail-panel">
-      <div className="panel-header">
-        <h2>{isEditing ? 'Editar Tarea' : 'Detalles de la tarea'}</h2>
-        <button className="close-btn" onClick={onClose}>✕</button>
-      </div>
-
-      <div className="panel-content">
-        {isEditing ? (
-          <div className="edit-form">
-            <div className="form-group">
-              <label>Título</label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label>Descripción</label>
-              <RichTextEditor
-                value={formData.description}
-                onChange={(value) => setFormData({ ...formData, description: value })}
-              />
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Prioridad</label>
-                <select
-                  value={formData.priority}
-                  onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                >
-                  <option value="low">Baja</option>
-                  <option value="medium">Media</option>
-                  <option value="high">Alta</option>
-                  <option value="urgent">Urgente</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Estado</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                >
-                  <option value="por_hacer">Por hacer</option>
-                  <option value="en_proceso">En proceso</option>
-                  <option value="finalizado">Finalizado</option>
-                </select>
-              </div>
-            </div>
-            <div className="form-row">
-              <div className="form-group">
-                <label>Fecha inicio</label>
-                <input
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Fecha límite</label>
-                <input
-                  type="date"
-                  value={formData.end_date}
-                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Asignados</label>
-              <div className="assignees-edit-list">
-                {formData.assignees.length > 0 && (
-                  <div className="assigned-chips">
-                    {formData.assignees.map((id) => {
-                      const user = users.find(u => u.id === id)
-                      if (!user) return null
-                      return (
-                        <div key={user.id} className="assignee-chip">
-                          <span>{user.name || user.email}</span>
-                          <button
-                            type="button"
-                            className="remove-assignee"
-                            onClick={() => setFormData({
-                              ...formData,
-                              assignees: formData.assignees.filter(aid => aid !== user.id)
-                            })}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-                <div className="assignee-dropdown-wrapper">
-                  <input
-                    type="text"
-                    className="assignee-search"
-                    placeholder="Buscar usuario..."
-                    value={assigneeSearch}
-                    onChange={(e) => setAssigneeSearch(e.target.value)}
-                  />
-                  <div className="assignee-dropdown">
-                    {users
-                      .filter(u => 
-                        u.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
-                        u.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
-                      )
-                      .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
-                      .map(user => {
-                        const isAssigned = formData.assignees.includes(user.id)
-                        return (
-                          <div
-                            key={user.id}
-                            className={`assignee-option ${isAssigned ? 'assigned' : ''}`}
-                            onClick={() => {
-                              if (isAssigned) {
-                                setFormData({
-                                  ...formData,
-                                  assignees: formData.assignees.filter(aid => aid !== user.id)
-                                })
-                              } else {
-                                setFormData({
-                                  ...formData,
-                                  assignees: [...formData.assignees, user.id]
-                                })
-                              }
-                            }}
-                          >
-                            <div className="chip-avatar">{user.name?.charAt(0).toUpperCase() || '?'}</div>
-                            <span className="assignee-name">{user.name || user.email}</span>
-                            {isAssigned && <span className="assignee-check">✓</span>}
-                          </div>
-                        )
-                      })}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="form-actions">
-              <button onClick={() => setIsEditing(false)} disabled={isUpdating}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave} disabled={isUpdating}>
-                {isUpdating ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="task-status-bar">
-              <select
-                value={task.status}
-                onChange={(e) => handleStatusChange(e.target.value)}
-                className="status-select"
-              >
-                {columns.map((col) => (
-                  <option key={col.id} value={col.id}>{col.title}</option>
-                ))}
-              </select>
-              <span
-                className="priority-badge"
-                style={{ backgroundColor: getPriorityColor(task.priority) }}
-              >
-                {task.priority}
-              </span>
-            </div>
-
-            <h3 className="task-title">{task.title}</h3>
-
-            <div className="task-section">
-              <h4>Descripción</h4>
-              {task.description ? (
-                <div className="task-description-html" dangerouslySetInnerHTML={{ __html: task.description }} />
-              ) : (
-                <p>Sin descripción</p>
-              )}
-            </div>
-
-            <div className="task-dates-row">
-              {task.start_date && (
-                <div className="date-item">
-                  <span className="date-label">Inicio</span>
-                  <span>{new Date(task.start_date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                </div>
-              )}
-              {task.end_date && (
-                <div className="date-item">
-                  <span className="date-label">Fin</span>
-                  <span>{new Date(task.end_date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="task-section">
-              <h4>Asignados</h4>
-              <div className="assignees-list">
-                {task.assignees && task.assignees.length > 0 ? (
-                  task.assignees.map((user) => (
-                    <div key={user.id} className="assignee-item">
-                      <div className="assignee-avatar large">
-                        {user.name.charAt(0).toUpperCase()}
-                      </div>
-                      <span>{user.name}</span>
-                    </div>
-                  ))
-                ) : (
-                  <span className="no-data">Sin asignar</span>
-                )}
-              </div>
-            </div>
-
-            <div className="task-section">
-              <h4>Comentarios ({taskComments.length || 0})</h4>
-              <div className="add-comment">
-                <textarea
-                  placeholder="Añadir un comentario..."
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  rows={2}
-                />
-                <button 
-                  className="btn-add-comment" 
-                  onClick={handleAddComment}
-                  disabled={!newComment.trim() || isSubmittingComment}
-                >
-                  {isSubmittingComment ? 'Publicando...' : 'Publicar'}
-                </button>
-              </div>
-              <div className="comments-section">
-                {taskComments.length > 0 ? (
-                  taskComments.map((comment) => (
-                    <div key={comment.id} className="comment-item">
-                      <div className="comment-avatar">
-                        {comment.user?.name?.charAt(0).toUpperCase() || '?'}
-                      </div>
-                      <div className="comment-content">
-                        <span className="comment-author">{comment.user?.name || 'Usuario'}</span>
-                        <p>{comment.content}</p>
-                        <span className="comment-date">
-                          {new Date(comment.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <span className="no-data">No hay comentarios aún</span>
-                )}
-              </div>
-            </div>
-
-            <div className="panel-actions">
-              <button className="btn-edit" onClick={() => setIsEditing(true)}>
-                ✏️ Editar
-              </button>
-              <button className="btn-delete" onClick={() => {
-                if (confirm('¿Eliminar esta tarea?')) {
-                  setIsDeleting(true)
-                  onDelete(task.id)
-                  onClose()
-                }
-              }} disabled={isDeleting}>
-                {isDeleting ? 'Eliminando...' : '🗑️ Eliminar'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
 
 export default function Tasks() {
   const { user } = useAuth()
@@ -608,6 +45,9 @@ export default function Tasks() {
   const [showBoardModal, setShowBoardModal] = useState(false)
   const [showBoardMembersModal, setShowBoardMembersModal] = useState(false)
   const [showPhasesModal, setShowPhasesModal] = useState(false)
+  const [showJoinBoardModal, setShowJoinBoardModal] = useState(false)
+  const [publicBoards, setPublicBoards] = useState<Board[]>([])
+  const [isJoiningBoard, setIsJoiningBoard] = useState(false)
   const [optimisticMembers, setOptimisticMembers] = useState<number[]>([])
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isCreatingBoard, setIsCreatingBoard] = useState(false)
@@ -633,11 +73,9 @@ export default function Tasks() {
   })
   const [newBoardPhaseSearch, setNewBoardPhaseSearch] = useState('')
   const [newTaskData, setNewTaskData] = useState({
-    title: '',
-    description: '',
-    priority: 'medium',
     end_date: '',
     assignees: [] as number[],
+    attachments: [] as File[],
   })
   const [assigneeSearch, setAssigneeSearch] = useState('')
   const [localColumnOrder, setLocalColumnOrder] = useState<string[] | null>(() => {
@@ -702,7 +140,7 @@ export default function Tasks() {
         params.board_id = selectedBoard.id
       }
       const tasksRes = await taskService.getAll(params)
-      setTasks(tasksRes.data)
+      setTasks(tasksRes.data || [])
     } catch (error) {
       console.error('Error fetching tasks:', error)
     }
@@ -743,6 +181,30 @@ export default function Tasks() {
       console.error('Error creating board:', error)
     } finally {
       setIsCreatingBoard(false)
+    }
+  }
+
+  const fetchPublicBoards = async () => {
+    try {
+      const res = await boardService.getPublicBoards()
+      setPublicBoards(res || [])
+    } catch (error) {
+      console.error('Error fetching public boards:', error)
+    }
+  }
+
+  const handleJoinBoard = async (boardId: number) => {
+    setIsJoiningBoard(true)
+    try {
+      await boardService.join(boardId)
+      await fetchData() // Refresh all data
+      setShowJoinBoardModal(false)
+    } catch (error: any) {
+      console.error('Error joining board:', error)
+      const errorMsg = error?.response?.data?.error || 'Error al unirse al tablero'
+      showError(errorMsg)
+    } finally {
+      setIsJoiningBoard(false)
     }
   }
 
@@ -905,7 +367,19 @@ const handlePhaseDragEnd = async () => {
       
       console.log('Creating task with data:', taskData)
       setIsCreatingTask(true)
-      await taskService.create(taskData)
+      const newTask = await taskService.create(taskData)
+      
+      // Upload attachments if any
+      if (newTaskData.attachments.length > 0) {
+        for (const file of newTaskData.attachments) {
+          try {
+            await taskService.addAttachment(newTask.id, file)
+          } catch (uploadErr) {
+            console.error('Error uploading initial attachment:', uploadErr)
+          }
+        }
+      }
+
       setShowNewTaskModal(false)
       setNewTaskData({
         title: '',
@@ -913,6 +387,7 @@ const handlePhaseDragEnd = async () => {
         priority: 'medium',
         end_date: '',
         assignees: [],
+        attachments: [],
       })
       fetchTasks()
     } catch (error: any) {
@@ -949,15 +424,23 @@ const handlePhaseDragEnd = async () => {
   const handleDeleteBoard = async (boardId: number) => {
     if (!confirm('¿Eliminar este tablero? Esta acción no se puede deshacer.')) return
     setIsDeletingBoard(true)
+    // Clear the task panel and the board immediately to avoid
+    // blank-screen render errors while the delete is in-flight.
+    if (selectedBoard?.id === boardId) {
+      setSelectedTask(null)
+      setSelectedBoard(null)
+    }
     try {
       await boardService.delete(boardId)
       const boardsRes = await boardService.getAll()
       setBoards(boardsRes)
-      if (selectedBoard?.id === boardId) {
-        setSelectedBoard(boardsRes.length > 0 ? boardsRes[0] : null)
-      }
+      setSelectedBoard(boardsRes.length > 0 ? boardsRes[0] : null)
     } catch (error) {
       console.error('Error deleting board:', error)
+      // Restore by refetching on error
+      const boardsRes = await boardService.getAll()
+      setBoards(boardsRes)
+      if (boardsRes.length > 0) setSelectedBoard(boardsRes[0])
     } finally {
       setIsDeletingBoard(false)
     }
@@ -1062,6 +545,16 @@ const handlePhaseDragEnd = async () => {
                 </select>
                 <button className="btn-icon" onClick={() => setShowBoardModal(true)} title="Crear tablero">
                   +
+                </button>
+                <button 
+                  className="btn-secondary btn-sm" 
+                  onClick={() => {
+                    fetchPublicBoards()
+                    setShowJoinBoardModal(true)
+                  }} 
+                  style={{ marginLeft: '8px', fontSize: '12px', padding: '6px 10px' }}
+                >
+                  Unirse a Tablero
                 </button>
                 {selectedBoard && (
                   <>
@@ -1612,6 +1105,55 @@ const handlePhaseDragEnd = async () => {
                       className="setting-input"
                     />
                   </div>
+
+                  <div className="setting-item">
+                    <label>Adjuntos</label>
+                    <div className="new-task-attachments">
+                      <input
+                        type="file"
+                        id="new-task-file-input"
+                        multiple
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || [])
+                          setNewTaskData(prev => ({
+                            ...prev,
+                            attachments: [...prev.attachments, ...files]
+                          }))
+                        }}
+                        style={{ display: 'none' }}
+                      />
+                      <button 
+                        type="button" 
+                        className="btn-secondary btn-sm"
+                        onClick={() => document.getElementById('new-task-file-input')?.click()}
+                        style={{ width: '100%', marginBottom: '8px' }}
+                      >
+                        📎 Seleccionar archivos
+                      </button>
+                      
+                      {newTaskData.attachments.length > 0 && (
+                        <div className="selected-files-preview">
+                          {newTaskData.attachments.map((file, idx) => (
+                            <div key={idx} className="selected-file-item">
+                              <span className="file-name" title={file.name}>{file.name}</span>
+                              <button 
+                                type="button" 
+                                className="remove-file-btn"
+                                onClick={() => {
+                                  setNewTaskData(prev => ({
+                                    ...prev,
+                                    attachments: prev.attachments.filter((_, i) => i !== idx)
+                                  }))
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="assign-card">
@@ -1665,6 +1207,45 @@ const handlePhaseDragEnd = async () => {
               <button type="submit" form="create-task-form" className="btn-create" disabled={isCreatingTask}>
                 {isCreatingTask ? 'Creando...' : 'Crear tarea'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showJoinBoardModal && (
+        <div className="modal-overlay" onClick={() => setShowJoinBoardModal(false)}>
+          <div className="modal join-board-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Unirse a un Tablero</h2>
+              <button className="close-btn" onClick={() => setShowJoinBoardModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {publicBoards.length === 0 ? (
+                <div className="no-data-msg">
+                  <p>No hay tableros públicos disponibles para unirse en este momento.</p>
+                </div>
+              ) : (
+                <div className="public-boards-list">
+                  {publicBoards.map(board => (
+                    <div key={board.id} className="public-board-item">
+                      <div className="board-info">
+                        <div className="board-color" style={{ backgroundColor: board.color }}></div>
+                        <div className="board-text">
+                          <span className="board-name">{board.name}</span>
+                          <span className="board-creator">Creado por: {board.creator?.name || 'Sistema'}</span>
+                        </div>
+                      </div>
+                      <button 
+                        className="btn-primary btn-sm" 
+                        onClick={() => handleJoinBoard(board.id)}
+                        disabled={isJoiningBoard}
+                      >
+                        {isJoiningBoard ? 'Uniendo...' : 'Unirse'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
