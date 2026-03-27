@@ -1,4 +1,4 @@
-
+import { CheckCircle2 } from 'lucide-react'
 
 interface InactiveUser {
   id: number
