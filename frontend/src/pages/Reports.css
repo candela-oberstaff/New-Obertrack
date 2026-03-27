@@ -439,6 +439,7 @@
 
 .activity-content {
   flex: 1;
+  min-width: 0;
 }
 
 .activity-text {
@@ -446,6 +447,8 @@
   font-size: 14px;
   color: #374151;
   line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .activity-type {

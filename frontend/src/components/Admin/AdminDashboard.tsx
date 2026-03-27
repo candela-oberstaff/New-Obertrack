@@ -1,4 +1,4 @@
-
+import { Building2, User, Clock, CheckCircle2, Hourglass, ClipboardList, AlertTriangle, TrendingUp } from 'lucide-react'
 
 interface DashboardMetrics {
   total_companies: number
@@ -33,42 +33,42 @@ export function AdminDashboard({ metrics, activities, onViewInactive }: AdminDas
     <div className="admin-content">
       <div className="metrics-grid">
         <div className="metric-card">
-          <div className="metric-icon companies">🏢</div>
+          <div className="metric-icon companies"><Building2 size={24} /></div>
           <div className="metric-info">
             <span className="metric-value">{metrics.total_companies}</span>
             <span className="metric-label">Empresas</span>
           </div>
         </div>
         <div className="metric-card">
-          <div className="metric-icon professionals">👷</div>
+          <div className="metric-icon professionals"><User size={24} /></div>
           <div className="metric-info">
             <span className="metric-value">{metrics.total_professionals}</span>
             <span className="metric-label">Profesionales</span>
           </div>
         </div>
         <div className="metric-card">
-          <div className="metric-icon hours">⏱️</div>
+          <div className="metric-icon hours"><Clock size={24} /></div>
           <div className="metric-info">
             <span className="metric-value">{metrics.total_hours_worked.toFixed(0)}h</span>
             <span className="metric-label">Horas Totales</span>
           </div>
         </div>
         <div className="metric-card">
-          <div className="metric-icon approved">✅</div>
+          <div className="metric-icon approved"><CheckCircle2 size={24} /></div>
           <div className="metric-info">
             <span className="metric-value">{metrics.approved_hours.toFixed(0)}h</span>
             <span className="metric-label">Horas Aprobadas</span>
           </div>
         </div>
         <div className="metric-card">
-          <div className="metric-icon pending">⏳</div>
+          <div className="metric-icon pending"><Hourglass size={24} /></div>
           <div className="metric-info">
             <span className="metric-value">{metrics.pending_hours.toFixed(0)}h</span>
             <span className="metric-label">Horas Pendientes</span>
           </div>
         </div>
         <div className="metric-card">
-          <div className="metric-icon tasks">📋</div>
+          <div className="metric-icon tasks"><ClipboardList size={24} /></div>
           <div className="metric-info">
             <span className="metric-value">{metrics.completed_tasks}/{metrics.total_tasks}</span>
             <span className="metric-label">Tareas Completadas</span>
@@ -79,7 +79,7 @@ export function AdminDashboard({ metrics, activities, onViewInactive }: AdminDas
       <div className="alerts-section">
         {metrics.inactive_warning > 0 && (
           <div className="alert-card warning">
-            <span className="alert-icon">⚠️</span>
+            <span className="alert-icon"><AlertTriangle size={20} /></span>
             <div className="alert-content">
               <strong>{metrics.inactive_warning} profesionales sin actividad reciente</strong>
               <p>No han registrado horas en los últimos 3 días</p>
@@ -90,7 +90,7 @@ export function AdminDashboard({ metrics, activities, onViewInactive }: AdminDas
           </div>
         )}
         <div className="alert-card info">
-          <span className="alert-icon">📈</span>
+          <span className="alert-icon"><TrendingUp size={20} /></span>
           <div className="alert-content">
             <strong>{metrics.active_today} profesionales activos hoy</strong>
             <p>Han registrado su jornada</p>
@@ -106,7 +106,7 @@ export function AdminDashboard({ metrics, activities, onViewInactive }: AdminDas
           ) : (
             activities.map((activity, idx) => (
               <div key={idx} className="activity-item">
-                <div className="activity-icon">{activity.type === 'work_hour' ? '⏱️' : '📋'}</div>
+                <div className="activity-icon">{activity.type === 'work_hour' ? <Clock size={16} /> : <ClipboardList size={16} />}</div>
                 <div className="activity-details">
                   <span className="activity-user">{activity.user}</span>
                   <span className="activity-company">{activity.company}</span>

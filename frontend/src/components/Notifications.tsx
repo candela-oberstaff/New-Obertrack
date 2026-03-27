@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { notificationService, type Notification } from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import { 
+  Bell, 
+  ClipboardList, 
+  CheckCircle2, 
+  XCircle, 
+  MessageSquare, 
+  AtSign 
+} from 'lucide-react'
 import './Notifications.css'
 
 export default function Notifications() {
@@ -126,12 +134,12 @@ export default function Notifications() {
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case 'task_assigned': return '📋'
-      case 'work_hour_approved': return '✅'
-      case 'work_hour_rejected': return '❌'
-      case 'new_comment': return '💬'
-      case 'mention': return '@'
-      default: return '🔔'
+      case 'task_assigned': return <ClipboardList size={18} className="text-blue-500" />
+      case 'work_hour_approved': return <CheckCircle2 size={18} className="text-green-500" />
+      case 'work_hour_rejected': return <XCircle size={18} className="text-red-500" />
+      case 'new_comment': return <MessageSquare size={18} className="text-indigo-500" />
+      case 'mention': return <AtSign size={18} className="text-orange-500" />
+      default: return <Bell size={18} className="text-gray-500" />
     }
   }
 
@@ -152,8 +160,8 @@ export default function Notifications() {
 
   return (
     <div className="notifications-container">
-      <button className="notification-bell" onClick={() => setIsOpen(!isOpen)}>
-        🔔
+      <button className="notification-bell" onClick={() => setIsOpen(!isOpen)} title="Notificaciones">
+        <Bell size={20} />
         {unreadCount > 0 && (
           <span className="notification-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
         )}

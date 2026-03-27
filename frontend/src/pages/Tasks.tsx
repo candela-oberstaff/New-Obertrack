@@ -22,6 +22,15 @@ import { TaskCard } from '../components/Tasks/TaskCard'
 import { Column } from '../components/Tasks/Column'
 import { TaskDetailPanel } from '../components/Tasks/TaskDetailPanel'
 import { ColumnType } from '../components/Tasks/types'
+import { 
+  Plus, 
+  Settings2, 
+  UserPlus, 
+  Trash2, 
+  X, 
+  GripVertical, 
+  Paperclip,
+} from 'lucide-react'
 import './Tasks.css'
 
 const COLUMNS: ColumnType[] = [
@@ -488,7 +497,7 @@ const handlePhaseDragEnd = async () => {
           <h2>No tienes tableros</h2>
           <p>Crea tu primer tablero para organizar tus tareas</p>
           <button className="btn-primary" onClick={() => setShowBoardModal(true)}>
-            + Crear Tablero
+            <Plus size={18} /> Crear Tablero
           </button>
         </div>
         {showBoardModal && (
@@ -565,7 +574,7 @@ const handlePhaseDragEnd = async () => {
                   ))}
                 </select>
                 <button className="btn-icon" onClick={() => setShowBoardModal(true)} title="Crear tablero">
-                  +
+                  <Plus size={18} />
                 </button>
                 <button 
                   className="btn-secondary btn-sm" 
@@ -585,7 +594,7 @@ const handlePhaseDragEnd = async () => {
                       title="Gestionar fases"
                       style={{ marginLeft: '4px' }}
                     >
-                      ≡
+                      <Settings2 size={18} />
                     </button>
                     <button 
                       className="btn-icon members-btn" 
@@ -596,7 +605,7 @@ const handlePhaseDragEnd = async () => {
                       title="Gestionar miembros"
                       style={{ marginLeft: '4px' }}
                     >
-                      ⊕
+                      <UserPlus size={18} />
                     </button>
                     {user?.id === selectedBoard.created_by && (
                       <button 
@@ -606,7 +615,7 @@ const handlePhaseDragEnd = async () => {
                         disabled={isDeletingBoard}
                         style={{ marginLeft: '4px', color: '#ef4444' }}
                       >
-                        {isDeletingBoard ? '...' : '🗑'}
+                        {isDeletingBoard ? '...' : <Trash2 size={18} />}
                       </button>
                     )}
                   </>
@@ -614,13 +623,13 @@ const handlePhaseDragEnd = async () => {
               </>
             ) : (
               <button className="btn-primary btn-sm" onClick={() => setShowBoardModal(true)}>
-                + Crear Primer Tablero
+                <Plus size={16} /> Crear Primer Tablero
               </button>
             )}
           </div>
         </div>
         <button className="btn-primary" onClick={() => setShowNewTaskModal(true)}>
-          + Nueva Tarea
+          <Plus size={18} /> Nueva Tarea
         </button>
       </div>
 
@@ -711,19 +720,19 @@ const handlePhaseDragEnd = async () => {
                       <div className="phase-color" style={{ backgroundColor: phase.color }}></div>
                       <span className="phase-name">{phase.name}</span>
                       {newBoardData.phases.length > 1 && (
-                        <button
-                          type="button"
-                          className="btn-icon phase-delete"
-                          onClick={() => {
-                            setNewBoardData({
-                              ...newBoardData,
-                              phases: newBoardData.phases.filter((_, i) => i !== idx)
-                            })
-                          }}
-                          title="Eliminar fase"
-                        >
-                          ×
-                        </button>
+                          <button
+                            type="button"
+                            className="btn-icon phase-delete"
+                            onClick={() => {
+                              setNewBoardData({
+                                ...newBoardData,
+                                phases: newBoardData.phases.filter((_, i) => i !== idx)
+                              })
+                            }}
+                            title="Eliminar fase"
+                          >
+                            <X size={14} />
+                          </button>
                       )}
                     </div>
                   ))}
@@ -751,22 +760,22 @@ const handlePhaseDragEnd = async () => {
                     defaultValue="#6b7280"
                     style={{ width: '36px', height: '36px', border: 'none', cursor: 'pointer', padding: '2px' }}
                   />
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    style={{ padding: '8px 12px' }}
-                    onClick={() => {
-                      if (newBoardPhaseSearch.trim()) {
-                        setNewBoardData({
-                          ...newBoardData,
-                          phases: [...newBoardData.phases, { name: newBoardPhaseSearch.trim(), color: '#6b7280' }]
-                        })
-                        setNewBoardPhaseSearch('')
-                      }
-                    }}
-                  >
-                    +
-                  </button>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      style={{ padding: '8px 12px' }}
+                      onClick={() => {
+                        if (newBoardPhaseSearch.trim()) {
+                          setNewBoardData({
+                            ...newBoardData,
+                            phases: [...newBoardData.phases, { name: newBoardPhaseSearch.trim(), color: '#6b7280' }]
+                          })
+                          setNewBoardPhaseSearch('')
+                        }
+                      }}
+                    >
+                      <Plus size={16} />
+                    </button>
                 </div>
               </div>
 
@@ -858,7 +867,7 @@ const handlePhaseDragEnd = async () => {
           <div className="modal board-modal phases-modal" onClick={(e) => e.stopPropagation()} onMouseUp={() => handlePhaseDragEnd()}>
             <div className="board-modal-header">
               <h2>Gestionar Fases</h2>
-              <button className="close-btn" onClick={() => setShowPhasesModal(false)}>×</button>
+              <button className="close-btn" onClick={() => setShowPhasesModal(false)}><X size={20} /></button>
             </div>
             <p className="board-subtitle">{selectedBoard.name}</p>
             
@@ -890,7 +899,7 @@ const handlePhaseDragEnd = async () => {
                   className={`phase-item ${draggingPhase === phase.id ? 'dragging' : ''} ${dragOverIdx === idx ? 'drag-over' : ''}`}
                   onMouseDown={() => handlePhaseDragStart(phase.id)}
                 >
-                  <span className="drag-handle" style={{ cursor: 'grab' }}>⋮⋮</span>
+                  <span className="drag-handle" style={{ cursor: 'grab' }}><GripVertical size={16} /></span>
                   <div className="phase-color" style={{ backgroundColor: phase.color }}></div>
                   <span className="phase-name">{phase.name}</span>
                   <button 
@@ -914,7 +923,7 @@ const handlePhaseDragEnd = async () => {
                     title={isDeletingPhase ? "Eliminando..." : "Eliminar fase"}
                     disabled={isDeletingPhase}
                   >
-                    {isDeletingPhase ? '...' : '×'}
+                    {isDeletingPhase ? '...' : <X size={14} />}
                   </button>
                 </div>
               ))}
@@ -958,7 +967,7 @@ const handlePhaseDragEnd = async () => {
                   }
                 }}
               >
-                {isAddingPhase ? 'Agregando...' : '+'}
+                {isAddingPhase ? 'Agregando...' : <Plus size={18} />}
               </button>
             </div>
           </div>
@@ -1068,9 +1077,7 @@ const handlePhaseDragEnd = async () => {
             <div className="new-task-header">
               <h2>Crear nueva tarea</h2>
               <button className="close-btn" onClick={() => setShowNewTaskModal(false)}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
+                <X size={24} />
               </button>
             </div>
             
@@ -1149,7 +1156,7 @@ const handlePhaseDragEnd = async () => {
                         onClick={() => document.getElementById('new-task-file-input')?.click()}
                         style={{ width: '100%', marginBottom: '8px' }}
                       >
-                        📎 Seleccionar archivos
+                        <Paperclip size={14} /> Seleccionar archivos
                       </button>
                       
                       {newTaskData.attachments.length > 0 && (
@@ -1167,7 +1174,7 @@ const handlePhaseDragEnd = async () => {
                                   }))
                                 }}
                               >
-                                ×
+                                <X size={14} />
                               </button>
                             </div>
                           ))}
@@ -1238,7 +1245,7 @@ const handlePhaseDragEnd = async () => {
           <div className="modal join-board-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Unirse a un Tablero</h2>
-              <button className="close-btn" onClick={() => setShowJoinBoardModal(false)}>×</button>
+              <button className="close-btn" onClick={() => setShowJoinBoardModal(false)}><X size={20} /></button>
             </div>
             <div className="modal-body">
               {publicBoards.length === 0 ? (
