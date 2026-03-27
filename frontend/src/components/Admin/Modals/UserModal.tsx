@@ -1,5 +1,5 @@
-import React from 'react'
 import { User } from '../../../types'
+import { X } from 'lucide-react'
 
 interface UserModalProps {
   title: string
@@ -33,7 +33,7 @@ export function UserModal({
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{title}</h2>
-          <button className="close-btn" onClick={onClose}>✕</button>
+          <button className="close-btn" onClick={onClose}><X size={20} /></button>
         </div>
         <form onSubmit={onSubmit}>
           <div className="form-group">

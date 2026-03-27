@@ -7,6 +7,13 @@ import { CompanyTable } from '../components/Admin/CompanyTable'
 import { UserTable } from '../components/Admin/UserTable'
 import { InactiveUserList } from '../components/Admin/InactiveUserList'
 import { UserModal } from '../components/Admin/Modals/UserModal'
+import { 
+  Plus, 
+  BarChart2, 
+  Building2, 
+  Users, 
+  AlertTriangle 
+} from 'lucide-react'
 import './Admin.css'
 
 export default function Admin() {
@@ -165,16 +172,16 @@ export default function Admin() {
           <p className="admin-subtitle">Monitor de Obertrack - Customer Success</p>
         </div>
         <button className="btn-primary" onClick={() => { resetForm(); setShowUserModal(true) }}>
-          + Nuevo Usuario
+          <Plus size={18} /> Nuevo Usuario
         </button>
       </div>
 
       <div className="admin-tabs">
-        <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>📊 Dashboard</button>
-        <button className={`tab-btn ${activeTab === 'companies' ? 'active' : ''}`} onClick={() => setActiveTab('companies')}>🏢 Empresas</button>
-        <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>👥 Usuarios</button>
+        <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}><BarChart2 size={18} /> Dashboard</button>
+        <button className={`tab-btn ${activeTab === 'companies' ? 'active' : ''}`} onClick={() => setActiveTab('companies')}><Building2 size={18} /> Empresas</button>
+        <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}><Users size={18} /> Usuarios</button>
         <button className={`tab-btn ${activeTab === 'inactive' ? 'active' : ''}`} onClick={() => setActiveTab('inactive')}>
-          ⚠️ Inactivos {inactiveUsers.length > 0 && <span className="badge">{inactiveUsers.length}</span>}
+          <AlertTriangle size={18} /> Inactivos {inactiveUsers.length > 0 && <span className="badge">{inactiveUsers.length}</span>}
         </button>
       </div>
 

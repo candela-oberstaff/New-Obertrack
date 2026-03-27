@@ -2,6 +2,20 @@ import { useState, useEffect, useMemo } from 'react'
 import { workHourService } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import type { WorkHour } from '../types'
+import { 
+  Plus, 
+  Calendar, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Clock, 
+  Hourglass, 
+  ChevronLeft, 
+  ChevronRight, 
+  ClipboardList, 
+  X,
+  Check,
+  AlertCircle
+} from 'lucide-react'
 import './WorkHours.css'
 
 const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
@@ -91,8 +105,8 @@ function CalendarView({
         onClick={() => onDayClick(dateStr)}
       >
         <span className="day-number">{day}</span>
-        {info?.type === 'complete' && <span className="day-badge complete">✓</span>}
-        {info?.type === 'absence' && <span className="day-badge absence">⚠</span>}
+        {info?.type === 'complete' && <span className="day-badge complete"><CheckCircle2 size={12} /></span>}
+        {info?.type === 'absence' && <span className="day-badge absence"><AlertTriangle size={12} /></span>}
       </div>
     )
   }
@@ -257,40 +271,40 @@ export default function WorkHours() {
     <div className="work-hours-page">
       <div className="page-header">
         <div className="header-left">
-          <h1>⏱️ Mi Jornada</h1>
+          <h1><Clock size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Mi Jornada</h1>
           <p className="header-subtitle">Registra tu día laboral</p>
         </div>
         <button className="btn-primary" onClick={() => setShowModal(true)}>
-          + Registrar Día
+          <Plus size={18} /> Registrar Día
         </button>
       </div>
 
       <div className="stats-row">
         <div className="stat-card-mini">
-          <span className="stat-icon">📅</span>
+          <span className="stat-icon"><Calendar size={20} /></span>
           <div className="stat-info">
             <span className="stat-label">Hoy</span>
             <span className="stat-value">
-              {todayWork ? (todayWork.work_type === 'complete' ? '✓ Completa' : '⚠ Ausencia') : '-'}
+              {todayWork ? (todayWork.work_type === 'complete' ? <><CheckCircle2 size={14} /> Completa</> : <><AlertTriangle size={14} /> Ausencia</>) : '-'}
             </span>
           </div>
         </div>
         <div className="stat-card-mini">
-          <span className="stat-icon">📆</span>
+          <span className="stat-icon"><Calendar size={20} /></span>
           <div className="stat-info">
             <span className="stat-label">Esta semana</span>
             <span className="stat-value">{weekHours.toFixed(1)}h</span>
           </div>
         </div>
         <div className="stat-card-mini approved">
-          <span className="stat-icon">✓</span>
+          <span className="stat-icon"><CheckCircle2 size={20} /></span>
           <div className="stat-info">
             <span className="stat-label">Aprobadas</span>
             <span className="stat-value">{summary.approved_hours.toFixed(1)}h</span>
           </div>
         </div>
         <div className="stat-card-mini pending">
-          <span className="stat-icon">⏳</span>
+          <span className="stat-icon"><Hourglass size={20} /></span>
           <div className="stat-info">
             <span className="stat-label">Pendientes</span>
             <span className="stat-value">{summary.pending_hours.toFixed(1)}h</span>
@@ -301,9 +315,9 @@ export default function WorkHours() {
       <div className="work-hours-content">
         <div className="calendar-section">
           <div className="calendar-header">
-            <button className="nav-btn" onClick={prevMonth}>‹</button>
+            <button className="nav-btn" onClick={prevMonth}><ChevronLeft size={20} /></button>
             <h3>{MONTHS_ES[currentMonth]} {currentYear}</h3>
-            <button className="nav-btn" onClick={nextMonth}>›</button>
+            <button className="nav-btn" onClick={nextMonth}><ChevronRight size={20} /></button>
           </div>
           <CalendarView 
             workHours={workHours}
@@ -332,14 +346,14 @@ export default function WorkHours() {
             </h3>
             {canApprove && pendingForSelectedDate.length > 0 && (
               <button className="btn-bulk-approve" onClick={handleBulkApprove}>
-                ✓ Aprobar todos ({pendingForSelectedDate.length})
+                <Check size={16} /> Aprobar todos ({pendingForSelectedDate.length})
               </button>
             )}
           </div>
 
           {filteredHours.length === 0 ? (
             <div className="empty-state">
-              <span className="empty-icon">📋</span>
+              <span className="empty-icon"><ClipboardList size={40} /></span>
               <p>No hay registros</p>
             </div>
           ) : (
@@ -376,7 +390,7 @@ export default function WorkHours() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Registrar Día</h2>
-              <button className="close-btn" onClick={() => setShowModal(false)}>✕</button>
+              <button className="close-btn" onClick={() => setShowModal(false)}><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-group">
@@ -398,7 +412,7 @@ export default function WorkHours() {
                     className={`work-type-btn ${formData.work_type === 'complete' ? 'active' : ''}`}
                     onClick={() => setFormData({ ...formData, work_type: 'complete' })}
                   >
-                    <span className="work-type-icon">✓</span>
+                    <span className="work-type-icon"><Check size={20} /></span>
                     <span className="work-type-label">Jornada Completa</span>
                     <span className="work-type-hours">8h</span>
                   </button>
@@ -407,7 +421,7 @@ export default function WorkHours() {
                     className={`work-type-btn ${formData.work_type === 'absence' ? 'active' : ''}`}
                     onClick={() => setFormData({ ...formData, work_type: 'absence' })}
                   >
-                    <span className="work-type-icon">⚠</span>
+                    <span className="work-type-icon"><AlertCircle size={20} /></span>
                     <span className="work-type-label">Ausencia</span>
                     <span className="work-type-hours">{Math.max(0, 8 - (formData.absence_hours || 0))}h</span>
                   </button>
@@ -487,7 +501,7 @@ export default function WorkHours() {
           <div className="modal detail-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Detalle de Registro</h2>
-              <button className="close-btn" onClick={() => setSelectedWorkHour(null)}>✕</button>
+              <button className="close-btn" onClick={() => setSelectedWorkHour(null)}><X size={20} /></button>
             </div>
             <div className="detail-content">
               <div className="detail-row">
@@ -544,7 +558,7 @@ export default function WorkHours() {
                   await workHourService.approve([selectedWorkHour.id])
                   setSelectedWorkHour(null)
                   fetchData()
-                }}>✓ Aprobar</button>
+                }}><Check size={16} /> Aprobar</button>
               )}
             </div>
           </div>

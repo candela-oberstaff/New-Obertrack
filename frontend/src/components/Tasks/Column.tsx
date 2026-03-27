@@ -1,4 +1,4 @@
-import { } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { SortableTaskCard } from './TaskCard'
@@ -43,13 +43,17 @@ export function Column({
             onClick={onMoveLeft}
             disabled={!canMoveLeft}
             title="Mover a la izquierda"
-          >←</button>
+          >
+            <ChevronLeft size={16} />
+          </button>
           <button 
             className="column-move-btn" 
             onClick={onMoveRight}
             disabled={!canMoveRight}
             title="Mover a la derecha"
-          >→</button>
+          >
+            <ChevronRight size={16} />
+          </button>
           <span className="column-count">{tasks.length}</span>
         </div>
       </div>
