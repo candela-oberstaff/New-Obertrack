@@ -433,6 +433,9 @@ export const channelService = {
     const { data } = await api.post<DMChannel>('/channels/dm', { recipient_id: recipientId })
     return data
   },
+  markAsRead: async (id: number) => {
+    await api.post(`/channels/${id}/read`)
+  },
 }
 
 export default api
