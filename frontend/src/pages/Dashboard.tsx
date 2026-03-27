@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import { taskService, workHourService, userService } from '../services/api'
 import type { Task, WorkHour, User } from '../types'
 import {
-  Plus,
   Clock,
   CheckCircle2,
   AlertTriangle,
