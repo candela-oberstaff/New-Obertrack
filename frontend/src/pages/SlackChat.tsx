@@ -58,7 +58,7 @@ export default function SlackChat() {
   useEffect(() => {
     fetchChannels()
     fetchAllUsers()
-    
+
     const icon = document.querySelector("link[rel*='icon']") as HTMLLinkElement
     if (icon) {
       setOriginalFavicon(icon.href)
@@ -98,7 +98,7 @@ export default function SlackChat() {
       if (!globalAudioContext) {
         globalAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
       }
-      
+
       const audioContext = globalAudioContext
       if (audioContext.state === 'suspended') {
         audioContext.resume()
@@ -124,7 +124,7 @@ export default function SlackChat() {
     const parts: React.ReactNode[] = []
     let lastIndex = 0
     let match
-    
+
     while ((match = mentionRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
         parts.push(content.slice(lastIndex, match.index))
@@ -138,11 +138,11 @@ export default function SlackChat() {
       }
       lastIndex = mentionRegex.lastIndex
     }
-    
+
     if (lastIndex < content.length) {
       parts.push(content.slice(lastIndex))
     }
-    
+
     return parts.length > 0 ? parts : content
   }
 
@@ -289,7 +289,7 @@ export default function SlackChat() {
         sendMessage(undefined, undefined, tempId)
       }
     }
-    
+
     // Handle mentions
     if (e.key === '@') {
       setMentionFilterUsers(allUsers)
@@ -342,7 +342,7 @@ export default function SlackChat() {
   }
 
 
-  
+
   const handleSaveEdit = async () => {
     if (!selectedChannel || !editingMessageId || !editContent.trim()) return
     const content = editContent; const id = editingMessageId
@@ -446,10 +446,10 @@ export default function SlackChat() {
                 <div className="mention-dropdown">
                   {mentionFilterUsers.map(u => (
                     <div key={u.id} className="mention-user-item" onClick={() => {
-                        const lastAt = newMessage.lastIndexOf('@')
-                        setNewMessage(newMessage.slice(0, lastAt + 1) + u.name + ' ')
-                        setShowMentionDropdown(false)
-                      }}>
+                      const lastAt = newMessage.lastIndexOf('@')
+                      setNewMessage(newMessage.slice(0, lastAt + 1) + u.name + ' ')
+                      setShowMentionDropdown(false)
+                    }}>
                       <span className="mention-user-avatar">{u.name.charAt(0).toUpperCase()}</span>
                       <span className="mention-user-name">{u.name}</span>
                     </div>
@@ -462,7 +462,7 @@ export default function SlackChat() {
               <div className="no-channel-icon">#</div>
               <h2>Selecciona un canal</h2>
               <p>Elige un canal de la lista para empezar a chatear</p>
-              <button onClick={() => setShowNewChannelModal(true)} className="create-first-channel">➕ Crear tu primer canal</button>
+              <button onClick={() => setShowNewChannelModal(true)} className="create-first-channel">+ Crear tu primer canal</button>
             </div>
           )}
         </div>
