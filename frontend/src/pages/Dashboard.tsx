@@ -3,15 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { taskService, workHourService, userService } from '../services/api'
 import type { Task, WorkHour, User } from '../types'
-import { 
-  Plus, 
-  Clock, 
-  CheckCircle2, 
-  AlertTriangle, 
-  CheckSquare, 
-  ClipboardList, 
-  MessageSquare, 
-  User as UserIcon 
+import {
+  Plus,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  CheckSquare,
+  ClipboardList,
+  MessageSquare,
+  User as UserIcon
 } from 'lucide-react'
 import './Dashboard.css'
 
@@ -43,11 +43,11 @@ export default function Dashboard() {
         workHourService.getAll({ limit: 10 }),
         workHourService.getSummary(),
       ])
-      
+
       console.log('Dashboard - workHours:', workHoursData.status === 'fulfilled' ? workHoursData.value : workHoursData.reason)
       console.log('Dashboard - summary:', summaryData.status === 'fulfilled' ? summaryData.value : summaryData.reason)
       console.log('Dashboard - tasks:', tasksData.status === 'fulfilled' ? tasksData.value : tasksData.reason)
-      
+
       if (tasksData.status === 'fulfilled') {
         setTasks(tasksData.value?.data || [])
       }
@@ -77,7 +77,7 @@ export default function Dashboard() {
     const startOfWeek = new Date(today)
     startOfWeek.setDate(today.getDate() - today.getDay())
     startOfWeek.setHours(0, 0, 0, 0)
-    
+
     for (let i = 0; i < 7; i++) {
       const date = new Date(startOfWeek)
       date.setDate(startOfWeek.getDate() + i)
@@ -132,8 +132,8 @@ export default function Dashboard() {
       <div className="dashboard-header">
         <div className="header-content">
           <div className="greeting">
-            <span className="greeting-text">{greeting},</span>
-            <h1>{user?.name?.split(' ')[0]}</h1>
+            <span className="greeting-text">{greeting}, {user?.name?.split(' ')[0]}</span>
+
             <p className="date-text">
               {DAYS_ES[today.getDay()]}, {today.getDate()} de {MONTHS_ES[today.getMonth()]}
             </p>
@@ -141,7 +141,7 @@ export default function Dashboard() {
         </div>
         <div className="header-actions">
           <button className="btn-quick-action" onClick={() => navigate('/tasks')}>
-            <Plus size={18} /> Nueva Tarea
+            + Nueva Tarea
           </button>
         </div>
       </div>
@@ -156,7 +156,7 @@ export default function Dashboard() {
             <span className="stat-value">{weekData.reduce((s, d) => s + d.hours, 0).toFixed(1)}h</span>
           </div>
         </div>
-        
+
         <div className="stat-card-large">
           <div className="stat-icon green">
             <CheckCircle2 size={24} />
@@ -199,13 +199,13 @@ export default function Dashboard() {
               {weekData.map((day, index) => (
                 <div key={index} className="bar-column">
                   <div className="bar-wrapper">
-                    <div 
+                    <div
                       className="bar hours-bar"
                       style={{ height: `${(day.hours / maxHours) * 100}%` }}
                     >
                       {day.hours > 0 && <span className="bar-value">{day.hours}h</span>}
                     </div>
-                    <div 
+                    <div
                       className="bar target-bar"
                       style={{ height: `${(day.target / maxHours) * 100}%` }}
                     />
@@ -231,7 +231,7 @@ export default function Dashboard() {
             ) : (
               pendingTasks.slice(0, 5).map(task => (
                 <div key={task.id} className="task-row" onClick={() => navigate('/tasks')}>
-                  <div 
+                  <div
                     className="task-priority-dot"
                     style={{ backgroundColor: getPriorityColor(task.priority) }}
                   />

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
-import { 
+import {
   DndContext,
   DragOverlay,
   closestCorners,
@@ -22,13 +22,13 @@ import { TaskCard } from '../components/Tasks/TaskCard'
 import { Column } from '../components/Tasks/Column'
 import { TaskDetailPanel } from '../components/Tasks/TaskDetailPanel'
 import { ColumnType } from '../components/Tasks/types'
-import { 
-  Plus, 
-  Settings2, 
-  UserPlus, 
-  Trash2, 
-  X, 
-  GripVertical, 
+import {
+  Plus,
+  Settings2,
+  UserPlus,
+  Trash2,
+  X,
+  GripVertical,
   Paperclip,
 } from 'lucide-react'
 import './Tasks.css'
@@ -97,13 +97,13 @@ export default function Tasks() {
 
   const filteredUsers = users.filter(u => {
     const matchesSearch = u.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
-                         u.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
+      u.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
     if (!matchesSearch) return false
-    
+
     // In search, if a board is selected, filter by membership
     const currentBoardId = selectedBoard?.id || (boards.length > 0 ? boards[0].id : null)
     if (!currentBoardId) return true
-    
+
     const board = boards.find(b => b.id === currentBoardId)
     return board?.members?.some(m => m.id === u.id)
   })
@@ -135,7 +135,7 @@ export default function Tasks() {
       ])
       setUsers(usersRes.data || [])
       setBoards(boardsRes || [])
-      
+
       // Select first board if nothing selected and not in "all tasks" mode
       if (boardsRes && boardsRes.length > 0 && !selectedBoard && !showAllTasks) {
         setSelectedBoard(boardsRes[0])
@@ -180,11 +180,11 @@ export default function Tasks() {
         member_ids: newBoardData.member_ids,
         phases: newBoardData.phases,
       })
-      setNewBoardData({ 
-        name: '', 
-        description: '', 
-        color: '#3b82f6', 
-        member_ids: [], 
+      setNewBoardData({
+        name: '',
+        description: '',
+        color: '#3b82f6',
+        member_ids: [],
         phases: [
           { name: 'Por hacer', color: '#6b7280' },
           { name: 'En proceso', color: '#3b82f6' },
@@ -192,7 +192,7 @@ export default function Tasks() {
         ],
       })
       setShowBoardModal(false)
-      
+
       const boardsRes = await boardService.getAll()
       setBoards(boardsRes)
       setSelectedBoard(newBoard)
@@ -329,14 +329,14 @@ export default function Tasks() {
 
   const handlePhaseDragEnter = (targetIdx: number) => {
     if (!isDraggingPhasesRef.current || draggingPhaseRef.current === null || !selectedBoard?.phases) return
-    
+
     const phases = [...selectedBoard.phases]
     const dragIdx = phases.findIndex(p => p.id === draggingPhaseRef.current)
     if (dragIdx === -1 || dragIdx === targetIdx) return
-    
+
     const [dragged] = phases.splice(dragIdx, 1)
     phases.splice(targetIdx, 0, dragged)
-    
+
     phasesOrderRef.current = phases
     setDragOverIdx(targetIdx)
     setSelectedBoard((prev: Board | null) => {
@@ -345,16 +345,16 @@ export default function Tasks() {
     })
   }
 
-const handlePhaseDragEnd = async () => {
+  const handlePhaseDragEnd = async () => {
     isDraggingPhasesRef.current = false
     setDraggingPhase(null)
     setDragOverIdx(null)
     draggingPhaseRef.current = null
-    
+
     if (!selectedBoard?.phases || !selectedBoard?.id) return
-    
+
     const phaseIds = selectedBoard.phases.map(p => p.id)
-    
+
     try {
       await boardService.reorderPhases(selectedBoard.id, phaseIds)
       const boardsRes = await boardService.getAll()
@@ -370,7 +370,7 @@ const handlePhaseDragEnd = async () => {
     e.preventDefault()
     try {
       const boardId = selectedBoard?.id || (boards.length > 0 ? boards[0].id : 0)
-      
+
       if (!boardId) {
         showError('Debes seleccionar o crear un tablero antes de añadir una tarea')
         return
@@ -382,19 +382,19 @@ const handlePhaseDragEnd = async () => {
         priority: newTaskData.priority || undefined,
         board_id: boardId,
       }
-      
+
       if (newTaskData.end_date) {
         taskData.end_date = newTaskData.end_date
       }
-      
+
       if (newTaskData.assignees.length > 0) {
         taskData.assignees = newTaskData.assignees
       }
-      
+
       console.log('Creating task with data:', taskData)
       setIsCreatingTask(true)
       const newTask = await taskService.create(taskData)
-      
+
       // Upload attachments if any
       if (newTaskData.attachments.length > 0) {
         for (const file of newTaskData.attachments) {
@@ -450,12 +450,12 @@ const handlePhaseDragEnd = async () => {
   const handleDeleteBoard = async (boardId: number) => {
     if (!confirm('¿Eliminar este tablero? Esta acción no se puede deshacer.')) return
     setIsDeletingBoard(true)
-    
+
     try {
       await boardService.delete(boardId)
       const boardsRes = await boardService.getAll()
       setBoards(boardsRes)
-      
+
       // Update selection after successful deletion
       if (selectedBoard?.id === boardId) {
         setSelectedTask(null)
@@ -534,9 +534,9 @@ const handlePhaseDragEnd = async () => {
                 </div>
                 <div className="modal-actions">
                   <button type="button" onClick={() => setShowBoardModal(false)}>Cancelar</button>
-<button type="submit" className="btn-primary" disabled={isCreatingBoard}>
-                      {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
-                    </button>
+                  <button type="submit" className="btn-primary" disabled={isCreatingBoard}>
+                    {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
+                  </button>
                 </div>
               </form>
             </div>
@@ -554,50 +554,52 @@ const handlePhaseDragEnd = async () => {
           <div className="board-selector">
             {boards.length > 0 ? (
               <>
-                <select 
-                  value={showAllTasks ? 'all' : (selectedBoard?.id || (boards.length > 0 ? boards[0].id : ''))} 
-                  onChange={(e) => {
-                    if (e.target.value === 'all') {
-                      setShowAllTasks(true)
-                      setSelectedBoard(null)
-                    } else {
+                <div className="board-select-container">
+                  <select
+                    value={showAllTasks ? 'all' : (selectedBoard?.id || (boards.length > 0 ? boards[0].id : ''))}
+                    onChange={(e) => {
+                      if (e.target.value === 'all') {
+                        setShowAllTasks(true)
+                        setSelectedBoard(null)
+                        return
+                      }
                       setShowAllTasks(false)
                       const board = boards.find(b => b.id === Number(e.target.value))
                       if (board) setSelectedBoard(board)
-                    }
-                  }}
-                  style={{ borderLeftColor: showAllTasks ? '#6366f1' : (selectedBoard?.color || '#3b82f6') }}
-                >
-                  <option value="all">Todos los tableros</option>
-                  {boards.map(board => (
-                    <option key={board.id} value={board.id}>{board.name}</option>
-                  ))}
-                </select>
+                    }}
+                    style={{ borderLeftColor: showAllTasks ? '#6366f1' : (selectedBoard?.color || '#3b82f6') }}
+                  >
+                    <option value="all">Todos los tableros</option>
+                    {boards.map(board => (
+                      <option key={board.id} value={board.id}>{board.name}</option>
+                    ))}
+                  </select>
+                </div>
                 <button className="btn-icon" onClick={() => setShowBoardModal(true)} title="Crear tablero">
                   <Plus size={18} />
                 </button>
-                <button 
-                  className="btn-secondary btn-sm" 
+                <button
+                  className="btn-secondary btn-sm"
                   onClick={() => {
                     fetchPublicBoards()
                     setShowJoinBoardModal(true)
-                  }} 
+                  }}
                   style={{ marginLeft: '8px', fontSize: '12px', padding: '6px 10px' }}
                 >
                   Unirse a Tablero
                 </button>
                 {selectedBoard && (
                   <>
-                    <button 
-                      className="btn-icon phases-btn" 
+                    <button
+                      className="btn-icon phases-btn"
                       onClick={() => setShowPhasesModal(true)}
                       title="Gestionar fases"
                       style={{ marginLeft: '4px' }}
                     >
                       <Settings2 size={18} />
                     </button>
-                    <button 
-                      className="btn-icon members-btn" 
+                    <button
+                      className="btn-icon members-btn"
                       onClick={() => {
                         setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
                         setShowBoardMembersModal(true)
@@ -608,8 +610,8 @@ const handlePhaseDragEnd = async () => {
                       <UserPlus size={18} />
                     </button>
                     {user?.id === selectedBoard.created_by && (
-                      <button 
-                        className="btn-icon delete-board-btn" 
+                      <button
+                        className="btn-icon delete-board-btn"
                         onClick={() => handleDeleteBoard(selectedBoard.id)}
                         title={isDeletingBoard ? "Eliminando..." : "Eliminar tablero"}
                         disabled={isDeletingBoard}
@@ -629,7 +631,7 @@ const handlePhaseDragEnd = async () => {
           </div>
         </div>
         <button className="btn-primary" onClick={() => setShowNewTaskModal(true)}>
-          <Plus size={18} /> Nueva Tarea
+          + Nueva Tarea
         </button>
       </div>
 
@@ -679,36 +681,36 @@ const handlePhaseDragEnd = async () => {
                     .slice()
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map(user => (
-                    <label key={user.id} className="member-checkbox">
-                      <div className="left-section">
-                        <input
-                          type="checkbox"
-                          checked={newBoardData.member_ids.includes(user.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setNewBoardData({
-                                ...newBoardData,
-                                member_ids: [...newBoardData.member_ids, user.id]
-                              })
-                            } else {
-                              setNewBoardData({
-                                ...newBoardData,
-                                member_ids: newBoardData.member_ids.filter(id => id !== user.id)
-                              })
-                            }
-                          }}
-                        />
-                        <span className="checkbox-custom"></span>
-                        <div className="member-avatar">
-                          {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                      <label key={user.id} className="member-checkbox">
+                        <div className="left-section">
+                          <input
+                            type="checkbox"
+                            checked={newBoardData.member_ids.includes(user.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewBoardData({
+                                  ...newBoardData,
+                                  member_ids: [...newBoardData.member_ids, user.id]
+                                })
+                              } else {
+                                setNewBoardData({
+                                  ...newBoardData,
+                                  member_ids: newBoardData.member_ids.filter(id => id !== user.id)
+                                })
+                              }
+                            }}
+                          />
+                          <span className="checkbox-custom"></span>
+                          <div className="member-avatar">
+                            {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="member-info">
+                            <span className="member-name">{user.name}</span>
+                            <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
+                          </div>
                         </div>
-                        <div className="member-info">
-                          <span className="member-name">{user.name}</span>
-                          <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
-                        </div>
-                      </div>
-                    </label>
-                  ))}
+                      </label>
+                    ))}
                 </div>
               </div>
 
@@ -720,19 +722,19 @@ const handlePhaseDragEnd = async () => {
                       <div className="phase-color" style={{ backgroundColor: phase.color }}></div>
                       <span className="phase-name">{phase.name}</span>
                       {newBoardData.phases.length > 1 && (
-                          <button
-                            type="button"
-                            className="btn-icon phase-delete"
-                            onClick={() => {
-                              setNewBoardData({
-                                ...newBoardData,
-                                phases: newBoardData.phases.filter((_, i) => i !== idx)
-                              })
-                            }}
-                            title="Eliminar fase"
-                          >
-                            <X size={14} />
-                          </button>
+                        <button
+                          type="button"
+                          className="btn-icon phase-delete"
+                          onClick={() => {
+                            setNewBoardData({
+                              ...newBoardData,
+                              phases: newBoardData.phases.filter((_, i) => i !== idx)
+                            })
+                          }}
+                          title="Eliminar fase"
+                        >
+                          <X size={14} />
+                        </button>
                       )}
                     </div>
                   ))}
@@ -760,22 +762,22 @@ const handlePhaseDragEnd = async () => {
                     defaultValue="#6b7280"
                     style={{ width: '36px', height: '36px', border: 'none', cursor: 'pointer', padding: '2px' }}
                   />
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      style={{ padding: '8px 12px' }}
-                      onClick={() => {
-                        if (newBoardPhaseSearch.trim()) {
-                          setNewBoardData({
-                            ...newBoardData,
-                            phases: [...newBoardData.phases, { name: newBoardPhaseSearch.trim(), color: '#6b7280' }]
-                          })
-                          setNewBoardPhaseSearch('')
-                        }
-                      }}
-                    >
-                      <Plus size={16} />
-                    </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    style={{ padding: '8px 12px' }}
+                    onClick={() => {
+                      if (newBoardPhaseSearch.trim()) {
+                        setNewBoardData({
+                          ...newBoardData,
+                          phases: [...newBoardData.phases, { name: newBoardPhaseSearch.trim(), color: '#6b7280' }]
+                        })
+                        setNewBoardPhaseSearch('')
+                      }
+                    }}
+                  >
+                    <Plus size={16} />
+                  </button>
                 </div>
               </div>
 
@@ -810,51 +812,51 @@ const handlePhaseDragEnd = async () => {
           <div className="modal board-modal wide" onClick={(e) => e.stopPropagation()}>
             <h2>Miembros del Tablero</h2>
             <p style={{ color: '#64748b', marginBottom: '20px', marginTop: '-16px' }}>{selectedBoard.name}</p>
-              <div className="form-group">
-                <label>Selecciona los miembros que quieres agregar al tablero</label>
-                <div className="members-select">
-                  {users.map(user => {
-                    const isMember = optimisticMembers.includes(user.id)
-                    return (
-                      <label key={user.id} className="member-checkbox">
-                        <div className="left-section">
-                          <input
-                            type="checkbox"
-                            checked={isMember}
-                            onChange={async (e) => {
-                              const newOptimisticMembers = e.target.checked
-                                ? [...optimisticMembers, user.id]
-                                : optimisticMembers.filter(id => id !== user.id)
-                              setOptimisticMembers(newOptimisticMembers)
-                              try {
-                                await boardService.update(selectedBoard.id, { member_ids: newOptimisticMembers })
-                                const boardsRes = await boardService.getAll()
-                                setBoards(boardsRes)
-                                const updated = boardsRes.find(b => b.id === selectedBoard.id)
-                                if (updated) setSelectedBoard(updated)
-                              } catch (error) {
-                                console.error('Error updating board members:', error)
-                                setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
-                              }
-                            }}
-                          />
-                          <span className="checkbox-custom"></span>
-                          <div className="member-avatar">
-                            {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                          </div>
-                          <div className="member-info">
-                            <span className="member-name">{user.name}</span>
-                            <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
-                          </div>
+            <div className="form-group">
+              <label>Selecciona los miembros que quieres agregar al tablero</label>
+              <div className="members-select">
+                {users.map(user => {
+                  const isMember = optimisticMembers.includes(user.id)
+                  return (
+                    <label key={user.id} className="member-checkbox">
+                      <div className="left-section">
+                        <input
+                          type="checkbox"
+                          checked={isMember}
+                          onChange={async (e) => {
+                            const newOptimisticMembers = e.target.checked
+                              ? [...optimisticMembers, user.id]
+                              : optimisticMembers.filter(id => id !== user.id)
+                            setOptimisticMembers(newOptimisticMembers)
+                            try {
+                              await boardService.update(selectedBoard.id, { member_ids: newOptimisticMembers })
+                              const boardsRes = await boardService.getAll()
+                              setBoards(boardsRes)
+                              const updated = boardsRes.find(b => b.id === selectedBoard.id)
+                              if (updated) setSelectedBoard(updated)
+                            } catch (error) {
+                              console.error('Error updating board members:', error)
+                              setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
+                            }
+                          }}
+                        />
+                        <span className="checkbox-custom"></span>
+                        <div className="member-avatar">
+                          {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                         </div>
-                        <span className={`member-status ${isMember ? 'active' : 'inactive'}`}>
-                          {isMember ? 'En tablero' : 'No asignado'}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
+                        <div className="member-info">
+                          <span className="member-name">{user.name}</span>
+                          <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
+                        </div>
+                      </div>
+                      <span className={`member-status ${isMember ? 'active' : 'inactive'}`}>
+                        {isMember ? 'En tablero' : 'No asignado'}
+                      </span>
+                    </label>
+                  )
+                })}
               </div>
+            </div>
             <div className="modal-actions">
               <button type="button" className="btn-primary" onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>Listo</button>
             </div>
@@ -870,9 +872,9 @@ const handlePhaseDragEnd = async () => {
               <button className="close-btn" onClick={() => setShowPhasesModal(false)}><X size={20} /></button>
             </div>
             <p className="board-subtitle">{selectedBoard.name}</p>
-            
-            <div 
-              className="phases-list" 
+
+            <div
+              className="phases-list"
               onMouseMove={(e) => {
                 if (!isDraggingPhasesRef.current) return
                 const target = e.target as HTMLElement
@@ -893,8 +895,8 @@ const handlePhaseDragEnd = async () => {
               }}
             >
               {selectedBoard.phases?.map((phase, idx) => (
-                <div 
-                  key={phase.id} 
+                <div
+                  key={phase.id}
                   data-idx={idx}
                   className={`phase-item ${draggingPhase === phase.id ? 'dragging' : ''} ${dragOverIdx === idx ? 'drag-over' : ''}`}
                   onMouseDown={() => handlePhaseDragStart(phase.id)}
@@ -902,7 +904,7 @@ const handlePhaseDragEnd = async () => {
                   <span className="drag-handle" style={{ cursor: 'grab' }}><GripVertical size={16} /></span>
                   <div className="phase-color" style={{ backgroundColor: phase.color }}></div>
                   <span className="phase-name">{phase.name}</span>
-                  <button 
+                  <button
                     className="btn-icon phase-delete"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -942,7 +944,7 @@ const handlePhaseDragEnd = async () => {
                 defaultValue="#6b7280"
                 style={{ width: '40px', height: '40px', border: 'none', cursor: 'pointer' }}
               />
-              <button 
+              <button
                 className="btn-primary"
                 style={{ marginLeft: '8px' }}
                 disabled={isAddingPhase}
@@ -1055,7 +1057,7 @@ const handlePhaseDragEnd = async () => {
 
         <DragOverlay>
           {activeTask ? (
-            <TaskCard task={activeTask} onClick={() => {}} />
+            <TaskCard task={activeTask} onClick={() => { }} />
           ) : null}
         </DragOverlay>
       </DndContext>
@@ -1080,7 +1082,7 @@ const handlePhaseDragEnd = async () => {
                 <X size={24} />
               </button>
             </div>
-            
+
             <form onSubmit={handleCreateTask} id="create-task-form" className="new-task-content">
               <div className="task-form-main">
                 <div className="form-field">
@@ -1095,7 +1097,7 @@ const handlePhaseDragEnd = async () => {
                     autoFocus
                   />
                 </div>
-                
+
                 <div className="form-field">
                   <label>Descripción</label>
                   <RichTextEditor
@@ -1105,11 +1107,11 @@ const handlePhaseDragEnd = async () => {
                   />
                 </div>
               </div>
-              
+
               <div className="task-form-side">
                 <div className="settings-card">
                   <h3>Configuración</h3>
-                  
+
                   <div className="setting-item">
                     <label>Prioridad</label>
                     <select
@@ -1123,7 +1125,7 @@ const handlePhaseDragEnd = async () => {
                       <option value="urgent">Urgente</option>
                     </select>
                   </div>
-                  
+
                   <div className="setting-item">
                     <label>Fecha límite</label>
                     <input
@@ -1150,22 +1152,22 @@ const handlePhaseDragEnd = async () => {
                         }}
                         style={{ display: 'none' }}
                       />
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         className="btn-secondary btn-sm"
                         onClick={() => document.getElementById('new-task-file-input')?.click()}
                         style={{ width: '100%', marginBottom: '8px' }}
                       >
                         <Paperclip size={14} /> Seleccionar archivos
                       </button>
-                      
+
                       {newTaskData.attachments.length > 0 && (
                         <div className="selected-files-preview">
                           {newTaskData.attachments.map((file, idx) => (
                             <div key={idx} className="selected-file-item">
                               <span className="file-name" title={file.name}>{file.name}</span>
-                              <button 
-                                type="button" 
+                              <button
+                                type="button"
                                 className="remove-file-btn"
                                 onClick={() => {
                                   setNewTaskData(prev => ({
@@ -1183,7 +1185,7 @@ const handlePhaseDragEnd = async () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="assign-card">
                   <h3>Asignar a</h3>
                   <input
@@ -1227,7 +1229,7 @@ const handlePhaseDragEnd = async () => {
                 </div>
               </div>
             </form>
-            
+
             <div className="new-task-footer">
               <button type="button" onClick={() => setShowNewTaskModal(false)} className="btn-cancel" disabled={isCreatingTask}>
                 Cancelar
@@ -1263,8 +1265,8 @@ const handlePhaseDragEnd = async () => {
                           <span className="board-creator">Creado por: {board.creator?.name || 'Sistema'}</span>
                         </div>
                       </div>
-                      <button 
-                        className="btn-primary btn-sm" 
+                      <button
+                        className="btn-primary btn-sm"
                         onClick={() => handleJoinBoard(board.id)}
                         disabled={isJoiningBoard}
                       >
