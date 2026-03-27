@@ -344,7 +344,8 @@
   border: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  min-height: 460px; /* Aligned with calendar-section */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .list-header {
@@ -416,18 +417,26 @@
 }
 
 .empty-state {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: 40px 20px;
   color: #9ca3af;
+  min-height: 300px;
 }
 
 .empty-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-  opacity: 0.5;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border-radius: 50%;
+  margin-bottom: 20px;
+  color: #cbd5e1;
 }
 
 .hours-list {
