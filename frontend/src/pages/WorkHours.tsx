@@ -3,7 +3,6 @@ import { workHourService } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import type { WorkHour } from '../types'
 import {
-  Plus,
   Calendar,
   CheckCircle2,
   AlertTriangle,
