@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,7 @@ type ChannelHub struct {
 	register   chan *websocket.Conn
 	unregister chan *websocket.Conn
 	db         *gorm.DB
+	mu         sync.RWMutex
 }
 
 type ChannelWSMessage struct {
@@ -63,13 +65,18 @@ func (h *ChannelHub) Run() {
 	for {
 		select {
 		case client := <-h.register:
+			h.mu.Lock()
 			h.clients[client] = 0
+			h.mu.Unlock()
 		case client := <-h.unregister:
+			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				client.Close()
 			}
+			h.mu.Unlock()
 		case message := <-h.broadcast:
+			h.mu.Lock()
 			for client := range h.clients {
 				err := client.WriteJSON(message)
 				if err != nil {
@@ -77,13 +84,16 @@ func (h *ChannelHub) Run() {
 					delete(h.clients, client)
 				}
 			}
+			h.mu.Unlock()
 		case <-ticker.C:
+			h.mu.Lock()
 			for client := range h.clients {
 				if err := client.WriteMessage(websocket.PingMessage, nil); err != nil {
 					client.Close()
 					delete(h.clients, client)
 				}
 			}
+			h.mu.Unlock()
 		}
 	}
 }
@@ -511,8 +521,11 @@ func (h *ChannelHandler) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	h.hub.register <- conn
+	// Register the connection with the user ID before sending to hub
+	h.hub.mu.Lock()
 	h.hub.clients[conn] = userID
+	h.hub.mu.Unlock()
+	h.hub.register <- conn
 
 	go func() {
 		defer func() {
