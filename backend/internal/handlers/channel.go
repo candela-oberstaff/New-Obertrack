@@ -123,13 +123,15 @@ func (h *ChannelHandler) GetChannels(c *gin.Context) {
 
 	var response []ChannelResponse
 	for _, ch := range channels {
-		var memberCount int64
-		h.db.Model(&models.ChannelMember{}).Where("channel_id = ?", ch.ID).Count(&memberCount)
-
 		var unreadCount int64
-		h.db.Model(&models.ChannelMessage{}).
-			Where("channel_id = ?", ch.ID).
-			Count(&unreadCount)
+		var member models.ChannelMember
+		h.db.Where("channel_id = ? AND user_id = ?", ch.ID, userID).First(&member)
+
+		query := h.db.Model(&models.ChannelMessage{}).Where("channel_id = ? AND user_id != ?", ch.ID, userID)
+		if member.LastReadAt != nil {
+			query = query.Where("created_at > ?", *member.LastReadAt)
+		}
+		query.Count(&unreadCount)
 
 		response = append(response, ChannelResponse{
 			ID:          ch.ID,
@@ -1182,4 +1184,19 @@ func (h *ChannelHandler) CreateDirectMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+func (h *ChannelHandler) MarkAsRead(c *gin.Context) {
+	channelID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	userID := middleware.GetUserID(c)
+
+	now := time.Now()
+	if err := h.db.Model(&models.ChannelMember{}).
+		Where("channel_id = ? AND user_id = ?", channelID, userID).
+		Update("last_read_at", now).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark as read"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Marked as read", "last_read_at": now})
 }

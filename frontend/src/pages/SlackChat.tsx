@@ -75,6 +75,10 @@ export default function SlackChat() {
       fetchChannelMembers(selectedChannel.id)
       fetchPinnedMessages(selectedChannel.id)
       connectWebSocket()
+      
+      // Mark as read when entering
+      channelService.markAsRead(selectedChannel.id)
+      setChannels(prev => prev.map(c => c.id === selectedChannel.id ? { ...c, unread_count: 0 } : c))
     }
   }, [selectedChannel])
 
@@ -210,6 +214,7 @@ export default function SlackChat() {
               return [...filtered, msg.data]
             })
             playNotificationSound()
+            channelService.markAsRead(selectedChannel!.id)
           } else if (msg.type === 'typing') {
             handleTyping(msg.user_id, msg.user_name, msg.channel_id)
           } else if (msg.type === 'message_pinned') {

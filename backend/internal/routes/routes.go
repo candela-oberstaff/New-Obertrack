@@ -155,6 +155,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				channels.DELETE("/:id/members", channelHandler.RemoveMember)
 				channels.POST("/:id/join", channelHandler.JoinChannel)
 				channels.POST("/:id/leave", channelHandler.LeaveChannel)
+				channels.POST("/:id/read", channelHandler.MarkAsRead)
 				channels.POST("/:id/pin/:messageId", channelHandler.PinMessage)
 				channels.POST("/:id/unpin/:messageId", channelHandler.UnpinMessage)
 				channels.GET("/:id/pinned", channelHandler.GetPinnedMessages)
