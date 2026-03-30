@@ -1,5 +1,5 @@
 import { } from 'react'
-import styles from '../../pages/Tasks.module.css'
+import styles from './RichTextEditor.module.css'
 
 interface RichTextEditorProps {
   value: string
@@ -9,8 +9,8 @@ interface RichTextEditorProps {
 
 export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
   return (
-    <div className={styles['rich-text-editor']}>
-      <div className={styles['rich-text-toolbar']}>
+    <div className={styles.richTextEditor}>
+      <div className={styles.richTextToolbar}>
         <button type="button" onClick={() => {
           const selection = window.getSelection()?.toString() || ''
           if (selection) onChange(value + `<strong>${selection}</strong>`)
@@ -29,14 +29,14 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
         }} title="Subrayado">
           <u>U</u>
         </button>
-        <span className={styles['toolbar-separator']}>|</span>
+        <span className={styles.toolbarSeparator}>|</span>
         <button type="button" onClick={() => onChange(value + '<ul>\n  <li>Elemento 1</li>\n  <li>Elemento 2</li>\n</ul>')} title="Viñetas">
           •
         </button>
         <button type="button" onClick={() => onChange(value + '<ol>\n  <li>Elemento 1</li>\n  <li>Elemento 2</li>\n</ol>')} title="Numeración">
           1.
         </button>
-        <span className={styles['toolbar-separator']}>|</span>
+        <span className={styles.toolbarSeparator}>|</span>
         <button type="button" onClick={() => {
           const url = prompt('Ingresa la URL:')
           if (url) onChange(value + `<a href="${url}">${url}</a>`)
@@ -51,7 +51,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
         </button>
       </div>
       <textarea
-        className={styles['rich-text-content']}
+        className={styles.richTextContent}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder || 'Escribe aquí...'}
