@@ -14,7 +14,7 @@ import {
   Users, 
   AlertTriangle 
 } from 'lucide-react'
-import './Admin.css'
+import styles from '../components/Admin/Admin.module.css'
 
 export default function Admin() {
   useAuth() // initialize auth
@@ -157,31 +157,31 @@ export default function Admin() {
 
   if (isLoading) {
     return (
-      <div className="admin-loading">
-        <div className="spinner" />
+      <div className={styles['admin-loading']}>
+        <div className={styles['spinner']} />
         <p>Cargando panel de administración...</p>
       </div>
     )
   }
 
   return (
-    <div className="admin-page">
-      <div className="admin-header">
+    <div className={styles['admin-page']}>
+      <div className={styles['admin-header']}>
         <div>
           <h1>Panel de Administración</h1>
-          <p className="admin-subtitle">Monitor de Obertrack - Customer Success</p>
+          <p className={styles['admin-subtitle']}>Monitor de Obertrack - Customer Success</p>
         </div>
-        <button className="btn-primary" onClick={() => { resetForm(); setShowUserModal(true) }}>
+        <button className={styles['btn-primary']} onClick={() => { resetForm(); setShowUserModal(true) }}>
           <Plus size={18} /> Nuevo Usuario
         </button>
       </div>
 
-      <div className="admin-tabs">
-        <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}><BarChart2 size={18} /> Dashboard</button>
-        <button className={`tab-btn ${activeTab === 'companies' ? 'active' : ''}`} onClick={() => setActiveTab('companies')}><Building2 size={18} /> Empresas</button>
-        <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}><Users size={18} /> Usuarios</button>
-        <button className={`tab-btn ${activeTab === 'inactive' ? 'active' : ''}`} onClick={() => setActiveTab('inactive')}>
-          <AlertTriangle size={18} /> Inactivos {inactiveUsers.length > 0 && <span className="badge">{inactiveUsers.length}</span>}
+      <div className={styles['admin-tabs']}>
+        <button className={`${styles['tab-btn']} ${activeTab === 'dashboard' ? styles['active'] : ''}`} onClick={() => setActiveTab('dashboard')}><BarChart2 size={18} /> Dashboard</button>
+        <button className={`${styles['tab-btn']} ${activeTab === 'companies' ? styles['active'] : ''}`} onClick={() => setActiveTab('companies')}><Building2 size={18} /> Empresas</button>
+        <button className={`${styles['tab-btn']} ${activeTab === 'users' ? styles['active'] : ''}`} onClick={() => setActiveTab('users')}><Users size={18} /> Usuarios</button>
+        <button className={`${styles['tab-btn']} ${activeTab === 'inactive' ? styles['active'] : ''}`} onClick={() => setActiveTab('inactive')}>
+          <AlertTriangle size={18} /> Inactivos {inactiveUsers.length > 0 && <span className={styles['badge']}>{inactiveUsers.length}</span>}
         </button>
       </div>
 

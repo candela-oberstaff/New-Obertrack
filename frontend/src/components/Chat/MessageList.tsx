@@ -1,7 +1,7 @@
-import React from 'react'
 import { Message } from '../../types/chat'
 import { User } from '../../types'
 import { MessageItem } from './MessageItem'
+import styles from '../../pages/SlackChat.module.css'
 
 interface MessageListProps {
   messages: Message[]
@@ -47,10 +47,10 @@ export function MessageList({
   typingArray
 }: MessageListProps) {
   return (
-    <div className="messages-list">
+    <div className={styles['messages-list']}>
       {messages.length === 0 ? (
-        <div className="empty-chat">
-          <div className="empty-icon">💬</div>
+        <div className={styles['no-messages'] || 'no-messages'}>
+          <div className={styles['no-messages-icon'] || 'no-messages-icon'}>💬</div>
           <h3>No hay mensajes aún</h3>
           <p>¡Sé el primero en escribir!</p>
         </div>
@@ -80,7 +80,7 @@ export function MessageList({
       )}
       
       {typingArray.length > 0 && (
-        <div className="typing-indicator">
+        <div className={styles['typing-indicator']}>
           {typingArray.join(', ')} {typingArray.length === 1 ? 'está escribiendo...' : 'están escribiendo...'}
         </div>
       )}

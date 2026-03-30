@@ -1,5 +1,6 @@
 import { Message } from '../../../types/chat'
 import { User } from '../../../types'
+import styles from '../../../pages/SlackChat.module.css'
 
 interface PinnedMessagesModalProps {
   pinnedMessages: Message[]
@@ -17,26 +18,26 @@ export function PinnedMessagesModal({
   formatTime
 }: PinnedMessagesModalProps) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content pinned" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className={styles['modal-overlay']} onClick={onClose}>
+      <div className={`${styles['modal-content']} ${styles['pinned']}`} onClick={e => e.stopPropagation()}>
+        <div className={styles['modal-header']}>
           <h2>📌 Mensajes fijados</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button className={styles['close-btn']} onClick={onClose}>×</button>
         </div>
 
-        <div className="pinned-list">
+        <div className={styles['pinned-list']}>
           {pinnedMessages.length === 0 ? (
-            <p className="no-pinned">No hay mensajes fijados</p>
+            <p className={styles['no-pinned']}>No hay mensajes fijados</p>
           ) : (
             pinnedMessages.map(msg => (
-              <div key={msg.id} className="pinned-item">
-                <div className="pinned-header">
-                  <span className="pinned-author">{msg.user?.name}</span>
-                  <span className="pinned-time">{formatTime(msg.created_at)}</span>
+              <div key={msg.id} className={styles['pinned-item']}>
+                <div className={styles['pinned-header']}>
+                  <span className={styles['pinned-author']}>{msg.user?.name}</span>
+                  <span className={styles['pinned-time']}>{formatTime(msg.created_at)}</span>
                 </div>
-                <p className="pinned-text">{msg.content}</p>
+                <p className={styles['pinned-text']}>{msg.content}</p>
                 {msg.user_id === currentUser?.id && (
-                  <button className="unpin-btn" onClick={() => onUnpin(msg.id)}>
+                  <button className={styles['unpin-btn']} onClick={() => onUnpin(msg.id)}>
                     Desfijar
                   </button>
                 )}
@@ -44,7 +45,7 @@ export function PinnedMessagesModal({
             ))
           )}
         </div>
-        <div className="modal-actions">
+        <div className={styles['modal-actions']}>
           <button onClick={onClose}>Cerrar</button>
         </div>
       </div>

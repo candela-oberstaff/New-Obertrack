@@ -1,4 +1,5 @@
 import { Message } from '../../../types/chat'
+import styles from '../../../pages/SlackChat.module.css'
 
 interface SearchModalProps {
   searchQuery: string
@@ -18,14 +19,14 @@ export function SearchModal({
   formatTime
 }: SearchModalProps) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content search" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className={styles['modal-overlay']} onClick={onClose}>
+      <div className={`${styles['modal-content']} ${styles['search']}`} onClick={e => e.stopPropagation()}>
+        <div className={styles['modal-header']}>
           <h2>🔍 Buscar mensajes</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button className={styles['close-btn']} onClick={onClose}>×</button>
         </div>
 
-        <div className="search-input-container">
+        <div className={styles['search-input-container']}>
           <input
             type="text"
             value={searchQuery}
@@ -34,25 +35,25 @@ export function SearchModal({
             onKeyDown={(e) => e.key === 'Enter' && onSearch()}
             autoFocus
           />
-          <button className="btn-primary" onClick={onSearch}>Buscar</button>
+          <button className={styles['btn-primary']} onClick={onSearch}>Buscar</button>
         </div>
         
-        <div className="search-results">
+        <div className={styles['search-results']}>
           {searchResults.map(msg => (
-            <div key={msg.id} className="search-result-item" onClick={() => { onClose(); }}>
-              <div className="search-result-header">
-                <span className="search-result-author">{msg.user?.name}</span>
-                <span className="search-result-time">{formatTime(msg.created_at)}</span>
+            <div key={msg.id} className={styles['search-result-item']} onClick={() => { onClose(); }}>
+              <div className={styles['search-result-header']}>
+                <span className={styles['search-result-author']}>{msg.user?.name}</span>
+                <span className={styles['search-result-time']}>{formatTime(msg.created_at)}</span>
               </div>
-              <p className="search-result-content">{msg.content}</p>
+              <p className={styles['search-result-content']}>{msg.content}</p>
             </div>
           ))}
           {searchQuery && searchResults.length === 0 && (
-            <p className="no-results">No se encontraron mensajes</p>
+            <p className={styles['no-results']}>No se encontraron mensajes</p>
           )}
         </div>
         
-        <div className="modal-actions">
+        <div className={styles['modal-actions']}>
           <button onClick={onClose}>Cerrar</button>
         </div>
       </div>

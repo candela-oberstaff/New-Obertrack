@@ -3,6 +3,7 @@ import { taskService } from '../../services/api'
 import type { Task, User, TaskStatus, TaskPriority, TaskAttachment } from '../../types'
 import { RichTextEditor } from './RichTextEditor'
 import { ColumnType } from './types'
+import styles from '../../pages/Tasks.module.css'
 import { 
   X, 
   Pencil, 
@@ -165,16 +166,16 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
     return colors[priority] || '#6b7280'
   }
   return (
-    <div className="task-detail-panel">
-      <div className="panel-header">
+    <div className={styles['task-detail-panel']}>
+      <div className={styles['panel-header']}>
         <h2>{isEditing ? 'Editar Tarea' : 'Detalles de la tarea'}</h2>
-        <button className="close-btn" onClick={onClose}><X size={20} /></button>
+        <button className={styles['close-btn']} onClick={onClose}><X size={20} /></button>
       </div>
 
-      <div className="panel-content">
+      <div className={styles['panel-content']}>
         {isEditing ? (
-          <div className="edit-form">
-            <div className="form-group">
+          <div className={styles['edit-form']}>
+            <div className={styles['form-group']}>
               <label>Título</label>
               <input
                 type="text"
@@ -182,15 +183,15 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               />
             </div>
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label>Descripción</label>
               <RichTextEditor
                 value={formData.description}
                 onChange={(value) => setFormData({ ...formData, description: value })}
               />
             </div>
-            <div className="form-row">
-              <div className="form-group">
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
                 <label>Prioridad</label>
                 <select
                   value={formData.priority}
@@ -202,7 +203,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                   <option value="urgent">Urgente</option>
                 </select>
               </div>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Estado</label>
                 <select
                   value={formData.status}
@@ -214,8 +215,8 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                 </select>
               </div>
             </div>
-            <div className="form-row">
-              <div className="form-group">
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
                 <label>Fecha inicio</label>
                 <input
                   type="date"
@@ -223,7 +224,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                   onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                 />
               </div>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Fecha límite</label>
                 <input
                   type="date"
@@ -232,20 +233,20 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                 />
               </div>
             </div>
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label>Asignados</label>
-              <div className="assignees-edit-list">
+              <div className={styles['assignees-edit-list'] || 'assignees-edit-list'}>
                 {formData.assignees.length > 0 && (
-                  <div className="assigned-chips">
+                  <div className={styles['assigned-chips'] || 'assigned-chips'}>
                     {formData.assignees.map((id) => {
                       const user = users.find(u => u.id === id)
                       if (!user) return null
                       return (
-                        <div key={user.id} className="assignee-chip">
+                        <div key={user.id} className={styles['assignee-chip'] || 'assignee-chip'}>
                           <span>{user.name || user.email}</span>
                           <button
                             type="button"
-                            className="remove-assignee"
+                            className={styles['remove-assignee'] || 'remove-assignee'}
                             onClick={() => setFormData({
                               ...formData,
                               assignees: formData.assignees.filter(aid => aid !== user.id)
@@ -258,15 +259,15 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                     })}
                   </div>
                 )}
-                <div className="assignee-dropdown-wrapper">
+                <div className={styles['assignee-dropdown-wrapper'] || 'assignee-dropdown-wrapper'}>
                   <input
                     type="text"
-                    className="assignee-search"
+                    className={styles['assignee-search'] || 'assignee-search'}
                     placeholder="Buscar usuario..."
                     value={assigneeSearch}
                     onChange={(e) => setAssigneeSearch(e.target.value)}
                   />
-                  <div className="assignee-dropdown">
+                  <div className={styles['assignee-dropdown'] || 'assignee-dropdown'}>
                     {users
                       .filter(u =>
                         u.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
@@ -278,7 +279,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                         return (
                           <div
                             key={user.id}
-                            className={`assignee-option ${isAssigned ? 'assigned' : ''}`}
+                            className={`${styles['assignee-option'] || 'assignee-option'} ${isAssigned ? (styles['assigned'] || 'assigned') : ''}`}
                             onClick={() => {
                               if (isAssigned) {
                                 setFormData({
@@ -293,9 +294,9 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                               }
                             }}
                           >
-                            <div className="chip-avatar">{user.name?.charAt(0).toUpperCase() || '?'}</div>
-                            <span className="assignee-name">{user.name || user.email}</span>
-                            {isAssigned && <span className="assignee-check"><Check size={14} /></span>}
+                            <div className={styles['chip-avatar'] || 'chip-avatar'}>{user.name?.charAt(0).toUpperCase() || '?'}</div>
+                            <span className={styles['assignee-name'] || 'assignee-name'}>{user.name || user.email}</span>
+                            {isAssigned && <span className={styles['assignee-check'] || 'assignee-check'}><Check size={14} /></span>}
                           </div>
                         )
                       })}
@@ -303,101 +304,101 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                 </div>
               </div>
             </div>
-            <div className="form-actions">
+            <div className={styles['form-actions']}>
               <button onClick={() => setIsEditing(false)} disabled={isUpdating}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave} disabled={isUpdating}>
+              <button className={styles['btn-primary']} onClick={handleSave} disabled={isUpdating}>
                 {isUpdating ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
           </div>
         ) : (
           <>
-            <div className="task-status-bar">
+            <div className={styles['task-status-bar']}>
               <select
                 value={task.status}
                 onChange={(e) => handleStatusChange(e.target.value)}
-                className="status-select"
+                className={styles['status-select']}
               >
                 {columns.map((col) => (
                   <option key={col.id} value={col.id}>{col.title}</option>
                 ))}
               </select>
               <span
-                className="priority-badge"
+                className={styles['priority-badge']}
                 style={{ backgroundColor: getPriorityColor(task.priority) }}
               >
                 {task.priority}
               </span>
             </div>
 
-            <h3 className="task-title">{task.title}</h3>
+            <h3 className={styles['task-title']}>{task.title}</h3>
 
-            <div className="task-section">
+            <div className={styles['task-section']}>
               <h4>Descripción</h4>
               {task.description ? (
-                <div className="task-description-html" dangerouslySetInnerHTML={{ __html: task.description }} />
+                <div className={styles['task-description-html']} dangerouslySetInnerHTML={{ __html: task.description }} />
               ) : (
                 <p>Sin descripción</p>
               )}
             </div>
 
-            <div className="task-dates-row">
+            <div className={styles['task-dates-row']}>
               {task.start_date && (
-                <div className="date-item">
-                  <span className="date-label">Inicio</span>
+                <div className={styles['date-item']}>
+                  <span className={styles['date-label']}>Inicio</span>
                   <span>{new Date(task.start_date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                 </div>
               )}
               {task.end_date && (
-                <div className="date-item">
-                  <span className="date-label">Fin</span>
+                <div className={styles['date-item']}>
+                  <span className={styles['date-label']}>Fin</span>
                   <span>{new Date(task.end_date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                 </div>
               )}
             </div>
 
-            <div className="task-section">
+            <div className={styles['task-section']}>
               <h4>Asignados</h4>
-              <div className="assignees-list">
+              <div className={styles['assignees-list']}>
                 {task.assignees && task.assignees.length > 0 ? (
                   task.assignees.map((user) => (
-                    <div key={user.id} className="assignee-item">
-                      <div className="assignee-avatar large">
+                    <div key={user.id} className={styles['assignee-item']}>
+                      <div className={`${styles['assignee-avatar']} ${styles['large'] || 'large'}`}>
                         {user.name.charAt(0).toUpperCase()}
                       </div>
                       <span>{user.name}</span>
                     </div>
                   ))
                 ) : (
-                  <span className="no-data">Sin asignar</span>
+                  <span className={styles['no-data']}>Sin asignar</span>
                 )}
               </div>
             </div>
 
             {/* Attachments Section */}
-            <div className="task-section">
+            <div className={styles['task-section']}>
               <h4>Archivos adjuntos ({attachments.length})</h4>
               {attachments.length > 0 && (
-                <div className="attachments-list">
+                <div className={styles['attachments-list']}>
                   {attachments.map((att) => (
-                    <div key={att.id} className="attachment-item">
+                    <div key={att.id} className={styles['attachment-item']}>
                       <a 
                         href={att.file_url} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="attachment-link-wrapper"
+                        className={styles['attachment-link-wrapper']}
                         title={`Ver ${att.file_name}`}
                       />
-                      <div className="attachment-icon">
+                      <div className={styles['attachment-icon']}>
                         {getFileIcon(att.mime_type)}
                       </div>
-                      <div className="attachment-info">
-                        <span className="attachment-name">{att.file_name}</span>
-                        <span className="attachment-meta">{formatFileSize(att.file_size)}</span>
+                      <div className={styles['attachment-info']}>
+                        <span className={styles['attachment-name']}>{att.file_name}</span>
+                        <span className={styles['attachment-meta']}>{formatFileSize(att.file_size)}</span>
                       </div>
-                      <div className="attachment-actions" style={{ position: 'relative', zIndex: 2 }}>
+                      <div className={styles['attachment-actions']} style={{ position: 'relative', zIndex: 2 }}>
                         <button
-                          className="btn-delete-att"
+                          className={styles['btn-delete-att']}
                           onClick={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
@@ -441,9 +442,9 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
               </label>
             </div>
 
-            <div className="task-section">
+            <div className={styles['task-section']}>
               <h4>Comentarios ({taskComments.length || 0})</h4>
-              <div className="add-comment">
+              <div className={styles['add-comment']}>
                 <textarea
                   placeholder="Añadir un comentario..."
                   value={newComment}
@@ -451,40 +452,40 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                   rows={2}
                 />
                 <button
-                  className="btn-add-comment"
+                  className={styles['btn-add-comment']}
                   onClick={handleAddComment}
                   disabled={!newComment.trim() || isSubmittingComment}
                 >
                   {isSubmittingComment ? 'Publicando...' : 'Publicar'}
                 </button>
               </div>
-              <div className="comments-section">
+              <div className={styles['comments-section']}>
                 {taskComments.length > 0 ? (
                   taskComments.map((comment) => (
-                    <div key={comment.id} className="comment-item">
-                      <div className="comment-avatar">
+                    <div key={comment.id} className={styles['comment-item']}>
+                      <div className={styles['comment-avatar']}>
                         {comment.user?.name?.charAt(0).toUpperCase() || '?'}
                       </div>
-                      <div className="comment-content">
-                        <span className="comment-author">{comment.user?.name || 'Usuario'}</span>
+                      <div className={styles['comment-content']}>
+                        <span className={styles['comment-author'] || 'comment-author'}>{comment.user?.name || 'Usuario'}</span>
                         <p>{comment.content}</p>
-                        <span className="comment-date">
+                        <span className={styles['comment-date'] || 'comment-date'}>
                           {new Date(comment.created_at).toLocaleDateString()}
                         </span>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <span className="no-data">No hay comentarios aún</span>
+                  <span className={styles['no-data']}>No hay comentarios aún</span>
                 )}
               </div>
             </div>
 
-            <div className="panel-actions">
-              <button className="btn-edit" onClick={() => setIsEditing(true)}>
+            <div className={styles['panel-actions']}>
+              <button className={styles['btn-edit']} onClick={() => setIsEditing(true)}>
                 <Pencil size={16} /> Editar
               </button>
-              <button className="btn-delete" onClick={() => {
+              <button className={styles['btn-delete']} onClick={() => {
                 if (confirm('¿Eliminar esta tarea?')) {
                   setIsDeleting(true)
                   onDelete(task.id)

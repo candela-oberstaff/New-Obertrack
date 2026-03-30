@@ -15,7 +15,7 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react'
-import './WorkHours.css'
+import styles from './WorkHours.module.css'
 
 const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -32,12 +32,12 @@ function RichTextEditor({ value, onChange, placeholder }: { value: string; onCha
   }
 
   return (
-    <div className="rich-editor">
-      <div className="rich-editor-toolbar">
+    <div className={styles['rich-editor']}>
+      <div className={styles['rich-editor-toolbar']}>
         <button type="button" onClick={() => formatText('strong')} title="Negrita"><strong>B</strong></button>
         <button type="button" onClick={() => formatText('em')} title="Cursiva"><em>I</em></button>
         <button type="button" onClick={() => formatText('u')} title="Subrayado"><u>U</u></button>
-        <span className="toolbar-sep">|</span>
+        <span className={styles['toolbar-sep']}>|</span>
         <button type="button" onClick={() => onChange(value + '\n• ')} title="Viñeta">•</button>
         <button type="button" onClick={() => onChange(value + '\n1. ')} title="Número">1.</button>
       </div>
@@ -88,7 +88,7 @@ function CalendarView({
 
   const days = []
   for (let i = 0; i < firstDay; i++) {
-    days.push(<div key={`empty-${i}`} className="calendar-day empty" />)
+    days.push(<div key={`empty-${i}`} className={`${styles['calendar-day']} ${styles['empty']}`} />)
   }
   for (let day = 1; day <= daysInMonth; day++) {
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
@@ -100,20 +100,20 @@ function CalendarView({
     days.push(
       <div
         key={day}
-        className={`calendar-day ${info?.type || ''} ${isSelected ? 'selected' : ''} ${isWeekend ? 'weekend' : ''}`}
+        className={`${styles['calendar-day']} ${info?.type ? styles[info.type] : ''} ${isSelected ? styles['selected'] : ''} ${isWeekend ? styles['weekend'] : ''}`}
         onClick={() => onDayClick(dateStr)}
       >
-        <span className="day-number">{day}</span>
-        {info?.type === 'complete' && <span className="day-badge complete"><CheckCircle2 size={12} /></span>}
-        {info?.type === 'absence' && <span className="day-badge absence"><AlertTriangle size={12} /></span>}
+        <span className={styles['day-number']}>{day}</span>
+        {info?.type === 'complete' && <span className={`${styles['day-badge']} ${styles['complete']}`}><CheckCircle2 size={12} /></span>}
+        {info?.type === 'absence' && <span className={`${styles['day-badge']} ${styles['absence']}`}><AlertTriangle size={12} /></span>}
       </div>
     )
   }
 
   return (
-    <div className="calendar-grid">
+    <div className={styles['calendar-grid']}>
       {DAYS_ES.map(day => (
-        <div key={day} className="calendar-header-day">{day}</div>
+        <div key={day} className={styles['calendar-header-day']}>{day}</div>
       ))}
       {days}
     </div>
@@ -259,64 +259,64 @@ export default function WorkHours() {
 
   if (isLoading) {
     return (
-      <div className="work-hours-loading">
-        <div className="spinner" />
+      <div className={styles['work-hours-loading']}>
+        <div className={styles['spinner']} />
         <p>Cargando...</p>
       </div>
     )
   }
 
   return (
-    <div className="work-hours-page">
-      <div className="wh-page-header">
-        <div className="header-left">
+    <div className={styles['work-hours-page']}>
+      <div className={styles['wh-page-header']}>
+        <div className={styles['header-left']}>
           <h1><Clock size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Mi Jornada</h1>
-          <p className="header-subtitle">Registra tu día laboral</p>
+          <p className={styles['header-subtitle']}>Registra tu día laboral</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
+        <button className={styles['btn-primary']} onClick={() => setShowModal(true)}>
           + Registrar Día
         </button>
       </div>
 
-      <div className="wh-stats-row">
-        <div className="stat-card-mini">
-          <span className="stat-icon"><Calendar size={20} /></span>
-          <div className="stat-info">
-            <span className="stat-label">Hoy</span>
-            <span className="stat-value">
+      <div className={styles['wh-stats-row']}>
+        <div className={styles['stat-card-mini']}>
+          <span className={styles['stat-icon']}><Calendar size={20} /></span>
+          <div className={styles['stat-info']}>
+            <span className={styles['stat-label']}>Hoy</span>
+            <span className={styles['stat-value']}>
               {todayWork ? (todayWork.work_type === 'complete' ? <><CheckCircle2 size={14} /> Completa</> : <><AlertTriangle size={14} /> Ausencia</>) : '-'}
             </span>
           </div>
         </div>
-        <div className="stat-card-mini">
-          <span className="stat-icon"><Calendar size={20} /></span>
-          <div className="stat-info">
-            <span className="stat-label">Esta semana</span>
-            <span className="stat-value">{weekHours.toFixed(1)}h</span>
+        <div className={styles['stat-card-mini']}>
+          <span className={styles['stat-icon']}><Calendar size={20} /></span>
+          <div className={styles['stat-info']}>
+            <span className={styles['stat-label']}>Esta semana</span>
+            <span className={styles['stat-value']}>{weekHours.toFixed(1)}h</span>
           </div>
         </div>
-        <div className="stat-card-mini approved">
-          <span className="stat-icon"><CheckCircle2 size={20} /></span>
-          <div className="stat-info">
-            <span className="stat-label">Aprobadas</span>
-            <span className="stat-value">{summary.approved_hours.toFixed(1)}h</span>
+        <div className={`${styles['stat-card-mini']} ${styles['approved']}`}>
+          <span className={styles['stat-icon']}><CheckCircle2 size={20} /></span>
+          <div className={styles['stat-info']}>
+            <span className={styles['stat-label']}>Aprobadas</span>
+            <span className={styles['stat-value']}>{summary.approved_hours.toFixed(1)}h</span>
           </div>
         </div>
-        <div className="stat-card-mini pending">
-          <span className="stat-icon"><Hourglass size={20} /></span>
-          <div className="stat-info">
-            <span className="stat-label">Pendientes</span>
-            <span className="stat-value">{summary.pending_hours.toFixed(1)}h</span>
+        <div className={`${styles['stat-card-mini']} ${styles['pending']}`}>
+          <span className={styles['stat-icon']}><Hourglass size={20} /></span>
+          <div className={styles['stat-info']}>
+            <span className={styles['stat-label']}>Pendientes</span>
+            <span className={styles['stat-value']}>{summary.pending_hours.toFixed(1)}h</span>
           </div>
         </div>
       </div>
 
-      <div className="work-hours-content">
-        <div className="calendar-section">
-          <div className="calendar-header">
-            <button className="nav-btn" onClick={prevMonth}><ChevronLeft size={20} /></button>
+      <div className={styles['work-hours-content']}>
+        <div className={styles['calendar-section']}>
+          <div className={styles['calendar-header']}>
+            <button className={styles['nav-btn']} onClick={prevMonth}><ChevronLeft size={20} /></button>
             <h3>{MONTHS_ES[currentMonth]} {currentYear}</h3>
-            <button className="nav-btn" onClick={nextMonth}><ChevronRight size={20} /></button>
+            <button className={styles['nav-btn']} onClick={nextMonth}><ChevronRight size={20} /></button>
           </div>
           <CalendarView
             workHours={workHours}
@@ -325,55 +325,55 @@ export default function WorkHours() {
             currentMonth={currentMonth}
             currentYear={currentYear}
           />
-          <div className="calendar-legend">
-            <span className="legend-item"><span className="legend-dot complete"></span>Completa</span>
-            <span className="legend-item"><span className="legend-dot absence"></span>Ausencia</span>
+          <div className={styles['calendar-legend']}>
+            <span className={styles['legend-item']}><span className={`${styles['legend-dot']} ${styles['complete']}`}></span>Completa</span>
+            <span className={styles['legend-item']}><span className={`${styles['legend-dot']} ${styles['absence']}`}></span>Ausencia</span>
           </div>
           {selectedDate && (
-            <button className="clear-filter" onClick={() => setSelectedDate(null)}>
+            <button className={styles['clear-filter']} onClick={() => setSelectedDate(null)}>
               Ver todos los días
             </button>
           )}
         </div>
 
-        <div className="hours-list-section">
-          <div className="list-header">
+        <div className={styles['hours-list-section']}>
+          <div className={styles['list-header']}>
             <h3>
               {selectedDate
                 ? `Registros del ${parseLocalDate(selectedDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}`
                 : 'Mis registros'}
             </h3>
             {canApprove && pendingForSelectedDate.length > 0 && (
-              <button className="btn-bulk-approve" onClick={handleBulkApprove}>
+              <button className={styles['btn-bulk-approve']} onClick={handleBulkApprove}>
                 <Check size={16} /> Aprobar todos ({pendingForSelectedDate.length})
               </button>
             )}
           </div>
 
           {filteredHours.length === 0 ? (
-            <div className="empty-state">
-              <span className="empty-icon"><ClipboardList size={40} /></span>
+            <div className={styles['empty-state']}>
+              <span className={styles['empty-icon']}><ClipboardList size={40} /></span>
               <p>No hay registros</p>
             </div>
           ) : (
-            <div className="hours-list">
+            <div className={styles['hours-list']}>
               {filteredHours.map((wh) => (
-                <div key={wh.id} className={`hour-card ${wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA ? 'complete' : 'absence'} clickable`} onClick={() => setSelectedWorkHour(wh)}>
-                  <div className="hour-date">
-                    <span className="day">{parseLocalDate(wh.work_date).getDate()}</span>
-                    <span className="month">{MONTHS_ES[parseLocalDate(wh.work_date).getMonth()].slice(0, 3)}</span>
+                <div key={wh.id} className={`${styles['hour-card']} ${wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA ? styles['complete'] : styles['absence']} ${styles['clickable']}`} onClick={() => setSelectedWorkHour(wh)}>
+                  <div className={styles['hour-date']}>
+                    <span className={styles['day']}>{parseLocalDate(wh.work_date).getDate()}</span>
+                    <span className={styles['month']}>{MONTHS_ES[parseLocalDate(wh.work_date).getMonth()].slice(0, 3)}</span>
                   </div>
-                  <div className="hour-info">
-                    {canApprove && wh.user && <span className="hours-user">{wh.user.name}</span>}
-                    <span className="hours-value">
+                  <div className={styles['hour-info']}>
+                    {canApprove && wh.user && <span className={styles['hours-user']}>{wh.user.name}</span>}
+                    <span className={styles['hours-value']}>
                       {wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA
                         ? 'Jornada Completa'
                         : `Ausencia (${wh.hours_worked}h)`}
                     </span>
-                    {wh.activities && <p className="hours-comments">{wh.activities}</p>}
+                    {wh.activities && <p className={styles['hours-comments']}>{wh.activities}</p>}
                   </div>
-                  <div className="hour-status">
-                    <span className={`status-pill ${wh.approved ? 'approved' : 'pending'}`}>
+                  <div className={styles['hour-status']}>
+                    <span className={`${styles['status-pill']} ${wh.approved ? styles['approved'] : styles['pending']}`}>
                       {wh.approved ? 'Aprobado' : 'Pendiente'}
                     </span>
                   </div>
@@ -385,14 +385,14 @@ export default function WorkHours() {
       </div>
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className={styles['modal-overlay']} onClick={() => setShowModal(false)}>
+          <div className={styles['modal']} onClick={(e) => e.stopPropagation()}>
+            <div className={styles['modal-header']}>
               <h2>Registrar Día</h2>
-              <button className="close-btn" onClick={() => setShowModal(false)}><X size={20} /></button>
+              <button className={styles['close-btn']} onClick={() => setShowModal(false)}><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit}>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Fecha</label>
                 <input
                   type="date"
@@ -403,33 +403,33 @@ export default function WorkHours() {
                 />
               </div>
 
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>¿Cómo fue tu día?</label>
-                <div className="work-type-selector">
+                <div className={styles['work-type-selector']}>
                   <button
                     type="button"
-                    className={`work-type-btn ${formData.work_type === 'complete' ? 'active' : ''}`}
+                    className={`${styles['work-type-btn']} ${formData.work_type === 'complete' ? styles['active'] : ''}`}
                     onClick={() => setFormData({ ...formData, work_type: 'complete' })}
                   >
-                    <span className="work-type-icon"><Check size={20} /></span>
-                    <span className="work-type-label">Jornada Completa</span>
-                    <span className="work-type-hours">8h</span>
+                    <span className={styles['work-type-icon']}><Check size={20} /></span>
+                    <span className={styles['work-type-label']}>Jornada Completa</span>
+                    <span className={styles['work-type-hours']}>8h</span>
                   </button>
                   <button
                     type="button"
-                    className={`work-type-btn ${formData.work_type === 'absence' ? 'active' : ''}`}
+                    className={`${styles['work-type-btn']} ${formData.work_type === 'absence' ? styles['active'] : ''}`}
                     onClick={() => setFormData({ ...formData, work_type: 'absence' })}
                   >
-                    <span className="work-type-icon"><AlertCircle size={20} /></span>
-                    <span className="work-type-label">Ausencia</span>
-                    <span className="work-type-hours">{Math.max(0, 8 - (formData.absence_hours || 0))}h</span>
+                    <span className={styles['work-type-icon']}><AlertCircle size={20} /></span>
+                    <span className={styles['work-type-label']}>Ausencia</span>
+                    <span className={styles['work-type-hours']}>{Math.max(0, 8 - (formData.absence_hours || 0))}h</span>
                   </button>
                 </div>
               </div>
 
               {formData.work_type === 'absence' && (
                 <>
-                  <div className="form-group">
+                  <div className={styles['form-group']}>
                     <label>Motivo de ausencia</label>
                     <select
                       value={formData.absence_reason}
@@ -446,7 +446,7 @@ export default function WorkHours() {
                     </select>
                   </div>
 
-                  <div className="form-group">
+                  <div className={styles['form-group']}>
                     <label>Horas de ausencia</label>
                     <select
                       value={formData.absence_hours}
@@ -463,30 +463,30 @@ export default function WorkHours() {
                       <option value={7}>7 horas</option>
                       <option value={8}>8 horas (día completo)</option>
                     </select>
-                    <p className="form-hint">
+                    <p className={styles['form-hint']}>
                       Horas a registrar: {Math.max(0, 8 - (formData.absence_hours || 0))}h
                     </p>
                   </div>
                 </>
               )}
 
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>¿Qué actividades realizaste hoy?</label>
                 <RichTextEditor
                   value={formData.activities}
                   onChange={(value) => setFormData({ ...formData, activities: value })}
                   placeholder="Describe las actividades realizadas durante tu jornada...&#10;• Tarea 1&#10;• Tarea 2"
                 />
-                <p className="form-hint">
+                <p className={styles['form-hint']}>
                   Este registro aparecerá en el reporte de tu empresa.
                 </p>
               </div>
 
-              <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setShowModal(false)}>
+              <div className={styles['modal-actions']}>
+                <button type="button" className={styles['btn-cancel']} onClick={() => setShowModal(false)}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary">
+                <button type="submit" className={styles['btn-primary']}>
                   Registrar
                 </button>
               </div>
@@ -496,64 +496,64 @@ export default function WorkHours() {
       )}
 
       {selectedWorkHour && (
-        <div className="modal-overlay" onClick={() => setSelectedWorkHour(null)}>
-          <div className="modal detail-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className={styles['modal-overlay']} onClick={() => setSelectedWorkHour(null)}>
+          <div className={`${styles['modal']} ${styles['detail-modal']}`} onClick={(e) => e.stopPropagation()}>
+            <div className={styles['modal-header']}>
               <h2>Detalle de Registro</h2>
-              <button className="close-btn" onClick={() => setSelectedWorkHour(null)}><X size={20} /></button>
+              <button className={styles['close-btn']} onClick={() => setSelectedWorkHour(null)}><X size={20} /></button>
             </div>
-            <div className="detail-content">
-              <div className="detail-row">
-                <span className="detail-label">Profesional</span>
-                <span className="detail-value">{selectedWorkHour.user?.name || 'Usuario'}</span>
+            <div className={styles['detail-content']}>
+              <div className={styles['detail-row']}>
+                <span className={styles['detail-label']}>Profesional</span>
+                <span className={styles['detail-value']}>{selectedWorkHour.user?.name || 'Usuario'}</span>
               </div>
-              <div className="detail-row">
-                <span className="detail-label">Fecha</span>
-                <span className="detail-value">
+              <div className={styles['detail-row']}>
+                <span className={styles['detail-label']}>Fecha</span>
+                <span className={styles['detail-value']}>
                   {parseLocalDate(selectedWorkHour.work_date).toLocaleDateString('es-ES', {
                     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
                   })}
                 </span>
               </div>
-              <div className="detail-row">
-                <span className="detail-label">Tipo</span>
-                <span className={`detail-type ${selectedWorkHour.work_type}`}>
+              <div className={styles['detail-row']}>
+                <span className={styles['detail-label']}>Tipo</span>
+                <span className={`${styles['detail-type']} ${styles[selectedWorkHour.work_type]}`}>
                   {selectedWorkHour.work_type === 'complete' || selectedWorkHour.hours_worked >= 8
                     ? 'Jornada Completa' : `Ausencia (${selectedWorkHour.hours_worked}h)`}
                 </span>
               </div>
-              <div className="detail-row">
-                <span className="detail-label">Horas</span>
-                <span className="detail-value">{selectedWorkHour.hours_worked}h</span>
+              <div className={styles['detail-row']}>
+                <span className={styles['detail-label']}>Horas</span>
+                <span className={styles['detail-value']}>{selectedWorkHour.hours_worked}h</span>
               </div>
               {selectedWorkHour.absence_reason && (
-                <div className="detail-row">
-                  <span className="detail-label">Motivo</span>
-                  <span className="detail-value">{selectedWorkHour.absence_reason}</span>
+                <div className={styles['detail-row']}>
+                  <span className={styles['detail-label']}>Motivo</span>
+                  <span className={styles['detail-value']}>{selectedWorkHour.absence_reason}</span>
                 </div>
               )}
               {selectedWorkHour.activities && (
-                <div className="detail-activities">
-                  <span className="detail-label">Actividades del día</span>
+                <div className={styles['detail-activities']}>
+                  <span className={styles['detail-label']}>Actividades del día</span>
                   <div
-                    className="detail-text"
+                    className={styles['detail-text']}
                     dangerouslySetInnerHTML={{
                       __html: selectedWorkHour.activities.replace(/\n/g, '<br>').replace(/• /g, '<br>• ').replace(/<br>1\./g, '<br>1.')
                     }}
                   />
                 </div>
               )}
-              <div className="detail-row">
-                <span className="detail-label">Estado</span>
-                <span className={`status-pill ${selectedWorkHour.approved ? 'approved' : 'pending'}`}>
+              <div className={styles['detail-row']}>
+                <span className={styles['detail-label']}>Estado</span>
+                <span className={`${styles['status-pill']} ${selectedWorkHour.approved ? styles['approved'] : styles['pending']}`}>
                   {selectedWorkHour.approved ? 'Aprobado' : 'Pendiente'}
                 </span>
               </div>
             </div>
-            <div className="detail-actions">
-              <button className="btn-cancel" onClick={() => setSelectedWorkHour(null)}>Cerrar</button>
+            <div className={styles['detail-actions']}>
+              <button className={styles['btn-cancel']} onClick={() => setSelectedWorkHour(null)}>Cerrar</button>
               {canApprove && !selectedWorkHour.approved && (
-                <button className="btn-primary" onClick={async () => {
+                <button className={styles['btn-primary']} onClick={async () => {
                   await workHourService.approve([selectedWorkHour.id])
                   setSelectedWorkHour(null)
                   fetchData()

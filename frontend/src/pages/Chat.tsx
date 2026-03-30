@@ -10,7 +10,7 @@ import {
   Hourglass, 
   Send 
 } from 'lucide-react'
-import './Chat.css'
+import styles from './Chat.module.css'
 
 interface Message {
   id: number
@@ -187,88 +187,88 @@ export default function Chat() {
     : messages
 
   return (
-    <div className="chat-page">
-      <div className="chat-layout">
-        <div className={`chat-sidebar ${showUserList ? 'open' : ''}`}>
-          <div className="sidebar-header">
+    <div className={styles['chat-page']}>
+      <div className={styles['chat-layout']}>
+        <div className={`${styles['chat-sidebar']} ${showUserList ? styles['open'] : ''}`}>
+          <div className={styles['sidebar-header']}>
             <h3>Conversaciones</h3>
-            <button className="close-sidebar" onClick={() => setShowUserList(false)}><X size={20} /></button>
+            <button className={styles['close-sidebar']} onClick={() => setShowUserList(false)}><X size={20} /></button>
           </div>
-          <div className="user-list">
+          <div className={styles['user-list']}>
             <div 
-              className={`user-item ${!selectedUser ? 'active' : ''}`}
+              className={`${styles['user-item']} ${!selectedUser ? styles['active'] : ''}`}
               onClick={() => setSelectedUser(null)}
             >
-              <div className="user-avatar all"><MessageSquare size={18} /></div>
-              <div className="user-info">
-                <span className="user-name">Todos</span>
-                <span className="user-preview">Mensajes del equipo</span>
+              <div className={`${styles['user-avatar']} ${styles['all']}`}><MessageSquare size={18} /></div>
+              <div className={styles['user-info']}>
+                <span className={styles['user-name']}>Todos</span>
+                <span className={styles['user-preview']}>Mensajes del equipo</span>
               </div>
             </div>
             {users.map(u => (
               <div 
                 key={u.id} 
-                className={`user-item ${selectedUser === u.id ? 'active' : ''}`}
+                className={`${styles['user-item']} ${selectedUser === u.id ? styles['active'] : ''}`}
                 onClick={() => setSelectedUser(u.id)}
               >
-                <div className="user-avatar">
+                <div className={styles['user-avatar']}>
                   {u.name?.charAt(0).toUpperCase()}
                 </div>
-                <div className="user-info">
-                  <span className="user-name">{u.name}</span>
-                  <span className="user-role">{u.job_title || u.user_type}</span>
+                <div className={styles['user-info']}>
+                  <span className={styles['user-name']}>{u.name}</span>
+                  <span className={styles['user-role']}>{u.job_title || u.user_type}</span>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="chat-main">
-          <div className="chat-header">
-            <button className="menu-btn" onClick={() => setShowUserList(true)}><Menu size={20} /></button>
-            <div className="chat-title">
+        <div className={styles['chat-main']}>
+          <div className={styles['chat-header']}>
+            <button className={styles['menu-btn']} onClick={() => setShowUserList(true)}><Menu size={20} /></button>
+            <div className={styles['chat-title']}>
               <h2>{selectedUser ? users.find(u => u.id === selectedUser)?.name : 'Equipo'}</h2>
-              <span className="connection-dot"></span>
+              <span className={styles['connection-dot']}></span>
             </div>
-            <span className={`connection-badge ${isConnected ? 'connected' : 'disconnected'}`}>
+            <span className={`${styles['connection-badge']} ${isConnected ? styles['connected'] : styles['disconnected']}`}>
               {isConnected ? 'En línea' : 'Conectando...'}
             </span>
           </div>
 
-            <div className="chat-messages">
+            <div className={styles['chat-messages']}>
             {filteredMessages.length === 0 ? (
-              <div className="empty-chat">
-                <span className="empty-icon"><MessageSquare size={40} /></span>
+              <div className={styles['empty-chat']}>
+                <span className={styles['empty-icon']}><MessageSquare size={40} /></span>
                 <p>No hay mensajes todavía</p>
-                <span className="empty-hint">¡Inicia la conversación!</span>
+                <span className={styles['empty-hint']}>¡Inicia la conversación!</span>
               </div>
             ) : (
               filteredMessages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`message ${msg.user_id === user?.id ? 'own' : ''}`}
+                  className={`${styles['message']} ${msg.user_id === user?.id ? styles['own'] : ''}`}
                 >
                   {msg.user_id !== user?.id && (
-                    <div className="message-avatar">
+                    <div className={styles['message-avatar']}>
                       {msg.user?.name?.charAt(0).toUpperCase() || '?'}
                     </div>
                   )}
-                  <div className="message-bubble">
+                  <div className={styles['message-bubble']}>
                     {msg.user_id !== user?.id && (
-                      <span className="message-sender">{msg.user?.name || 'Usuario'}</span>
+                      <span className={styles['message-sender']}>{msg.user?.name || 'Usuario'}</span>
                     )}
-                    {msg.content && <p className="message-text">{msg.content}</p>}
+                    {msg.content && <p className={styles['message-text']}>{msg.content}</p>}
                     {msg.attachment && (
                       <a 
                         href={msg.attachment.url} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="message-attachment"
+                        className={styles['message-attachment']}
                       >
                         <Paperclip size={14} /> {msg.attachment.filename}
                       </a>
                     )}
-                    <span className="message-time">{formatTime(msg.created_at)}</span>
+                    <span className={styles['message-time']}>{formatTime(msg.created_at)}</span>
                   </div>
                 </div>
               ))
@@ -276,7 +276,7 @@ export default function Chat() {
             <div ref={messagesEndRef} />
           </div>
 
-          <form className="chat-input" onSubmit={(e) => sendMessage(e)}>
+          <form className={styles['chat-input']} onSubmit={(e) => sendMessage(e)}>
             <input
               type="text"
               value={newMessage}
@@ -295,15 +295,15 @@ export default function Chat() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={!isConnected || isUploading}
-              className="attach-btn"
+              className={styles['attach-btn']}
               title="Adjuntar archivo"
             >
-              {isUploading ? <Hourglass size={18} className="spin" /> : <Paperclip size={18} />}
+              {isUploading ? <Hourglass size={18} className={styles['spin'] || 'spin'} /> : <Paperclip size={18} />}
             </button>
             <button
               type="submit"
               disabled={!isConnected || (!newMessage.trim() && !isUploading)}
-              className="send-btn"
+              className={styles['send-btn']}
             >
               <Send size={18} />
             </button>

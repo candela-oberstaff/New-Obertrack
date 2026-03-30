@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import styles from './Auth.module.css'
 
 export default function Register() {
   const [name, setName] = useState('')
@@ -35,15 +36,15 @@ export default function Register() {
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
+    <div className={styles['auth-container']}>
+      <div className={styles['auth-card']}>
         <h1>Obertrack</h1>
         <h2>Crear Cuenta</h2>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && <div className={styles['error-message']}>{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
+          <div className={styles['form-group']}>
             <label htmlFor="name">Nombre completo</label>
             <input
               id="name"
@@ -54,7 +55,7 @@ export default function Register() {
             />
           </div>
 
-          <div className="form-group">
+          <div className={styles['form-group']}>
             <label htmlFor="email">Email</label>
             <input
               id="email"
@@ -65,7 +66,7 @@ export default function Register() {
             />
           </div>
 
-          <div className="form-group">
+          <div className={styles['form-group']}>
             <label htmlFor="password">Contraseña</label>
             <input
               id="password"
@@ -77,7 +78,7 @@ export default function Register() {
             />
           </div>
 
-          <div className="form-group">
+          <div className={styles['form-group']}>
             <label htmlFor="userType">Tipo de usuario</label>
             <select
               id="userType"
@@ -91,7 +92,7 @@ export default function Register() {
           </div>
 
           {userType === 'empleador' && (
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label htmlFor="companyName">Nombre de la empresa</label>
               <input
                 id="companyName"
@@ -107,7 +108,7 @@ export default function Register() {
           </button>
         </form>
 
-        <p className="auth-link">
+        <p className={styles['auth-link']}>
           ¿Ya tienes cuenta? <a href="/login">Inicia sesión</a>
         </p>
       </div>

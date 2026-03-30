@@ -31,7 +31,7 @@ import {
   GripVertical,
   Paperclip,
 } from 'lucide-react'
-import './Tasks.css'
+import styles from './Tasks.module.css'
 
 const COLUMNS: ColumnType[] = [
   { id: 'por_hacer', title: 'Por hacer', color: '#6b7280' },
@@ -478,9 +478,9 @@ export default function Tasks() {
 
   if (isLoading && boards.length === 0) {
     return (
-      <div className="tasks-page">
-        <div className="tasks-loading">
-          <div className="spinner" />
+      <div className={styles['tasks-page']}>
+        <div className={styles['tasks-loading']}>
+          <div className={styles['spinner']} />
           <p>Cargando...</p>
         </div>
       </div>
@@ -489,23 +489,23 @@ export default function Tasks() {
 
   if (boards.length === 0) {
     return (
-      <div className="tasks-page">
-        <div className="page-header">
+      <div className={styles['tasks-page']}>
+        <div className={styles['page-header']}>
           <h1>Tareas</h1>
         </div>
-        <div className="tasks-loading">
+        <div className={styles['tasks-loading']}>
           <h2>No tienes tableros</h2>
           <p>Crea tu primer tablero para organizar tus tareas</p>
-          <button className="btn-primary" onClick={() => setShowBoardModal(true)}>
+          <button className={styles['btn-primary']} onClick={() => setShowBoardModal(true)}>
             <Plus size={18} /> Crear Tablero
           </button>
         </div>
         {showBoardModal && (
-          <div className="modal-overlay" onClick={() => setShowBoardModal(false)}>
-            <div className="modal board-modal" onClick={(e) => e.stopPropagation()}>
+          <div className={styles['modal-overlay']} onClick={() => setShowBoardModal(false)}>
+            <div className={`${styles['modal']} ${styles['board-modal']}`} onClick={(e) => e.stopPropagation()}>
               <h2>Crear Tablero</h2>
               <form onSubmit={(e) => { e.preventDefault(); handleCreateBoard() }}>
-                <div className="form-group">
+                <div className={styles['form-group']}>
                   <label>Nombre del tablero</label>
                   <input
                     type="text"
@@ -515,7 +515,7 @@ export default function Tasks() {
                     required
                   />
                 </div>
-                <div className="form-group">
+                <div className={styles['form-group']}>
                   <label>Descripción</label>
                   <textarea
                     value={newBoardData.description}
@@ -524,7 +524,7 @@ export default function Tasks() {
                     rows={3}
                   />
                 </div>
-                <div className="form-group">
+                <div className={styles['form-group']}>
                   <label>Color</label>
                   <input
                     type="color"
@@ -532,9 +532,9 @@ export default function Tasks() {
                     onChange={(e) => setNewBoardData({ ...newBoardData, color: e.target.value })}
                   />
                 </div>
-                <div className="modal-actions">
+                <div className={styles['modal-actions']}>
                   <button type="button" onClick={() => setShowBoardModal(false)}>Cancelar</button>
-                  <button type="submit" className="btn-primary" disabled={isCreatingBoard}>
+                  <button type="submit" className={styles['btn-primary']} disabled={isCreatingBoard}>
                     {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
                   </button>
                 </div>
@@ -547,14 +547,14 @@ export default function Tasks() {
   }
 
   return (
-    <div className="tasks-page">
-      <div className="page-header">
-        <div className="header-left">
+    <div className={styles['tasks-page']}>
+      <div className={styles['page-header']}>
+        <div className={styles['header-left']}>
           <h1>Tareas</h1>
-          <div className="board-selector">
+          <div className={styles['board-selector']}>
             {boards.length > 0 ? (
               <>
-                <div className="board-select-container">
+                <div className={styles['board-select-container']}>
                   <select
                     value={showAllTasks ? 'all' : (selectedBoard?.id || (boards.length > 0 ? boards[0].id : ''))}
                     onChange={(e) => {
@@ -575,11 +575,11 @@ export default function Tasks() {
                     ))}
                   </select>
                 </div>
-                <button className="btn-icon" onClick={() => setShowBoardModal(true)} title="Crear tablero">
+                <button className={styles['btn-icon']} onClick={() => setShowBoardModal(true)} title="Crear tablero">
                   <Plus size={18} />
                 </button>
                 <button
-                  className="btn-secondary btn-sm"
+                  className={`${styles['btn-secondary'] || 'btn-secondary'} ${styles['btn-sm'] || 'btn-sm'}`}
                   onClick={() => {
                     fetchPublicBoards()
                     setShowJoinBoardModal(true)
@@ -591,7 +591,7 @@ export default function Tasks() {
                 {selectedBoard && (
                   <>
                     <button
-                      className="btn-icon phases-btn"
+                      className={`${styles['btn-icon']} ${styles['phases-btn'] || 'phases-btn'}`}
                       onClick={() => setShowPhasesModal(true)}
                       title="Gestionar fases"
                       style={{ marginLeft: '4px' }}
@@ -599,7 +599,7 @@ export default function Tasks() {
                       <Settings2 size={18} />
                     </button>
                     <button
-                      className="btn-icon members-btn"
+                      className={`${styles['btn-icon']} ${styles['members-btn'] || 'members-btn'}`}
                       onClick={() => {
                         setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
                         setShowBoardMembersModal(true)
@@ -611,7 +611,7 @@ export default function Tasks() {
                     </button>
                     {user?.id === selectedBoard.created_by && (
                       <button
-                        className="btn-icon delete-board-btn"
+                        className={`${styles['btn-icon']} ${styles['delete-board-btn'] || 'delete-board-btn'}`}
                         onClick={() => handleDeleteBoard(selectedBoard.id)}
                         title={isDeletingBoard ? "Eliminando..." : "Eliminar tablero"}
                         disabled={isDeletingBoard}
@@ -624,23 +624,23 @@ export default function Tasks() {
                 )}
               </>
             ) : (
-              <button className="btn-primary btn-sm" onClick={() => setShowBoardModal(true)}>
+              <button className={`${styles['btn-primary']} ${styles['btn-sm'] || 'btn-sm'}`} onClick={() => setShowBoardModal(true)}>
                 <Plus size={16} /> Crear Primer Tablero
               </button>
             )}
           </div>
         </div>
-        <button className="btn-primary" onClick={() => setShowNewTaskModal(true)}>
+        <button className={styles['btn-primary']} onClick={() => setShowNewTaskModal(true)}>
           + Nueva Tarea
         </button>
       </div>
 
       {showBoardModal && (
-        <div className="modal-overlay" onClick={() => setShowBoardModal(false)}>
-          <div className="modal board-modal" onClick={(e) => e.stopPropagation()}>
+        <div className={styles['modal-overlay']} onClick={() => setShowBoardModal(false)}>
+          <div className={`${styles['modal']} ${styles['board-modal']}`} onClick={(e) => e.stopPropagation()}>
             <h2>Crear Tablero</h2>
             <form onSubmit={(e) => { e.preventDefault(); handleCreateBoard() }}>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Nombre del tablero</label>
                 <input
                   type="text"
@@ -650,7 +650,7 @@ export default function Tasks() {
                   required
                 />
               </div>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Descripción</label>
                 <textarea
                   value={newBoardData.description}
@@ -659,7 +659,7 @@ export default function Tasks() {
                   rows={2}
                 />
               </div>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Color</label>
                 <input
                   type="color"
@@ -667,7 +667,7 @@ export default function Tasks() {
                   onChange={(e) => setNewBoardData({ ...newBoardData, color: e.target.value })}
                 />
               </div>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Agregar miembros (opcional)</label>
                 <input
                   type="text"
@@ -676,13 +676,13 @@ export default function Tasks() {
                   onChange={(e) => setAssigneeSearch(e.target.value)}
                   style={{ width: '100%', padding: '8px 12px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px' }}
                 />
-                <div className="members-select" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                <div className={styles['members-select']} style={{ maxHeight: '200px', overflowY: 'auto' }}>
                   {filteredUsers
                     .slice()
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map(user => (
-                      <label key={user.id} className="member-checkbox">
-                        <div className="left-section">
+                      <label key={user.id} className={styles['member-checkbox']}>
+                        <div className={styles['left-section']}>
                           <input
                             type="checkbox"
                             checked={newBoardData.member_ids.includes(user.id)}
@@ -700,13 +700,13 @@ export default function Tasks() {
                               }
                             }}
                           />
-                          <span className="checkbox-custom"></span>
-                          <div className="member-avatar">
+                          <span className={styles['checkbox-custom']}></span>
+                          <div className={styles['member-avatar']}>
                             {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                           </div>
-                          <div className="member-info">
-                            <span className="member-name">{user.name}</span>
-                            <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
+                          <div className={styles['member-info']}>
+                            <span className={styles['member-name']}>{user.name}</span>
+                            <span className={styles['member-role']}>{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
                           </div>
                         </div>
                       </label>
@@ -714,17 +714,17 @@ export default function Tasks() {
                 </div>
               </div>
 
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Fases del tablero</label>
-                <div className="phases-list" style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '12px' }}>
+                <div className={styles['phases-list']} style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '12px' }}>
                   {newBoardData.phases.map((phase, idx) => (
-                    <div key={idx} className="phase-item">
-                      <div className="phase-color" style={{ backgroundColor: phase.color }}></div>
-                      <span className="phase-name">{phase.name}</span>
+                    <div key={idx} className={styles['phase-item']}>
+                      <div className={styles['phase-color']} style={{ backgroundColor: phase.color }}></div>
+                      <span className={styles['phase-name']}>{phase.name}</span>
                       {newBoardData.phases.length > 1 && (
                         <button
                           type="button"
-                          className="btn-icon phase-delete"
+                          className={`${styles['btn-icon']} ${styles['phase-delete'] || 'phase-delete'}`}
                           onClick={() => {
                             setNewBoardData({
                               ...newBoardData,
@@ -764,7 +764,7 @@ export default function Tasks() {
                   />
                   <button
                     type="button"
-                    className="btn-primary"
+                    className={styles['btn-primary']}
                     style={{ padding: '8px 12px' }}
                     onClick={() => {
                       if (newBoardPhaseSearch.trim()) {
@@ -781,7 +781,7 @@ export default function Tasks() {
                 </div>
               </div>
 
-              <div className="modal-actions">
+              <div className={styles['modal-actions']}>
                 <button type="button" onClick={() => {
                   setShowBoardModal(false)
                   setNewBoardData({
@@ -798,7 +798,7 @@ export default function Tasks() {
                   setAssigneeSearch('')
                   setNewBoardPhaseSearch('')
                 }}>Cancelar</button>
-                <button type="submit" className="btn-primary" disabled={isCreatingBoard}>
+                <button type="submit" className={styles['btn-primary']} disabled={isCreatingBoard}>
                   {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
                 </button>
               </div>
@@ -808,18 +808,18 @@ export default function Tasks() {
       )}
 
       {showBoardMembersModal && selectedBoard && (
-        <div className="modal-overlay" onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>
-          <div className="modal board-modal wide" onClick={(e) => e.stopPropagation()}>
+        <div className={styles['modal-overlay']} onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>
+          <div className={`${styles['modal']} ${styles['board-modal']} ${styles['wide'] || 'wide'}`} onClick={(e) => e.stopPropagation()}>
             <h2>Miembros del Tablero</h2>
             <p style={{ color: '#64748b', marginBottom: '20px', marginTop: '-16px' }}>{selectedBoard.name}</p>
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label>Selecciona los miembros que quieres agregar al tablero</label>
-              <div className="members-select">
+              <div className={styles['members-select']}>
                 {users.map(user => {
                   const isMember = optimisticMembers.includes(user.id)
                   return (
-                    <label key={user.id} className="member-checkbox">
-                      <div className="left-section">
+                    <label key={user.id} className={styles['member-checkbox']}>
+                      <div className={styles['left-section']}>
                         <input
                           type="checkbox"
                           checked={isMember}
@@ -840,16 +840,16 @@ export default function Tasks() {
                             }
                           }}
                         />
-                        <span className="checkbox-custom"></span>
-                        <div className="member-avatar">
+                        <span className={styles['checkbox-custom']}></span>
+                        <div className={styles['member-avatar']}>
                           {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                         </div>
-                        <div className="member-info">
-                          <span className="member-name">{user.name}</span>
-                          <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
+                        <div className={styles['member-info']}>
+                          <span className={styles['member-name']}>{user.name}</span>
+                          <span className={styles['member-role']}>{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
                         </div>
                       </div>
-                      <span className={`member-status ${isMember ? 'active' : 'inactive'}`}>
+                      <span className={`${styles['member-status'] || 'member-status'} ${isMember ? (styles['active'] || 'active') : (styles['inactive'] || 'inactive')}`}>
                         {isMember ? 'En tablero' : 'No asignado'}
                       </span>
                     </label>
@@ -857,28 +857,28 @@ export default function Tasks() {
                 })}
               </div>
             </div>
-            <div className="modal-actions">
-              <button type="button" className="btn-primary" onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>Listo</button>
+            <div className={styles['modal-actions']}>
+              <button type="button" className={styles['btn-primary']} onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>Listo</button>
             </div>
           </div>
         </div>
       )}
 
       {showPhasesModal && selectedBoard && (
-        <div className="modal-overlay" onClick={() => setShowPhasesModal(false)} onMouseUp={handlePhaseDragEnd}>
-          <div className="modal board-modal phases-modal" onClick={(e) => e.stopPropagation()} onMouseUp={() => handlePhaseDragEnd()}>
-            <div className="board-modal-header">
+        <div className={styles['modal-overlay']} onClick={() => setShowPhasesModal(false)} onMouseUp={handlePhaseDragEnd}>
+          <div className={`${styles['modal']} ${styles['board-modal']} ${styles['phases-modal'] || 'phases-modal'}`} onClick={(e) => e.stopPropagation()} onMouseUp={() => handlePhaseDragEnd()}>
+            <div className={styles['board-modal-header'] || 'board-modal-header'}>
               <h2>Gestionar Fases</h2>
-              <button className="close-btn" onClick={() => setShowPhasesModal(false)}><X size={20} /></button>
+              <button className={styles['close-btn']} onClick={() => setShowPhasesModal(false)}><X size={20} /></button>
             </div>
-            <p className="board-subtitle">{selectedBoard.name}</p>
+            <p className={styles['board-subtitle'] || 'board-subtitle'}>{selectedBoard.name}</p>
 
             <div
-              className="phases-list"
+              className={styles['phases-list']}
               onMouseMove={(e) => {
                 if (!isDraggingPhasesRef.current) return
                 const target = e.target as HTMLElement
-                const phaseItem = target.closest('.phase-item')
+                const phaseItem = target.closest(`.${styles['phase-item'] || 'phase-item'}`)
                 if (phaseItem) {
                   const idx = parseInt(phaseItem.getAttribute('data-idx') || '-1')
                   if (idx >= 0) handlePhaseDragEnter(idx)
@@ -898,14 +898,14 @@ export default function Tasks() {
                 <div
                   key={phase.id}
                   data-idx={idx}
-                  className={`phase-item ${draggingPhase === phase.id ? 'dragging' : ''} ${dragOverIdx === idx ? 'drag-over' : ''}`}
+                  className={`${styles['phase-item']} ${draggingPhase === phase.id ? (styles['dragging'] || 'dragging') : ''} ${dragOverIdx === idx ? (styles['drag-over'] || 'drag-over') : ''}`}
                   onMouseDown={() => handlePhaseDragStart(phase.id)}
                 >
-                  <span className="drag-handle" style={{ cursor: 'grab' }}><GripVertical size={16} /></span>
-                  <div className="phase-color" style={{ backgroundColor: phase.color }}></div>
-                  <span className="phase-name">{phase.name}</span>
+                  <span className={styles['drag-handle'] || 'drag-handle'} style={{ cursor: 'grab' }}><GripVertical size={16} /></span>
+                  <div className={styles['phase-color']} style={{ backgroundColor: phase.color }}></div>
+                  <span className={styles['phase-name']}>{phase.name}</span>
                   <button
-                    className="btn-icon phase-delete"
+                    className={`${styles['btn-icon']} ${styles['phase-delete'] || 'phase-delete'}`}
                     onClick={(e) => {
                       e.stopPropagation()
                       if (!confirm('¿Eliminar esta fase?')) return
@@ -931,7 +931,7 @@ export default function Tasks() {
               ))}
             </div>
 
-            <div className="add-phase-form" onMouseUp={handlePhaseDragEnd}>
+            <div className={styles['add-phase-form'] || 'add-phase-form'} onMouseUp={handlePhaseDragEnd}>
               <input
                 type="text"
                 placeholder="Nombre de la nueva fase"
@@ -945,7 +945,7 @@ export default function Tasks() {
                 style={{ width: '40px', height: '40px', border: 'none', cursor: 'pointer' }}
               />
               <button
-                className="btn-primary"
+                className={styles['btn-primary']}
                 style={{ marginLeft: '8px' }}
                 disabled={isAddingPhase}
                 onClick={async () => {
@@ -983,7 +983,7 @@ export default function Tasks() {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="kanban-board">
+        <div className={styles['kanban-board']}>
           {(selectedBoard?.phases?.length ? selectedBoard.phases : localColumnOrder ? localColumnOrder.map(id => COLUMNS.find(c => c.id === id) || COLUMNS[0]) : COLUMNS).map((p: any, idx: number) => {
             const isPhase = !!p.name
             const column = {
@@ -1074,31 +1074,31 @@ export default function Tasks() {
       )}
 
       {showNewTaskModal && (
-        <div className="modal-overlay" onClick={() => setShowNewTaskModal(false)}>
-          <div className="new-task-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="new-task-header">
+        <div className={styles['modal-overlay']} onClick={() => setShowNewTaskModal(false)}>
+          <div className={styles['new-task-modal']} onClick={(e) => e.stopPropagation()}>
+            <div className={styles['new-task-header']}>
               <h2>Crear nueva tarea</h2>
-              <button className="close-btn" onClick={() => setShowNewTaskModal(false)}>
+              <button className={styles['close-btn']} onClick={() => setShowNewTaskModal(false)}>
                 <X size={24} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTask} id="create-task-form" className="new-task-content">
-              <div className="task-form-main">
-                <div className="form-field">
+            <form onSubmit={handleCreateTask} id="create-task-form" className={styles['new-task-content']}>
+              <div className={styles['task-form-main']}>
+                <div className={styles['form-field']}>
                   <label>Título</label>
                   <input
                     type="text"
                     value={newTaskData.title}
                     onChange={(e) => setNewTaskData({ ...newTaskData, title: e.target.value })}
                     placeholder="¿Qué necesitas hacer?"
-                    className="title-field"
+                    className={styles['title-field']}
                     required
                     autoFocus
                   />
                 </div>
 
-                <div className="form-field">
+                <div className={styles['form-field']}>
                   <label>Descripción</label>
                   <RichTextEditor
                     value={newTaskData.description}
@@ -1108,16 +1108,16 @@ export default function Tasks() {
                 </div>
               </div>
 
-              <div className="task-form-side">
-                <div className="settings-card">
+              <div className={styles['task-form-side']}>
+                <div className={styles['settings-card']}>
                   <h3>Configuración</h3>
 
-                  <div className="setting-item">
+                  <div className={styles['setting-item']}>
                     <label>Prioridad</label>
                     <select
                       value={newTaskData.priority}
                       onChange={(e) => setNewTaskData({ ...newTaskData, priority: e.target.value })}
-                      className="setting-select"
+                      className={styles['setting-select']}
                     >
                       <option value="low">Baja</option>
                       <option value="medium">Media</option>
@@ -1126,19 +1126,19 @@ export default function Tasks() {
                     </select>
                   </div>
 
-                  <div className="setting-item">
+                  <div className={styles['setting-item']}>
                     <label>Fecha límite</label>
                     <input
                       type="date"
                       value={newTaskData.end_date}
                       onChange={(e) => setNewTaskData({ ...newTaskData, end_date: e.target.value })}
-                      className="setting-input"
+                      className={styles['setting-input']}
                     />
                   </div>
 
-                  <div className="setting-item">
+                  <div className={styles['setting-item']}>
                     <label>Adjuntos</label>
-                    <div className="new-task-attachments">
+                    <div className={styles['new-task-attachments']}>
                       <input
                         type="file"
                         id="new-task-file-input"
@@ -1154,7 +1154,7 @@ export default function Tasks() {
                       />
                       <button
                         type="button"
-                        className="btn-secondary btn-sm"
+                        className={`${styles['btn-secondary']} ${styles['btn-sm']}`}
                         onClick={() => document.getElementById('new-task-file-input')?.click()}
                         style={{ width: '100%', marginBottom: '8px' }}
                       >
@@ -1162,13 +1162,13 @@ export default function Tasks() {
                       </button>
 
                       {newTaskData.attachments.length > 0 && (
-                        <div className="selected-files-preview">
+                        <div className={styles['selected-files-preview']}>
                           {newTaskData.attachments.map((file, idx) => (
-                            <div key={idx} className="selected-file-item">
-                              <span className="file-name" title={file.name}>{file.name}</span>
+                            <div key={idx} className={styles['selected-file-item']}>
+                              <span className={styles['file-name']} title={file.name}>{file.name}</span>
                               <button
                                 type="button"
-                                className="remove-file-btn"
+                                className={styles['remove-file-btn']}
                                 onClick={() => {
                                   setNewTaskData(prev => ({
                                     ...prev,
@@ -1186,21 +1186,21 @@ export default function Tasks() {
                   </div>
                 </div>
 
-                <div className="assign-card">
+                <div className={styles['assign-card']}>
                   <h3>Asignar a</h3>
                   <input
                     type="text"
                     placeholder="Buscar usuario..."
                     value={assigneeSearch}
                     onChange={(e) => setAssigneeSearch(e.target.value)}
-                    className="assignee-search"
+                    className={styles['assignee-search']}
                   />
-                  <div className="assignees-scroll">
+                  <div className={styles['assignees-scroll']}>
                     {filteredUsers.length === 0 ? (
-                      <p className="no-users">No hay usuarios disponibles</p>
+                      <p className={styles['no-users']}>No hay usuarios disponibles</p>
                     ) : (
                       filteredUsers.map((user) => (
-                        <label key={user.id} className="assign-option">
+                        <label key={user.id} className={styles['assign-option']}>
                           <input
                             type="checkbox"
                             checked={newTaskData.assignees.includes(user.id)}
@@ -1218,9 +1218,9 @@ export default function Tasks() {
                               }
                             }}
                           />
-                          <span className="user-chip">
-                            <span className="chip-avatar">{user.name?.charAt(0).toUpperCase()}</span>
-                            <span className="chip-name">{user.name}</span>
+                          <span className={styles['user-chip']}>
+                            <span className={styles['chip-avatar']}>{user.name?.charAt(0).toUpperCase()}</span>
+                            <span className={styles['chip-name']}>{user.name}</span>
                           </span>
                         </label>
                       ))
@@ -1230,11 +1230,11 @@ export default function Tasks() {
               </div>
             </form>
 
-            <div className="new-task-footer">
-              <button type="button" onClick={() => setShowNewTaskModal(false)} className="btn-cancel" disabled={isCreatingTask}>
+            <div className={styles['new-task-footer']}>
+              <button type="button" onClick={() => setShowNewTaskModal(false)} className={styles['btn-cancel']} disabled={isCreatingTask}>
                 Cancelar
               </button>
-              <button type="submit" form="create-task-form" className="btn-create" disabled={isCreatingTask}>
+              <button type="submit" form="create-task-form" className={styles['btn-create']} disabled={isCreatingTask}>
                 {isCreatingTask ? 'Creando...' : 'Crear tarea'}
               </button>
             </div>
@@ -1243,30 +1243,30 @@ export default function Tasks() {
       )}
 
       {showJoinBoardModal && (
-        <div className="modal-overlay" onClick={() => setShowJoinBoardModal(false)}>
-          <div className="modal join-board-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className={styles['modal-overlay']} onClick={() => setShowJoinBoardModal(false)}>
+          <div className={`${styles['modal']} ${styles['join-board-modal']}`} onClick={(e) => e.stopPropagation()}>
+            <div className={styles['modal-header']}>
               <h2>Unirse a un Tablero</h2>
-              <button className="close-btn" onClick={() => setShowJoinBoardModal(false)}><X size={20} /></button>
+              <button className={styles['close-btn']} onClick={() => setShowJoinBoardModal(false)}><X size={20} /></button>
             </div>
-            <div className="modal-body">
+            <div className={styles['modal-body'] || 'modal-body'}>
               {publicBoards.length === 0 ? (
-                <div className="no-data-msg">
+                <div className={styles['no-data-msg'] || 'no-data-msg'}>
                   <p>No hay tableros públicos disponibles para unirse en este momento.</p>
                 </div>
               ) : (
-                <div className="public-boards-list">
+                <div className={styles['public-boards-list'] || 'public-boards-list'}>
                   {publicBoards.map(board => (
-                    <div key={board.id} className="public-board-item">
-                      <div className="board-info">
-                        <div className="board-color" style={{ backgroundColor: board.color }}></div>
-                        <div className="board-text">
-                          <span className="board-name">{board.name}</span>
-                          <span className="board-creator">Creado por: {board.creator?.name || 'Sistema'}</span>
+                    <div key={board.id} className={styles['public-board-item'] || 'public-board-item'}>
+                      <div className={styles['board-info'] || 'board-info'}>
+                        <div className={styles['board-color'] || 'board-color'} style={{ backgroundColor: board.color }}></div>
+                        <div className={styles['board-text'] || 'board-text'}>
+                          <span className={styles['board-name'] || 'board-name'}>{board.name}</span>
+                          <span className={styles['board-creator'] || 'board-creator'}>Creado por: {board.creator?.name || 'Sistema'}</span>
                         </div>
                       </div>
                       <button
-                        className="btn-primary btn-sm"
+                        className={`${styles['btn-primary']} ${styles['btn-sm'] || 'btn-sm'}`}
                         onClick={() => handleJoinBoard(board.id)}
                         disabled={isJoiningBoard}
                       >

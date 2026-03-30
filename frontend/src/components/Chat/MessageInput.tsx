@@ -1,5 +1,6 @@
 import React, { useRef } from 'react'
 import { PaperclipIcon, MicIcon, StopIcon, SendIcon } from './Icons'
+import styles from '../../pages/SlackChat.module.css'
 
 interface MessageInputProps {
   newMessage: string
@@ -29,8 +30,8 @@ export function MessageInput({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   return (
-    <div className="chat-input-area">
-      <div className="input-wrapper">
+    <div className={styles['chat-input-area']}>
+      <div className={styles['input-wrapper']}>
         <textarea
           value={newMessage}
           onChange={(e) => {
@@ -42,13 +43,13 @@ export function MessageInput({
           rows={1}
         />
         
-        <div className="input-toolbar">
-          <div className="toolbar-left">
-            <button className="toolbar-btn" onClick={() => fileInputRef.current?.click()} title="Adjuntar archivo">
+        <div className={styles['input-toolbar']}>
+          <div className={styles['toolbar-left']}>
+            <button className={styles['toolbar-btn']} onClick={() => fileInputRef.current?.click()} title="Adjuntar archivo">
               <PaperclipIcon />
             </button>
             <button 
-              className={`toolbar-btn ${isRecording ? 'recording' : ''}`} 
+              className={`${styles['toolbar-btn']} ${isRecording ? styles['recording'] : ''}`} 
               onClick={isRecording ? stopRecording : startRecording}
               title={isRecording ? "Detener grabación" : "Grabar nota de voz"}
             >
@@ -57,7 +58,7 @@ export function MessageInput({
           </div>
 
           <button 
-            className="send-btn" 
+            className={styles['send-btn']} 
             onClick={onSend}
             disabled={!newMessage.trim() && !isUploading}
             title="Enviar mensaje"
@@ -72,7 +73,7 @@ export function MessageInput({
           style={{ display: 'none' }} 
           onChange={onFileUpload}
         />
-        {isUploading && <div className="upload-loader">Subiendo...</div>}
+        {isUploading && <div className={styles['upload-loader'] || 'upload-loader'}>Subiendo...</div>}
       </div>
     </div>
   )

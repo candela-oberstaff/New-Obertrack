@@ -1,7 +1,7 @@
-import React from 'react'
 import { Message } from '../../types/chat'
 import { User } from '../../types'
 import { ReplyIcon, EditIcon, TrashIcon, PinIcon } from './Icons'
+import styles from '../../pages/SlackChat.module.css'
 
 interface MessageItemProps {
   message: Message
@@ -52,52 +52,52 @@ export function MessageItem({
 
 
   return (
-    <div className={`message-item ${isOwnMessage ? 'own-message' : ''} ${message.is_pinned ? 'pinned' : ''}`}>
-      <div className="message-avatar">
+    <div className={`${styles['message-item']} ${isOwnMessage ? styles['own-message'] : ''} ${message.is_pinned ? styles['pinned'] : ''}`}>
+      <div className={styles['message-avatar']}>
         {message.user?.name?.charAt(0).toUpperCase() || '?'}
       </div>
-      <div className="message-content-wrapper">
-        <div className="message-header">
-          <span className="user-name">{message.user?.name || 'Usuario'}</span>
-          <span className="message-time">{formatTime(message.created_at)}</span>
-          {message.is_pinned && <span className="pin-indicator">📍 Fijado</span>}
+      <div className={styles['message-main'] || 'message-content-wrapper'}>
+        <div className={styles['message-header']}>
+          <span className={styles['sender-name'] || 'user-name'}>{message.user?.name || 'Usuario'}</span>
+          <span className={styles['message-time']}>{formatTime(message.created_at)}</span>
+          {message.is_pinned && <span className={styles['pinned-badge'] || 'pin-indicator'}>📍 Fijado</span>}
         </div>
 
         {editingMessageId === message.id ? (
-          <div className="message-edit-box">
+          <div className={styles['message-edit-box'] || 'message-edit-box'}>
             <textarea 
               value={editContent} 
               onChange={(e) => setEditContent(e.target.value)}
               rows={3}
               autoFocus
             />
-            <div className="edit-actions">
-              <button className="btn-cancel" onClick={onCancelEdit}>Cancelar</button>
-              <button className="btn-save" onClick={onSaveEdit}>Guardar cambios</button>
+            <div className={styles['edit-actions'] || 'edit-actions'}>
+              <button className={styles['btn-cancel'] || 'btn-cancel'} onClick={onCancelEdit}>Cancelar</button>
+              <button className={styles['btn-save'] || 'btn-save'} onClick={onSaveEdit}>Guardar cambios</button>
             </div>
           </div>
         ) : (
-          <div className="message-text">
+          <div className={styles['message-text'] || 'message-body'}>
             {message.is_deleted ? (
-              <span className="deleted-text">[Mensaje eliminado]</span>
+              <span className={styles['deleted-text'] || 'deleted-text'}>[Mensaje eliminado]</span>
             ) : (
               highlightMentions(message.content)
             )}
-            {message.is_edited && !message.is_deleted && <span className="edited-tag">(editado)</span>}
+            {message.is_edited && !message.is_deleted && <span className={styles['edited-tag'] || 'edited-tag'}>(editado)</span>}
           </div>
         )}
 
         {message.attachment && !message.is_deleted && (
-          <div className="message-attachment">
+          <div className={styles['message-attachment']}>
             {isVoiceNote ? (
-              <div className="voice-note" onClick={() => togglePlayAudio(message.attachment!)}>
-                <span className="play-icon">{playingAudio === message.attachment ? '⏸' : '▶'}</span>
-                <span className="voice-label">Nota de voz</span>
+              <div className={styles['voice-note']} onClick={() => togglePlayAudio(message.attachment!)}>
+                <span className={styles['play-btn'] || 'play-icon'}>{playingAudio === message.attachment ? '⏸' : '▶'}</span>
+                <span className={styles['voice-label'] || 'voice-label'}>Nota de voz</span>
               </div>
             ) : message.file_type?.startsWith('image/') ? (
-              <img src={message.attachment} alt="Adjunto" className="attachment-image" onClick={() => window.open(message.attachment, '_blank')} />
+              <img src={message.attachment} alt="Adjunto" className={styles['attachment-image']} onClick={() => window.open(message.attachment, '_blank')} />
             ) : (
-              <a href={message.attachment} target="_blank" rel="noopener noreferrer" className="attachment-file">
+              <a href={message.attachment} target="_blank" rel="noopener noreferrer" className={styles['attachment-file'] || 'attachment-file'}>
                 📁 {message.file_name || 'Archivo'}
               </a>
             )}
@@ -107,22 +107,22 @@ export function MessageItem({
 
 
         {!message.is_deleted && (
-          <div className="message-actions">
+          <div className={styles['message-actions']}>
 
-            <button className="action-btn" onClick={() => onReply(message)} title="Reply in thread">
+            <button className={styles['action-btn']} onClick={() => onReply(message)} title="Reply in thread">
               <ReplyIcon />
             </button>
             {isOwnMessage && (
               <>
-                <button className="action-btn" onClick={() => onStartEdit(message)} title="Edit message">
+                <button className={styles['action-btn']} onClick={() => onStartEdit(message)} title="Edit message">
                   <EditIcon />
                 </button>
-                <button className="action-btn delete" onClick={() => onDelete(message.id)} title="Delete message">
+                <button className={`${styles['action-btn']} ${styles['delete']}`} onClick={() => onDelete(message.id)} title="Delete message">
                   <TrashIcon />
                 </button>
               </>
             )}
-            <button className="action-btn" onClick={() => message.is_pinned ? onUnpin(message.id) : onPin(message.id)} title={message.is_pinned ? "Unpin message" : "Pin message"}>
+            <button className={styles['action-btn']} onClick={() => message.is_pinned ? onUnpin(message.id) : onPin(message.id)} title={message.is_pinned ? "Unpin message" : "Pin message"}>
               <PinIcon />
             </button>
           </div>
