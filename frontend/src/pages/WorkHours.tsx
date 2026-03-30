@@ -2,6 +2,19 @@ import { useState, useEffect, useMemo } from 'react'
 import { workHourService } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import type { WorkHour } from '../types'
+import {
+  Calendar,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Hourglass,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  X,
+  Check,
+  AlertCircle
+} from 'lucide-react'
 import './WorkHours.css'
 
 const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
@@ -44,13 +57,13 @@ const parseLocalDate = (dateStr: string): Date => {
   return new Date(year, month - 1, day)
 }
 
-function CalendarView({ 
-  workHours, 
+function CalendarView({
+  workHours,
   onDayClick,
   selectedDate,
   currentMonth,
-  currentYear 
-}: { 
+  currentYear
+}: {
   workHours: WorkHour[]
   onDayClick: (date: string) => void
   selectedDate: string | null
@@ -83,16 +96,16 @@ function CalendarView({
     const isSelected = selectedDate === dateStr
     const dayOfWeek = parseLocalDate(dateStr).getDay()
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-    
+
     days.push(
-      <div 
-        key={day} 
+      <div
+        key={day}
         className={`calendar-day ${info?.type || ''} ${isSelected ? 'selected' : ''} ${isWeekend ? 'weekend' : ''}`}
         onClick={() => onDayClick(dateStr)}
       >
         <span className="day-number">{day}</span>
-        {info?.type === 'complete' && <span className="day-badge complete">✓</span>}
-        {info?.type === 'absence' && <span className="day-badge absence">⚠</span>}
+        {info?.type === 'complete' && <span className="day-badge complete"><CheckCircle2 size={12} /></span>}
+        {info?.type === 'absence' && <span className="day-badge absence"><AlertTriangle size={12} /></span>}
       </div>
     )
   }
@@ -135,14 +148,14 @@ export default function WorkHours() {
     try {
       const isEmployer = user?.user_type === 'empleador'
       const isSuperadmin = user?.is_superadmin
-      
+
       const [hoursRes, summaryRes] = await Promise.all([
         workHourService.getAll({}),
         workHourService.getSummary(),
       ])
       setWorkHours(hoursRes.data)
       setSummary(summaryRes)
-      
+
       if (isEmployer || isSuperadmin) {
         const pendingRes = await workHourService.getPending()
         setPendingHours(pendingRes)
@@ -159,10 +172,10 @@ export default function WorkHours() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      const hoursWorked = formData.work_type === 'absence' 
+      const hoursWorked = formData.work_type === 'absence'
         ? Math.max(0, 8 - (formData.absence_hours || 0))
         : 8
-      
+
       await workHourService.create({
         work_date: formData.work_date,
         work_type: formData.work_type,
@@ -191,7 +204,7 @@ export default function WorkHours() {
 
   const canApprove = user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador'
 
-  const filteredHours = selectedDate 
+  const filteredHours = selectedDate
     ? workHours.filter(wh => wh.work_date.split('T')[0] === selectedDate)
     : workHours
 
@@ -238,7 +251,7 @@ export default function WorkHours() {
     startOfWeek.setDate(now.getDate() - now.getDay())
     startOfWeek.setHours(0, 0, 0, 0)
     const startStr = startOfWeek.toISOString().split('T')[0]
-    
+
     return workHours
       .filter(wh => wh.work_date.split('T')[0] >= startStr)
       .reduce((sum, wh) => sum + wh.hours_worked, 0)
@@ -257,7 +270,7 @@ export default function WorkHours() {
     <div className="work-hours-page">
       <div className="page-header">
         <div className="header-left">
-          <h1>⏱️ Mi Jornada</h1>
+          <h1><Clock size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Mi Jornada</h1>
           <p className="header-subtitle">Registra tu día laboral</p>
         </div>
         <button className="btn-primary" onClick={() => setShowModal(true)}>
@@ -267,30 +280,30 @@ export default function WorkHours() {
 
       <div className="stats-row">
         <div className="stat-card-mini">
-          <span className="stat-icon">📅</span>
+          <span className="stat-icon"><Calendar size={20} /></span>
           <div className="stat-info">
             <span className="stat-label">Hoy</span>
             <span className="stat-value">
-              {todayWork ? (todayWork.work_type === 'complete' ? '✓ Completa' : '⚠ Ausencia') : '-'}
+              {todayWork ? (todayWork.work_type === 'complete' ? <><CheckCircle2 size={14} /> Completa</> : <><AlertTriangle size={14} /> Ausencia</>) : '-'}
             </span>
           </div>
         </div>
         <div className="stat-card-mini">
-          <span className="stat-icon">📆</span>
+          <span className="stat-icon"><Calendar size={20} /></span>
           <div className="stat-info">
             <span className="stat-label">Esta semana</span>
             <span className="stat-value">{weekHours.toFixed(1)}h</span>
           </div>
         </div>
         <div className="stat-card-mini approved">
-          <span className="stat-icon">✓</span>
+          <span className="stat-icon"><CheckCircle2 size={20} /></span>
           <div className="stat-info">
             <span className="stat-label">Aprobadas</span>
             <span className="stat-value">{summary.approved_hours.toFixed(1)}h</span>
           </div>
         </div>
         <div className="stat-card-mini pending">
-          <span className="stat-icon">⏳</span>
+          <span className="stat-icon"><Hourglass size={20} /></span>
           <div className="stat-info">
             <span className="stat-label">Pendientes</span>
             <span className="stat-value">{summary.pending_hours.toFixed(1)}h</span>
@@ -301,11 +314,11 @@ export default function WorkHours() {
       <div className="work-hours-content">
         <div className="calendar-section">
           <div className="calendar-header">
-            <button className="nav-btn" onClick={prevMonth}>‹</button>
+            <button className="nav-btn" onClick={prevMonth}><ChevronLeft size={20} /></button>
             <h3>{MONTHS_ES[currentMonth]} {currentYear}</h3>
-            <button className="nav-btn" onClick={nextMonth}>›</button>
+            <button className="nav-btn" onClick={nextMonth}><ChevronRight size={20} /></button>
           </div>
-          <CalendarView 
+          <CalendarView
             workHours={workHours}
             onDayClick={setSelectedDate}
             selectedDate={selectedDate}
@@ -326,20 +339,20 @@ export default function WorkHours() {
         <div className="hours-list-section">
           <div className="list-header">
             <h3>
-              {selectedDate 
+              {selectedDate
                 ? `Registros del ${parseLocalDate(selectedDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}`
                 : 'Mis registros'}
             </h3>
             {canApprove && pendingForSelectedDate.length > 0 && (
               <button className="btn-bulk-approve" onClick={handleBulkApprove}>
-                ✓ Aprobar todos ({pendingForSelectedDate.length})
+                <Check size={16} /> Aprobar todos ({pendingForSelectedDate.length})
               </button>
             )}
           </div>
 
           {filteredHours.length === 0 ? (
             <div className="empty-state">
-              <span className="empty-icon">📋</span>
+              <span className="empty-icon"><ClipboardList size={40} /></span>
               <p>No hay registros</p>
             </div>
           ) : (
@@ -353,8 +366,8 @@ export default function WorkHours() {
                   <div className="hour-info">
                     {canApprove && wh.user && <span className="hours-user">{wh.user.name}</span>}
                     <span className="hours-value">
-                      {wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA 
-                        ? 'Jornada Completa' 
+                      {wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA
+                        ? 'Jornada Completa'
                         : `Ausencia (${wh.hours_worked}h)`}
                     </span>
                     {wh.activities && <p className="hours-comments">{wh.activities}</p>}
@@ -376,7 +389,7 @@ export default function WorkHours() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Registrar Día</h2>
-              <button className="close-btn" onClick={() => setShowModal(false)}>✕</button>
+              <button className="close-btn" onClick={() => setShowModal(false)}><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-group">
@@ -398,7 +411,7 @@ export default function WorkHours() {
                     className={`work-type-btn ${formData.work_type === 'complete' ? 'active' : ''}`}
                     onClick={() => setFormData({ ...formData, work_type: 'complete' })}
                   >
-                    <span className="work-type-icon">✓</span>
+                    <span className="work-type-icon"><Check size={20} /></span>
                     <span className="work-type-label">Jornada Completa</span>
                     <span className="work-type-hours">8h</span>
                   </button>
@@ -407,7 +420,7 @@ export default function WorkHours() {
                     className={`work-type-btn ${formData.work_type === 'absence' ? 'active' : ''}`}
                     onClick={() => setFormData({ ...formData, work_type: 'absence' })}
                   >
-                    <span className="work-type-icon">⚠</span>
+                    <span className="work-type-icon"><AlertCircle size={20} /></span>
                     <span className="work-type-label">Ausencia</span>
                     <span className="work-type-hours">{Math.max(0, 8 - (formData.absence_hours || 0))}h</span>
                   </button>
@@ -487,7 +500,7 @@ export default function WorkHours() {
           <div className="modal detail-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Detalle de Registro</h2>
-              <button className="close-btn" onClick={() => setSelectedWorkHour(null)}>✕</button>
+              <button className="close-btn" onClick={() => setSelectedWorkHour(null)}><X size={20} /></button>
             </div>
             <div className="detail-content">
               <div className="detail-row">
@@ -497,15 +510,15 @@ export default function WorkHours() {
               <div className="detail-row">
                 <span className="detail-label">Fecha</span>
                 <span className="detail-value">
-                  {parseLocalDate(selectedWorkHour.work_date).toLocaleDateString('es-ES', { 
-                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+                  {parseLocalDate(selectedWorkHour.work_date).toLocaleDateString('es-ES', {
+                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
                   })}
                 </span>
               </div>
               <div className="detail-row">
                 <span className="detail-label">Tipo</span>
                 <span className={`detail-type ${selectedWorkHour.work_type}`}>
-                  {selectedWorkHour.work_type === 'complete' || selectedWorkHour.hours_worked >= 8 
+                  {selectedWorkHour.work_type === 'complete' || selectedWorkHour.hours_worked >= 8
                     ? 'Jornada Completa' : `Ausencia (${selectedWorkHour.hours_worked}h)`}
                 </span>
               </div>
@@ -522,10 +535,10 @@ export default function WorkHours() {
               {selectedWorkHour.activities && (
                 <div className="detail-activities">
                   <span className="detail-label">Actividades del día</span>
-                  <div 
-                    className="detail-text" 
-                    dangerouslySetInnerHTML={{ 
-                      __html: selectedWorkHour.activities.replace(/\n/g, '<br>').replace(/• /g, '<br>• ').replace(/<br>1\./g, '<br>1.') 
+                  <div
+                    className="detail-text"
+                    dangerouslySetInnerHTML={{
+                      __html: selectedWorkHour.activities.replace(/\n/g, '<br>').replace(/• /g, '<br>• ').replace(/<br>1\./g, '<br>1.')
                     }}
                   />
                 </div>
@@ -544,7 +557,7 @@ export default function WorkHours() {
                   await workHourService.approve([selectedWorkHour.id])
                   setSelectedWorkHour(null)
                   fetchData()
-                }}>✓ Aprobar</button>
+                }}><Check size={16} /> Aprobar</button>
               )}
             </div>
           </div>

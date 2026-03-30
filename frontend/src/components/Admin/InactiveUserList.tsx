@@ -1,4 +1,4 @@
-
+import { CheckCircle2 } from 'lucide-react'
 
 interface InactiveUser {
   id: number
@@ -21,7 +21,7 @@ export function InactiveUserList({ inactiveUsers }: InactiveUserListProps) {
       </div>
       {inactiveUsers.length === 0 ? (
         <div className="empty-state">
-          <span className="empty-icon">🎉</span>
+          <span className="empty-icon"><CheckCircle2 size={40} style={{ color: '#10b981' }} /></span>
           <p>¡Todos los profesionales están activos!</p>
         </div>
       ) : (

@@ -3,6 +3,17 @@ import { taskService } from '../../services/api'
 import type { Task, User, TaskStatus, TaskPriority, TaskAttachment } from '../../types'
 import { RichTextEditor } from './RichTextEditor'
 import { ColumnType } from './types'
+import { 
+  X, 
+  Pencil, 
+  Trash2, 
+  Paperclip, 
+  Image as ImageIcon, 
+  FileText, 
+  BarChart, 
+  Music, 
+  Check 
+} from 'lucide-react'
 
 interface TaskDetailPanelProps {
   task: Task | null
@@ -136,12 +147,12 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
   }
 
   const getFileIcon = (mimeType: string) => {
-    if (mimeType?.startsWith('image/')) return '🖼️'
-    if (mimeType?.includes('pdf')) return '📄'
-    if (mimeType?.includes('word')) return '📝'
-    if (mimeType?.includes('excel') || mimeType?.includes('sheet')) return '📊'
-    if (mimeType?.startsWith('audio/')) return '🎵'
-    return '📎'
+    if (mimeType?.startsWith('image/')) return <ImageIcon size={18} />
+    if (mimeType?.includes('pdf')) return <FileText size={18} />
+    if (mimeType?.includes('word')) return <FileText size={18} />
+    if (mimeType?.includes('excel') || mimeType?.includes('sheet')) return <BarChart size={18} />
+    if (mimeType?.startsWith('audio/')) return <Music size={18} />
+    return <Paperclip size={18} />
   }
 
   const getPriorityColor = (priority: string) => {
@@ -157,7 +168,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
     <div className="task-detail-panel">
       <div className="panel-header">
         <h2>{isEditing ? 'Editar Tarea' : 'Detalles de la tarea'}</h2>
-        <button className="close-btn" onClick={onClose}>✕</button>
+        <button className="close-btn" onClick={onClose}><X size={20} /></button>
       </div>
 
       <div className="panel-content">
@@ -240,7 +251,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                               assignees: formData.assignees.filter(aid => aid !== user.id)
                             })}
                           >
-                            ×
+                            <X size={14} />
                           </button>
                         </div>
                       )
@@ -284,7 +295,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                           >
                             <div className="chip-avatar">{user.name?.charAt(0).toUpperCase() || '?'}</div>
                             <span className="assignee-name">{user.name || user.email}</span>
-                            {isAssigned && <span className="assignee-check">✓</span>}
+                            {isAssigned && <span className="assignee-check"><Check size={14} /></span>}
                           </div>
                         )
                       })}
@@ -394,9 +405,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                           }}
                           title="Eliminar archivo"
                         >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                          </svg>
+                          <X size={18} />
                         </button>
                       </div>
                     </div>
@@ -428,7 +437,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                   transition: 'all 0.2s',
                 }}
               >
-                {isUploadingFile ? '⏳ Subiendo...' : '📎 Adjuntar archivo'}
+                {isUploadingFile ? '⏳ Subiendo...' : <><Paperclip size={14} /> Adjuntar archivo</>}
               </label>
             </div>
 
@@ -473,7 +482,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
 
             <div className="panel-actions">
               <button className="btn-edit" onClick={() => setIsEditing(true)}>
-                ✏️ Editar
+                <Pencil size={16} /> Editar
               </button>
               <button className="btn-delete" onClick={() => {
                 if (confirm('¿Eliminar esta tarea?')) {
@@ -482,7 +491,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                   onClose()
                 }
               }} disabled={isDeleting}>
-                {isDeleting ? 'Eliminando...' : '🗑️ Eliminar'}
+                {isDeleting ? 'Eliminando...' : <><Trash2 size={16} /> Eliminar</>}
               </button>
             </div>
           </>

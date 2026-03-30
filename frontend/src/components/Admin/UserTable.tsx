@@ -1,4 +1,5 @@
 import { User } from '../../types'
+import { Pencil, Ban, CheckCircle2, Trash2 } from 'lucide-react'
 
 interface UserTableProps {
   users: User[]
@@ -67,21 +68,21 @@ export function UserTable({
                         onClick={() => onEdit(u)}
                         title="Editar"
                       >
-                        ✏️
+                        <Pencil size={16} />
                       </button>
                       <button
                         className="btn-icon"
                         onClick={() => onToggleStatus(u)}
                         title={u.is_active !== false ? 'Desactivar' : 'Activar'}
                       >
-                        {u.is_active !== false ? '🚫' : '✅'}
+                        {u.is_active !== false ? <Ban size={16} /> : <CheckCircle2 size={16} />}
                       </button>
                       <button
                         className="btn-icon danger"
                         onClick={() => onDelete(u.id)}
                         title="Eliminar"
                       >
-                        🗑️
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>

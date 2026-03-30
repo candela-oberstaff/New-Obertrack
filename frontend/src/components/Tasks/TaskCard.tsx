@@ -1,4 +1,4 @@
-import { } from 'react'
+import { Paperclip } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Task } from '../../types'
@@ -38,9 +38,7 @@ export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
         )}
         {task.attachments && task.attachments.length > 0 && (
           <div className="card-attachments" title={`${task.attachments.length} archivos adjuntos`}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.51a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-            </svg>
+            <Paperclip size={14} />
             <span>{task.attachments.length}</span>
           </div>
         )}

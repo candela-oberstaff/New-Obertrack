@@ -16,9 +16,9 @@ const (
 
 type Channel struct {
 	ID            uint           `gorm:"primaryKey" json:"id"`
-	Name          string         `gorm:"size:100;not null" json:"name"`
+	Name          string         `gorm:"size:100;not null;uniqueIndex:idx_channel_name_type" json:"name"`
 	Description   string         `gorm:"size:500" json:"description"`
-	Type          ChannelType    `gorm:"type:varchar(20);not null;default:'public'" json:"type"`
+	Type          ChannelType    `gorm:"type:varchar(20);not null;default:'public';uniqueIndex:idx_channel_name_type" json:"type"`
 	CreatedBy     uint           `gorm:"not null;index" json:"created_by"`
 	CreatedByUser User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	IsActive      bool           `gorm:"default:true" json:"is_active"`
@@ -37,8 +37,9 @@ type ChannelMember struct {
 	ChannelID uint      `gorm:"primaryKey" json:"channel_id"`
 	UserID    uint      `gorm:"primaryKey" json:"user_id"`
 	Role      string    `gorm:"size:20;default:'member'" json:"role"` // admin, member
-	JoinedAt  time.Time `json:"joined_at"`
-	CreatedAt time.Time `json:"created_at"`
+	JoinedAt   time.Time  `json:"joined_at"`
+	LastReadAt *time.Time `json:"last_read_at"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 func (ChannelMember) TableName() string {
