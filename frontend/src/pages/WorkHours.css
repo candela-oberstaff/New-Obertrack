@@ -8,7 +8,7 @@
 }
 
 /* Header */
-.page-header {
+.wh-page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -42,7 +42,7 @@
 }
 
 /* Stats Row */
-.stats-row {
+.wh-stats-row {
   display: flex;
   gap: 16px;
   padding: 16px 24px;
@@ -52,7 +52,7 @@
   scrollbar-width: none;
 }
 
-.stats-row::-webkit-scrollbar {
+.wh-stats-row::-webkit-scrollbar {
   display: none;
 }
 
