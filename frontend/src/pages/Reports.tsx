@@ -1,19 +1,19 @@
 import { useState, useEffect, useMemo } from 'react'
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts'
 import { userService, workHourService, taskService } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { WorkHour, Task } from '../types'
-import { 
-  BarChart2, 
-  ChevronLeft, 
-  ChevronRight, 
-  Clock, 
-  CheckSquare, 
-  CheckCircle2, 
-  AlertCircle, 
-  Calendar, 
+import {
+  BarChart2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  CheckSquare,
+  CheckCircle2,
+  AlertCircle,
+  Calendar,
   FileText,
   Check
 } from 'lucide-react'
@@ -55,7 +55,7 @@ export default function Reports() {
     setIsLoading(true)
     try {
       const [startDate, endDate] = getMonthRange(month)
-      
+
       let userIdFilter: string | undefined
       if (selectedEmployee) {
         userIdFilter = String(selectedEmployee)
@@ -71,10 +71,10 @@ export default function Reports() {
         }),
         taskService.getAll({})
       ])
-      
+
       console.log('Reports - hours:', hoursRes.status === 'fulfilled' ? hoursRes.value : hoursRes.reason)
       console.log('Reports - tasks:', tasksRes.status === 'fulfilled' ? tasksRes.value : tasksRes.reason)
-      
+
       if (hoursRes.status === 'fulfilled') {
         setWorkHours(hoursRes.value?.data || [])
       }
@@ -102,7 +102,7 @@ export default function Reports() {
     const pending = total - approved
     const daysWorked = new Set(workHours.map(wh => wh.work_date.split('T')[0])).size
     const targetHours = 160
-    
+
     return { total, approved, pending, daysWorked, targetHours, progress: Math.min((total / targetHours) * 100, 100) }
   }, [workHours])
 
@@ -110,7 +110,7 @@ export default function Reports() {
     const [year, m] = month.split('-').map(Number)
     const daysInMonth = new Date(year, m - 1 + 1, 0).getDate()
     const days = []
-    
+
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${month}-${String(day).padStart(2, '0')}`
       const dayHours = workHours
@@ -138,9 +138,9 @@ export default function Reports() {
     })
     return Object.entries(counts)
       .filter(([_, value]) => value > 0)
-      .map(([key, value]) => ({ 
-        name: PRIORITY_LABELS[key] || key, 
-        value 
+      .map(([key, value]) => ({
+        name: PRIORITY_LABELS[key] || key,
+        value
       }))
   }, [tasks])
 
@@ -168,7 +168,7 @@ export default function Reports() {
             ))}
           </select>
         )}
-        
+
         <div className={styles['month-selector']}>
           <button className={styles['nav-btn']} onClick={() => {
             const [year, m] = month.split('-').map(Number)
@@ -189,13 +189,13 @@ export default function Reports() {
         </div>
 
         <div className={styles['report-type-tabs']}>
-          <button 
+          <button
             className={`${styles['tab-btn']} ${reportType === 'hours' ? styles['active'] : ''}`}
             onClick={() => setReportType('hours')}
           >
             <Clock size={16} /> Horas
           </button>
-          <button 
+          <button
             className={`${styles['tab-btn']} ${reportType === 'tasks' ? styles['active'] : ''}`}
             onClick={() => setReportType('tasks')}
           >
@@ -260,27 +260,27 @@ export default function Reports() {
               </div>
 
               <div className={styles['charts-row'] || 'charts-row'}>
-              {workHours.some(wh => wh.activities) && (
-                <div className={styles['activities-section']}>
-                  <h3><FileText size={20} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Actividades Registradas</h3>
-                  <div className={styles['activities-list']}>
-                    {workHours.filter(wh => wh.activities).slice(0, 10).map((wh) => (
-                      <div key={wh.id} className={styles['activity-card']}>
-                        <div className={styles['activity-date']}>
-                          <span className={styles['activity-day']}>{new Date(wh.work_date).getDate()}</span>
-                          <span className={styles['activity-month']}>{new Date(wh.work_date).toLocaleDateString('es-ES', { month: 'short' })}</span>
+                {workHours.some(wh => wh.activities) && (
+                  <div className={styles['activities-section']}>
+                    <h3><FileText size={20} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Actividades Registradas</h3>
+                    <div className={styles['activities-list']}>
+                      {workHours.filter(wh => wh.activities).slice(0, 10).map((wh) => (
+                        <div key={wh.id} className={styles['activity-card']}>
+                          <div className={styles['activity-date']}>
+                            <span className={styles['activity-day']}>{new Date(wh.work_date).getDate()}</span>
+                            <span className={styles['activity-month']}>{new Date(wh.work_date).toLocaleDateString('es-ES', { month: 'short' })}</span>
+                          </div>
+                          <div className={styles['activity-content']}>
+                            <p className={styles['activity-text']}>{wh.activities}</p>
+                            <span className={`${styles['activity-type']} ${styles[wh.work_type] || wh.work_type}`}>
+                              {wh.work_type === 'complete' ? 'Jornada Completa' : 'Ausencia'}
+                            </span>
+                          </div>
                         </div>
-                        <div className={styles['activity-content']}>
-                          <p className={styles['activity-text']}>{wh.activities}</p>
-                          <span className={`${styles['activity-type']} ${styles[wh.work_type] || wh.work_type}`}>
-                            {wh.work_type === 'complete' ? 'Jornada Completa' : 'Ausencia'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
                 <div className={`${styles['chart-card'] || 'chart-card'} ${styles['large'] || 'large'}`}>
                   <div className={styles['chart-header'] || 'chart-header'}>
@@ -292,7 +292,7 @@ export default function Reports() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                         <XAxis dataKey="day" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
                         <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                        <Tooltip 
+                        <Tooltip
                           cursor={{ fill: '#f8fafc' }}
                           contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                           formatter={(value) => [`${value}h`, 'Horas']}
@@ -304,19 +304,7 @@ export default function Reports() {
                   </div>
                 </div>
 
-                <div className={`${styles['breakdown-card']} ${styles['progress-breakdown']}`}>
-                  <div className={styles['breakdown-indicator']} style={{ background: '#3b82f6' }}></div>
-                  <div className={styles['breakdown-info']}>
-                    <span className={styles['breakdown-label']}>Progreso del Mes</span>
-                    <span className={styles['breakdown-value']}>{hoursStats.progress.toFixed(0)}%</span>
-                    <div className={styles['progress-bar-mini']}>
-                      <div className={styles['progress-fill']} style={{ width: `${hoursStats.progress}%` }}></div>
-                    </div>
-                    <p className={styles['breakdown-desc']}>
-                      Has completado {hoursStats.total.toFixed(1)}h de la meta de {hoursStats.targetHours}h.
-                    </p>
-                  </div>
-                </div>
+
               </div>
 
               <div className={styles['detail-table']}>
@@ -410,9 +398,9 @@ export default function Reports() {
                     const total = tasks.length || 1
                     const width = (count / total) * 100
                     const color = p === 'Urgente' ? '#ef4444' : p === 'Alta' ? '#f97316' : p === 'Media' ? '#f59e0b' : '#3b82f6'
-                    
+
                     if (count === 0) return null
-                    
+
                     return (
                       <div key={p} className={styles['priority-bar-segment']} style={{ width: `${width}%`, background: color }} title={`${p}: ${count}`}>
                         <span className={styles['segment-label']}>{p} ({count})</span>

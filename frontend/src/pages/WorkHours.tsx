@@ -15,41 +15,13 @@ import {
   Check,
   AlertCircle
 } from 'lucide-react'
+import { RichTextEditor } from '../components/Tasks/RichTextEditor'
 import styles from './WorkHours.module.css'
 
 const DAYS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 const JORNADA_COMPLETA = 8
-
-// Simple rich text editor for activities
-function RichTextEditor({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
-  const formatText = (tag: string) => {
-    const selection = window.getSelection()?.toString() || ''
-    if (selection) {
-      onChange(value + `<${tag}>${selection}</${tag}>`)
-    }
-  }
-
-  return (
-    <div className={styles['rich-editor']}>
-      <div className={styles['rich-editor-toolbar']}>
-        <button type="button" onClick={() => formatText('strong')} title="Negrita"><strong>B</strong></button>
-        <button type="button" onClick={() => formatText('em')} title="Cursiva"><em>I</em></button>
-        <button type="button" onClick={() => formatText('u')} title="Subrayado"><u>U</u></button>
-        <span className={styles['toolbar-sep']}>|</span>
-        <button type="button" onClick={() => onChange(value + '\n• ')} title="Viñeta">•</button>
-        <button type="button" onClick={() => onChange(value + '\n1. ')} title="Número">1.</button>
-      </div>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={5}
-      />
-    </div>
-  )
-}
 
 // Función para parsear fechas sin problema de timezone
 const parseLocalDate = (dateStr: string): Date => {

@@ -17,19 +17,21 @@ import {
 } from '@dnd-kit/sortable'
 import { taskService, userService, boardService } from '../services/api'
 import type { Task, User, TaskStatus, CreateTaskInput, Board } from '../types'
-import { RichTextEditor } from '../components/Tasks/RichTextEditor'
+
 import { TaskCard } from '../components/Tasks/TaskCard'
 import { Column } from '../components/Tasks/Column'
 import { TaskDetailPanel } from '../components/Tasks/TaskDetailPanel'
+import { NewTaskModal } from '../components/Tasks/Modals/NewTaskModal'
+import { BoardModal } from '../components/Tasks/Modals/BoardModal'
+import { BoardMembersModal } from '../components/Tasks/Modals/BoardMembersModal'
+import { PhasesModal } from '../components/Tasks/Modals/PhasesModal'
+import { JoinBoardModal } from '../components/Tasks/Modals/JoinBoardModal'
 import { ColumnType } from '../components/Tasks/types'
 import {
   Plus,
   Settings2,
   UserPlus,
-  Trash2,
-  X,
-  GripVertical,
-  Paperclip,
+  Trash2
 } from 'lucide-react'
 import styles from './Tasks.module.css'
 
@@ -60,9 +62,8 @@ export default function Tasks() {
   const [optimisticMembers, setOptimisticMembers] = useState<number[]>([])
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isCreatingBoard, setIsCreatingBoard] = useState(false)
+
   const [isDeletingBoard, setIsDeletingBoard] = useState(false)
-  const [isAddingPhase, setIsAddingPhase] = useState(false)
-  const [isDeletingPhase, setIsDeletingPhase] = useState(false)
   const [draggingPhase, setDraggingPhase] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
   const phasesOrderRef = useRef<Board['phases']>([])
@@ -635,346 +636,70 @@ export default function Tasks() {
         </button>
       </div>
 
-      {showBoardModal && (
-        <div className={styles['modal-overlay']} onClick={() => setShowBoardModal(false)}>
-          <div className={`${styles['modal']} ${styles['board-modal']}`} onClick={(e) => e.stopPropagation()}>
-            <h2>Crear Tablero</h2>
-            <form onSubmit={(e) => { e.preventDefault(); handleCreateBoard() }}>
-              <div className={styles['form-group']}>
-                <label>Nombre del tablero</label>
-                <input
-                  type="text"
-                  value={newBoardData.name}
-                  onChange={(e) => setNewBoardData({ ...newBoardData, name: e.target.value })}
-                  placeholder="Ej: Marketing, IT, Diseño..."
-                  required
-                />
-              </div>
-              <div className={styles['form-group']}>
-                <label>Descripción</label>
-                <textarea
-                  value={newBoardData.description}
-                  onChange={(e) => setNewBoardData({ ...newBoardData, description: e.target.value })}
-                  placeholder="Descripción opcional..."
-                  rows={2}
-                />
-              </div>
-              <div className={styles['form-group']}>
-                <label>Color</label>
-                <input
-                  type="color"
-                  value={newBoardData.color}
-                  onChange={(e) => setNewBoardData({ ...newBoardData, color: e.target.value })}
-                />
-              </div>
-              <div className={styles['form-group']}>
-                <label>Agregar miembros (opcional)</label>
-                <input
-                  type="text"
-                  placeholder="Buscar usuarios..."
-                  value={assigneeSearch}
-                  onChange={(e) => setAssigneeSearch(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px' }}
-                />
-                <div className={styles['members-select']} style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                  {filteredUsers
-                    .slice()
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map(user => (
-                      <label key={user.id} className={styles['member-checkbox']}>
-                        <div className={styles['left-section']}>
-                          <input
-                            type="checkbox"
-                            checked={newBoardData.member_ids.includes(user.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewBoardData({
-                                  ...newBoardData,
-                                  member_ids: [...newBoardData.member_ids, user.id]
-                                })
-                              } else {
-                                setNewBoardData({
-                                  ...newBoardData,
-                                  member_ids: newBoardData.member_ids.filter(id => id !== user.id)
-                                })
-                              }
-                            }}
-                          />
-                          <span className={styles['checkbox-custom']}></span>
-                          <div className={styles['member-avatar']}>
-                            {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                          </div>
-                          <div className={styles['member-info']}>
-                            <span className={styles['member-name']}>{user.name}</span>
-                            <span className={styles['member-role']}>{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                </div>
-              </div>
+      <BoardModal
+        isOpen={showBoardModal}
+        onClose={() => {
+          setShowBoardModal(false)
+          setNewBoardData({
+            name: '',
+            description: '',
+            color: '#3b82f6',
+            member_ids: [],
+            phases: [
+              { name: 'Por hacer', color: '#6b7280' },
+              { name: 'En proceso', color: '#3b82f6' },
+              { name: 'Finalizado', color: '#22c55e' },
+            ],
+          })
+          setAssigneeSearch('')
+          setNewBoardPhaseSearch('')
+        }}
+        newBoardData={newBoardData}
+        setNewBoardData={setNewBoardData}
+        assigneeSearch={assigneeSearch}
+        setAssigneeSearch={setAssigneeSearch}
+        filteredUsers={filteredUsers}
+        newBoardPhaseSearch={newBoardPhaseSearch}
+        setNewBoardPhaseSearch={setNewBoardPhaseSearch}
+        onSubmit={handleCreateBoard}
+        isCreatingBoard={isCreatingBoard}
+      />
 
-              <div className={styles['form-group']}>
-                <label>Fases del tablero</label>
-                <div className={styles['phases-list']} style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '12px' }}>
-                  {newBoardData.phases.map((phase, idx) => (
-                    <div key={idx} className={styles['phase-item']}>
-                      <div className={styles['phase-color']} style={{ backgroundColor: phase.color }}></div>
-                      <span className={styles['phase-name']}>{phase.name}</span>
-                      {newBoardData.phases.length > 1 && (
-                        <button
-                          type="button"
-                          className={`${styles['btn-icon']} ${styles['phase-delete'] || 'phase-delete'}`}
-                          onClick={() => {
-                            setNewBoardData({
-                              ...newBoardData,
-                              phases: newBoardData.phases.filter((_, i) => i !== idx)
-                            })
-                          }}
-                          title="Eliminar fase"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    placeholder="Nueva fase..."
-                    value={newBoardPhaseSearch}
-                    onChange={(e) => setNewBoardPhaseSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newBoardPhaseSearch.trim()) {
-                        e.preventDefault()
-                        setNewBoardData({
-                          ...newBoardData,
-                          phases: [...newBoardData.phases, { name: newBoardPhaseSearch.trim(), color: '#6b7280' }]
-                        })
-                        setNewBoardPhaseSearch('')
-                      }
-                    }}
-                    style={{ flex: 1, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px' }}
-                  />
-                  <input
-                    type="color"
-                    defaultValue="#6b7280"
-                    style={{ width: '36px', height: '36px', border: 'none', cursor: 'pointer', padding: '2px' }}
-                  />
-                  <button
-                    type="button"
-                    className={styles['btn-primary']}
-                    style={{ padding: '8px 12px' }}
-                    onClick={() => {
-                      if (newBoardPhaseSearch.trim()) {
-                        setNewBoardData({
-                          ...newBoardData,
-                          phases: [...newBoardData.phases, { name: newBoardPhaseSearch.trim(), color: '#6b7280' }]
-                        })
-                        setNewBoardPhaseSearch('')
-                      }
-                    }}
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
-              </div>
+      <BoardMembersModal
+        isOpen={showBoardMembersModal}
+        onClose={() => { setShowBoardMembersModal(false); setOptimisticMembers(selectedBoard?.members?.map(m => m.id) || []) }}
+        selectedBoard={selectedBoard}
+        optimisticMembers={optimisticMembers}
+        setOptimisticMembers={setOptimisticMembers}
+        users={users}
+        onUpdateMembers={async (newOptimisticMembers) => {
+          if (!selectedBoard) return
+          try {
+            await boardService.update(selectedBoard.id, { member_ids: newOptimisticMembers })
+            const boardsRes = await boardService.getAll()
+            setBoards(boardsRes)
+            const updated = boardsRes.find(b => b.id === selectedBoard.id)
+            if (updated) setSelectedBoard(updated)
+          } catch (error) {
+            console.error('Error updating board members:', error)
+            setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
+          }
+        }}
+      />
 
-              <div className={styles['modal-actions']}>
-                <button type="button" onClick={() => {
-                  setShowBoardModal(false)
-                  setNewBoardData({
-                    name: '',
-                    description: '',
-                    color: '#3b82f6',
-                    member_ids: [],
-                    phases: [
-                      { name: 'Por hacer', color: '#6b7280' },
-                      { name: 'En proceso', color: '#3b82f6' },
-                      { name: 'Finalizado', color: '#22c55e' },
-                    ],
-                  })
-                  setAssigneeSearch('')
-                  setNewBoardPhaseSearch('')
-                }}>Cancelar</button>
-                <button type="submit" className={styles['btn-primary']} disabled={isCreatingBoard}>
-                  {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showBoardMembersModal && selectedBoard && (
-        <div className={styles['modal-overlay']} onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>
-          <div className={`${styles['modal']} ${styles['board-modal']} ${styles['wide'] || 'wide'}`} onClick={(e) => e.stopPropagation()}>
-            <h2>Miembros del Tablero</h2>
-            <p style={{ color: '#64748b', marginBottom: '20px', marginTop: '-16px' }}>{selectedBoard.name}</p>
-            <div className={styles['form-group']}>
-              <label>Selecciona los miembros que quieres agregar al tablero</label>
-              <div className={styles['members-select']}>
-                {users.map(user => {
-                  const isMember = optimisticMembers.includes(user.id)
-                  return (
-                    <label key={user.id} className={styles['member-checkbox']}>
-                      <div className={styles['left-section']}>
-                        <input
-                          type="checkbox"
-                          checked={isMember}
-                          onChange={async (e) => {
-                            const newOptimisticMembers = e.target.checked
-                              ? [...optimisticMembers, user.id]
-                              : optimisticMembers.filter(id => id !== user.id)
-                            setOptimisticMembers(newOptimisticMembers)
-                            try {
-                              await boardService.update(selectedBoard.id, { member_ids: newOptimisticMembers })
-                              const boardsRes = await boardService.getAll()
-                              setBoards(boardsRes)
-                              const updated = boardsRes.find(b => b.id === selectedBoard.id)
-                              if (updated) setSelectedBoard(updated)
-                            } catch (error) {
-                              console.error('Error updating board members:', error)
-                              setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
-                            }
-                          }}
-                        />
-                        <span className={styles['checkbox-custom']}></span>
-                        <div className={styles['member-avatar']}>
-                          {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                        </div>
-                        <div className={styles['member-info']}>
-                          <span className={styles['member-name']}>{user.name}</span>
-                          <span className={styles['member-role']}>{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
-                        </div>
-                      </div>
-                      <span className={`${styles['member-status'] || 'member-status'} ${isMember ? (styles['active'] || 'active') : (styles['inactive'] || 'inactive')}`}>
-                        {isMember ? 'En tablero' : 'No asignado'}
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </div>
-            <div className={styles['modal-actions']}>
-              <button type="button" className={styles['btn-primary']} onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>Listo</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showPhasesModal && selectedBoard && (
-        <div className={styles['modal-overlay']} onClick={() => setShowPhasesModal(false)} onMouseUp={handlePhaseDragEnd}>
-          <div className={`${styles['modal']} ${styles['board-modal']} ${styles['phases-modal'] || 'phases-modal'}`} onClick={(e) => e.stopPropagation()} onMouseUp={() => handlePhaseDragEnd()}>
-            <div className={styles['board-modal-header'] || 'board-modal-header'}>
-              <h2>Gestionar Fases</h2>
-              <button className={styles['close-btn']} onClick={() => setShowPhasesModal(false)}><X size={20} /></button>
-            </div>
-            <p className={styles['board-subtitle'] || 'board-subtitle'}>{selectedBoard.name}</p>
-
-            <div
-              className={styles['phases-list']}
-              onMouseMove={(e) => {
-                if (!isDraggingPhasesRef.current) return
-                const target = e.target as HTMLElement
-                const phaseItem = target.closest(`.${styles['phase-item'] || 'phase-item'}`)
-                if (phaseItem) {
-                  const idx = parseInt(phaseItem.getAttribute('data-idx') || '-1')
-                  if (idx >= 0) handlePhaseDragEnter(idx)
-                }
-              }}
-              onMouseUp={handlePhaseDragEnd}
-              onMouseLeave={(e) => {
-                if (isDraggingPhasesRef.current) {
-                  const relatedTarget = e.relatedTarget as HTMLElement
-                  if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-                    handlePhaseDragEnd()
-                  }
-                }
-              }}
-            >
-              {selectedBoard.phases?.map((phase, idx) => (
-                <div
-                  key={phase.id}
-                  data-idx={idx}
-                  className={`${styles['phase-item']} ${draggingPhase === phase.id ? (styles['dragging'] || 'dragging') : ''} ${dragOverIdx === idx ? (styles['drag-over'] || 'drag-over') : ''}`}
-                  onMouseDown={() => handlePhaseDragStart(phase.id)}
-                >
-                  <span className={styles['drag-handle'] || 'drag-handle'} style={{ cursor: 'grab' }}><GripVertical size={16} /></span>
-                  <div className={styles['phase-color']} style={{ backgroundColor: phase.color }}></div>
-                  <span className={styles['phase-name']}>{phase.name}</span>
-                  <button
-                    className={`${styles['btn-icon']} ${styles['phase-delete'] || 'phase-delete'}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (!confirm('¿Eliminar esta fase?')) return
-                      setIsDeletingPhase(true)
-                      boardService.removePhase(selectedBoard.id, phase.id)
-                        .then(() => boardService.getAll())
-                        .then((boardsRes) => {
-                          setBoards(boardsRes)
-                          const found = boardsRes.find((b: Board) => b.id === selectedBoard.id)
-                          if (found) setSelectedBoard(found)
-                        })
-                        .catch((error: any) => {
-                          alert(error.response?.data?.error || 'Error al eliminar fase')
-                        })
-                        .finally(() => setIsDeletingPhase(false))
-                    }}
-                    title={isDeletingPhase ? "Eliminando..." : "Eliminar fase"}
-                    disabled={isDeletingPhase}
-                  >
-                    {isDeletingPhase ? '...' : <X size={14} />}
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className={styles['add-phase-form'] || 'add-phase-form'} onMouseUp={handlePhaseDragEnd}>
-              <input
-                type="text"
-                placeholder="Nombre de la nueva fase"
-                id="new-phase-name"
-                style={{ flex: 1, padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', marginRight: '8px' }}
-              />
-              <input
-                type="color"
-                id="new-phase-color"
-                defaultValue="#6b7280"
-                style={{ width: '40px', height: '40px', border: 'none', cursor: 'pointer' }}
-              />
-              <button
-                className={styles['btn-primary']}
-                style={{ marginLeft: '8px' }}
-                disabled={isAddingPhase}
-                onClick={async () => {
-                  const nameInput = document.getElementById('new-phase-name') as HTMLInputElement
-                  const colorInput = document.getElementById('new-phase-color') as HTMLInputElement
-                  const name = nameInput.value.trim()
-                  const color = colorInput.value
-                  if (!name) return
-                  setIsAddingPhase(true)
-                  try {
-                    await boardService.addPhase(selectedBoard.id, { name, color })
-                    const boardsRes = await boardService.getAll()
-                    setBoards(boardsRes)
-                    const found = boardsRes.find(b => b.id === selectedBoard.id)
-                    if (found) setSelectedBoard(found)
-                    nameInput.value = ''
-                  } catch (error) {
-                    console.error('Error adding phase:', error)
-                  } finally {
-                    setIsAddingPhase(false)
-                  }
-                }}
-              >
-                {isAddingPhase ? 'Agregando...' : <Plus size={18} />}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PhasesModal
+        isOpen={showPhasesModal}
+        onClose={() => setShowPhasesModal(false)}
+        selectedBoard={selectedBoard}
+        setBoards={setBoards}
+        setSelectedBoard={setSelectedBoard}
+        draggingPhase={draggingPhase}
+        dragOverIdx={dragOverIdx}
+        handlePhaseDragStart={handlePhaseDragStart}
+        handlePhaseDragEnter={handlePhaseDragEnter}
+        handlePhaseDragEnd={handlePhaseDragEnd}
+        isDraggingPhasesRef={isDraggingPhasesRef}
+      />
 
       <DndContext
         sensors={sensors}
@@ -1073,213 +798,25 @@ export default function Tasks() {
         />
       )}
 
-      {showNewTaskModal && (
-        <div className={styles['modal-overlay']} onClick={() => setShowNewTaskModal(false)}>
-          <div className={styles['new-task-modal']} onClick={(e) => e.stopPropagation()}>
-            <div className={styles['new-task-header']}>
-              <h2>Crear nueva tarea</h2>
-              <button className={styles['close-btn']} onClick={() => setShowNewTaskModal(false)}>
-                <X size={24} />
-              </button>
-            </div>
+      <NewTaskModal
+        isOpen={showNewTaskModal}
+        onClose={() => setShowNewTaskModal(false)}
+        newTaskData={newTaskData}
+        setNewTaskData={setNewTaskData}
+        isCreatingTask={isCreatingTask}
+        onSubmit={handleCreateTask}
+        assigneeSearch={assigneeSearch}
+        setAssigneeSearch={setAssigneeSearch}
+        filteredUsers={filteredUsers}
+      />
 
-            <form onSubmit={handleCreateTask} id="create-task-form" className={styles['new-task-content']}>
-              <div className={styles['task-form-main']}>
-                <div className={styles['form-field']}>
-                  <label>Título</label>
-                  <input
-                    type="text"
-                    value={newTaskData.title}
-                    onChange={(e) => setNewTaskData({ ...newTaskData, title: e.target.value })}
-                    placeholder="¿Qué necesitas hacer?"
-                    className={styles['title-field']}
-                    required
-                    autoFocus
-                  />
-                </div>
-
-                <div className={styles['form-field']}>
-                  <label>Descripción</label>
-                  <RichTextEditor
-                    value={newTaskData.description}
-                    onChange={(value) => setNewTaskData({ ...newTaskData, description: value })}
-                    placeholder="Agrega detalles, listas, enlaces..."
-                  />
-                </div>
-              </div>
-
-              <div className={styles['task-form-side']}>
-                <div className={styles['settings-card']}>
-                  <h3>Configuración</h3>
-
-                  <div className={styles['setting-item']}>
-                    <label>Prioridad</label>
-                    <select
-                      value={newTaskData.priority}
-                      onChange={(e) => setNewTaskData({ ...newTaskData, priority: e.target.value })}
-                      className={styles['setting-select']}
-                    >
-                      <option value="low">Baja</option>
-                      <option value="medium">Media</option>
-                      <option value="high">Alta</option>
-                      <option value="urgent">Urgente</option>
-                    </select>
-                  </div>
-
-                  <div className={styles['setting-item']}>
-                    <label>Fecha límite</label>
-                    <input
-                      type="date"
-                      value={newTaskData.end_date}
-                      onChange={(e) => setNewTaskData({ ...newTaskData, end_date: e.target.value })}
-                      className={styles['setting-input']}
-                    />
-                  </div>
-
-                  <div className={styles['setting-item']}>
-                    <label>Adjuntos</label>
-                    <div className={styles['new-task-attachments']}>
-                      <input
-                        type="file"
-                        id="new-task-file-input"
-                        multiple
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files || [])
-                          setNewTaskData(prev => ({
-                            ...prev,
-                            attachments: [...prev.attachments, ...files]
-                          }))
-                        }}
-                        style={{ display: 'none' }}
-                      />
-                      <button
-                        type="button"
-                        className={`${styles['btn-secondary']} ${styles['btn-sm']}`}
-                        onClick={() => document.getElementById('new-task-file-input')?.click()}
-                        style={{ width: '100%', marginBottom: '8px' }}
-                      >
-                        <Paperclip size={14} /> Seleccionar archivos
-                      </button>
-
-                      {newTaskData.attachments.length > 0 && (
-                        <div className={styles['selected-files-preview']}>
-                          {newTaskData.attachments.map((file, idx) => (
-                            <div key={idx} className={styles['selected-file-item']}>
-                              <span className={styles['file-name']} title={file.name}>{file.name}</span>
-                              <button
-                                type="button"
-                                className={styles['remove-file-btn']}
-                                onClick={() => {
-                                  setNewTaskData(prev => ({
-                                    ...prev,
-                                    attachments: prev.attachments.filter((_, i) => i !== idx)
-                                  }))
-                                }}
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className={styles['assign-card']}>
-                  <h3>Asignar a</h3>
-                  <input
-                    type="text"
-                    placeholder="Buscar usuario..."
-                    value={assigneeSearch}
-                    onChange={(e) => setAssigneeSearch(e.target.value)}
-                    className={styles['assignee-search']}
-                  />
-                  <div className={styles['assignees-scroll']}>
-                    {filteredUsers.length === 0 ? (
-                      <p className={styles['no-users']}>No hay usuarios disponibles</p>
-                    ) : (
-                      filteredUsers.map((user) => (
-                        <label key={user.id} className={styles['assign-option']}>
-                          <input
-                            type="checkbox"
-                            checked={newTaskData.assignees.includes(user.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewTaskData({
-                                  ...newTaskData,
-                                  assignees: [...newTaskData.assignees, user.id],
-                                })
-                              } else {
-                                setNewTaskData({
-                                  ...newTaskData,
-                                  assignees: newTaskData.assignees.filter((id) => id !== user.id),
-                                })
-                              }
-                            }}
-                          />
-                          <span className={styles['user-chip']}>
-                            <span className={styles['chip-avatar']}>{user.name?.charAt(0).toUpperCase()}</span>
-                            <span className={styles['chip-name']}>{user.name}</span>
-                          </span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </form>
-
-            <div className={styles['new-task-footer']}>
-              <button type="button" onClick={() => setShowNewTaskModal(false)} className={styles['btn-cancel']} disabled={isCreatingTask}>
-                Cancelar
-              </button>
-              <button type="submit" form="create-task-form" className={styles['btn-create']} disabled={isCreatingTask}>
-                {isCreatingTask ? 'Creando...' : 'Crear tarea'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showJoinBoardModal && (
-        <div className={styles['modal-overlay']} onClick={() => setShowJoinBoardModal(false)}>
-          <div className={`${styles['modal']} ${styles['join-board-modal']}`} onClick={(e) => e.stopPropagation()}>
-            <div className={styles['modal-header']}>
-              <h2>Unirse a un Tablero</h2>
-              <button className={styles['close-btn']} onClick={() => setShowJoinBoardModal(false)}><X size={20} /></button>
-            </div>
-            <div className={styles['modal-body'] || 'modal-body'}>
-              {publicBoards.length === 0 ? (
-                <div className={styles['no-data-msg'] || 'no-data-msg'}>
-                  <p>No hay tableros públicos disponibles para unirse en este momento.</p>
-                </div>
-              ) : (
-                <div className={styles['public-boards-list'] || 'public-boards-list'}>
-                  {publicBoards.map(board => (
-                    <div key={board.id} className={styles['public-board-item'] || 'public-board-item'}>
-                      <div className={styles['board-info'] || 'board-info'}>
-                        <div className={styles['board-color'] || 'board-color'} style={{ backgroundColor: board.color }}></div>
-                        <div className={styles['board-text'] || 'board-text'}>
-                          <span className={styles['board-name'] || 'board-name'}>{board.name}</span>
-                          <span className={styles['board-creator'] || 'board-creator'}>Creado por: {board.creator?.name || 'Sistema'}</span>
-                        </div>
-                      </div>
-                      <button
-                        className={`${styles['btn-primary']} ${styles['btn-sm'] || 'btn-sm'}`}
-                        onClick={() => handleJoinBoard(board.id)}
-                        disabled={isJoiningBoard}
-                      >
-                        {isJoiningBoard ? 'Uniendo...' : 'Unirse'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <JoinBoardModal
+        isOpen={showJoinBoardModal}
+        onClose={() => setShowJoinBoardModal(false)}
+        publicBoards={publicBoards}
+        handleJoinBoard={handleJoinBoard}
+        isJoiningBoard={isJoiningBoard}
+      />
     </div>
   )
 }
