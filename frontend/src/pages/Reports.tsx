@@ -1,21 +1,32 @@
 import { useState, useEffect, useMemo } from 'react'
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts'
 import { userService, workHourService, taskService } from '../services/api'
 import { useAuth } from '../context/AuthContext'
-import { WorkHour } from '../types'
+import { WorkHour, Task } from '../types'
+import { 
+  BarChart2, 
+  ChevronLeft, 
+  ChevronRight, 
+  Clock, 
+  CheckSquare, 
+  CheckCircle2, 
+  AlertCircle, 
+  Calendar, 
+  FileText,
+  Check
+} from 'lucide-react'
 import './Reports.css'
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+
 
 export default function Reports() {
   const { user } = useAuth()
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([])
   const [selectedEmployee, setSelectedEmployee] = useState<number | ''>('')
   const [workHours, setWorkHours] = useState<WorkHour[]>([])
-  const [tasks, setTasks] = useState<{ status: string; priority: string }[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const [isLoading, setIsLoading] = useState(false)
   const [reportType, setReportType] = useState<'hours' | 'tasks'>('hours')
@@ -110,39 +121,36 @@ export default function Reports() {
     return days
   }, [workHours, month])
 
-  const statusData = useMemo(() => {
-    const counts = {
-      por_hacer: 0,
-      en_proceso: 0,
-      finalizado: 0
-    }
-    tasks.forEach(t => {
-      if (counts[t.status as keyof typeof counts] !== undefined) {
-        counts[t.status as keyof typeof counts]++
-      }
-    })
-    return [
-      { name: 'Por hacer', value: counts.por_hacer },
-      { name: 'En proceso', value: counts.en_proceso },
-      { name: 'Finalizado', value: counts.finalizado }
-    ].filter(d => d.value > 0)
-  }, [tasks])
+
 
   const priorityData = useMemo(() => {
+    const PRIORITY_LABELS: Record<string, string> = {
+      urgent: 'Urgente',
+      high: 'Alta',
+      medium: 'Media',
+      low: 'Baja'
+    }
     const counts: Record<string, number> = { urgent: 0, high: 0, medium: 0, low: 0 }
     tasks.forEach(t => {
       if (counts[t.priority] !== undefined) {
         counts[t.priority]++
       }
     })
-    return Object.entries(counts).map(([name, value]) => ({ name, value }))
+    return Object.entries(counts)
+      .filter(([_, value]) => value > 0)
+      .map(([key, value]) => ({ 
+        name: PRIORITY_LABELS[key] || key, 
+        value 
+      }))
   }, [tasks])
+
+
 
   return (
     <div className="reports-page">
       <div className="page-header">
         <div className="header-left">
-          <h1>📊 Reportes</h1>
+          <h1><BarChart2 size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Reportes</h1>
           <p className="header-subtitle">Análisis de productividad y rendimiento</p>
         </div>
       </div>
@@ -166,7 +174,7 @@ export default function Reports() {
             const [year, m] = month.split('-').map(Number)
             const newDate = new Date(year, m - 2)
             setMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
-          }}>‹</button>
+          }}><ChevronLeft size={20} /></button>
           <input
             type="month"
             value={month}
@@ -177,7 +185,7 @@ export default function Reports() {
             const [year, m] = month.split('-').map(Number)
             const newDate = new Date(year, m)
             setMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
-          }}>›</button>
+          }}><ChevronRight size={20} /></button>
         </div>
 
         <div className="report-type-tabs">
@@ -185,13 +193,13 @@ export default function Reports() {
             className={`tab-btn ${reportType === 'hours' ? 'active' : ''}`}
             onClick={() => setReportType('hours')}
           >
-            ⏱️ Horas
+            <Clock size={16} /> Horas
           </button>
           <button 
             className={`tab-btn ${reportType === 'tasks' ? 'active' : ''}`}
             onClick={() => setReportType('tasks')}
           >
-            ✓ Tareas
+            <CheckSquare size={16} /> Tareas
           </button>
         </div>
       </div>
@@ -208,10 +216,7 @@ export default function Reports() {
               <div className="stats-grid">
                 <div className="stat-card-modern">
                   <div className="stat-icon blue">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <polyline points="12 6 12 12 16 14" />
-                    </svg>
+                    <Clock size={24} />
                   </div>
                   <div className="stat-info">
                     <span className="stat-label">Horas Totales</span>
@@ -222,10 +227,7 @@ export default function Reports() {
 
                 <div className="stat-card-modern">
                   <div className="stat-icon green">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                      <polyline points="22 4 12 14.01 9 11.01" />
-                    </svg>
+                    <CheckCircle2 size={24} />
                   </div>
                   <div className="stat-info">
                     <span className="stat-label">Aprobadas</span>
@@ -236,11 +238,7 @@ export default function Reports() {
 
                 <div className="stat-card-modern">
                   <div className="stat-icon orange">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="12" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
+                    <AlertCircle size={24} />
                   </div>
                   <div className="stat-info">
                     <span className="stat-label">Pendientes</span>
@@ -251,12 +249,7 @@ export default function Reports() {
 
                 <div className="stat-card-modern">
                   <div className="stat-icon purple">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                      <line x1="16" y1="2" x2="16" y2="6" />
-                      <line x1="8" y1="2" x2="8" y2="6" />
-                      <line x1="3" y1="10" x2="21" y2="10" />
-                    </svg>
+                    <Calendar size={24} />
                   </div>
                   <div className="stat-info">
                     <span className="stat-label">Días Trabajados</span>
@@ -269,7 +262,7 @@ export default function Reports() {
               <div className="charts-row">
               {workHours.some(wh => wh.activities) && (
                 <div className="activities-section">
-                  <h3>📝 Actividades Registradas</h3>
+                  <h3><FileText size={20} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Actividades Registradas</h3>
                   <div className="activities-list">
                     {workHours.filter(wh => wh.activities).slice(0, 10).map((wh) => (
                       <div key={wh.id} className="activity-card">
@@ -291,16 +284,17 @@ export default function Reports() {
 
                 <div className="chart-card large">
                   <div className="chart-header">
-                    <h3>Horas diarias del mes</h3>
+                    <h3>Horas Diarias</h3>
                   </div>
                   <div className="chart-body">
-                    <ResponsiveContainer width="100%" height={300}>
+                    <ResponsiveContainer width="100%" height={260}>
                       <BarChart data={dailyData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis dataKey="day" stroke="#94a3b8" fontSize={12} />
-                        <YAxis stroke="#94a3b8" fontSize={12} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis dataKey="day" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
                         <Tooltip 
-                          contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }}
+                          cursor={{ fill: '#f8fafc' }}
+                          contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                           formatter={(value) => [`${value}h`, 'Horas']}
                         />
                         <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Horas" />
@@ -310,35 +304,17 @@ export default function Reports() {
                   </div>
                 </div>
 
-                <div className="chart-card">
-                  <div className="chart-header">
-                    <h3>Progreso mensual</h3>
-                  </div>
-                  <div className="chart-body donut">
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: 'Completado', value: hoursStats.total },
-                            { name: 'Restante', value: Math.max(0, hoursStats.targetHours - hoursStats.total) }
-                          ]}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={90}
-                          paddingAngle={2}
-                          dataKey="value"
-                        >
-                          <Cell fill="#3b82f6" />
-                          <Cell fill="#e2e8f0" />
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="donut-center">
-                      <span className="donut-value">{hoursStats.progress.toFixed(0)}%</span>
-                      <span className="donut-label">completado</span>
+                <div className="breakdown-card progress-breakdown">
+                  <div className="breakdown-indicator" style={{ background: '#3b82f6' }}></div>
+                  <div className="breakdown-info">
+                    <span className="breakdown-label">Progreso del Mes</span>
+                    <span className="breakdown-value">{hoursStats.progress.toFixed(0)}%</span>
+                    <div className="progress-bar-mini">
+                      <div className="progress-fill" style={{ width: `${hoursStats.progress}%` }}></div>
                     </div>
+                    <p className="breakdown-desc">
+                      Has completado {hoursStats.total.toFixed(1)}h de la meta de {hoursStats.targetHours}h.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -384,10 +360,7 @@ export default function Reports() {
               <div className="stats-grid">
                 <div className="stat-card-modern">
                   <div className="stat-icon blue">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M9 11l3 3L22 4" />
-                      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                    </svg>
+                    <CheckSquare size={24} />
                   </div>
                   <div className="stat-info">
                     <span className="stat-label">Total Tareas</span>
@@ -397,9 +370,7 @@ export default function Reports() {
 
                 <div className="stat-card-modern">
                   <div className="stat-icon green">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
+                    <Check size={24} />
                   </div>
                   <div className="stat-info">
                     <span className="stat-label">Completadas</span>
@@ -409,10 +380,7 @@ export default function Reports() {
 
                 <div className="stat-card-modern">
                   <div className="stat-icon orange">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <polyline points="12 6 12 12 16 14" />
-                    </svg>
+                    <Clock size={24} />
                   </div>
                   <div className="stat-info">
                     <span className="stat-label">En Proceso</span>
@@ -422,11 +390,7 @@ export default function Reports() {
 
                 <div className="stat-card-modern">
                   <div className="stat-icon red">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="15" y1="9" x2="9" y2="15" />
-                      <line x1="9" y1="9" x2="15" y2="15" />
-                    </svg>
+                    <AlertCircle size={24} />
                   </div>
                   <div className="stat-info">
                     <span className="stat-label">Por Hacer</span>
@@ -435,56 +399,74 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div className="charts-row">
-                <div className="chart-card">
-                  <div className="chart-header">
-                    <h3>Estado de tareas</h3>
-                  </div>
-                  <div className="chart-body">
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie
-                          data={statusData}
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          dataKey="value"
-                          label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
-                        >
-                          {statusData.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
+              <div className="reports-section">
+                <div className="section-header">
+                  <h3>Distribución de Prioridades</h3>
                 </div>
+                <div className="priority-summary-bar">
+                  {['Urgente', 'Alta', 'Media', 'Baja'].map((p) => {
+                    const data = priorityData.find(d => d.name === p) || { name: p, value: 0 }
+                    const count = data.value
+                    const total = tasks.length || 1
+                    const width = (count / total) * 100
+                    const color = p === 'Urgente' ? '#ef4444' : p === 'Alta' ? '#f97316' : p === 'Media' ? '#f59e0b' : '#3b82f6'
+                    
+                    if (count === 0) return null
+                    
+                    return (
+                      <div key={p} className="priority-bar-segment" style={{ width: `${width}%`, background: color }} title={`${p}: ${count}`}>
+                        <span className="segment-label">{p} ({count})</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
 
-                <div className="chart-card">
-                  <div className="chart-header">
-                    <h3>Por prioridad</h3>
-                  </div>
-                  <div className="chart-body">
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie
-                          data={priorityData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={50}
-                          outerRadius={80}
-                          dataKey="value"
-                          label={({ name, value }) => `${name}: ${value}`}
-                        >
-                          {priorityData.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
+              <div className="reports-section">
+                <div className="section-header">
+                  <h3>Tareas Críticas Pendientes</h3>
+                  <span className="badge-count">
+                    {tasks.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'finalizado').length} Urgentes/Altas
+                  </span>
+                </div>
+                <div className="critical-tasks-container">
+                  <table className="critical-table">
+                    <thead>
+                      <tr>
+                        <th>Tarea</th>
+                        <th>Prioridad</th>
+                        <th>Estado</th>
+                        <th>Creado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tasks.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'finalizado').length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="empty-cell">No hay tareas críticas pendientes</td>
+                        </tr>
+                      ) : (
+                        tasks
+                          .filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'finalizado')
+                          .slice(0, 5)
+                          .map((t) => (
+                            <tr key={t.id}>
+                              <td className="task-title-cell">{t.title}</td>
+                              <td>
+                                <span className={`priority-tag ${t.priority}`}>
+                                  {t.priority === 'urgent' ? 'Urgente' : 'Alta'}
+                                </span>
+                              </td>
+                              <td>
+                                <span className={`status-pill-small ${t.status}`}>
+                                  {t.status === 'en_proceso' ? 'En proceso' : 'Por hacer'}
+                                </span>
+                              </td>
+                              <td className="task-date-cell">{new Date(t.created_at).toLocaleDateString('es-ES')}</td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

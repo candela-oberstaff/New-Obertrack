@@ -12,31 +12,41 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 32px;
+  padding: 12px 24px;
   background: white;
   border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
 }
 
+.header-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
 .header-left h1 {
-  font-size: 24px;
-  font-weight: 600;
-  color: #111827;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .header-subtitle {
   font-size: 14px;
-  color: #6b7280;
-  margin: 4px 0 0 0;
+  color: #64748b;
+  margin: 0;
 }
 
 /* Stats Row */
 .stats-row {
   display: flex;
   gap: 16px;
-  padding: 24px 32px;
-  background: white;
+  padding: 16px 24px;
+  background: transparent;
   flex-shrink: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -48,21 +58,70 @@
 
 .stat-card-mini {
   flex: 1;
-  min-width: 200px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+.stat-card-mini:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: #3b82f6;
+}
+
+.stat-icon {
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
-  background: #f9fafb;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  justify-content: center;
+  background: #f8fafc;
+  border-radius: 8px;
+  color: #64748b;
+}
+
+.stat-card-mini.approved .stat-icon { background: #f0fdf4; color: #16a34a; }
+.stat-card-mini.pending .stat-icon { background: #fffbeb; color: #d97706; }
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
 }
 
 /* Content */
 .work-hours-content {
   display: flex;
-  gap: 24px;
-  padding: 24px 32px;
+  gap: 32px;
+  padding: 16px 24px 24px 24px;
   flex: 1;
   overflow-y: auto;
   min-height: 0;
@@ -80,14 +139,16 @@
 
 /* Calendar */
 .calendar-section {
-  width: 340px;
+  width: 360px;
+  min-height: 460px;
   background: white;
   border-radius: 16px;
-  padding: 20px;
+  padding: 24px;
   border: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .calendar-header {
@@ -124,7 +185,7 @@
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  gap: 8px 4px;
 }
 
 .calendar-header-day {
@@ -136,15 +197,16 @@
 }
 
 .calendar-day {
-  aspect-ratio: 1;
+  width: 100%;
+  height: 42px;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  background: transparent;
 }
 
 .calendar-day.empty {
@@ -161,10 +223,12 @@
 
 .calendar-day.selected {
   background: #3b82f6;
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
 }
 
 .calendar-day.selected .day-number {
   color: white;
+  font-weight: 700;
 }
 
 .calendar-day.complete {
@@ -185,14 +249,22 @@
 }
 
 .day-number {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   color: #374151;
+  z-index: 1;
+  line-height: 1;
 }
 
 .day-badge {
-  font-size: 9px;
+  font-size: 10px;
   position: absolute;
-  bottom: 2px;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .day-badge.complete {
@@ -215,8 +287,8 @@
   display: flex;
   gap: 16px;
   justify-content: center;
-  margin-top: 16px;
-  padding-top: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid #e5e7eb;
 }
 
@@ -247,8 +319,8 @@
 }
 
 .clear-filter {
-  margin-top: 16px;
-  padding: 10px;
+  margin-top: 12px;
+  padding: 8px;
   background: none;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -272,7 +344,8 @@
   border: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  min-height: 460px; /* Aligned with calendar-section */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .list-header {
@@ -284,9 +357,9 @@
 }
 
 .list-header h3 {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: #0f172a;
   margin: 0;
   white-space: nowrap;
 }
@@ -344,18 +417,26 @@
 }
 
 .empty-state {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: 40px 20px;
   color: #9ca3af;
+  min-height: 300px;
 }
 
 .empty-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-  opacity: 0.5;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border-radius: 50%;
+  margin-bottom: 20px;
+  color: #cbd5e1;
 }
 
 .hours-list {
@@ -369,17 +450,18 @@
 .hour-card {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px;
-  background: #f9fafb;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  transition: all 0.2s;
+  gap: 12px;
+  padding: 10px 14px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
 }
 
 .hour-card:hover {
-  border-color: #d1d5db;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
 }
 
 .hour-card.clickable {
@@ -394,7 +476,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -418,23 +500,27 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 48px;
-  padding: 8px;
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
 }
 
 .hour-date .day {
-  font-size: 18px;
-  font-weight: 600;
-  color: #111827;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.2;
 }
 
 .hour-date .month {
-  font-size: 11px;
-  color: #6b7280;
+  font-size: 9px;
+  font-weight: 600;
+  color: #94a3b8;
   text-transform: uppercase;
+  margin-top: -2px;
 }
 
 .hour-info {
@@ -457,11 +543,19 @@
 }
 
 .hours-comments {
-  font-size: 11px;
-  color: #6b7280;
+  font-size: 12px;
+  color: #64748b;
   margin: 4px 0 0 0;
-  line-height: 1.4;
+  line-height: 1.5;
   word-break: break-word;
+  overflow-wrap: break-word;
+  padding-right: 8px;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .hour-status {
@@ -478,10 +572,12 @@
 }
 
 .status-pill {
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .status-pill.approved {

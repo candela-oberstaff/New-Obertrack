@@ -48,16 +48,11 @@
 }
 
 .greeting-text {
-  font-size: 16px;
-  color: #9ca3af;
+  font-size: 32px;
+  color: black;
   margin-bottom: 4px;
 }
 
-.greeting h1 {
-  font-size: 32px;
-  font-weight: 600;
-  margin: 0;
-}
 
 .date-text {
   font-size: 14px;

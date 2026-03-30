@@ -3,6 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { taskService, workHourService, userService } from '../services/api'
 import type { Task, WorkHour, User } from '../types'
+import {
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  CheckSquare,
+  ClipboardList,
+  MessageSquare,
+  User as UserIcon
+} from 'lucide-react'
 import './Dashboard.css'
 
 const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -33,11 +42,11 @@ export default function Dashboard() {
         workHourService.getAll({ limit: 10 }),
         workHourService.getSummary(),
       ])
-      
+
       console.log('Dashboard - workHours:', workHoursData.status === 'fulfilled' ? workHoursData.value : workHoursData.reason)
       console.log('Dashboard - summary:', summaryData.status === 'fulfilled' ? summaryData.value : summaryData.reason)
       console.log('Dashboard - tasks:', tasksData.status === 'fulfilled' ? tasksData.value : tasksData.reason)
-      
+
       if (tasksData.status === 'fulfilled') {
         setTasks(tasksData.value?.data || [])
       }
@@ -67,7 +76,7 @@ export default function Dashboard() {
     const startOfWeek = new Date(today)
     startOfWeek.setDate(today.getDate() - today.getDay())
     startOfWeek.setHours(0, 0, 0, 0)
-    
+
     for (let i = 0; i < 7; i++) {
       const date = new Date(startOfWeek)
       date.setDate(startOfWeek.getDate() + i)
@@ -122,8 +131,8 @@ export default function Dashboard() {
       <div className="dashboard-header">
         <div className="header-content">
           <div className="greeting">
-            <span className="greeting-text">{greeting},</span>
-            <h1>{user?.name?.split(' ')[0]}</h1>
+            <span className="greeting-text">{greeting}, {user?.name?.split(' ')[0]}</span>
+
             <p className="date-text">
               {DAYS_ES[today.getDay()]}, {today.getDate()} de {MONTHS_ES[today.getMonth()]}
             </p>
@@ -139,23 +148,17 @@ export default function Dashboard() {
       <div className="stats-row">
         <div className="stat-card-large">
           <div className="stat-icon blue">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
+            <Clock size={24} />
           </div>
           <div className="stat-content">
             <span className="stat-label">Horas esta semana</span>
             <span className="stat-value">{weekData.reduce((s, d) => s + d.hours, 0).toFixed(1)}h</span>
           </div>
         </div>
-        
+
         <div className="stat-card-large">
           <div className="stat-icon green">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
+            <CheckCircle2 size={24} />
           </div>
           <div className="stat-content">
             <span className="stat-label">Horas aprobadas</span>
@@ -165,11 +168,7 @@ export default function Dashboard() {
 
         <div className="stat-card-large">
           <div className="stat-icon orange">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
+            <AlertTriangle size={24} />
           </div>
           <div className="stat-content">
             <span className="stat-label">Pendientes</span>
@@ -179,10 +178,7 @@ export default function Dashboard() {
 
         <div className="stat-card-large">
           <div className="stat-icon purple">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 11l3 3L22 4" />
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-            </svg>
+            <CheckSquare size={24} />
           </div>
           <div className="stat-content">
             <span className="stat-label">Tareas completadas</span>
@@ -202,13 +198,13 @@ export default function Dashboard() {
               {weekData.map((day, index) => (
                 <div key={index} className="bar-column">
                   <div className="bar-wrapper">
-                    <div 
+                    <div
                       className="bar hours-bar"
                       style={{ height: `${(day.hours / maxHours) * 100}%` }}
                     >
                       {day.hours > 0 && <span className="bar-value">{day.hours}h</span>}
                     </div>
-                    <div 
+                    <div
                       className="bar target-bar"
                       style={{ height: `${(day.target / maxHours) * 100}%` }}
                     />
@@ -228,13 +224,13 @@ export default function Dashboard() {
           <div className="tasks-list">
             {pendingTasks.length === 0 ? (
               <div className="empty-card">
-                <span>✓</span>
+                <CheckCircle2 size={40} style={{ color: '#22c55e', marginBottom: '12px' }} />
                 <p>No hay tareas pendientes</p>
               </div>
             ) : (
               pendingTasks.slice(0, 5).map(task => (
                 <div key={task.id} className="task-row" onClick={() => navigate('/tasks')}>
-                  <div 
+                  <div
                     className="task-priority-dot"
                     style={{ backgroundColor: getPriorityColor(task.priority) }}
                   />
@@ -259,7 +255,7 @@ export default function Dashboard() {
           <div className="hours-list">
             {workHours.length === 0 ? (
               <div className="empty-card">
-                <span>📋</span>
+                <ClipboardList size={40} style={{ color: '#94a3b8', marginBottom: '12px' }} />
                 <p>Sin registros esta semana</p>
               </div>
             ) : (
@@ -308,19 +304,19 @@ export default function Dashboard() {
 
       <div className="quick-actions">
         <button className="action-card" onClick={() => navigate('/tasks')}>
-          <span className="action-icon">📋</span>
+          <span className="action-icon"><ClipboardList size={24} /></span>
           <span className="action-label">Tareas</span>
         </button>
         <button className="action-card" onClick={() => navigate('/work-hours')}>
-          <span className="action-icon">⏱️</span>
+          <span className="action-icon"><Clock size={24} /></span>
           <span className="action-label">Horas</span>
         </button>
         <button className="action-card" onClick={() => navigate('/chat')}>
-          <span className="action-icon">💬</span>
+          <span className="action-icon"><MessageSquare size={24} /></span>
           <span className="action-label">Chat</span>
         </button>
         <button className="action-card" onClick={() => navigate('/profile')}>
-          <span className="action-icon">👤</span>
+          <span className="action-icon"><UserIcon size={24} /></span>
           <span className="action-label">Perfil</span>
         </button>
       </div>

@@ -2,6 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { userService, uploadService } from '../services/api'
 import type { User } from '../types'
+import { 
+  X, 
+  MessageSquare, 
+  Menu, 
+  Paperclip, 
+  Hourglass, 
+  Send 
+} from 'lucide-react'
 import './Chat.css'
 
 interface Message {
@@ -184,14 +192,14 @@ export default function Chat() {
         <div className={`chat-sidebar ${showUserList ? 'open' : ''}`}>
           <div className="sidebar-header">
             <h3>Conversaciones</h3>
-            <button className="close-sidebar" onClick={() => setShowUserList(false)}>✕</button>
+            <button className="close-sidebar" onClick={() => setShowUserList(false)}><X size={20} /></button>
           </div>
           <div className="user-list">
             <div 
               className={`user-item ${!selectedUser ? 'active' : ''}`}
               onClick={() => setSelectedUser(null)}
             >
-              <div className="user-avatar all">💬</div>
+              <div className="user-avatar all"><MessageSquare size={18} /></div>
               <div className="user-info">
                 <span className="user-name">Todos</span>
                 <span className="user-preview">Mensajes del equipo</span>
@@ -217,7 +225,7 @@ export default function Chat() {
 
         <div className="chat-main">
           <div className="chat-header">
-            <button className="menu-btn" onClick={() => setShowUserList(true)}>☰</button>
+            <button className="menu-btn" onClick={() => setShowUserList(true)}><Menu size={20} /></button>
             <div className="chat-title">
               <h2>{selectedUser ? users.find(u => u.id === selectedUser)?.name : 'Equipo'}</h2>
               <span className="connection-dot"></span>
@@ -230,7 +238,7 @@ export default function Chat() {
             <div className="chat-messages">
             {filteredMessages.length === 0 ? (
               <div className="empty-chat">
-                <span className="empty-icon">💬</span>
+                <span className="empty-icon"><MessageSquare size={40} /></span>
                 <p>No hay mensajes todavía</p>
                 <span className="empty-hint">¡Inicia la conversación!</span>
               </div>
@@ -257,7 +265,7 @@ export default function Chat() {
                         rel="noopener noreferrer"
                         className="message-attachment"
                       >
-                        📎 {msg.attachment.filename}
+                        <Paperclip size={14} /> {msg.attachment.filename}
                       </a>
                     )}
                     <span className="message-time">{formatTime(msg.created_at)}</span>
@@ -290,17 +298,14 @@ export default function Chat() {
               className="attach-btn"
               title="Adjuntar archivo"
             >
-              {isUploading ? '⏳' : '📎'}
+              {isUploading ? <Hourglass size={18} className="spin" /> : <Paperclip size={18} />}
             </button>
             <button
               type="submit"
               disabled={!isConnected || (!newMessage.trim() && !isUploading)}
               className="send-btn"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
+              <Send size={18} />
             </button>
           </form>
         </div>

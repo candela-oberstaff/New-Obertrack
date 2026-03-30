@@ -58,8 +58,8 @@ func (h *NotificationHub) Run() {
 	for {
 		select {
 		case conn := <-h.register:
-			userID := h.userIDs[conn]
 			h.mu.Lock()
+			userID := h.userIDs[conn]
 			h.clients[userID] = conn
 			h.mu.Unlock()
 
@@ -235,8 +235,10 @@ func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	notifHub.register <- conn
+	notifHub.mu.Lock()
 	notifHub.userIDs[conn] = userID
+	notifHub.mu.Unlock()
+	notifHub.register <- conn
 
 	go func() {
 		defer func() {

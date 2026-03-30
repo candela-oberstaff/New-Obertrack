@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,7 @@ type ChannelHub struct {
 	register   chan *websocket.Conn
 	unregister chan *websocket.Conn
 	db         *gorm.DB
+	mu         sync.RWMutex
 }
 
 type ChannelWSMessage struct {
@@ -63,13 +65,18 @@ func (h *ChannelHub) Run() {
 	for {
 		select {
 		case client := <-h.register:
+			h.mu.Lock()
 			h.clients[client] = 0
+			h.mu.Unlock()
 		case client := <-h.unregister:
+			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				client.Close()
 			}
+			h.mu.Unlock()
 		case message := <-h.broadcast:
+			h.mu.Lock()
 			for client := range h.clients {
 				err := client.WriteJSON(message)
 				if err != nil {
@@ -77,13 +84,16 @@ func (h *ChannelHub) Run() {
 					delete(h.clients, client)
 				}
 			}
+			h.mu.Unlock()
 		case <-ticker.C:
+			h.mu.Lock()
 			for client := range h.clients {
 				if err := client.WriteMessage(websocket.PingMessage, nil); err != nil {
 					client.Close()
 					delete(h.clients, client)
 				}
 			}
+			h.mu.Unlock()
 		}
 	}
 }
@@ -98,7 +108,9 @@ func (h *ChannelHandler) GetChannels(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
 	var channels []models.Channel
-	if err := h.db.Where("is_active = ?", true).
+	if err := h.db.Table("channels").
+		Select("DISTINCT channels.*").
+		Where("channels.is_active = ?", true).
 		Joins("JOIN channel_members ON channel_members.channel_id = channels.id").
 		Where("channel_members.user_id = ?", userID).
 		Order("channels.created_at DESC").
@@ -121,13 +133,15 @@ func (h *ChannelHandler) GetChannels(c *gin.Context) {
 
 	var response []ChannelResponse
 	for _, ch := range channels {
-		var memberCount int64
-		h.db.Model(&models.ChannelMember{}).Where("channel_id = ?", ch.ID).Count(&memberCount)
-
 		var unreadCount int64
-		h.db.Model(&models.ChannelMessage{}).
-			Where("channel_id = ?", ch.ID).
-			Count(&unreadCount)
+		var member models.ChannelMember
+		h.db.Where("channel_id = ? AND user_id = ?", ch.ID, userID).First(&member)
+
+		query := h.db.Model(&models.ChannelMessage{}).Where("channel_id = ? AND user_id != ?", ch.ID, userID)
+		if member.LastReadAt != nil {
+			query = query.Where("created_at > ?", *member.LastReadAt)
+		}
+		query.Count(&unreadCount)
 
 		response = append(response, ChannelResponse{
 			ID:          ch.ID,
@@ -189,12 +203,22 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 		return
 	}
 
+	// Add creator as a member
 	h.db.Model(&channel).Association("Members").Append(&models.User{ID: userID})
 
+	// Add other members if provided, but filter out creator if already included
 	if len(req.MemberIDs) > 0 {
-		var members []models.User
-		h.db.Find(&members, req.MemberIDs)
-		h.db.Model(&channel).Association("Members").Append(&members)
+		var filteredIDs []uint
+		for _, id := range req.MemberIDs {
+			if id != userID {
+				filteredIDs = append(filteredIDs, id)
+			}
+		}
+		if len(filteredIDs) > 0 {
+			var members []models.User
+			h.db.Find(&members, filteredIDs)
+			h.db.Model(&channel).Association("Members").Append(&members)
+		}
 	}
 
 	c.JSON(http.StatusCreated, channel)
@@ -497,8 +521,11 @@ func (h *ChannelHandler) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	h.hub.register <- conn
+	// Register the connection with the user ID before sending to hub
+	h.hub.mu.Lock()
 	h.hub.clients[conn] = userID
+	h.hub.mu.Unlock()
+	h.hub.register <- conn
 
 	go func() {
 		defer func() {
@@ -1170,4 +1197,19 @@ func (h *ChannelHandler) CreateDirectMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+func (h *ChannelHandler) MarkAsRead(c *gin.Context) {
+	channelID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	userID := middleware.GetUserID(c)
+
+	now := time.Now()
+	if err := h.db.Model(&models.ChannelMember{}).
+		Where("channel_id = ? AND user_id = ?", channelID, userID).
+		Update("last_read_at", now).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark as read"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Marked as read", "last_read_at": now})
 }
