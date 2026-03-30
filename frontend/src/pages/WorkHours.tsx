@@ -268,7 +268,7 @@ export default function WorkHours() {
 
   return (
     <div className="work-hours-page">
-      <div className="page-header">
+      <div className="wh-page-header">
         <div className="header-left">
           <h1><Clock size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Mi Jornada</h1>
           <p className="header-subtitle">Registra tu día laboral</p>
@@ -278,7 +278,7 @@ export default function WorkHours() {
         </button>
       </div>
 
-      <div className="stats-row">
+      <div className="wh-stats-row">
         <div className="stat-card-mini">
           <span className="stat-icon"><Calendar size={20} /></span>
           <div className="stat-info">
