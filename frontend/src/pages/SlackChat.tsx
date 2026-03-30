@@ -12,7 +12,7 @@ import { NewChannelModal } from '../components/Chat/Modals/NewChannelModal'
 import { ChannelSettingsModal } from '../components/Chat/Modals/ChannelSettingsModal'
 import { AddMembersModal } from '../components/Chat/Modals/AddMembersModal'
 import { PinnedMessagesModal } from '../components/Chat/Modals/PinnedMessagesModal'
-import './SlackChat.css'
+import styles from './SlackChat.module.css'
 
 // Singleton para AudioContext
 let globalAudioContext: AudioContext | null = null
@@ -374,7 +374,7 @@ export default function SlackChat() {
   }
 
   return (
-    <div className="chat-page">
+    <div className={styles['chat-page']}>
       <ChatHeader
         selectedChannel={selectedChannel}
         showMobileChannels={showMobileChannels}
@@ -387,7 +387,7 @@ export default function SlackChat() {
         leaveChannel={leaveChannel}
       />
 
-      <div className="chat-body">
+      <div className={styles['chat-body']}>
         <Sidebar
           channels={channels}
           selectedChannel={selectedChannel}
@@ -402,7 +402,7 @@ export default function SlackChat() {
           isResizing={isResizing}
         />
 
-        <div className="chat-main">
+        <div className={styles['chat-main']}>
           {selectedChannel ? (
             <>
               <MessageList
@@ -448,26 +448,26 @@ export default function SlackChat() {
               />
 
               {showMentionDropdown && (
-                <div className="mention-dropdown">
+                <div className={styles['mention-dropdown']}>
                   {mentionFilterUsers.map(u => (
-                    <div key={u.id} className="mention-user-item" onClick={() => {
+                    <div key={u.id} className={styles['mention-user-item'] || 'mention-user-item'} onClick={() => {
                       const lastAt = newMessage.lastIndexOf('@')
                       setNewMessage(newMessage.slice(0, lastAt + 1) + u.name + ' ')
                       setShowMentionDropdown(false)
                     }}>
-                      <span className="mention-user-avatar">{u.name.charAt(0).toUpperCase()}</span>
-                      <span className="mention-user-name">{u.name}</span>
+                      <span className={styles['mention-user-avatar']}>{u.name.charAt(0).toUpperCase()}</span>
+                      <span className={styles['mention-user-name']}>{u.name}</span>
                     </div>
                   ))}
                 </div>
               )}
             </>
           ) : (
-            <div className="no-channel-selected">
-              <div className="no-channel-icon">#</div>
+            <div className={styles['no-channel-selected']}>
+              <div className={styles['no-channel-icon']}>#</div>
               <h2>Selecciona un canal</h2>
               <p>Elige un canal de la lista para empezar a chatear</p>
-              <button onClick={() => setShowNewChannelModal(true)} className="create-first-channel">+ Crear tu primer canal</button>
+              <button onClick={() => setShowNewChannelModal(true)} className={styles['create-first-channel']}>+ Crear tu primer canal</button>
             </div>
           )}
         </div>

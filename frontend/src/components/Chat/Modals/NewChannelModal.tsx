@@ -1,4 +1,4 @@
-
+import styles from '../../../pages/SlackChat.module.css'
 
 interface NewChannelModalProps {
   newChannel: { name: string; description: string; type: 'public' | 'private' }
@@ -14,14 +14,14 @@ export function NewChannelModal({
   onCreate
 }: NewChannelModalProps) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className={styles['modal-overlay']} onClick={onClose}>
+      <div className={styles['modal-content']} onClick={e => e.stopPropagation()}>
+        <div className={styles['modal-header']}>
           <h2>Crear canal</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button className={styles['close-btn']} onClick={onClose}>×</button>
         </div>
         
-        <div className="form-group">
+        <div className={styles['form-group']}>
           <label>Nombre del canal</label>
           <input
             type="text"
@@ -30,7 +30,7 @@ export function NewChannelModal({
             placeholder="ej: general"
           />
         </div>
-        <div className="form-group">
+        <div className={styles['form-group']}>
           <label>Descripción (opcional)</label>
           <input
             type="text"
@@ -39,7 +39,7 @@ export function NewChannelModal({
             placeholder="¿De qué trata este canal?"
           />
         </div>
-        <div className="form-group">
+        <div className={styles['form-group']}>
           <label>Tipo</label>
           <select
             value={newChannel.type}
@@ -49,9 +49,9 @@ export function NewChannelModal({
             <option value="private">Privado</option>
           </select>
         </div>
-        <div className="modal-actions">
+        <div className={styles['modal-actions']}>
           <button onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={onCreate}>Crear canal</button>
+          <button className={styles['btn-primary']} onClick={onCreate}>Crear canal</button>
         </div>
       </div>
     </div>

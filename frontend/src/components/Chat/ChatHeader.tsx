@@ -1,5 +1,6 @@
 import { Channel } from '../../types/chat'
 import { PinIcon, UserPlusIcon, InfoIcon, LogOutIcon } from './Icons'
+import styles from '../../pages/SlackChat.module.css'
 
 interface ChatHeaderProps {
   selectedChannel: Channel | null
@@ -24,26 +25,26 @@ export function ChatHeader({
   leaveChannel,
 }: ChatHeaderProps) {
   return (
-    <div className="chat-header-bar">
-      <button className="mobile-channels-toggle" onClick={() => setShowMobileChannels(!showMobileChannels)}>
+    <div className={styles['chat-header-bar']}>
+      <button className={styles['mobile-channels-toggle']} onClick={() => setShowMobileChannels(!showMobileChannels)}>
         {selectedChannel ? `# ${selectedChannel.name}` : 'Seleccionar canal'}
       </button>
       
-      <div className="channel-tabs">
+      <div className={styles['channel-tabs']}>
         {selectedChannel && (
-          <div className="channel-tab active">
+          <div className={`${styles['channel-tab']} ${styles['active']}`}>
             <span>{selectedChannel.type === 'private' ? '🔒' : '#'}</span>
             {selectedChannel.name}
           </div>
         )}
       </div>
 
-      <div className="channel-actions">
+      <div className={styles['channel-actions']}>
         {selectedChannel && (
           <>
-            <button onClick={() => setShowPinnedMessages(true)} title="Mensajes fijados" className="pin-btn">
+            <button onClick={() => setShowPinnedMessages(true)} title="Mensajes fijados" className={styles['pin-btn'] || 'pin-btn'}>
               <PinIcon />
-              {pinnedMessagesCount > 0 && <span className="pin-count">{pinnedMessagesCount}</span>}
+              {pinnedMessagesCount > 0 && <span className={styles['pin-count']}>{pinnedMessagesCount}</span>}
             </button>
             <button onClick={() => setShowAddMembers(true)} title="Añadir personas">
               <UserPlusIcon />
@@ -51,7 +52,7 @@ export function ChatHeader({
             <button onClick={() => setShowChannelSettings(true)} title="Info del canal">
               <InfoIcon />
             </button>
-            <button onClick={() => leaveChannel(selectedChannel.id)} title="Salir del canal" className="leave-btn">
+            <button onClick={() => leaveChannel(selectedChannel.id)} title="Salir del canal" className={styles['leave-btn']}>
               <LogOutIcon />
             </button>
           </>

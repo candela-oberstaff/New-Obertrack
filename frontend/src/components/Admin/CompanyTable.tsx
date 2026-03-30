@@ -1,5 +1,7 @@
 
 
+import styles from './Admin.module.css'
+
 interface CompanyMetric {
   id: number
   name: string
@@ -15,11 +17,11 @@ interface CompanyTableProps {
 
 export function CompanyTable({ companies }: CompanyTableProps) {
   return (
-    <div className="admin-content">
-      <div className="admin-section-header">
+    <div className={styles['admin-content']}>
+      <div className={styles['admin-section-header'] || 'admin-section-header'}>
         <h3>Empresas Activas</h3>
       </div>
-      <div className="companies-table">
+      <div className={styles['companies-table']}>
         <table>
           <thead>
             <tr>
@@ -33,7 +35,7 @@ export function CompanyTable({ companies }: CompanyTableProps) {
           <tbody>
             {companies.map(company => (
               <tr key={company.id}>
-                <td className="company-name">{company.name || 'Sin nombre'}</td>
+                <td className={styles['company-name']}>{company.name || 'Sin nombre'}</td>
                 <td>{company.professionals}</td>
                 <td>{company.active_users}</td>
                 <td>{company.hours_this_month.toFixed(1)}h</td>
@@ -42,7 +44,7 @@ export function CompanyTable({ companies }: CompanyTableProps) {
             ))}
             {companies.length === 0 && (
               <tr>
-                <td colSpan={5} className="no-data">No hay empresas registradas</td>
+                <td colSpan={5} className={styles['no-data'] || 'no-data'}>No hay empresas registradas</td>
               </tr>
             )}
           </tbody>

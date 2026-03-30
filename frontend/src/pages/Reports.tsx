@@ -17,7 +17,7 @@ import {
   FileText,
   Check
 } from 'lucide-react'
-import './Reports.css'
+import styles from './Reports.module.css'
 
 
 
@@ -147,20 +147,20 @@ export default function Reports() {
 
 
   return (
-    <div className="reports-page">
-      <div className="page-header">
-        <div className="header-left">
+    <div className={styles['reports-page']}>
+      <div className={styles['page-header']}>
+        <div className={styles['header-left']}>
           <h1><BarChart2 size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Reportes</h1>
-          <p className="header-subtitle">Análisis de productividad y rendimiento</p>
+          <p className={styles['header-subtitle']}>Análisis de productividad y rendimiento</p>
         </div>
       </div>
 
-      <div className="reports-filters">
+      <div className={styles['reports-filters']}>
         {(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') && employees.length > 0 && (
           <select
             value={selectedEmployee}
             onChange={(e) => setSelectedEmployee(e.target.value ? Number(e.target.value) : '')}
-            className="filter-select"
+            className={styles['filter-select']}
           >
             <option value="">Todos los empleados</option>
             {employees.map((emp) => (
@@ -169,8 +169,8 @@ export default function Reports() {
           </select>
         )}
         
-        <div className="month-selector">
-          <button className="nav-btn" onClick={() => {
+        <div className={styles['month-selector']}>
+          <button className={styles['nav-btn']} onClick={() => {
             const [year, m] = month.split('-').map(Number)
             const newDate = new Date(year, m - 2)
             setMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
@@ -179,24 +179,24 @@ export default function Reports() {
             type="month"
             value={month}
             onChange={(e) => setMonth(e.target.value)}
-            className="month-input"
+            className={styles['month-input']}
           />
-          <button className="nav-btn" onClick={() => {
+          <button className={styles['nav-btn']} onClick={() => {
             const [year, m] = month.split('-').map(Number)
             const newDate = new Date(year, m)
             setMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
           }}><ChevronRight size={20} /></button>
         </div>
 
-        <div className="report-type-tabs">
+        <div className={styles['report-type-tabs']}>
           <button 
-            className={`tab-btn ${reportType === 'hours' ? 'active' : ''}`}
+            className={`${styles['tab-btn']} ${reportType === 'hours' ? styles['active'] : ''}`}
             onClick={() => setReportType('hours')}
           >
             <Clock size={16} /> Horas
           </button>
           <button 
-            className={`tab-btn ${reportType === 'tasks' ? 'active' : ''}`}
+            className={`${styles['tab-btn']} ${reportType === 'tasks' ? styles['active'] : ''}`}
             onClick={() => setReportType('tasks')}
           >
             <CheckSquare size={16} /> Tareas
@@ -205,74 +205,74 @@ export default function Reports() {
       </div>
 
       {isLoading ? (
-        <div className="reports-loading">
-          <div className="spinner" />
+        <div className={styles['reports-loading']}>
+          <div className={styles['spinner']} />
           <p>Cargando datos...</p>
         </div>
       ) : (
         <>
           {reportType === 'hours' && (
-            <div className="reports-content">
-              <div className="stats-grid">
-                <div className="stat-card-modern">
-                  <div className="stat-icon blue">
+            <div className={styles['reports-content']}>
+              <div className={styles['stats-grid']}>
+                <div className={styles['stat-card-modern']}>
+                  <div className={`${styles['stat-icon']} ${styles['blue']}`}>
                     <Clock size={24} />
                   </div>
-                  <div className="stat-info">
-                    <span className="stat-label">Horas Totales</span>
-                    <span className="stat-value">{hoursStats.total.toFixed(1)}h</span>
-                    <span className="stat-progress">Meta: {hoursStats.targetHours}h</span>
+                  <div className={styles['stat-info']}>
+                    <span className={styles['stat-label']}>Horas Totales</span>
+                    <span className={styles['stat-value']}>{hoursStats.total.toFixed(1)}h</span>
+                    <span className={styles['stat-progress']}>Meta: {hoursStats.targetHours}h</span>
                   </div>
                 </div>
 
-                <div className="stat-card-modern">
-                  <div className="stat-icon green">
+                <div className={styles['stat-card-modern']}>
+                  <div className={`${styles['stat-icon']} ${styles['green']}`}>
                     <CheckCircle2 size={24} />
                   </div>
-                  <div className="stat-info">
-                    <span className="stat-label">Aprobadas</span>
-                    <span className="stat-value">{hoursStats.approved.toFixed(1)}h</span>
-                    <span className="stat-progress success">{hoursStats.approved > 0 ? '✓ Verificadas' : 'Sin aprobar'}</span>
+                  <div className={styles['stat-info']}>
+                    <span className={styles['stat-label']}>Aprobadas</span>
+                    <span className={styles['stat-value']}>{hoursStats.approved.toFixed(1)}h</span>
+                    <span className={`${styles['stat-progress']} ${styles['success']}`}>{hoursStats.approved > 0 ? '✓ Verificadas' : 'Sin aprobar'}</span>
                   </div>
                 </div>
 
-                <div className="stat-card-modern">
-                  <div className="stat-icon orange">
+                <div className={styles['stat-card-modern']}>
+                  <div className={`${styles['stat-icon']} ${styles['orange']}`}>
                     <AlertCircle size={24} />
                   </div>
-                  <div className="stat-info">
-                    <span className="stat-label">Pendientes</span>
-                    <span className="stat-value">{hoursStats.pending.toFixed(1)}h</span>
-                    <span className="stat-progress warning">{hoursStats.pending > 0 ? 'Por aprobar' : 'Sin pendientes'}</span>
+                  <div className={styles['stat-info']}>
+                    <span className={styles['stat-label']}>Pendientes</span>
+                    <span className={styles['stat-value']}>{hoursStats.pending.toFixed(1)}h</span>
+                    <span className={`${styles['stat-progress']} ${styles['warning']}`}>{hoursStats.pending > 0 ? 'Por aprobar' : 'Sin pendientes'}</span>
                   </div>
                 </div>
 
-                <div className="stat-card-modern">
-                  <div className="stat-icon purple">
+                <div className={styles['stat-card-modern']}>
+                  <div className={`${styles['stat-icon']} ${styles['purple']}`}>
                     <Calendar size={24} />
                   </div>
-                  <div className="stat-info">
-                    <span className="stat-label">Días Trabajados</span>
-                    <span className="stat-value">{hoursStats.daysWorked}</span>
-                    <span className="stat-progress">Meta: 20 días</span>
+                  <div className={styles['stat-info']}>
+                    <span className={styles['stat-label']}>Días Trabajados</span>
+                    <span className={styles['stat-value']}>{hoursStats.daysWorked}</span>
+                    <span className={styles['stat-progress']}>Meta: 20 días</span>
                   </div>
                 </div>
               </div>
 
-              <div className="charts-row">
+              <div className={styles['charts-row'] || 'charts-row'}>
               {workHours.some(wh => wh.activities) && (
-                <div className="activities-section">
+                <div className={styles['activities-section']}>
                   <h3><FileText size={20} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Actividades Registradas</h3>
-                  <div className="activities-list">
+                  <div className={styles['activities-list']}>
                     {workHours.filter(wh => wh.activities).slice(0, 10).map((wh) => (
-                      <div key={wh.id} className="activity-card">
-                        <div className="activity-date">
-                          <span className="activity-day">{new Date(wh.work_date).getDate()}</span>
-                          <span className="activity-month">{new Date(wh.work_date).toLocaleDateString('es-ES', { month: 'short' })}</span>
+                      <div key={wh.id} className={styles['activity-card']}>
+                        <div className={styles['activity-date']}>
+                          <span className={styles['activity-day']}>{new Date(wh.work_date).getDate()}</span>
+                          <span className={styles['activity-month']}>{new Date(wh.work_date).toLocaleDateString('es-ES', { month: 'short' })}</span>
                         </div>
-                        <div className="activity-content">
-                          <p className="activity-text">{wh.activities}</p>
-                          <span className={`activity-type ${wh.work_type}`}>
+                        <div className={styles['activity-content']}>
+                          <p className={styles['activity-text']}>{wh.activities}</p>
+                          <span className={`${styles['activity-type']} ${styles[wh.work_type] || wh.work_type}`}>
                             {wh.work_type === 'complete' ? 'Jornada Completa' : 'Ausencia'}
                           </span>
                         </div>
@@ -282,11 +282,11 @@ export default function Reports() {
                 </div>
               )}
 
-                <div className="chart-card large">
-                  <div className="chart-header">
+                <div className={`${styles['chart-card'] || 'chart-card'} ${styles['large'] || 'large'}`}>
+                  <div className={styles['chart-header'] || 'chart-header'}>
                     <h3>Horas Diarias</h3>
                   </div>
-                  <div className="chart-body">
+                  <div className={styles['chart-body'] || 'chart-body'}>
                     <ResponsiveContainer width="100%" height={260}>
                       <BarChart data={dailyData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -304,25 +304,25 @@ export default function Reports() {
                   </div>
                 </div>
 
-                <div className="breakdown-card progress-breakdown">
-                  <div className="breakdown-indicator" style={{ background: '#3b82f6' }}></div>
-                  <div className="breakdown-info">
-                    <span className="breakdown-label">Progreso del Mes</span>
-                    <span className="breakdown-value">{hoursStats.progress.toFixed(0)}%</span>
-                    <div className="progress-bar-mini">
-                      <div className="progress-fill" style={{ width: `${hoursStats.progress}%` }}></div>
+                <div className={`${styles['breakdown-card']} ${styles['progress-breakdown']}`}>
+                  <div className={styles['breakdown-indicator']} style={{ background: '#3b82f6' }}></div>
+                  <div className={styles['breakdown-info']}>
+                    <span className={styles['breakdown-label']}>Progreso del Mes</span>
+                    <span className={styles['breakdown-value']}>{hoursStats.progress.toFixed(0)}%</span>
+                    <div className={styles['progress-bar-mini']}>
+                      <div className={styles['progress-fill']} style={{ width: `${hoursStats.progress}%` }}></div>
                     </div>
-                    <p className="breakdown-desc">
+                    <p className={styles['breakdown-desc']}>
                       Has completado {hoursStats.total.toFixed(1)}h de la meta de {hoursStats.targetHours}h.
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="detail-table">
+              <div className={styles['detail-table']}>
                 <h3>Detalle de registros</h3>
-                <div className="table-container">
-                  <table className="data-table">
+                <div className={styles['table-container']}>
+                  <table className={styles['data-table']}>
                     <thead>
                       <tr>
                         <th>Fecha</th>
@@ -333,7 +333,7 @@ export default function Reports() {
                     <tbody>
                       {workHours.length === 0 ? (
                         <tr>
-                          <td colSpan={3} className="empty-cell">No hay registros</td>
+                          <td colSpan={3} className={styles['empty-cell']}>No hay registros</td>
                         </tr>
                       ) : (
                         workHours.slice(0, 10).map((wh) => (
@@ -341,7 +341,7 @@ export default function Reports() {
                             <td>{new Date(wh.work_date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</td>
                             <td>{wh.hours_worked}h</td>
                             <td>
-                              <span className={`status-pill ${wh.approved ? 'approved' : 'pending'}`}>
+                              <span className={`${styles['status-pill']} ${wh.approved ? styles['approved'] : styles['pending']}`}>
                                 {wh.approved ? 'Aprobado' : 'Pendiente'}
                               </span>
                             </td>
@@ -356,54 +356,54 @@ export default function Reports() {
           )}
 
           {reportType === 'tasks' && (
-            <div className="reports-content">
-              <div className="stats-grid">
-                <div className="stat-card-modern">
-                  <div className="stat-icon blue">
+            <div className={styles['reports-content']}>
+              <div className={styles['stats-grid']}>
+                <div className={styles['stat-card-modern']}>
+                  <div className={`${styles['stat-icon']} ${styles['blue']}`}>
                     <CheckSquare size={24} />
                   </div>
-                  <div className="stat-info">
-                    <span className="stat-label">Total Tareas</span>
-                    <span className="stat-value">{tasks.length}</span>
+                  <div className={styles['stat-info']}>
+                    <span className={styles['stat-label']}>Total Tareas</span>
+                    <span className={styles['stat-value']}>{tasks.length}</span>
                   </div>
                 </div>
 
-                <div className="stat-card-modern">
-                  <div className="stat-icon green">
+                <div className={styles['stat-card-modern']}>
+                  <div className={`${styles['stat-icon']} ${styles['green']}`}>
                     <Check size={24} />
                   </div>
-                  <div className="stat-info">
-                    <span className="stat-label">Completadas</span>
-                    <span className="stat-value">{tasks.filter(t => t.status === 'finalizado').length}</span>
+                  <div className={styles['stat-info']}>
+                    <span className={styles['stat-label']}>Completadas</span>
+                    <span className={styles['stat-value']}>{tasks.filter(t => t.status === 'finalizado').length}</span>
                   </div>
                 </div>
 
-                <div className="stat-card-modern">
-                  <div className="stat-icon orange">
+                <div className={styles['stat-card-modern']}>
+                  <div className={`${styles['stat-icon']} ${styles['orange']}`}>
                     <Clock size={24} />
                   </div>
-                  <div className="stat-info">
-                    <span className="stat-label">En Proceso</span>
-                    <span className="stat-value">{tasks.filter(t => t.status === 'en_proceso').length}</span>
+                  <div className={styles['stat-info']}>
+                    <span className={styles['stat-label']}>En Proceso</span>
+                    <span className={styles['stat-value']}>{tasks.filter(t => t.status === 'en_proceso').length}</span>
                   </div>
                 </div>
 
-                <div className="stat-card-modern">
-                  <div className="stat-icon red">
+                <div className={styles['stat-card-modern']}>
+                  <div className={`${styles['stat-icon']} ${styles['red']}`}>
                     <AlertCircle size={24} />
                   </div>
-                  <div className="stat-info">
-                    <span className="stat-label">Por Hacer</span>
-                    <span className="stat-value">{tasks.filter(t => t.status === 'por_hacer').length}</span>
+                  <div className={styles['stat-info']}>
+                    <span className={styles['stat-label']}>Por Hacer</span>
+                    <span className={styles['stat-value']}>{tasks.filter(t => t.status === 'por_hacer').length}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="reports-section">
-                <div className="section-header">
+              <div className={styles['reports-section']}>
+                <div className={styles['section-header']}>
                   <h3>Distribución de Prioridades</h3>
                 </div>
-                <div className="priority-summary-bar">
+                <div className={styles['priority-summary-bar']}>
                   {['Urgente', 'Alta', 'Media', 'Baja'].map((p) => {
                     const data = priorityData.find(d => d.name === p) || { name: p, value: 0 }
                     const count = data.value
@@ -414,23 +414,23 @@ export default function Reports() {
                     if (count === 0) return null
                     
                     return (
-                      <div key={p} className="priority-bar-segment" style={{ width: `${width}%`, background: color }} title={`${p}: ${count}`}>
-                        <span className="segment-label">{p} ({count})</span>
+                      <div key={p} className={styles['priority-bar-segment']} style={{ width: `${width}%`, background: color }} title={`${p}: ${count}`}>
+                        <span className={styles['segment-label']}>{p} ({count})</span>
                       </div>
                     )
                   })}
                 </div>
               </div>
 
-              <div className="reports-section">
-                <div className="section-header">
+              <div className={styles['reports-section']}>
+                <div className={styles['section-header']}>
                   <h3>Tareas Críticas Pendientes</h3>
-                  <span className="badge-count">
+                  <span className={styles['badge-count']}>
                     {tasks.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'finalizado').length} Urgentes/Altas
                   </span>
                 </div>
-                <div className="critical-tasks-container">
-                  <table className="critical-table">
+                <div className={styles['critical-tasks-container']}>
+                  <table className={styles['critical-table']}>
                     <thead>
                       <tr>
                         <th>Tarea</th>
@@ -442,7 +442,7 @@ export default function Reports() {
                     <tbody>
                       {tasks.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'finalizado').length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="empty-cell">No hay tareas críticas pendientes</td>
+                          <td colSpan={4} className={styles['empty-cell']}>No hay tareas críticas pendientes</td>
                         </tr>
                       ) : (
                         tasks
@@ -450,18 +450,18 @@ export default function Reports() {
                           .slice(0, 5)
                           .map((t) => (
                             <tr key={t.id}>
-                              <td className="task-title-cell">{t.title}</td>
+                              <td className={styles['task-title-cell']}>{t.title}</td>
                               <td>
-                                <span className={`priority-tag ${t.priority}`}>
+                                <span className={`${styles['priority-tag']} ${styles[t.priority] || t.priority}`}>
                                   {t.priority === 'urgent' ? 'Urgente' : 'Alta'}
                                 </span>
                               </td>
                               <td>
-                                <span className={`status-pill-small ${t.status}`}>
+                                <span className={`${styles['status-pill-small']} ${styles[t.status] || t.status}`}>
                                   {t.status === 'en_proceso' ? 'En proceso' : 'Por hacer'}
                                 </span>
                               </td>
-                              <td className="task-date-cell">{new Date(t.created_at).toLocaleDateString('es-ES')}</td>
+                              <td className={styles['task-date-cell']}>{new Date(t.created_at).toLocaleDateString('es-ES')}</td>
                             </tr>
                           ))
                       )}

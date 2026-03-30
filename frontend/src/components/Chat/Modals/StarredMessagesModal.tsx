@@ -1,5 +1,6 @@
 import { Message } from '../../../types/chat'
 import { User } from '../../../types'
+import styles from '../../../pages/SlackChat.module.css'
 
 interface StarredMessagesModalProps {
   starredMessages: Message[]
@@ -17,26 +18,26 @@ export function StarredMessagesModal({
   formatTime
 }: StarredMessagesModalProps) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content starred" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className={styles['modal-overlay']} onClick={onClose}>
+      <div className={`${styles['modal-content']} ${styles['starred']}`} onClick={e => e.stopPropagation()}>
+        <div className={styles['modal-header']}>
           <h2>⭐ Mensajes starred</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button className={styles['close-btn']} onClick={onClose}>×</button>
         </div>
 
-        <div className="starred-list">
+        <div className={styles['starred-list']}>
           {starredMessages.length === 0 ? (
-            <p className="no-starred">No hay mensajes starred</p>
+            <p className={styles['no-starred']}>No hay mensajes starred</p>
           ) : (
             starredMessages.map(msg => (
-              <div key={msg.id} className="starred-item">
-                <div className="starred-header">
-                  <span className="starred-author">{msg.user?.name}</span>
-                  <span className="starred-time">{formatTime(msg.created_at)}</span>
+              <div key={msg.id} className={styles['starred-item']}>
+                <div className={styles['starred-header']}>
+                  <span className={styles['starred-author']}>{msg.user?.name}</span>
+                  <span className={styles['starred-time']}>{formatTime(msg.created_at)}</span>
                 </div>
-                <p className="starred-text">{msg.content}</p>
+                <p className={styles['starred-text']}>{msg.content}</p>
                 {msg.user_id === currentUser?.id && (
-                  <button className="unstar-btn" onClick={() => onUnstar(msg.id)}>
+                  <button className={styles['unstar-btn']} onClick={() => onUnstar(msg.id)}>
                     Quitar star
                   </button>
                 )}
@@ -44,7 +45,7 @@ export function StarredMessagesModal({
             ))
           )}
         </div>
-        <div className="modal-actions">
+        <div className={styles['modal-actions']}>
           <button onClick={onClose}>Cerrar</button>
         </div>
       </div>

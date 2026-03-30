@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { userService, workHourService, uploadService } from '../services/api'
 import type { WorkHour, User } from '../types'
-import './Profile.css'
+import styles from './Profile.module.css'
 
 const MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
@@ -201,20 +201,20 @@ export default function Profile() {
   }
 
   return (
-    <div className="profile-page">
-      <div className="profile-header">
-        <div className="profile-cover"></div>
-        <div className="profile-main">
-          <div className="profile-avatar-section">
-            <div className="profile-avatar" onClick={() => !isUploadingAvatar && avatarInputRef.current?.click()}>
+    <div className={styles['profile-page']}>
+      <div className={styles['profile-header']}>
+        <div className={styles['profile-cover']}></div>
+        <div className={styles['profile-main']}>
+          <div className={styles['profile-avatar-section']}>
+            <div className={styles['profile-avatar']} onClick={() => !isUploadingAvatar && avatarInputRef.current?.click()}>
               {user?.avatar ? (
-                <img src={user.avatar} alt={user.name} className="avatar-image large" />
+                <img src={user.avatar} alt={user.name} className={`${styles['avatar-image']} ${styles['large']}`} />
               ) : (
-                <div className="avatar-placeholder large">
+                <div className={`${styles['avatar-placeholder']} ${styles['large']}`}>
                   {user?.name?.charAt(0).toUpperCase()}
                 </div>
               )}
-              {isUploadingAvatar && <div className="avatar-loading">⟳</div>}
+              {isUploadingAvatar && <div className={styles['avatar-loading']}>⟳</div>}
             </div>
             <input
               ref={avatarInputRef}
@@ -223,25 +223,25 @@ export default function Profile() {
               onChange={handleAvatarChange}
               style={{ display: 'none' }}
             />
-            <div className="profile-title">
+            <div className={styles['profile-title']}>
               <h1>{user?.name}</h1>
-              <p className="profile-role" style={{ color: getRoleColor() }}>
+              <p className={styles['profile-role']} style={{ color: getRoleColor() }}>
                 {getRoleLabel()}
               </p>
             </div>
           </div>
-          <div className="profile-actions">
+          <div className={styles['profile-actions']}>
             {!isEditing ? (
               <>
-                <button className="btn-outline" onClick={() => setShowPasswordModal(true)}>
+                <button className={styles['btn-outline']} onClick={() => setShowPasswordModal(true)}>
                   Cambiar Contraseña
                 </button>
-                <button className="btn-primary" onClick={() => setIsEditing(true)}>
+                <button className={styles['btn-primary']} onClick={() => setIsEditing(true)}>
                   Editar Perfil
                 </button>
               </>
             ) : (
-              <button className="btn-cancel" onClick={() => setIsEditing(false)}>
+              <button className={styles['btn-cancel']} onClick={() => setIsEditing(false)}>
                 Cancelar
               </button>
             )}
@@ -249,22 +249,22 @@ export default function Profile() {
         </div>
       </div>
 
-      <div className="profile-content">
-        <div className="profile-main-info">
-          <div className="info-card">
-            <div className="card-header">
+      <div className={styles['profile-content']}>
+        <div className={styles['profile-main-info']}>
+          <div className={styles['info-card']}>
+            <div className={styles['card-header']}>
               <h3>Información Personal</h3>
             </div>
             {message.text && (
-              <div className={`alert ${message.type}`}>
+              <div className={`${styles['alert']} ${styles[message.type]}`}>
                 {message.text}
               </div>
             )}
             
             {isEditing ? (
-              <form onSubmit={handleSubmit} className="edit-form">
-                <div className="form-row">
-                  <div className="form-group">
+              <form onSubmit={handleSubmit} className={styles['edit-form']}>
+                <div className={styles['form-row']}>
+                  <div className={styles['form-group']}>
                     <label>Nombre completo</label>
                     <input
                       type="text"
@@ -273,7 +273,7 @@ export default function Profile() {
                       required
                     />
                   </div>
-                  <div className="form-group">
+                  <div className={styles['form-group']}>
                     <label>Teléfono</label>
                     <input
                       type="tel"
@@ -283,8 +283,8 @@ export default function Profile() {
                   </div>
                 </div>
                 
-                <div className="form-row">
-                  <div className="form-group">
+                <div className={styles['form-row']}>
+                  <div className={styles['form-group']}>
                     <label>País</label>
                     <input
                       type="text"
@@ -292,7 +292,7 @@ export default function Profile() {
                       onChange={(e) => setFormData({ ...formData, country: e.target.value })}
                     />
                   </div>
-                  <div className="form-group">
+                  <div className={styles['form-group']}>
                     <label>Ciudad</label>
                     <input
                       type="text"
@@ -302,7 +302,7 @@ export default function Profile() {
                   </div>
                 </div>
                 
-                <div className="form-group">
+                <div className={styles['form-group']}>
                   <label>Puesto / Cargo</label>
                   <input
                     type="text"
@@ -312,7 +312,7 @@ export default function Profile() {
                   />
                 </div>
                 
-                <div className="form-group">
+                <div className={styles['form-group']}>
                   <label>Dirección</label>
                   <textarea
                     value={formData.location}
@@ -322,42 +322,42 @@ export default function Profile() {
                   />
                 </div>
                 
-                <div className="form-actions">
-                  <button type="submit" className="btn-primary" disabled={isLoading}>
+                <div className={styles['form-actions']}>
+                  <button type="submit" className={styles['btn-primary']} disabled={isLoading}>
                     {isLoading ? 'Guardando...' : 'Guardar Cambios'}
                   </button>
                 </div>
               </form>
             ) : (
-              <div className="info-list">
-                <div className="info-item">
-                  <span className="info-label">Email</span>
-                  <span className="info-value">{user?.email}</span>
+              <div className={styles['info-list']}>
+                <div className={styles['info-item']}>
+                  <span className={styles['info-label']}>Email</span>
+                  <span className={styles['info-value']}>{user?.email}</span>
                 </div>
-                <div className="info-item">
-                  <span className="info-label">Teléfono</span>
-                  <span className="info-value">{user?.phone_number || 'No registrado'}</span>
+                <div className={styles['info-item']}>
+                  <span className={styles['info-label']}>Teléfono</span>
+                  <span className={styles['info-value']}>{user?.phone_number || 'No registrado'}</span>
                 </div>
-                <div className="info-item">
-                  <span className="info-label">País</span>
-                  <span className="info-value">{user?.country || 'No registrado'}</span>
+                <div className={styles['info-item']}>
+                  <span className={styles['info-label']}>País</span>
+                  <span className={styles['info-value']}>{user?.country || 'No registrado'}</span>
                 </div>
-                <div className="info-item">
-                  <span className="info-label">Ciudad</span>
-                  <span className="info-value">{user?.city || 'No registrado'}</span>
+                <div className={styles['info-item']}>
+                  <span className={styles['info-label']}>Ciudad</span>
+                  <span className={styles['info-value']}>{user?.city || 'No registrado'}</span>
                 </div>
-                <div className="info-item">
-                  <span className="info-label">Puesto</span>
-                  <span className="info-value">{user?.job_title || 'No registrado'}</span>
+                <div className={styles['info-item']}>
+                  <span className={styles['info-label']}>Puesto</span>
+                  <span className={styles['info-value']}>{user?.job_title || 'No registrado'}</span>
                 </div>
-                <div className="info-item">
-                  <span className="info-label">Dirección</span>
-                  <span className="info-value">{user?.location || 'No registrada'}</span>
+                <div className={styles['info-item']}>
+                  <span className={styles['info-label']}>Dirección</span>
+                  <span className={styles['info-value']}>{user?.location || 'No registrada'}</span>
                 </div>
                 {user?.company_name && (
-                  <div className="info-item">
-                    <span className="info-label">Empresa</span>
-                    <span className="info-value">{user.company_name}</span>
+                  <div className={styles['info-item']}>
+                    <span className={styles['info-label']}>Empresa</span>
+                    <span className={styles['info-value']}>{user.company_name}</span>
                   </div>
                 )}
               </div>
@@ -365,36 +365,40 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="profile-sidebar">
-          <div className="sidebar-card">
+        <div className={styles['profile-sidebar']}>
+          <div className={styles['sidebar-card']}>
             <h3>Estadísticas</h3>
-            <div className="stat-item">
-              <span className="stat-label">Miembro desde</span>
-              <span className="stat-value">
-                {user?.created_at ? new Date(user.created_at).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) : '-'}
+            <div className={styles['stat-item']}>
+              <span className={styles['stat-label']}>Miembro desde</span>
+              <span className={styles['stat-value']}>
+                {user?.created_at ? new Date(user.created_at).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }) : 'Reciente'}
               </span>
+            </div>
+            <div className={styles['stat-item']}>
+              <span className={styles['stat-label']}>Estado</span>
+              <span className={styles['stat-value']} style={{ color: '#10b981' }}>Activo</span>
             </div>
           </div>
 
           {canApprove && pendingHours.length > 0 && (
-            <div className="sidebar-card approval-card">
+            <div className={styles['sidebar-card']}>
               <h3>Horas Pendientes</h3>
-              <p className="pending-count">{pendingHours.length} registro(s) sin aprobar</p>
+              <p className={styles['pending-count']}>{pendingHours.length} registro(s) sin aprobar</p>
               
-              <div className="pending-list">
+              <div className={styles['pending-list']}>
                 {pendingHours.slice(0, 5).map(wh => (
-                  <div key={wh.id} className="pending-item" onClick={() => toggleSelectPending(wh.id)}>
+                  <div key={wh.id} className={styles['pending-item']} onClick={() => toggleSelectPending(wh.id)}>
                     <input 
                       type="checkbox" 
                       checked={selectedPending.includes(wh.id)}
-                      onChange={() => {}}
+                      readOnly
                     />
-                    <div className="pending-info">
-                      <span className="pending-user">{wh.user?.name || 'Usuario'}</span>
-                      <span className="pending-date">
+                    <div className={styles['pending-info']}>
+                      <span className={styles['pending-user']}>{wh.user?.name || 'Usuario'}</span>
+                      <span className={styles['pending-date']}>
                         {new Date(wh.work_date).getDate()} {MONTHS_ES[new Date(wh.work_date).getMonth()]}
                       </span>
-                      <span className={`pending-type ${wh.work_type}`}>
+                      <span className={`${styles['pending-type']} ${styles[wh.work_type] || wh.work_type}`}>
                         {wh.work_type === 'complete' ? 'Completa' : 'Ausencia'}
                       </span>
                     </div>
@@ -403,12 +407,12 @@ export default function Profile() {
               </div>
 
               {pendingHours.length > 5 && (
-                <p className="more-pending">+ {pendingHours.length - 5} más</p>
+                <p className={styles['more-pending']}>+ {pendingHours.length - 5} más</p>
               )}
 
               {selectedPending.length > 0 && (
                 <button 
-                  className="btn-approve" 
+                  className={styles['btn-approve']} 
                   onClick={handleApproveHours}
                   disabled={isLoadingPending}
                 >
@@ -418,20 +422,19 @@ export default function Profile() {
             </div>
           )}
 
-          {/* Mi Equipo - Para Managers */}
           {isManager && myTeam.length > 0 && (
-            <div className="sidebar-card team-card">
+            <div className={`${styles['sidebar-card']} ${styles['team-card']}`}>
               <h3>👥 Mi Equipo</h3>
-              <p className="team-count">{myTeam.length} profesional(es) a mi cargo</p>
-              <div className="team-list">
+              <p className={styles['team-count']}>{myTeam.length} profesional(es) a mi cargo</p>
+              <div className={styles['team-list']}>
                 {myTeam.map(member => (
-                  <div key={member.id} className="team-member">
-                    <div className="member-avatar">
+                  <div key={member.id} className={styles['team-member']}>
+                    <div className={styles['member-avatar']}>
                       {member.name?.charAt(0).toUpperCase()}
                     </div>
-                    <div className="member-info">
-                      <span className="member-name">{member.name}</span>
-                      <span className="member-role">{member.job_title || 'Profesional'}</span>
+                    <div className={styles['member-info']}>
+                      <span className={styles['member-name']}>{member.name}</span>
+                      <span className={styles['member-role']}>{member.job_title || 'Profesional'}</span>
                     </div>
                   </div>
                 ))}
@@ -439,26 +442,25 @@ export default function Profile() {
             </div>
           )}
 
-          {/* Personal de la Empresa - Para Empleadores */}
-          {isEmployer && (
-            <div className="sidebar-card team-card">
+          {isEmployer && companyStaff.length > 0 && (
+            <div className={styles['sidebar-card']}>
               <h3>🏢 Personal de la Empresa</h3>
-              <p className="team-count">{companyStaff.length} profesional(es) registrado(s)</p>
-              <div className="team-list">
+              <p className={styles['team-count']}>{companyStaff.length} profesional(es) registrado(s)</p>
+              <div className={styles['team-list']}>
                 {companyStaff.map(member => (
-                  <div key={member.id} className="team-member">
-                    <div className="member-avatar">
+                  <div key={member.id} className={styles['team-member']}>
+                    <div className={styles['member-avatar']}>
                       {member.name?.charAt(0).toUpperCase()}
                     </div>
-                    <div className="member-info">
-                      <span className="member-name">{member.name}</span>
-                      <span className="member-role">
+                    <div className={styles['member-info']}>
+                      <span className={styles['member-name']}>{member.name}</span>
+                      <span className={styles['member-role']}>
                         {member.is_manager ? '👔 Manager' : '💼 Profesional'}
                       </span>
                     </div>
                     {!member.is_manager && (
                       <button 
-                        className="btn-promote"
+                        className={styles['btn-promote']}
                         onClick={() => handlePromoteToManager(member.id)}
                         title="Promover a Manager"
                       >
@@ -468,31 +470,26 @@ export default function Profile() {
                   </div>
                 ))}
               </div>
-              {message.text && (
-                <p className={`message ${message.type}`}>{message.text}</p>
-              )}
             </div>
           )}
           
-          <div className="sidebar-card danger">
-            <h3>Zona Peligrosa</h3>
-            <p>Cerrar sesión permanentemente</p>
-            <button className="btn-logout" onClick={logout}>
+          <div className={styles['sidebar-card']}>
+            <h3>Cuenta</h3>
+            <button className={styles['btn-logout']} onClick={logout}>
               Cerrar Sesión
             </button>
           </div>
         </div>
       </div>
-
       {showPasswordModal && (
-        <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className={styles['modal-overlay'] || 'modal-overlay'} onClick={() => setShowPasswordModal(false)}>
+          <div className={styles['modal'] || 'modal'} onClick={(e) => e.stopPropagation()}>
+            <div className={styles['modal-header'] || 'modal-header'}>
               <h2>Cambiar Contraseña</h2>
-              <button className="close-btn" onClick={() => setShowPasswordModal(false)}>✕</button>
+              <button className={styles['close-btn'] || 'close-btn'} onClick={() => setShowPasswordModal(false)}>✕</button>
             </div>
             <form onSubmit={handlePasswordChange}>
-              <div className="form-group">
+              <div className={styles['form-group'] || 'form-group'}>
                 <label>Contraseña actual</label>
                 <input
                   type="password"
@@ -501,7 +498,7 @@ export default function Profile() {
                   required
                 />
               </div>
-              <div className="form-group">
+              <div className={styles['form-group'] || 'form-group'}>
                 <label>Nueva contraseña</label>
                 <input
                   type="password"
@@ -511,7 +508,7 @@ export default function Profile() {
                   minLength={6}
                 />
               </div>
-              <div className="form-group">
+              <div className={styles['form-group'] || 'form-group'}>
                 <label>Confirmar contraseña</label>
                 <input
                   type="password"
@@ -520,11 +517,11 @@ export default function Profile() {
                   required
                 />
               </div>
-              <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setShowPasswordModal(false)}>
+              <div className={styles['modal-actions'] || 'modal-actions'}>
+                <button type="button" className={styles['btn-cancel'] || 'btn-cancel'} onClick={() => setShowPasswordModal(false)}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn-primary" disabled={isLoading}>
+                <button type="submit" className={styles['btn-primary'] || 'btn-primary'} disabled={isLoading}>
                   Cambiar
                 </button>
               </div>

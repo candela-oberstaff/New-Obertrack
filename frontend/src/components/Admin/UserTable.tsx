@@ -1,4 +1,5 @@
 import { User } from '../../types'
+import styles from './Admin.module.css'
 import { Pencil, Ban, CheckCircle2, Trash2 } from 'lucide-react'
 
 interface UserTableProps {
@@ -21,11 +22,11 @@ export function UserTable({
   getRoleLabel
 }: UserTableProps) {
   return (
-    <div className="admin-content">
-      <div className="admin-section-header">
+    <div className={styles['admin-content']}>
+      <div className={styles['admin-section-header'] || 'admin-section-header'}>
         <h3>Todos los Usuarios</h3>
       </div>
-      <div className="users-table">
+      <div className={styles['users-table']}>
         <table>
           <thead>
             <tr>
@@ -49,7 +50,7 @@ export function UserTable({
                   <td>{u.email}</td>
                   <td>
                     <span
-                      className="role-badge"
+                      className={styles['role-badge']}
                       style={{ background: getRoleColor(u.user_type, u.is_manager || false, u.is_superadmin || false) }}
                     >
                       {getRoleLabel(u.user_type, u.is_manager || false, u.is_superadmin || false)}
@@ -57,28 +58,28 @@ export function UserTable({
                   </td>
                   <td>{displayCompany}</td>
                   <td>
-                    <span className={`status-pill ${u.is_active !== false ? 'active' : 'inactive'}`}>
+                    <span className={`${styles['status-pill']} ${u.is_active !== false ? styles['active'] : styles['inactive']}`}>
                       {u.is_active !== false ? 'Activo' : 'Inactivo'}
                     </span>
                   </td>
                   <td>
-                    <div className="action-buttons">
+                    <div className={styles['action-buttons']}>
                       <button
-                        className="btn-icon"
+                        className={styles['btn-icon']}
                         onClick={() => onEdit(u)}
                         title="Editar"
                       >
                         <Pencil size={16} />
                       </button>
                       <button
-                        className="btn-icon"
+                        className={styles['btn-icon']}
                         onClick={() => onToggleStatus(u)}
                         title={u.is_active !== false ? 'Desactivar' : 'Activar'}
                       >
                         {u.is_active !== false ? <Ban size={16} /> : <CheckCircle2 size={16} />}
                       </button>
                       <button
-                        className="btn-icon danger"
+                        className={`${styles['btn-icon']} ${styles['danger']}`}
                         onClick={() => onDelete(u.id)}
                         title="Eliminar"
                       >
@@ -91,7 +92,7 @@ export function UserTable({
             })}
             {users.length === 0 && (
               <tr>
-                <td colSpan={6} className="no-data">No hay usuarios registrados</td>
+                 <td colSpan={6} className={styles['no-data'] || 'no-data'}>No hay usuarios registrados</td>
               </tr>
             )}
           </tbody>
