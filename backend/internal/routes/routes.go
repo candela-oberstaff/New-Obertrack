@@ -7,6 +7,8 @@ import (
 	"github.com/obertrack/backend/internal/config"
 	"github.com/obertrack/backend/internal/handlers"
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/repository"
+	"github.com/obertrack/backend/internal/service"
 	"gorm.io/gorm"
 )
 
@@ -14,7 +16,10 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	// Handlers initialization (moved from main.go)
 	authHandler := handlers.NewAuthHandler(db, cfg)
 	userHandler := handlers.NewUserHandler(db)
-	taskHandler := handlers.NewTaskHandler(db)
+	
+	taskRepo := repository.NewTaskRepository(db)
+	taskSvc := service.NewTaskService(taskRepo)
+	taskHandler := handlers.NewTaskHandler(taskSvc, db)
 	workHourHandler := handlers.NewWorkHourHandler(db)
 	chatHandler := handlers.NewChatHandler(db)
 	adminHandler := handlers.NewAdminHandler(db)
