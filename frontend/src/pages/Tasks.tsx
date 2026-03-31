@@ -162,6 +162,11 @@ export default function Tasks() {
     }
   }, [localColumnOrder])
 
+  // Clear tasks immediately when switching boards to prevent ghosting
+  useEffect(() => {
+    setTasks([])
+  }, [selectedBoard?.id, showAllTasks])
+
   useEffect(() => {
     const handleTaskAssigned = () => {
       fetchTasks()
