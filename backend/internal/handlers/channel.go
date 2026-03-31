@@ -58,8 +58,13 @@ func NewChannelHub(db *gorm.DB) *ChannelHub {
 	}
 }
 
+const (
+	pongWait   = 60 * time.Second
+	pingPeriod = (pongWait * 9) / 10
+)
+
 func (h *ChannelHub) Run() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(pingPeriod)
 	defer ticker.Stop()
 
 	for {
@@ -526,6 +531,12 @@ func (h *ChannelHandler) HandleWebSocket(c *gin.Context) {
 	h.hub.clients[conn] = userID
 	h.hub.mu.Unlock()
 	h.hub.register <- conn
+
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
 
 	go func() {
 		defer func() {
