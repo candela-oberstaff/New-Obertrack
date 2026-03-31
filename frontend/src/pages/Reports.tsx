@@ -111,15 +111,22 @@ export default function Reports() {
     const daysInMonth = new Date(year, m - 1 + 1, 0).getDate()
     const days = []
 
+    const isProf = user?.user_type === 'profesional'
+
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${month}-${String(day).padStart(2, '0')}`
       const dayHours = workHours
         .filter(wh => wh.work_date.split('T')[0] === dateStr)
         .reduce((sum, wh) => sum + wh.hours_worked, 0)
-      days.push({ day: day, hours: dayHours, target: 8 })
+        
+      days.push({ 
+        day: day, 
+        value: isProf ? (dayHours > 0 ? 1 : 0) : dayHours, 
+        target: isProf ? 1 : 8 
+      })
     }
     return days
-  }, [workHours, month])
+  }, [workHours, month, user])
 
 
 
@@ -214,27 +221,31 @@ export default function Reports() {
           {reportType === 'hours' && (
             <div className={styles['reports-content']}>
               <div className={styles['stats-grid']}>
-                <div className={styles['stat-card-modern']}>
-                  <div className={`${styles['stat-icon']} ${styles['blue']}`}>
-                    <Clock size={24} />
-                  </div>
-                  <div className={styles['stat-info']}>
-                    <span className={styles['stat-label']}>Horas Totales</span>
-                    <span className={styles['stat-value']}>{hoursStats.total.toFixed(1)}h</span>
-                    <span className={styles['stat-progress']}>Meta: {hoursStats.targetHours}h</span>
-                  </div>
-                </div>
+                {user?.user_type !== 'profesional' && (
+                  <>
+                    <div className={styles['stat-card-modern']}>
+                      <div className={`${styles['stat-icon']} ${styles['blue']}`}>
+                        <Clock size={24} />
+                      </div>
+                      <div className={styles['stat-info']}>
+                        <span className={styles['stat-label']}>Horas Totales</span>
+                        <span className={styles['stat-value']}>{hoursStats.total.toFixed(1)}h</span>
+                        <span className={styles['stat-progress']}>Meta: {hoursStats.targetHours}h</span>
+                      </div>
+                    </div>
 
-                <div className={styles['stat-card-modern']}>
-                  <div className={`${styles['stat-icon']} ${styles['green']}`}>
-                    <CheckCircle2 size={24} />
-                  </div>
-                  <div className={styles['stat-info']}>
-                    <span className={styles['stat-label']}>Aprobadas</span>
-                    <span className={styles['stat-value']}>{hoursStats.approved.toFixed(1)}h</span>
-                    <span className={`${styles['stat-progress']} ${styles['success']}`}>{hoursStats.approved > 0 ? '✓ Verificadas' : 'Sin aprobar'}</span>
-                  </div>
-                </div>
+                    <div className={styles['stat-card-modern']}>
+                      <div className={`${styles['stat-icon']} ${styles['green']}`}>
+                        <CheckCircle2 size={24} />
+                      </div>
+                      <div className={styles['stat-info']}>
+                        <span className={styles['stat-label']}>Aprobadas</span>
+                        <span className={styles['stat-value']}>{hoursStats.approved.toFixed(1)}h</span>
+                        <span className={`${styles['stat-progress']} ${styles['success']}`}>{hoursStats.approved > 0 ? '✓ Verificadas' : 'Sin aprobar'}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className={styles['stat-card-modern']}>
                   <div className={`${styles['stat-icon']} ${styles['orange']}`}>
@@ -254,7 +265,9 @@ export default function Reports() {
                   <div className={styles['stat-info']}>
                     <span className={styles['stat-label']}>Días Trabajados</span>
                     <span className={styles['stat-value']}>{hoursStats.daysWorked}</span>
-                    <span className={styles['stat-progress']}>Meta: 20 días</span>
+                    {user?.user_type !== 'profesional' && (
+                       <span className={styles['stat-progress']}>Meta: 20 días</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -284,7 +297,7 @@ export default function Reports() {
 
                 <div className={`${styles['chart-card'] || 'chart-card'} ${styles['large'] || 'large'}`}>
                   <div className={styles['chart-header'] || 'chart-header'}>
-                    <h3>Horas Diarias</h3>
+                    <h3>{user?.user_type === 'profesional' ? 'Días Trabajados' : 'Horas Diarias'}</h3>
                   </div>
                   <div className={styles['chart-body'] || 'chart-body'}>
                     <ResponsiveContainer width="100%" height={260}>
@@ -295,9 +308,9 @@ export default function Reports() {
                         <Tooltip
                           cursor={{ fill: '#f8fafc' }}
                           contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                          formatter={(value) => [`${value}h`, 'Horas']}
+                          formatter={(val) => user?.user_type === 'profesional' ? [`${val} Día`, 'Actividad'] : [`${val}h`, 'Horas']}
                         />
-                        <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Horas" />
+                        <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} name={user?.user_type === 'profesional' ? 'Días' : 'Horas'} />
                         <Bar dataKey="target" fill="#e2e8f0" radius={[4, 4, 0, 0]} name="Meta" />
                       </BarChart>
                     </ResponsiveContainer>
@@ -314,7 +327,7 @@ export default function Reports() {
                     <thead>
                       <tr>
                         <th>Fecha</th>
-                        <th>Horas</th>
+                        <th>{user?.user_type === 'profesional' ? 'Registro' : 'Horas'}</th>
                         <th>Estado</th>
                       </tr>
                     </thead>
@@ -327,7 +340,7 @@ export default function Reports() {
                         workHours.slice(0, 10).map((wh) => (
                           <tr key={wh.id}>
                             <td>{new Date(wh.work_date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</td>
-                            <td>{wh.hours_worked}h</td>
+                            <td>{user?.user_type === 'profesional' ? '1 Día' : `${wh.hours_worked}h`}</td>
                             <td>
                               <span className={`${styles['status-pill']} ${wh.approved ? styles['approved'] : styles['pending']}`}>
                                 {wh.approved ? 'Aprobado' : 'Pendiente'}
