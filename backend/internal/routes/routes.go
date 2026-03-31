@@ -22,7 +22,10 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	taskHandler := handlers.NewTaskHandler(taskSvc, db)
 	workHourHandler := handlers.NewWorkHourHandler(db)
 	chatHandler := handlers.NewChatHandler(db)
-	adminHandler := handlers.NewAdminHandler(db)
+	
+	adminRepo := repository.NewAdminRepository(db)
+	adminSvc := service.NewAdminService(adminRepo)
+	adminHandler := handlers.NewAdminHandler(adminSvc)
 	
 	boardRepo := repository.NewBoardRepository(db)
 	boardSvc := service.NewBoardService(boardRepo)

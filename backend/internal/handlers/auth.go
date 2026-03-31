@@ -69,10 +69,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	userType := models.UserTypeProfessional
 	isSuperadmin := false
-	if req.UserType == "empresa" {
+	if req.UserType == "empleador" || req.UserType == "empresa" {
 		userType = models.UserTypeEmployer
+	} else if req.UserType == "superadmin" {
+		userType = models.UserType("superadmin")
+		isSuperadmin = true
 	}
-	// Superadmin solo puede ser creado via endpoint de seed, no por registro público
 
 	user := models.User{
 		Name:         req.Name,
