@@ -162,7 +162,10 @@ func (h *TaskHandler) Create(c *gin.Context) {
 
 	if len(req.Assignees) > 0 && req.BoardID > 0 {
 		var board models.Board
-		h.db.First(&board, req.BoardID)
+		if err := h.db.First(&board, req.BoardID).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El tablero especificado no existe o fue eliminado."})
+			return
+		}
 
 		var boardMembers []models.BoardMember
 		h.db.Where("board_id = ?", req.BoardID).Find(&boardMembers)
@@ -305,7 +308,10 @@ func (h *TaskHandler) Update(c *gin.Context) {
 
 	if req.Assignees != nil {
 		var board models.Board
-		h.db.First(&board, task.BoardID)
+		if err := h.db.First(&board, task.BoardID).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El tablero de la tarea no existe."})
+			return
+		}
 
 		var boardMembers []models.BoardMember
 		h.db.Where("board_id = ?", task.BoardID).Find(&boardMembers)
