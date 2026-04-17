@@ -4,10 +4,11 @@ export interface Channel {
   id: number
   name: string
   description: string
-  type: 'public' | 'private'
+  type: 'public' | 'private' | 'direct'
   created_by: number
   unread_count: number
   created_at: string
+  recipient?: User
 }
 
 export interface DMChannel extends Channel {

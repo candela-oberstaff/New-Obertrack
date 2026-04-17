@@ -2,17 +2,30 @@ import { X, Plus } from 'lucide-react'
 import type { User } from '../../../types'
 import styles from '../../../pages/Tasks.module.css'
 
+interface PhaseInput {
+  name: string
+  color: string
+}
+
+interface BoardFormData {
+  name: string
+  description: string
+  color: string
+  member_ids: number[]
+  phases: PhaseInput[]
+}
+
 interface BoardModalProps {
   isOpen: boolean
   onClose: () => void
-  newBoardData: any
-  setNewBoardData: (data: any) => void
+  newBoardData: BoardFormData
+  setNewBoardData: (data: BoardFormData) => void
   assigneeSearch: string
   setAssigneeSearch: (val: string) => void
   filteredUsers: User[]
   newBoardPhaseSearch: string
   setNewBoardPhaseSearch: (val: string) => void
-  onSubmit: () => void
+  onSubmit: (data: BoardFormData) => Promise<void>
   isCreatingBoard: boolean
 }
 
@@ -45,7 +58,7 @@ export function BoardModal({
     <div className={styles['modal-overlay']} onClick={onClose}>
       <div className={`${styles['modal']} ${styles['board-modal']}`} onClick={(e) => e.stopPropagation()}>
         <h2>Crear Tablero</h2>
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit() }}>
+        <form onSubmit={(e) => { e.preventDefault(); onSubmit(newBoardData) }}>
           <div className={styles['form-group']}>
             <label>Nombre del tablero</label>
             <input
@@ -108,7 +121,7 @@ export function BoardModal({
                       />
                       <span className={styles['checkbox-custom']}></span>
                       <div className={styles['member-avatar']}>
-                        {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                        {user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
                       </div>
                       <div className={styles['member-info']}>
                         <span className={styles['member-name']}>{user.name}</span>
@@ -123,7 +136,7 @@ export function BoardModal({
           <div className={styles['form-group']}>
             <label>Fases del tablero</label>
             <div className={styles['phases-list']} style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '12px' }}>
-              {newBoardData.phases.map((phase: any, idx: number) => (
+              {newBoardData.phases.map((phase: PhaseInput, idx: number) => (
                 <div key={idx} className={styles['phase-item']}>
                   <div className={styles['phase-color']} style={{ backgroundColor: phase.color }}></div>
                   <span className={styles['phase-name']}>{phase.name}</span>
@@ -134,7 +147,7 @@ export function BoardModal({
                       onClick={() => {
                         setNewBoardData({
                           ...newBoardData,
-                          phases: newBoardData.phases.filter((_: any, i: number) => i !== idx)
+                          phases: newBoardData.phases.filter((_: PhaseInput, i: number) => i !== idx)
                         })
                       }}
                       title="Eliminar fase"

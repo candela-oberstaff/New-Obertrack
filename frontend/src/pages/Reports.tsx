@@ -1,10 +1,3 @@
-import { useState, useEffect, useMemo } from 'react'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
-} from 'recharts'
-import { userService, workHourService, taskService } from '../services/api'
-import { useAuth } from '../context/AuthContext'
-import { WorkHour, Task } from '../types'
 import {
   BarChart2,
   ChevronLeft,
@@ -14,144 +7,34 @@ import {
   CheckCircle2,
   AlertCircle,
   Calendar,
-  FileText,
   Check
 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { useReports } from '../hooks/useReports'
+import { StatCard } from '../components/Common/StatCard'
+import { ReportsCharts } from '../components/Reports/ReportsCharts'
 import styles from './Reports.module.css'
-
-
 
 export default function Reports() {
   const { user } = useAuth()
-  const [employees, setEmployees] = useState<{ id: number; name: string }[]>([])
-  const [selectedEmployee, setSelectedEmployee] = useState<number | ''>('')
-  const [workHours, setWorkHours] = useState<WorkHour[]>([])
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
-  const [isLoading, setIsLoading] = useState(false)
-  const [reportType, setReportType] = useState<'hours' | 'tasks'>('hours')
+  const {
+    employees, selectedEmployee, setSelectedEmployee,
+    workHours, tasks, month, setMonth,
+    isLoading, reportType, setReportType,
+    hoursStats, dailyData, priorityData
+  } = useReports(user as any)
 
-  useEffect(() => {
-    fetchEmployees()
-  }, [user])
-
-  useEffect(() => {
-    if (selectedEmployee || user?.user_type === 'profesional' || user?.user_type === 'empleador') {
-      fetchData()
-    }
-  }, [selectedEmployee, month, user])
-
-  const fetchEmployees = async () => {
-    if (!user?.is_superadmin && !user?.is_manager && user?.user_type !== 'empleador') return
-    try {
-      const data = await userService.getEmployees()
-      setEmployees(data || [])
-    } catch (error) {
-      console.error('Error fetching employees:', error)
-    }
-  }
-
-  const fetchData = async () => {
-    setIsLoading(true)
-    try {
-      const [startDate, endDate] = getMonthRange(month)
-
-      let userIdFilter: string | undefined
-      if (selectedEmployee) {
-        userIdFilter = String(selectedEmployee)
-      } else if (user?.user_type === 'profesional') {
-        userIdFilter = String(user.id)
-      }
-
-      const [hoursRes, tasksRes] = await Promise.allSettled([
-        workHourService.getAll({
-          user_id: userIdFilter,
-          start_date: startDate,
-          end_date: endDate,
-        }),
-        taskService.getAll({})
-      ])
-
-      console.log('Reports - hours:', hoursRes.status === 'fulfilled' ? hoursRes.value : hoursRes.reason)
-      console.log('Reports - tasks:', tasksRes.status === 'fulfilled' ? tasksRes.value : tasksRes.reason)
-
-      if (hoursRes.status === 'fulfilled') {
-        setWorkHours(hoursRes.value?.data || [])
-      }
-      if (tasksRes.status === 'fulfilled') {
-        setTasks(tasksRes.value?.data || [])
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const getMonthRange = (monthStr: string) => {
-    const [year, m] = monthStr.split('-').map(Number)
-    const startDate = `${year}-${String(m).padStart(2, '0')}-01`
-    const lastDay = new Date(year, m, 0).getDate()
-    const endDate = `${year}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-    return [startDate, endDate]
-  }
-
-  const hoursStats = useMemo(() => {
-    const total = workHours.reduce((sum, wh) => sum + wh.hours_worked, 0)
-    const approved = workHours.filter(wh => wh.approved).reduce((sum, wh) => sum + wh.hours_worked, 0)
-    const pending = total - approved
-    const daysWorked = new Set(workHours.map(wh => wh.work_date.split('T')[0])).size
-    const targetHours = 160
-
-    return { total, approved, pending, daysWorked, targetHours, progress: Math.min((total / targetHours) * 100, 100) }
-  }, [workHours])
-
-  const dailyData = useMemo(() => {
+  const handlePrevMonth = () => {
     const [year, m] = month.split('-').map(Number)
-    const daysInMonth = new Date(year, m - 1 + 1, 0).getDate()
-    const days = []
+    const newDate = new Date(year, m - 2)
+    setMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
+  }
 
-    const isProf = user?.user_type === 'profesional'
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${month}-${String(day).padStart(2, '0')}`
-      const dayHours = workHours
-        .filter(wh => wh.work_date.split('T')[0] === dateStr)
-        .reduce((sum, wh) => sum + wh.hours_worked, 0)
-        
-      days.push({ 
-        day: day, 
-        value: isProf ? (dayHours > 0 ? 1 : 0) : dayHours, 
-        target: isProf ? 1 : 8 
-      })
-    }
-    return days
-  }, [workHours, month, user])
-
-
-
-  const priorityData = useMemo(() => {
-    const PRIORITY_LABELS: Record<string, string> = {
-      urgent: 'Urgente',
-      high: 'Alta',
-      medium: 'Media',
-      low: 'Baja'
-    }
-    const counts: Record<string, number> = { urgent: 0, high: 0, medium: 0, low: 0 }
-    tasks.forEach(t => {
-      if (counts[t.priority] !== undefined) {
-        counts[t.priority]++
-      }
-    })
-    return Object.entries(counts)
-      .filter(([_, value]) => value > 0)
-      .map(([key, value]) => ({
-        name: PRIORITY_LABELS[key] || key,
-        value
-      }))
-  }, [tasks])
-
-
+  const handleNextMonth = () => {
+    const [year, m] = month.split('-').map(Number)
+    const newDate = new Date(year, m)
+    setMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
+  }
 
   return (
     <div className={styles['reports-page']}>
@@ -177,22 +60,14 @@ export default function Reports() {
         )}
 
         <div className={styles['month-selector']}>
-          <button className={styles['nav-btn']} onClick={() => {
-            const [year, m] = month.split('-').map(Number)
-            const newDate = new Date(year, m - 2)
-            setMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
-          }}><ChevronLeft size={20} /></button>
+          <button className={styles['nav-btn']} onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
           <input
             type="month"
             value={month}
             onChange={(e) => setMonth(e.target.value)}
             className={styles['month-input']}
           />
-          <button className={styles['nav-btn']} onClick={() => {
-            const [year, m] = month.split('-').map(Number)
-            const newDate = new Date(year, m)
-            setMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
-          }}><ChevronRight size={20} /></button>
+          <button className={styles['nav-btn']} onClick={handleNextMonth}><ChevronRight size={20} /></button>
         </div>
 
         <div className={styles['report-type-tabs']}>
@@ -223,102 +98,47 @@ export default function Reports() {
               <div className={styles['stats-grid']}>
                 {user?.user_type !== 'profesional' && (
                   <>
-                    <div className={styles['stat-card-modern']}>
-                      <div className={`${styles['stat-icon']} ${styles['blue']}`}>
-                        <Clock size={24} />
-                      </div>
-                      <div className={styles['stat-info']}>
-                        <span className={styles['stat-label']}>Horas Totales</span>
-                        <span className={styles['stat-value']}>{hoursStats.total.toFixed(1)}h</span>
-                        <span className={styles['stat-progress']}>Meta: {hoursStats.targetHours}h</span>
-                      </div>
-                    </div>
-
-                    <div className={styles['stat-card-modern']}>
-                      <div className={`${styles['stat-icon']} ${styles['green']}`}>
-                        <CheckCircle2 size={24} />
-                      </div>
-                      <div className={styles['stat-info']}>
-                        <span className={styles['stat-label']}>Aprobadas</span>
-                        <span className={styles['stat-value']}>{hoursStats.approved.toFixed(1)}h</span>
-                        <span className={`${styles['stat-progress']} ${styles['success']}`}>{hoursStats.approved > 0 ? '✓ Verificadas' : 'Sin aprobar'}</span>
-                      </div>
-                    </div>
+                    <StatCard 
+                      icon={Clock}
+                      iconColorClass="blue"
+                      label="Horas Totales"
+                      value={`${hoursStats.total.toFixed(1)}h`}
+                      progressText={`Meta: ${hoursStats.targetHours}h`}
+                    />
+                    <StatCard 
+                      icon={CheckCircle2}
+                      iconColorClass="green"
+                      label="Aprobadas"
+                      value={`${hoursStats.approved.toFixed(1)}h`}
+                      progressText={hoursStats.approved > 0 ? '✓ Verificadas' : 'Sin aprobar'}
+                      progressColorClass="success"
+                    />
                   </>
                 )}
 
-                <div className={styles['stat-card-modern']}>
-                  <div className={`${styles['stat-icon']} ${styles['orange']}`}>
-                    <AlertCircle size={24} />
-                  </div>
-                  <div className={styles['stat-info']}>
-                    <span className={styles['stat-label']}>Pendientes</span>
-                    <span className={styles['stat-value']}>{hoursStats.pending.toFixed(1)}h</span>
-                    <span className={`${styles['stat-progress']} ${styles['warning']}`}>{hoursStats.pending > 0 ? 'Por aprobar' : 'Sin pendientes'}</span>
-                  </div>
-                </div>
+                <StatCard 
+                  icon={AlertCircle}
+                  iconColorClass="orange"
+                  label="Pendientes"
+                  value={`${hoursStats.pending.toFixed(1)}h`}
+                  progressText={hoursStats.pending > 0 ? 'Por aprobar' : 'Sin pendientes'}
+                  progressColorClass="warning"
+                />
 
-                <div className={styles['stat-card-modern']}>
-                  <div className={`${styles['stat-icon']} ${styles['purple']}`}>
-                    <Calendar size={24} />
-                  </div>
-                  <div className={styles['stat-info']}>
-                    <span className={styles['stat-label']}>Días Trabajados</span>
-                    <span className={styles['stat-value']}>{hoursStats.daysWorked}</span>
-                    {user?.user_type !== 'profesional' && (
-                       <span className={styles['stat-progress']}>Meta: 20 días</span>
-                    )}
-                  </div>
-                </div>
+                <StatCard 
+                  icon={Calendar}
+                  iconColorClass="purple"
+                  label="Días Trabajados"
+                  value={hoursStats.daysWorked}
+                  progressText={user?.user_type !== 'profesional' ? 'Meta: 20 días' : undefined}
+                />
               </div>
 
-              <div className={styles['charts-row'] || 'charts-row'}>
-                {workHours.some(wh => wh.activities) && (
-                  <div className={styles['activities-section']}>
-                    <h3><FileText size={20} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Actividades Registradas</h3>
-                    <div className={styles['activities-list']}>
-                      {workHours.filter(wh => wh.activities).slice(0, 10).map((wh) => (
-                        <div key={wh.id} className={styles['activity-card']}>
-                          <div className={styles['activity-date']}>
-                            <span className={styles['activity-day']}>{new Date(wh.work_date).getDate()}</span>
-                            <span className={styles['activity-month']}>{new Date(wh.work_date).toLocaleDateString('es-ES', { month: 'short' })}</span>
-                          </div>
-                          <div className={styles['activity-content']}>
-                            <p className={styles['activity-text']}>{wh.activities}</p>
-                            <span className={`${styles['activity-type']} ${styles[wh.work_type] || wh.work_type}`}>
-                              {wh.work_type === 'complete' ? 'Jornada Completa' : 'Ausencia'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className={`${styles['chart-card'] || 'chart-card'} ${styles['large'] || 'large'}`}>
-                  <div className={styles['chart-header'] || 'chart-header'}>
-                    <h3>{user?.user_type === 'profesional' ? 'Días Trabajados' : 'Horas Diarias'}</h3>
-                  </div>
-                  <div className={styles['chart-body'] || 'chart-body'}>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={dailyData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                        <XAxis dataKey="day" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                        <Tooltip
-                          cursor={{ fill: '#f8fafc' }}
-                          contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                          formatter={(val) => user?.user_type === 'profesional' ? [`${val} Día`, 'Actividad'] : [`${val}h`, 'Horas']}
-                        />
-                        <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} name={user?.user_type === 'profesional' ? 'Días' : 'Horas'} />
-                        <Bar dataKey="target" fill="#e2e8f0" radius={[4, 4, 0, 0]} name="Meta" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-
-              </div>
+              <ReportsCharts 
+                dailyData={dailyData}
+                workHours={workHours}
+                user={user as any}
+              />
 
               <div className={styles['detail-table']}>
                 <h3>Detalle de registros</h3>
@@ -359,45 +179,10 @@ export default function Reports() {
           {reportType === 'tasks' && (
             <div className={styles['reports-content']}>
               <div className={styles['stats-grid']}>
-                <div className={styles['stat-card-modern']}>
-                  <div className={`${styles['stat-icon']} ${styles['blue']}`}>
-                    <CheckSquare size={24} />
-                  </div>
-                  <div className={styles['stat-info']}>
-                    <span className={styles['stat-label']}>Total Tareas</span>
-                    <span className={styles['stat-value']}>{tasks.length}</span>
-                  </div>
-                </div>
-
-                <div className={styles['stat-card-modern']}>
-                  <div className={`${styles['stat-icon']} ${styles['green']}`}>
-                    <Check size={24} />
-                  </div>
-                  <div className={styles['stat-info']}>
-                    <span className={styles['stat-label']}>Completadas</span>
-                    <span className={styles['stat-value']}>{tasks.filter(t => t.status === 'finalizado').length}</span>
-                  </div>
-                </div>
-
-                <div className={styles['stat-card-modern']}>
-                  <div className={`${styles['stat-icon']} ${styles['orange']}`}>
-                    <Clock size={24} />
-                  </div>
-                  <div className={styles['stat-info']}>
-                    <span className={styles['stat-label']}>En Proceso</span>
-                    <span className={styles['stat-value']}>{tasks.filter(t => t.status === 'en_proceso').length}</span>
-                  </div>
-                </div>
-
-                <div className={styles['stat-card-modern']}>
-                  <div className={`${styles['stat-icon']} ${styles['red']}`}>
-                    <AlertCircle size={24} />
-                  </div>
-                  <div className={styles['stat-info']}>
-                    <span className={styles['stat-label']}>Por Hacer</span>
-                    <span className={styles['stat-value']}>{tasks.filter(t => t.status === 'por_hacer').length}</span>
-                  </div>
-                </div>
+                <StatCard icon={CheckSquare} iconColorClass="blue" label="Total Tareas" value={tasks.length} />
+                <StatCard icon={Check} iconColorClass="green" label="Completadas" value={tasks.filter(t => t.status === 'finalizado').length} />
+                <StatCard icon={Clock} iconColorClass="orange" label="En Proceso" value={tasks.filter(t => t.status === 'en_proceso').length} />
+                <StatCard icon={AlertCircle} iconColorClass="red" label="Por Hacer" value={tasks.filter(t => t.status === 'por_hacer').length} />
               </div>
 
               <div className={styles['reports-section']}>
@@ -411,9 +196,7 @@ export default function Reports() {
                     const total = tasks.length || 1
                     const width = (count / total) * 100
                     const color = p === 'Urgente' ? '#ef4444' : p === 'Alta' ? '#f97316' : p === 'Media' ? '#f59e0b' : '#3b82f6'
-
                     if (count === 0) return null
-
                     return (
                       <div key={p} className={styles['priority-bar-segment']} style={{ width: `${width}%`, background: color }} title={`${p}: ${count}`}>
                         <span className={styles['segment-label']}>{p} ({count})</span>

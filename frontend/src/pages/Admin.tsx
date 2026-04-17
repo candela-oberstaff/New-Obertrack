@@ -1,165 +1,66 @@
-import { useState, useEffect } from 'react'
-import { adminService } from '../services/api'
-import { useAuth } from '../context/AuthContext'
-import type { User } from '../types'
-import { AdminDashboard } from '../components/Admin/AdminDashboard'
-import { CompanyTable } from '../components/Admin/CompanyTable'
-import { UserTable } from '../components/Admin/UserTable'
-import { InactiveUserList } from '../components/Admin/InactiveUserList'
-import { UserModal } from '../components/Admin/Modals/UserModal'
-import { 
-  Plus, 
-  BarChart2, 
-  Building2, 
-  Users, 
-  AlertTriangle 
+import { useState } from 'react'
+import { useAdmin } from '../hooks'
+import {
+  Users,
+  Building2,
+  Activity,
+  BarChart3,
+  Search,
+  X,
+  Check,
+  Trash2,
+  RefreshCw,
+  Shield
 } from 'lucide-react'
 import styles from '../components/Admin/Admin.module.css'
 
 export default function Admin() {
-  useAuth() // initialize auth
-  const [metrics, setMetrics] = useState<any | null>(null)
-  const [companies, setCompanies] = useState<any[]>([])
-  const [employers, setEmployers] = useState<User[]>([])
-  const [managers, setManagers] = useState<User[]>([])
-  const [inactiveUsers, setInactiveUsers] = useState<any[]>([])
-  const [activities, setActivities] = useState<any[]>([])
-  const [users, setUsers] = useState<User[]>([])
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'companies' | 'users' | 'inactive'>('dashboard')
-  const [isLoading, setIsLoading] = useState(true)
-  const [showUserModal, setShowUserModal] = useState(false)
-  const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [newPassword, setNewPassword] = useState('')
+  const {
+    stats,
+    users,
+    companies,
+    recentActivity,
+    isLoading,
+    activeTab,
+    setActiveTab,
+    deleteUser,
+    toggleUserStatus,
+    resetUserPassword,
+    promoteToManager,
+  } = useAdmin()
 
-  const [editForm, setEditForm] = useState({
-    name: '',
-    email: '',
-    job_title: '',
-    phone_number: '',
-    country: '',
-    city: '',
-    is_active: true,
-    is_manager: false,
-    empleador_id: undefined as number | undefined,
-    manager_id: undefined as number | undefined,
-  })
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [userToDelete, setUserToDelete] = useState<any>(null)
 
-  const [userForm, setUserForm] = useState({
-    name: '',
-    email: '',
-    password: '',
-    user_type: 'profesional',
-    company_name: '',
-    job_title: '',
-    empleador_id: undefined as number | undefined,
-    manager_id: undefined as number | undefined,
-    is_manager: false,
-  })
+  const filteredUsers = Array.isArray(users) 
+    ? users.filter((u: any) =>
+        u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : []
 
-  useEffect(() => {
-    fetchDashboard()
-  }, [])
+  const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+    { id: 'users', label: 'Usuarios', icon: Users },
+    { id: 'companies', label: 'Empresas', icon: Building2 },
+    { id: 'activity', label: 'Actividad', icon: Activity },
+  ]
 
-  const fetchDashboard = async () => {
-    setIsLoading(true)
-    try {
-      const [metricsRes, companiesRes, employersRes, inactiveRes, activityRes, usersRes, managersRes] = await Promise.all([
-        adminService.getDashboard(),
-        adminService.getCompanies(),
-        adminService.getUsers({ user_type: 'empleador' }),
-        adminService.getInactiveUsers(7),
-        adminService.getRecentActivity(),
-        adminService.getUsers({}),
-        adminService.getUsers({ is_manager: 'true' }),
-      ])
-      setMetrics(metricsRes)
-      setCompanies(companiesRes || [])
-      setEmployers(employersRes?.data || [])
-      setManagers(managersRes?.data || [])
-      setInactiveUsers(inactiveRes || [])
-      setActivities(activityRes || [])
-      setUsers(usersRes?.data || [])
-    } catch (error) {
-      console.error('Error fetching admin data:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      await adminService.createUser(userForm)
-      setShowUserModal(false)
-      resetForm()
-      fetchDashboard()
-    } catch (error) { console.error('Error creating user:', error) }
-  }
-
-  const handleDeleteUser = async (id: number) => {
-    if (!confirm('¿Estás seguro de eliminar este usuario?')) return
-    try { await adminService.deleteUser(id); fetchDashboard() } catch (error) { console.error('Error deleting user:', error) }
-  }
-
-  const handleToggleUserStatus = async (userData: User) => {
-    try { await adminService.updateUser(userData.id, { is_active: !userData.is_active }); fetchDashboard() } catch (error) { console.error('Error toggling user status:', error) }
-  }
-
-  const handleEditUser = (userData: User) => {
-    setEditingUser(userData)
-    setEditForm({
-      name: userData.name || '',
-      email: userData.email || '',
-      job_title: userData.job_title || '',
-      phone_number: userData.phone_number || '',
-      country: userData.country || '',
-      city: userData.city || '',
-      is_active: userData.is_active !== false,
-      is_manager: userData.is_manager || false,
-      empleador_id: userData.empleador_id || undefined,
-      manager_id: userData.manager_id || undefined,
-    })
-    setNewPassword(''); setShowEditModal(true)
-  }
-
-  const handleSaveEdit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!editingUser) return
-    try { await adminService.updateUser(editingUser.id, editForm); setShowEditModal(false); setEditingUser(null); fetchDashboard() } catch (error) { console.error('Error updating user:', error) }
-  }
-
-  const handleResetPassword = async () => {
-    if (!editingUser || !newPassword) return
-    try { await adminService.resetPassword(editingUser.id, newPassword); alert('Contraseña restablecida exitosamente'); setNewPassword('') } catch (error: any) { alert(error?.response?.data?.error || 'Error al restablecer contraseña') }
-  }
-
-  const resetForm = () => {
-    setUserForm({
-      name: '', email: '', password: '', user_type: 'profesional',
-      company_name: '', job_title: '', empleador_id: undefined, manager_id: undefined, is_manager: false,
-    })
-  }
-
-  const getRoleColor = (userType: string, isManager: boolean, isSuperadmin: boolean) => {
-    if (isSuperadmin) return '#8b5cf6'
-    if (isManager) return '#f59e0b'
-    if (userType === 'empleador') return '#3b82f6'
-    return '#10b981'
-  }
-
-  const getRoleLabel = (userType: string, isManager: boolean, isSuperadmin: boolean) => {
-    if (isSuperadmin) return 'Super Admin'
-    if (isManager) return 'Manager'
-    if (userType === 'empleador') return 'Empresa'
-    return 'Profesional'
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return
+    await deleteUser(userToDelete.id)
+    setShowDeleteModal(false)
+    setUserToDelete(null)
   }
 
   if (isLoading) {
     return (
-      <div className={styles['admin-loading']}>
-        <div className={styles['spinner']} />
-        <p>Cargando panel de administración...</p>
+      <div className={styles['admin-page']}>
+        <div className={styles['admin-loading']}>
+          <div className={styles['spinner']} />
+          <p>Cargando panel de administración...</p>
+        </div>
       </div>
     )
   }
@@ -167,75 +68,262 @@ export default function Admin() {
   return (
     <div className={styles['admin-page']}>
       <div className={styles['admin-header']}>
-        <div>
-          <h1>Panel de Administración</h1>
-          <p className={styles['admin-subtitle']}>Monitor de Obertrack - Customer Success</p>
-        </div>
-        <button className={styles['btn-primary']} onClick={() => { resetForm(); setShowUserModal(true) }}>
-          <Plus size={18} /> Nuevo Usuario
-        </button>
+        <h1>Panel de Administración</h1>
+        <p>Gestiona usuarios, empresas y actividad</p>
       </div>
 
       <div className={styles['admin-tabs']}>
-        <button className={`${styles['tab-btn']} ${activeTab === 'dashboard' ? styles['active'] : ''}`} onClick={() => setActiveTab('dashboard')}><BarChart2 size={18} /> Dashboard</button>
-        <button className={`${styles['tab-btn']} ${activeTab === 'companies' ? styles['active'] : ''}`} onClick={() => setActiveTab('companies')}><Building2 size={18} /> Empresas</button>
-        <button className={`${styles['tab-btn']} ${activeTab === 'users' ? styles['active'] : ''}`} onClick={() => setActiveTab('users')}><Users size={18} /> Usuarios</button>
-        <button className={`${styles['tab-btn']} ${activeTab === 'inactive' ? styles['active'] : ''}`} onClick={() => setActiveTab('inactive')}>
-          <AlertTriangle size={18} /> Inactivos {inactiveUsers.length > 0 && <span className={styles['badge']}>{inactiveUsers.length}</span>}
-        </button>
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            className={`${styles['tab-btn']} ${activeTab === tab.id ? styles['active'] : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <tab.icon size={18} />
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {activeTab === 'dashboard' && metrics && (
-        <AdminDashboard
-          metrics={metrics}
-          activities={activities}
-          onViewInactive={() => setActiveTab('inactive')}
-        />
-      )}
+      <div className={styles['admin-content']}>
+        {activeTab === 'dashboard' && (
+          <div className={styles['dashboard-tab']}>
+            <div className={styles['stats-grid']}>
+              <div className={styles['stat-card']}>
+                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>
+                  <Users size={26} />
+                </div>
+                <div className={styles['stat-info']}>
+                  <span className={styles['stat-value']}>{stats?.totalUsers || 0}</span>
+                  <span className={styles['stat-label']}>Total Usuarios</span>
+                </div>
+              </div>
+              <div className={styles['stat-card']}>
+                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+                  <Users size={26} />
+                </div>
+                <div className={styles['stat-info']}>
+                  <span className={styles['stat-value']}>{stats?.activeUsers || 0}</span>
+                  <span className={styles['stat-label']}>Usuarios Activos</span>
+                </div>
+              </div>
+              <div className={styles['stat-card']}>
+                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+                  <Building2 size={26} />
+                </div>
+                <div className={styles['stat-info']}>
+                  <span className={styles['stat-value']}>{stats?.totalBoards || 0}</span>
+                  <span className={styles['stat-label']}>Tableros</span>
+                </div>
+              </div>
+              <div className={styles['stat-card']}>
+                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }}>
+                  <Activity size={26} />
+                </div>
+                <div className={styles['stat-info']}>
+                  <span className={styles['stat-value']}>{stats?.totalTasks || 0}</span>
+                  <span className={styles['stat-label']}>Tareas</span>
+                </div>
+              </div>
+            </div>
 
-      {activeTab === 'companies' && <CompanyTable companies={companies} />}
+            <div className={styles['recent-activity-section']}>
+              <h3>Actividad Reciente</h3>
+              {recentActivity.length === 0 ? (
+                <p className={styles['empty-message']}>No hay actividad reciente</p>
+              ) : (
+                <div className={styles['activity-list']}>
+                  {recentActivity.slice(0, 10).map((activity: any, index: number) => (
+                    <div key={activity.id || `activity-${index}`} className={styles['activity-item']}>
+                      <div className={styles['activity-icon']}>
+                        <Activity size={16} />
+                      </div>
+                      <div className={styles['activity-content']}>
+                        <p>{activity.description}</p>
+                        <span className={styles['activity-meta']}>
+                          {activity.user} • {new Date(activity.created_at).toLocaleString('es-ES')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
-      {activeTab === 'users' && (
-        <UserTable
-          users={users}
-          employers={employers}
-          onEdit={handleEditUser}
-          onToggleStatus={handleToggleUserStatus}
-          onDelete={handleDeleteUser}
-          getRoleColor={getRoleColor}
-          getRoleLabel={getRoleLabel}
-        />
-      )}
+        {activeTab === 'users' && (
+          <div className={styles['users-tab']}>
+            <div className={styles['tab-header']}>
+              <div className={styles['search-box']}>
+                <Search size={18} />
+                <input
+                  type="text"
+                  placeholder="Buscar usuarios..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
 
-      {activeTab === 'inactive' && <InactiveUserList inactiveUsers={inactiveUsers} />}
+            <div className={styles['users-table']}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Usuario</th>
+                    <th>Email</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map((u: any, index: number) => (
+                    <tr key={u.id || `user-${index}`}>
+                      <td>
+                        <div className={styles['user-cell']}>
+                          <div className={styles['user-avatar']}>
+                            {u.name?.charAt(0).toUpperCase()}
+                          </div>
+                          <span>{u.name}</span>
+                        </div>
+                      </td>
+                      <td>{u.email}</td>
+                      <td>
+                        <span className={`${styles['badge']} ${styles[u.user_type] || ''}`}>
+                          {u.user_type}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`${styles['status-badge']} ${u.is_active ? styles['active'] : styles['inactive']}`}>
+                          {u.is_active ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className={styles['action-buttons']}>
+                          <button
+                            className={styles['btn-icon']}
+                            onClick={() => toggleUserStatus(u.id)}
+                            title={u.is_active ? 'Desactivar' : 'Activar'}
+                          >
+                            {u.is_active ? <X size={16} /> : <Check size={16} />}
+                          </button>
+                          <button
+                            className={styles['btn-icon']}
+                            onClick={() => resetUserPassword(u.id, 'temporary123')}
+                            title="Resetear contraseña"
+                          >
+                            <RefreshCw size={16} />
+                          </button>
+                          {!u.is_manager && !u.is_superadmin && (
+                            <button
+                              className={styles['btn-icon']}
+                              onClick={() => promoteToManager(u.id)}
+                              title="Promover a Manager"
+                            >
+                              <Shield size={16} />
+                            </button>
+                          )}
+                          <button
+                            className={`${styles['btn-icon']} ${styles['danger']}`}
+                            onClick={() => {
+                              setUserToDelete(u)
+                              setShowDeleteModal(true)
+                            }}
+                            title="Eliminar"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
-      {showUserModal && (
-        <UserModal
-          title="Nuevo Usuario"
-          mode="create"
-          form={userForm}
-          setForm={setUserForm}
-          employers={employers}
-          managers={managers}
-          onClose={() => { setShowUserModal(false); resetForm() }}
-          onSubmit={handleCreateUser}
-        />
-      )}
+        {activeTab === 'companies' && (
+          <div className={styles['companies-tab']}>
+            {companies.length === 0 ? (
+              <div className={styles['empty-state']}>
+                <Building2 size={40} />
+                <p>No hay empresas registradas</p>
+              </div>
+            ) : (
+              <div className={styles['companies-grid']}>
+                {companies.map((company: any, index: number) => (
+                  <div key={company.id || `company-${index}`} className={styles['company-card']}>
+                    <div className={styles['company-header']}>
+                      <div className={styles['company-avatar']}>
+                        {company.name?.charAt(0).toUpperCase()}
+                      </div>
+                      <div className={styles['company-info']}>
+                        <h4>{company.name}</h4>
+                        <p>{company.email}</p>
+                      </div>
+                    </div>
+                    <div className={styles['company-stats']}>
+                      <div className={styles['company-stat']}>
+                        <span className={styles['stat-value']}>
+                          {users.filter((u: any) => u.empleador_id === company.id).length}
+                        </span>
+                        <span className={styles['stat-label']}>Empleados</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-      {showEditModal && editingUser && (
-        <UserModal
-          title="Editar Usuario"
-          mode="edit"
-          form={editForm}
-          setForm={setEditForm}
-          employers={employers}
-          managers={managers}
-          onClose={() => setShowEditModal(false)}
-          onSubmit={handleSaveEdit}
-          onResetPassword={handleResetPassword}
-          newPassword={newPassword}
-          setNewPassword={setNewPassword}
-        />
+        {activeTab === 'activity' && (
+          <div className={styles['activity-tab']}>
+            {recentActivity.length === 0 ? (
+              <div className={styles['empty-state']}>
+                <Activity size={40} />
+                <p>No hay actividad registrada</p>
+              </div>
+            ) : (
+              <div className={styles['activity-list-full']}>
+                {recentActivity.map((activity: any, index: number) => {
+                  const date = activity.created_at ? new Date(activity.created_at) : null;
+                  const isValidDate = date && !isNaN(date.getTime());
+                  
+                  return (
+                    <div key={activity.id || `activity-full-${index}`} className={styles['activity-item-full']}>
+                      <div className={styles['activity-icon']}>
+                        <Activity size={20} />
+                      </div>
+                      <div className={styles['activity-details']}>
+                        <p className={styles['activity-desc']}>{activity.description || 'Sin descripción'}</p>
+                        <span className={styles['activity-meta']}>
+                          <strong>{activity.user || 'Sistema'}</strong> • {isValidDate ? date.toLocaleString('es-ES') : 'Fecha no disponible'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showDeleteModal && userToDelete && (
+        <div className={styles['modal-overlay']} onClick={() => setShowDeleteModal(false)}>
+          <div className={styles['modal']} onClick={(e) => e.stopPropagation()}>
+            <h2>Confirmar Eliminación</h2>
+            <p>¿Estás seguro de eliminar al usuario <strong>{userToDelete.name}</strong>?</p>
+            <p className={styles['warning-text']}>Esta acción no se puede deshacer.</p>
+            <div className={styles['modal-actions']}>
+              <button onClick={() => setShowDeleteModal(false)}>Cancelar</button>
+              <button className={styles['btn-danger']} onClick={handleDeleteUser}>Eliminar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

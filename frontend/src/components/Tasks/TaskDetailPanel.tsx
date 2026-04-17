@@ -35,6 +35,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
   const [taskComments, setTaskComments] = useState(task?.comments || [])
   const [attachments, setAttachments] = useState<TaskAttachment[]>([])
   const [isUploadingFile, setIsUploadingFile] = useState(false)
+  const [isLoadingComments, setIsLoadingComments] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
     title: '',
@@ -63,12 +64,15 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
   }, [task])
 
   const refreshTask = async () => {
+    setIsLoadingComments(true)
     try {
       const updated = await taskService.getById(task!.id)
       setTaskComments(updated.comments || [])
       setAttachments((updated as any).attachments || [])
     } catch (error) {
       console.error('Error refreshing task:', error)
+    } finally {
+      setIsLoadingComments(false)
     }
   }
 
@@ -460,7 +464,12 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                 </button>
               </div>
               <div className={styles['comments-section']}>
-                {taskComments.length > 0 ? (
+                {isLoadingComments ? (
+                  <div className={styles['comments-loading'] || 'comments-loading'} style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '12px', color: '#64748b' }}>
+                    <div className={styles['spinner']} style={{ width: '16px', height: '16px', borderWidth: '2px' }} />
+                    <span style={{ fontSize: '13px' }}>Cargando comentarios...</span>
+                  </div>
+                ) : taskComments.length > 0 ? (
                   taskComments.map((comment) => (
                     <div key={comment.id} className={styles['comment-item']}>
                       <div className={styles['comment-avatar']}>

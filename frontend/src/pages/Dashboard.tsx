@@ -1,8 +1,7 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { taskService, workHourService, userService } from '../services/api'
-import type { Task, WorkHour, User } from '../types'
+import { useDashboard } from '../hooks'
 import {
   Clock,
   CheckCircle2,
@@ -17,105 +16,24 @@ import styles from './Dashboard.module.css'
 const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 const DAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
-const parseLocalDate = (dateStr: string): Date => {
-  const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
-  return new Date(year, month - 1, day)
-}
-
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [workHours, setWorkHours] = useState<WorkHour[]>([])
-  const [employees, setEmployees] = useState<User[]>([])
-  const [summary, setSummary] = useState({ total_hours: 0, approved_hours: 0, pending_hours: 0 })
-  const [isLoading, setIsLoading] = useState(true)
+  const {
+    workHours,
+    employees,
+    summary,
+    isLoading,
+    weekData,
+    maxHours,
+    pendingTasks,
+    completedTasks,
+    getPriorityColor,
+    getStatusLabel,
+  } = useDashboard(user)
 
-  useEffect(() => {
-    fetchData()
-  }, [user])
-
-  const fetchData = async () => {
-    try {
-      const [tasksData, workHoursData, summaryData] = await Promise.allSettled([
-        taskService.getAll({ limit: 10 }),
-        workHourService.getAll({ limit: 10 }),
-        workHourService.getSummary(),
-      ])
-
-      console.log('Dashboard - workHours:', workHoursData.status === 'fulfilled' ? workHoursData.value : workHoursData.reason)
-      console.log('Dashboard - summary:', summaryData.status === 'fulfilled' ? summaryData.value : summaryData.reason)
-      console.log('Dashboard - tasks:', tasksData.status === 'fulfilled' ? tasksData.value : tasksData.reason)
-
-      if (tasksData.status === 'fulfilled') {
-        setTasks(tasksData.value?.data || [])
-      }
-      if (workHoursData.status === 'fulfilled') {
-        setWorkHours(workHoursData.value?.data || [])
-      }
-      if (summaryData.status === 'fulfilled') {
-        setSummary(summaryData.value || { total_hours: 0, approved_hours: 0, pending_hours: 0 })
-      }
-
-      if (user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') {
-        const employeesData = await userService.getEmployees()
-        setEmployees(employeesData || [])
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const today = new Date()
+  const today = useMemo(() => new Date(), [])
   const greeting = today.getHours() < 12 ? 'Buenos días' : today.getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'
-
-  const weekData = useMemo(() => {
-    const days = []
-    const startOfWeek = new Date(today)
-    startOfWeek.setDate(today.getDate() - today.getDay())
-    startOfWeek.setHours(0, 0, 0, 0)
-
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(startOfWeek)
-      date.setDate(startOfWeek.getDate() + i)
-      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-      const dayHours = workHours
-        .filter(wh => wh.work_date.split('T')[0] === dateStr)
-        .reduce((sum, wh) => sum + wh.hours_worked, 0)
-      days.push({
-        day: DAYS_ES[i].slice(0, 3),
-        hours: dayHours,
-        target: 8
-      })
-    }
-    return days
-  }, [workHours, today])
-
-  const maxHours = Math.max(...weekData.map(d => Math.max(d.hours, d.target)), 8)
-
-  const pendingTasks = tasks.filter(t => t.status !== 'finalizado')
-  const completedTasks = tasks.filter(t => t.status === 'finalizado')
-
-  const getPriorityColor = (priority: string) => {
-    const colors: Record<string, string> = {
-      urgent: '#ef4444',
-      high: '#f97316',
-      medium: '#eab308',
-      low: '#22c55e',
-    }
-    return colors[priority] || '#6b7280'
-  }
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      por_hacer: 'Por hacer',
-      en_proceso: 'En proceso',
-      finalized: 'Finalizado',
-    }
-    return labels[status] || status
-  }
 
   if (isLoading) {
     return (
@@ -132,7 +50,6 @@ export default function Dashboard() {
         <div className={styles['header-content']}>
           <div className={styles['greeting']}>
             <span className={styles['greeting-text']}>{greeting}, {user?.name?.split(' ')[0]}</span>
-
             <p className={styles['date-text']}>
               {DAYS_ES[today.getDay()]}, {today.getDate()} de {MONTHS_ES[today.getMonth()]}
             </p>
@@ -262,8 +179,8 @@ export default function Dashboard() {
               workHours.slice(0, 5).map(wh => (
                 <div key={wh.id} className={styles['hour-row']}>
                   <div className={styles['hour-date-badge']}>
-                    <span className={styles['day']}>{parseLocalDate(wh.work_date).getDate()}</span>
-                    <span className={styles['month']}>{MONTHS_ES[parseLocalDate(wh.work_date).getMonth()].slice(0, 3)}</span>
+                    <span className={styles['day']}>{new Date(wh.work_date).getDate()}</span>
+                    <span className={styles['month']}>{MONTHS_ES[new Date(wh.work_date).getMonth()].slice(0, 3)}</span>
                   </div>
                   <div className={styles['hour-info']}>
                     <span className={styles['hours-value']}>

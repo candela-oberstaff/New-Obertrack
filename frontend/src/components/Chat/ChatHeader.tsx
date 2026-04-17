@@ -27,14 +27,16 @@ export function ChatHeader({
   return (
     <div className={styles['chat-header-bar']}>
       <button className={styles['mobile-channels-toggle']} onClick={() => setShowMobileChannels(!showMobileChannels)}>
-        {selectedChannel ? `# ${selectedChannel.name}` : 'Seleccionar canal'}
+        {selectedChannel ? (
+          `${selectedChannel.type === 'direct' ? '○' : selectedChannel.type === 'private' ? '🔒' : '#'} ${selectedChannel.type === 'direct' ? (selectedChannel.recipient?.name || selectedChannel.name) : selectedChannel.name}`
+        ) : 'Seleccionar canal'}
       </button>
       
       <div className={styles['channel-tabs']}>
         {selectedChannel && (
           <div className={`${styles['channel-tab']} ${styles['active']}`}>
-            <span>{selectedChannel.type === 'private' ? '🔒' : '#'}</span>
-            {selectedChannel.name}
+            <span>{selectedChannel.type === 'direct' ? '○' : selectedChannel.type === 'private' ? '🔒' : '#'}</span>
+            {selectedChannel.type === 'direct' ? (selectedChannel.recipient?.name || selectedChannel.name) : selectedChannel.name}
           </div>
         )}
       </div>

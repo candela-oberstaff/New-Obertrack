@@ -1,11 +1,9 @@
 package config
 
 import (
-	"context"
 	"fmt"
 	"os"
 
-	"github.com/jackc/pgx/v5"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -47,17 +45,9 @@ func InitDB(cfg *Config) (*gorm.DB, error) {
 	dsn := cfg.GetDSN()
 	fmt.Println("DSN:", dsn)
 
-	// First, try to connect using pgx directly to test
-	conn, err := pgx.Connect(context.Background(), dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect with pgx: %w", err)
-	}
-	conn.Close(context.Background())
-
-	// Now use GORM
 	db, err := gorm.Open(postgres.New(postgres.Config{
 		DSN:                  dsn,
-		PreferSimpleProtocol: true, // disables implicit prepared statement usage
+		PreferSimpleProtocol: true,
 	}), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})

@@ -1,6 +1,7 @@
 import { Channel, ChannelMember } from '../../../types/chat'
 import { User } from '../../../types'
 import styles from '../../../pages/SlackChat.module.css'
+import { getUserColor } from '../ChatUtils'
 
 interface ChannelSettingsModalProps {
   selectedChannel: Channel
@@ -38,7 +39,12 @@ export function ChannelSettingsModal({
           <div className={styles['members-list']}>
             {channelMembers.map(member => (
               <div key={member.id} className={styles['member-item']}>
-                <div className={styles['member-avatar']}>{member.name?.charAt(0).toUpperCase()}</div>
+                <div 
+                  className={styles['member-avatar']} 
+                  style={{ background: getUserColor(member.name || '') }}
+                >
+                  {member.name?.charAt(0).toUpperCase()}
+                </div>
                 <span className={styles['member-name']}>{member.name}</span>
                 {member.id === selectedChannel.created_by && (
                   <span className={styles['owner-badge']}>Owner</span>

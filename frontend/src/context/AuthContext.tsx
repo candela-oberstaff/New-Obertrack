@@ -19,6 +19,7 @@ interface RegisterData {
   password: string
   user_type?: string
   company_name?: string
+  empleador_id?: number
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)

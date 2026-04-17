@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,20 +9,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"github.com/obertrack/backend/internal/middleware"
-	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/service"
 )
 
 type TaskHandler struct {
 	service service.TaskService
-	db      *gorm.DB // Mantenemos la DB para inyectar notificaciones sin circular dependency con NotifyUser
 }
 
-func NewTaskHandler(service service.TaskService, db *gorm.DB) *TaskHandler {
-	return &TaskHandler{service: service, db: db}
+func NewTaskHandler(service service.TaskService) *TaskHandler {
+	return &TaskHandler{service: service}
 }
 
 type CreateTaskRequest struct {
@@ -36,13 +32,14 @@ type CreateTaskRequest struct {
 }
 
 type UpdateTaskRequest struct {
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"`
-	Priority    string    `json:"priority"`
-	EndDate     time.Time `json:"end_date"`
-	Completed   *bool     `json:"completed"`
-	Assignees   *[]uint   `json:"assignees"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Status      string     `json:"status"`
+	Priority    string     `json:"priority"`
+	StartDate   *time.Time `json:"start_date"`
+	EndDate     *time.Time `json:"end_date"`
+	Completed   *bool      `json:"completed"`
+	Assignees   *[]uint    `json:"assignees"`
 }
 
 func (h *TaskHandler) GetAll(c *gin.Context) {
@@ -98,28 +95,13 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
 
-	task, usersToNotify, err := h.service.Create(userID, req.Title, req.Description, req.Priority, req.EndDate, req.Assignees, req.BoardID)
+	task, _, err := h.service.Create(userID, isSuperadmin, req.Title, req.Description, req.Priority, req.EndDate, req.Assignees, req.BoardID)
 	if err != nil {
+		fmt.Printf("[DEBUG] Create Task Error: %v\n", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
-	}
-
-	// Handles WebSockets + Notification Tracking independently
-	for _, assignee := range usersToNotify {
-		notificationData, _ := json.Marshal(map[string]interface{}{
-			"task_id":  task.ID,
-			"board_id": task.BoardID,
-		})
-		notification := models.Notification{
-			UserID:  assignee.ID,
-			Type:    "task_assigned",
-			Title:   "Nueva tarea asignada",
-			Message: fmt.Sprintf("Se te asignó la tarea: %s", task.Title),
-			Data:    string(notificationData),
-		}
-		h.db.Create(&notification)
-		NotifyUser(assignee.ID, "task_assigned", notification)
 	}
 
 	c.JSON(http.StatusCreated, task)
@@ -155,8 +137,11 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	if req.Completed != nil {
 		updates["completed"] = *req.Completed
 	}
-	if !req.EndDate.IsZero() {
-		updates["end_date"] = req.EndDate
+	if req.StartDate != nil {
+		updates["start_date"] = *req.StartDate
+	}
+	if req.EndDate != nil {
+		updates["end_date"] = *req.EndDate
 	}
 
 	if len(updates) == 0 && req.Assignees == nil {
@@ -164,26 +149,12 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		return
 	}
 
-	task, usersToNotify, err := h.service.Update(uint(id), updates, req.Assignees)
+	isSuperadmin := middleware.IsSuperadmin(c)
+
+	task, _, err := h.service.Update(uint(id), isSuperadmin, updates, req.Assignees)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
-	}
-
-	for _, assignee := range usersToNotify {
-		notificationData, _ := json.Marshal(map[string]interface{}{
-			"task_id":  task.ID,
-			"board_id": task.BoardID,
-		})
-		notification := models.Notification{
-			UserID:  assignee.ID,
-			Type:    "task_assigned",
-			Title:   "Nueva tarea asignada",
-			Message: fmt.Sprintf("Se te asignó la tarea: %s", task.Title),
-			Data:    string(notificationData),
-		}
-		h.db.Create(&notification)
-		NotifyUser(assignee.ID, "task_assigned", notification)
 	}
 
 	c.JSON(http.StatusOK, task)
@@ -292,18 +263,10 @@ func (h *TaskHandler) AddAttachment(c *gin.Context) {
 		return
 	}
 
-	attachment := models.TaskAttachment{
-		TaskID:     uint(taskID),
-		FileName:   file.Filename,
-		FileURL:    fmt.Sprintf("/api/uploads/%s", filename),
-		FileSize:   file.Size,
-		MimeType:   contentType,
-		UploadedBy: userID,
-	}
-
-	// This falls under simple CRUD, we can safely invoke DB here to keep simplicity
-	if err := h.db.Create(&attachment).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save attachment"})
+	// Now handled by service
+	attachment, err := h.service.AddAttachment(uint(taskID), file.Filename, fmt.Sprintf("/api/uploads/%s", filename), file.Size, contentType, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save attachment info"})
 		return
 	}
 
@@ -317,13 +280,7 @@ func (h *TaskHandler) DeleteAttachment(c *gin.Context) {
 		return
 	}
 
-	var attachment models.TaskAttachment
-	if err := h.db.First(&attachment, attachmentID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Attachment not found"})
-		return
-	}
-
-	if err := h.db.Delete(&attachment).Error; err != nil {
+	if err := h.service.DeleteAttachment(uint(attachmentID)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete attachment"})
 		return
 	}

@@ -11,6 +11,7 @@ interface SidebarProps {
   setChatSidebarCollapsed: (collapsed: boolean) => void
   chatSidebarWidth: number
   setShowNewChannelModal: (show: boolean) => void
+  setShowNewDmModal: (show: boolean) => void
   onMouseDownResize: (e: React.MouseEvent) => void
   isResizing: boolean
 }
@@ -25,11 +26,13 @@ export function Sidebar({
   setChatSidebarCollapsed,
   chatSidebarWidth,
   setShowNewChannelModal,
+  setShowNewDmModal,
   onMouseDownResize,
   isResizing
 }: SidebarProps) {
   const publicChannels = channels.filter(c => c.type === 'public')
   const privateChannels = channels.filter(c => c.type === 'private')
+  const directMessages = channels.filter(c => c.type === 'direct')
 
   return (
     <>
@@ -75,10 +78,16 @@ export function Sidebar({
 
               <div className={styles['channel-group-label']}>
                 <span>Mensajes directos</span>
-                <button className={styles['add-btn-mini']}>+</button>
+                <button 
+                  className={styles['add-btn-mini']}
+                  onClick={() => setShowNewDmModal(true)}
+                  title="Nuevo mensaje directo"
+                >
+                  +
+                </button>
               </div>
               
-              {privateChannels.map(channel => (
+              {directMessages.map(channel => (
                 <div
                   key={channel.id}
                   className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
@@ -88,7 +97,9 @@ export function Sidebar({
                   }}
                 >
                   <span className={styles['channel-mini-icon']}>○</span>
-                  <span className={styles['channel-mini-name']}>{channel.name}</span>
+                  <span className={styles['channel-mini-name']}>
+                    {channel.type === 'direct' ? (channel.recipient?.name || channel.name) : channel.name}
+                  </span>
                   {channel.unread_count > 0 && (
                     <span className={styles['unread-badge']}>{channel.unread_count}</span>
                   )}

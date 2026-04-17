@@ -48,7 +48,7 @@ export function BoardMembersModal({
                     />
                     <span className={styles['checkbox-custom']}></span>
                     <div className={styles['member-avatar']}>
-                      {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                      {user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
                     </div>
                     <div className={styles['member-info']}>
                       <span className={styles['member-name']}>{user.name}</span>

@@ -1,7 +1,8 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import Notifications from '../Notifications'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { channelService } from '../../services/api'
 import { 
   LayoutDashboard, 
   CheckSquare, 
@@ -17,12 +18,37 @@ import {
 import styles from './Layout.module.css'
 
 export default function Layout() {
-  const { user, logout } = useAuth()
+  const { user, logout, token } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [totalChatUnread, setTotalChatUnread] = useState(0)
   
-  const isChatPage = location.pathname === '/chat'
+  const isChatPage = location.pathname.startsWith('/chat')
+
+  useEffect(() => {
+    if (!token) return
+
+    const fetchTotalUnread = async () => {
+      try {
+        const count = await channelService.getTotalUnreadCount()
+        setTotalChatUnread(count)
+      } catch (error) {
+        console.error('Error fetching chat unread count:', error)
+      }
+    }
+
+    fetchTotalUnread()
+    const interval = setInterval(fetchTotalUnread, 30000)
+
+    const handleChatUpdate = () => fetchTotalUnread()
+    window.addEventListener('chat-unread-updated', handleChatUpdate)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('chat-unread-updated', handleChatUpdate)
+    }
+  }, [token])
 
   const handleLogout = () => {
     logout()
@@ -76,7 +102,12 @@ export default function Layout() {
               className={({ isActive }) => `${styles['nav-item']} ${isActive ? styles['active'] : ''}`}
               title={item.label}
             >
-              <span className={styles['nav-icon']}>{item.icon}</span>
+              <span className={styles['nav-icon']}>
+                {item.icon}
+                {item.path === '/chat' && totalChatUnread > 0 && !isChatPage && (
+                  <span className={styles['nav-badge']}>{totalChatUnread > 9 ? '9+' : totalChatUnread}</span>
+                )}
+              </span>
               {!sidebarCollapsed && <span className={styles['nav-label']}>{item.label}</span>}
             </NavLink>
           ))}

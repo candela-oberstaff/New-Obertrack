@@ -14,79 +14,84 @@ import (
 type TaskService interface {
 	GetAll(userID uint, role string, isManager, isSuperadmin bool, empleadorID uint, boardIDStr, status, priority string, offset, limit int) ([]models.Task, int64, error)
 	GetByID(id uint) (*models.Task, error)
-	Create(userID uint, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error)
-	Update(id uint, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error)
+	Create(userID uint, isSuperadmin bool, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error)
+	Update(id uint, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error)
 	Delete(id uint) error
 	ToggleCompletion(id uint) (*models.Task, error)
 	AddComment(id uint, userID uint, content string) (*models.Comment, error)
+	AddAttachment(taskID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint) (*models.TaskAttachment, error)
+	DeleteAttachment(attachmentID uint) error
 }
 
 type taskService struct {
-	repo repository.TaskRepository
+	repo      repository.TaskRepository
+	userRepo  repository.UserRepository
+	boardRepo repository.BoardRepository
+	notifSvc  NotificationService
 }
 
-func NewTaskService(repo repository.TaskRepository) TaskService {
-	return &taskService{repo: repo}
+func NewTaskService(
+	repo repository.TaskRepository,
+	userRepo repository.UserRepository,
+	boardRepo repository.BoardRepository,
+	notifSvc NotificationService,
+) TaskService {
+	return &taskService{
+		repo:      repo,
+		userRepo:  userRepo,
+		boardRepo: boardRepo,
+		notifSvc:  notifSvc,
+	}
 }
 
 func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin bool, empleadorID uint, boardIDStr, status, priority string, offset, limit int) ([]models.Task, int64, error) {
-	db := s.repo.GetDB()
-	query := db.Model(&models.Task{})
+	filters := make(map[string]interface{})
 
 	if boardIDStr != "" && boardIDStr != "all" {
 		boardID, err := strconv.ParseUint(boardIDStr, 10, 32)
 		if err == nil {
-			query = query.Where("board_id = ?", boardID)
+			filters["board_id"] = uint(boardID)
 		}
-	} else {
-		query = query.Where("board_id IN (?)", db.Model(&models.Board{}).Select("id"))
 	}
 
-	if isSuperadmin {
-		// all tasks
-	} else if role == string(models.UserTypeProfessional) {
-		var assignedTaskIDs []uint
-		db.Table("task_users").Where("user_id = ?", userID).Pluck("task_id", &assignedTaskIDs)
-		if len(assignedTaskIDs) > 0 {
-			query = query.Where("(created_by = ? OR id IN (?))", userID, assignedTaskIDs)
-		} else {
-			query = query.Where("created_by = ?", userID)
+	if !isSuperadmin {
+		if role == string(models.UserTypeProfessional) {
+			filters["assignee_id"] = userID
+			filters["created_by"] = userID
+		} else if (role == string(models.UserTypeEmployer) || role == "empleador") && empleadorID > 0 {
+			// This logic could be a repository method for "FindAllByEmployer"
+			filters["employer_id"] = empleadorID
+		} else if !isManager {
+			filters["created_by"] = userID
 		}
-	} else if role == string(models.UserTypeEmployer) || role == "empleador" {
-		if empleadorID > 0 {
-			subquery := db.Model(&models.User{}).Where("empleador_id = ?", empleadorID).Select("id")
-			query = query.Where("created_by IN (?)", subquery)
-		}
-	} else if !isManager {
-		query = query.Where("created_by = ?", userID)
 	}
 
 	if status != "" {
-		query = query.Where("status = ?", status)
+		filters["status"] = status
 	}
 	if priority != "" {
-		query = query.Where("priority = ?", priority)
+		filters["priority"] = priority
 	}
 
-	return s.repo.GetAll(query, offset, limit)
+	return s.repo.FindAll(filters, offset, limit)
 }
 
 func (s *taskService) GetByID(id uint) (*models.Task, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *taskService) validateAssignees(boardID uint, assignees []uint) error {
-	db := s.repo.GetDB()
-	var board models.Board
-	if err := db.First(&board, boardID).Error; err != nil {
+func (s *taskService) validateAssignees(boardID uint, assignees []uint, isSuperadmin bool) error {
+	if isSuperadmin {
+		return nil
+	}
+	board, err := s.boardRepo.GetByID(boardID)
+	if err != nil {
 		return errors.New("El tablero especificado no existe o fue eliminado")
 	}
 
-	var boardMembers []models.BoardMember
-	db.Where("board_id = ?", boardID).Find(&boardMembers)
 	memberIDs := make(map[uint]bool)
-	for _, m := range boardMembers {
-		memberIDs[m.UserID] = true
+	for _, m := range board.Members {
+		memberIDs[m.ID] = true
 	}
 	if board.CreatedBy != 0 {
 		memberIDs[board.CreatedBy] = true
@@ -94,10 +99,10 @@ func (s *taskService) validateAssignees(boardID uint, assignees []uint) error {
 
 	for _, assigneeID := range assignees {
 		if !memberIDs[assigneeID] {
-			var assigneeUser models.User
+			user, _ := s.userRepo.GetByID(assigneeID)
 			userName := fmt.Sprintf("ID %d", assigneeID)
-			if db.First(&assigneeUser, assigneeID).Error == nil {
-				userName = assigneeUser.Name
+			if user != nil {
+				userName = user.Name
 			}
 			return fmt.Errorf("%s no es miembro del tablero", userName)
 		}
@@ -105,15 +110,38 @@ func (s *taskService) validateAssignees(boardID uint, assignees []uint) error {
 	return nil
 }
 
-func (s *taskService) Create(userID uint, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error) {
+func (s *taskService) Create(userID uint, isSuperadmin bool, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error) {
 
 	if title == "" {
 		return nil, nil, errors.New("Title is required")
 	}
 
+	if boardID == 0 {
+		return nil, nil, errors.New("Debes seleccionar un tablero para crear una tarea")
+	}
+
 	if len(assignees) > 0 && boardID > 0 {
-		if err := s.validateAssignees(boardID, assignees); err != nil {
+		if err := s.validateAssignees(boardID, assignees, isSuperadmin); err != nil {
 			return nil, nil, err
+		}
+
+		if isSuperadmin {
+			// Auto-add assignees to board if they are not members
+			board, _ := s.boardRepo.GetByID(boardID)
+			if board != nil {
+				memberIDs := make(map[uint]bool)
+				for _, m := range board.Members {
+					memberIDs[m.ID] = true
+				}
+				for _, mid := range assignees {
+					if !memberIDs[mid] {
+						u, _ := s.userRepo.GetByID(mid)
+						if u != nil {
+							s.boardRepo.AddMember(board, u)
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -141,17 +169,23 @@ func (s *taskService) Create(userID uint, title, description, priority string, e
 		return nil, nil, err
 	}
 
-	var usersToNotify []models.User
 	if len(assignees) > 0 {
-		s.repo.GetDB().Find(&usersToNotify, assignees)
-		s.repo.GetDB().Model(task).Association("Assignees").Append(usersToNotify)
+		s.repo.SyncAssignees(task, assignees)
 	}
 
 	finalTask, _ := s.repo.GetByID(task.ID)
-	return finalTask, usersToNotify, nil
+
+	for _, assignee := range finalTask.Assignees {
+		s.notifSvc.CreateNotification(assignee.ID, "task_assigned", "Nueva tarea asignada", fmt.Sprintf("Se te asignó la tarea: %s", task.Title), map[string]interface{}{
+			"task_id":  task.ID,
+			"board_id": task.BoardID,
+		})
+	}
+
+	return finalTask, finalTask.Assignees, nil
 }
 
-func (s *taskService) Update(id uint, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error) {
+func (s *taskService) Update(id uint, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error) {
 	task, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, nil, errors.New("Task not found")
@@ -163,38 +197,55 @@ func (s *taskService) Update(id uint, reqData map[string]interface{}, assignees 
 		}
 	}
 
-	var usersToNotify []models.User
 	if assignees != nil {
-		if err := s.validateAssignees(task.BoardID, *assignees); err != nil {
+		if err := s.validateAssignees(task.BoardID, *assignees, isSuperadmin); err != nil {
 			return nil, nil, err
 		}
 
-		var currentAssignees []models.User
-		s.repo.GetDB().Model(task).Association("Assignees").Find(&currentAssignees)
+		if isSuperadmin {
+			// Auto-add assignees to board if they are not members
+			board, _ := s.boardRepo.GetByID(task.BoardID)
+			if board != nil {
+				memberIDs := make(map[uint]bool)
+				for _, m := range board.Members {
+					memberIDs[m.ID] = true
+				}
+				for _, mid := range *assignees {
+					if !memberIDs[mid] {
+						u, _ := s.userRepo.GetByID(mid)
+						if u != nil {
+							s.boardRepo.AddMember(board, u)
+						}
+					}
+				}
+			}
+		}
+
 		currentAssigneeIDs := make(map[uint]bool)
-		for _, a := range currentAssignees {
+		for _, a := range task.Assignees {
 			currentAssigneeIDs[a.ID] = true
 		}
 
-		if len(*assignees) == 0 {
-			s.repo.GetDB().Model(task).Association("Assignees").Clear()
-		} else {
-			s.repo.GetDB().Find(&usersToNotify, *assignees)
-			s.repo.GetDB().Model(task).Association("Assignees").Replace(usersToNotify)
+		s.repo.SyncAssignees(task, *assignees)
 
-			// Solo notificar a los nuevos
-			var newUsers []models.User
-			for _, u := range usersToNotify {
-				if !currentAssigneeIDs[u.ID] {
-					newUsers = append(newUsers, u)
-				}
+		finalTask, _ := s.repo.GetByID(task.ID)
+		task = finalTask
+
+		// Notify new assignees
+		for _, u := range task.Assignees {
+			if !currentAssigneeIDs[u.ID] {
+				s.notifSvc.CreateNotification(u.ID, "task_assigned", "Nueva tarea asignada", fmt.Sprintf("Se te asignó la tarea: %s", task.Title), map[string]interface{}{
+					"task_id":  task.ID,
+					"board_id": task.BoardID,
+				})
 			}
-			usersToNotify = newUsers
 		}
+	} else {
+		finalTask, _ := s.repo.GetByID(task.ID)
+		task = finalTask
 	}
 
-	finalTask, _ := s.repo.GetByID(task.ID)
-	return finalTask, usersToNotify, nil
+	return task, task.Assignees, nil
 }
 
 func (s *taskService) Delete(id uint) error {
@@ -241,6 +292,29 @@ func (s *taskService) AddComment(id uint, userID uint, content string) (*models.
 		return nil, err
 	}
 
-	s.repo.GetDB().Preload("User").First(comment, comment.ID)
-	return comment, nil
+	return s.repo.GetComment(comment.ID)
+}
+
+func (s *taskService) AddAttachment(taskID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint) (*models.TaskAttachment, error) {
+	attachment := &models.TaskAttachment{
+		TaskID:     taskID,
+		FileName:   fileName,
+		FileURL:    fileURL,
+		FileSize:   fileSize,
+		MimeType:   mimeType,
+		UploadedBy: uploadedBy,
+	}
+
+	if err := s.repo.AddAttachment(attachment); err != nil {
+		return nil, err
+	}
+	return attachment, nil
+}
+
+func (s *taskService) DeleteAttachment(attachmentID uint) error {
+	attachment, err := s.repo.GetAttachmentByID(attachmentID)
+	if err != nil {
+		return err
+	}
+	return s.repo.DeleteAttachment(attachment)
 }

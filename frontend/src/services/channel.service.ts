@@ -110,4 +110,8 @@ export const channelService = {
   markAsRead: async (id: number) => {
     await api.post(`/channels/${id}/read`)
   },
+  getTotalUnreadCount: async (): Promise<number> => {
+    const { data } = await api.get<{ total_unread: number }>('/channels/unread/total')
+    return data.total_unread
+  },
 }
