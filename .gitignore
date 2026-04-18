@@ -69,3 +69,11 @@ vite.config.ts.timestamp-*
 .cache/
 **/.cache/
 .parcel-cache/
+
+# Project specific
+backend/scratch/
+backend/test_db2.go
+backend/test_db_create.go
+backend/build_err.txt
+backend/test_*.go
+backend/uploads/
