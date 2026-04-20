@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
@@ -24,10 +25,11 @@ type TaskService interface {
 }
 
 type taskService struct {
-	repo      repository.TaskRepository
-	userRepo  repository.UserRepository
-	boardRepo repository.BoardRepository
-	notifSvc  NotificationService
+	repo          repository.TaskRepository
+	userRepo      repository.UserRepository
+	boardRepo     repository.BoardRepository
+	notifSvc      NotificationService
+	googleChatSvc GoogleChatService
 }
 
 func NewTaskService(
@@ -35,12 +37,14 @@ func NewTaskService(
 	userRepo repository.UserRepository,
 	boardRepo repository.BoardRepository,
 	notifSvc NotificationService,
+	googleChatSvc GoogleChatService,
 ) TaskService {
 	return &taskService{
-		repo:      repo,
-		userRepo:  userRepo,
-		boardRepo: boardRepo,
-		notifSvc:  notifSvc,
+		repo:          repo,
+		userRepo:      userRepo,
+		boardRepo:     boardRepo,
+		notifSvc:      notifSvc,
+		googleChatSvc: googleChatSvc,
 	}
 }
 
@@ -173,13 +177,29 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, title, description,
 		s.repo.SyncAssignees(task, assignees)
 	}
 
-	finalTask, _ := s.repo.GetByID(task.ID)
+	finalTask, err := s.repo.GetByID(task.ID)
+	if err != nil {
+		log.Printf("[TaskService] Error refreshing task %d for notifications: %v", task.ID, err)
+		return task, nil, nil // Return the original task but continue
+	}
+
+	log.Printf("[TaskService] Notifying %d assignees for new task: %s", len(finalTask.Assignees), task.Title)
 
 	for _, assignee := range finalTask.Assignees {
-		s.notifSvc.CreateNotification(assignee.ID, "task_assigned", "Nueva tarea asignada", fmt.Sprintf("Se te asignó la tarea: %s", task.Title), map[string]interface{}{
+		err := s.notifSvc.CreateNotification(assignee.ID, "task_assigned", "Nueva tarea asignada", fmt.Sprintf("Se te asignó la tarea: %s", task.Title), map[string]interface{}{
 			"task_id":  task.ID,
 			"board_id": task.BoardID,
 		})
+		if err != nil {
+			log.Printf("[TaskService] Error creating internal notification for user %d: %v", assignee.ID, err)
+		}
+
+		// Enviar DM vía Google Chat API
+		if assignee.Email != "" {
+			go s.googleChatSvc.SendDirectMessage(assignee.Email, fmt.Sprintf("¡Hola %s! Se te asignó una nueva tarea en Obertrack: *%s*", assignee.Name, task.Title))
+		} else {
+			log.Printf("[TaskService] Warning: Assignee %d (%s) has no email, skipping Google Chat notification", assignee.ID, assignee.Name)
+		}
 	}
 
 	return finalTask, finalTask.Assignees, nil
@@ -228,16 +248,32 @@ func (s *taskService) Update(id uint, isSuperadmin bool, reqData map[string]inte
 
 		s.repo.SyncAssignees(task, *assignees)
 
-		finalTask, _ := s.repo.GetByID(task.ID)
-		task = finalTask
+		finalTask, err := s.repo.GetByID(task.ID)
+		if err != nil {
+			log.Printf("[TaskService] Error refreshing task %d for update notifications: %v", task.ID, err)
+		} else {
+			task = finalTask
+		}
+
+		log.Printf("[TaskService] Checking notifications for %d assignees in updated task: %s", len(task.Assignees), task.Title)
 
 		// Notify new assignees
 		for _, u := range task.Assignees {
 			if !currentAssigneeIDs[u.ID] {
-				s.notifSvc.CreateNotification(u.ID, "task_assigned", "Nueva tarea asignada", fmt.Sprintf("Se te asignó la tarea: %s", task.Title), map[string]interface{}{
+				err := s.notifSvc.CreateNotification(u.ID, "task_assigned", "Nueva tarea asignada", fmt.Sprintf("Se te asignó la tarea: %s", task.Title), map[string]interface{}{
 					"task_id":  task.ID,
 					"board_id": task.BoardID,
 				})
+				if err != nil {
+					log.Printf("[TaskService] Error creating internal notification for user %d: %v", u.ID, err)
+				}
+
+				// Enviar DM vía Google Chat API
+				if u.Email != "" {
+					go s.googleChatSvc.SendDirectMessage(u.Email, fmt.Sprintf("¡Hola %s! Se te asignó a la tarea en Obertrack: *%s*", u.Name, task.Title))
+				} else {
+					log.Printf("[TaskService] Warning: Assignee %d (%s) has no email, skipping Google Chat notification", u.ID, u.Name)
+				}
 			}
 		}
 	} else {
