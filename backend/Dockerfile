@@ -3,6 +3,9 @@ FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
+# Install git and ca-certificates (required for some go modules)
+RUN apk add --no-cache git ca-certificates
+
 # Copy go mod and sum files
 COPY go.mod go.sum ./
 RUN go mod download
