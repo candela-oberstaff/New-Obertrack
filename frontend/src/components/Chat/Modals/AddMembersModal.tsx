@@ -1,41 +1,59 @@
 import { User } from '../../../types'
+import styles from '../../../pages/SlackChat.module.css'
+import { getUserColor } from '../ChatUtils'
 
 interface AddMembersModalProps {
   allUsers: User[]
   isMember: (userId: number) => boolean
   onAddMember: (userId: number) => void
   onClose: () => void
+  currentUser: User | null
 }
 
 export function AddMembersModal({
   allUsers,
   isMember,
   onAddMember,
-  onClose
+  onClose,
+  currentUser
 }: AddMembersModalProps) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className={styles['modal-overlay']} onClick={onClose}>
+      <div className={styles['modal-content']} onClick={e => e.stopPropagation()}>
+        <div className={styles['modal-header']}>
           <h2>Añadir personas al canal</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
         </div>
         
-        <p className="hint">Haz clic en un usuario para añadirlo</p>
-        <div className="users-list">
+        <p className={styles['hint']}>Haz clic en un usuario para añadirlo</p>
+        <div className={styles['users-list']}>
           {allUsers
-            .filter(u => !isMember(u.id))
+            .filter(u => {
+              // Standard member filter
+              if (isMember(u.id)) return false
+              
+              // Restriction: Professionals cannot add Superadmins
+              if (currentUser?.user_type === 'profesional' && (u.user_type === 'superadmin' || u.is_superadmin)) {
+                return false
+              }
+              
+              return true
+            })
             .map(u => (
-              <div key={u.id} className="user-item" onClick={() => { onAddMember(u.id); }}>
-                <div className="user-avatar">{u.name?.charAt(0).toUpperCase()}</div>
-                <div className="user-info">
-                  <span className="user-name">{u.name}</span>
-                  <span className="user-email">{u.email}</span>
+              <div key={u.id} className={styles['user-item']} onClick={() => { onAddMember(u.id); }}>
+                <div 
+                  className={styles['user-avatar']} 
+                  style={{ background: getUserColor(u.name || '') }}
+                >
+                  {u.name?.charAt(0).toUpperCase()}
+                </div>
+                <div className={styles['user-info']}>
+                  <span className={styles['user-name']}>{u.name}</span>
+                  <span className={styles['user-email']}>{u.email}</span>
                 </div>
               </div>
             ))}
         </div>
-        <div className="modal-actions">
+        <div className={styles['modal-actions']}>
           <button onClick={onClose}>Cerrar</button>
         </div>
       </div>

@@ -7,21 +7,63 @@ import (
 	"github.com/obertrack/backend/internal/config"
 	"github.com/obertrack/backend/internal/handlers"
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/repository"
+	"github.com/obertrack/backend/internal/service"
+	"github.com/obertrack/backend/internal/websocket"
 	"gorm.io/gorm"
 )
 
 func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
-	// Handlers initialization (moved from main.go)
-	authHandler := handlers.NewAuthHandler(db, cfg)
-	userHandler := handlers.NewUserHandler(db)
-	taskHandler := handlers.NewTaskHandler(db)
-	workHourHandler := handlers.NewWorkHourHandler(db)
-	chatHandler := handlers.NewChatHandler(db)
-	adminHandler := handlers.NewAdminHandler(db)
-	boardHandler := handlers.NewBoardHandler(db)
-	uploadHandler := handlers.NewUploadHandler(db, os.Getenv("UPLOAD_PATH"))
-	notificationHandler := handlers.NewNotificationHandler(db)
-	channelHandler := handlers.NewChannelHandler(db)
+	// Repositories
+	userRepo := repository.NewUserRepository(db)
+	chatRepo := repository.NewChatRepository(db)
+	notifRepo := repository.NewNotificationRepository(db)
+	channelRepo := repository.NewChannelRepository(db)
+	workHourRepo := repository.NewWorkHourRepository(db)
+
+	// Services
+	userSvc := service.NewUserService(userRepo)
+	notifSvc := service.NewNotificationService(notifRepo)
+	chatSvc := service.NewChatService(chatRepo)
+	channelSvc := service.NewChannelService(channelRepo, userRepo, notifSvc)
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
+
+	// Initialize Google Chat
+	googleChatSvc := service.NewGoogleChatService()
+
+	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, googleChatSvc)
+	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
+
+	boardRepo := repository.NewBoardRepository(db)
+	taskRepo := repository.NewTaskRepository(db)
+	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc, googleChatSvc)
+	adminRepo := repository.NewAdminRepository(db)
+	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo)
+	boardSvc := service.NewBoardService(boardRepo, userRepo)
+	// Handlers
+	googleChatHandler := handlers.NewGoogleChatHandler(workHourSvc, userSvc)
+	authHandler := handlers.NewAuthHandler(authSvc)
+	notificationHandler := handlers.NewNotificationHandler(notifSvc)
+	userHandler := handlers.NewUserHandler(userSvc)
+	taskHandler := handlers.NewTaskHandler(taskSvc)
+	adminHandler := handlers.NewAdminHandler(adminSvc)
+	boardHandler := handlers.NewBoardHandler(boardSvc)
+	workHourHandler := handlers.NewWorkHourHandler(workHourSvc)
+	uploadHandler := handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"))
+
+	// WebSocket hubs
+	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {
+		// Chat message handler - persist if needed
+	})
+	channelHub := websocket.NewChannelHub(func(msg websocket.ChannelWSMessage) {
+		// Channel message handler - persist if needed
+	})
+	go chatHub.Run()
+	go channelHub.Run()
+
+	// Chat and Channel handlers with WebSocket hubs
+	chatHandler := handlers.NewChatHandler(chatSvc, chatHub)
+	channelHandler := handlers.NewChannelHandler(channelSvc, channelHub)
 
 	api := r.Group("/api")
 	{
@@ -29,7 +71,11 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.GET("/companies", authHandler.GetCompanies)
 		}
+
+		// Google Chat Public Callback
+		api.POST("/google-chat/callback", googleChatHandler.HandleCallback)
 
 		// Administrative seed routes - should be disabled in production or strictly protected
 		if os.Getenv("GIN_MODE") != "release" {
@@ -135,6 +181,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 
 			channels := api.Group("/channels")
 			{
+				channels.GET("/unread/total", channelHandler.GetTotalUnreadCount)
 				channels.GET("", channelHandler.GetChannels)
 				channels.POST("", channelHandler.CreateChannel)
 				channels.GET("/all-users", channelHandler.GetAllUsers)
@@ -171,15 +218,9 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	}
 
 	r.GET("/api/uploads/:filename", uploadHandler.GetFile)
-	r.GET("/ws/chat", middleware.AuthMiddleware(cfg.JWTSecret), func(c *gin.Context) {
-		chatHandler.HandleWebSocket(c)
-	})
-	r.GET("/ws/channels", middleware.AuthMiddleware(cfg.JWTSecret), func(c *gin.Context) {
-		channelHandler.HandleWebSocket(c)
-	})
-	r.GET("/ws/notifications", middleware.AuthMiddleware(cfg.JWTSecret), func(c *gin.Context) {
-		notificationHandler.HandleWebSocket(c)
-	})
+	r.GET("/ws/chat", middleware.AuthMiddleware(cfg.JWTSecret), chatHandler.HandleWebSocket)
+	r.GET("/ws/channels", middleware.AuthMiddleware(cfg.JWTSecret), channelHandler.HandleWebSocket)
+	r.GET("/ws/notifications", middleware.AuthMiddleware(cfg.JWTSecret), notificationHandler.HandleWebSocket)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})

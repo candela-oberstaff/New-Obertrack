@@ -1,5 +1,5 @@
-import React from 'react'
 import { Channel } from '../../types/chat'
+import styles from '../../pages/SlackChat.module.css'
 
 interface SidebarProps {
   channels: Channel[]
@@ -11,6 +11,7 @@ interface SidebarProps {
   setChatSidebarCollapsed: (collapsed: boolean) => void
   chatSidebarWidth: number
   setShowNewChannelModal: (show: boolean) => void
+  setShowNewDmModal: (show: boolean) => void
   onMouseDownResize: (e: React.MouseEvent) => void
   isResizing: boolean
 }
@@ -25,33 +26,35 @@ export function Sidebar({
   setChatSidebarCollapsed,
   chatSidebarWidth,
   setShowNewChannelModal,
+  setShowNewDmModal,
   onMouseDownResize,
   isResizing
 }: SidebarProps) {
   const publicChannels = channels.filter(c => c.type === 'public')
   const privateChannels = channels.filter(c => c.type === 'private')
+  const directMessages = channels.filter(c => c.type === 'direct')
 
   return (
     <>
       <div 
-        className={`channels-panel ${showMobileChannels ? 'open' : ''} ${chatSidebarCollapsed ? 'collapsed' : ''}`}
+        className={`${styles['channels-panel']} ${showMobileChannels ? styles['open'] : ''} ${chatSidebarCollapsed ? styles['collapsed'] : ''}`}
         style={{ width: chatSidebarCollapsed ? 52 : chatSidebarWidth }}
       >
         {!chatSidebarCollapsed && (
           <>
-            <div className="channels-panel-header">
+            <div className={styles['channels-panel-header']}>
               <h3>Obertrack</h3>
-              <button className="new-msg-btn" onClick={() => setShowNewChannelModal(true)} title="Nuevo canal">
+              <button className={styles['new-msg-btn']} onClick={() => setShowNewChannelModal(true)} title="Nuevo canal">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
               </button>
             </div>
 
-            <div className="channel-list-mini">
-              <div className="channel-group-label">
+            <div className={styles['channel-list-mini']}>
+              <div className={styles['channel-group-label']}>
                 <span>Canales</span>
-                <button className="add-btn-mini" onClick={() => setShowNewChannelModal(true)} title="Crear canal">
+                <button className={styles['add-btn-mini']} onClick={() => setShowNewChannelModal(true)} title="Crear canal">
                   +
                 </button>
               </div>
@@ -59,38 +62,46 @@ export function Sidebar({
               {publicChannels.map(channel => (
                 <div
                   key={channel.id}
-                  className={`channel-mini-item ${selectedChannel?.id === channel.id ? 'active' : ''}`}
+                  className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
                   onClick={() => {
                     setSelectedChannel(channel)
                     setShowMobileChannels(false)
                   }}
                 >
-                  <span className="channel-mini-icon">#</span>
-                  <span className="channel-mini-name">{channel.name}</span>
+                  <span className={styles['channel-mini-icon']}>#</span>
+                  <span className={styles['channel-mini-name']}>{channel.name}</span>
                   {channel.unread_count > 0 && (
-                    <span className="unread-badge">{channel.unread_count}</span>
+                    <span className={styles['unread-badge']}>{channel.unread_count}</span>
                   )}
                 </div>
               ))}
 
-              <div className="channel-group-label">
+              <div className={styles['channel-group-label']}>
                 <span>Mensajes directos</span>
-                <button className="add-btn-mini">+</button>
+                <button 
+                  className={styles['add-btn-mini']}
+                  onClick={() => setShowNewDmModal(true)}
+                  title="Nuevo mensaje directo"
+                >
+                  +
+                </button>
               </div>
               
-              {privateChannels.map(channel => (
+              {directMessages.map(channel => (
                 <div
                   key={channel.id}
-                  className={`channel-mini-item ${selectedChannel?.id === channel.id ? 'active' : ''}`}
+                  className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
                   onClick={() => {
                     setSelectedChannel(channel)
                     setShowMobileChannels(false)
                   }}
                 >
-                  <span className="channel-mini-icon">○</span>
-                  <span className="channel-mini-name">{channel.name}</span>
+                  <span className={styles['channel-mini-icon']}>○</span>
+                  <span className={styles['channel-mini-name']}>
+                    {channel.type === 'direct' ? (channel.recipient?.name || channel.name) : channel.name}
+                  </span>
                   {channel.unread_count > 0 && (
-                    <span className="unread-badge">{channel.unread_count}</span>
+                    <span className={styles['unread-badge']}>{channel.unread_count}</span>
                   )}
                 </div>
               ))}
@@ -99,7 +110,7 @@ export function Sidebar({
         )}
         
         <button 
-          className="sidebar-toggle"
+          className={styles['sidebar-toggle']}
           onClick={() => setChatSidebarCollapsed(!chatSidebarCollapsed)}
         >
           {chatSidebarCollapsed ? '→' : '←'}
@@ -107,7 +118,7 @@ export function Sidebar({
       </div>
 
       <div 
-        className="resize-handle"
+        className={styles['resize-handle']}
         onMouseDown={onMouseDownResize}
         style={{ cursor: isResizing ? 'col-resize' : undefined }}
       />

@@ -1,5 +1,6 @@
 import { User } from '../../../types'
 import { X } from 'lucide-react'
+import styles from '../Admin.module.css'
 
 interface UserModalProps {
   title: string
@@ -29,14 +30,14 @@ export function UserModal({
   setNewPassword
 }: UserModalProps) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <div className={styles['modal-overlay']} onClick={onClose}>
+      <div className={styles['modal']} onClick={e => e.stopPropagation()}>
+        <div className={styles['modal-header']}>
           <h2>{title}</h2>
-          <button className="close-btn" onClick={onClose}><X size={20} /></button>
+          <button className={styles['close-btn']} onClick={onClose}><X size={20} /></button>
         </div>
         <form onSubmit={onSubmit}>
-          <div className="form-group">
+          <div className={styles['form-group']}>
             <label>Nombre</label>
             <input
               type="text"
@@ -45,7 +46,7 @@ export function UserModal({
               required
             />
           </div>
-          <div className="form-group">
+          <div className={styles['form-group']}>
             <label>Email</label>
             <input
               type="email"
@@ -56,7 +57,7 @@ export function UserModal({
           </div>
           
           {mode === 'create' && (
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label>Contraseña</label>
               <input
                 type="password"
@@ -68,7 +69,7 @@ export function UserModal({
           )}
 
           {mode === 'create' && (
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label>Tipo de Usuario</label>
               <select
                 value={form.user_type}
@@ -81,7 +82,7 @@ export function UserModal({
           )}
 
           {(mode === 'edit' || form.user_type === 'empleador') && (
-            <div className="form-group">
+            <div className={styles['form-group']}>
               <label>Nombre de Empresa</label>
               <input
                 type="text"
@@ -93,7 +94,7 @@ export function UserModal({
 
           {(mode === 'edit' || form.user_type === 'profesional') && (
             <>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Empresa (Empleador)</label>
                 <select
                   value={form.empleador_id || ''}
@@ -105,7 +106,7 @@ export function UserModal({
                   ))}
                 </select>
               </div>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Manager Asignado</label>
                 <select
                   value={form.manager_id || ''}
@@ -120,7 +121,7 @@ export function UserModal({
             </>
           )}
 
-          <div className="form-group">
+          <div className={styles['form-group']}>
             <label>Puesto</label>
             <input
               type="text"
@@ -131,7 +132,7 @@ export function UserModal({
 
           {mode === 'edit' && (
             <>
-              <div className="form-group">
+              <div className={styles['form-group']}>
                 <label>Teléfono</label>
                 <input
                   type="text"
@@ -139,8 +140,8 @@ export function UserModal({
                   onChange={e => setForm({ ...form, phone_number: e.target.value })}
                 />
               </div>
-              <div className="form-row">
-                <div className="form-group">
+              <div className={styles['form-row']}>
+                <div className={styles['form-group']}>
                   <label>País</label>
                   <input
                     type="text"
@@ -148,7 +149,7 @@ export function UserModal({
                     onChange={e => setForm({ ...form, country: e.target.value })}
                   />
                 </div>
-                <div className="form-group">
+                <div className={styles['form-group']}>
                   <label>Ciudad</label>
                   <input
                     type="text"
@@ -157,8 +158,8 @@ export function UserModal({
                   />
                 </div>
               </div>
-              <div className="form-group">
-                <label className="checkbox-label">
+              <div className={styles['form-group']}>
+                <label className={styles['checkbox-label']}>
                   <input
                     type="checkbox"
                     checked={form.is_manager}
@@ -167,8 +168,8 @@ export function UserModal({
                   Es Gerente/Manager
                 </label>
               </div>
-              <div className="form-group">
-                <label className="checkbox-label">
+              <div className={styles['form-group']}>
+                <label className={styles['checkbox-label']}>
                   <input
                     type="checkbox"
                     checked={form.is_active}
@@ -179,19 +180,19 @@ export function UserModal({
               </div>
               
               {onResetPassword && setNewPassword && (
-                <div className="form-group" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px', marginTop: '8px' }}>
+                <div className={styles['form-group']}>
                   <label>Restablecer Contraseña</label>
-                  <div className="password-reset-row">
+                  <div className={styles['password-reset-row']}>
                     <input
                       type="password"
                       placeholder="Nueva contraseña"
                       value={newPassword}
                       onChange={e => setNewPassword(e.target.value)}
-                      className="password-input"
+                      className={styles['password-input']}
                     />
                     <button
                       type="button"
-                      className="btn-primary"
+                      className={styles['btn-primary']}
                       onClick={onResetPassword}
                       disabled={!newPassword}
                     >
@@ -203,11 +204,11 @@ export function UserModal({
             </>
           )}
 
-          <div className="modal-actions">
-            <button type="button" className="btn-cancel" onClick={onClose}>
+          <div className={styles['modal-actions']}>
+            <button type="button" className={styles['btn-secondary']} onClick={onClose}>
               Cancelar
             </button>
-            <button type="submit" className="btn-primary">
+            <button type="submit" className={styles['btn-primary']}>
               {mode === 'create' ? 'Crear Usuario' : 'Guardar Cambios'}
             </button>
           </div>

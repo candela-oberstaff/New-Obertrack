@@ -1,5 +1,5 @@
 import { useNotification } from '../context/NotificationContext'
-import './Toast.css'
+import styles from './Toast.module.css'
 
 export default function Toast() {
   const { notifications, removeNotification } = useNotification()
@@ -17,16 +17,16 @@ export default function Toast() {
   if (notifications.length === 0) return null
 
   return (
-    <div className="toast-container">
+    <div className={styles['toast-container']}>
       {notifications.map((notification) => (
         <div 
           key={notification.id} 
-          className={`toast toast-${notification.type}`}
+          className={`${styles.toast} ${styles[`toast-${notification.type}`]}`}
           onClick={() => removeNotification(notification.id)}
         >
-          <span className="toast-icon">{getIcon(notification.type)}</span>
-          <span className="toast-message">{notification.message}</span>
-          <button className="toast-close" onClick={(e) => {
+          <span className={styles['toast-icon']}>{getIcon(notification.type)}</span>
+          <span className={styles['toast-message']}>{notification.message}</span>
+          <button className={styles['toast-close']} onClick={(e) => {
             e.stopPropagation()
             removeNotification(notification.id)
           }}>✕</button>

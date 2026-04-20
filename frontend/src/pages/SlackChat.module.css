@@ -93,6 +93,27 @@
   background: #2563eb;
 }
 
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+}
+
+.btn-primary:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
 .pin-count {
   background: #ef4444;
   color: white;
@@ -293,7 +314,8 @@
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  background: #f8f9fa;
 }
 
 .no-messages {
@@ -374,9 +396,9 @@
 }
 
 .message-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 4px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
   background: #3b82f6;
   color: white;
   display: flex;
@@ -386,18 +408,57 @@
   font-weight: 700;
   flex-shrink: 0;
   margin-top: 2px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.message-content {
-  flex: 1;
-  min-width: 0;
+.message-item.own-message {
+  flex-direction: row-reverse;
+}
+
+.message-item.own-message .message-avatar {
+  display: none; /* Slack style usually hide avatar for own messages if using bubbles, or we can keep it */
+}
+
+.message-bubble {
+  max-width: 80%;
+  padding: 10px 14px;
+  background: white;
+  border-radius: 12px;
+  border-top-left-radius: 2px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.own-message .message-bubble {
+  background: #e1f2ff;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 2px;
+  border: 1px solid #cce5ff;
+}
+
+.own-message .message-main {
+  align-items: flex-end;
+}
+
+.message-main {
+  flex: 1;
+  max-width: calc(100% - 50px);
+  display: flex;
+  flex-direction: column;
 }
 
 .message-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
+  margin-bottom: 4px;
+}
+
+.message-header-own {
+  display: flex;
+  justify-content: flex-end;
   margin-bottom: 2px;
 }
 
@@ -408,8 +469,8 @@
 }
 
 .message-time {
-  font-size: 11px;
-  color: #9ca3af;
+  font-size: 10px;
+  color: #94a3af;
 }
 
 .message-text {
@@ -494,18 +555,12 @@
   font-size: 11px;
 }
 
-.message-attachment {
-  display: inline-flex;
-  align-items: center;
+.message-attachment-bubble {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-  padding: 8px 12px;
-  background: #f1f5f9;
-  border-radius: 6px;
-  margin-top: 4px;
-  font-size: 13px;
-  color: #3b82f6;
-  text-decoration: none;
-  max-width: 300px;
+  margin-top: 8px;
+  max-width: 100%;
 }
 
 .message-attachment:hover {
@@ -761,8 +816,40 @@
 }
 
 .modal-content h2 {
-  font-size: 17px;
-  margin: 0 0 16px;
+  font-size: 20px;
+  margin: 0;
+  font-weight: 700;
+  color: #111827;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.close-btn:hover {
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .channel-desc {
@@ -903,9 +990,24 @@
 }
 
 .hint {
-  font-size: 12px;
-  color: #9ca3af;
-  margin: -8px 0 12px;
+  font-size: 14px;
+  color: #64748b;
+  margin: -12px 0 16px;
+}
+
+.user-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
 }
 
 .user-info {
@@ -927,14 +1029,19 @@
 .user-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px;
+  gap: 12px;
+  padding: 10px 12px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  border: 1px solid transparent;
 }
 
 .user-item:hover {
-  background: #f1f5f9;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .modal-content.pinned {

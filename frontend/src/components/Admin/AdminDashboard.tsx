@@ -1,4 +1,5 @@
 import { Building2, User, Clock, CheckCircle2, Hourglass, ClipboardList, AlertTriangle, TrendingUp } from 'lucide-react'
+import styles from './Admin.module.css'
 
 interface DashboardMetrics {
   total_companies: number
@@ -30,89 +31,89 @@ interface AdminDashboardProps {
 
 export function AdminDashboard({ metrics, activities, onViewInactive }: AdminDashboardProps) {
   return (
-    <div className="admin-content">
-      <div className="metrics-grid">
-        <div className="metric-card">
-          <div className="metric-icon companies"><Building2 size={24} /></div>
-          <div className="metric-info">
-            <span className="metric-value">{metrics.total_companies}</span>
-            <span className="metric-label">Empresas</span>
+    <div className={styles['admin-content']}>
+      <div className={styles['metrics-grid']}>
+        <div className={styles['metric-card']}>
+          <div className={`${styles['metric-icon']} ${styles['companies']}`}><Building2 size={24} /></div>
+          <div className={styles['metric-info']}>
+            <span className={styles['metric-value']}>{metrics.total_companies}</span>
+            <span className={styles['metric-label']}>Empresas</span>
           </div>
         </div>
-        <div className="metric-card">
-          <div className="metric-icon professionals"><User size={24} /></div>
-          <div className="metric-info">
-            <span className="metric-value">{metrics.total_professionals}</span>
-            <span className="metric-label">Profesionales</span>
+        <div className={styles['metric-card']}>
+          <div className={`${styles['metric-icon']} ${styles['professionals']}`}><User size={24} /></div>
+          <div className={styles['metric-info']}>
+            <span className={styles['metric-value']}>{metrics.total_professionals}</span>
+            <span className={styles['metric-label']}>Profesionales</span>
           </div>
         </div>
-        <div className="metric-card">
-          <div className="metric-icon hours"><Clock size={24} /></div>
-          <div className="metric-info">
-            <span className="metric-value">{metrics.total_hours_worked.toFixed(0)}h</span>
-            <span className="metric-label">Horas Totales</span>
+        <div className={styles['metric-card']}>
+          <div className={`${styles['metric-icon']} ${styles['hours']}`}><Clock size={24} /></div>
+          <div className={styles['metric-info']}>
+            <span className={styles['metric-value']}>{metrics.total_hours_worked.toFixed(0)}h</span>
+            <span className={styles['metric-label']}>Horas Totales</span>
           </div>
         </div>
-        <div className="metric-card">
-          <div className="metric-icon approved"><CheckCircle2 size={24} /></div>
-          <div className="metric-info">
-            <span className="metric-value">{metrics.approved_hours.toFixed(0)}h</span>
-            <span className="metric-label">Horas Aprobadas</span>
+        <div className={styles['metric-card']}>
+          <div className={`${styles['metric-icon']} ${styles['approved']}`}><CheckCircle2 size={24} /></div>
+          <div className={styles['metric-info']}>
+            <span className={styles['metric-value']}>{metrics.approved_hours.toFixed(0)}h</span>
+            <span className={styles['metric-label']}>Horas Aprobadas</span>
           </div>
         </div>
-        <div className="metric-card">
-          <div className="metric-icon pending"><Hourglass size={24} /></div>
-          <div className="metric-info">
-            <span className="metric-value">{metrics.pending_hours.toFixed(0)}h</span>
-            <span className="metric-label">Horas Pendientes</span>
+        <div className={styles['metric-card']}>
+          <div className={`${styles['metric-icon']} ${styles['pending']}`}><Hourglass size={24} /></div>
+          <div className={styles['metric-info']}>
+            <span className={styles['metric-value']}>{metrics.pending_hours.toFixed(0)}h</span>
+            <span className={styles['metric-label']}>Horas Pendientes</span>
           </div>
         </div>
-        <div className="metric-card">
-          <div className="metric-icon tasks"><ClipboardList size={24} /></div>
-          <div className="metric-info">
-            <span className="metric-value">{metrics.completed_tasks}/{metrics.total_tasks}</span>
-            <span className="metric-label">Tareas Completadas</span>
+        <div className={styles['metric-card']}>
+          <div className={`${styles['metric-icon']} ${styles['tasks']}`}><ClipboardList size={24} /></div>
+          <div className={styles['metric-info']}>
+            <span className={styles['metric-value']}>{metrics.completed_tasks}/{metrics.total_tasks}</span>
+            <span className={styles['metric-label']}>Tareas Completadas</span>
           </div>
         </div>
       </div>
 
-      <div className="alerts-section">
+      <div className={styles['alerts-section']}>
         {metrics.inactive_warning > 0 && (
-          <div className="alert-card warning">
-            <span className="alert-icon"><AlertTriangle size={20} /></span>
-            <div className="alert-content">
+          <div className={`${styles['alert-card']} ${styles['warning']}`}>
+            <span className={styles['alert-icon']}><AlertTriangle size={20} /></span>
+            <div className={styles['alert-content']}>
               <strong>{metrics.inactive_warning} profesionales sin actividad reciente</strong>
               <p>No han registrado horas en los últimos 3 días</p>
             </div>
-            <button className="alert-action" onClick={onViewInactive}>
+            <button className={styles['alert-action']} onClick={onViewInactive}>
               Ver
             </button>
           </div>
         )}
-        <div className="alert-card info">
-          <span className="alert-icon"><TrendingUp size={20} /></span>
-          <div className="alert-content">
+        <div className={`${styles['alert-card']} ${styles['info']}`}>
+          <span className={styles['alert-icon']}><TrendingUp size={20} /></span>
+          <div className={styles['alert-content']}>
             <strong>{metrics.active_today} profesionales activos hoy</strong>
             <p>Han registrado su jornada</p>
           </div>
         </div>
       </div>
 
-      <div className="activity-section">
+      <div className={styles['activity-section']}>
         <h3>Actividad Reciente</h3>
-        <div className="activity-list">
+        <div className={styles['activity-list']}>
           {activities.length === 0 ? (
-            <p className="no-activity">Sin actividad reciente</p>
+            <p className={styles['no-activity']}>Sin actividad reciente</p>
           ) : (
             activities.map((activity, idx) => (
-              <div key={idx} className="activity-item">
-                <div className="activity-icon">{activity.type === 'work_hour' ? <Clock size={16} /> : <ClipboardList size={16} />}</div>
-                <div className="activity-details">
-                  <span className="activity-user">{activity.user}</span>
-                  <span className="activity-company">{activity.company}</span>
+              <div key={idx} className={styles['activity-item']}>
+                <div className={styles['activity-icon']}>{activity.type === 'work_hour' ? <Clock size={16} /> : <ClipboardList size={16} />}</div>
+                <div className={styles['activity-details']}>
+                  <span className={styles['activity-user']}>{activity.user}</span>
+                  <span className={styles['activity-company']}>{activity.company}</span>
                 </div>
-                <span className="activity-desc">{activity.details}</span>
-                <span className="activity-time">
+                <span className={styles['activity-desc']}>{activity.details}</span>
+                <span className={styles['activity-time']}>
                   {new Date(activity.timestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>

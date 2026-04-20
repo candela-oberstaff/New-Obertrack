@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { uploadService } from '../services/api'
-import './FileUpload.css'
+import styles from './FileUpload.module.css'
 
 interface FileUploadProps {
   onUpload: (url: string, filename: string) => void
@@ -49,7 +49,7 @@ export default function FileUpload({
   }
 
   return (
-    <div className="file-upload">
+    <div className={styles['file-upload']}>
       <input
         ref={inputRef}
         type="file"
@@ -62,11 +62,11 @@ export default function FileUpload({
       
       <label 
         htmlFor="file-upload-input" 
-        className={`file-upload-label ${isUploading ? 'uploading' : ''}`}
+        className={`${styles['file-upload-label']} ${isUploading ? styles['uploading'] : ''}`}
       >
         {isUploading ? (
           <>
-            <span className="upload-spinner">⏳</span>
+            <span className={styles['upload-spinner']}>⏳</span>
             <span>Subiendo... {progress}%</span>
           </>
         ) : (
@@ -77,7 +77,7 @@ export default function FileUpload({
         )}
       </label>
 
-      {error && <div className="file-upload-error">{error}</div>}
+      {error && <div className={styles['file-upload-error']}>{error}</div>}
     </div>
   )
 }
@@ -128,20 +128,20 @@ export function FileAttachment({ url, filename, size, onRemove }: FileAttachment
   }
 
   return (
-    <div className="file-attachment">
+    <div className={styles['file-attachment']}>
       {isImage(filename) ? (
-        <img src={url} alt={filename} className="file-attachment-image" onClick={handleClick} />
+        <img src={url} alt={filename} className={styles['file-attachment-image']} onClick={handleClick} />
       ) : (
-        <div className="file-attachment-icon" onClick={handleClick}>
+        <div className={styles['file-attachment-icon']} onClick={handleClick}>
           {getFileIcon(filename)}
         </div>
       )}
-      <div className="file-attachment-info" onClick={handleClick}>
-        <span className="file-attachment-name">{filename}</span>
-        {size && <span className="file-attachment-size">{formatSize(size)}</span>}
+      <div className={styles['file-attachment-info']} onClick={handleClick}>
+        <span className={styles['file-attachment-name']}>{filename}</span>
+        {size && <span className={styles['file-attachment-size']}>{formatSize(size)}</span>}
       </div>
       {onRemove && (
-        <button className="file-attachment-remove" onClick={onRemove}>×</button>
+        <button className={styles['file-attachment-remove']} onClick={onRemove}>×</button>
       )}
     </div>
   )
@@ -156,7 +156,7 @@ export function FileAttachments({ attachments, onRemove }: FileAttachmentsProps)
   if (attachments.length === 0) return null
 
   return (
-    <div className="file-attachments">
+    <div className={styles['file-attachments']}>
       {attachments.map((att, index) => (
         <FileAttachment
           key={index}

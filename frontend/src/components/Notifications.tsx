@@ -9,7 +9,7 @@ import {
   MessageSquare, 
   AtSign 
 } from 'lucide-react'
-import './Notifications.css'
+import styles from './Notifications.module.css'
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -159,42 +159,42 @@ export default function Notifications() {
   }
 
   return (
-    <div className="notifications-container">
-      <button className="notification-bell" onClick={() => setIsOpen(!isOpen)} title="Notificaciones">
+    <div className={styles['notifications-container']}>
+      <button className={styles['notification-bell']} onClick={() => setIsOpen(!isOpen)} title="Notificaciones">
         <Bell size={20} />
         {unreadCount > 0 && (
-          <span className="notification-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+          <span className={styles['notification-badge']}>{unreadCount > 9 ? '9+' : unreadCount}</span>
         )}
       </button>
 
       {isOpen && (
-        <div className="notifications-dropdown">
-          <div className="notifications-header">
+        <div className={styles['notifications-dropdown']}>
+          <div className={styles['notifications-header']}>
             <h3>Notificaciones</h3>
             {unreadCount > 0 && (
-              <button className="mark-all-read" onClick={handleMarkAllAsRead}>
+              <button className={styles['mark-all-read']} onClick={handleMarkAllAsRead}>
                 Marcar todas como leídas
               </button>
             )}
           </div>
 
-          <div className="notifications-list">
+          <div className={styles['notifications-list']}>
             {notifications.length === 0 ? (
-              <div className="no-notifications">No hay notificaciones</div>
+              <div className={styles['no-notifications']}>No hay notificaciones</div>
             ) : (
               notifications.map(notification => (
                 <div
                   key={notification.id}
-                  className={`notification-item ${!notification.read_at ? 'unread' : ''}`}
+                  className={`${styles['notification-item']} ${!notification.read_at ? styles['unread'] : ''}`}
                   onClick={() => !notification.read_at && handleMarkAsRead(notification.id)}
                 >
-                  <span className="notification-icon">{getNotificationIcon(notification.type)}</span>
-                  <div className="notification-content">
-                    <div className="notification-title">{notification.title}</div>
-                    <div className="notification-message">{notification.message}</div>
-                    <div className="notification-time">{formatDate(notification.created_at)}</div>
+                  <span className={styles['notification-icon']}>{getNotificationIcon(notification.type)}</span>
+                  <div className={styles['notification-content']}>
+                    <div className={styles['notification-title']}>{notification.title}</div>
+                    <div className={styles['notification-message']}>{notification.message}</div>
+                    <div className={styles['notification-time']}>{formatDate(notification.created_at)}</div>
                   </div>
-                  {!notification.read_at && <span className="unread-dot"></span>}
+                  {!notification.read_at && <span className={styles['unread-dot']}></span>}
                 </div>
               ))
             )}

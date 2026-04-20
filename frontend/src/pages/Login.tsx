@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import styles from './Auth.module.css'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -26,15 +27,15 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
+    <div className={styles['auth-container']}>
+      <div className={styles['auth-card']}>
         <h1>Obertrack</h1>
         <h2>Iniciar Sesión</h2>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && <div className={styles['error-message']}>{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
+          <div className={styles['form-group']}>
             <label htmlFor="email">Email</label>
             <input
               id="email"
@@ -45,7 +46,7 @@ export default function Login() {
             />
           </div>
 
-          <div className="form-group">
+          <div className={styles['form-group']}>
             <label htmlFor="password">Contraseña</label>
             <input
               id="password"
@@ -61,7 +62,7 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="auth-link">
+        <p className={styles['auth-link']}>
           ¿No tienes cuenta? <a href="/register">Regístrate</a>
         </p>
       </div>

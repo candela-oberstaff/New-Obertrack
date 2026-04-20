@@ -1,313 +1,181 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { userService, uploadService } from '../services/api'
-import type { User } from '../types'
-import { 
-  X, 
-  MessageSquare, 
-  Menu, 
-  Paperclip, 
-  Hourglass, 
-  Send 
-} from 'lucide-react'
-import './Chat.css'
+import { useChat } from '../hooks'
+import { Send } from 'lucide-react'
+import styles from './Chat.module.css'
 
-interface Message {
+interface User {
   id: number
-  user_id: number
-  content: string
-  created_at: string
-  attachment?: {
-    url: string
-    filename: string
-  }
-  user?: {
-    name: string
-  }
+  name: string
+  avatar?: string
+  user_type: string
+  is_active: boolean
+  is_online?: boolean
 }
 
 export default function Chat() {
-  const { user, token } = useAuth()
-  const [messages, setMessages] = useState<Message[]>([])
-  const [newMessage, setNewMessage] = useState('')
-  const [isConnected, setIsConnected] = useState(false)
-  const [users, setUsers] = useState<User[]>([])
-  const [selectedUser, setSelectedUser] = useState<number | null>(null)
-  const [showUserList, setShowUserList] = useState(true)
-  const [isUploading, setIsUploading] = useState(false)
-  const wsRef = useRef<WebSocket | null>(null)
+  const { user } = useAuth()
+  const {
+    messages,
+    users,
+    isLoading,
+    sendMessage,
+    markAsRead,
+  } = useChat()
+
+  const [inputValue, setInputValue] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    fetchMessages()
-    fetchUsers()
-    connectWebSocket()
+  const filteredUsers = users.filter((u: User) => {
+    if (!searchQuery) return true
+    return u.name.toLowerCase().includes(searchQuery.toLowerCase())
+  })
 
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
+  const handleSend = async () => {
+    if (!inputValue.trim()) return
+    await sendMessage(inputValue)
+    setInputValue('')
+    inputRef.current?.focus()
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
     }
-  }, [])
+  }
 
   useEffect(() => {
-    scrollToBottom()
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const fetchMessages = async () => {
-    try {
-      const response = await fetch('/api/chat/messages', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setMessages(data ? data.reverse() : [])
-      }
-    } catch (error) {
-      console.error('Error fetching messages:', error)
+  useEffect(() => {
+    if (messages.length > 0) {
+      markAsRead()
     }
+  }, [messages, markAsRead])
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr)
+    return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
   }
 
-  const fetchUsers = async () => {
-    try {
-      const data = await userService.getAll()
-      if (data && data.data) {
-        setUsers(data.data.filter(u => u.id !== user?.id))
-      } else {
-        setUsers([])
-      }
-    } catch (error) {
-      console.error('Error fetching users:', error)
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const today = new Date()
+    if (date.toDateString() === today.toDateString()) {
+      return 'Hoy'
     }
-  }
-
-  const connectWebSocket = () => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat?token=${token}`)
-
-    ws.onopen = () => {
-      setIsConnected(true)
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data)
-        if (message.type === 'chat_message') {
-          setMessages(prev => [...prev, {
-            id: Date.now(),
-            user_id: message.user_id,
-            content: message.content,
-            attachment: message.attachment,
-            created_at: message.timestamp,
-            user: message.user_name ? { name: message.user_name } : undefined
-          }])
-        }
-      } catch (e) {
-        console.error('Error parsing message:', e)
-      }
-    }
-
-    ws.onclose = () => {
-      setIsConnected(false)
-      setTimeout(connectWebSocket, 3000)
-    }
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error)
-    }
-
-    wsRef.current = ws
-  }
-
-  const sendMessage = (e?: React.FormEvent, attachment?: { url: string; filename: string }) => {
-    if (e) e.preventDefault()
-    const content = attachment ? `${newMessage} [Archivo: ${attachment.filename}]` : newMessage
-    if ((!content.trim() && !attachment) || !wsRef.current || !isConnected) return
-
-    const message = {
-      type: 'chat_message',
-      content: content,
-      attachment: attachment,
-    }
-
-    wsRef.current.send(JSON.stringify(message))
-    setMessages(prev => [...prev, {
-      id: Date.now(),
-      user_id: user?.id || 0,
-      content: content,
-      attachment: attachment,
-      created_at: new Date().toISOString(),
-      user: { name: user?.name || 'Tú' }
-    }])
-    setNewMessage('')
-  }
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setIsUploading(true)
-    try {
-      const result = await uploadService.upload(file)
-      sendMessage(undefined, { url: result.url, filename: file.name })
-    } catch (error) {
-      console.error('Error uploading file:', error)
-    } finally {
-      setIsUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    }
-  }
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-    
-    if (days === 0) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    } else if (days === 1) {
+    const yesterday = new Date(today)
+    yesterday.setDate(today.getDate() - 1)
+    if (date.toDateString() === yesterday.toDateString()) {
       return 'Ayer'
-    } else {
-      return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
     }
+    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
   }
 
-  const filteredMessages = selectedUser
-    ? messages.filter(m => m.user_id === selectedUser)
-    : messages
+  if (isLoading) {
+    return (
+      <div className={styles['chat-page']}>
+        <div className={styles['chat-loading']}>
+          <div className={styles['spinner']} />
+          <p>Cargando chat...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="chat-page">
-      <div className="chat-layout">
-        <div className={`chat-sidebar ${showUserList ? 'open' : ''}`}>
-          <div className="sidebar-header">
-            <h3>Conversaciones</h3>
-            <button className="close-sidebar" onClick={() => setShowUserList(false)}><X size={20} /></button>
-          </div>
-          <div className="user-list">
-            <div 
-              className={`user-item ${!selectedUser ? 'active' : ''}`}
-              onClick={() => setSelectedUser(null)}
-            >
-              <div className="user-avatar all"><MessageSquare size={18} /></div>
-              <div className="user-info">
-                <span className="user-name">Todos</span>
-                <span className="user-preview">Mensajes del equipo</span>
-              </div>
+    <div className={styles['chat-page']}>
+      <div className={styles['chat-sidebar']}>
+        <div className={styles['sidebar-header']}>
+          <h2>Chat</h2>
+        </div>
+        <div className={styles['search-box']}>
+          <input
+            type="text"
+            placeholder="Buscar usuarios..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <div className={styles['users-list']}>
+          {filteredUsers.length === 0 ? (
+            <div className={styles['no-users']}>
+              {searchQuery ? 'No se encontraron usuarios' : 'No hay usuarios disponibles'}
             </div>
-            {users.map(u => (
-              <div 
-                key={u.id} 
-                className={`user-item ${selectedUser === u.id ? 'active' : ''}`}
-                onClick={() => setSelectedUser(u.id)}
-              >
-                <div className="user-avatar">
+          ) : (
+            filteredUsers.map((u: User) => (
+              <div key={u.id} className={styles['user-item']}>
+                <div className={styles['user-avatar']}>
                   {u.name?.charAt(0).toUpperCase()}
+                  {u.is_online && <span className={styles['online-indicator']} />}
                 </div>
-                <div className="user-info">
-                  <span className="user-name">{u.name}</span>
-                  <span className="user-role">{u.job_title || u.user_type}</span>
+                <div className={styles['user-info']}>
+                  <span className={styles['user-name']}>{u.name}</span>
+                  <span className={styles['user-status']}>
+                    {u.is_online ? 'En línea' : 'Desconectado'}
+                  </span>
                 </div>
               </div>
-            ))}
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className={styles['chat-main']}>
+        <div className={styles['messages-container']}>
+          <div className={styles['messages-list']}>
+            {messages.map((msg: any, index: number) => {
+              const isOwn = msg.user_id === user?.id || msg.UserID === user?.id
+              const showDate = index === 0 ||
+                new Date(msg.created_at).toDateString() !==
+                new Date(messages[index - 1].created_at).toDateString()
+
+              return (
+                <div key={msg.id || index}>
+                  {showDate && (
+                    <div className={styles['date-separator']}>
+                      <span>{formatDate(msg.created_at)}</span>
+                    </div>
+                  )}
+                  <div className={`${styles['message']} ${isOwn ? styles['own'] : styles['other']}`}>
+                    {!isOwn && (
+                      <div className={styles['message-avatar']}>
+                        {msg.user?.name?.charAt(0).toUpperCase() || '?'}
+                      </div>
+                    )}
+                    <div className={styles['message-bubble']}>
+                      {!isOwn && (
+                        <span className={styles['message-sender']}>{msg.user?.name || 'Usuario'}</span>
+                      )}
+                      <p className={styles['message-text']}>{msg.content || msg.Content}</p>
+                      <span className={styles['message-time']}>
+                        {formatTime(msg.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            <div ref={messagesEndRef} />
           </div>
         </div>
 
-        <div className="chat-main">
-          <div className="chat-header">
-            <button className="menu-btn" onClick={() => setShowUserList(true)}><Menu size={20} /></button>
-            <div className="chat-title">
-              <h2>{selectedUser ? users.find(u => u.id === selectedUser)?.name : 'Equipo'}</h2>
-              <span className="connection-dot"></span>
-            </div>
-            <span className={`connection-badge ${isConnected ? 'connected' : 'disconnected'}`}>
-              {isConnected ? 'En línea' : 'Conectando...'}
-            </span>
-          </div>
-
-            <div className="chat-messages">
-            {filteredMessages.length === 0 ? (
-              <div className="empty-chat">
-                <span className="empty-icon"><MessageSquare size={40} /></span>
-                <p>No hay mensajes todavía</p>
-                <span className="empty-hint">¡Inicia la conversación!</span>
-              </div>
-            ) : (
-              filteredMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`message ${msg.user_id === user?.id ? 'own' : ''}`}
-                >
-                  {msg.user_id !== user?.id && (
-                    <div className="message-avatar">
-                      {msg.user?.name?.charAt(0).toUpperCase() || '?'}
-                    </div>
-                  )}
-                  <div className="message-bubble">
-                    {msg.user_id !== user?.id && (
-                      <span className="message-sender">{msg.user?.name || 'Usuario'}</span>
-                    )}
-                    {msg.content && <p className="message-text">{msg.content}</p>}
-                    {msg.attachment && (
-                      <a 
-                        href={msg.attachment.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="message-attachment"
-                      >
-                        <Paperclip size={14} /> {msg.attachment.filename}
-                      </a>
-                    )}
-                    <span className="message-time">{formatTime(msg.created_at)}</span>
-                  </div>
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <form className="chat-input" onSubmit={(e) => sendMessage(e)}>
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Escribe un mensaje..."
-              disabled={!isConnected}
-            />
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.webm"
-              style={{ display: 'none' }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={!isConnected || isUploading}
-              className="attach-btn"
-              title="Adjuntar archivo"
-            >
-              {isUploading ? <Hourglass size={18} className="spin" /> : <Paperclip size={18} />}
-            </button>
-            <button
-              type="submit"
-              disabled={!isConnected || (!newMessage.trim() && !isUploading)}
-              className="send-btn"
-            >
-              <Send size={18} />
-            </button>
-          </form>
+        <div className={styles['chat-input']}>
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Escribe un mensaje..."
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+          <button onClick={handleSend} disabled={!inputValue.trim()}>
+            <Send size={20} />
+          </button>
         </div>
       </div>
     </div>

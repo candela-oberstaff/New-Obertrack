@@ -1,39 +1,41 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
-import {
-  DndContext,
-  DragOverlay,
-  closestCorners,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragStartEvent,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import {
-  sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable'
-import { taskService, userService, boardService } from '../services/api'
-import type { Task, User, TaskStatus, CreateTaskInput, Board } from '../types'
-import { RichTextEditor } from '../components/Tasks/RichTextEditor'
-import { TaskCard } from '../components/Tasks/TaskCard'
-import { Column } from '../components/Tasks/Column'
+import { userService, taskService } from '../services/api'
+import type { User, Board, Task, CreateTaskInput, Phase } from '../types'
+
+import { TasksBoard } from '../components/Tasks/components/TasksBoard'
 import { TaskDetailPanel } from '../components/Tasks/TaskDetailPanel'
+import { NewTaskModal } from '../components/Tasks/Modals/NewTaskModal'
+import { BoardModal } from '../components/Tasks/Modals/BoardModal'
+import { BoardMembersModal } from '../components/Tasks/Modals/BoardMembersModal'
+import { PhasesModal } from '../components/Tasks/Modals/PhasesModal'
+import { JoinBoardModal } from '../components/Tasks/Modals/JoinBoardModal'
 import { ColumnType } from '../components/Tasks/types'
+import { useTasks } from '../components/Tasks/hooks/useTasks'
+import { useBoards } from '../components/Tasks/hooks/useBoards'
 import {
   Plus,
   Settings2,
   UserPlus,
-  Trash2,
-  X,
-  GripVertical,
-  Paperclip,
+  Trash2
 } from 'lucide-react'
-import './Tasks.css'
+import styles from './Tasks.module.css'
 
-const COLUMNS: ColumnType[] = [
+interface PhaseFormInput {
+  name: string
+  color: string
+}
+
+interface BoardFormData {
+  name: string
+  description: string
+  color: string
+  member_ids: number[]
+  phases: PhaseFormInput[]
+}
+
+const DEFAULT_COLUMNS: ColumnType[] = [
   { id: 'por_hacer', title: 'Por hacer', color: '#6b7280' },
   { id: 'en_proceso', title: 'En proceso', color: '#3b82f6' },
   { id: 'finalizado', title: 'Finalizado', color: '#22c55e' },
@@ -42,38 +44,44 @@ const COLUMNS: ColumnType[] = [
 export default function Tasks() {
   const { user } = useAuth()
   const { error: showError } = useNotification()
-  const [tasks, setTasks] = useState<Task[]>([])
+
+  // Users state
   const [users, setUsers] = useState<User[]>([])
-  const [boards, setBoards] = useState<Board[]>([])
-  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null)
+  const [assigneeSearch, setAssigneeSearch] = useState('')
+
+  // UI State
   const [showAllTasks, setShowAllTasks] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [activeTask, setActiveTask] = useState<Task | null>(null)
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [showNewTaskModal, setShowNewTaskModal] = useState(false)
   const [showBoardModal, setShowBoardModal] = useState(false)
   const [showBoardMembersModal, setShowBoardMembersModal] = useState(false)
   const [showPhasesModal, setShowPhasesModal] = useState(false)
   const [showJoinBoardModal, setShowJoinBoardModal] = useState(false)
-  const [publicBoards, setPublicBoards] = useState<Board[]>([])
-  const [isJoiningBoard, setIsJoiningBoard] = useState(false)
   const [optimisticMembers, setOptimisticMembers] = useState<number[]>([])
   const [isCreatingTask, setIsCreatingTask] = useState(false)
-  const [isCreatingBoard, setIsCreatingBoard] = useState(false)
   const [isDeletingBoard, setIsDeletingBoard] = useState(false)
-  const [isAddingPhase, setIsAddingPhase] = useState(false)
-  const [isDeletingPhase, setIsDeletingPhase] = useState(false)
+
+  // Phases drag state
   const [draggingPhase, setDraggingPhase] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
-  const phasesOrderRef = useRef<Board['phases']>([])
-  const draggingPhaseRef = useRef<number | null>(null)
   const isDraggingPhasesRef = useRef(false)
-  const dragOriginalStatusRef = useRef<string | null>(null)
-  const [newBoardData, setNewBoardData] = useState({
+  const phasesOrderRef = useRef<Board['phases']>([])
+
+  // New task form state
+  const [newTaskData, setNewTaskData] = useState<CreateTaskInput & { attachments: File[] }>({
+    title: '',
+    description: '',
+    priority: 'medium',
+    end_date: '',
+    assignees: [],
+    attachments: [],
+  })
+
+  // Board form state for modal
+  const [boardFormData, setBoardFormData] = useState<BoardFormData>({
     name: '',
     description: '',
     color: '#3b82f6',
-    member_ids: [] as number[],
+    member_ids: [],
     phases: [
       { name: 'Por hacer', color: '#6b7280' },
       { name: 'En proceso', color: '#3b82f6' },
@@ -81,257 +89,118 @@ export default function Tasks() {
     ],
   })
   const [newBoardPhaseSearch, setNewBoardPhaseSearch] = useState('')
-  const [newTaskData, setNewTaskData] = useState({
-    title: '',
-    description: '',
-    priority: 'medium',
-    end_date: '',
-    assignees: [] as number[],
-    attachments: [] as File[],
-  })
-  const [assigneeSearch, setAssigneeSearch] = useState('')
-  const [localColumnOrder, setLocalColumnOrder] = useState<string[] | null>(() => {
-    const saved = localStorage.getItem('columnOrder')
-    return saved ? JSON.parse(saved) : null
+
+  // Boards hook
+  const {
+    boards,
+    selectedBoard,
+    setSelectedBoard,
+    publicBoards,
+    isLoading: isLoadingBoards,
+    isCreatingBoard,
+    createBoard,
+    deleteBoard,
+    joinBoard,
+    fetchPublicBoards,
+    updateBoardMembers,
+    reorderPhases,
+  } = useBoards()
+
+  // Tasks hook
+  const {
+    tasks,
+    selectedTask,
+    setSelectedTask,
+    createTask,
+    updateTask,
+    deleteTask,
+    fetchTasks,
+  } = useTasks({
+    boardId: selectedBoard?.id,
+    showAllTasks,
   })
 
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = u.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
-      u.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
-    if (!matchesSearch) return false
+  // Fetch users on mount
+  useEffect(() => {
+    fetchUsers()
+  }, [])
 
-    // In search, if a board is selected, filter by membership
+  const fetchUsers = useCallback(async () => {
+    const usersRes = await userService.getAll({ limit: 1000 })
+    setUsers(usersRes.data || [])
+  }, [])
+
+  // 1. All users that the current user is ALLOWED to see/assign
+  const visibleUsers = users.filter((u: User) => {
+    // ROLE RESTRICTION: Professionals cannot see/assign Superadmins
+    if (user?.user_type === 'profesional' && u.user_type === 'superadmin') return false
+    return true
+  })
+
+  // 2. Search filtering applied to visible users
+  const potentialMemberUsers = visibleUsers.filter((u: User) => 
+    u.name?.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
+    u.email?.toLowerCase().includes(assigneeSearch.toLowerCase())
+  )
+
+  // 3. Users available for task assignment (Restricted to board members, unless superadmin)
+  const assignableUsers = potentialMemberUsers.filter((u: User) => {
+    // Superadmin can assign any user (who passed the base filter)
+    if (user?.user_type === 'superadmin') return true
+
     const currentBoardId = selectedBoard?.id || (boards.length > 0 ? boards[0].id : null)
     if (!currentBoardId) return true
 
-    const board = boards.find(b => b.id === currentBoardId)
-    return board?.members?.some(m => m.id === u.id)
+    const board = boards.find((b: Board) => b.id === currentBoardId)
+    return board?.members?.some((m: User) => m.id === u.id)
   })
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
-
-  const fetchTasks = useCallback(async () => {
+  // Board actions
+  const handleDeleteBoard = useCallback(async (boardId: number) => {
+    if (!confirm('¿Eliminar este tablero? Esta acción no se puede deshacer.')) return
+    setIsDeletingBoard(true)
     try {
-      const params: Record<string, unknown> = {}
-      if (!showAllTasks && selectedBoard) {
-        params.board_id = selectedBoard.id
-      }
-      const tasksRes = await taskService.getAll(params)
-      setTasks(tasksRes.data || [])
-    } catch (error) {
-      console.error('Error fetching tasks:', error)
-    }
-  }, [selectedBoard, showAllTasks])
-
-  const fetchData = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const [usersRes, boardsRes] = await Promise.all([
-        userService.getAll(),
-        boardService.getAll(),
-      ])
-      setUsers(usersRes.data || [])
-      setBoards(boardsRes || [])
-
-      // Select first board if nothing selected and not in "all tasks" mode
-      if (boardsRes && boardsRes.length > 0 && !selectedBoard && !showAllTasks) {
-        setSelectedBoard(boardsRes[0])
+      await deleteBoard(boardId)
+      if (selectedBoard?.id === boardId) {
+        setSelectedTask(null)
       }
     } catch (error) {
-      console.error('Error fetching initial data:', error)
+      console.error('Error deleting board:', error)
     } finally {
-      setIsLoading(false)
+      setIsDeletingBoard(false)
     }
-  }, [selectedBoard, showAllTasks])
+  }, [deleteBoard, selectedBoard, setSelectedTask])
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  useEffect(() => {
-    fetchTasks()
-  }, [fetchTasks])
-
-  useEffect(() => {
-    if (localColumnOrder) {
-      localStorage.setItem('columnOrder', JSON.stringify(localColumnOrder))
-    }
-  }, [localColumnOrder])
-
-  useEffect(() => {
-    const handleTaskAssigned = () => {
-      fetchTasks()
-    }
-    window.addEventListener('task-assigned', handleTaskAssigned)
-    return () => window.removeEventListener('task-assigned', handleTaskAssigned)
-  }, [fetchTasks])
-
-  const handleCreateBoard = async () => {
-    if (!newBoardData.name.trim()) return
-    setIsCreatingBoard(true)
+  // Handle board form submission - transform BoardFormData to CreateBoardInput
+  const handleBoardSubmit = useCallback(async (data: BoardFormData) => {
     try {
-      const newBoard = await boardService.create({
-        name: newBoardData.name,
-        description: newBoardData.description,
-        color: newBoardData.color,
-        member_ids: newBoardData.member_ids,
-        phases: newBoardData.phases,
-      })
-      setNewBoardData({
-        name: '',
-        description: '',
-        color: '#3b82f6',
-        member_ids: [],
-        phases: [
-          { name: 'Por hacer', color: '#6b7280' },
-          { name: 'En proceso', color: '#3b82f6' },
-          { name: 'Finalizado', color: '#22c55e' },
-        ],
+      await createBoard({
+        name: data.name,
+        description: data.description,
+        color: data.color,
+        member_ids: data.member_ids,
+        phases: data.phases,
       })
       setShowBoardModal(false)
-
-      const boardsRes = await boardService.getAll()
-      setBoards(boardsRes)
-      setSelectedBoard(newBoard)
     } catch (error) {
       console.error('Error creating board:', error)
-    } finally {
-      setIsCreatingBoard(false)
     }
-  }
+  }, [createBoard])
 
-  const fetchPublicBoards = async () => {
-    try {
-      const res = await boardService.getPublicBoards()
-      setPublicBoards(res || [])
-    } catch (error) {
-      console.error('Error fetching public boards:', error)
-    }
-  }
-
-  const handleJoinBoard = async (boardId: number) => {
-    setIsJoiningBoard(true)
-    try {
-      await boardService.join(boardId)
-      await fetchData() // Refresh all data
-      setShowJoinBoardModal(false)
-    } catch (error: any) {
-      console.error('Error joining board:', error)
-      const errorMsg = error?.response?.data?.error || 'Error al unirse al tablero'
-      showError(errorMsg)
-    } finally {
-      setIsJoiningBoard(false)
-    }
-  }
-
-  const getTasksByStatus = (status: string) => {
-    return tasks.filter((task) => task.status === status)
-  }
-
-  const getCurrentColumns = (): ColumnType[] => {
-    if (selectedBoard?.phases?.length) {
-      return selectedBoard.phases.map(p => ({
-        id: p.status || p.name.toLowerCase().replace(/\s+/g, '_'),
-        title: p.name,
-        color: p.color
-      }))
-    }
-    return COLUMNS
-  }
-
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event
-    const task = tasks.find((t) => t.id === active.id)
-    if (task) {
-      setActiveTask(task)
-      dragOriginalStatusRef.current = task.status
-    }
-  }
-
-  const handleDragOver = (event: { active: { id: unknown }; over: { id: unknown } | null }) => {
-    const { active, over } = event
-    if (!over) return
-
-    const activeId = Number(active.id)
-    const overId = over.id
-
-    if (typeof overId !== 'string') return
-
-    const column = getCurrentColumns().find(c => c.id === overId)
-    if (!column) return
-
-    const activeTask = tasks.find((t) => t.id === activeId)
-    if (!activeTask || activeTask.status === column.id) return
-
-    setTasks((prevTasks) =>
-      prevTasks.map((t) =>
-        t.id === activeId ? { ...t, status: column.id as TaskStatus } : t
-      )
-    )
-  }
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event
-    setActiveTask(null)
-
-    const originalStatus = dragOriginalStatusRef.current
-    dragOriginalStatusRef.current = null
-
-    if (!over) return
-
-    const activeId = Number(active.id)
-    const overId = over.id
-
-    const activeTask = tasks.find((t) => t.id === activeId)
-    if (!activeTask) return
-
-    let newStatus: string | undefined
-
-    if (typeof overId === 'string') {
-      const column = getCurrentColumns().find(c => c.id === overId)
-      if (column) {
-        newStatus = column.id
-      }
-    } else {
-      const overTask = tasks.find((t) => t.id === Number(overId))
-      if (overTask) {
-        newStatus = overTask.status
-      }
-    }
-
-    if (newStatus && newStatus !== originalStatus) {
-      console.log('[DragEnd] Updating task:', activeId, 'to status:', newStatus)
-      try {
-        await taskService.update(activeId, { status: newStatus as TaskStatus })
-        console.log('[DragEnd] Update successful')
-      } catch (error: any) {
-        console.error('[DragEnd] Error updating task status:', error?.response?.data || error)
-        setTasks((prevTasks) =>
-          prevTasks.map((t) =>
-            t.id === activeId ? { ...t, status: activeTask.status } : t
-          )
-        )
-      }
-    }
-  }
-
-  const handlePhaseDragStart = (phaseId: number) => {
+  // Phase drag handlers
+  const handlePhaseDragStart = useCallback((phaseId: number) => {
     isDraggingPhasesRef.current = true
     setDraggingPhase(phaseId)
-    draggingPhaseRef.current = phaseId
     if (selectedBoard?.phases) {
       phasesOrderRef.current = [...selectedBoard.phases]
     }
-  }
+  }, [selectedBoard])
 
-  const handlePhaseDragEnter = (targetIdx: number) => {
-    if (!isDraggingPhasesRef.current || draggingPhaseRef.current === null || !selectedBoard?.phases) return
+  const handlePhaseDragEnter = useCallback((targetIdx: number) => {
+    if (!isDraggingPhasesRef.current || !selectedBoard?.phases) return
 
     const phases = [...selectedBoard.phases]
-    const dragIdx = phases.findIndex(p => p.id === draggingPhaseRef.current)
+    const dragIdx = phases.findIndex(p => p.id === draggingPhase)
     if (dragIdx === -1 || dragIdx === targetIdx) return
 
     const [dragged] = phases.splice(dragIdx, 1)
@@ -339,34 +208,51 @@ export default function Tasks() {
 
     phasesOrderRef.current = phases
     setDragOverIdx(targetIdx)
-    setSelectedBoard((prev: Board | null) => {
-      if (!prev) return prev
-      return { ...prev, phases }
-    })
-  }
+    setSelectedBoard({ ...selectedBoard, phases })
+  }, [draggingPhase, selectedBoard, setSelectedBoard])
 
-  const handlePhaseDragEnd = async () => {
+  const handlePhaseDragEnd = useCallback(async () => {
     isDraggingPhasesRef.current = false
     setDraggingPhase(null)
     setDragOverIdx(null)
-    draggingPhaseRef.current = null
 
     if (!selectedBoard?.phases || !selectedBoard?.id) return
 
-    const phaseIds = selectedBoard.phases.map(p => p.id)
+    const phaseIds = selectedBoard.phases.map((p: Phase) => p.id)
+    await reorderPhases(selectedBoard.id, phaseIds)
+  }, [selectedBoard, reorderPhases])
 
-    try {
-      await boardService.reorderPhases(selectedBoard.id, phaseIds)
-      const boardsRes = await boardService.getAll()
-      setBoards(boardsRes)
-      const found = boardsRes.find((b: Board) => b.id === selectedBoard.id)
-      if (found) setSelectedBoard(found)
-    } catch (error) {
-      console.error('Error reordering phases:', error)
+  // Phase move handlers
+  const handleMovePhaseLeft = useCallback((idx: number) => {
+    if (!selectedBoard?.phases || !selectedBoard.id || idx <= 0) return
+    const newPhases = [...selectedBoard.phases]
+    const temp = newPhases[idx]
+    newPhases[idx] = newPhases[idx - 1]
+    newPhases[idx - 1] = temp
+    setSelectedBoard({ ...selectedBoard, phases: newPhases })
+    reorderPhases(selectedBoard.id, newPhases.map((p: Phase) => p.id))
+  }, [selectedBoard, setSelectedBoard, reorderPhases])
+
+  const handleMovePhaseRight = useCallback((idx: number) => {
+    if (!selectedBoard?.phases || !selectedBoard.id || idx >= selectedBoard.phases.length - 1) return
+    const newPhases = [...selectedBoard.phases]
+    const temp = newPhases[idx]
+    newPhases[idx] = newPhases[idx + 1]
+    newPhases[idx + 1] = temp
+    setSelectedBoard({ ...selectedBoard, phases: newPhases })
+    reorderPhases(selectedBoard.id, newPhases.map((p: Phase) => p.id))
+  }, [selectedBoard, setSelectedBoard, reorderPhases])
+
+  const handleOpenNewTaskModal = () => {
+    if (!selectedBoard) {
+      showError('Debes seleccionar un tablero específico antes de crear una tarea')
+      return
     }
+    setShowNewTaskModal(true)
   }
 
-  const handleCreateTask = async (e: React.FormEvent) => {
+  // Task actions
+  const handleCreateTask = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     try {
       const boardId = selectedBoard?.id || (boards.length > 0 ? boards[0].id : 0)
@@ -381,27 +267,19 @@ export default function Tasks() {
         description: newTaskData.description || undefined,
         priority: newTaskData.priority || undefined,
         board_id: boardId,
+        end_date: newTaskData.end_date || undefined,
+        assignees: newTaskData.assignees?.length ? newTaskData.assignees : undefined,
       }
 
-      if (newTaskData.end_date) {
-        taskData.end_date = newTaskData.end_date
-      }
-
-      if (newTaskData.assignees.length > 0) {
-        taskData.assignees = newTaskData.assignees
-      }
-
-      console.log('Creating task with data:', taskData)
       setIsCreatingTask(true)
-      const newTask = await taskService.create(taskData)
+      const createdTask = await createTask(taskData)
 
-      // Upload attachments if any
-      if (newTaskData.attachments.length > 0) {
+      if (createdTask && newTaskData.attachments?.length > 0) {
         for (const file of newTaskData.attachments) {
           try {
-            await taskService.addAttachment(newTask.id, file)
+            await taskService.addAttachment(createdTask.id, file)
           } catch (uploadErr) {
-            console.error('Error uploading initial attachment:', uploadErr)
+            console.error('Error uploading attachment:', uploadErr)
           }
         }
       }
@@ -423,138 +301,105 @@ export default function Tasks() {
     } finally {
       setIsCreatingTask(false)
     }
-  }
+  }, [selectedBoard, boards, newTaskData, createTask, fetchTasks, showError])
 
-  const handleUpdateTask = async (id: number, data: Partial<Task>) => {
-    try {
-      await taskService.update(id, data)
-      fetchTasks()
-      if (selectedTask && selectedTask.id === id) {
-        const updated = await taskService.getById(id)
-        setSelectedTask(updated)
-      }
-    } catch (error) {
-      console.error('Error updating task:', error)
+  const handleUpdateTask = useCallback(async (id: number, data: Partial<User | Task | any>) => {
+    await updateTask(id, data)
+  }, [updateTask])
+
+  const handleDeleteTask = useCallback(async (id: number) => {
+    await deleteTask(id)
+  }, [deleteTask])
+
+  const handleJoinBoard = useCallback(async (boardId: number) => {
+    const success = await joinBoard(boardId)
+    if (!success) {
+      showError('Error al unirse al tablero')
     }
-  }
+    setShowJoinBoardModal(false)
+  }, [joinBoard, showError])
 
-  const handleDeleteTask = async (id: number) => {
-    try {
-      await taskService.delete(id)
-      fetchTasks()
-    } catch (error) {
-      console.error('Error deleting task:', error)
+  const getCurrentColumns = useCallback((): ColumnType[] => {
+    if (selectedBoard?.phases?.length) {
+      return selectedBoard.phases.map((p: Phase) => ({
+        id: p.status || p.name.toLowerCase().replace(/\s+/g, '_'),
+        title: p.name,
+        color: p.color
+      }))
     }
-  }
+    return DEFAULT_COLUMNS
+  }, [selectedBoard])
 
-  const handleDeleteBoard = async (boardId: number) => {
-    if (!confirm('¿Eliminar este tablero? Esta acción no se puede deshacer.')) return
-    setIsDeletingBoard(true)
+  // Reset board form when opening modal
+  const openBoardModal = useCallback(() => {
+    setBoardFormData({
+      name: '',
+      description: '',
+      color: '#3b82f6',
+      member_ids: [],
+      phases: [
+        { name: 'Por hacer', color: '#6b7280' },
+        { name: 'En proceso', color: '#3b82f6' },
+        { name: 'Finalizado', color: '#22c55e' },
+      ],
+    })
+    setAssigneeSearch('')
+    setNewBoardPhaseSearch('')
+    setShowBoardModal(true)
+  }, [])
 
-    try {
-      await boardService.delete(boardId)
-      const boardsRes = await boardService.getAll()
-      setBoards(boardsRes)
-
-      // Update selection after successful deletion
-      if (selectedBoard?.id === boardId) {
-        setSelectedTask(null)
-        if (boardsRes.length > 0) {
-          setSelectedBoard(boardsRes[0])
-        } else {
-          setSelectedBoard(null)
-          setShowAllTasks(true)
-        }
-      }
-    } catch (error) {
-      console.error('Error deleting board:', error)
-      // Refetch to ensure state is consistent on error
-      const boardsRes = await boardService.getAll()
-      setBoards(boardsRes)
-    } finally {
-      setIsDeletingBoard(false)
-    }
-  }
-
-  if (isLoading && boards.length === 0) {
+  // Loading state
+  if (isLoadingBoards && boards.length === 0) {
     return (
-      <div className="tasks-page">
-        <div className="tasks-loading">
-          <div className="spinner" />
+      <div className={styles['tasks-page']}>
+        <div className={styles['tasks-loading']}>
+          <div className={styles['spinner']} />
           <p>Cargando...</p>
         </div>
       </div>
     )
   }
 
+  // Empty state
   if (boards.length === 0) {
     return (
-      <div className="tasks-page">
-        <div className="page-header">
+      <div className={styles['tasks-page']}>
+        <div className={styles['page-header']}>
           <h1>Tareas</h1>
         </div>
-        <div className="tasks-loading">
+        <div className={styles['tasks-loading']}>
           <h2>No tienes tableros</h2>
           <p>Crea tu primer tablero para organizar tus tareas</p>
-          <button className="btn-primary" onClick={() => setShowBoardModal(true)}>
+          <button className={styles['btn-primary']} onClick={openBoardModal}>
             <Plus size={18} /> Crear Tablero
           </button>
         </div>
-        {showBoardModal && (
-          <div className="modal-overlay" onClick={() => setShowBoardModal(false)}>
-            <div className="modal board-modal" onClick={(e) => e.stopPropagation()}>
-              <h2>Crear Tablero</h2>
-              <form onSubmit={(e) => { e.preventDefault(); handleCreateBoard() }}>
-                <div className="form-group">
-                  <label>Nombre del tablero</label>
-                  <input
-                    type="text"
-                    value={newBoardData.name}
-                    onChange={(e) => setNewBoardData({ ...newBoardData, name: e.target.value })}
-                    placeholder="Ej: Marketing, IT, Diseño..."
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Descripción</label>
-                  <textarea
-                    value={newBoardData.description}
-                    onChange={(e) => setNewBoardData({ ...newBoardData, description: e.target.value })}
-                    placeholder="Descripción opcional..."
-                    rows={3}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Color</label>
-                  <input
-                    type="color"
-                    value={newBoardData.color}
-                    onChange={(e) => setNewBoardData({ ...newBoardData, color: e.target.value })}
-                  />
-                </div>
-                <div className="modal-actions">
-                  <button type="button" onClick={() => setShowBoardModal(false)}>Cancelar</button>
-                  <button type="submit" className="btn-primary" disabled={isCreatingBoard}>
-                    {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        <BoardModal
+          isOpen={showBoardModal}
+          onClose={() => setShowBoardModal(false)}
+          newBoardData={boardFormData}
+          setNewBoardData={setBoardFormData}
+          assigneeSearch={assigneeSearch}
+          setAssigneeSearch={setAssigneeSearch}
+          filteredUsers={potentialMemberUsers}
+          newBoardPhaseSearch={newBoardPhaseSearch}
+          setNewBoardPhaseSearch={setNewBoardPhaseSearch}
+          onSubmit={handleBoardSubmit}
+          isCreatingBoard={isCreatingBoard}
+        />
       </div>
     )
   }
 
   return (
-    <div className="tasks-page">
-      <div className="page-header">
-        <div className="header-left">
+    <div className={styles['tasks-page']}>
+      <div className={styles['page-header']}>
+        <div className={styles['header-left']}>
           <h1>Tareas</h1>
-          <div className="board-selector">
-            {boards.length > 0 ? (
+          <div className={styles['board-selector']}>
+            {boards.length > 0 && (
               <>
-                <div className="board-select-container">
+                <div className={styles['board-select-container']}>
                   <select
                     value={showAllTasks ? 'all' : (selectedBoard?.id || (boards.length > 0 ? boards[0].id : ''))}
                     onChange={(e) => {
@@ -564,22 +409,22 @@ export default function Tasks() {
                         return
                       }
                       setShowAllTasks(false)
-                      const board = boards.find(b => b.id === Number(e.target.value))
+                      const board = boards.find((b: Board) => b.id === Number(e.target.value))
                       if (board) setSelectedBoard(board)
                     }}
                     style={{ borderLeftColor: showAllTasks ? '#6366f1' : (selectedBoard?.color || '#3b82f6') }}
                   >
                     <option value="all">Todos los tableros</option>
-                    {boards.map(board => (
+                    {boards.map((board: Board) => (
                       <option key={board.id} value={board.id}>{board.name}</option>
                     ))}
                   </select>
                 </div>
-                <button className="btn-icon" onClick={() => setShowBoardModal(true)} title="Crear tablero">
+                <button className={styles['btn-icon']} onClick={openBoardModal} title="Crear tablero">
                   <Plus size={18} />
                 </button>
                 <button
-                  className="btn-secondary btn-sm"
+                  className={`${styles['btn-secondary'] || 'btn-secondary'} ${styles['btn-sm'] || 'btn-sm'}`}
                   onClick={() => {
                     fetchPublicBoards()
                     setShowJoinBoardModal(true)
@@ -591,7 +436,7 @@ export default function Tasks() {
                 {selectedBoard && (
                   <>
                     <button
-                      className="btn-icon phases-btn"
+                      className={`${styles['btn-icon']} ${styles['phases-btn'] || 'phases-btn'}`}
                       onClick={() => setShowPhasesModal(true)}
                       title="Gestionar fases"
                       style={{ marginLeft: '4px' }}
@@ -599,9 +444,9 @@ export default function Tasks() {
                       <Settings2 size={18} />
                     </button>
                     <button
-                      className="btn-icon members-btn"
+                      className={`${styles['btn-icon']} ${styles['members-btn'] || 'members-btn'}`}
                       onClick={() => {
-                        setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
+                        setOptimisticMembers(selectedBoard.members?.map((m: User) => m.id) || [])
                         setShowBoardMembersModal(true)
                       }}
                       title="Gestionar miembros"
@@ -611,7 +456,7 @@ export default function Tasks() {
                     </button>
                     {user?.id === selectedBoard.created_by && (
                       <button
-                        className="btn-icon delete-board-btn"
+                        className={`${styles['btn-icon']} ${styles['delete-board-btn'] || 'delete-board-btn'}`}
                         onClick={() => handleDeleteBoard(selectedBoard.id)}
                         title={isDeletingBoard ? "Eliminando..." : "Eliminar tablero"}
                         disabled={isDeletingBoard}
@@ -623,449 +468,27 @@ export default function Tasks() {
                   </>
                 )}
               </>
-            ) : (
-              <button className="btn-primary btn-sm" onClick={() => setShowBoardModal(true)}>
-                <Plus size={16} /> Crear Primer Tablero
-              </button>
             )}
           </div>
         </div>
-        <button className="btn-primary" onClick={() => setShowNewTaskModal(true)}>
+        <button className={styles['btn-primary']} onClick={handleOpenNewTaskModal}>
           + Nueva Tarea
         </button>
       </div>
 
-      {showBoardModal && (
-        <div className="modal-overlay" onClick={() => setShowBoardModal(false)}>
-          <div className="modal board-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Crear Tablero</h2>
-            <form onSubmit={(e) => { e.preventDefault(); handleCreateBoard() }}>
-              <div className="form-group">
-                <label>Nombre del tablero</label>
-                <input
-                  type="text"
-                  value={newBoardData.name}
-                  onChange={(e) => setNewBoardData({ ...newBoardData, name: e.target.value })}
-                  placeholder="Ej: Marketing, IT, Diseño..."
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Descripción</label>
-                <textarea
-                  value={newBoardData.description}
-                  onChange={(e) => setNewBoardData({ ...newBoardData, description: e.target.value })}
-                  placeholder="Descripción opcional..."
-                  rows={2}
-                />
-              </div>
-              <div className="form-group">
-                <label>Color</label>
-                <input
-                  type="color"
-                  value={newBoardData.color}
-                  onChange={(e) => setNewBoardData({ ...newBoardData, color: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Agregar miembros (opcional)</label>
-                <input
-                  type="text"
-                  placeholder="Buscar usuarios..."
-                  value={assigneeSearch}
-                  onChange={(e) => setAssigneeSearch(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', marginBottom: '8px', border: '1px solid #e2e8f0', borderRadius: '8px' }}
-                />
-                <div className="members-select" style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                  {filteredUsers
-                    .slice()
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map(user => (
-                      <label key={user.id} className="member-checkbox">
-                        <div className="left-section">
-                          <input
-                            type="checkbox"
-                            checked={newBoardData.member_ids.includes(user.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewBoardData({
-                                  ...newBoardData,
-                                  member_ids: [...newBoardData.member_ids, user.id]
-                                })
-                              } else {
-                                setNewBoardData({
-                                  ...newBoardData,
-                                  member_ids: newBoardData.member_ids.filter(id => id !== user.id)
-                                })
-                              }
-                            }}
-                          />
-                          <span className="checkbox-custom"></span>
-                          <div className="member-avatar">
-                            {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                          </div>
-                          <div className="member-info">
-                            <span className="member-name">{user.name}</span>
-                            <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Fases del tablero</label>
-                <div className="phases-list" style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '12px' }}>
-                  {newBoardData.phases.map((phase, idx) => (
-                    <div key={idx} className="phase-item">
-                      <div className="phase-color" style={{ backgroundColor: phase.color }}></div>
-                      <span className="phase-name">{phase.name}</span>
-                      {newBoardData.phases.length > 1 && (
-                        <button
-                          type="button"
-                          className="btn-icon phase-delete"
-                          onClick={() => {
-                            setNewBoardData({
-                              ...newBoardData,
-                              phases: newBoardData.phases.filter((_, i) => i !== idx)
-                            })
-                          }}
-                          title="Eliminar fase"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    placeholder="Nueva fase..."
-                    value={newBoardPhaseSearch}
-                    onChange={(e) => setNewBoardPhaseSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newBoardPhaseSearch.trim()) {
-                        e.preventDefault()
-                        setNewBoardData({
-                          ...newBoardData,
-                          phases: [...newBoardData.phases, { name: newBoardPhaseSearch.trim(), color: '#6b7280' }]
-                        })
-                        setNewBoardPhaseSearch('')
-                      }
-                    }}
-                    style={{ flex: 1, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px' }}
-                  />
-                  <input
-                    type="color"
-                    defaultValue="#6b7280"
-                    style={{ width: '36px', height: '36px', border: 'none', cursor: 'pointer', padding: '2px' }}
-                  />
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    style={{ padding: '8px 12px' }}
-                    onClick={() => {
-                      if (newBoardPhaseSearch.trim()) {
-                        setNewBoardData({
-                          ...newBoardData,
-                          phases: [...newBoardData.phases, { name: newBoardPhaseSearch.trim(), color: '#6b7280' }]
-                        })
-                        setNewBoardPhaseSearch('')
-                      }
-                    }}
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" onClick={() => {
-                  setShowBoardModal(false)
-                  setNewBoardData({
-                    name: '',
-                    description: '',
-                    color: '#3b82f6',
-                    member_ids: [],
-                    phases: [
-                      { name: 'Por hacer', color: '#6b7280' },
-                      { name: 'En proceso', color: '#3b82f6' },
-                      { name: 'Finalizado', color: '#22c55e' },
-                    ],
-                  })
-                  setAssigneeSearch('')
-                  setNewBoardPhaseSearch('')
-                }}>Cancelar</button>
-                <button type="submit" className="btn-primary" disabled={isCreatingBoard}>
-                  {isCreatingBoard ? 'Creando...' : 'Crear Tablero'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showBoardMembersModal && selectedBoard && (
-        <div className="modal-overlay" onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>
-          <div className="modal board-modal wide" onClick={(e) => e.stopPropagation()}>
-            <h2>Miembros del Tablero</h2>
-            <p style={{ color: '#64748b', marginBottom: '20px', marginTop: '-16px' }}>{selectedBoard.name}</p>
-            <div className="form-group">
-              <label>Selecciona los miembros que quieres agregar al tablero</label>
-              <div className="members-select">
-                {users.map(user => {
-                  const isMember = optimisticMembers.includes(user.id)
-                  return (
-                    <label key={user.id} className="member-checkbox">
-                      <div className="left-section">
-                        <input
-                          type="checkbox"
-                          checked={isMember}
-                          onChange={async (e) => {
-                            const newOptimisticMembers = e.target.checked
-                              ? [...optimisticMembers, user.id]
-                              : optimisticMembers.filter(id => id !== user.id)
-                            setOptimisticMembers(newOptimisticMembers)
-                            try {
-                              await boardService.update(selectedBoard.id, { member_ids: newOptimisticMembers })
-                              const boardsRes = await boardService.getAll()
-                              setBoards(boardsRes)
-                              const updated = boardsRes.find(b => b.id === selectedBoard.id)
-                              if (updated) setSelectedBoard(updated)
-                            } catch (error) {
-                              console.error('Error updating board members:', error)
-                              setOptimisticMembers(selectedBoard.members?.map(m => m.id) || [])
-                            }
-                          }}
-                        />
-                        <span className="checkbox-custom"></span>
-                        <div className="member-avatar">
-                          {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                        </div>
-                        <div className="member-info">
-                          <span className="member-name">{user.name}</span>
-                          <span className="member-role">{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
-                        </div>
-                      </div>
-                      <span className={`member-status ${isMember ? 'active' : 'inactive'}`}>
-                        {isMember ? 'En tablero' : 'No asignado'}
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn-primary" onClick={() => { setShowBoardMembersModal(false); setOptimisticMembers([]) }}>Listo</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showPhasesModal && selectedBoard && (
-        <div className="modal-overlay" onClick={() => setShowPhasesModal(false)} onMouseUp={handlePhaseDragEnd}>
-          <div className="modal board-modal phases-modal" onClick={(e) => e.stopPropagation()} onMouseUp={() => handlePhaseDragEnd()}>
-            <div className="board-modal-header">
-              <h2>Gestionar Fases</h2>
-              <button className="close-btn" onClick={() => setShowPhasesModal(false)}><X size={20} /></button>
-            </div>
-            <p className="board-subtitle">{selectedBoard.name}</p>
-
-            <div
-              className="phases-list"
-              onMouseMove={(e) => {
-                if (!isDraggingPhasesRef.current) return
-                const target = e.target as HTMLElement
-                const phaseItem = target.closest('.phase-item')
-                if (phaseItem) {
-                  const idx = parseInt(phaseItem.getAttribute('data-idx') || '-1')
-                  if (idx >= 0) handlePhaseDragEnter(idx)
-                }
-              }}
-              onMouseUp={handlePhaseDragEnd}
-              onMouseLeave={(e) => {
-                if (isDraggingPhasesRef.current) {
-                  const relatedTarget = e.relatedTarget as HTMLElement
-                  if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-                    handlePhaseDragEnd()
-                  }
-                }
-              }}
-            >
-              {selectedBoard.phases?.map((phase, idx) => (
-                <div
-                  key={phase.id}
-                  data-idx={idx}
-                  className={`phase-item ${draggingPhase === phase.id ? 'dragging' : ''} ${dragOverIdx === idx ? 'drag-over' : ''}`}
-                  onMouseDown={() => handlePhaseDragStart(phase.id)}
-                >
-                  <span className="drag-handle" style={{ cursor: 'grab' }}><GripVertical size={16} /></span>
-                  <div className="phase-color" style={{ backgroundColor: phase.color }}></div>
-                  <span className="phase-name">{phase.name}</span>
-                  <button
-                    className="btn-icon phase-delete"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (!confirm('¿Eliminar esta fase?')) return
-                      setIsDeletingPhase(true)
-                      boardService.removePhase(selectedBoard.id, phase.id)
-                        .then(() => boardService.getAll())
-                        .then((boardsRes) => {
-                          setBoards(boardsRes)
-                          const found = boardsRes.find((b: Board) => b.id === selectedBoard.id)
-                          if (found) setSelectedBoard(found)
-                        })
-                        .catch((error: any) => {
-                          alert(error.response?.data?.error || 'Error al eliminar fase')
-                        })
-                        .finally(() => setIsDeletingPhase(false))
-                    }}
-                    title={isDeletingPhase ? "Eliminando..." : "Eliminar fase"}
-                    disabled={isDeletingPhase}
-                  >
-                    {isDeletingPhase ? '...' : <X size={14} />}
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="add-phase-form" onMouseUp={handlePhaseDragEnd}>
-              <input
-                type="text"
-                placeholder="Nombre de la nueva fase"
-                id="new-phase-name"
-                style={{ flex: 1, padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', marginRight: '8px' }}
-              />
-              <input
-                type="color"
-                id="new-phase-color"
-                defaultValue="#6b7280"
-                style={{ width: '40px', height: '40px', border: 'none', cursor: 'pointer' }}
-              />
-              <button
-                className="btn-primary"
-                style={{ marginLeft: '8px' }}
-                disabled={isAddingPhase}
-                onClick={async () => {
-                  const nameInput = document.getElementById('new-phase-name') as HTMLInputElement
-                  const colorInput = document.getElementById('new-phase-color') as HTMLInputElement
-                  const name = nameInput.value.trim()
-                  const color = colorInput.value
-                  if (!name) return
-                  setIsAddingPhase(true)
-                  try {
-                    await boardService.addPhase(selectedBoard.id, { name, color })
-                    const boardsRes = await boardService.getAll()
-                    setBoards(boardsRes)
-                    const found = boardsRes.find(b => b.id === selectedBoard.id)
-                    if (found) setSelectedBoard(found)
-                    nameInput.value = ''
-                  } catch (error) {
-                    console.error('Error adding phase:', error)
-                  } finally {
-                    setIsAddingPhase(false)
-                  }
-                }}
-              >
-                {isAddingPhase ? 'Agregando...' : <Plus size={18} />}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="kanban-board">
-          {(selectedBoard?.phases?.length ? selectedBoard.phases : localColumnOrder ? localColumnOrder.map(id => COLUMNS.find(c => c.id === id) || COLUMNS[0]) : COLUMNS).map((p: any, idx: number) => {
-            const isPhase = !!p.name
-            const column = {
-              id: isPhase ? (p.status || p.name.toLowerCase().replace(/\s+/g, '_')) : p.id,
-              title: isPhase ? p.name : p.title,
-              color: p.color
-            }
-            const phasesLength = selectedBoard?.phases?.length || (localColumnOrder?.length || COLUMNS.length)
-            return (
-              <Column
-                key={column.id}
-                column={column}
-                tasks={getTasksByStatus(column.id)}
-                onTaskClick={setSelectedTask}
-                canMoveLeft={idx > 0}
-                canMoveRight={idx < phasesLength - 1}
-                onMoveLeft={() => {
-                  if (selectedBoard?.phases && selectedBoard.id) {
-                    if (idx <= 0) return
-                    const newPhases = [...selectedBoard.phases]
-                    const temp = newPhases[idx]
-                    newPhases[idx] = newPhases[idx - 1]
-                    newPhases[idx - 1] = temp
-                    setSelectedBoard((prev: Board | null) => {
-                      if (!prev) return prev
-                      return { ...prev, phases: newPhases }
-                    })
-                    boardService.reorderPhases(selectedBoard.id, newPhases.map((p: any) => p.id))
-                      .then(() => boardService.getAll())
-                      .then((boardsRes) => setBoards(boardsRes))
-                      .catch(console.error)
-                  } else {
-                    const cols = localColumnOrder || COLUMNS.map(c => c.id)
-                    if (cols.length <= 1) return
-                    const newOrder = [...cols]
-                    const temp = newOrder[idx]
-                    newOrder[idx] = newOrder[idx - 1]
-                    newOrder[idx - 1] = temp
-                    setLocalColumnOrder(newOrder)
-                  }
-                }}
-                onMoveRight={() => {
-                  if (selectedBoard?.phases && selectedBoard.id) {
-                    if (idx >= (selectedBoard.phases.length - 1)) return
-                    const newPhases = [...selectedBoard.phases]
-                    const temp = newPhases[idx]
-                    newPhases[idx] = newPhases[idx + 1]
-                    newPhases[idx + 1] = temp
-                    setSelectedBoard((prev: Board | null) => {
-                      if (!prev) return prev
-                      return { ...prev, phases: newPhases }
-                    })
-                    boardService.reorderPhases(selectedBoard.id, newPhases.map((p: any) => p.id))
-                      .then(() => boardService.getAll())
-                      .then((boardsRes) => setBoards(boardsRes))
-                      .catch(console.error)
-                  } else {
-                    const cols = localColumnOrder || COLUMNS.map(c => c.id)
-                    if (cols.length <= 1) return
-                    const newOrder = [...cols]
-                    const temp = newOrder[idx]
-                    newOrder[idx] = newOrder[idx + 1]
-                    newOrder[idx + 1] = temp
-                    setLocalColumnOrder(newOrder)
-                  }
-                }}
-              />
-            )
-          })}
-        </div>
-
-        <DragOverlay>
-          {activeTask ? (
-            <TaskCard task={activeTask} onClick={() => { }} />
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      <TasksBoard
+        tasks={tasks}
+        selectedBoard={selectedBoard}
+        onTaskClick={setSelectedTask}
+        onUpdateTask={handleUpdateTask}
+        onMovePhaseLeft={handleMovePhaseLeft}
+        onMovePhaseRight={handleMovePhaseRight}
+      />
 
       {selectedTask && (
         <TaskDetailPanel
           task={selectedTask}
-          users={users}
+          users={visibleUsers}
           onClose={() => setSelectedTask(null)}
           onUpdate={handleUpdateTask}
           onDelete={handleDeleteTask}
@@ -1073,213 +496,80 @@ export default function Tasks() {
         />
       )}
 
-      {showNewTaskModal && (
-        <div className="modal-overlay" onClick={() => setShowNewTaskModal(false)}>
-          <div className="new-task-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="new-task-header">
-              <h2>Crear nueva tarea</h2>
-              <button className="close-btn" onClick={() => setShowNewTaskModal(false)}>
-                <X size={24} />
-              </button>
-            </div>
+      <NewTaskModal
+        isOpen={showNewTaskModal}
+        onClose={() => {
+          setShowNewTaskModal(false)
+          setNewTaskData({
+            title: '',
+            description: '',
+            priority: 'medium',
+            end_date: '',
+            assignees: [],
+            attachments: [],
+          })
+        }}
+        newTaskData={newTaskData}
+        setNewTaskData={setNewTaskData}
+        isCreatingTask={isCreatingTask}
+        onSubmit={handleCreateTask}
+        assigneeSearch={assigneeSearch}
+        setAssigneeSearch={setAssigneeSearch}
+        filteredUsers={assignableUsers}
+      />
 
-            <form onSubmit={handleCreateTask} id="create-task-form" className="new-task-content">
-              <div className="task-form-main">
-                <div className="form-field">
-                  <label>Título</label>
-                  <input
-                    type="text"
-                    value={newTaskData.title}
-                    onChange={(e) => setNewTaskData({ ...newTaskData, title: e.target.value })}
-                    placeholder="¿Qué necesitas hacer?"
-                    className="title-field"
-                    required
-                    autoFocus
-                  />
-                </div>
+      <BoardModal
+        isOpen={showBoardModal}
+        onClose={() => {
+          setShowBoardModal(false)
+          setAssigneeSearch('')
+          setNewBoardPhaseSearch('')
+        }}
+        newBoardData={boardFormData}
+        setNewBoardData={setBoardFormData}
+        assigneeSearch={assigneeSearch}
+        setAssigneeSearch={setAssigneeSearch}
+        filteredUsers={potentialMemberUsers}
+        newBoardPhaseSearch={newBoardPhaseSearch}
+        setNewBoardPhaseSearch={setNewBoardPhaseSearch}
+        onSubmit={handleBoardSubmit}
+        isCreatingBoard={isCreatingBoard}
+      />
 
-                <div className="form-field">
-                  <label>Descripción</label>
-                  <RichTextEditor
-                    value={newTaskData.description}
-                    onChange={(value) => setNewTaskData({ ...newTaskData, description: value })}
-                    placeholder="Agrega detalles, listas, enlaces..."
-                  />
-                </div>
-              </div>
+      <BoardMembersModal
+        isOpen={showBoardMembersModal}
+        onClose={() => {
+          setShowBoardMembersModal(false)
+          setOptimisticMembers(selectedBoard?.members?.map((m: User) => m.id) || [])
+        }}
+        selectedBoard={selectedBoard}
+        optimisticMembers={optimisticMembers}
+        setOptimisticMembers={setOptimisticMembers}
+        users={visibleUsers}
+        onUpdateMembers={(newMembers: number[]) => selectedBoard ? updateBoardMembers(selectedBoard.id, newMembers) : Promise.resolve()}
+      />
 
-              <div className="task-form-side">
-                <div className="settings-card">
-                  <h3>Configuración</h3>
+      <PhasesModal
+        isOpen={showPhasesModal}
+        onClose={() => setShowPhasesModal(false)}
+        selectedBoard={selectedBoard}
+        setBoards={() => {}}
+        setSelectedBoard={setSelectedBoard}
+        draggingPhase={draggingPhase}
+        dragOverIdx={dragOverIdx}
+        handlePhaseDragStart={handlePhaseDragStart}
+        handlePhaseDragEnter={handlePhaseDragEnter}
+        handlePhaseDragEnd={handlePhaseDragEnd}
+        isDraggingPhasesRef={isDraggingPhasesRef}
+      />
 
-                  <div className="setting-item">
-                    <label>Prioridad</label>
-                    <select
-                      value={newTaskData.priority}
-                      onChange={(e) => setNewTaskData({ ...newTaskData, priority: e.target.value })}
-                      className="setting-select"
-                    >
-                      <option value="low">Baja</option>
-                      <option value="medium">Media</option>
-                      <option value="high">Alta</option>
-                      <option value="urgent">Urgente</option>
-                    </select>
-                  </div>
-
-                  <div className="setting-item">
-                    <label>Fecha límite</label>
-                    <input
-                      type="date"
-                      value={newTaskData.end_date}
-                      onChange={(e) => setNewTaskData({ ...newTaskData, end_date: e.target.value })}
-                      className="setting-input"
-                    />
-                  </div>
-
-                  <div className="setting-item">
-                    <label>Adjuntos</label>
-                    <div className="new-task-attachments">
-                      <input
-                        type="file"
-                        id="new-task-file-input"
-                        multiple
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files || [])
-                          setNewTaskData(prev => ({
-                            ...prev,
-                            attachments: [...prev.attachments, ...files]
-                          }))
-                        }}
-                        style={{ display: 'none' }}
-                      />
-                      <button
-                        type="button"
-                        className="btn-secondary btn-sm"
-                        onClick={() => document.getElementById('new-task-file-input')?.click()}
-                        style={{ width: '100%', marginBottom: '8px' }}
-                      >
-                        <Paperclip size={14} /> Seleccionar archivos
-                      </button>
-
-                      {newTaskData.attachments.length > 0 && (
-                        <div className="selected-files-preview">
-                          {newTaskData.attachments.map((file, idx) => (
-                            <div key={idx} className="selected-file-item">
-                              <span className="file-name" title={file.name}>{file.name}</span>
-                              <button
-                                type="button"
-                                className="remove-file-btn"
-                                onClick={() => {
-                                  setNewTaskData(prev => ({
-                                    ...prev,
-                                    attachments: prev.attachments.filter((_, i) => i !== idx)
-                                  }))
-                                }}
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="assign-card">
-                  <h3>Asignar a</h3>
-                  <input
-                    type="text"
-                    placeholder="Buscar usuario..."
-                    value={assigneeSearch}
-                    onChange={(e) => setAssigneeSearch(e.target.value)}
-                    className="assignee-search"
-                  />
-                  <div className="assignees-scroll">
-                    {filteredUsers.length === 0 ? (
-                      <p className="no-users">No hay usuarios disponibles</p>
-                    ) : (
-                      filteredUsers.map((user) => (
-                        <label key={user.id} className="assign-option">
-                          <input
-                            type="checkbox"
-                            checked={newTaskData.assignees.includes(user.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewTaskData({
-                                  ...newTaskData,
-                                  assignees: [...newTaskData.assignees, user.id],
-                                })
-                              } else {
-                                setNewTaskData({
-                                  ...newTaskData,
-                                  assignees: newTaskData.assignees.filter((id) => id !== user.id),
-                                })
-                              }
-                            }}
-                          />
-                          <span className="user-chip">
-                            <span className="chip-avatar">{user.name?.charAt(0).toUpperCase()}</span>
-                            <span className="chip-name">{user.name}</span>
-                          </span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </form>
-
-            <div className="new-task-footer">
-              <button type="button" onClick={() => setShowNewTaskModal(false)} className="btn-cancel" disabled={isCreatingTask}>
-                Cancelar
-              </button>
-              <button type="submit" form="create-task-form" className="btn-create" disabled={isCreatingTask}>
-                {isCreatingTask ? 'Creando...' : 'Crear tarea'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showJoinBoardModal && (
-        <div className="modal-overlay" onClick={() => setShowJoinBoardModal(false)}>
-          <div className="modal join-board-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Unirse a un Tablero</h2>
-              <button className="close-btn" onClick={() => setShowJoinBoardModal(false)}><X size={20} /></button>
-            </div>
-            <div className="modal-body">
-              {publicBoards.length === 0 ? (
-                <div className="no-data-msg">
-                  <p>No hay tableros públicos disponibles para unirse en este momento.</p>
-                </div>
-              ) : (
-                <div className="public-boards-list">
-                  {publicBoards.map(board => (
-                    <div key={board.id} className="public-board-item">
-                      <div className="board-info">
-                        <div className="board-color" style={{ backgroundColor: board.color }}></div>
-                        <div className="board-text">
-                          <span className="board-name">{board.name}</span>
-                          <span className="board-creator">Creado por: {board.creator?.name || 'Sistema'}</span>
-                        </div>
-                      </div>
-                      <button
-                        className="btn-primary btn-sm"
-                        onClick={() => handleJoinBoard(board.id)}
-                        disabled={isJoiningBoard}
-                      >
-                        {isJoiningBoard ? 'Uniendo...' : 'Unirse'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <JoinBoardModal
+        isOpen={showJoinBoardModal}
+        onClose={() => setShowJoinBoardModal(false)}
+        publicBoards={publicBoards}
+        handleJoinBoard={handleJoinBoard}
+        isJoiningBoard={false}
+      />
     </div>
   )
 }

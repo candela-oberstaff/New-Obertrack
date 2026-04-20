@@ -2,16 +2,24 @@
 
 # Dependency directories
 node_modules/
+**/node_modules/
 frontend/node_modules/
 backend/vendor/
 
 # Build artifacts
 dist/
+**/dist/
 frontend/dist/
+build/
+**/build/
 backend/bin/
 *.exe
+*.exe~
 *.test
 *.prof
+*.dll
+*.so
+*.dylib
 frontend/tsconfig.tsbuildinfo
 
 # Environment files
@@ -43,6 +51,30 @@ yarn-debug.log*
 yarn-error.log*
 *.log
 backend/*.log
+logs/
+**/logs/
+
+# TypeScript
+*.tsbuildinfo
+*.tsbuildinfo
+
+# Go test cache
+*.out
+coverage.txt
 
 # Vite
 vite.config.ts.timestamp-*
+
+# Cache
+.cache/
+**/.cache/
+.parcel-cache/
+
+# Project specific
+backend/credentials.json
+backend/scratch/
+backend/test_db2.go
+backend/test_db_create.go
+backend/build_err.txt
+backend/test_*.go
+backend/uploads/

@@ -66,6 +66,8 @@ type Task struct {
 	Completed   bool           `gorm:"default:false" json:"completed"`
 	CreatedBy   uint           `gorm:"not null;index" json:"created_by"`
 	BoardID     uint           `gorm:"index:idx_status_board" json:"board_id"`
+	Order       int            `gorm:"default:0" json:"order"`
+	VisiblePara *uint          `gorm:"index" json:"visible_para,omitempty"`
 	Creator     User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	Board       Board          `gorm:"foreignKey:BoardID" json:"board,omitempty"`
 	CreatedAt   time.Time      `json:"created_at"`
@@ -108,8 +110,8 @@ func (Comment) TableName() string {
 type TaskAttachment struct {
 	ID         uint           `gorm:"primaryKey" json:"id"`
 	TaskID     uint           `gorm:"not null;index" json:"task_id"`
-	FileName   string         `gorm:"size:255;not null" json:"file_name"`
-	FileURL    string         `gorm:"size:500;not null" json:"file_url"`
+	FileName   string         `gorm:"size:255" json:"file_name"`
+	FileURL    string         `gorm:"size:500" json:"file_url"`
 	FileSize   int64          `json:"file_size"`
 	MimeType   string         `gorm:"size:100" json:"mime_type"`
 	UploadedBy uint           `gorm:"not null" json:"uploaded_by"`

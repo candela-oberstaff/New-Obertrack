@@ -6,18 +6,17 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"github.com/obertrack/backend/internal/middleware"
-	"github.com/obertrack/backend/internal/models"
+	"github.com/obertrack/backend/internal/service"
 )
 
 type BoardHandler struct {
-	db *gorm.DB
+	service service.BoardService
 }
 
-func NewBoardHandler(db *gorm.DB) *BoardHandler {
-	return &BoardHandler{db: db}
+func NewBoardHandler(s service.BoardService) *BoardHandler {
+	return &BoardHandler{service: s}
 }
 
 type CreateBoardRequest struct {
@@ -45,64 +44,27 @@ func (h *BoardHandler) GetAll(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
-	log.Printf("[GetAll] userID=%d, role=%s, isSuperadmin=%v", userID, role, isSuperadmin)
-
-	var boards []models.Board
-
-	if isSuperadmin || role == "superadmin" {
-		h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
-			return db.Order("\"order\" ASC")
-		}).Find(&boards)
-	} else {
-		var boardIDs []uint
-		h.db.Model(&models.Board{}).
-			Select("boards.id").
-			Joins("LEFT JOIN board_members ON board_members.board_id = boards.id").
-			Where("board_members.user_id = ? OR boards.created_by = ?", userID, userID).
-			Group("boards.id").
-			Pluck("boards.id", &boardIDs)
-
-		log.Printf("[GetAll] Found %d unique board IDs: %v", len(boardIDs), boardIDs)
-
-		if len(boardIDs) > 0 {
-			h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
-				return db.Order("\"order\" ASC")
-			}).Where("boards.id IN ?", boardIDs).Find(&boards)
-		}
-	}
-
-	log.Printf("[GetAll] Found %d boards", len(boards))
-	for _, b := range boards {
-		log.Printf("[GetAll]   Board: ID=%d, Name=%s, CreatedBy=%d", b.ID, b.Name, b.CreatedBy)
+	boards, err := h.service.GetAll(userID, role, isSuperadmin)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get boards"})
+		return
 	}
 
 	c.JSON(http.StatusOK, boards)
 }
 
-// GetPublicBoards returns all boards that the current user is NOT a member of.
 func (h *BoardHandler) GetPublicBoards(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
-	// Get boards the user already belongs to (as creator or member)
-	var myBoardIDs []uint
-	h.db.Model(&models.Board{}).
-		Select("boards.id").
-		Joins("LEFT JOIN board_members ON board_members.board_id = boards.id").
-		Where("board_members.user_id = ? OR boards.created_by = ?", userID, userID).
-		Group("boards.id").
-		Pluck("boards.id", &myBoardIDs)
-
-	var boards []models.Board
-	query := h.db.Preload("Creator").Preload("Members")
-	if len(myBoardIDs) > 0 {
-		query = query.Where("id NOT IN ?", myBoardIDs)
+	boards, err := h.service.GetPublicBoards(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get public boards"})
+		return
 	}
-	query.Find(&boards)
 
 	c.JSON(http.StatusOK, boards)
 }
 
-// JoinBoard lets the current user join an existing board as a member.
 func (h *BoardHandler) JoinBoard(c *gin.Context) {
 	boardID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -112,29 +74,17 @@ func (h *BoardHandler) JoinBoard(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 
-	var board models.Board
-	if err := h.db.First(&board, boardID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Board not found"})
+	board, err := h.service.JoinBoard(userID, uint(boardID))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Board not found" {
+			status = http.StatusNotFound
+		} else if err.Error() == "Ya eres miembro de este tablero" {
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Check if already a member
-	var existing int64
-	h.db.Model(&models.BoardMember{}).Where("board_id = ? AND user_id = ?", boardID, userID).Count(&existing)
-	if existing > 0 {
-		c.JSON(http.StatusConflict, gin.H{"error": "Ya eres miembro de este tablero"})
-		return
-	}
-
-	bm := models.BoardMember{BoardID: uint(boardID), UserID: userID}
-	if err := h.db.Create(&bm).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to join board"})
-		return
-	}
-
-	h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
-		return db.Order("\"order\" ASC")
-	}).First(&board, boardID)
 
 	c.JSON(http.StatusOK, board)
 }
@@ -150,26 +100,16 @@ func (h *BoardHandler) GetByID(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
-	var board models.Board
-	if err := h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
-		return db.Order("\"order\" ASC")
-	}).First(&board, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Board not found"})
+	board, err := h.service.GetByID(userID, role, isSuperadmin, uint(id))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Board not found" {
+			status = http.StatusNotFound
+		} else if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
-	}
-
-	if !isSuperadmin && role != "superadmin" {
-		isMember := false
-		for _, m := range board.Members {
-			if m.ID == userID {
-				isMember = true
-				break
-			}
-		}
-		if board.CreatedBy != userID && !isMember {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
-		}
 	}
 
 	c.JSON(http.StatusOK, board)
@@ -185,85 +125,19 @@ func (h *BoardHandler) Create(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	log.Printf("[CreateBoard] userID=%d, req=%+v", userID, req)
 
-	board := models.Board{
-		Name:        req.Name,
-		Description: req.Description,
-		Color:       req.Color,
-		CreatedBy:   userID,
+	var phases []struct {
+		Name  string
+		Color string
+	}
+	for _, p := range req.Phases {
+		phases = append(phases, struct{ Name, Color string }{p.Name, p.Color})
 	}
 
-	if board.Color == "" {
-		board.Color = "#3b82f6"
-	}
-
-	if err := h.db.Create(&board).Error; err != nil {
-		log.Printf("Error creating board: %v", err)
+	board, err := h.service.Create(userID, req.Name, req.Description, req.Color, req.MemberIDs, phases)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create board"})
 		return
 	}
-	log.Printf("[CreateBoard] Board created with ID=%d", board.ID)
-
-	if len(req.MemberIDs) > 0 {
-		var members []models.User
-		h.db.Find(&members, req.MemberIDs)
-		h.db.Model(&board).Association("Members").Append(members)
-	}
-
-	// Add creator as a member automatically using BoardMember
-	boardMember := models.BoardMember{
-		BoardID: board.ID,
-		UserID:  userID,
-	}
-	h.db.Create(&boardMember)
-	log.Printf("[CreateBoard] Added creator as member: boardID=%d, userID=%d", board.ID, userID)
-
-	// Add phases - use provided phases or defaults
-	phasesToCreate := req.Phases
-	if len(phasesToCreate) == 0 {
-		phasesToCreate = []CreatePhaseInput{
-			{Name: "Por hacer", Color: "#6b7280"},
-			{Name: "En proceso", Color: "#3b82f6"},
-			{Name: "Finalizado", Color: "#22c55e"},
-		}
-	}
-
-	statusNames := []string{"por_hacer", "en_proceso", "finalizado", "", "", ""} // Default statuses for first 3
-
-	for i, p := range phasesToCreate {
-		color := p.Color
-		if color == "" {
-			color = "#6b7280"
-		}
-		status := ""
-		if i < len(statusNames) {
-			status = statusNames[i]
-		}
-		phase := models.Phase{
-			Name:   p.Name,
-			Color:  color,
-			Status: status,
-			Order:  i,
-		}
-		h.db.Create(&phase)
-		boardPhase := models.BoardPhase{
-			BoardID: board.ID,
-			PhaseID: phase.ID,
-		}
-		h.db.Create(&boardPhase)
-	}
-	log.Printf("[CreateBoard] Added %d phases to board: boardID=%d", len(phasesToCreate), board.ID)
-
-	// Verify members
-	var members []models.User
-	h.db.Model(&board).Association("Members").Find(&members)
-	log.Printf("[CreateBoard] Board members count: %d", len(members))
-	for _, m := range members {
-		log.Printf("[CreateBoard]   - Member: ID=%d, Name=%s", m.ID, m.Name)
-	}
-
-	h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
-		return db.Order("\"order\" ASC")
-	}).First(&board, board.ID)
 
 	c.JSON(http.StatusCreated, board)
 }
@@ -272,12 +146,6 @@ func (h *BoardHandler) Update(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid board ID"})
-		return
-	}
-
-	var board models.Board
-	if err := h.db.First(&board, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Board not found"})
 		return
 	}
 
@@ -298,17 +166,11 @@ func (h *BoardHandler) Update(c *gin.Context) {
 		updates["color"] = req.Color
 	}
 
-	if len(updates) > 0 {
-		h.db.Model(&board).Updates(updates)
+	board, err := h.service.Update(uint(id), updates, req.MemberIDs)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
 	}
-
-	if len(req.MemberIDs) > 0 {
-		var members []models.User
-		h.db.Find(&members, req.MemberIDs)
-		h.db.Model(&board).Association("Members").Replace(members)
-	}
-
-	h.db.Preload("Members").Preload("Creator").First(&board, id)
 
 	c.JSON(http.StatusOK, board)
 }
@@ -322,41 +184,14 @@ func (h *BoardHandler) Delete(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 
-	var board models.Board
-	if err := h.db.First(&board, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Board not found"})
-		return
-	}
-
-	if board.CreatedBy != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Solo el creador puede eliminar el tablero"})
-		return
-	}
-
-	// Delete associated phases first
-	h.db.Unscoped().Where("board_id = ?", id).Delete(&models.Phase{})
-
-	// Delete board members
-	h.db.Unscoped().Where("board_id = ?", id).Delete(&models.BoardMember{})
-
-	// Get task IDs for this board to delete associated records
-	var taskIDs []uint
-	h.db.Unscoped().Model(&models.Task{}).Where("board_id = ?", id).Pluck("id", &taskIDs)
-
-	// Delete associated comments and attachments for each task
-	if len(taskIDs) > 0 {
-		h.db.Unscoped().Where("task_id IN ?", taskIDs).Delete(&models.Comment{})
-		h.db.Unscoped().Where("task_id IN ?", taskIDs).Delete(&models.TaskAttachment{})
-		// Delete task-user associations (many2many)
-		h.db.Unscoped().Where("task_id IN ?", taskIDs).Delete(&models.TaskUser{})
-	}
-
-	// Delete associated tasks
-	h.db.Unscoped().Where("board_id = ?", id).Delete(&models.Task{})
-
-	// Delete the board
-	if err := h.db.Delete(&board).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete board"})
+	if err := h.service.Delete(userID, uint(id)); err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Board not found" {
+			status = http.StatusNotFound
+		} else if err.Error() == "Solo el creador puede eliminar el tablero" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -369,7 +204,7 @@ type AddPhaseRequest struct {
 }
 
 func (h *BoardHandler) AddPhase(c *gin.Context) {
-	boardID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid board ID"})
 		return
@@ -381,44 +216,11 @@ func (h *BoardHandler) AddPhase(c *gin.Context) {
 		return
 	}
 
-	var board models.Board
-	if err := h.db.First(&board, boardID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Board not found"})
+	board, err := h.service.AddPhase(uint(id), req.Name, req.Color)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Get current max order
-	var maxOrder int
-	h.db.Model(&models.Phase{}).
-		Joins("JOIN board_phases ON board_phases.phase_id = phases.id").
-		Where("board_phases.board_id = ?", boardID).
-		Select("COALESCE(MAX(phases.\"order\"), -1)").Scan(&maxOrder)
-
-	color := req.Color
-	if color == "" {
-		color = "#6b7280"
-	}
-
-	phase := models.Phase{
-		Name:  req.Name,
-		Color: color,
-		Order: maxOrder + 1,
-	}
-
-	if err := h.db.Create(&phase).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create phase"})
-		return
-	}
-
-	boardPhase := models.BoardPhase{
-		BoardID: board.ID,
-		PhaseID: phase.ID,
-	}
-	h.db.Create(&boardPhase)
-
-	h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
-		return db.Order("\"order\" ASC")
-	}).First(&board, board.ID)
 
 	c.JSON(http.StatusCreated, board)
 }
@@ -436,41 +238,15 @@ func (h *BoardHandler) RemovePhase(c *gin.Context) {
 		return
 	}
 
-	var board models.Board
-	if err := h.db.First(&board, boardID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Board not found"})
+	board, err := h.service.RemovePhase(uint(boardID), uint(phaseID))
+	if err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "Phase not found on this board" || err.Error() == "Board not found" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Check if phase exists on this board
-	var count int64
-	h.db.Model(&models.BoardPhase{}).Where("board_id = ? AND phase_id = ?", boardID, phaseID).Count(&count)
-	if count == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Phase not found on this board"})
-		return
-	}
-
-	// Remove the board-phase association
-	h.db.Where("board_id = ? AND phase_id = ?", boardID, phaseID).Delete(&models.BoardPhase{})
-
-	// Check if phase is used by any tasks on this board
-	var taskCount int64
-	h.db.Model(&models.Task{}).Where("board_id = ? AND status = ?", boardID, getPhaseStatusName(uint(phaseID))).Count(&taskCount)
-	if taskCount > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot remove phase with tasks. Move or delete tasks first."})
-		return
-	}
-
-	// Optionally delete the phase if not used by other boards
-	var otherBoards int64
-	h.db.Model(&models.BoardPhase{}).Where("phase_id = ? AND board_id != ?", phaseID, boardID).Count(&otherBoards)
-	if otherBoards == 0 {
-		h.db.Delete(&models.Phase{}, phaseID)
-	}
-
-	h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
-		return db.Order("\"order\" ASC")
-	}).First(&board, board.ID)
 
 	c.JSON(http.StatusOK, board)
 }
@@ -492,30 +268,11 @@ func (h *BoardHandler) ReorderPhases(c *gin.Context) {
 		return
 	}
 
-	var board models.Board
-	if err := h.db.First(&board, boardID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Board not found"})
+	board, err := h.service.ReorderPhases(uint(boardID), req.PhaseIDs)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Update the order of each phase
-	for i, phaseID := range req.PhaseIDs {
-		h.db.Model(&models.Phase{}).Where("id = ?", phaseID).Update("order", i)
-	}
-
-	h.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
-		return db.Order("\"order\" ASC")
-	}).First(&board, board.ID)
-
 	c.JSON(http.StatusOK, board)
-}
-
-func getPhaseStatusName(phaseID uint) string {
-	// This is a simple mapping - in a real app you'd have a proper relationship
-	names := map[uint]string{
-		1: "por_hacer",
-		2: "en_proceso",
-		3: "finalizado",
-	}
-	return names[phaseID]
 }

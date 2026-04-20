@@ -1,5 +1,3 @@
-export interface ColumnType {
-  id: string
-  title: string
-  color: string
-}
+// Re-export from centralized types location for backward compatibility
+export type { ColumnType } from '../../types/tasks'
+export type { Phase } from '../../types/tasks'

@@ -2,6 +2,7 @@ import { Paperclip } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Task } from '../../types'
+import styles from '../../pages/Tasks.module.css'
 
 interface TaskCardProps {
   task: Task
@@ -22,35 +23,35 @@ export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
 
   return (
     <div
-      className={`kanban-card ${isDragging ? 'dragging' : ''} ${task.completed ? 'completed' : ''}`}
+      className={`${styles['kanban-card']} ${isDragging ? (styles['dragging'] || 'dragging') : ''} ${task.completed ? (styles['completed'] || 'completed') : ''}`}
       onClick={onClick}
     >
-      <div className="card-priority" style={{ backgroundColor: getPriorityColor(task.priority) }} />
-      <h4 className="card-title">{task.title}</h4>
+      <div className={styles['card-priority']} style={{ backgroundColor: getPriorityColor(task.priority) }} />
+      <h4 className={styles['card-title']}>{task.title}</h4>
       {task.description && (
-        <p className="card-description" dangerouslySetInnerHTML={{ __html: task.description.replace(/<[^>]*>/g, ' ').substring(0, 100) + (task.description.length > 100 ? '...' : '') }} />
+        <p className={styles['card-description']} dangerouslySetInnerHTML={{ __html: task.description.replace(/<[^>]*>/g, ' ').substring(0, 100) + (task.description.length > 100 ? '...' : '') }} />
       )}
-      <div className="card-meta">
+      <div className={styles['card-meta']}>
         {task.start_date && (
-          <span className="card-date">
+          <span className={styles['card-date']}>
             {new Date(task.start_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
           </span>
         )}
         {task.attachments && task.attachments.length > 0 && (
-          <div className="card-attachments" title={`${task.attachments.length} archivos adjuntos`}>
+          <div className={styles['card-attachments'] || 'card-attachments'} title={`${task.attachments.length} archivos adjuntos`}>
             <Paperclip size={14} />
             <span>{task.attachments.length}</span>
           </div>
         )}
         {task.assignees && task.assignees.length > 0 && (
-          <div className="card-assignees">
+          <div className={styles['card-assignees']}>
             {task.assignees.slice(0, 3).map((user) => (
-              <div key={user.id} className="assignee-avatar" title={user.name}>
+              <div key={user.id} className={styles['assignee-avatar']} title={user.name}>
                 {user.name.charAt(0).toUpperCase()}
               </div>
             ))}
             {task.assignees.length > 3 && (
-              <div className="assignee-avatar more">+{task.assignees.length - 3}</div>
+              <div className={`${styles['assignee-avatar']} ${styles['more'] || 'more'}`}>+{task.assignees.length - 3}</div>
             )}
           </div>
         )}

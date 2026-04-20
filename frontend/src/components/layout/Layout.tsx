@@ -1,7 +1,8 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import Notifications from '../Notifications'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { channelService } from '../../services/api'
 import { 
   LayoutDashboard, 
   CheckSquare, 
@@ -14,12 +15,40 @@ import {
   ChevronLeft,
   LogOut
 } from 'lucide-react'
-import './Layout.css'
+import styles from './Layout.module.css'
 
 export default function Layout() {
-  const { user, logout } = useAuth()
+  const { user, logout, token } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [totalChatUnread, setTotalChatUnread] = useState(0)
+  
+  const isChatPage = location.pathname.startsWith('/chat')
+
+  useEffect(() => {
+    if (!token) return
+
+    const fetchTotalUnread = async () => {
+      try {
+        const count = await channelService.getTotalUnreadCount()
+        setTotalChatUnread(count)
+      } catch (error) {
+        console.error('Error fetching chat unread count:', error)
+      }
+    }
+
+    fetchTotalUnread()
+    const interval = setInterval(fetchTotalUnread, 30000)
+
+    const handleChatUpdate = () => fetchTotalUnread()
+    window.addEventListener('chat-unread-updated', handleChatUpdate)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('chat-unread-updated', handleChatUpdate)
+    }
+  }, [token])
 
   const handleLogout = () => {
     logout()
@@ -47,54 +76,61 @@ export default function Layout() {
   }
 
   return (
-    <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <aside className="sidebar">
-        <div className="sidebar-header">
+    <div className={`${styles['app-layout']} ${sidebarCollapsed ? styles['sidebar-collapsed'] : ''}`}>
+      <aside className={styles['sidebar']}>
+        <div className={styles['sidebar-header']}>
           <h1>{sidebarCollapsed ? 'O' : 'Obertrack'}</h1>
         </div>
         
-        <div className="sidebar-user">
-          <div className="user-avatar">
+        <div className={styles['sidebar-user']}>
+          <div className={styles['user-avatar']}>
             {user?.name?.charAt(0).toUpperCase()}
           </div>
           {!sidebarCollapsed && (
-            <div className="user-info">
-              <span className="user-name">{user?.name}</span>
-              <span className="user-role">{getRoleLabel()}</span>
+            <div className={styles['user-info']}>
+              <span className={styles['user-name']}>{user?.name}</span>
+              <span className={styles['user-role']}>{getRoleLabel()}</span>
             </div>
           )}
         </div>
 
-        <nav className="sidebar-nav">
+        <nav className={styles['sidebar-nav']}>
           {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              className={({ isActive }) => `${styles['nav-item']} ${isActive ? styles['active'] : ''}`}
               title={item.label}
             >
-              <span className="nav-icon">{item.icon}</span>
-              {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
+              <span className={styles['nav-icon']}>
+                {item.icon}
+                {item.path === '/chat' && totalChatUnread > 0 && !isChatPage && (
+                  <span className={styles['nav-badge']}>{totalChatUnread > 9 ? '9+' : totalChatUnread}</span>
+                )}
+              </span>
+              {!sidebarCollapsed && <span className={styles['nav-label']}>{item.label}</span>}
             </NavLink>
           ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <button className="collapse-btn" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? "Expandir" : "Colapsar"}>
+        <div className={styles['sidebar-footer']}>
+          <button className={styles['collapse-btn']} onClick={() => setSidebarCollapsed(!sidebarCollapsed)} title={sidebarCollapsed ? "Expandir" : "Colapsar"}>
             {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
           </button>
-          <button className="logout-btn" onClick={handleLogout} title="Cerrar Sesión">
+          <button className={styles['logout-btn']} onClick={handleLogout} title="Cerrar Sesión">
             <LogOut size={20} />
-            {!sidebarCollapsed && <span className="btn-text">Cerrar Sesión</span>}
+            {!sidebarCollapsed && <span className={styles['btn-text']}>Cerrar Sesión</span>}
           </button>
         </div>
       </aside>
 
-      <main className="main-content">
-        <div className="top-bar">
+      <main className={styles['main-content']}>
+        <div className={styles['top-bar']}>
           <Notifications />
         </div>
-        <Outlet />
+        <div className={`${styles['outlet-container']} ${isChatPage ? styles['chat-layout'] : ''}`}>
+          <Outlet />
+        </div>
       </main>
     </div>
   )
