@@ -71,6 +71,7 @@ vite.config.ts.timestamp-*
 .parcel-cache/
 
 # Project specific
+backend/credentials.json
 backend/scratch/
 backend/test_db2.go
 backend/test_db_create.go
