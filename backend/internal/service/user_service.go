@@ -23,6 +23,7 @@ type UserService interface {
 	GetMyTeam(userID uint) ([]models.User, error)
 	
 	ChangePassword(id uint, currentPassword, newPassword string) error
+	GetByEmail(email string) (*models.User, error)
 }
 
 type userService struct {
@@ -215,4 +216,7 @@ func (s *userService) ChangePassword(id uint, currentPassword, newPassword strin
 
 	user.Password = string(hashedPassword)
 	return s.repo.Save(user)
+}
+func (s *userService) GetByEmail(email string) (*models.User, error) {
+	return s.repo.GetByEmail(email)
 }

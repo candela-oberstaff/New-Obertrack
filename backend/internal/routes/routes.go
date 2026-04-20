@@ -26,19 +26,22 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	notifSvc := service.NewNotificationService(notifRepo)
 	chatSvc := service.NewChatService(chatRepo)
 	channelSvc := service.NewChannelService(channelRepo, userRepo, notifSvc)
-	workHourSvc := service.NewWorkHourService(workHourRepo)
-	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
-
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
+
+	// Initialize Google Chat
+	googleChatSvc := service.NewGoogleChatService()
+
+	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, googleChatSvc)
+	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
 
 	boardRepo := repository.NewBoardRepository(db)
 	taskRepo := repository.NewTaskRepository(db)
-	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
+	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc, googleChatSvc)
 	adminRepo := repository.NewAdminRepository(db)
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo)
 	boardSvc := service.NewBoardService(boardRepo, userRepo)
-
 	// Handlers
+	googleChatHandler := handlers.NewGoogleChatHandler(workHourSvc, userSvc)
 	authHandler := handlers.NewAuthHandler(authSvc)
 	notificationHandler := handlers.NewNotificationHandler(notifSvc)
 	userHandler := handlers.NewUserHandler(userSvc)
@@ -70,6 +73,9 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			auth.POST("/login", authHandler.Login)
 			auth.GET("/companies", authHandler.GetCompanies)
 		}
+
+		// Google Chat Public Callback
+		api.POST("/google-chat/callback", googleChatHandler.HandleCallback)
 
 		// Administrative seed routes - should be disabled in production or strictly protected
 		if os.Getenv("GIN_MODE") != "release" {

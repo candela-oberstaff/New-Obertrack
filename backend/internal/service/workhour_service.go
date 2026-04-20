@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -20,11 +21,24 @@ type WorkHourService interface {
 }
 
 type workHourService struct {
-	repo repository.WorkHourRepository
+	repo          repository.WorkHourRepository
+	userRepo      repository.UserRepository
+	notifSvc      NotificationService
+	googleChatSvc GoogleChatService
 }
 
-func NewWorkHourService(repo repository.WorkHourRepository) WorkHourService {
-	return &workHourService{repo: repo}
+func NewWorkHourService(
+	repo repository.WorkHourRepository,
+	userRepo repository.UserRepository,
+	notifSvc NotificationService,
+	googleChatSvc GoogleChatService,
+) WorkHourService {
+	return &workHourService{
+		repo:          repo,
+		userRepo:      userRepo,
+		notifSvc:      notifSvc,
+		googleChatSvc: googleChatSvc,
+	}
 }
 
 func (s *workHourService) parseStringVal(val interface{}) string {
@@ -135,7 +149,29 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 	}
 
 	// Fetch with preload for response
-	return s.repo.FindByID(workHour.ID)
+	finalWH, err := s.repo.FindByID(workHour.ID)
+	if err == nil && finalWH != nil {
+		// Notificar al Manager y al Empleador
+		go func() {
+			user, _ := s.userRepo.GetByID(finalWH.UserID)
+			if user != nil {
+				// Notificar al Manager
+				if user.ManagerID != nil {
+					if manager, err := s.userRepo.GetByID(*user.ManagerID); err == nil {
+						s.googleChatSvc.SendWorkHourCard(manager.Email, finalWH.ID, user.Name, finalWH.WorkDate.Format("2006-01-02"), finalWH.HoursWorked, finalWH.Activities)
+					}
+				}
+				// Notificar al Empleador
+				if user.EmpleadorID != nil {
+					if employer, err := s.userRepo.GetByID(*user.EmpleadorID); err == nil {
+						s.googleChatSvc.SendWorkHourCard(employer.Email, finalWH.ID, user.Name, finalWH.WorkDate.Format("2006-01-02"), finalWH.HoursWorked, finalWH.Activities)
+					}
+				}
+			}
+		}()
+	}
+
+	return finalWH, err
 }
 
 func (s *workHourService) Update(id uint, reqData map[string]interface{}) (*models.WorkHour, error) {
@@ -205,7 +241,49 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 		}
 	}
 
-	return s.repo.ApproveMultiple(ids, userID, time.Now())
+	err = s.repo.ApproveMultiple(ids, userID, time.Now())
+	if err == nil {
+		// Notificaciones de aprobación
+		go func() {
+			// Agrupar por usuario para enviar un solo mensaje
+			userHours := make(map[uint][]models.WorkHour)
+			approver, _ := s.userRepo.GetByID(userID)
+			var approvedNames []string
+			uniqueNames := make(map[string]bool)
+
+			for _, wh := range workHours {
+				userHours[wh.UserID] = append(userHours[wh.UserID], wh)
+				if !uniqueNames[wh.User.Name] {
+					uniqueNames[wh.User.Name] = true
+					approvedNames = append(approvedNames, wh.User.Name)
+				}
+			}
+
+			// 1. Notificar a cada profesional
+			for _, hours := range userHours {
+				if len(hours) > 0 {
+					professional := hours[0].User
+					dates := ""
+					for i, h := range hours {
+						if i > 0 { dates += ", " }
+						dates += h.WorkDate.Format("02/01")
+					}
+					profMsg := fmt.Sprintf("✅ Tus horas de los días *%s* han sido aprobadas.", dates)
+					s.googleChatSvc.SendDirectMessage(professional.Email, profMsg)
+				}
+			}
+
+			// 2. Notificar al aprobador (Resumen masivo)
+			if approver != nil {
+				summary := "📢 *Resumen de Aprobación de Jornadas*\nSe han aprobado las jornadas de los siguientes profesionales:\n"
+				for _, name := range approvedNames {
+					summary += fmt.Sprintf("• %s\n", name)
+				}
+				s.googleChatSvc.SendDirectMessage(approver.Email, summary)
+			}
+		}()
+	}
+	return err
 }
 
 func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool) (map[string]float64, error) {
