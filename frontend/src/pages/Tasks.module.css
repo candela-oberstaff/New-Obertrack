@@ -43,7 +43,7 @@
   width: 40px;
   height: 40px;
   border: 3px solid #e2e8f0;
-  border-top-color: #3b82f6;
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -102,14 +102,14 @@
 }
 
 .board-selector select:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
+  border-color: var(--primary);
+  box-shadow: 0 2px 6px rgba(244, 114, 182, 0.15);
 }
 
 .board-selector select:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), 0 2px 6px rgba(59, 130, 246, 0.15);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.15), 0 2px 6px rgba(244, 114, 182, 0.15);
 }
 
 .board-select-container::after {
@@ -126,7 +126,7 @@
 
 .board-select-container select:hover + ::after,
 .board-select-container:hover::after {
-  color: #3b82f6;
+  color: var(--primary);
 }
 
 .board-selector .btn-sm {
@@ -161,7 +161,8 @@
 }
 
 .member-checkbox:hover {
-  border-color: #3b82f6;
+  border-color: var(--black);
+  background: var(--white-smoke);
 }
 
 .member-checkbox input {
@@ -189,12 +190,12 @@
 }
 
 .member-checkbox:hover .checkbox-custom {
-  border-color: #3b82f6;
+  border-color: var(--black);
 }
 
 .member-checkbox input:checked + .checkbox-custom {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .member-checkbox input:checked + .checkbox-custom::after {
@@ -209,7 +210,7 @@
   height: 28px;
   border-radius: 50%;
   background: white;
-  color: #3b82f6;
+  color: var(--primary);
   border: 1px solid #e5e7eb;
   display: flex;
   align-items: center;
@@ -275,19 +276,12 @@
 
 .btn-icon:hover {
   background: #f1f5f9;
-  border-color: #3b82f6;
-}
-
-.phases-btn,
-.members-btn {
-  font-size: 20px;
-  color: #475569;
-  font-weight: bold;
+  border-color: var(--primary);
 }
 
 .phases-btn:hover,
 .members-btn:hover {
-  color: #3b82f6;
+  color: var(--primary);
   background: #f1f5f9;
 }
 
@@ -345,7 +339,7 @@
 .board-modal .form-group input[type="text"]:focus,
 .board-modal .form-group textarea:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
   background: white;
 }
 
@@ -381,13 +375,15 @@
 }
 
 .board-modal .modal-actions .btn-primary {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: var(--black);
   color: white;
-  border: none;
+  border: 1px solid var(--black);
 }
 
 .board-modal .modal-actions .btn-primary:hover {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background: #1f2937;
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .board-modal-header {
@@ -428,15 +424,15 @@
 }
 
 .phase-item:hover {
-  border-color: #3b82f6;
-  background: #f1f5f9;
+  border-color: var(--black);
+  background: #f8fafc;
 }
 
 .phase-item.dragging {
   opacity: 0.6;
   background: #dbeafe;
   border-style: dashed;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .phase-item.drag-over {
@@ -500,32 +496,35 @@
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  background: var(--black);
   color: white;
-  border: none;
+  border: 1px solid var(--black);
   padding: 10px 20px;
-  border-radius: 8px;
-  font-weight: 500;
+  border-radius: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
+  transform: translateY(-2px);
+  background: #1f2937;
+  border-color: var(--primary);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
 }
 
 /* Kanban Board */
 .kanban-board {
   display: flex;
-  gap: 20px;
-  padding: 24px;
+  gap: 24px;
+  padding: 32px;
   flex: 1;
   overflow-x: auto;
   cursor: grab;
   scroll-behavior: smooth;
   user-select: none;
+  background: transparent;
 }
 
 .kanban-board:active {
@@ -552,13 +551,16 @@
 }
 
 .kanban-column {
-  flex: 0 0 320px;
-  background: #f1f5f9;
-  border-radius: 12px;
+  flex: 0 0 340px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 100px);
-  transition: all 0.2s;
+  max-height: calc(100vh - 120px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow);
 }
 
 .column-actions {
@@ -583,8 +585,8 @@
 }
 
 .column-move-btn:hover:not(:disabled) {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: var(--black);
+  border-color: var(--black);
   color: white;
 }
 
@@ -598,8 +600,8 @@
 }
 
 .kanban-column.drag-over {
-  background: #e0e7ff;
-  box-shadow: inset 0 0 0 2px #3b82f6;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 0 0 2px var(--black);
 }
 
 .column-header {
@@ -645,17 +647,18 @@
 /* Task Card */
 .kanban-card {
   background: white;
-  border-radius: 10px;
-  padding: 14px;
+  border-radius: var(--radius);
+  padding: 16px;
   cursor: grab;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  transition: all 0.2s;
-  border: 1px solid #e2e8f0;
+  box-shadow: var(--shadow);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--gray-200);
 }
 
 .kanban-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-4px) scale(1.02);
+  border-color: var(--black);
 }
 
 .kanban-card.dragging {
@@ -725,7 +728,7 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #a855f7 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -840,7 +843,7 @@
 
 .status-select:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .priority-badge {
@@ -972,13 +975,13 @@
 
 .add-comment textarea:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .btn-add-comment {
   align-self: flex-end;
   padding: 8px 16px;
-  background: #3b82f6;
+  background: var(--primary);
   color: white;
   border: none;
   border-radius: 6px;
@@ -989,7 +992,7 @@
 }
 
 .btn-add-comment:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--primary-dark);
 }
 
 .btn-add-comment:disabled {
@@ -1009,7 +1012,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #a855f7 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -1109,7 +1112,7 @@
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .form-row {
@@ -1162,7 +1165,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: #3b82f6;
+  background: var(--primary);
   color: white;
   border-radius: 20px;
   font-size: 13px;
@@ -1211,7 +1214,7 @@
 
 .assignees-edit-list .assignee-search:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .assignees-edit-list .assignee-dropdown {
@@ -1252,7 +1255,7 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: white;
   display: flex;
   align-items: center;
@@ -1269,7 +1272,7 @@
 }
 
 .assignees-edit-list .assignee-option .assignee-check {
-  color: #3b82f6;
+  color: var(--primary);
   font-weight: bold;
   font-size: 14px;
 }
@@ -1413,9 +1416,9 @@
 }
 
 .rich-text-toolbar button:hover {
-  background: #3b82f6;
+  background: var(--primary);
   color: white;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .toolbar-separator {
@@ -1441,7 +1444,7 @@
 }
 
 .rich-text-content:focus {
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .rich-text-content::placeholder {
@@ -1462,7 +1465,7 @@
 }
 
 .rich-text-content a {
-  color: #3b82f6;
+  color: var(--primary);
   text-decoration: underline;
 }
 
@@ -1485,7 +1488,7 @@
 }
 
 .task-description-html a {
-  color: #3b82f6;
+  color: var(--primary);
 }
 
 /* New Task Modal - Balanced & Spacious */
@@ -1588,7 +1591,7 @@
 
 .title-field:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
   background: white;
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
 }
@@ -1599,7 +1602,7 @@
 
 .title-field:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
   background: white;
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
 }
@@ -1640,7 +1643,7 @@
 
 .assignee-search:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
   background: white;
 }
 
@@ -1679,7 +1682,7 @@
 .setting-select:focus,
 .setting-input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
@@ -1709,7 +1712,7 @@
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #3b82f6;
+  accent-color: var(--primary);
 }
 
 .user-chip {
@@ -1722,7 +1725,7 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: white;
   display: flex;
   align-items: center;
@@ -1775,7 +1778,7 @@
   font-weight: 600;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: white;
   cursor: pointer;
   transition: all 0.2s;
@@ -1789,7 +1792,7 @@
 }
 
 .btn-create:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background: linear-gradient(135deg, var(--primary-dark), #9d174d);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
@@ -1892,7 +1895,7 @@
 }
 
 .public-board-item:hover {
-  border-color: #3b82f6;
+  border-color: var(--primary);
   background: #f1f5f9;
 }
 
@@ -1997,7 +2000,7 @@
 }
 
 .attachment-item:hover {
-  border-color: #3b82f6;
+  border-color: var(--primary);
   background: #f1f5f9;
   transform: translateY(-1px);
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);

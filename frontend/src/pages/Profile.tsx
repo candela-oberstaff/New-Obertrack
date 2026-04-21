@@ -60,7 +60,7 @@ export default function Profile() {
   const getRoleColor = () => {
     if (user?.is_superadmin) return '#8b5cf6'
     if (user?.is_manager) return '#f59e0b'
-    if (user?.user_type === 'empleador') return '#3b82f6'
+    if (user?.user_type === 'empleador') return 'var(--primary)'
     return '#10b981'
   }
 

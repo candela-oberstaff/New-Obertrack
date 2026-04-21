@@ -18,7 +18,8 @@ import {
   Plus,
   Settings2,
   UserPlus,
-  Trash2
+  Trash2,
+  CheckSquare
 } from 'lucide-react'
 import styles from './Tasks.module.css'
 
@@ -37,7 +38,7 @@ interface BoardFormData {
 
 const DEFAULT_COLUMNS: ColumnType[] = [
   { id: 'por_hacer', title: 'Por hacer', color: '#6b7280' },
-  { id: 'en_proceso', title: 'En proceso', color: '#3b82f6' },
+  { id: 'en_proceso', title: 'En proceso', color: 'var(--primary)' },
   { id: 'finalizado', title: 'Finalizado', color: '#22c55e' },
 ]
 
@@ -80,11 +81,11 @@ export default function Tasks() {
   const [boardFormData, setBoardFormData] = useState<BoardFormData>({
     name: '',
     description: '',
-    color: '#3b82f6',
+    color: 'var(--primary)',
     member_ids: [],
     phases: [
       { name: 'Por hacer', color: '#6b7280' },
-      { name: 'En proceso', color: '#3b82f6' },
+      { name: 'En proceso', color: 'var(--primary)' },
       { name: 'Finalizado', color: '#22c55e' },
     ],
   })
@@ -335,11 +336,11 @@ export default function Tasks() {
     setBoardFormData({
       name: '',
       description: '',
-      color: '#3b82f6',
+      color: 'var(--primary)',
       member_ids: [],
       phases: [
         { name: 'Por hacer', color: '#6b7280' },
-        { name: 'En proceso', color: '#3b82f6' },
+        { name: 'En proceso', color: 'var(--primary)' },
         { name: 'Finalizado', color: '#22c55e' },
       ],
     })
@@ -401,8 +402,13 @@ export default function Tasks() {
               <>
                 <div className={styles['board-select-container']}>
                   <select
-                    value={showAllTasks ? 'all' : (selectedBoard?.id || (boards.length > 0 ? boards[0].id : ''))}
+                    value={showAllTasks ? 'all' : (selectedBoard?.id || '')}
                     onChange={(e) => {
+                      if (e.target.value === '') {
+                        setShowAllTasks(false)
+                        setSelectedBoard(null)
+                        return
+                      }
                       if (e.target.value === 'all') {
                         setShowAllTasks(true)
                         setSelectedBoard(null)
@@ -412,8 +418,9 @@ export default function Tasks() {
                       const board = boards.find((b: Board) => b.id === Number(e.target.value))
                       if (board) setSelectedBoard(board)
                     }}
-                    style={{ borderLeftColor: showAllTasks ? '#6366f1' : (selectedBoard?.color || '#3b82f6') }}
+                    style={{ borderLeftColor: showAllTasks ? '#f472b6' : (selectedBoard?.color || 'transparent') }}
                   >
+                    <option value="">Seleccione un tablero...</option>
                     <option value="all">Todos los tableros</option>
                     {boards.map((board: Board) => (
                       <option key={board.id} value={board.id}>{board.name}</option>
@@ -476,14 +483,31 @@ export default function Tasks() {
         </button>
       </div>
 
-      <TasksBoard
-        tasks={tasks}
-        selectedBoard={selectedBoard}
-        onTaskClick={setSelectedTask}
-        onUpdateTask={handleUpdateTask}
-        onMovePhaseLeft={handleMovePhaseLeft}
-        onMovePhaseRight={handleMovePhaseRight}
-      />
+      {!selectedBoard && !showAllTasks ? (
+        <div className={styles['tasks-loading']} style={{ background: 'transparent' }}>
+          <div className={styles['empty-state-glass'] || styles['dashboard-card']}>
+            <CheckSquare size={64} style={{ color: 'var(--primary)', marginBottom: '24px', opacity: 0.6 }} />
+            <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--black)', marginBottom: '12px' }}>
+              Comienza seleccionando un tablero
+            </h2>
+            <p style={{ color: '#64748b', fontSize: '16px', maxWidth: '400px', margin: '0 auto 32px' }}>
+              Elige uno de tus tableros en el menú superior o crea uno nuevo para empezar a gestionar tus tareas.
+            </p>
+            <button className={styles['btn-primary']} onClick={openBoardModal}>
+              <Plus size={18} /> Crear Nuevo Tablero
+            </button>
+          </div>
+        </div>
+      ) : (
+        <TasksBoard
+          tasks={tasks}
+          selectedBoard={selectedBoard}
+          onTaskClick={setSelectedTask}
+          onUpdateTask={handleUpdateTask}
+          onMovePhaseLeft={handleMovePhaseLeft}
+          onMovePhaseRight={handleMovePhaseRight}
+        />
+      )}
 
       {selectedTask && (
         <TaskDetailPanel

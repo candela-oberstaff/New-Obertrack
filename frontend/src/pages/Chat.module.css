@@ -74,7 +74,7 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -229,7 +229,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
   color: white;
   display: flex;
   align-items: center;
@@ -247,7 +247,7 @@
 }
 
 .message.own .message-bubble {
-  background: #3b82f6;
+  background: var(--primary);
   color: white;
 }
 
@@ -255,7 +255,7 @@
   display: block;
   font-size: 12px;
   font-weight: 600;
-  color: #3b82f6;
+  color: var(--primary);
   margin-bottom: 4px;
 }
 
@@ -302,7 +302,7 @@
 }
 
 .chat-input input:focus {
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .chat-input input:disabled {
@@ -314,7 +314,7 @@
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: var(--primary);
   border: none;
   color: white;
   cursor: pointer;
@@ -325,7 +325,7 @@
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--primary-dark);
   transform: scale(1.05);
 }
 
@@ -366,7 +366,7 @@
   border-radius: 8px;
   margin-top: 8px;
   font-size: 13px;
-  color: #3b82f6;
+  color: var(--primary);
   text-decoration: none;
 }
 

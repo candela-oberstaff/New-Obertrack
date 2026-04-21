@@ -22,7 +22,7 @@ interface UseBoardsReturn {
 
 const DEFAULT_PHASES = [
   { name: 'Por hacer', color: '#6b7280' },
-  { name: 'En proceso', color: '#3b82f6' },
+  { name: 'En proceso', color: 'var(--primary)' },
   { name: 'Finalizado', color: '#22c55e' },
 ]
 
@@ -35,7 +35,7 @@ export function useBoards(): UseBoardsReturn {
   const [newBoardData, setNewBoardData] = useState<CreateBoardInput>({
     name: '',
     description: '',
-    color: '#3b82f6',
+    color: 'var(--primary)',
     member_ids: [],
     phases: DEFAULT_PHASES,
   })
@@ -44,8 +44,12 @@ export function useBoards(): UseBoardsReturn {
     setIsLoading(true)
     try {
       const boardsRes = await boardService.getAll()
-      setBoards(boardsRes || [])
-      return boardsRes || []
+      // Deduplicate by ID to avoid React key warnings and duplicates in rendering
+      const unique = (boardsRes || []).filter(
+        (b: Board, idx: number, arr: Board[]) => arr.findIndex((x: Board) => x.id === b.id) === idx
+      )
+      setBoards(unique)
+      return unique
     } catch (error) {
       console.error('Error fetching boards:', error)
       return []
@@ -64,12 +68,8 @@ export function useBoards(): UseBoardsReturn {
   }, [])
 
   useEffect(() => {
-    fetchBoards().then((boardsRes) => {
-      if (boardsRes && boardsRes.length > 0 && !selectedBoard) {
-        setSelectedBoard(boardsRes[0])
-      }
-    })
-  }, [])
+    fetchBoards()
+  }, [fetchBoards])
 
   const createBoard = useCallback(async (data: CreateBoardInput): Promise<Board | null> => {
     if (!data.name?.trim()) return null
@@ -79,7 +79,7 @@ export function useBoards(): UseBoardsReturn {
       setNewBoardData({
         name: '',
         description: '',
-        color: '#3b82f6',
+        color: 'var(--primary)',
         member_ids: [],
         phases: DEFAULT_PHASES,
       })
@@ -97,13 +97,9 @@ export function useBoards(): UseBoardsReturn {
 
   const deleteBoard = useCallback(async (boardId: number) => {
     await boardService.delete(boardId)
-    const boardsRes = await fetchBoards()
+    await fetchBoards()
     if (selectedBoard?.id === boardId) {
-      if (boardsRes.length > 0) {
-        setSelectedBoard(boardsRes[0])
-      } else {
-        setSelectedBoard(null)
-      }
+      setSelectedBoard(null)
     }
   }, [fetchBoards, selectedBoard])
 

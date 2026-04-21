@@ -53,7 +53,7 @@
 .toast-info {
   background: #dbeafe;
   border: 1px solid #bfdbfe;
-  color: #2563eb;
+  color: var(--primary-dark);
 }
 
 .toast-icon {
@@ -84,7 +84,7 @@
 }
 
 .toast-info .toast-icon {
-  background: #2563eb;
+  background: var(--primary-dark);
   color: white;
 }
 

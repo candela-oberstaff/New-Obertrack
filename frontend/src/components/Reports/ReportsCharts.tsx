@@ -51,7 +51,7 @@ export function ReportsCharts({ dailyData, workHours, user }: ReportsChartsProps
                 contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                 formatter={(val) => isProf ? [`${val} Día`, 'Actividad'] : [`${val}h`, 'Horas']}
               />
-              <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} name={isProf ? 'Días' : 'Horas'} />
+              <Bar dataKey="value" fill="var(--primary)" radius={[4, 4, 0, 0]} name={isProf ? 'Días' : 'Horas'} />
               <Bar dataKey="target" fill="#e2e8f0" radius={[4, 4, 0, 0]} name="Meta" />
             </BarChart>
           </ResponsiveContainer>

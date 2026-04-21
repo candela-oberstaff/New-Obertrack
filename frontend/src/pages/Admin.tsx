@@ -90,7 +90,7 @@ export default function Admin() {
           <div className={styles['dashboard-tab']}>
             <div className={styles['stats-grid']}>
               <div className={styles['stat-card']}>
-                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>
+                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}>
                   <Users size={26} />
                 </div>
                 <div className={styles['stat-info']}>

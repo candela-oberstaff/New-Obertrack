@@ -28,7 +28,7 @@ interface TasksBoardProps {
 
 const DEFAULT_COLUMNS: ColumnType[] = [
   { id: 'por_hacer', title: 'Por hacer', color: '#6b7280' },
-  { id: 'en_proceso', title: 'En proceso', color: '#3b82f6' },
+  { id: 'en_proceso', title: 'En proceso', color: 'var(--primary)' },
   { id: 'finalizado', title: 'Finalizado', color: '#22c55e' },
 ]
 

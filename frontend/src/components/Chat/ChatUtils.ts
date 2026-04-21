@@ -70,7 +70,7 @@ export const playNotificationSound = () => {
 }
 
 export const USER_COLORS = [
-  '#3b82f6', // blue
+  'var(--primary)', // pink
   '#ef4444', // red
   '#10b981', // emerald
   '#f59e0b', // amber
@@ -79,7 +79,7 @@ export const USER_COLORS = [
   '#06b6d4', // cyan
   '#f97316', // orange
   '#84cc16', // lime
-  '#6366f1'  // indigo
+  '#db2777'  // dark pink instead of indigo
 ]
 
 export const getUserColor = (name: string): string => {

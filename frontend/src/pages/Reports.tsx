@@ -195,7 +195,7 @@ export default function Reports() {
                     const count = data.value
                     const total = tasks.length || 1
                     const width = (count / total) * 100
-                    const color = p === 'Urgente' ? '#ef4444' : p === 'Alta' ? '#f97316' : p === 'Media' ? '#f59e0b' : '#3b82f6'
+                    const color = p === 'Urgente' ? '#ef4444' : p === 'Alta' ? '#f97316' : p === 'Media' ? '#f59e0b' : 'var(--primary)'
                     if (count === 0) return null
                     return (
                       <div key={p} className={styles['priority-bar-segment']} style={{ width: `${width}%`, background: color }} title={`${p}: ${count}`}>

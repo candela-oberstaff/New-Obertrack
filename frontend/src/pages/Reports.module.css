@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  background: white;
+  background: transparent;
 }
 
 .reports-loading {
@@ -18,7 +18,7 @@
   width: 40px;
   height: 40px;
   border: 3px solid #e5e7eb;
-  border-top-color: #3b82f6;
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -32,9 +32,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 32px;
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 40px 32px 32px;
+  background: transparent;
 }
 
 .header-left h1 {
@@ -54,9 +53,8 @@
 .reports-filters {
   display: flex;
   gap: 16px;
-  padding: 20px 32px;
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 24px 32px;
+  background: transparent;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -73,7 +71,7 @@
 
 .filter-select:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .month-selector {
@@ -109,7 +107,7 @@
 
 .month-input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
 }
 
 .report-type-tabs {
@@ -134,9 +132,9 @@
 }
 
 .tab-btn.active {
-  background: white;
-  color: #3b82f6;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  background: var(--black);
+  color: white;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 /* Content */
@@ -156,10 +154,18 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px;
-  background: white;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  padding: 24px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stat-card-modern:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
 }
 
 .stat-card-modern .stat-icon {
@@ -172,8 +178,9 @@
 }
 
 .stat-card-modern .stat-icon.blue {
-  background: #eff6ff;
-  color: #3b82f6;
+  background: #f8fafc;
+  color: var(--black);
+  border: 1px solid #e1e4e8;
 }
 
 .stat-card-modern .stat-icon.green {
@@ -256,15 +263,17 @@
 }
 
 .breakdown-card {
-  background: white;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  border-radius: var(--radius-xl);
   padding: 24px;
   display: flex;
   gap: 20px;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow);
 }
 
 .breakdown-card:hover {
@@ -320,13 +329,13 @@
 
 .progress-fill {
   height: 100%;
-  background: #3b82f6;
+  background: var(--primary);
   border-radius: 4px;
   transition: width 0.3s ease;
 }
 
 .progress-breakdown .breakdown-value {
-  color: #3b82f6;
+  color: var(--primary);
 }
 
 @media (max-width: 1024px) {
@@ -343,9 +352,11 @@
 
 /* Detail Table */
 .detail-table {
-  background: white;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow);
   overflow: hidden;
   margin-top: 32px;
 }
