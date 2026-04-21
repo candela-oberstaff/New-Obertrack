@@ -208,7 +208,7 @@ export default function SlackChat() {
                     const optimisticMsg: Message = { id: 0, channel_id: selectedChannel!.id, user_id: user!.id, content, tempId, created_at: new Date().toISOString(), user: user! as any }
                     setMessages(prev => [...prev, optimisticMsg])
                     setNewMessage('')
-                    sendMessage(content, tempId)
+                    sendMessage(undefined, tempId, content)
                   }
                 }}
               />

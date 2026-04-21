@@ -13,7 +13,8 @@ import {
   Settings,
   ChevronRight,
   ChevronLeft,
-  LogOut
+  LogOut,
+  Plug
 } from 'lucide-react'
 import styles from './Layout.module.css'
 
@@ -126,7 +127,16 @@ export default function Layout() {
 
       <main className={styles['main-content']}>
         <div className={styles['top-bar']}>
-          <Notifications />
+          <div className={styles['top-bar-actions']}>
+            <NavLink 
+              to="/google-chat" 
+              className={({ isActive }) => `${styles['plugin-btn']} ${isActive ? styles['active'] : ''}`}
+              title="Google Chat"
+            >
+              <Plug size={20} />
+            </NavLink>
+            <Notifications />
+          </div>
         </div>
         <div className={`${styles['outlet-container']} ${isChatPage ? styles['chat-layout'] : ''}`}>
           <Outlet />

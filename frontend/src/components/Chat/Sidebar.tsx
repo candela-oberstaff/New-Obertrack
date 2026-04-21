@@ -31,7 +31,7 @@ export function Sidebar({
   isResizing
 }: SidebarProps) {
   const publicChannels = channels.filter(c => c.type === 'public')
-  const privateChannels = channels.filter(c => c.type === 'private')
+  // const privateChannels = channels.filter(c => c.type === 'private')
   const directMessages = channels.filter(c => c.type === 'direct')
 
   return (

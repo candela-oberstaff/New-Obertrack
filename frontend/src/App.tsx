@@ -9,8 +9,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const WorkHours = lazy(() => import('./pages/WorkHours'))
 const Reports = lazy(() => import('./pages/Reports'))
-// SlackChat oculto — reemplazado por Google Chat
-// const SlackChat = lazy(() => import('./pages/SlackChat'))
+const SlackChat = lazy(() => import('./pages/SlackChat'))
 const GoogleChat = lazy(() => import('./pages/GoogleChat'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Admin = lazy(() => import('./pages/Admin'))
@@ -94,7 +93,8 @@ function App() {
           <Route path="tasks" element={<Tasks />} />
           <Route path="work-hours" element={<WorkHours />} />
           <Route path="reports" element={<Reports />} />
-          <Route path="chat" element={<GoogleChat />} />
+          <Route path="chat" element={<SlackChat />} />
+          <Route path="google-chat" element={<GoogleChat />} />
           <Route path="profile" element={<Profile />} />
           <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
         </Route>

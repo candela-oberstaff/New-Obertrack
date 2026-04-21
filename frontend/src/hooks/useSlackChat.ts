@@ -154,9 +154,10 @@ export function useSlackChat(user: User | null, token: string | null) {
     }
   }, [selectedChannel, fetchMessages, fetchChannelMembers, fetchPinnedMessages, connectWebSocket])
 
-  const sendMessage = useCallback((attachment?: { url: string; filename: string }, tempId?: string) => {
-    if ((!newMessage.trim() && !attachment) || !selectedChannel) return
-    const content = attachment ? `${newMessage} [Archivo: ${attachment.filename}]` : newMessage
+  const sendMessage = useCallback((attachment?: { url: string; filename: string }, tempId?: string, contentOverride?: string) => {
+    const textToSend = contentOverride !== undefined ? contentOverride : newMessage
+    if ((!textToSend.trim() && !attachment) || !selectedChannel) return
+    const content = attachment ? `${textToSend} [Archivo: ${attachment.filename}]` : textToSend
     channelService.sendMessage(selectedChannel.id, { content, attachment: attachment?.url, file_name: attachment?.filename })
       .then(msg => {
         setMessages(prev => prev.filter(m => m.tempId !== tempId).concat([{ ...msg }]))
