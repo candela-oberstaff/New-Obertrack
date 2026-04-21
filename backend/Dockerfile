@@ -6,15 +6,15 @@ WORKDIR /app
 # Install git and ca-certificates (required for some go modules)
 RUN apk add --no-cache git ca-certificates
 
-# Copy go mod and sum files
+# Copy go mod and vendor files
 COPY go.mod go.sum ./
-RUN go mod download
+COPY vendor/ ./vendor/
 
 # Copy the source code
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -o main ./cmd/main.go
 
 # Run stage
 FROM alpine:latest
