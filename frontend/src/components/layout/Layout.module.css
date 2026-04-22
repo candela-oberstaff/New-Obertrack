@@ -176,7 +176,7 @@
 
 .user-role {
   font-size: 12px;
-  opacity: 0.6;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .sidebar-nav {
@@ -193,7 +193,7 @@
   padding: 12px;
   margin-bottom: 4px;
   border-radius: 10px;
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.85);
   text-decoration: none;
   transition: all 0.2s;
   white-space: nowrap;

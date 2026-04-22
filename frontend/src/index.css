@@ -49,7 +49,7 @@
 
   /* Glassmorphism Tokens */
   --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-bg-dark: rgba(17, 24, 39, 0.75);
+  --glass-bg-dark: rgba(15, 23, 42, 0.98);
   --glass-border: rgba(255, 255, 255, 0.4);
   --glass-border-dark: rgba(255, 255, 255, 0.08);
   --blur: blur(20px);
