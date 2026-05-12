@@ -14,11 +14,19 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - SERVER_PORT=8080
     restart: always
+    # AÑADE ESTO:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy # Esto asegura que el front no arranque hasta que el back esté OK
     restart: always
