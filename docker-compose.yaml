@@ -26,7 +26,5 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    depends_on:
-      backend:
-        condition: service_healthy # Esto asegura que el front no arranque hasta que el back esté OK
+    
     restart: always
