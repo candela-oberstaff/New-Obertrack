@@ -29,6 +29,10 @@ export default function Layout() {
   const isChatPage = location.pathname.startsWith('/chat')
 
   useEffect(() => {
+    setAvatarError(false)
+  }, [user?.avatar])
+
+  useEffect(() => {
     if (!token) return
 
     const fetchTotalUnread = async () => {

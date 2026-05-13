@@ -17,6 +17,10 @@ export default function Profile() {
   const avatarInputRef = useRef<HTMLInputElement>(null)
   
   const canApprove = user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador'
+  
+  useEffect(() => {
+    setAvatarError(false)
+  }, [user?.avatar])
 
 
 

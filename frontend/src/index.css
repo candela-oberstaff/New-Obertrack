@@ -37,7 +37,6 @@
 :root {
   /* ── Brand Colors ── */
   /* Violet */
-  --color-violet: #ee2ee;
   --color-violet: #ee82ee;        /* RGB 238,130,238 / Hex ee82ee */
   /* Blue Violet */
   --color-blue-violet: #8a2be2;   /* Hex 8a2be2 — BlueViolet anchor */
@@ -49,7 +48,6 @@
   /* Neon Ice */
   --color-neon-ice: #15f4ee;      /* Hex 15f4ee / RGB 21,244,238 */
   /* Fresh Sky */
-  --color-fresh-sky: #45ble6;
   --color-fresh-sky: #45b1e6;     /* Hex 45b1e6 / RGB 69,177,232 */
   /* Azure Blue */
   --color-azure: #007fff;         /* Hex 007fff / RGB 0,127,255 */
