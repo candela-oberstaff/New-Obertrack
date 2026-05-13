@@ -29,7 +29,8 @@ export default function Login() {
   return (
     <div className={styles['auth-container']}>
       <div className={styles['auth-card']}>
-        <h1>Obertrack</h1>
+        <img src="/logos/Vertical_Blanco.png" alt="Obertrack" className={styles['auth-logo']} />
+        <p className={styles['auth-tagline']}>Remote Work Tracking</p>
         <h2>Iniciar Sesión</h2>
 
         {error && <div className={styles['error-message']}>{error}</div>}

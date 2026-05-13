@@ -6,65 +6,119 @@
 
 /* Modern Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: rgba(6, 11, 35, 0.05);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: rgba(129, 43, 226, 0.3);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: rgba(129, 43, 226, 0.5);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 #f1f5f9;
+  scrollbar-color: rgba(129, 43, 226, 0.3) rgba(6, 11, 35, 0.05);
 }
 
+/* ================================================================
+   OBERTRACK BRAND DESIGN TOKENS
+   Fuente: Plus Jakarta Sans (200–800)
+   Paleta: Mini brand guideline
+   ================================================================ */
 :root {
-  --primary: #f472b6;
-  --primary-light: #f9a8d4;
-  --primary-dark: #db2777;
-  --primary-soft: #fdf2f8;
-  --black: #111827;
-  --black-light: #1f2937;
-  --white: #ffffff;
-  --white-smoke: #f9fafb;
-  --gray-100: #f3f4f6;
-  --gray-200: #e5e7eb;
-  --gray-300: #d1d5db;
-  --gray-400: #9ca3af;
-  --gray-500: #6b7280;
+  /* ── Brand Colors ── */
+  /* Violet */
+  --color-violet: #ee2ee;
+  --color-violet: #ee82ee;        /* RGB 238,130,238 / Hex ee82ee */
+  /* Blue Violet */
+  --color-blue-violet: #8a2be2;   /* Hex 8a2be2 — BlueViolet anchor */
+  --color-blue-violet-hex: #8b2be2; /* Hex 8b2be2 / RGB 139,43,226 */
+  /* Vivid Orchid */
+  --color-orchid: #cc33cc;        /* Hex cc33cc / RGB 204,51,204 */
+  /* Indigo Velvet */
+  --color-indigo: #512868;        /* Hex 512868 / RGB 81,40,136 */
+  /* Neon Ice */
+  --color-neon-ice: #15f4ee;      /* Hex 15f4ee / RGB 21,244,238 */
+  /* Fresh Sky */
+  --color-fresh-sky: #45ble6;
+  --color-fresh-sky: #45b1e6;     /* Hex 45b1e6 / RGB 69,177,232 */
+  /* Azure Blue */
+  --color-azure: #007fff;         /* Hex 007fff / RGB 0,127,255 */
+  /* Smart Blue */
+  --color-smart-blue: #2d68c4;    /* Hex 2d68c4 / RGB 45,104,196 */
+  /* Lavender Mist */
+  --color-lavender: #f5f2fb;      /* Hex f5f2fb / RGB 245,242,251 */
+  /* Prussian Blue (darkest base) */
+  --color-prussian: #060b23;      /* Hex 060b23 / RGB 6,11,35 */
+
+  /* ── Semantic Aliases ── */
+  --primary:        var(--color-orchid);       /* Vivid Orchid — main brand accent */
+  --primary-light:  #d966d6;
+  --primary-dark:   var(--color-indigo);
+  --primary-soft:   var(--color-lavender);
+
+  --accent:         var(--color-neon-ice);     /* Neon Ice — highlights */
+  --accent-alt:     var(--color-azure);        /* Azure Blue — links / CTAs */
+
+  /* Dark surfaces */
+  --dark-base:      var(--color-prussian);     /* #060b23 */
+  --dark-surface:   #0d1332;
+  --dark-elevated:  #141a3d;
+
+  /* Neutrals */
+  --black:          #060b23;
+  --black-light:    #141a3d;
+  --white:          #ffffff;
+  --white-smoke:    #f5f2fb;
+  --gray-100:       #f0eef8;
+  --gray-200:       #ddd9ef;
+  --gray-300:       #b8b2d4;
+  --gray-400:       #8880a8;
+  --gray-500:       #5c5680;
+
+  /* State colors */
   --success: #10b981;
   --warning: #f59e0b;
-  --danger: #ef4444;
+  --danger:  #ef4444;
 
-  /* Glassmorphism Tokens */
-  --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-bg-dark: rgba(15, 23, 42, 0.98);
-  --glass-border: rgba(255, 255, 255, 0.4);
-  --glass-border-dark: rgba(255, 255, 255, 0.08);
+  /* ── Glassmorphism ── */
+  --glass-bg:          rgba(245, 242, 251, 0.65);
+  --glass-bg-dark:     rgba(6, 11, 35, 0.96);
+  --glass-border:      rgba(255, 255, 255, 0.4);
+  --glass-border-dark: rgba(255, 255, 255, 0.07);
   --blur: blur(20px);
 
-  /* Elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  
-  /* Geometry */
+  /* ── Elevation / Shadows ── */
+  --shadow-sm:  0 1px 2px rgba(6, 11, 35, 0.08);
+  --shadow:     0 4px 6px -1px rgba(6, 11, 35, 0.12), 0 2px 4px -1px rgba(6, 11, 35, 0.07);
+  --shadow-md:  0 10px 15px -3px rgba(6, 11, 35, 0.14), 0 4px 6px -2px rgba(6, 11, 35, 0.08);
+  --shadow-lg:  0 20px 25px -5px rgba(6, 11, 35, 0.18), 0 10px 10px -5px rgba(6, 11, 35, 0.1);
+  --shadow-glow: 0 0 24px rgba(204, 51, 204, 0.25);
+
+  /* ── Geometry ── */
   --radius-sm: 8px;
-  --radius: 12px;
+  --radius:    12px;
   --radius-lg: 20px;
   --radius-xl: 32px;
+
+  /* ── Typography ── */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-weight-extralight: 200;
+  --font-weight-light:      300;
+  --font-weight-regular:    400;
+  --font-weight-medium:     500;
+  --font-weight-semibold:   600;
+  --font-weight-bold:       700;
+  --font-weight-extrabold:  800;
 }
 
 html, body, #root {
@@ -74,12 +128,13 @@ html, body, #root {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-regular);
   color: var(--black);
-  line-height: 1.5;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: transparent; /* must be transparent to show ::before behind it if using z-index -1 */
+  background: transparent;
   position: relative;
   min-height: 100vh;
 }
@@ -94,13 +149,13 @@ body::before {
   background: url('/auth_background.png');
   background-size: cover;
   background-position: center;
-  opacity: 0.15; /* Increased for better visibility */
+  opacity: 0.12;
   pointer-events: none;
   z-index: -1;
-  filter: contrast(1.1) brightness(1.1);
+  filter: contrast(1.1) brightness(1.05);
 }
 
-/* Base utility classes for transitions */
+/* Base utility — inherit brand font everywhere */
 button, a, input, select, textarea {
   font-family: inherit;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);

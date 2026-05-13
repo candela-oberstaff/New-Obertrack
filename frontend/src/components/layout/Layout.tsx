@@ -3,13 +3,13 @@ import { useAuth } from '../../context/AuthContext'
 import Notifications from '../Notifications'
 import { useState, useEffect } from 'react'
 import { channelService } from '../../services/api'
-import { 
-  LayoutDashboard, 
-  CheckSquare, 
-  Clock, 
-  BarChart3, 
-  MessageCircle, 
-  User, 
+import {
+  LayoutDashboard,
+  CheckSquare,
+  Clock,
+  BarChart3,
+  MessageCircle,
+  User,
   Settings,
   ChevronRight,
   ChevronLeft,
@@ -24,7 +24,8 @@ export default function Layout() {
   const location = useLocation()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [totalChatUnread, setTotalChatUnread] = useState(0)
-  
+  const [avatarError, setAvatarError] = useState(false)
+
   const isChatPage = location.pathname.startsWith('/chat')
 
   useEffect(() => {
@@ -80,12 +81,24 @@ export default function Layout() {
     <div className={`${styles['app-layout']} ${sidebarCollapsed ? styles['sidebar-collapsed'] : ''}`}>
       <aside className={styles['sidebar']}>
         <div className={styles['sidebar-header']}>
-          <h1>{sidebarCollapsed ? 'O' : 'Obertrack'}</h1>
+          {sidebarCollapsed
+            ? <img src="/logos/Isotipo_Color.png" alt="Obertrack" className={styles['sidebar-isotipo']} />
+            : <img src="/logos/Horizontal_Blanco.png" alt="Obertrack" className={styles['sidebar-logo']} />
+          }
         </div>
-        
+
         <div className={styles['sidebar-user']}>
           <div className={styles['user-avatar']}>
-            {user?.name?.charAt(0).toUpperCase()}
+            {user?.avatar && !avatarError ? (
+              <img 
+                src={user.avatar} 
+                alt={user.name} 
+                className={styles['avatar-img']} 
+                onError={() => setAvatarError(true)}
+              />
+            ) : (
+              user?.name?.charAt(0).toUpperCase()
+            )}
           </div>
           {!sidebarCollapsed && (
             <div className={styles['user-info']}>
@@ -128,8 +141,8 @@ export default function Layout() {
       <main className={styles['main-content']}>
         <div className={styles['top-bar']}>
           <div className={styles['top-bar-actions']}>
-            <NavLink 
-              to="/google-chat" 
+            <NavLink
+              to="/google-chat"
               className={({ isActive }) => `${styles['plugin-btn']} ${isActive ? styles['active'] : ''}`}
               title="Google Chat"
             >

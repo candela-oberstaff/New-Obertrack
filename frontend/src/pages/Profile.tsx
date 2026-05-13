@@ -12,6 +12,7 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const [avatarError, setAvatarError] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   const avatarInputRef = useRef<HTMLInputElement>(null)
   
@@ -71,8 +72,13 @@ export default function Profile() {
         <div className={styles['profile-main']}>
           <div className={styles['profile-avatar-section']}>
             <div className={styles['profile-avatar']} onClick={() => !isUploadingAvatar && avatarInputRef.current?.click()}>
-              {user?.avatar ? (
-                <img src={user.avatar} alt={user.name} className={`${styles['avatar-image']} ${styles['large']}`} />
+              {user?.avatar && !avatarError ? (
+                <img 
+                  src={user.avatar} 
+                  alt={user.name} 
+                  className={`${styles['avatar-image']} ${styles['large']}`} 
+                  onError={() => setAvatarError(true)}
+                />
               ) : (
                 <div className={`${styles['avatar-placeholder']} ${styles['large']}`}>
                   {user?.name?.charAt(0).toUpperCase()}

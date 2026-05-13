@@ -62,7 +62,8 @@ export default function Register() {
   return (
     <div className={styles['auth-container']}>
       <div className={styles['auth-card']}>
-        <h1>Obertrack</h1>
+        <img src="/logos/Vertical_Blanco.png" alt="Obertrack" className={styles['auth-logo']} />
+        <p className={styles['auth-tagline']}>Remote Work Tracking</p>
         <div className={styles['auth-header']}>
           <h2>Crear Cuenta</h2>
           <p>Únete a la plataforma de gestión de equipos</p>
