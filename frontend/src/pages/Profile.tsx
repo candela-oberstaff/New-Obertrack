@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { userService, uploadService } from '../services/api'
 import { ProfileForm } from '../components/Profile/ProfileForm'
