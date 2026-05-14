@@ -77,8 +77,9 @@ export function useChat(): UseChatReturn {
     const token = localStorage.getItem('token')
     if (!token) return
 
-    const wsUrl = (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:8080'
-    const ws = new WebSocket(`${wsUrl}/ws/channels?token=${token}`)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/ws/channels?token=${token}`
+    const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
       console.log('Chat WebSocket connected')
