@@ -14,7 +14,7 @@ const Metrics: React.FC = () => {
   return (
     <div className={styles['metrics-section']}>
       <div className={commonStyles['section-header']}>
-        <h2>Métricas de Rendimiento</h2>
+        <h2>Métricas de Rendimiento (EN CONSTRUCCIÓN)</h2>
       </div>
 
       <div className={styles['metrics-overview']}>
