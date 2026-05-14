@@ -214,6 +214,36 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				channels.GET("/statuses", channelHandler.GetStatuses)
 				channels.POST("/dm", channelHandler.CreateDirectMessage)
 			}
+
+			emailRepo := repository.NewEmailRepository(db)
+			brevoSvc := service.NewBrevoService()
+			emailHandler := handlers.NewEmailHandler(emailRepo, brevoSvc)
+			email := api.Group("/email")
+			email.Use(middleware.RequireSuperadmin())
+			{
+				email.GET("/templates", emailHandler.GetTemplates)
+				email.POST("/templates", emailHandler.CreateTemplate)
+				email.PUT("/templates/:id", emailHandler.UpdateTemplate)
+				email.GET("/campaigns", emailHandler.GetCampaigns)
+				email.POST("/campaigns", emailHandler.CreateCampaign)
+				email.PUT("/campaigns/:id", emailHandler.UpdateCampaign)
+				email.POST("/campaigns/:id/send", emailHandler.SendCampaign)
+			}
+
+			surveyRepo := repository.NewSurveyRepository(db)
+			surveyHandler := handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifRepo)
+			surveys := api.Group("/surveys")
+			{
+				// Admin routes
+				surveys.POST("", middleware.RequireSuperadmin(), surveyHandler.CreateSurvey)
+				surveys.GET("", middleware.RequireSuperadmin(), surveyHandler.GetSurveys)
+				surveys.PUT("/:id", middleware.RequireSuperadmin(), surveyHandler.UpdateSurvey)
+				surveys.POST("/:id/send", middleware.RequireSuperadmin(), surveyHandler.SendSurvey)
+				
+				// User routes
+				surveys.GET("/:id", surveyHandler.GetSurvey)
+				surveys.POST("/:id/responses", surveyHandler.SubmitResponse)
+			}
 		}
 	}
 

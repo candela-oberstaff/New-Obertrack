@@ -98,6 +98,7 @@
   min-height: 0;
   overflow-y: auto;
   padding: 24px;
+  position: relative;
 }
 
 .outlet-container.chat-layout {
@@ -149,30 +150,6 @@
 .app-layout.sidebar-collapsed .sidebar-user {
   padding: 16px 0;
   justify-content: center;
-}
-
-.user-avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #1a1040, #2b1260);
-  border: 1px solid rgba(204, 51, 204, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 15px;
-  flex-shrink: 0;
-  color: var(--color-neon-ice);
-  letter-spacing: 0;
-  overflow: hidden;
-}
-
-.avatar-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
 }
 
 .user-info {

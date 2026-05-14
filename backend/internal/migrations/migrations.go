@@ -82,6 +82,45 @@ func Run(db *gorm.DB) error {
 				return tx.Exec(sql).Error
 			},
 		},
+		{
+			ID: "202605131730_reset_email_tables_clean",
+			Migrate: func(tx *gorm.DB) error {
+				// Drop existing tables to avoid conflicts with old schemas
+				tx.Migrator().DropTable("email_campaigns", "email_templates")
+				return tx.AutoMigrate(&models.EmailTemplate{}, &models.EmailCampaign{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.EmailTemplate{}, &models.EmailCampaign{})
+			},
+		},
+		{
+			ID: "202605141135_add_email_recipient_list",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.EmailCampaign{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.EmailCampaign{}, "recipient_list")
+			},
+		},
+		{
+			ID: "202605141615_add_survey_tables",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(
+					&models.Survey{},
+					&models.SurveyQuestion{},
+					&models.SurveyResponse{},
+					&models.SurveyAnswer{},
+				)
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					&models.Survey{},
+					&models.SurveyQuestion{},
+					&models.SurveyResponse{},
+					&models.SurveyAnswer{},
+				)
+			},
+		},
 		// Future migrations go here
 	})
 

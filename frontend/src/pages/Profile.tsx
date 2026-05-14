@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { userService, uploadService } from '../services/api'
 import { ProfileForm } from '../components/Profile/ProfileForm'
 import { PasswordModal } from '../components/Profile/PasswordModal'
 import { PendingHoursPanel } from '../components/Profile/PendingHoursPanel'
 import { TeamPanel } from '../components/Profile/TeamPanel'
+import Avatar from '../components/Common/Avatar'
 import styles from './Profile.module.css'
 
 export default function Profile() {
@@ -12,15 +13,10 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
-  const [avatarError, setAvatarError] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   const avatarInputRef = useRef<HTMLInputElement>(null)
   
   const canApprove = user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador'
-  
-  useEffect(() => {
-    setAvatarError(false)
-  }, [user?.avatar])
 
 
 
@@ -76,18 +72,11 @@ export default function Profile() {
         <div className={styles['profile-main']}>
           <div className={styles['profile-avatar-section']}>
             <div className={styles['profile-avatar']} onClick={() => !isUploadingAvatar && avatarInputRef.current?.click()}>
-              {user?.avatar && !avatarError ? (
-                <img 
-                  src={user.avatar} 
-                  alt={user.name} 
-                  className={`${styles['avatar-image']} ${styles['large']}`} 
-                  onError={() => setAvatarError(true)}
-                />
-              ) : (
-                <div className={`${styles['avatar-placeholder']} ${styles['large']}`}>
-                  {user?.name?.charAt(0).toUpperCase()}
-                </div>
-              )}
+              <Avatar 
+                src={user?.avatar} 
+                name={user?.name} 
+                size="xl" 
+              />
               {isUploadingAvatar && <div className={styles['avatar-loading']}>⟳</div>}
             </div>
             <input

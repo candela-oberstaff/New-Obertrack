@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Shield
 } from 'lucide-react'
+import Avatar from '../components/Common/Avatar'
 import styles from '../components/Admin/Admin.module.css'
 
 export default function Admin() {
@@ -182,9 +183,11 @@ export default function Admin() {
                     <tr key={u.id || `user-${index}`}>
                       <td>
                         <div className={styles['user-cell']}>
-                          <div className={styles['user-avatar']}>
-                            {u.name?.charAt(0).toUpperCase()}
-                          </div>
+                          <Avatar 
+                            src={u.avatar} 
+                            name={u.name} 
+                            size="sm" 
+                          />
                           <span>{u.name}</span>
                         </div>
                       </td>
@@ -256,9 +259,11 @@ export default function Admin() {
                 {companies.map((company: any, index: number) => (
                   <div key={company.id || `company-${index}`} className={styles['company-card']}>
                     <div className={styles['company-header']}>
-                      <div className={styles['company-avatar']}>
-                        {company.name?.charAt(0).toUpperCase()}
-                      </div>
+                      <Avatar 
+                        src={company.logo} 
+                        name={company.name} 
+                        size="md" 
+                      />
                       <div className={styles['company-info']}>
                         <h4>{company.name}</h4>
                         <p>{company.email}</p>

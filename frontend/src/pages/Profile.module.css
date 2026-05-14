@@ -38,17 +38,7 @@
   opacity: 0.85;
 }
 
-.profile-avatar .avatar-image.large {
-  width: 120px;
-  height: 120px;
-  min-width: 120px;
-  min-height: 120px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 4px solid white;
-  box-shadow: var(--shadow-lg);
-  background: white;
-}
+
 
 .profile-avatar .avatar-loading {
   position: absolute;
@@ -68,22 +58,7 @@
   to { transform: rotate(360deg); }
 }
 
-.profile-avatar .avatar-placeholder.large {
-  width: 120px;
-  height: 120px;
-  min-width: 120px;
-  min-height: 120px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--color-blue-violet) 100%);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 48px;
-  font-weight: 700;
-  border: 4px solid white;
-  box-shadow: var(--shadow-lg);
-}
+
 
 .profile-title h1 {
   font-size: 28px;
@@ -366,19 +341,7 @@
   border: 1px solid #e2e8f0;
 }
 
-.member-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 14px;
-  flex-shrink: 0;
-}
+
 
 .member-info {
   flex: 1;

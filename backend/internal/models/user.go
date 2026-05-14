@@ -12,8 +12,8 @@ type TaskPriority string
 
 const (
 	UserTypeEmployer     UserType = "empleador"
-	UserTypeProfessional UserType = "profesional"
-	UserTypeSuperadmin   UserType = "superadmin"
+	UserTypeProfessional UserType = "empleado"
+	UserTypeSuperadmin   UserType = "empleador"
 
 	TaskStatusTodo      TaskStatus = "por_hacer"
 	TaskStatusInProcess TaskStatus = "en_proceso"
@@ -31,7 +31,7 @@ type User struct {
 	Email               string         `gorm:"size:255;uniqueIndex;not null" json:"email"`
 	Password            string         `gorm:"size:255;not null" json:"-"`
 	Avatar              string         `gorm:"size:500" json:"avatar"`
-	UserType            UserType       `gorm:"type:varchar(20);not null;default:'profesional'" json:"user_type"`
+	UserType            UserType       `gorm:"column:tipo_usuario;type:varchar(20);not null;default:'profesional'" json:"user_type"`
 	IsManager           bool           `gorm:"default:false" json:"is_manager"`
 	IsSuperadmin        bool           `gorm:"default:false" json:"is_superadmin"`
 	IsActive            bool           `gorm:"default:true" json:"is_active"`

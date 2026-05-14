@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { userService } from '../../services/api'
 import type { User } from '../../types'
+import Avatar from '../Common/Avatar'
 import styles from '../../pages/Profile.module.css'
 
 interface TeamPanelProps {
@@ -58,9 +59,11 @@ export function TeamPanel({ type, employerId }: TeamPanelProps) {
       <div className={styles['team-list']}>
         {teamMembers.map(member => (
           <div key={member.id} className={styles['team-member']}>
-            <div className={styles['member-avatar']}>
-              {member.name?.charAt(0).toUpperCase()}
-            </div>
+            <Avatar 
+              src={member.avatar} 
+              name={member.name} 
+              size="sm" 
+            />
             <div className={styles['member-info']}>
               <span className={styles['member-name']}>{member.name}</span>
               <span className={styles['member-role']}>

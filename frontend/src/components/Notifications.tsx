@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { notificationService, type Notification } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { 
@@ -16,6 +17,7 @@ export default function Notifications() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
   const [_isLoading, _setIsLoading] = useState(false)
+  const navigate = useNavigate()
   const wsRef = useRef<WebSocket | null>(null)
   const { token } = useAuth()
 
@@ -110,6 +112,32 @@ export default function Notifications() {
     }
   }
 
+  const handleNotificationClick = async (notification: Notification) => {
+    // Mark as read if needed
+    if (!notification.read_at) {
+      handleMarkAsRead(notification.id)
+    }
+
+    // Close dropdown
+    setIsOpen(false)
+
+    // Handle navigation
+    if (notification.data) {
+      try {
+        let dataObj = notification.data;
+        if (typeof dataObj === 'string') {
+          dataObj = JSON.parse(dataObj);
+        }
+        
+        if ((dataObj as any).link) {
+          navigate((dataObj as any).link);
+        }
+      } catch (e) {
+        console.error("Error parsing notification data", e);
+      }
+    }
+  }
+
   const handleMarkAsRead = async (id: number) => {
     try {
       await notificationService.markAsRead(id)
@@ -186,7 +214,7 @@ export default function Notifications() {
                 <div
                   key={notification.id}
                   className={`${styles['notification-item']} ${!notification.read_at ? styles['unread'] : ''}`}
-                  onClick={() => !notification.read_at && handleMarkAsRead(notification.id)}
+                  onClick={() => handleNotificationClick(notification)}
                 >
                   <span className={styles['notification-icon']}>{getNotificationIcon(notification.type)}</span>
                   <div className={styles['notification-content']}>

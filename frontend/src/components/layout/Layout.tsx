@@ -14,23 +14,21 @@ import {
   ChevronRight,
   ChevronLeft,
   LogOut,
-  Plug
+  Plug,
+  Wrench
 } from 'lucide-react'
+import Avatar from '../Common/Avatar'
 import styles from './Layout.module.css'
 
 export default function Layout() {
   const { user, logout, token } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [totalChatUnread, setTotalChatUnread] = useState(0)
-  const [avatarError, setAvatarError] = useState(false)
 
   const isChatPage = location.pathname.startsWith('/chat')
 
-  useEffect(() => {
-    setAvatarError(false)
-  }, [user?.avatar])
 
   useEffect(() => {
     if (!token) return
@@ -72,6 +70,11 @@ export default function Layout() {
 
   if (user?.is_superadmin) {
     navItems.splice(1, 0, { path: '/admin', label: 'Admin', icon: <Settings size={20} /> })
+    // Add Tools after Chat (which is currently at index 5 or 6 depending on Admin)
+    const chatIndex = navItems.findIndex(item => item.path === '/chat')
+    if (chatIndex !== -1) {
+      navItems.splice(chatIndex + 1, 0, { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} /> })
+    }
   }
 
   const getRoleLabel = () => {
@@ -92,18 +95,11 @@ export default function Layout() {
         </div>
 
         <div className={styles['sidebar-user']}>
-          <div className={styles['user-avatar']}>
-            {user?.avatar && !avatarError ? (
-              <img 
-                src={user.avatar} 
-                alt={user.name} 
-                className={styles['avatar-img']} 
-                onError={() => setAvatarError(true)}
-              />
-            ) : (
-              user?.name?.charAt(0).toUpperCase()
-            )}
-          </div>
+          <Avatar 
+            src={user?.avatar} 
+            name={user?.name} 
+            size="md" 
+          />
           {!sidebarCollapsed && (
             <div className={styles['user-info']}>
               <span className={styles['user-name']}>{user?.name}</span>
