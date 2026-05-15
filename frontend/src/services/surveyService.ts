@@ -52,4 +52,9 @@ export const surveyService = {
     const response = await api.put(`/surveys/${id}`, survey);
     return response.data;
   },
+
+  deleteSurvey: async (id: number) => {
+    const response = await api.delete(`/surveys/${id}`);
+    return response.data;
+  },
 };

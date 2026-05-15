@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ClipboardList, Plus, Edit2, Users } from 'lucide-react';
+import { ClipboardList, Plus } from 'lucide-react';
 import listStyles from './SurveyList.module.css';
 import commonStyles from '../Tools.module.css';
 import SurveyBuilder from './SurveyBuilder';
 import SurveyResults from './SurveyResults';
+import SurveyCard from './components/SurveyCard';
 import { surveyService, Survey } from '../../../../services/surveyService';
 
 interface SurveysProps {
@@ -82,6 +83,18 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
     }
   };
 
+  const handleDeleteSurvey = async (surveyId: number) => {
+    if (window.confirm('¿Estás seguro de que deseas eliminar esta encuesta?')) {
+      try {
+        await surveyService.deleteSurvey(surveyId);
+        fetchSurveys();
+      } catch (err) {
+        console.error('Error deleting survey', err);
+        alert('Error al eliminar la encuesta');
+      }
+    }
+  };
+
   // ---- Sub-view routing ----
   if (showBuilder || editingSurvey) {
     const builderData = editingSurvey
@@ -131,27 +144,14 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
       ) : (
         <div className={listStyles.surveysList}>
           {surveys.map(survey => (
-            <div key={survey.id} className={listStyles.surveyCard}>
-              <div className={listStyles.surveyInfo}>
-                <h3>{survey.title}</h3>
-                <p className={listStyles.surveyMeta}>
-                  Estado: <span className={statusClass(survey.status)}>{survey.status}</span>
-                </p>
-                <p className={listStyles.surveyMeta}>
-                  <Users size={14} /> Respuestas: {survey.responses ? (survey.responses as any[]).length : 0}
-                </p>
-              </div>
-              <div className={listStyles.surveyActions}>
-                {survey.status === 'draft' && (
-                  <button className={commonStyles['btn-outline']} onClick={() => setEditingSurvey(survey)}>
-                    <Edit2 size={16} /> Editar
-                  </button>
-                )}
-                <button className={commonStyles['btn-outline']} onClick={() => setViewingResultsFor(survey.id!)}>
-                  Ver Resultados
-                </button>
-              </div>
-            </div>
+            <SurveyCard 
+              key={survey.id}
+              survey={survey}
+              onEdit={setEditingSurvey}
+              onViewResults={setViewingResultsFor}
+              onDelete={handleDeleteSurvey}
+              statusClass={statusClass}
+            />
           ))}
         </div>
       )}

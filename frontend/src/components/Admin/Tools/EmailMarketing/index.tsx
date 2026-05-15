@@ -204,6 +204,18 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     onToggleFullScreen(true);
   };
 
+  const handleDelete = async (campaignId: number) => {
+    if (window.confirm('¿Estás seguro de que deseas eliminar esta campaña?')) {
+      try {
+        await emailService.deleteCampaign(campaignId);
+        fetchCampaigns();
+      } catch (error) {
+        console.error("Error deleting campaign:", error);
+        alert("Error al eliminar la campaña.");
+      }
+    }
+  };
+
   const closeBuilder = () => {
     setShowBuilder(false);
     setEditingCampaignId(null);
@@ -251,6 +263,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
         campaigns={campaigns} 
         loading={loading} 
         onEdit={handleEdit} 
+        onDelete={handleDelete}
       />
     </div>
   );

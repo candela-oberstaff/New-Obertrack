@@ -12,11 +12,13 @@ type EmailRepository interface {
 	GetTemplates() ([]models.EmailTemplate, error)
 	GetTemplateByID(id uint) (*models.EmailTemplate, error)
 	UpdateTemplate(template *models.EmailTemplate) error
+	DeleteTemplate(id uint) error
 
 	CreateCampaign(campaign *models.EmailCampaign) error
 	GetCampaigns() ([]models.EmailCampaign, error)
 	GetCampaignByID(id uint) (*models.EmailCampaign, error)
 	UpdateCampaign(campaign *models.EmailCampaign) error
+	DeleteCampaign(id uint) error
 
 	// RawQuery executes a raw SQL query scanning results into dest.
 	RawQuery(query string, args []interface{}, dest interface{}) error
@@ -60,6 +62,10 @@ func (r *emailRepository) UpdateTemplate(template *models.EmailTemplate) error {
 	}).Error
 }
 
+func (r *emailRepository) DeleteTemplate(id uint) error {
+	return r.db.Delete(&models.EmailTemplate{}, id).Error
+}
+
 func (r *emailRepository) CreateCampaign(campaign *models.EmailCampaign) error {
 	return r.db.Create(campaign).Error
 }
@@ -93,6 +99,10 @@ func (r *emailRepository) UpdateCampaign(campaign *models.EmailCampaign) error {
 	}
 
 	return r.db.Model(campaign).Updates(updates).Error
+}
+
+func (r *emailRepository) DeleteCampaign(id uint) error {
+	return r.db.Delete(&models.EmailCampaign{}, id).Error
 }
 
 func (r *emailRepository) RawQuery(query string, args []interface{}, dest interface{}) error {

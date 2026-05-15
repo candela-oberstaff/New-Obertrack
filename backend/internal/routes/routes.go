@@ -55,7 +55,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	workHourHandler := handlers.NewWorkHourHandler(workHourSvc)
 	uploadHandler := handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"))
 	emailHandler := handlers.NewEmailHandler(emailRepo, brevoSvc)
-	surveyHandler := handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifRepo)
+	surveyHandler := handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc)
 	metricsHandler := handlers.NewMetricsHandler(metricsRepo)
 
 	// WebSocket hubs
@@ -97,6 +97,9 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				seed.POST("/create-superadmin", adminHandler.CreateSuperAdminForced)
 			}
 		}
+
+		// Public Survey Quick Response
+		api.GET("/surveys/:id/quick-response", surveyHandler.QuickResponse)
 
 		api.Use(middleware.AuthMiddleware(cfg.JWTSecret))
 		{
@@ -231,9 +234,11 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				email.GET("/templates", emailHandler.GetTemplates)
 				email.POST("/templates", emailHandler.CreateTemplate)
 				email.PUT("/templates/:id", emailHandler.UpdateTemplate)
+				email.DELETE("/templates/:id", emailHandler.DeleteTemplate)
 				email.GET("/campaigns", emailHandler.GetCampaigns)
 				email.POST("/campaigns", emailHandler.CreateCampaign)
 				email.PUT("/campaigns/:id", emailHandler.UpdateCampaign)
+				email.DELETE("/campaigns/:id", emailHandler.DeleteCampaign)
 				email.POST("/campaigns/:id/send", emailHandler.SendCampaign)
 			}
 
@@ -243,6 +248,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				surveys.POST("", middleware.RequireSuperadmin(), surveyHandler.CreateSurvey)
 				surveys.GET("", middleware.RequireSuperadmin(), surveyHandler.GetSurveys)
 				surveys.PUT("/:id", middleware.RequireSuperadmin(), surveyHandler.UpdateSurvey)
+				surveys.DELETE("/:id", middleware.RequireSuperadmin(), surveyHandler.DeleteSurvey)
 				surveys.POST("/:id/send", middleware.RequireSuperadmin(), surveyHandler.SendSurvey)
 				
 				// User routes

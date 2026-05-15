@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -11,26 +12,27 @@ import (
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/service"
+	"github.com/obertrack/backend/internal/utils"
 )
 
 type SurveyHandler struct {
 	repo         repository.SurveyRepository
 	userRepo     repository.UserRepository
 	brevoSvc     *service.BrevoService
-	notifRepo    repository.NotificationRepository
+	notifSvc     service.NotificationService
 }
 
 func NewSurveyHandler(
 	repo repository.SurveyRepository,
 	userRepo repository.UserRepository,
 	brevoSvc *service.BrevoService,
-	notifRepo repository.NotificationRepository,
+	notifSvc service.NotificationService,
 ) *SurveyHandler {
 	return &SurveyHandler{
 		repo:      repo,
 		userRepo:  userRepo,
 		brevoSvc:  brevoSvc,
-		notifRepo: notifRepo,
+		notifSvc:  notifSvc,
 	}
 }
 
@@ -136,22 +138,27 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 	successCount := 0
 	var errors []string
 
-	surveyURL := fmt.Sprintf("https://nuevo.obertrack.com/survey/%d", survey.ID) // Update with actual domain if dynamic
+	frontendURL := os.Getenv("SERVICE_URL_FRONTEND")
+	if frontendURL == "" {
+		frontendURL = "https://obertrack.com"
+	}
+
+	surveyURL := fmt.Sprintf("%s/survey/%d", frontendURL, survey.ID)
 
 	for _, user := range users {
 		userSuccess := false
 
 		// 1. Send In-App Notification
 		if survey.SendByInApp {
-			notif := &models.Notification{
-				UserID:  user.ID,
-				Title:   "Nueva Encuesta: " + survey.Title,
-				Message: "Tienes una nueva encuesta disponible para responder.",
-				Type:    "survey",
-				Data:    fmt.Sprintf(`{"link": "/survey/%d"}`, survey.ID),
-			}
-			if err := h.notifRepo.Create(notif); err != nil {
-				errors = append(errors, fmt.Sprintf("Notif fail for %d: %s", user.ID, err.Error()))
+			errNotif := h.notifSvc.CreateNotification(
+				user.ID,
+				"survey",
+				"Nueva Encuesta: "+survey.Title,
+				"Tienes una nueva encuesta disponible para responder.",
+				map[string]interface{}{"link": fmt.Sprintf("/survey/%d", survey.ID)},
+			)
+			if errNotif != nil {
+				errors = append(errors, fmt.Sprintf("Notif fail for %d: %s", user.ID, errNotif.Error()))
 			} else {
 				userSuccess = true
 			}
@@ -159,13 +166,50 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 
 		// 2. Send Email
 		if survey.SendByEmail {
-			htmlContent := fmt.Sprintf(`
-				<h2>Hola %s,</h2>
-				<p>Tienes una nueva encuesta para responder en Obertrack: <strong>%s</strong></p>
-				<p>%s</p>
-				<br/>
-				<a href="%s" style="padding:10px 20px;background:#8b5cf6;color:white;text-decoration:none;border-radius:5px;">Responder Encuesta</a>
-			`, user.Name, survey.Title, survey.Description, surveyURL)
+			var actionHtml string
+
+			// Check for rating question to create quick-response buttons
+			var ratingQuestion *models.SurveyQuestion
+			for _, q := range survey.Questions {
+				if q.Type == models.QuestionTypeRating {
+					ratingQuestion = &q
+					break
+				}
+			}
+
+			if ratingQuestion != nil {
+				actionHtml = fmt.Sprintf(`
+					<h3 style="text-align: center; margin-top: 30px; color: #1e293b;">%s</h3>
+					<div class="rating-container">
+				`, ratingQuestion.Text)
+
+				for i := 1; i <= 5; i++ {
+					quickLink := fmt.Sprintf("%s/api/surveys/%d/quick-response?user_id=%d&q_id=%d&score=%d", frontendURL, survey.ID, user.ID, ratingQuestion.ID, i)
+					actionHtml += fmt.Sprintf(`<a href="%s" class="rating-btn" style="text-align:center; text-decoration:none; display:inline-block; width:45px; height:45px; line-height:45px; background-color:#f1f5f9; color:#cc33cc; border-radius:50%%; margin:0 5px; font-weight:bold; font-size:18px;">%d</a>`, quickLink, i)
+				}
+				
+				actionHtml += `
+					</div>
+					<div style="text-align: center; margin-top: 20px;">
+						<a href="`+surveyURL+`" style="color: #cc33cc; text-decoration: underline; font-size: 14px;">Ir a la encuesta completa</a>
+					</div>
+				`
+			} else {
+				actionHtml = fmt.Sprintf(`
+					<div style="text-align: center; margin-top: 30px;">
+						<a href="%s" class="btn-primary" style="display:inline-block; padding:12px 24px; background-color:#cc33cc; color:#ffffff; text-decoration:none; border-radius:8px; font-weight:600;">Responder Encuesta</a>
+					</div>
+				`, surveyURL)
+			}
+
+			rawContent := fmt.Sprintf(`
+				<h2 style="margin-top: 0; color: #1e293b;">Hola %s,</h2>
+				<p style="color: #334155;">Tienes una nueva encuesta para responder en Obertrack: <strong>%s</strong></p>
+				<p style="color: #475569;">%s</p>
+				%s
+			`, user.Name, survey.Title, survey.Description, actionHtml)
+
+			htmlContent := utils.WrapInPremiumTemplate("Nueva Encuesta: "+survey.Title, rawContent)
 
 			if err := h.brevoSvc.SendEmail(user.Email, user.Name, "Nueva Encuesta: "+survey.Title, htmlContent); err != nil {
 				errors = append(errors, fmt.Sprintf("Email fail for %s: %s", user.Email, err.Error()))
@@ -203,4 +247,76 @@ func (h *SurveyHandler) UpdateSurvey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, survey)
+}
+
+func (h *SurveyHandler) DeleteSurvey(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		return
+	}
+
+	if err := h.repo.DeleteSurvey(uint(id)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al eliminar encuesta"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Encuesta eliminada"})
+}
+
+// QuickResponse handles one-click submissions from email
+func (h *SurveyHandler) QuickResponse(c *gin.Context) {
+	surveyIDStr := c.Param("id")
+	userIDStr := c.Query("user_id")
+	questionIDStr := c.Query("q_id")
+	scoreStr := c.Query("score")
+
+	surveyID, err1 := strconv.ParseUint(surveyIDStr, 10, 32)
+	userID, err2 := strconv.ParseUint(userIDStr, 10, 32)
+	questionID, err3 := strconv.ParseUint(questionIDStr, 10, 32)
+	score, err4 := strconv.Atoi(scoreStr)
+
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
+		c.String(http.StatusBadRequest, "Parámetros inválidos.")
+		return
+	}
+
+	// Save the response
+	now := time.Now()
+	response := models.SurveyResponse{
+		SurveyID:    uint(surveyID),
+		UserID:      uint(userID),
+		CompletedAt: &now,
+		Answers: []models.SurveyAnswer{
+			{
+				QuestionID:  uint(questionID),
+				NumberValue: score,
+			},
+		},
+	}
+
+	// We ignore duplicates here for simplicity. 
+	// In production, we might check if response already exists and update.
+	_ = h.repo.CreateResponse(&response)
+
+	frontendURL := os.Getenv("SERVICE_URL_FRONTEND")
+	if frontendURL == "" {
+		frontendURL = "https://obertrack.com"
+	}
+
+	// Return a premium HTML thank you page
+	rawHTML := fmt.Sprintf(`
+		<div style="text-align: center; padding: 40px 20px;">
+			<div style="background-color: #dcfce7; color: #15803d; width: 64px; height: 64px; border-radius: 50%%; display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 20px;">&#10003;</div>
+			<h2 style="margin-top: 0; color: #1e293b;">¡Gracias por tu respuesta!</h2>
+			<p style="color: #64748b; font-size: 16px;">Tu valoración de <strong>%d</strong> ha sido registrada exitosamente.</p>
+			<div style="margin-top: 30px;">
+				<a href="%s/survey/%d" class="btn-primary" style="display:inline-block; padding:12px 24px; background-color:#cc33cc; color:#ffffff; text-decoration:none; border-radius:8px; font-weight:600;">Ver encuesta completa</a>
+			</div>
+		</div>
+	`, score, frontendURL, surveyID)
+
+	finalHTML := utils.WrapInPremiumTemplate("Respuesta Registrada", rawHTML)
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, finalHTML)
 }

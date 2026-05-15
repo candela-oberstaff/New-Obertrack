@@ -70,6 +70,21 @@ func (h *EmailHandler) UpdateTemplate(c *gin.Context) {
 	c.JSON(http.StatusOK, template)
 }
 
+func (h *EmailHandler) DeleteTemplate(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		return
+	}
+
+	if err := h.repo.DeleteTemplate(uint(id)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al eliminar plantilla"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Plantilla eliminada"})
+}
+
 func (h *EmailHandler) CreateCampaign(c *gin.Context) {
 	var campaign models.EmailCampaign
 	if err := c.ShouldBindJSON(&campaign); err != nil {
@@ -114,6 +129,21 @@ func (h *EmailHandler) UpdateCampaign(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, campaign)
+}
+
+func (h *EmailHandler) DeleteCampaign(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		return
+	}
+
+	if err := h.repo.DeleteCampaign(uint(id)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al eliminar campaña"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Campaña eliminada"})
 }
 
 // SendCampaign renders the campaign's template blocks to HTML and dispatches

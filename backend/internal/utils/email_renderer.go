@@ -19,18 +19,16 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(`<!DOCTYPE html><html><body style="font-family:Inter,Arial,sans-serif;margin:0;padding:0;background:#f1f5f9;">`)
-	sb.WriteString(`<div style="max-width:600px;margin:0 auto;background:#ffffff;padding:0;">`)
 
 	for _, block := range blocks {
 		blockType, _ := block["type"].(string)
 		content := block["content"]
 		styleMap, _ := block["style"].(map[string]interface{})
 
-		bgColor, _ := styleMap["backgroundColor"].(string)
+		containerBg, _ := styleMap["containerBackground"].(string)
 		cellStyle := "padding:16px 24px;"
-		if bgColor != "" {
-			cellStyle += fmt.Sprintf("background-color:%s;", bgColor)
+		if containerBg != "" {
+			cellStyle += fmt.Sprintf("background-color:%s;", containerBg)
 		}
 
 		switch blockType {
@@ -56,7 +54,7 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 			btnRadius, _ := styleMap["borderRadius"].(string)
 			linkURL, _ := styleMap["linkUrl"].(string)
 			if btnColor == "" {
-				btnColor = "#8b5cf6"
+				btnColor = "#cc33cc" // Vivid Orchid as default
 			}
 			if btnText == "" {
 				btnText = "#ffffff"
@@ -118,8 +116,7 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 		}
 	}
 
-	sb.WriteString(`</div></body></html>`)
-	return sb.String(), nil
+	return WrapInPremiumTemplate("Notificación", sb.String()), nil
 }
 
 func escapeHTML(s string) string {

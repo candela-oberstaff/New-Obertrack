@@ -38,6 +38,10 @@ export const emailService = {
     const response = await api.put(`/email/templates/${id}`, template);
     return response.data;
   },
+  deleteTemplate: async (id: number) => {
+    const response = await api.delete(`/email/templates/${id}`);
+    return response.data;
+  },
 
   // Campaigns
   getCampaigns: async () => {
@@ -54,6 +58,10 @@ export const emailService = {
   },
   sendCampaign: async (id: number) => {
     const response = await api.post(`/email/campaigns/${id}/send`, {});
+    return response.data;
+  },
+  deleteCampaign: async (id: number) => {
+    const response = await api.delete(`/email/campaigns/${id}`);
     return response.data;
   },
   getAvailableRecipients: async () => {
