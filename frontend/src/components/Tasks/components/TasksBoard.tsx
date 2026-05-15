@@ -37,8 +37,6 @@ export function TasksBoard({
   selectedBoard,
   onTaskClick,
   onUpdateTask,
-  onMovePhaseLeft,
-  onMovePhaseRight,
 }: TasksBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [localColumnOrder] = useState<string[] | null>(() => {
@@ -129,8 +127,6 @@ export function TasksBoard({
     }
   }, [tasks, getCurrentColumns, onUpdateTask])
 
-  const phasesLength = selectedBoard?.phases?.length || (localColumnOrder?.length || DEFAULT_COLUMNS.length)
-
   return (
     <DndContext
       sensors={sensors}
@@ -145,7 +141,7 @@ export function TasksBoard({
           : localColumnOrder
             ? localColumnOrder.map(id => DEFAULT_COLUMNS.find(c => c.id === id) || DEFAULT_COLUMNS[0])
             : DEFAULT_COLUMNS
-        ).map((p: Phase | ColumnType, idx: number) => {
+        ).map((p: Phase | ColumnType) => {
           const isPhase = !!(p as Phase).name
           const column = {
             id: isPhase ? ((p as Phase).status || (p as Phase).name.toLowerCase().replace(/\s+/g, '_')) : (p as ColumnType).id,
@@ -158,10 +154,6 @@ export function TasksBoard({
               column={column}
               tasks={getTasksByStatus(column.id)}
               onTaskClick={onTaskClick}
-              canMoveLeft={idx > 0}
-              canMoveRight={idx < phasesLength - 1}
-              onMoveLeft={onMovePhaseLeft ? () => onMovePhaseLeft(idx) : undefined}
-              onMoveRight={onMovePhaseRight ? () => onMovePhaseRight(idx) : undefined}
             />
           )
         })}

@@ -3,9 +3,7 @@ import {
   Mail, 
   Users, 
   MousePointer2, 
-  AlertCircle, 
-  ArrowUpRight, 
-  ArrowDownRight 
+  AlertCircle
 } from 'lucide-react';
 import { 
   AreaChart, 

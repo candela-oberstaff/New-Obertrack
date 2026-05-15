@@ -6,16 +6,6 @@ import {
   UserX, 
   Mail 
 } from 'lucide-react';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  Legend 
-} from 'recharts';
 import styles from './SurveyTab.module.css';
 
 interface SurveyTabProps {

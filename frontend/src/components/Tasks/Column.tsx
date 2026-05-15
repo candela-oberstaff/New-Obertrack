@@ -1,4 +1,3 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { SortableTaskCard } from './TaskCard'
@@ -10,20 +9,12 @@ interface ColumnProps {
   column: ColumnType
   tasks: Task[]
   onTaskClick: (task: Task) => void
-  onMoveLeft?: () => void
-  onMoveRight?: () => void
-  canMoveLeft?: boolean
-  canMoveRight?: boolean
 }
 
 export function Column({
   column,
   tasks,
   onTaskClick,
-  onMoveLeft,
-  onMoveRight,
-  canMoveLeft,
-  canMoveRight
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,

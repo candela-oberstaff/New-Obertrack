@@ -76,8 +76,8 @@ export default function WorkHours() {
   const handleEdit = (wh: WorkHour) => {
     setFormData({
       work_date: wh.work_date.split('T')[0],
-      work_type: wh.work_type as any,
-      activities: wh.activities,
+      work_type: wh.work_type,
+      activities: wh.activities || '',
       absence_reason: wh.absence_reason || '',
       absence_hours: wh.absence_hours || 0,
     })
