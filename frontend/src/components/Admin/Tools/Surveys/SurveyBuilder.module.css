@@ -58,6 +58,13 @@
   gap: 16px;
 }
 
+.builderContent {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
 /* ---- Canvas Area ---- */
 .canvasArea {
   flex: 1;

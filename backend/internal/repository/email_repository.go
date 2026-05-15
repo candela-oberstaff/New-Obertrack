@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
 )
@@ -18,6 +20,10 @@ type EmailRepository interface {
 
 	// RawQuery executes a raw SQL query scanning results into dest.
 	RawQuery(query string, args []interface{}, dest interface{}) error
+
+	CreateEvent(event *models.EmailEvent) error
+	GetEventsByCampaign(campaignID uint) ([]models.EmailEvent, error)
+	GetEventsByDay() ([]map[string]interface{}, error)
 }
 
 type emailRepository struct {
@@ -91,4 +97,26 @@ func (r *emailRepository) UpdateCampaign(campaign *models.EmailCampaign) error {
 
 func (r *emailRepository) RawQuery(query string, args []interface{}, dest interface{}) error {
 	return r.db.Raw(query, args...).Scan(dest).Error
+}
+
+func (r *emailRepository) CreateEvent(event *models.EmailEvent) error {
+	return r.db.Create(event).Error
+}
+
+func (r *emailRepository) GetEventsByCampaign(campaignID uint) ([]models.EmailEvent, error) {
+	var events []models.EmailEvent
+	err := r.db.Where("campaign_id = ?", campaignID).Find(&events).Error
+	return events, err
+}
+
+func (r *emailRepository) GetEventsByDay() ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	// This query aggregates events by day for the last 7 days
+	err := r.db.Model(&models.EmailEvent{}).
+		Select("DATE(timestamp) as date, event, COUNT(*) as count").
+		Where("timestamp >= ?", time.Now().AddDate(0, 0, -7)).
+		Group("DATE(timestamp), event").
+		Order("DATE(timestamp) ASC").
+		Scan(&results).Error
+	return results, err
 }

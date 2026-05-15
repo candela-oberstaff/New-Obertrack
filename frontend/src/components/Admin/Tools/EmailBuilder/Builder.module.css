@@ -1,20 +1,24 @@
 .builder-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 100px);
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  right: -12px;
+  bottom: -12px;
   background: #f8fafc;
-  margin: -32px; /* Offset parent padding */
+  z-index: 50;
   overflow: hidden;
 }
 
 .builder-header {
-  height: 64px;
+  height: 80px;
   background: white;
   border-bottom: 1px solid #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 32px;
   flex-shrink: 0;
 }
 
@@ -33,12 +37,12 @@
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
   color: #0f172a;
   padding: 0;
   margin: 0;
-  width: 300px;
+  width: 400px;
   transition: all 0.2s;
 }
 
@@ -78,6 +82,7 @@
   flex: 1;
   overflow: hidden;
   width: 100%;
+  height: calc(100% - 64px);
 }
 
 /* Sidebar: Blocks */
@@ -89,6 +94,7 @@
   border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .sidebar-tabs {
@@ -113,8 +119,13 @@
 }
 
 .sidebar-content {
-  padding: 20px;
+  padding: 16px 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
 }
 
 .block-item {
@@ -122,15 +133,15 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 12px 8px;
-  width: 100%;
+  gap: 4px;
+  padding: 10px 4px;
+  width: 64px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
   color: #64748b;
 }
 
@@ -157,24 +168,24 @@
   min-width: 0;
   padding: 40px;
   overflow-y: auto;
-  overflow-x: hidden;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   background: #f1f5f9;
+  position: relative;
 }
 
 .email-paper {
-  width: 100%;
-  max-width: 600px;
+  width: 600px;
+  min-width: 600px;
+  flex-shrink: 0;
   background: white;
   min-height: 800px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
-  overflow-wrap: break-word;
-  word-wrap: break-word;
-  word-break: break-word;
   border-radius: 4px;
+  margin-bottom: 40px;
 }
 
 .canvas-empty {

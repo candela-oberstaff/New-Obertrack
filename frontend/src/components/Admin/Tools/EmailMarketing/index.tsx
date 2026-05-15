@@ -8,9 +8,10 @@ import commonStyles from '../Tools.module.css';
 
 interface EmailMarketingProps {
   onToggleFullScreen: (isFull: boolean) => void;
+  setHeaderAction: (node: React.ReactNode) => void;
 }
 
-const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen }) => {
+const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, setHeaderAction }) => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState<number | null>(null);
   const [availableRecipients, setAvailableRecipients] = useState<any[]>([]);
@@ -21,6 +22,22 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen }) =
     fetchCampaigns();
     fetchRecipients();
   }, []);
+
+  useEffect(() => {
+    if (!showBuilder) {
+      setHeaderAction(
+        <button className={commonStyles['btn-primary']} onClick={() => {
+          setShowBuilder(true);
+          onToggleFullScreen(true);
+        }}>
+          <Plus size={16} /> Nueva Campaña
+        </button>
+      );
+    } else {
+      setHeaderAction(null);
+    }
+    return () => setHeaderAction(null);
+  }, [showBuilder]);
 
   const fetchCampaigns = async () => {
     try {
@@ -230,17 +247,6 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen }) =
 
   return (
     <div className={styles['email-section']}>
-      <div className={commonStyles['section-header']}>
-        <h2>Campañas de Email</h2>
-        <button className={commonStyles['btn-primary']} onClick={() => {
-          setShowBuilder(true);
-          onToggleFullScreen(true);
-        }}>
-          <Plus size={18} />
-          Nueva Campaña
-        </button>
-      </div>
-
       <CampaignGrid 
         campaigns={campaigns} 
         loading={loading} 

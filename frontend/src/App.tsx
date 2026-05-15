@@ -14,6 +14,7 @@ const GoogleChat = lazy(() => import('./pages/GoogleChat'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Admin = lazy(() => import('./pages/Admin'))
 const Tools = lazy(() => import('./components/Admin/Tools'))
+const Metrics = lazy(() => import('./pages/Metrics'))
 const SurveyViewer = lazy(() => import('./pages/SurveyViewer'))
 
 function Loading() {
@@ -100,6 +101,7 @@ function App() {
           <Route path="profile" element={<Profile />} />
           <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="admin/tools" element={<AdminRoute><Tools /></AdminRoute>} />
+          <Route path="admin/metrics" element={<AdminRoute><Metrics /></AdminRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
         </Route>
       </Routes>

@@ -121,6 +121,16 @@ func Run(db *gorm.DB) error {
 				)
 			},
 		},
+		{
+			ID: "202605151120_add_email_tracking",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.EmailCampaign{}, &models.EmailEvent{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				tx.Migrator().DropColumn(&models.EmailCampaign{}, "brevo_campaign_id")
+				return tx.Migrator().DropTable(&models.EmailEvent{})
+			},
+		},
 		// Future migrations go here
 	})
 

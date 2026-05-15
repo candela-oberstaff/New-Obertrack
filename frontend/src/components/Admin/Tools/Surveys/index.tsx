@@ -6,7 +6,11 @@ import SurveyBuilder from './SurveyBuilder';
 import SurveyResults from './SurveyResults';
 import { surveyService, Survey } from '../../../../services/surveyService';
 
-const Surveys: React.FC = () => {
+interface SurveysProps {
+  setHeaderAction: (node: React.ReactNode) => void;
+}
+
+const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingSurvey, setEditingSurvey] = useState<Survey | null>(null);
@@ -27,6 +31,19 @@ const Surveys: React.FC = () => {
   useEffect(() => {
     fetchSurveys();
   }, []);
+
+  useEffect(() => {
+    if (!showBuilder && !editingSurvey && viewingResultsFor === null) {
+      setHeaderAction(
+        <button className={commonStyles['btn-primary']} onClick={() => setShowBuilder(true)}>
+          <Plus size={16} /> Nueva Encuesta
+        </button>
+      );
+    } else {
+      setHeaderAction(null);
+    }
+    return () => setHeaderAction(null);
+  }, [showBuilder, editingSurvey, viewingResultsFor]);
 
   const handleSaveSurvey = async (data: any, sendImmediately = false) => {
     try {
@@ -100,12 +117,6 @@ const Surveys: React.FC = () => {
   // ---- List View ----
   return (
     <div className={listStyles.surveysSection}>
-      <div className={commonStyles['section-header']}>
-        <h2>Encuestas de Satisfacción</h2>
-        <button className={commonStyles['btn-primary']} onClick={() => setShowBuilder(true)}>
-          <Plus size={18} /> Nueva Encuesta
-        </button>
-      </div>
 
       {loading ? (
         <p>Cargando encuestas...</p>

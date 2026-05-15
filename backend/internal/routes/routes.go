@@ -20,6 +20,9 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	notifRepo := repository.NewNotificationRepository(db)
 	channelRepo := repository.NewChannelRepository(db)
 	workHourRepo := repository.NewWorkHourRepository(db)
+	emailRepo := repository.NewEmailRepository(db)
+	surveyRepo := repository.NewSurveyRepository(db)
+	metricsRepo := repository.NewMetricsRepository(db)
 
 	// Services
 	userSvc := service.NewUserService(userRepo)
@@ -30,6 +33,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 
 	// Initialize Google Chat
 	googleChatSvc := service.NewGoogleChatService()
+	brevoSvc := service.NewBrevoService()
 
 	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, googleChatSvc)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
@@ -50,6 +54,9 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	boardHandler := handlers.NewBoardHandler(boardSvc)
 	workHourHandler := handlers.NewWorkHourHandler(workHourSvc)
 	uploadHandler := handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"))
+	emailHandler := handlers.NewEmailHandler(emailRepo, brevoSvc)
+	surveyHandler := handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifRepo)
+	metricsHandler := handlers.NewMetricsHandler(metricsRepo)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {
@@ -73,6 +80,9 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			auth.POST("/login", authHandler.Login)
 			auth.GET("/companies", authHandler.GetCompanies)
 		}
+
+		// Webhooks
+		api.POST("/webhooks/brevo", emailHandler.HandleBrevoWebhook)
 
 		// Google Chat Public Callback
 		api.POST("/google-chat/callback", googleChatHandler.HandleCallback)
@@ -215,9 +225,6 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				channels.POST("/dm", channelHandler.CreateDirectMessage)
 			}
 
-			emailRepo := repository.NewEmailRepository(db)
-			brevoSvc := service.NewBrevoService()
-			emailHandler := handlers.NewEmailHandler(emailRepo, brevoSvc)
 			email := api.Group("/email")
 			email.Use(middleware.RequireSuperadmin())
 			{
@@ -230,8 +237,6 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				email.POST("/campaigns/:id/send", emailHandler.SendCampaign)
 			}
 
-			surveyRepo := repository.NewSurveyRepository(db)
-			surveyHandler := handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifRepo)
 			surveys := api.Group("/surveys")
 			{
 				// Admin routes
@@ -244,6 +249,8 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				surveys.GET("/:id", surveyHandler.GetSurvey)
 				surveys.POST("/:id/responses", surveyHandler.SubmitResponse)
 			}
+			// Metrics logic
+			api.GET("/metrics", middleware.RequireSuperadmin(), metricsHandler.GetGlobalMetrics)
 		}
 	}
 

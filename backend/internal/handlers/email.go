@@ -212,3 +212,46 @@ func (h *EmailHandler) SendCampaign(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// HandleBrevoWebhook receives and persists events from Brevo (opens, clicks, etc.)
+func (h *EmailHandler) HandleBrevoWebhook(c *gin.Context) {
+	var payload struct {
+		Event      string `json:"event"`
+		Email      string `json:"email"`
+		CampaignID uint   `json:"campaign_id"`
+		MessageID  string `json:"message-id"`
+		IP         string `json:"ip"`
+		UserAgent  string `json:"user-agent"`
+		Date       string `json:"date"`
+	}
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		// Log error but return 200 to Brevo to avoid retries if format is slightly off
+		fmt.Printf("Webhook bind error: %v\n", err)
+		c.Status(http.StatusOK)
+		return
+	}
+
+	timestamp := time.Now()
+	if payload.Date != "" {
+		if t, err := time.Parse("2006-01-02 15:04:05", payload.Date); err == nil {
+			timestamp = t
+		}
+	}
+
+	event := &models.EmailEvent{
+		CampaignID: payload.CampaignID,
+		Email:      payload.Email,
+		Event:      payload.Event,
+		IP:         payload.IP,
+		UserAgent:  payload.UserAgent,
+		Timestamp:  timestamp,
+	}
+
+	if err := h.repo.CreateEvent(event); err != nil {
+		fmt.Printf("Failed to save email event: %v\n", err)
+	}
+
+	// Always return 200 to Brevo
+	c.Status(http.StatusOK)
+}
+

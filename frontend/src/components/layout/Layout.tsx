@@ -7,7 +7,8 @@ import {
   LayoutDashboard,
   CheckSquare,
   Clock,
-  BarChart3,
+  FileText,
+  Activity,
   MessageCircle,
   User,
   Settings,
@@ -63,7 +64,7 @@ export default function Layout() {
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} /> },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} /> },
-    { path: '/reports', label: 'Reportes', icon: <BarChart3 size={20} /> },
+    { path: '/reports', label: 'Reportes', icon: <FileText size={20} /> },
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} /> },
     { path: '/profile', label: 'Perfil', icon: <User size={20} /> },
   ]
@@ -71,9 +72,15 @@ export default function Layout() {
   if (user?.is_superadmin) {
     navItems.splice(1, 0, { path: '/admin', label: 'Admin', icon: <Settings size={20} /> })
     // Add Tools after Chat (which is currently at index 5 or 6 depending on Admin)
-    const chatIndex = navItems.findIndex(item => item.path === '/chat')
-    if (chatIndex !== -1) {
-      navItems.splice(chatIndex + 1, 0, { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} /> })
+    const toolsIndex = navItems.findIndex(item => item.path === '/admin/tools')
+    if (toolsIndex !== -1) {
+      navItems.splice(toolsIndex + 1, 0, { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} /> })
+    } else {
+      const chatIndex = navItems.findIndex(item => item.path === '/chat')
+      if (chatIndex !== -1) {
+        navItems.splice(chatIndex + 1, 0, { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} /> })
+        navItems.splice(chatIndex + 2, 0, { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} /> })
+      }
     }
   }
 
