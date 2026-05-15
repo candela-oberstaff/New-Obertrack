@@ -1,4 +1,4 @@
-import { X, Check } from 'lucide-react'
+import { X, Check, Pencil } from 'lucide-react'
 import type { WorkHour } from '../../../types'
 import { parseLocalDate } from '../utils'
 import styles from '../../../pages/WorkHours.module.css'
@@ -8,13 +8,15 @@ interface WorkHourDetailModalProps {
   onClose: () => void
   canApprove: boolean
   onApprove: (id: number) => Promise<void>
+  onEdit: (wh: WorkHour) => void
 }
 
 export function WorkHourDetailModal({
   workHour,
   onClose,
   canApprove,
-  onApprove
+  onApprove,
+  onEdit
 }: WorkHourDetailModalProps) {
   if (!workHour) return null
 
@@ -60,9 +62,9 @@ export function WorkHourDetailModal({
               <span className={styles['detail-label']}>Actividades del día</span>
               <div
                 className={styles['detail-text']}
-                dangerouslySetInnerHTML={{
-                  __html: workHour.activities.replace(/\n/g, '<br>').replace(/• /g, '<br>• ').replace(/<br>1\./g, '<br>1.')
-                }}
+              dangerouslySetInnerHTML={{
+                __html: workHour.activities
+              }}
               />
             </div>
           )}
@@ -75,6 +77,9 @@ export function WorkHourDetailModal({
         </div>
         <div className={styles['detail-actions']}>
           <button className={styles['btn-cancel']} onClick={onClose}>Cerrar</button>
+          <button className={styles['btn-secondary']} onClick={() => onEdit(workHour)}>
+            <Pencil size={16} /> Editar
+          </button>
           {canApprove && !workHour.approved && (
             <button className={styles['btn-primary']} onClick={async () => {
               await onApprove(workHour.id)

@@ -664,7 +664,6 @@
 .kanban-card.dragging {
   cursor: grabbing;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  transform: rotate(3deg);
 }
 
 .kanban-card.completed {
@@ -923,17 +922,20 @@
 
 .assignees-list {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .assignee-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px;
-  background: #f8fafc;
-  border-radius: 8px;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--primary);
+  color: white;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .assignee-avatar.large {
@@ -1151,13 +1153,18 @@
 /* Assignee chips in edit form */
 .assignees-edit-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  min-height: 44px;
+  border-radius: 12px;
+}
+
+.assigned-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .assignee-chip {

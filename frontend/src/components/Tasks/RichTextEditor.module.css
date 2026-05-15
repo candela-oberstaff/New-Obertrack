@@ -50,12 +50,14 @@
   font-size: 14px;
   line-height: 1.5;
   color: #0f172a;
-  resize: vertical;
-  min-height: 120px;
+  min-height: 150px;
   font-family: inherit;
   background: transparent;
+  outline: none;
 }
 
-.richTextContent:focus {
-  outline: none;
+.richTextContent:empty::before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
 }

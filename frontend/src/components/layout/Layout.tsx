@@ -64,10 +64,13 @@ export default function Layout() {
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} /> },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} /> },
-    { path: '/reports', label: 'Reportes', icon: <FileText size={20} /> },
+    { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, adminOnly: true },
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} /> },
     { path: '/profile', label: 'Perfil', icon: <User size={20} /> },
-  ]
+  ].filter(item => {
+    if (item.adminOnly && !user?.is_superadmin && !user?.is_manager && user?.user_type !== 'empleador') return false
+    return true
+  })
 
   if (user?.is_superadmin) {
     navItems.splice(1, 0, { path: '/admin', label: 'Admin', icon: <Settings size={20} /> })

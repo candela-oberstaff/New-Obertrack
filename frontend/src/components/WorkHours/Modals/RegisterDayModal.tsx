@@ -40,6 +40,7 @@ export function RegisterDayModal({
             <input
               type="date"
               value={formData.work_date}
+              min={new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]}
               max={today}
               onChange={(e) => setFormData({ ...formData, work_date: e.target.value })}
               required
@@ -96,7 +97,6 @@ export function RegisterDayModal({
                   onChange={(e) => setFormData({ ...formData, absence_hours: Number(e.target.value) })}
                   required
                 >
-                  <option value={0}>0 horas</option>
                   <option value={1}>1 hora</option>
                   <option value={2}>2 horas</option>
                   <option value={3}>3 horas</option>
@@ -109,6 +109,14 @@ export function RegisterDayModal({
                 <p className={styles['form-hint']}>
                   Horas a registrar: {Math.max(0, 8 - (formData.absence_hours || 0))}h
                 </p>
+              </div>
+
+              <div className={styles['absence-alert'] || 'absence-alert'}>
+                <AlertCircle size={18} />
+                <div>
+                  <strong>Nota sobre ausencias</strong>
+                  <p>Al registrar una ausencia, podrás recuperar estas horas en otro momento si así lo deseas coordinar.</p>
+                </div>
               </div>
             </>
           )}

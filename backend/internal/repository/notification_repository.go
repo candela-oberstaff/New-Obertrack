@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -13,6 +14,7 @@ type NotificationRepository interface {
 	MarkAsRead(id uint, userID uint) error
 	MarkAllAsRead(userID uint) error
 	GetUnreadCount(userID uint) (int64, error)
+	DeleteByTaskID(taskID uint) error
 }
 
 type notificationRepository struct {
@@ -47,4 +49,8 @@ func (r *notificationRepository) GetUnreadCount(userID uint) (int64, error) {
 	var count int64
 	err := r.db.Model(&models.Notification{}).Where("user_id = ? AND read_at IS NULL", userID).Count(&count).Error
 	return count, err
+}
+
+func (r *notificationRepository) DeleteByTaskID(taskID uint) error {
+	return r.db.Where("data LIKE ?", "%\"task_id\":"+strconv.FormatUint(uint64(taskID), 10)+"%").Delete(&models.Notification{}).Error
 }

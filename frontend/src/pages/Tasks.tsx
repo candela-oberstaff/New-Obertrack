@@ -60,6 +60,7 @@ export default function Tasks() {
   const [optimisticMembers, setOptimisticMembers] = useState<number[]>([])
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isDeletingBoard, setIsDeletingBoard] = useState(false)
+  const [isJoiningBoard, setIsJoiningBoard] = useState(false)
 
   // Phases drag state
   const [draggingPhase, setDraggingPhase] = useState<number | null>(null)
@@ -313,11 +314,17 @@ export default function Tasks() {
   }, [deleteTask])
 
   const handleJoinBoard = useCallback(async (boardId: number) => {
-    const success = await joinBoard(boardId)
-    if (!success) {
-      showError('Error al unirse al tablero')
+    setIsJoiningBoard(true)
+    try {
+      const success = await joinBoard(boardId)
+      if (!success) {
+        // useBoards already logs the error, but we can show a specific message if needed
+        showError('No se pudo unir al tablero. Es posible que ya seas miembro.')
+      }
+      setShowJoinBoardModal(false)
+    } finally {
+      setIsJoiningBoard(false)
     }
-    setShowJoinBoardModal(false)
   }, [joinBoard, showError])
 
   const getCurrentColumns = useCallback((): ColumnType[] => {
@@ -371,9 +378,20 @@ export default function Tasks() {
         <div className={styles['tasks-loading']}>
           <h2>No tienes tableros</h2>
           <p>Crea tu primer tablero para organizar tus tareas</p>
-          <button className={styles['btn-primary']} onClick={openBoardModal}>
-            <Plus size={18} /> Crear Tablero
-          </button>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button className={styles['btn-primary']} onClick={openBoardModal}>
+              <Plus size={18} /> Crear Tablero
+            </button>
+            <button 
+              className={styles['btn-secondary'] || 'btn-secondary'} 
+              onClick={() => {
+                fetchPublicBoards()
+                setShowJoinBoardModal(true)
+              }}
+            >
+              Unirse a Tablero
+            </button>
+          </div>
         </div>
         <BoardModal
           isOpen={showBoardModal}
@@ -493,9 +511,20 @@ export default function Tasks() {
             <p style={{ color: '#64748b', fontSize: '16px', maxWidth: '400px', margin: '0 auto 32px' }}>
               Elige uno de tus tableros en el menú superior o crea uno nuevo para empezar a gestionar tus tareas.
             </p>
-            <button className={styles['btn-primary']} onClick={openBoardModal}>
-              <Plus size={18} /> Crear Nuevo Tablero
-            </button>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button className={styles['btn-primary']} onClick={openBoardModal}>
+                <Plus size={18} /> Crear Nuevo Tablero
+              </button>
+              <button 
+                className={styles['btn-secondary'] || 'btn-secondary'} 
+                onClick={() => {
+                  fetchPublicBoards()
+                  setShowJoinBoardModal(true)
+                }}
+              >
+                Unirse a Tablero
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -592,7 +621,7 @@ export default function Tasks() {
         onClose={() => setShowJoinBoardModal(false)}
         publicBoards={publicBoards}
         handleJoinBoard={handleJoinBoard}
-        isJoiningBoard={false}
+        isJoiningBoard={isJoiningBoard}
       />
     </div>
   )

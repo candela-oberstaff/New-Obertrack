@@ -106,9 +106,17 @@ export function useBoards(): UseBoardsReturn {
   const joinBoard = useCallback(async (boardId: number): Promise<boolean> => {
     try {
       await boardService.join(boardId)
-      await fetchBoards()
+      const boardsRes = await fetchBoards()
+      const found = boardsRes.find((b: Board) => b.id === boardId)
+      if (found) setSelectedBoard(found)
       return true
     } catch (error: any) {
+      if (error?.response?.status === 409) {
+        const boardsRes = await fetchBoards()
+        const found = boardsRes.find((b: Board) => b.id === boardId)
+        if (found) setSelectedBoard(found)
+        return true
+      }
       console.error('Error joining board:', error)
       return false
     }

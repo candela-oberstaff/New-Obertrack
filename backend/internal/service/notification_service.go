@@ -14,6 +14,7 @@ type NotificationService interface {
 	MarkAsRead(id uint, userID uint) error
 	MarkAllAsRead(userID uint) error
 	GetUnreadCount(userID uint) (int64, error)
+	DeleteByTaskID(taskID uint) error
 }
 
 type notificationService struct {
@@ -69,4 +70,8 @@ func (s *notificationService) MarkAllAsRead(userID uint) error {
 
 func (s *notificationService) GetUnreadCount(userID uint) (int64, error) {
 	return s.repo.GetUnreadCount(userID)
+}
+
+func (s *notificationService) DeleteByTaskID(taskID uint) error {
+	return s.repo.DeleteByTaskID(taskID)
 }

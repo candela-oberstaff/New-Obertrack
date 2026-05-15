@@ -367,9 +367,6 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
                 {task.assignees && task.assignees.length > 0 ? (
                   task.assignees.map((user) => (
                     <div key={user.id} className={styles['assignee-item']}>
-                      <div className={`${styles['assignee-avatar']} ${styles['large'] || 'large'}`}>
-                        {user.name.charAt(0).toUpperCase()}
-                      </div>
                       <span>{user.name}</span>
                     </div>
                   ))

@@ -44,24 +44,46 @@ export default function WorkHours() {
 
   const [showModal, setShowModal] = useState(false)
   const [selectedWorkHour, setSelectedWorkHour] = useState<WorkHour | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const today = new Date().toISOString().split('T')[0]
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await createWorkHour({
-        work_date: formData.work_date,
-        work_type: formData.work_type,
-        activities: formData.activities,
-        absence_reason: formData.absence_reason,
-        absence_hours: formData.absence_hours,
-      })
+      if (editingId) {
+        await createWorkHour({
+          ...formData,
+          id: editingId
+        } as any)
+      } else {
+        await createWorkHour({
+          work_date: formData.work_date,
+          work_type: formData.work_type,
+          activities: formData.activities,
+          absence_reason: formData.absence_reason,
+          absence_hours: formData.absence_hours,
+        })
+      }
       setShowModal(false)
+      setEditingId(null)
       resetForm()
     } catch (error) {
-      console.error('Error creating work hour:', error)
+      console.error('Error saving work hour:', error)
     }
+  }
+
+  const handleEdit = (wh: WorkHour) => {
+    setFormData({
+      work_date: wh.work_date.split('T')[0],
+      work_type: wh.work_type as any,
+      activities: wh.activities,
+      absence_reason: wh.absence_reason || '',
+      absence_hours: wh.absence_hours || 0,
+    })
+    setEditingId(wh.id)
+    setShowModal(true)
+    setSelectedWorkHour(null)
   }
 
   const handleBulkApprove = async () => {
@@ -107,7 +129,11 @@ export default function WorkHours() {
           <h1><Clock size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Mi Jornada</h1>
           <p className={styles['header-subtitle']}>Registra tu día laboral</p>
         </div>
-        <button className={styles['btn-primary']} onClick={() => setShowModal(true)}>
+        <button className={styles['btn-primary']} onClick={() => {
+          setEditingId(null)
+          resetForm()
+          setShowModal(true)
+        }}>
           + Registrar Día
         </button>
       </div>
@@ -155,7 +181,10 @@ export default function WorkHours() {
 
       <RegisterDayModal 
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={() => {
+          setShowModal(false)
+          setEditingId(null)
+        }}
         formData={formData}
         setFormData={setFormData}
         onSubmit={handleSubmit}
@@ -167,6 +196,7 @@ export default function WorkHours() {
         onClose={() => setSelectedWorkHour(null)}
         canApprove={canApprove}
         onApprove={approveSingle}
+        onEdit={handleEdit}
       />
     </div>
   )

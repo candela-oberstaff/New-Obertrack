@@ -95,13 +95,13 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="work-hours" element={<WorkHours />} />
-          <Route path="reports" element={<Reports />} />
           <Route path="chat" element={<SlackChat />} />
           <Route path="google-chat" element={<GoogleChat />} />
           <Route path="profile" element={<Profile />} />
           <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="admin/tools" element={<AdminRoute><Tools /></AdminRoute>} />
           <Route path="admin/metrics" element={<AdminRoute><Metrics /></AdminRoute>} />
+          <Route path="reports" element={<AdminRoute><Reports /></AdminRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
         </Route>
       </Routes>

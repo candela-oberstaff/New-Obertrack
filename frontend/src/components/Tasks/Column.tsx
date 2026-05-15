@@ -38,25 +38,7 @@ export function Column({
           <span className={styles['column-dot']} style={{ backgroundColor: column.color }} />
           <span>{column.title}</span>
         </div>
-        <div className={styles['column-actions']}>
-          <button
-            className={styles['column-move-btn']}
-            onClick={onMoveLeft}
-            disabled={!canMoveLeft}
-            title="Mover a la izquierda"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            className={styles['column-move-btn']}
-            onClick={onMoveRight}
-            disabled={!canMoveRight}
-            title="Mover a la derecha"
-          >
-            <ChevronRight size={16} />
-          </button>
           <span className={styles['column-count']}>{tasks.length}</span>
-        </div>
       </div>
       <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
         <div className={styles['column-content']} ref={setNodeRef}>

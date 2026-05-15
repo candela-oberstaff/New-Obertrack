@@ -4,7 +4,6 @@
   flex: 1;
   min-height: 0;
   background: transparent;
-  overflow: hidden;
 }
 
 /* Header */
@@ -123,8 +122,6 @@
   gap: 32px;
   padding: 16px 24px 24px 24px;
   flex: 1;
-  overflow-y: auto;
-  min-height: 0;
 }
 
 @media (max-width: 1024px) {
@@ -1159,4 +1156,28 @@
 
 .detail-actions .btn-primary {
   flex: 1;
+}
+
+.absence-alert {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+  border-radius: 10px;
+  color: #b91c1c;
+  margin-bottom: 20px;
+}
+
+.absence-alert strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.absence-alert p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0.9;
 }

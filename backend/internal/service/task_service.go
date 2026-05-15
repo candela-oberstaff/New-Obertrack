@@ -285,6 +285,8 @@ func (s *taskService) Update(id uint, isSuperadmin bool, reqData map[string]inte
 }
 
 func (s *taskService) Delete(id uint) error {
+	// Delete related notifications
+	_ = s.notifSvc.DeleteByTaskID(id)
 	return s.repo.Delete(id)
 }
 
