@@ -52,7 +52,15 @@ export function BoardMembersModal({
                     </div>
                     <div className={styles['member-info']}>
                       <span className={styles['member-name']}>{user.name}</span>
-                      <span className={styles['member-role']}>{user.user_type === 'empleado' ? 'Profesional' : user.user_type}</span>
+                      <span className={styles['member-role']}>
+                        {user.user_type === 'empleado' || user.user_type === 'profesional'
+                          ? 'Profesional'
+                          : user.user_type === 'empleador'
+                          ? 'Empresa'
+                          : user.user_type === 'superadmin'
+                          ? 'Super Admin'
+                          : user.user_type}
+                      </span>
                     </div>
                   </div>
                   <span className={`${styles['member-status'] || 'member-status'} ${isMember ? (styles['active'] || 'active') : (styles['inactive'] || 'inactive')}`}>

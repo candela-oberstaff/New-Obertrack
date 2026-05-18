@@ -34,8 +34,8 @@ func (r *userRepository) GetAll(role, isManager string, offset, limit int) ([]mo
 	findQuery := r.db.Model(&models.User{})
 
 	if role != "" {
-		countQuery = countQuery.Where("tipo_usuario = ?", role)
-		findQuery = findQuery.Where("tipo_usuario = ?", role)
+		countQuery = countQuery.Where("user_type = ?", role)
+		findQuery = findQuery.Where("user_type = ?", role)
 	}
 
 	if isManager != "" {

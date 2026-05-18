@@ -131,6 +131,102 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.EmailEvent{})
 			},
 		},
+		{
+			ID: "202605181130_fix_duplicate_columns_and_tables",
+			Migrate: func(tx *gorm.DB) error {
+				// 1. Migrate users table (tipo_usuario -> user_type)
+				if tx.Migrator().HasColumn(&models.User{}, "tipo_usuario") {
+					log.Println("Migrating user_type data and dropping tipo_usuario...")
+					// Ensure user_type column exists
+					if !tx.Migrator().HasColumn(&models.User{}, "user_type") {
+						if err := tx.Migrator().AddColumn(&models.User{}, "user_type"); err != nil {
+							return err
+						}
+					}
+					// Copy and map values (Gorm was writing to tipo_usuario, so it is the source of truth for new users)
+					updateSQL := `
+						UPDATE users 
+						SET user_type = CASE 
+							WHEN tipo_usuario = 'empleado' THEN 'profesional'
+							WHEN tipo_usuario = 'empleador' THEN 'empleador'
+							WHEN tipo_usuario = 'superadmin' THEN 'superadmin'
+							ELSE 'profesional'
+						END 
+						WHERE tipo_usuario IS NOT NULL AND (user_type IS NULL OR user_type = '')
+					`
+					if err := tx.Exec(updateSQL).Error; err != nil {
+						return err
+					}
+					// Drop column tipo_usuario
+					if err := tx.Migrator().DropColumn(&models.User{}, "tipo_usuario"); err != nil {
+						return err
+					}
+				}
+
+				// 2. Migrate task_attachments table (filename -> file_name, stored_filename -> file_url)
+				if tx.Migrator().HasColumn(&models.TaskAttachment{}, "filename") {
+					log.Println("Migrating task_attachments filename -> file_name...")
+					if !tx.Migrator().HasColumn(&models.TaskAttachment{}, "file_name") {
+						if err := tx.Migrator().AddColumn(&models.TaskAttachment{}, "file_name"); err != nil {
+							return err
+						}
+					}
+					updateNameSQL := `UPDATE task_attachments SET file_name = filename WHERE filename IS NOT NULL AND (file_name IS NULL OR file_name = '')`
+					if err := tx.Exec(updateNameSQL).Error; err != nil {
+						return err
+					}
+				}
+				if tx.Migrator().HasColumn(&models.TaskAttachment{}, "stored_filename") {
+					log.Println("Migrating task_attachments stored_filename -> file_url...")
+					if !tx.Migrator().HasColumn(&models.TaskAttachment{}, "file_url") {
+						if err := tx.Migrator().AddColumn(&models.TaskAttachment{}, "file_url"); err != nil {
+							return err
+						}
+					}
+					updateUrlSQL := `UPDATE task_attachments SET file_url = stored_filename WHERE stored_filename IS NOT NULL AND (file_url IS NULL OR file_url = '')`
+					if err := tx.Exec(updateUrlSQL).Error; err != nil {
+						return err
+					}
+				}
+				// Now drop old columns filename and stored_filename
+				if tx.Migrator().HasColumn(&models.TaskAttachment{}, "filename") {
+					if err := tx.Migrator().DropColumn(&models.TaskAttachment{}, "filename"); err != nil {
+						return err
+					}
+				}
+				if tx.Migrator().HasColumn(&models.TaskAttachment{}, "stored_filename") {
+					if err := tx.Migrator().DropColumn(&models.TaskAttachment{}, "stored_filename"); err != nil {
+						return err
+					}
+				}
+
+				// 3. Migrate task_user -> task_users table
+				if tx.Migrator().HasTable("task_user") {
+					log.Println("Migrating task_user -> task_users...")
+					// Ensure task_users table exists
+					if err := tx.AutoMigrate(&models.TaskUser{}); err != nil {
+						return err
+					}
+					
+					// Copy rows
+					copySQL := `
+						INSERT INTO task_users (task_id, user_id) 
+						SELECT task_id, user_id FROM task_user
+						ON CONFLICT DO NOTHING
+					`
+					if err := tx.Exec(copySQL).Error; err != nil {
+						return err
+					}
+					
+					// Drop old table
+					if err := tx.Migrator().DropTable("task_user"); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			},
+		},
 		// Future migrations go here
 	})
 
