@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import styles from './Auth.module.css'
+import AuthLayout from '../components/layout/AuthLayout'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -27,50 +28,44 @@ export default function Login() {
   }
 
   return (
-    <div className={styles['auth-container']}>
-      <div className={styles['auth-card']}>
-        <img src="/logos/Vertical_Blanco.png" alt="Obertrack" className={styles['auth-logo']} />
-        <p className={styles['auth-tagline']}>Remote Work Tracking</p>
-        <h2>Iniciar Sesión</h2>
+    <AuthLayout title="Iniciar Sesión">
+      {error && <div className={styles['error-message']}>{error}</div>}
 
-        {error && <div className={styles['error-message']}>{error}</div>}
+      <form onSubmit={handleSubmit}>
+        <div className={styles['form-group']}>
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className={styles['form-group']}>
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
+        <div className={styles['form-group']}>
+          <label htmlFor="password">Contraseña</label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </div>
 
-          <div className={styles['form-group']}>
-            <label htmlFor="password">Contraseña</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+        <button type="submit" disabled={isLoading}>
+          {isLoading ? 'Iniciando...' : 'Iniciar Sesión'}
+        </button>
+      </form>
 
-          <button type="submit" disabled={isLoading}>
-            {isLoading ? 'Iniciando...' : 'Iniciar Sesión'}
-          </button>
-        </form>
+      <p className={styles['auth-link']} style={{ marginTop: '12px', marginBottom: '0' }}>
+        <a href="/forgot-password">¿Olvidaste tu contraseña?</a>
+      </p>
 
-        <p className={styles['auth-link']} style={{ marginTop: '12px', marginBottom: '0' }}>
-          <a href="/forgot-password">¿Olvidaste tu contraseña?</a>
-        </p>
-
-        <p className={styles['auth-link']}>
-          ¿No tienes cuenta? <a href="/register">Regístrate</a>
-        </p>
-      </div>
-    </div>
+      <p className={styles['auth-link']}>
+        ¿No tienes cuenta? <a href="/register">Regístrate</a>
+      </p>
+    </AuthLayout>
   )
 }
