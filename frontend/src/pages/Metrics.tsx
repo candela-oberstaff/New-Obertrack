@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Mail, 
-  BarChart3, 
-  CheckCircle2, 
+import {
+  Mail,
+  BarChart3,
+  CheckCircle2,
   Calendar,
   Activity
 } from 'lucide-react';
@@ -44,14 +44,14 @@ const MetricsPage: React.FC = () => {
     <div className={styles.metricsContainer}>
       <header className={styles.metricsHeader}>
         <div>
-          <h1>Métricas e Inteligencia</h1>
+          <h1>Métricas</h1>
           <p>Visualización real del engagement basada en eventos registrados</p>
         </div>
         <div className={styles.headerActions}>
           <div className={styles.periodSelector}>
             <Calendar size={16} />
-            <select 
-              value={days} 
+            <select
+              value={days}
               onChange={(e) => setDays(Number(e.target.value))}
               className={styles.selectFilter}
             >
@@ -65,25 +65,36 @@ const MetricsPage: React.FC = () => {
       </header>
 
       <nav className={styles.metricsTabs}>
-        <button 
-          className={activeTab === 'emails' ? styles.active : ''} 
+        <button
+          className={activeTab === 'emails' ? styles.active : ''}
           onClick={() => setActiveTab('emails')}
         >
           <Mail size={18} /> Emails
         </button>
-        <button 
-          className={activeTab === 'surveys' ? styles.active : ''} 
+        <button
+          className={activeTab === 'surveys' ? styles.active : ''}
           onClick={() => setActiveTab('surveys')}
         >
           <CheckCircle2 size={18} /> Encuestas
         </button>
-        <button 
-          className={activeTab === 'advanced' ? styles.active : ''} 
+        <button
+          className={activeTab === 'advanced' ? styles.active : ''}
           onClick={() => setActiveTab('advanced')}
         >
           <BarChart3 size={18} /> Avanzado
         </button>
       </nav>
+
+      <div className={styles.mobileTabs}>
+        <select 
+          value={activeTab} 
+          onChange={(e) => setActiveTab(e.target.value as any)}
+        >
+          <option value="emails">Emails</option>
+          <option value="surveys">Encuestas</option>
+          <option value="advanced">Avanzado</option>
+        </select>
+      </div>
 
       <div className={styles.tabContent}>
         {activeTab === 'emails' && <EmailTab data={data} />}

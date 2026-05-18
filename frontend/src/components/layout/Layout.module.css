@@ -304,3 +304,118 @@
 .app-layout.sidebar-collapsed .user-info {
   display: none;
 }
+
+/* Responsive and Mobile Navigation Drawer */
+.close-mobile-btn,
+.menu-toggle-btn {
+  display: none;
+}
+
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(6, 11, 35, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 999;
+  transition: all 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  .app-layout {
+    padding: 0;
+    gap: 0;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px !important;
+    height: 100vh;
+    border-radius: 0;
+    border: none;
+    border-right: 1px solid rgba(204, 51, 204, 0.15);
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-header {
+    justify-content: space-between;
+    padding: 20px 24px;
+  }
+
+  .sidebar-logo {
+    display: block !important;
+  }
+
+  .sidebar-isotipo {
+    display: none !important;
+  }
+
+  .close-mobile-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+
+  .close-mobile-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+  }
+
+  .menu-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #0f172a;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 8px;
+    transition: all 0.2s;
+  }
+
+  .menu-toggle-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .top-bar {
+    justify-content: space-between;
+    padding: 0 16px;
+    height: 56px;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .main-content {
+    border-radius: 0;
+    border: none;
+    height: 100vh;
+  }
+
+  .collapse-btn {
+    display: none !important;
+  }
+}

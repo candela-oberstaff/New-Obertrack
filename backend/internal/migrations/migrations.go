@@ -227,6 +227,22 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			ID: "20260518_add_user_reset_token",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Migrating reset_token fields to users...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.User{}, "reset_token") {
+					tx.Migrator().DropColumn(&models.User{}, "reset_token")
+				}
+				if tx.Migrator().HasColumn(&models.User{}, "reset_token_expiry") {
+					tx.Migrator().DropColumn(&models.User{}, "reset_token_expiry")
+				}
+				return nil
+			},
+		},
 		// Future migrations go here
 	})
 

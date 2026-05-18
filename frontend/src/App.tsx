@@ -5,6 +5,8 @@ import { lazy, Suspense } from 'react'
 
 const Login = lazy(() => import('./pages/Login'))
 const Register = lazy(() => import('./pages/Register'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const WorkHours = lazy(() => import('./pages/WorkHours'))
@@ -101,6 +103,8 @@ function App() {
       <Routes>
         <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
         <Route path="/register" element={<AuthRoute><Register /></AuthRoute>} />
+        <Route path="/forgot-password" element={<AuthRoute><ForgotPassword /></AuthRoute>} />
+        <Route path="/reset-password" element={<AuthRoute><ResetPassword /></AuthRoute>} />
         <Route
           path="/"
           element={

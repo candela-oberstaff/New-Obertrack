@@ -47,6 +47,8 @@ type User struct {
 	RememberToken       string         `gorm:"size:100" json:"-"`
 	EmailVerifiedAt     *time.Time     `json:"email_verified_at,omitempty"`
 	ManagerID           *uint          `gorm:"index" json:"manager_id,omitempty"`
+	ResetToken          string         `gorm:"size:100;index" json:"-"`
+	ResetTokenExpiry    *time.Time     `json:"-"`
 	CreatedAt           time.Time      `json:"created_at"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`

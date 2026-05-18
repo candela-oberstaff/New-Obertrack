@@ -105,3 +105,15 @@
   font-size: 12px;
   padding: 8px 12px;
 }
+
+@media (max-width: 768px) {
+  .surveysList {
+    grid-template-columns: 1fr;
+  }
+  
+  .surveyCard {
+    padding: 24px;
+    min-height: auto;
+  }
+}
+

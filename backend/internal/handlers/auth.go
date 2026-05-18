@@ -150,3 +150,47 @@ func (h *AuthHandler) GetCompanies(c *gin.Context) {
 
 	c.JSON(http.StatusOK, companies)
 }
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.authService.ForgotPassword(req.Email); err != nil {
+		// Still return 200 to not reveal if email exists
+		c.JSON(http.StatusOK, gin.H{"message": "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña."})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Si el correo está registrado, recibirás un enlace para restablecer tu contraseña."})
+}
+
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"`
+}
+
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.authService.ResetPassword(req.Token, req.NewPassword); err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "invalid or expired reset token" || err.Error() == "reset token has expired" {
+			status = http.StatusUnauthorized
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Contraseña actualizada exitosamente."})
+}

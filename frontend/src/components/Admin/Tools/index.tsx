@@ -45,6 +45,16 @@ const Tools: React.FC = () => {
                 <ClipboardList size={14} /> Encuestas
               </button>
             </div>
+            
+            <div className={styles['mobile-tabs']}>
+              <select 
+                value={activeTab} 
+                onChange={(e) => setActiveTab(e.target.value as ToolTab)}
+              >
+                <option value="email">Email</option>
+                <option value="surveys">Encuestas</option>
+              </select>
+            </div>
             {extraAction}
           </div>
         </div>

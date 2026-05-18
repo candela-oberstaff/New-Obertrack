@@ -127,10 +127,60 @@
 @media (max-width: 1024px) {
   .work-hours-content {
     flex-direction: column;
+    padding: 16px !important;
+    gap: 16px !important;
   }
   
   .calendar-section {
     width: 100% !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .wh-page-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+    padding: 16px 16px 8px 16px !important;
+  }
+
+  .header-left h1 {
+    font-size: 20px !important;
+  }
+
+  .wh-stats-row {
+    padding: 8px 16px !important;
+    gap: 12px !important;
+  }
+
+  .stat-card-mini {
+    padding: 16px !important;
+    min-width: 150px !important;
+  }
+
+  .calendar-section {
+    height: auto !important;
+    min-height: 520px !important;
+    padding: 16px !important;
+  }
+
+  .hours-list-section {
+    height: auto !important;
+    min-height: 480px !important;
+    padding: 16px !important;
+  }
+
+  .list-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .list-actions {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
   }
 }
 

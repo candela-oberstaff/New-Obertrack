@@ -125,3 +125,15 @@
   margin: 0 0 8px 0;
   font-size: 18px;
 }
+
+@media (max-width: 768px) {
+  .list-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .tool-card {
+    padding: 24px;
+    min-height: auto;
+  }
+}
+

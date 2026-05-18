@@ -212,6 +212,24 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
             {isSending ? <div className={styles.loader}></div> : <><Send size={16} /> Continuar y Enviar</>}
           </button>
         </div>
+        <div className={styles.mobileActions}>
+          <select 
+            value=""
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === 'settings') setShowSettings(true);
+              if (val === 'save') handleSave();
+              if (val === 'send') handleSend();
+              e.target.value = '';
+            }}
+            disabled={isSending}
+          >
+            <option value="" disabled>Acciones...</option>
+            <option value="settings">Configuración</option>
+            <option value="save">Guardar Borrador</option>
+            <option value="send">Continuar y Enviar</option>
+          </select>
+        </div>
       </header>
 
       <div className={styles.builderContent}>

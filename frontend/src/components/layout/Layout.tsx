@@ -16,7 +16,9 @@ import {
   ChevronLeft,
   LogOut,
   Plug,
-  Wrench
+  Wrench,
+  Menu,
+  X
 } from 'lucide-react'
 import Avatar from '../Common/Avatar'
 import styles from './Layout.module.css'
@@ -27,8 +29,13 @@ export default function Layout() {
   const location = useLocation()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [totalChatUnread, setTotalChatUnread] = useState(0)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
 
   const isChatPage = location.pathname.startsWith('/chat')
+
+  useEffect(() => {
+    setIsMobileSidebarOpen(false)
+  }, [location.pathname])
 
 
   useEffect(() => {
@@ -95,13 +102,26 @@ export default function Layout() {
   }
 
   return (
-    <div className={`${styles['app-layout']} ${sidebarCollapsed ? styles['sidebar-collapsed'] : ''}`}>
-      <aside className={styles['sidebar']}>
+    <div className={`${styles['app-layout']} ${sidebarCollapsed ? styles['sidebar-collapsed'] : ''} ${isMobileSidebarOpen ? styles['mobile-open'] : ''}`}>
+      {isMobileSidebarOpen && (
+        <div 
+          className={styles['sidebar-overlay']} 
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+      <aside className={`${styles['sidebar']} ${isMobileSidebarOpen ? styles['mobile-open'] : ''}`}>
         <div className={styles['sidebar-header']}>
           {sidebarCollapsed
             ? <img src="/logos/Isotipo_Color.png" alt="Obertrack" className={styles['sidebar-isotipo']} />
             : <img src="/logos/Horizontal_Blanco.png" alt="Obertrack" className={styles['sidebar-logo']} />
           }
+          <button 
+            className={styles['close-mobile-btn']} 
+            onClick={() => setIsMobileSidebarOpen(false)}
+            aria-label="Cerrar menú"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <div className={styles['sidebar-user']}>
@@ -110,7 +130,7 @@ export default function Layout() {
             name={user?.name} 
             size="md" 
           />
-          {!sidebarCollapsed && (
+          {(!sidebarCollapsed || isMobileSidebarOpen) && (
             <div className={styles['user-info']}>
               <span className={styles['user-name']}>{user?.name}</span>
               <span className={styles['user-role']}>{getRoleLabel()}</span>
@@ -132,7 +152,7 @@ export default function Layout() {
                   <span className={styles['nav-badge']}>{totalChatUnread > 9 ? '9+' : totalChatUnread}</span>
                 )}
               </span>
-              {!sidebarCollapsed && <span className={styles['nav-label']}>{item.label}</span>}
+              {(!sidebarCollapsed || isMobileSidebarOpen) && <span className={styles['nav-label']}>{item.label}</span>}
             </NavLink>
           ))}
         </nav>
@@ -143,13 +163,20 @@ export default function Layout() {
           </button>
           <button className={styles['logout-btn']} onClick={handleLogout} title="Cerrar Sesión">
             <LogOut size={20} />
-            {!sidebarCollapsed && <span className={styles['btn-text']}>Cerrar Sesión</span>}
+            {(!sidebarCollapsed || isMobileSidebarOpen) && <span className={styles['btn-text']}>Cerrar Sesión</span>}
           </button>
         </div>
       </aside>
 
       <main className={styles['main-content']}>
         <div className={styles['top-bar']}>
+          <button 
+            className={styles['menu-toggle-btn']} 
+            onClick={() => setIsMobileSidebarOpen(true)}
+            aria-label="Abrir menú"
+          >
+            <Menu size={24} />
+          </button>
           <div className={styles['top-bar-actions']}>
             <NavLink
               to="/google-chat"

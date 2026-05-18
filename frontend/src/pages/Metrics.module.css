@@ -137,3 +137,35 @@
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+.mobileTabs {
+  display: none;
+  margin-bottom: 24px;
+}
+
+.mobileTabs select {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #475569;
+  background: white;
+  outline: none;
+}
+
+@media (max-width: 768px) {
+  .metricsHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .metricsTabs {
+    display: none;
+  }
+  .mobileTabs {
+    display: block;
+  }
+}
+

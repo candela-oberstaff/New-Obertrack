@@ -9,6 +9,7 @@ type UserRepository interface {
 	GetAll(role, isManager string, offset, limit int) ([]models.User, int64, error)
 	GetByID(id uint) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
+	GetByResetToken(token string) (*models.User, error)
 	Create(user *models.User) error
 	Update(user *models.User, updates map[string]interface{}) error
 	Delete(id uint) error
@@ -62,6 +63,14 @@ func (r *userRepository) GetByID(id uint) (*models.User, error) {
 func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 	var user models.User
 	if err := r.db.Where("email = ?", email).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) GetByResetToken(token string) (*models.User, error) {
+	var user models.User
+	if err := r.db.Where("reset_token = ? AND reset_token != ''", token).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil

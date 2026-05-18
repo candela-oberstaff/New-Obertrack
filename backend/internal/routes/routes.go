@@ -29,11 +29,12 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	notifSvc := service.NewNotificationService(notifRepo)
 	chatSvc := service.NewChatService(chatRepo)
 	channelSvc := service.NewChannelService(channelRepo, userRepo, notifSvc)
-	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 
-	// Initialize Google Chat
+	// Initialize Google Chat & Brevo
 	googleChatSvc := service.NewGoogleChatService()
 	brevoSvc := service.NewBrevoService()
+
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, brevoSvc)
 
 	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, googleChatSvc, brevoSvc)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
@@ -79,6 +80,8 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
 			auth.GET("/companies", authHandler.GetCompanies)
+			auth.POST("/forgot-password", authHandler.ForgotPassword)
+			auth.POST("/reset-password", authHandler.ResetPassword)
 		}
 
 		// Webhooks

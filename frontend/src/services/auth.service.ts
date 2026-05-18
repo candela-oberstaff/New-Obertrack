@@ -28,4 +28,12 @@ export const authService = {
     const { data } = await api.get<{ id: number; name: string }[]>('/auth/companies')
     return data
   },
+  forgotPassword: async (email: string) => {
+    const { data } = await api.post<{ message: string }>('/auth/forgot-password', { email })
+    return data
+  },
+  resetPassword: async (token: string, new_password: string) => {
+    const { data } = await api.post<{ message: string }>('/auth/reset-password', { token, new_password })
+    return data
+  },
 }

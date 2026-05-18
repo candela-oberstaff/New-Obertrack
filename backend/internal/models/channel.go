@@ -34,8 +34,8 @@ func (Channel) TableName() string {
 }
 
 type ChannelMember struct {
-	ChannelID uint      `gorm:"primaryKey" json:"channel_id"`
-	UserID    uint      `gorm:"primaryKey" json:"user_id"`
+	ChannelID uint      `gorm:"primaryKey;index:idx_member_user_channel" json:"channel_id"`
+	UserID    uint      `gorm:"primaryKey;index:idx_member_user_channel" json:"user_id"`
 	Role      string    `gorm:"size:20;default:'member'" json:"role"` // admin, member
 	JoinedAt   time.Time  `json:"joined_at"`
 	LastReadAt *time.Time `json:"last_read_at"`
@@ -48,7 +48,7 @@ func (ChannelMember) TableName() string {
 
 type ChannelMessage struct {
 	ID         uint              `gorm:"primaryKey" json:"id"`
-	ChannelID  uint              `gorm:"not null;index" json:"channel_id"`
+	ChannelID  uint              `gorm:"not null;index:idx_channel_msg_channel_deleted" json:"channel_id"`
 	UserID     uint              `gorm:"not null;index" json:"user_id"`
 	User       User              `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Content    string            `gorm:"type:text" json:"content"`
@@ -57,13 +57,13 @@ type ChannelMessage struct {
 	FileSize   int64             `json:"file_size,omitempty"`
 	FileType   string            `gorm:"size:50" json:"file_type,omitempty"`
 	IsEdited   bool              `gorm:"default:false" json:"is_edited"`
-	IsDeleted  bool              `gorm:"default:false" json:"is_deleted"`
+	IsDeleted  bool              `gorm:"default:false;index:idx_channel_msg_channel_deleted" json:"is_deleted"`
 	IsPinned   bool              `gorm:"default:false" json:"is_pinned"`
 	ParentID   *uint             `gorm:"index" json:"parent_id,omitempty"`
 	Reactions  []MessageReaction `gorm:"foreignKey:MessageID" json:"reactions,omitempty"`
 	CreatedAt  time.Time         `json:"created_at"`
 	UpdatedAt  time.Time         `json:"updated_at"`
-	DeletedAt  gorm.DeletedAt    `gorm:"index" json:"-"`
+	DeletedAt  gorm.DeletedAt    `gorm:"index:idx_channel_msg_channel_deleted" json:"-"`
 }
 
 type MessageReaction struct {

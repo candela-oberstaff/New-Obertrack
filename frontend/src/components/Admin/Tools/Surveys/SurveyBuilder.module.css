@@ -58,6 +58,23 @@
   gap: 16px;
 }
 
+.mobileActions {
+  display: none;
+  width: 100%;
+}
+
+.mobileActions select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  background: white;
+  outline: none;
+}
+
 .builderContent {
   display: flex;
   flex: 1;
@@ -645,3 +662,57 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ---- Responsive ---- */
+@media (max-width: 1024px) {
+  .builderHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px;
+  }
+  
+  .headerLeft {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  
+  .titleInput {
+    width: 100%;
+    max-width: none;
+  }
+
+  .headerActions {
+    display: none;
+  }
+
+  .mobileActions {
+    display: block;
+  }
+  
+  .builderContent {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  
+  .canvasArea {
+    padding: 20px 16px;
+    overflow-y: visible;
+  }
+  
+  .toolbarArea {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+    padding: 20px 16px;
+  }
+  
+  .methodsGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .modalHeader, .modalBody, .modalFooter {
+    padding: 16px;
+  }
+}
+

@@ -1388,9 +1388,10 @@
     bottom: 0;
     z-index: 100;
     transform: translateX(-100%);
-    transition: transform 0.3s;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     background: white;
-    width: 260px !important;
+    width: 280px !important;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
   }
 
   .channels-panel.open {
@@ -1402,14 +1403,72 @@
   }
 
   .mobile-channels-toggle {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: #f1f5f9;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 500;
+    flex-shrink: 0;
   }
 
   .chat-header-bar {
     padding: 8px 12px;
+    height: auto;
+    min-height: 52px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .channel-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .channel-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .channel-actions button:not(:last-child) {
     display: none;
   }
+
+  .messages-list {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .message-item {
+    padding: 6px 0;
+  }
+
+  .message-bubble {
+    max-width: 90%;
+  }
+
+  .chat-input-area {
+    padding: 8px 12px;
+  }
+
+  .mention-dropdown {
+    left: 8px;
+    right: 8px;
+    min-width: unset;
+  }
+
+  .thread-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw !important;
+    z-index: 200;
+    box-shadow: none;
+  }
 }
+

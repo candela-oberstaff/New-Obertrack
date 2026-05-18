@@ -8,15 +8,15 @@ import (
 
 type Notification struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
-	UserID    uint           `gorm:"not null;index" json:"user_id"`
+	UserID    uint           `gorm:"not null;index:idx_user_read_deleted" json:"user_id"`
 	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Type      string         `gorm:"size:50;not null" json:"type"`
 	Title     string         `gorm:"size:255;not null" json:"title"`
 	Message   string         `gorm:"type:text" json:"message"`
 	Data      string         `gorm:"type:json" json:"data"`
-	ReadAt    *time.Time     `json:"read_at,omitempty"`
+	ReadAt    *time.Time     `gorm:"index:idx_user_read_deleted" json:"read_at,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	DeletedAt gorm.DeletedAt `gorm:"index:idx_user_read_deleted" json:"-"`
 }
 
 func (Notification) TableName() string {

@@ -1,0 +1,151 @@
+import { useState } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { authService } from '../services/auth.service'
+import styles from './Auth.module.css'
+
+export default function ResetPassword() {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const token = searchParams.get('token') || ''
+
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+
+    if (password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres.')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden.')
+      return
+    }
+
+    if (!token) {
+      setError('Token de recuperación no válido.')
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      await authService.resetPassword(token, password)
+      setSuccess(true)
+      setTimeout(() => navigate('/login'), 3000)
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Ocurrió un error. Intenta de nuevo.'
+      if (msg.includes('expired')) {
+        setError('El enlace ha expirado. Solicita uno nuevo.')
+      } else if (msg.includes('invalid')) {
+        setError('El enlace no es válido. Solicita uno nuevo.')
+      } else {
+        setError(msg)
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className={styles['auth-container']}>
+      <div className={styles['auth-card']}>
+        <img src="/logos/Vertical_Blanco.png" alt="Obertrack" className={styles['auth-logo']} />
+        <p className={styles['auth-tagline']}>Remote Work Tracking</p>
+        <h2>Nueva Contraseña</h2>
+
+        {success ? (
+          <div style={{ textAlign: 'center', marginTop: '16px' }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'rgba(16, 185, 129, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              fontSize: '28px',
+            }}>
+              ✅
+            </div>
+            <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '15px', lineHeight: '1.6', marginBottom: '16px' }}>
+              Tu contraseña ha sido actualizada exitosamente.
+            </p>
+            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px' }}>
+              Serás redirigido al inicio de sesión en unos segundos...
+            </p>
+            <p className={styles['auth-link']} style={{ marginTop: '24px' }}>
+              <a href="/login">Ir al inicio de sesión →</a>
+            </p>
+          </div>
+        ) : (
+          <>
+            {!token && (
+              <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                <p style={{ color: '#fca5a5', fontSize: '14px', marginBottom: '16px' }}>
+                  No se encontró un token de recuperación válido en la URL.
+                </p>
+                <p className={styles['auth-link']}>
+                  <a href="/forgot-password">Solicitar un nuevo enlace</a>
+                </p>
+              </div>
+            )}
+
+            {token && (
+              <>
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', textAlign: 'center', marginBottom: '20px' }}>
+                  Ingresa tu nueva contraseña para completar el proceso.
+                </p>
+
+                {error && <div className={styles['error-message']}>{error}</div>}
+
+                <form onSubmit={handleSubmit}>
+                  <div className={styles['form-group']}>
+                    <label htmlFor="password">Nueva Contraseña</label>
+                    <input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Mínimo 6 caracteres"
+                      required
+                      minLength={6}
+                    />
+                  </div>
+
+                  <div className={styles['form-group']}>
+                    <label htmlFor="confirmPassword">Confirmar Contraseña</label>
+                    <input
+                      id="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Repite tu contraseña"
+                      required
+                      minLength={6}
+                    />
+                  </div>
+
+                  <button type="submit" disabled={isLoading}>
+                    {isLoading ? 'Actualizando...' : 'Restablecer Contraseña'}
+                  </button>
+                </form>
+
+                <p className={styles['auth-link']}>
+                  <a href="/login">← Volver al inicio de sesión</a>
+                </p>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}

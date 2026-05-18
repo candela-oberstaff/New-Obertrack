@@ -86,6 +86,17 @@ export default function Admin() {
         ))}
       </div>
 
+      <div className={styles['mobile-tabs']}>
+        <select 
+          value={activeTab} 
+          onChange={(e) => setActiveTab(e.target.value)}
+        >
+          {tabs.map(tab => (
+            <option key={tab.id} value={tab.id}>{tab.label}</option>
+          ))}
+        </select>
+      </div>
+
       <div className={styles['admin-content']}>
         {activeTab === 'dashboard' && (
           <div className={styles['dashboard-tab']}>
