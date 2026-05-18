@@ -20,11 +20,17 @@ type BrevoContact struct {
 	Email string `json:"email"`
 }
 
+type BrevoAttachment struct {
+	Name    string `json:"name"`
+	Content string `json:"content"` // base64 encoded bytes
+}
+
 type BrevoEmailRequest struct {
-	Sender      BrevoContact   `json:"sender"`
-	To          []BrevoContact `json:"to"`
-	Subject     string         `json:"subject"`
-	HTMLContent string         `json:"htmlContent"`
+	Sender      BrevoContact      `json:"sender"`
+	To          []BrevoContact    `json:"to"`
+	Subject     string            `json:"subject"`
+	HTMLContent string            `json:"htmlContent"`
+	Attachment  []BrevoAttachment `json:"attachment,omitempty"`
 }
 
 type BrevoErrorResponse struct {
@@ -56,6 +62,51 @@ func (s *BrevoService) SendEmail(toEmail, toName, subject, htmlContent string) e
 		},
 		Subject:     subject,
 		HTMLContent: htmlContent,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal email payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", s.apiURL, bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("accept", "application/json")
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("api-key", s.apiKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request to Brevo: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var brevoErr BrevoErrorResponse
+		json.NewDecoder(resp.Body).Decode(&brevoErr)
+		return fmt.Errorf("brevo API error [%d]: %s - %s", resp.StatusCode, brevoErr.Code, brevoErr.Message)
+	}
+
+	return nil
+}
+
+func (s *BrevoService) SendEmailWithAttachments(toEmail, toName, subject, htmlContent string, attachments []BrevoAttachment) error {
+	if s.apiKey == "" {
+		return fmt.Errorf("BREVO_API_KEY is not configured")
+	}
+
+	payload := BrevoEmailRequest{
+		Sender: s.from,
+		To: []BrevoContact{
+			{Name: toName, Email: toEmail},
+		},
+		Subject:     subject,
+		HTMLContent: htmlContent,
+		Attachment:  attachments,
 	}
 
 	body, err := json.Marshal(payload)

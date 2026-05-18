@@ -156,6 +156,25 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 		return nil, errors.New("User not found")
 	}
 
+	if newEmpIDVal, ok := updates["empleador_id"]; ok {
+		var newEmpID uint
+		switch v := newEmpIDVal.(type) {
+		case uint:
+			newEmpID = v
+		case *uint:
+			if v != nil {
+				newEmpID = *v
+			}
+		case int:
+			newEmpID = uint(v)
+		case float64:
+			newEmpID = uint(v)
+		}
+		if newEmpID > 0 && user.EmpleadorID != nil && *user.EmpleadorID != newEmpID {
+			return nil, errors.New("Este usuario ya está vinculado a una empresa y no se puede cambiar a otra")
+		}
+	}
+
 	if err := s.userRepo.Update(user, updates); err != nil {
 		return nil, err
 	}

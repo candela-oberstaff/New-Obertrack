@@ -13,6 +13,9 @@ export const authService = {
     user_type?: string; 
     company_name?: string;
     empleador_id?: number;
+    phone_number?: string;
+    location?: string;
+    job_title?: string;
   }) => {
     const { data } = await api.post<{ user: User; access_token: string }>('/auth/register', userData)
     return data

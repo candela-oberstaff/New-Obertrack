@@ -24,9 +24,12 @@ type RegisterRequest struct {
 	Name        string `json:"name" binding:"required"`
 	Email       string `json:"email" binding:"required,email"`
 	Password    string `json:"password" binding:"required,min=6"`
-	UserType    string `json:"user_type"`
+	UserType    string `json:"user_type" binding:"required"`
 	CompanyName string `json:"company_name"`
 	EmpleadorID *uint  `json:"empleador_id"`
+	PhoneNumber string `json:"phone_number"`
+	Location    string `json:"location"`
+	JobTitle    string `json:"job_title"`
 }
 
 type LoginRequest struct {
@@ -47,7 +50,46 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, token, err := h.authService.Register(req.Name, req.Email, req.Password, req.UserType, req.CompanyName, req.EmpleadorID)
+	// Validate based on UserType
+	switch req.UserType {
+	case "profesional", "empleado":
+		if req.PhoneNumber == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El teléfono es obligatorio para profesionales"})
+			return
+		}
+		if req.Location == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "La ubicación es obligatoria para profesionales"})
+			return
+		}
+		if req.JobTitle == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El rol (cargo) es obligatorio para profesionales"})
+			return
+		}
+		if req.EmpleadorID == nil || *req.EmpleadorID == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "La empresa es obligatoria para profesionales"})
+			return
+		}
+	case "empleador", "empresa":
+		if req.CompanyName == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El nombre de la empresa es obligatorio"})
+			return
+		}
+		if req.PhoneNumber == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El teléfono es obligatorio para empresas"})
+			return
+		}
+		if req.Location == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "La ubicación es obligatoria para empresas"})
+			return
+		}
+	case "superadmin":
+		// Superadmin checks
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tipo de usuario no válido"})
+		return
+	}
+
+	user, token, err := h.authService.Register(req.Name, req.Email, req.Password, req.UserType, req.CompanyName, req.EmpleadorID, req.PhoneNumber, req.Location, req.JobTitle)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Email already registered" {

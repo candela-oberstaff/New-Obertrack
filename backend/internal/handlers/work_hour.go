@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -152,4 +153,92 @@ func (h *WorkHourHandler) GetPending(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, pending)
+}
+
+func (h *WorkHourHandler) SendReport(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+
+	if role != "empleador" && !isSuperadmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Solo las empresas o superadmins pueden solicitar el envío del reporte por correo"})
+		return
+	}
+
+	var req struct {
+		Month int `json:"month" binding:"required"`
+		Year  int `json:"year" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	err := h.svc.SendReportEmail(userID, req.Month, req.Year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al enviar el reporte: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Reporte enviado con éxito"})
+}
+
+func (h *WorkHourHandler) DownloadPDF(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+
+	if role != "empleador" && !isSuperadmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Solo las empresas o superadmins pueden descargar reportes"})
+		return
+	}
+
+	monthStr := c.Query("month")
+	yearStr := c.Query("year")
+	month, _ := strconv.Atoi(monthStr)
+	year, _ := strconv.Atoi(yearStr)
+
+	if month < 1 || month > 12 || year < 2000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Parámetros de mes o año inválidos"})
+		return
+	}
+
+	pdfBytes, monthName, err := h.svc.GetPDFReportBytes(userID, month, year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al generar PDF: " + err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=reporte_jornadas_%s_%d.pdf", monthName, year))
+	c.Data(http.StatusOK, "application/pdf", pdfBytes)
+}
+
+func (h *WorkHourHandler) DownloadExcel(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+
+	if role != "empleador" && !isSuperadmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Solo las empresas o superadmins pueden descargar reportes"})
+		return
+	}
+
+	monthStr := c.Query("month")
+	yearStr := c.Query("year")
+	month, _ := strconv.Atoi(monthStr)
+	year, _ := strconv.Atoi(yearStr)
+
+	if month < 1 || month > 12 || year < 2000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Parámetros de mes o año inválidos"})
+		return
+	}
+
+	excelBytes, monthName, err := h.svc.GetExcelReportBytes(userID, month, year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al generar Excel: " + err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=reporte_jornadas_%s_%d.xlsx", monthName, year))
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", excelBytes)
 }

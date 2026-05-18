@@ -10,6 +10,7 @@ interface WorkHourListProps {
   pendingForSelectedDate: WorkHour[]
   onBulkApprove: () => void
   onItemClick: (wh: WorkHour) => void
+  isEmployer?: boolean
 }
 
 export function WorkHourList({
@@ -18,7 +19,8 @@ export function WorkHourList({
   canApprove,
   pendingForSelectedDate,
   onBulkApprove,
-  onItemClick
+  onItemClick,
+  isEmployer
 }: WorkHourListProps) {
   return (
     <div className={styles['hours-list-section']}>
@@ -26,6 +28,8 @@ export function WorkHourList({
         <h3>
           {selectedDate
             ? `Registros del ${parseLocalDate(selectedDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}`
+            : isEmployer
+            ? 'Registros'
             : 'Mis registros'}
         </h3>
         {canApprove && pendingForSelectedDate.length > 0 && (

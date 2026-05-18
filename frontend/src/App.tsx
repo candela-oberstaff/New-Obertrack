@@ -63,6 +63,24 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function ReportsRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <Loading />
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (!user.is_superadmin && user.user_type !== 'empleador') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return <>{children}</>
+}
+
 function AuthRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
 
@@ -101,7 +119,7 @@ function App() {
           <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="admin/tools" element={<AdminRoute><Tools /></AdminRoute>} />
           <Route path="admin/metrics" element={<AdminRoute><Metrics /></AdminRoute>} />
-          <Route path="reports" element={<AdminRoute><Reports /></AdminRoute>} />
+          <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
         </Route>
       </Routes>

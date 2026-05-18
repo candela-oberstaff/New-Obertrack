@@ -13,7 +13,7 @@ import (
 )
 
 type AuthService interface {
-	Register(name, email, password, userTypeStr, companyName string, empleadorID *uint) (*models.User, string, error)
+	Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle string) (*models.User, string, error)
 	Login(email, password string) (*models.User, string, error)
 	GetUserDetails(id uint) (*models.User, error)
 	GetPublicCompanies() ([]map[string]interface{}, error)
@@ -33,7 +33,7 @@ func NewAuthService(userRepo repository.UserRepository, jwtSecret string) AuthSe
 	}
 }
 
-func (s *authService) Register(name, email, password, userTypeStr, companyName string, empleadorID *uint) (*models.User, string, error) {
+func (s *authService) Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle string) (*models.User, string, error) {
 	_, err := s.userRepo.GetByEmail(email)
 	if err == nil {
 		return nil, "", errors.New("Email already registered")
@@ -64,6 +64,9 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 		IsSuperadmin: isSuperadmin,
 		IsActive:     true,
 		EmpleadorID:  empleadorID,
+		PhoneNumber:  phoneNumber,
+		Location:     location,
+		JobTitle:     jobTitle,
 	}
 
 	if err := s.userRepo.Create(user); err != nil {

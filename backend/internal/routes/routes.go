@@ -35,7 +35,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	googleChatSvc := service.NewGoogleChatService()
 	brevoSvc := service.NewBrevoService()
 
-	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, googleChatSvc)
+	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, googleChatSvc, brevoSvc)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
 
 	boardRepo := repository.NewBoardRepository(db)
@@ -171,6 +171,9 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				workHours.POST("/approve", workHourHandler.Approve)
 				workHours.GET("/summary", workHourHandler.GetSummary)
 				workHours.GET("/pending", workHourHandler.GetPending)
+				workHours.POST("/send-report", workHourHandler.SendReport)
+				workHours.GET("/report/pdf", workHourHandler.DownloadPDF)
+				workHours.GET("/report/excel", workHourHandler.DownloadExcel)
 			}
 
 			chat := api.Group("/chat")

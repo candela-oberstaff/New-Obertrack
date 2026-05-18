@@ -56,6 +56,37 @@
   z-index: 1;
 }
 
+.register-card {
+  max-width: 500px !important;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.register-card form {
+  overflow-y: auto;
+  padding-right: 12px;
+  margin-right: -12px;
+  flex: 1;
+}
+
+.register-card form::-webkit-scrollbar {
+  width: 6px;
+}
+
+.register-card form::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.register-card form::-webkit-scrollbar-thumb {
+  background: rgba(204, 51, 204, 0.35);
+  border-radius: 999px;
+}
+
+.register-card form::-webkit-scrollbar-thumb:hover {
+  background: rgba(204, 51, 204, 0.65);
+}
+
 /* ── Logo ── */
 .auth-logo {
   display: block;

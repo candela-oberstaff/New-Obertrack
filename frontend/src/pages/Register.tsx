@@ -11,6 +11,9 @@ export default function Register() {
   const [userType, setUserType] = useState('profesional')
   const [companyName, setCompanyName] = useState('')
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | ''>('')
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [location, setLocation] = useState('')
+  const [jobTitle, setJobTitle] = useState('')
   const [companies, setCompanies] = useState<{ id: number; name: string }[]>([])
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -35,9 +38,42 @@ export default function Register() {
     e.preventDefault()
     setError('')
     
-    if (userType === 'profesional' && !selectedCompanyId) {
-      setError('Debes seleccionar una empresa para registrarte como profesional')
-      return
+    if (userType === 'profesional') {
+      if (!selectedCompanyId) {
+        setError('Debes seleccionar una empresa para registrarte como profesional')
+        return
+      }
+      if (!phoneNumber.trim()) {
+        setError('El teléfono es obligatorio')
+        return
+      }
+      if (!location.trim()) {
+        setError('La ubicación es obligatoria')
+        return
+      }
+      if (!jobTitle.trim()) {
+        setError('El rol o cargo es obligatorio')
+        return
+      }
+    }
+
+    if (userType === 'empleador') {
+      if (!companyName.trim()) {
+        setError('El nombre de la empresa es obligatorio')
+        return
+      }
+      if (!name.trim()) {
+        setError('El nombre del dueño es obligatorio')
+        return
+      }
+      if (!phoneNumber.trim()) {
+        setError('El teléfono es obligatorio')
+        return
+      }
+      if (!location.trim()) {
+        setError('La ubicación es obligatoria')
+        return
+      }
     }
 
     setIsLoading(true)
@@ -50,6 +86,9 @@ export default function Register() {
         user_type: userType,
         company_name: userType === 'empleador' ? companyName : undefined,
         empleador_id: userType === 'profesional' ? (selectedCompanyId as number) : undefined,
+        phone_number: phoneNumber,
+        location: location,
+        job_title: userType === 'profesional' ? jobTitle : undefined,
       })
       navigate('/dashboard')
     } catch (err: unknown) {
@@ -61,7 +100,7 @@ export default function Register() {
 
   return (
     <div className={styles['auth-container']}>
-      <div className={styles['auth-card']}>
+      <div className={`${styles['auth-card']} ${styles['register-card']}`}>
         <img src="/logos/Vertical_Blanco.png" alt="Obertrack" className={styles['auth-logo']} />
         <p className={styles['auth-tagline']}>Remote Work Tracking</p>
         <div className={styles['auth-header']}>
@@ -73,11 +112,13 @@ export default function Register() {
 
         <form onSubmit={handleSubmit}>
           <div className={styles['form-group']}>
-            <label htmlFor="name">Nombre completo</label>
+            <label htmlFor="name">
+              {userType === 'empleador' ? 'Nombre del dueño / Administrador' : 'Nombre completo'}
+            </label>
             <input
               id="name"
               type="text"
-              placeholder="Juan Pérez"
+              placeholder={userType === 'empleador' ? 'Ej: Juan Pérez' : 'Juan Pérez'}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -123,41 +164,105 @@ export default function Register() {
           </div>
 
           {userType === 'profesional' && (
-            <div className={styles['form-group']}>
-              <label htmlFor="companySelect">Empresa a la que perteneces (Cargadas: {companies.length})</label>
-              <select
-                id="companySelect"
-                value={selectedCompanyId}
-                onChange={(e) => setSelectedCompanyId(Number(e.target.value))}
-                required
-              >
-                <option value="">Selecciona una empresa...</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              {companies.length === 0 && (
-                <p className={styles['field-hint']}>
-                  Si no ves tu empresa, asegúrate de que el administrador de la misma ya haya creado una cuenta.
-                </p>
-              )}
-            </div>
+            <>
+              <div className={styles['form-group']}>
+                <label htmlFor="jobTitle">Rol / Cargo (Ej: Desarrollador Backend, Diseñador UI...)</label>
+                <input
+                  id="jobTitle"
+                  type="text"
+                  placeholder="Ej: Desarrollador Fullstack"
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label htmlFor="phoneNumber">Teléfono de contacto</label>
+                <input
+                  id="phoneNumber"
+                  type="tel"
+                  placeholder="Ej: +34 600 000 000"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label htmlFor="location">Ubicación (Ciudad, País)</label>
+                <input
+                  id="location"
+                  type="text"
+                  placeholder="Ej: Madrid, España"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label htmlFor="companySelect">Empresa a la que perteneces (Cargadas: {companies.length})</label>
+                <select
+                  id="companySelect"
+                  value={selectedCompanyId}
+                  onChange={(e) => setSelectedCompanyId(Number(e.target.value) || '')}
+                  required
+                >
+                  <option value="">Selecciona una empresa...</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                {companies.length === 0 && (
+                  <p className={styles['field-hint']}>
+                    Si no ves tu empresa, asegúrate de que el administrador de la misma ya haya creado una cuenta.
+                  </p>
+                )}
+              </div>
+            </>
           )}
 
           {userType === 'empleador' && (
-            <div className={styles['form-group']}>
-              <label htmlFor="companyName">Nombre de tu empresa</label>
-              <input
-                id="companyName"
-                type="text"
-                placeholder="Mi Empresa S.A."
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                required
-              />
-            </div>
+            <>
+              <div className={styles['form-group']}>
+                <label htmlFor="companyName">Nombre de tu empresa</label>
+                <input
+                  id="companyName"
+                  type="text"
+                  placeholder="Mi Empresa S.A."
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label htmlFor="phoneNumberCompany">Teléfono de contacto de la empresa</label>
+                <input
+                  id="phoneNumberCompany"
+                  type="tel"
+                  placeholder="Ej: +34 600 000 000"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className={styles['form-group']}>
+                <label htmlFor="locationCompany">Ubicación de la empresa (Ciudad, País)</label>
+                <input
+                  id="locationCompany"
+                  type="text"
+                  placeholder="Ej: Madrid, España"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  required
+                />
+              </div>
+            </>
           )}
 
           <button type="submit" className={styles['btn-primary']} disabled={isLoading}>
