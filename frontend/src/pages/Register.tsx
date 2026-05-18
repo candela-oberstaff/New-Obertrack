@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext'
 import { authService } from '../services/api'
 import styles from './Auth.module.css'
 import AuthLayout from '../components/layout/AuthLayout'
+import { ProfessionalFields } from '../components/Auth/ProfessionalFields'
+import { EmployerFields } from '../components/Auth/EmployerFields'
 
 export default function Register() {
   const [name, setName] = useState('')
@@ -161,105 +163,30 @@ export default function Register() {
             </div>
 
             {userType === 'profesional' && (
-              <>
-                <div className={styles['form-group']}>
-                  <label htmlFor="jobTitle">Rol / Cargo (Ej: Desarrollador Backend, Diseñador UI...)</label>
-                  <input
-                    id="jobTitle"
-                    type="text"
-                    placeholder="Ej: Desarrollador Fullstack"
-                    value={jobTitle}
-                    onChange={(e) => setJobTitle(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className={styles['form-group']}>
-                  <label htmlFor="phoneNumber">Teléfono de contacto</label>
-                  <input
-                    id="phoneNumber"
-                    type="tel"
-                    placeholder="Ej: +34 600 000 000"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className={styles['form-group']}>
-                  <label htmlFor="location">Ubicación (Ciudad, País)</label>
-                  <input
-                    id="location"
-                    type="text"
-                    placeholder="Ej: Madrid, España"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className={styles['form-group']}>
-                  <label htmlFor="companySelect">Empresa a la que perteneces (Cargadas: {companies.length})</label>
-                  <select
-                    id="companySelect"
-                    value={selectedCompanyId}
-                    onChange={(e) => setSelectedCompanyId(Number(e.target.value) || '')}
-                    required
-                  >
-                    <option value="">Selecciona una empresa...</option>
-                    {companies.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                  {companies.length === 0 && (
-                    <p className={styles['field-hint']}>
-                      Si no ves tu empresa, asegúrate de que el administrador de la misma ya haya creado una cuenta.
-                    </p>
-                  )}
-                </div>
-              </>
+              <ProfessionalFields
+                jobTitle={jobTitle}
+                setJobTitle={setJobTitle}
+                phoneNumber={phoneNumber}
+                setPhoneNumber={setPhoneNumber}
+                location={location}
+                setLocation={setLocation}
+                selectedCompanyId={selectedCompanyId}
+                setSelectedCompanyId={setSelectedCompanyId}
+                companies={companies}
+                styles={styles}
+              />
             )}
 
             {userType === 'empleador' && (
-              <>
-                <div className={styles['form-group']}>
-                  <label htmlFor="companyName">Nombre de tu empresa</label>
-                  <input
-                    id="companyName"
-                    type="text"
-                    placeholder="Mi Empresa S.A."
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className={styles['form-group']}>
-                  <label htmlFor="phoneNumberCompany">Teléfono de contacto de la empresa</label>
-                  <input
-                    id="phoneNumberCompany"
-                    type="tel"
-                    placeholder="Ej: +34 600 000 000"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className={styles['form-group']}>
-                  <label htmlFor="locationCompany">Ubicación de la empresa (Ciudad, País)</label>
-                  <input
-                    id="locationCompany"
-                    type="text"
-                    placeholder="Ej: Madrid, España"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    required
-                  />
-                </div>
-              </>
+              <EmployerFields
+                companyName={companyName}
+                setCompanyName={setCompanyName}
+                phoneNumber={phoneNumber}
+                setPhoneNumber={setPhoneNumber}
+                location={location}
+                setLocation={setLocation}
+                styles={styles}
+              />
             )}
 
             <button type="submit" className={styles['btn-primary']} disabled={isLoading}>

@@ -183,10 +183,13 @@ func (s *authService) ForgotPassword(email string) error {
 	// Build reset URL
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL == "" {
+		frontendURL = os.Getenv("SERVICE_URL_FRONTEND")
+	}
+	if frontendURL == "" {
 		if os.Getenv("GIN_MODE") == "release" {
-			frontendURL = "https://app.obertrack.com"
+			frontendURL = "https://obertrack.com"
 		} else {
-			frontendURL = "http://localhost:5173"
+			frontendURL = "https://obertrack.com" // Always default to obertrack.com as requested by user
 		}
 	}
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s", frontendURL, token)
