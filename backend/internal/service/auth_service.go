@@ -135,7 +135,7 @@ func (s *authService) generateToken(user *models.User) (string, error) {
 }
 
 func (s *authService) GetPublicCompanies() ([]map[string]interface{}, error) {
-	users, _, err := s.userRepo.GetAll("empleador", "", 0, 1000)
+	users, _, err := s.userRepo.GetAll("empleador", "", 0, 0, 1000)
 	if err != nil {
 		return nil, err
 	}

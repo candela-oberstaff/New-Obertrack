@@ -8,8 +8,8 @@ import (
 )
 
 type BoardService interface {
-	GetAll(userID uint, role string, isSuperadmin bool) ([]models.Board, error)
-	GetPublicBoards(userID uint) ([]models.Board, error)
+	GetAll(userID uint, role string, isSuperadmin bool, companyID uint) ([]models.Board, error)
+	GetPublicBoards(userID uint, companyID uint) ([]models.Board, error)
 	JoinBoard(userID, boardID uint) (*models.Board, error)
 	GetByID(userID uint, role string, isSuperadmin bool, boardID uint) (*models.Board, error)
 	Create(userID uint, name, description, color string, memberIDs []uint, phases []struct {
@@ -35,20 +35,27 @@ func NewBoardService(repo repository.BoardRepository, userRepo repository.UserRe
 	}
 }
 
-func (s *boardService) GetAll(userID uint, role string, isSuperadmin bool) ([]models.Board, error) {
+func (s *boardService) GetAll(userID uint, role string, isSuperadmin bool, companyID uint) ([]models.Board, error) {
 	filters := make(map[string]interface{})
 
 	if !isSuperadmin && role != "superadmin" {
 		filters["user_id"] = userID
 	}
 
+	if companyID > 0 {
+		filters["company_id"] = companyID
+	}
+
 	return s.repo.FindAll(filters)
 }
 
-func (s *boardService) GetPublicBoards(userID uint) ([]models.Board, error) {
+func (s *boardService) GetPublicBoards(userID uint, companyID uint) ([]models.Board, error) {
 	// Simplified: boards that I'm NOT in.
-	// We can use a more complex FindAll but for now let's keep it simple.
-	all, err := s.repo.FindAll(nil)
+	filters := make(map[string]interface{})
+	if companyID > 0 {
+		filters["company_id"] = companyID
+	}
+	all, err := s.repo.FindAll(filters)
 	if err != nil {
 		return nil, err
 	}

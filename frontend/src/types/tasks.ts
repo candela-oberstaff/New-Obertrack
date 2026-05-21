@@ -34,6 +34,7 @@ export interface Task {
   end_date?: string
   completed: boolean
   created_by: number
+  board_id: number
   created_at: string
   updated_at: string
   creator?: User
@@ -76,7 +77,7 @@ export interface WorkHour {
   id: number
   user_id: number
   work_date: string
-  work_type: 'complete' | 'absence'
+  work_type: 'complete' | 'absence' | 'recover'
   hours_worked: number
   activities?: string
   start_time?: string

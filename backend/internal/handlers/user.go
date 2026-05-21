@@ -42,7 +42,16 @@ func (h *UserHandler) GetAll(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	users, total, err := h.service.GetAll(role, isManager, offset, limit)
+	var companyID uint
+	if !middleware.IsSuperadmin(c) {
+		companyID = middleware.GetUserID(c)
+		userRole := middleware.GetUserRole(c)
+		if userRole == "profesional" {
+			companyID = middleware.GetEmpleadorID(c)
+		}
+	}
+
+	users, total, err := h.service.GetAll(role, isManager, companyID, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
 		return

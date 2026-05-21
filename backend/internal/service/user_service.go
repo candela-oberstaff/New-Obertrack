@@ -9,7 +9,7 @@ import (
 )
 
 type UserService interface {
-	GetAll(role, isManager string, offset, limit int) ([]models.User, int64, error)
+	GetAll(role, isManager string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	GetByID(id uint) (*models.User, error)
 	Create(req map[string]interface{}) (*models.User, error)
 	Update(id uint, updates map[string]interface{}) (*models.User, error)
@@ -34,8 +34,8 @@ func NewUserService(repo repository.UserRepository) UserService {
 	return &userService{repo: repo}
 }
 
-func (s *userService) GetAll(role, isManager string, offset, limit int) ([]models.User, int64, error) {
-	return s.repo.GetAll(role, isManager, offset, limit)
+func (s *userService) GetAll(role, isManager string, companyID uint, offset, limit int) ([]models.User, int64, error) {
+	return s.repo.GetAll(role, isManager, companyID, offset, limit)
 }
 
 func (s *userService) GetByID(id uint) (*models.User, error) {

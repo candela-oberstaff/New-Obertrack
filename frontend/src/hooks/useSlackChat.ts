@@ -119,7 +119,17 @@ export function useSlackChat(user: User | null, token: string | null) {
           } else if (msg.type === 'message_deleted') {
             setMessages(prev => prev.map(m => m.id === msg.data.id ? { ...m, is_deleted: true, content: '[Mensaje eliminado]' } : m))
           } else if (msg.type === 'thread_reply') {
-            setThreadReplies(prev => [...prev, msg.data])
+            setThreadReplies(prev => {
+              if (prev.some(r => r.id === msg.data.id)) return prev
+              return [...prev, msg.data]
+            })
+            if (msg.data.parent_id) {
+              setMessages(prev => prev.map(m =>
+                m.id === msg.data.parent_id
+                  ? { ...m, reply_count: (m.reply_count || 0) + 1 }
+                  : m
+              ))
+            }
           }
         } else if (msg.type === 'message' && msg.user_id !== user?.id) {
           setUnreadCount(prev => prev + 1)

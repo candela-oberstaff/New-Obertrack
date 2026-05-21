@@ -11,6 +11,7 @@ type WorkType string
 const (
 	WorkTypeComplete WorkType = "complete"
 	WorkTypeAbsence  WorkType = "absence"
+	WorkTypeRecover  WorkType = "recover"
 )
 
 type WorkHour struct {

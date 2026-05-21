@@ -6,6 +6,7 @@ import { PasswordModal } from '../components/Profile/PasswordModal'
 import { PendingHoursPanel } from '../components/Profile/PendingHoursPanel'
 import { TeamPanel } from '../components/Profile/TeamPanel'
 import Avatar from '../components/Common/Avatar'
+import Tooltip from '../components/Common/Tooltip'
 import styles from './Profile.module.css'
 
 export default function Profile() {
@@ -135,7 +136,10 @@ export default function Profile() {
           </div>
 
           <div className={styles['sidebar-card']}>
-            <h3>Estadísticas</h3>
+            <h3>
+              Estadísticas{' '}
+              <Tooltip content="Estado actual de tu cuenta y fecha en la que te uniste a Obertrack" size={14} />
+            </h3>
             <div className={styles['stat-item']}>
               <span className={styles['stat-label']}>Miembro desde</span>
               <span className={styles['stat-value']}>

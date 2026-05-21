@@ -163,12 +163,22 @@ func (r *channelRepository) IsMember(channelID, userID uint) (bool, error) {
 
 func (r *channelRepository) GetMessages(channelID uint, limit int) ([]models.ChannelMessage, error) {
 	var messages []models.ChannelMessage
-	err := r.db.Where("channel_id = ? AND is_deleted = ?", channelID, false).
+	err := r.db.Where("channel_id = ? AND is_deleted = ? AND parent_id IS NULL", channelID, false).
 		Preload("User").
 		Order("created_at ASC").
 		Limit(limit).
 		Find(&messages).Error
-	return messages, err
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range messages {
+		var count int64
+		r.db.Model(&models.ChannelMessage{}).Where("parent_id = ? AND is_deleted = ?", messages[i].ID, false).Count(&count)
+		messages[i].ReplyCount = int(count)
+	}
+
+	return messages, nil
 }
 
 func (r *channelRepository) GetMessage(id uint) (*models.ChannelMessage, error) {
@@ -177,6 +187,9 @@ func (r *channelRepository) GetMessage(id uint) (*models.ChannelMessage, error) 
 	if err != nil {
 		return nil, err
 	}
+	var count int64
+	r.db.Model(&models.ChannelMessage{}).Where("parent_id = ? AND is_deleted = ?", message.ID, false).Count(&count)
+	message.ReplyCount = int(count)
 	return &message, nil
 }
 

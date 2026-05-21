@@ -102,7 +102,7 @@ export default function Layout() {
   }
 
   return (
-    <div className={`${styles['app-layout']} ${sidebarCollapsed ? styles['sidebar-collapsed'] : ''} ${isMobileSidebarOpen ? styles['mobile-open'] : ''}`}>
+    <div className={`${styles['app-layout']} ${sidebarCollapsed && !isMobileSidebarOpen ? styles['sidebar-collapsed'] : ''} ${isMobileSidebarOpen ? styles['mobile-open'] : ''}`}>
       {isMobileSidebarOpen && (
         <div 
           className={styles['sidebar-overlay']} 

@@ -36,6 +36,8 @@ export interface Message {
   is_edited?: boolean
   is_deleted?: boolean
   parent_id?: number
+  reply_count?: number
+  replies?: Message[]
   reactions?: MessageReaction[]
   created_at: string
   user?: User

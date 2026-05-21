@@ -60,6 +60,7 @@ type ChannelMessage struct {
 	IsDeleted  bool              `gorm:"default:false;index:idx_channel_msg_channel_deleted" json:"is_deleted"`
 	IsPinned   bool              `gorm:"default:false" json:"is_pinned"`
 	ParentID   *uint             `gorm:"index" json:"parent_id,omitempty"`
+	ReplyCount int               `gorm:"-" json:"reply_count"`
 	Reactions  []MessageReaction `gorm:"foreignKey:MessageID" json:"reactions,omitempty"`
 	CreatedAt  time.Time         `json:"created_at"`
 	UpdatedAt  time.Time         `json:"updated_at"`

@@ -31,16 +31,15 @@ func (r *boardRepository) FindAll(filters map[string]interface{}) ([]models.Boar
 	var boards []models.Board
 	query := r.db.Model(&models.Board{})
 
-	if public, ok := filters["public"].(bool); ok && public {
-		// Example: in this system, maybe boards without an employer are public?
-		// Or if there's an is_public field (not seen in models yet, but let's assume filtering)
-	}
-
 	if userID, ok := filters["user_id"].(uint); ok {
-		query = query.Joins("JOIN board_members ON board_members.board_id = boards.id").Where("board_members.user_id = ?", userID).Or("boards.created_by = ?", userID)
+		query = query.Where("boards.created_by = ? OR boards.id IN (SELECT board_id FROM board_members WHERE user_id = ?)", userID, userID)
 	}
 
-	err := query.Preload("Members").Preload("Creator").Order("created_at DESC").Find(&boards).Error
+	if companyID, ok := filters["company_id"].(uint); ok {
+		query = query.Where("boards.created_by = ? OR boards.created_by IN (SELECT id FROM users WHERE empleador_id = ?)", companyID, companyID)
+	}
+
+	err := query.Preload("Members").Preload("Creator").Order("boards.created_at DESC").Find(&boards).Error
 	return boards, err
 }
 

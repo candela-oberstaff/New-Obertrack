@@ -119,6 +119,12 @@ export function MessageItem({
 
         {message.is_pinned && <span className={styles['pinned-badge-bubble']}>📍 Fijado</span>}
 
+        {message.reply_count && message.reply_count > 0 ? (
+          <button className={styles['thread-replies-link']} onClick={() => onReply(message)}>
+            💬 {message.reply_count === 1 ? '1 respuesta' : `${message.reply_count} respuestas`}
+          </button>
+        ) : null}
+
 
 
 

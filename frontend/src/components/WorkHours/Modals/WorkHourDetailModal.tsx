@@ -9,6 +9,7 @@ interface WorkHourDetailModalProps {
   canApprove: boolean
   onApprove: (id: number) => Promise<void>
   onEdit: (wh: WorkHour) => void
+  isEmployer?: boolean
 }
 
 export function WorkHourDetailModal({
@@ -16,7 +17,8 @@ export function WorkHourDetailModal({
   onClose,
   canApprove,
   onApprove,
-  onEdit
+  onEdit,
+  isEmployer = false
 }: WorkHourDetailModalProps) {
   if (!workHour) return null
 
@@ -43,8 +45,10 @@ export function WorkHourDetailModal({
           <div className={styles['detail-row']}>
             <span className={styles['detail-label']}>Tipo</span>
             <span className={`${styles['detail-type']} ${styles[workHour.work_type]}`}>
-              {workHour.work_type === 'complete' || workHour.hours_worked >= 8
-                ? 'Jornada Completa' : `Ausencia (${workHour.absence_hours}h)`}
+              {workHour.work_type === 'recover' 
+                ? `Horas Recuperadas (${workHour.hours_worked}h)` 
+                : workHour.work_type === 'complete' || workHour.hours_worked >= 8
+                ? 'Jornada Completa' : `Ausencia (${workHour.absence_hours != null ? workHour.absence_hours : 8 - workHour.hours_worked}h)`}
             </span>
           </div>
           <div className={styles['detail-row']}>
@@ -77,9 +81,11 @@ export function WorkHourDetailModal({
         </div>
         <div className={styles['detail-actions']}>
           <button className={styles['btn-cancel']} onClick={onClose}>Cerrar</button>
-          <button className={styles['btn-secondary']} onClick={() => onEdit(workHour)}>
-            <Pencil size={16} /> Editar
-          </button>
+          {!isEmployer && (
+            <button className={styles['btn-secondary']} onClick={() => onEdit(workHour)}>
+              <Pencil size={16} /> Editar
+            </button>
+          )}
           {canApprove && !workHour.approved && (
             <button className={styles['btn-primary']} onClick={async () => {
               await onApprove(workHour.id)

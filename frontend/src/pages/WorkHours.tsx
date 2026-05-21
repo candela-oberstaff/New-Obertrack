@@ -13,12 +13,14 @@ import {
   AlertCircle,
   CheckCircle2
 } from 'lucide-react'
+import Tooltip from '../components/Common/Tooltip'
 
 import { MONTHS_ES } from '../components/WorkHours/utils'
 import { WorkHourCalendar } from '../components/WorkHours/WorkHourCalendar'
 import { WorkHourStats } from '../components/WorkHours/WorkHourStats'
 import { WorkHourList } from '../components/WorkHours/WorkHourList'
 import { RegisterDayModal } from '../components/WorkHours/Modals/RegisterDayModal'
+import { RecoverHoursModal } from '../components/WorkHours/Modals/RecoverHoursModal'
 import { WorkHourDetailModal } from '../components/WorkHours/Modals/WorkHourDetailModal'
 import { MissingHoursModal } from '../components/WorkHours/Modals/MissingHoursModal'
 import api from '../services/client'
@@ -51,6 +53,7 @@ export default function WorkHours() {
   } = useWorkHours(user)
 
   const [showModal, setShowModal] = useState(false)
+  const [showRecoverModal, setShowRecoverModal] = useState(false)
   const [selectedWorkHour, setSelectedWorkHour] = useState<WorkHour | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showMissingModal, setShowMissingModal] = useState(false)
@@ -71,8 +74,29 @@ export default function WorkHours() {
   }, [workHours])
 
   const absencesCount = useMemo(() => {
-    return workHours.filter(wh => wh.work_type === 'absence').length
-  }, [workHours])
+    return workHours.filter(wh => {
+      const d = new Date(wh.work_date)
+      return wh.work_type === 'absence' && d.getMonth() === currentMonth && d.getFullYear() === currentYear
+    }).length
+  }, [workHours, currentMonth, currentYear])
+
+  const totalAbsenceHoursToRecover = useMemo(() => {
+    // Filter only current month entries
+    const monthHours = workHours.filter(wh => {
+      const d = new Date(wh.work_date)
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+    })
+
+    const absences = monthHours
+      .filter(wh => wh.work_type === 'absence')
+      .reduce((sum, wh) => sum + (wh.absence_hours || (8 - wh.hours_worked) || 0), 0)
+    
+    const recovered = monthHours
+      .filter(wh => wh.work_type === 'recover')
+      .reduce((sum, wh) => sum + (wh.hours_worked || 0), 0)
+      
+    return Math.max(0, absences - recovered)
+  }, [workHours, currentMonth, currentYear])
 
   const handleDownloadPDF = () => {
     const printWindow = window.open('', '_blank')
@@ -230,9 +254,9 @@ export default function WorkHours() {
                 <tr>
                   <td style="white-space: nowrap;">${new Date(wh.work_date).toLocaleDateString('es-ES')}</td>
                   <td><strong>${wh.user?.name || ''}</strong></td>
-                  <td><span class="badge ${wh.work_type === 'complete' ? 'complete' : 'absence'}">${wh.work_type === 'complete' ? 'Completo' : 'Ausencia'}</span></td>
+                  <td><span class="badge ${wh.work_type}">${wh.work_type === 'complete' ? 'Completo' : wh.work_type === 'absence' ? 'Ausencia' : 'Recuperación'}</span></td>
                   <td><strong>${wh.hours_worked}h</strong></td>
-                  <td style="color: #64748b;">${wh.work_type === 'complete' ? wh.activities || '-' : `Ausencia: ${wh.absence_hours}h (${wh.absence_reason || ''})`}</td>
+                  <td style="color: #64748b;">${wh.work_type === 'complete' ? wh.activities || '-' : wh.work_type === 'absence' ? `Ausencia: ${wh.absence_hours}h (${wh.absence_reason || ''})` : 'Recuperación de horas'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -323,6 +347,8 @@ export default function WorkHours() {
     }
   }
 
+
+
   const handleEdit = (wh: WorkHour) => {
     setFormData({
       work_date: wh.work_date.split('T')[0],
@@ -378,7 +404,10 @@ export default function WorkHours() {
         <div className={styles['header-left']}>
           <h1>
             <Clock size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} />{' '}
-            {isEmployer ? 'Registro de Actividades de mi Equipo' : 'Mi Jornada'}
+            {isEmployer ? 'Registro de Actividades de mi Equipo' : 'Mi Jornada'}{' '}
+            {isEmployer && (
+              <Tooltip content="Jornadas registradas por los profesionales de tu empresa" size={18} />
+            )}
           </h1>
           <p className={styles['header-subtitle']}>
             {isEmployer ? 'Visualiza y gestiona la jornada laboral de tu equipo' : 'Registra tu día laboral'}
@@ -411,13 +440,20 @@ export default function WorkHours() {
             </button>
           </div>
         ) : (
-          <button className={styles['btn-primary']} onClick={() => {
-            setEditingId(null)
-            resetForm()
-            setShowModal(true)
-          }}>
-            + Registrar Día
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {totalAbsenceHoursToRecover > 0 && (
+              <button className={styles['btn-secondary']} onClick={() => setShowRecoverModal(true)}>
+                Recuperar horas
+              </button>
+            )}
+            <button className={styles['btn-primary']} onClick={() => {
+              setEditingId(null)
+              resetForm()
+              setShowModal(true)
+            }}>
+              + Registrar Día
+            </button>
+          </div>
         )}
       </div>
 
@@ -432,19 +468,34 @@ export default function WorkHours() {
         </div>
       )}
 
+      {!isEmployer && totalAbsenceHoursToRecover > 0 && (
+        <div style={{ backgroundColor: '#fffbeb', border: '1px solid #f59e0b', color: '#b45309', padding: '16px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px', margin: '16px 0', fontSize: '14px', fontWeight: '500', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+          <AlertCircle size={20} style={{ color: '#d97706', flexShrink: 0 }} />
+          <div>
+            <strong>Recordatorio de ausencias:</strong> Tienes un total de <strong>{totalAbsenceHoursToRecover.toFixed(1)}h</strong> pendientes de recuperar debido a tus ausencias registradas este mes. Puedes coordinar con tu empleador para recuperarlas en otro momento.
+          </div>
+        </div>
+      )}
+
       <WorkHourStats 
         todayWork={todayWork}
         weekHours={weekHours}
         summary={summary}
         isEmployer={isEmployer}
         employerTodayActiveCount={employerTodayActiveCount}
+        absenceHoursToRecover={totalAbsenceHoursToRecover}
       />
 
       <div className={styles['work-hours-content']}>
         <div className={styles['calendar-section']}>
           <div className={styles['calendar-header']}>
             <button className={styles['nav-btn']} onClick={prevMonth}><ChevronLeft size={20} /></button>
-            <h3>{MONTHS_ES[currentMonth]} {currentYear}</h3>
+            <h3>
+              {MONTHS_ES[currentMonth]} {currentYear}{' '}
+              {!isEmployer && (
+                <Tooltip content="Resumen de jornadas completas y ausencias que haz registrado" size={14} />
+              )}
+            </h3>
             <button className={styles['nav-btn']} onClick={nextMonth}><ChevronRight size={20} /></button>
           </div>
           <WorkHourCalendar
@@ -512,6 +563,23 @@ export default function WorkHours() {
         canApprove={canApprove}
         onApprove={approveSingle}
         onEdit={handleEdit}
+        isEmployer={isEmployer}
+      />
+
+      <RecoverHoursModal
+        isOpen={showRecoverModal}
+        onClose={() => setShowRecoverModal(false)}
+        onSubmit={async (date, hours, comments) => {
+          await createWorkHour({
+            work_date: date,
+            work_type: 'recover',
+            activities: comments,
+            hours_worked: hours,
+          } as any)
+          setShowRecoverModal(false)
+        }}
+        today={today}
+        absenceHoursToRecover={totalAbsenceHoursToRecover}
       />
 
       <MissingHoursModal

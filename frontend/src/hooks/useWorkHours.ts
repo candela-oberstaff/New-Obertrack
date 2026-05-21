@@ -10,7 +10,7 @@ interface WorkHoursSummary {
 
 interface WorkHourFormData {
   work_date: string
-  work_type: 'complete' | 'absence'
+  work_type: 'complete' | 'absence' | 'recover'
   activities: string
   absence_reason: string
   absence_hours: number
@@ -38,7 +38,7 @@ interface UseWorkHoursReturn {
 
   // Actions
   fetchData: () => Promise<void>
-  createWorkHour: (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours'> & { absence_reason?: string; absence_hours?: number }) => Promise<void>
+  createWorkHour: (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours'> & { id?: number; absence_reason?: string; absence_hours?: number }) => Promise<void>
   approveWorkHours: (ids: number[]) => Promise<void>
   approveSingle: (id: number) => Promise<void>
 
@@ -96,19 +96,27 @@ export function useWorkHours(user: any): UseWorkHoursReturn {
     fetchData()
   }, [fetchData])
 
-  const createWorkHour = useCallback(async (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours'> & { absence_reason?: string; absence_hours?: number }) => {
-    const hoursWorked = data.work_type === 'absence'
+  const createWorkHour = useCallback(async (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours'> & { id?: number; absence_reason?: string; absence_hours?: number }) => {
+    const hoursWorked = data.work_type === 'recover'
+      ? (data as any).hours_worked || JORNADA_COMPLETA
+      : data.work_type === 'absence'
       ? Math.max(0, JORNADA_COMPLETA - (data.absence_hours || 0))
       : JORNADA_COMPLETA
 
-    await workHourService.create({
+    const payload = {
       work_date: data.work_date,
       work_type: data.work_type,
       activities: data.activities || undefined,
       hours_worked: hoursWorked,
       absence_reason: data.work_type === 'absence' ? data.absence_reason : undefined,
       absence_hours: data.work_type === 'absence' ? data.absence_hours : undefined,
-    })
+    }
+
+    if (data.id) {
+      await workHourService.update(data.id, payload)
+    } else {
+      await workHourService.create(payload)
+    }
     fetchData()
   }, [fetchData])
 

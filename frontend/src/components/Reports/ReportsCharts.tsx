@@ -1,6 +1,7 @@
 import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar } from 'recharts'
 import { FileText } from 'lucide-react'
 import type { WorkHour, User } from '../../types'
+import CommonTooltip from '../Common/Tooltip'
 import styles from '../../pages/Reports.module.css'
 
 interface ReportsChartsProps {
@@ -38,7 +39,12 @@ export function ReportsCharts({ dailyData, workHours, user }: ReportsChartsProps
 
       <div className={`${styles['chart-card'] || 'chart-card'} ${styles['large'] || 'large'}`}>
         <div className={styles['chart-header'] || 'chart-header'}>
-          <h3>{isProf ? 'Días Trabajados' : 'Horas Diarias'}</h3>
+          <h3>
+            {isProf ? 'Días Trabajados' : 'Horas Diarias'}{' '}
+            {!isProf && (
+              <CommonTooltip content="Gráfico de horas diarias que el profesional ha registrado en el mes" size={14} />
+            )}
+          </h3>
         </div>
         <div className={styles['chart-body'] || 'chart-body'}>
           <ResponsiveContainer width="100%" height={260}>

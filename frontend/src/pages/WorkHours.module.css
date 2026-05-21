@@ -40,6 +40,53 @@
 }
 
 /* Stats Row */
+.stats-row-container {
+  position: relative;
+  width: 100%;
+}
+
+.scroll-btn-left,
+.scroll-btn-right {
+  display: none;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  color: #475569;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.2s ease;
+}
+
+.scroll-btn-left {
+  left: 8px;
+}
+
+.scroll-btn-right {
+  right: 8px;
+}
+
+.scroll-btn-left:hover,
+.scroll-btn-right:hover {
+  background: white;
+  color: var(--primary);
+  box-shadow: 0 4px 12px rgba(244, 114, 182, 0.15);
+}
+
+@media (max-width: 768px) {
+  .scroll-btn-left,
+  .scroll-btn-right {
+    display: flex;
+  }
+}
+
 .wh-stats-row {
   display: flex;
   gap: 16px;
@@ -89,6 +136,7 @@
 
 .stat-card-mini.approved .stat-icon { background: #f0fdf4; color: #16a34a; }
 .stat-card-mini.pending .stat-icon { background: #fffbeb; color: #d97706; }
+.stat-card-mini.absence .stat-icon { background: #fee2e2; color: #ef4444; }
 
 .stat-info {
   display: flex;

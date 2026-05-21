@@ -26,12 +26,16 @@ export function useTasks({ boardId, showAllTasks }: UseTasksOptions = {}): UseTa
 
   const fetchTasks = useCallback(async () => {
     try {
-      const params: Record<string, unknown> = {}
+      const params: Record<string, unknown> = { limit: 1000 }
       if (!showAllTasks && boardId) {
         params.board_id = boardId
       }
       const tasksRes = await taskService.getAll(params)
-      setTasks(tasksRes.data || [])
+      let fetchedTasks = tasksRes.data || []
+      if (!showAllTasks && boardId) {
+        fetchedTasks = fetchedTasks.filter((t: any) => t.board_id === boardId)
+      }
+      setTasks(fetchedTasks)
     } catch (error) {
       console.error('Error fetching tasks:', error)
     }

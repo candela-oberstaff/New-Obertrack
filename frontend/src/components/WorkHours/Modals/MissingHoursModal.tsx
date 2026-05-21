@@ -4,7 +4,7 @@ import styles from '../../../pages/WorkHours.module.css'
 interface WorkHour {
   id: number
   work_date: string
-  work_type: 'complete' | 'absence'
+  work_type: 'complete' | 'absence' | 'recover'
   hours_worked: number
   absence_hours?: number
   absence_reason?: string

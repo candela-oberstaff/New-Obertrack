@@ -67,8 +67,8 @@ export function TasksBoard({
   }, [selectedBoard])
 
   const getTasksByStatus = useCallback((status: string) => {
-    return tasks.filter((task) => task.status === status)
-  }, [tasks])
+    return tasks.filter((task) => task.status === status && task.board_id === selectedBoard?.id)
+  }, [tasks, selectedBoard])
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event

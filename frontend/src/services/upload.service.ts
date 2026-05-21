@@ -10,7 +10,9 @@ export interface UploadResponse {
 export const uploadService = {
   upload: async (file: File | Blob): Promise<UploadResponse> => {
     const formData = new FormData()
-    formData.append('file', file)
+    // Ensure the file name is sent with the form data. For Blob objects, provide a default name.
+    const fileName = (file as File).name || 'audio.webm'
+    formData.append('file', file, fileName)
     const { data } = await api.post<UploadResponse>('/uploads', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })

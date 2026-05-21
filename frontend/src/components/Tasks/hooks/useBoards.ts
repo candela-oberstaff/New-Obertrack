@@ -28,7 +28,7 @@ const DEFAULT_PHASES = [
 
 export function useBoards(): UseBoardsReturn {
   const [boards, setBoards] = useState<Board[]>([])
-  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null)
+  const [selectedBoard, setSelectedBoardState] = useState<Board | null>(null)
   const [publicBoards, setPublicBoards] = useState<Board[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isCreatingBoard, setIsCreatingBoard] = useState(false)
@@ -40,6 +40,18 @@ export function useBoards(): UseBoardsReturn {
     phases: DEFAULT_PHASES,
   })
 
+  const setSelectedBoard = useCallback((value: Board | null | ((prev: Board | null) => Board | null)) => {
+    setSelectedBoardState((current) => {
+      const next = typeof value === 'function' ? (value as any)(current) : value
+      if (next) {
+        localStorage.setItem('preferred_board_id', String(next.id))
+      } else {
+        localStorage.removeItem('preferred_board_id')
+      }
+      return next
+    })
+  }, [])
+
   const fetchBoards = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -49,6 +61,26 @@ export function useBoards(): UseBoardsReturn {
         (b: Board, idx: number, arr: Board[]) => arr.findIndex((x: Board) => x.id === b.id) === idx
       )
       setBoards(unique)
+
+      setSelectedBoardState((current) => {
+        if (current) {
+          const stillExists = unique.find((b: Board) => b.id === current.id)
+          if (stillExists) return stillExists
+        }
+
+        const preferredId = localStorage.getItem('preferred_board_id')
+        if (preferredId) {
+          const found = unique.find((b: Board) => b.id === Number(preferredId))
+          if (found) return found
+        }
+
+        if (unique.length > 0) {
+          return unique[0]
+        }
+
+        return null
+      })
+
       return unique
     } catch (error) {
       console.error('Error fetching boards:', error)

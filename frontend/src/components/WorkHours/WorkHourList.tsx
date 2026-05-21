@@ -1,4 +1,5 @@
 import { Check, ClipboardList } from 'lucide-react'
+import Tooltip from '../Common/Tooltip'
 import type { WorkHour } from '../../types'
 import { MONTHS_ES, parseLocalDate, JORNADA_COMPLETA } from './utils'
 import styles from '../../pages/WorkHours.module.css'
@@ -30,7 +31,10 @@ export function WorkHourList({
             ? `Registros del ${parseLocalDate(selectedDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}`
             : isEmployer
             ? 'Registros'
-            : 'Mis registros'}
+            : 'Mis registros'}{' '}
+          {!selectedDate && !isEmployer && (
+            <Tooltip content="Últimos registros que haz realizado" size={14} />
+          )}
         </h3>
         {canApprove && pendingForSelectedDate.length > 0 && (
           <button className={styles['btn-bulk-approve']} onClick={onBulkApprove}>
@@ -49,7 +53,7 @@ export function WorkHourList({
           {filteredHours.map((wh) => (
             <div 
               key={wh.id} 
-              className={`${styles['hour-card']} ${wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA ? styles['complete'] : styles['absence']} ${styles['clickable']}`} 
+              className={`${styles['hour-card']} ${wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA ? styles['complete'] : wh.work_type === 'recover' ? styles['recover'] : styles['absence']} ${styles['clickable']}`} 
               onClick={() => onItemClick(wh)}
             >
               <div className={styles['hour-date']}>
@@ -61,7 +65,9 @@ export function WorkHourList({
                 <span className={styles['hours-value']}>
                   {wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA
                     ? 'Jornada Completa'
-                    : `Ausencia (${wh.absence_hours}h)`}
+                    : wh.work_type === 'recover'
+                    ? `Recuperación (${wh.hours_worked}h)`
+                    : `Ausencia (${wh.absence_hours != null ? wh.absence_hours : 8 - wh.hours_worked}h)`}
                 </span>
                 {wh.activities && <p className={styles['hours-comments']}>{wh.activities.replace(/<[^>]*>/g, '')}</p>}
               </div>

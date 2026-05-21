@@ -7,7 +7,7 @@ interface RegisterDayModalProps {
   onClose: () => void
   formData: {
     work_date: string
-    work_type: 'complete' | 'absence'
+    work_type: 'complete' | 'absence' | 'recover'
     activities: string
     absence_reason: string
     absence_hours: number
@@ -53,7 +53,7 @@ export function RegisterDayModal({
               <button
                 type="button"
                 className={`${styles['work-type-btn']} ${formData.work_type === 'complete' ? styles['active'] : ''}`}
-                onClick={() => setFormData({ ...formData, work_type: 'complete' })}
+                onClick={() => setFormData({ ...formData, work_type: 'complete', absence_hours: 0 })}
               >
                 <span className={styles['work-type-icon']}><Check size={20} /></span>
                 <span className={styles['work-type-label']}>Jornada Completa</span>
@@ -62,7 +62,7 @@ export function RegisterDayModal({
               <button
                 type="button"
                 className={`${styles['work-type-btn']} ${formData.work_type === 'absence' ? styles['active'] : ''}`}
-                onClick={() => setFormData({ ...formData, work_type: 'absence' })}
+                onClick={() => setFormData({ ...formData, work_type: 'absence', absence_hours: 8 })}
               >
                 <span className={styles['work-type-icon']}><AlertCircle size={20} /></span>
                 <span className={styles['work-type-label']}>Ausencia</span>

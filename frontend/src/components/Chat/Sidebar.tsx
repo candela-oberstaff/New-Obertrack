@@ -30,8 +30,7 @@ export function Sidebar({
   onMouseDownResize,
   isResizing
 }: SidebarProps) {
-  const publicChannels = channels.filter(c => c.type === 'public')
-  // const privateChannels = channels.filter(c => c.type === 'private')
+  const activeChannels = channels.filter(c => c.type === 'public' || c.type === 'private')
   const directMessages = channels.filter(c => c.type === 'direct')
 
   return (
@@ -59,7 +58,7 @@ export function Sidebar({
                 </button>
               </div>
               
-              {publicChannels.map(channel => (
+              {activeChannels.map(channel => (
                 <div
                   key={channel.id}
                   className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
@@ -68,7 +67,9 @@ export function Sidebar({
                     setShowMobileChannels(false)
                   }}
                 >
-                  <span className={styles['channel-mini-icon']}>#</span>
+                  <span className={styles['channel-mini-icon']}>
+                    {channel.type === 'private' ? '🔒' : '#'}
+                  </span>
                   <span className={styles['channel-mini-name']}>{channel.name}</span>
                   {channel.unread_count > 0 && (
                     <span className={styles['unread-badge']}>{channel.unread_count}</span>

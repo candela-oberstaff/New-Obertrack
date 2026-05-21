@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"mime/multipart"
 	"strings"
 	"time"
 )
 
 type UploadService interface {
-	ValidateFile(file interface{}) (string, error)
+	ValidateFile(file *multipart.FileHeader) (string, error)
 	GenerateFilename(userID uint, originalName string, contentType string) (string, string, int64, error)
 	GetUploadPath() string
 	GetAllowedMimeTypes() map[string]string
@@ -57,28 +58,17 @@ func (s *uploadService) GetAllowedMimeTypes() map[string]string {
 	}
 }
 
-func (s *uploadService) ValidateFile(file interface{}) (string, error) {
-	// Type assertion to get file header
-	fileHeader, ok := file.(interface {
-		GetHeader(string) string
-		Size() int64
-		Filename() string
-	})
-	if !ok {
-		return "", fmt.Errorf("invalid file type")
-	}
-
-	contentType := fileHeader.GetHeader("Content-Type")
-	ext, allowed := s.GetAllowedMimeTypes()[contentType]
-	if !allowed {
-		return "", fmt.Errorf("file type not allowed")
-	}
-
-	if fileHeader.Size() > s.maxFileSize {
-		return "", fmt.Errorf("file too large (max 50MB)")
-	}
-
-	return ext, nil
+func (s *uploadService) ValidateFile(file *multipart.FileHeader) (string, error) {
+    // Use header from multipart file
+    contentType := file.Header.Get("Content-Type")
+    ext, allowed := s.GetAllowedMimeTypes()[contentType]
+    if !allowed {
+        return "", fmt.Errorf("file type not allowed")
+    }
+    if file.Size > s.maxFileSize {
+        return "", fmt.Errorf("file too large (max 50MB)")
+    }
+    return ext, nil
 }
 
 func (s *uploadService) GenerateFilename(userID uint, originalName string, contentType string) (string, string, int64, error) {

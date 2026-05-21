@@ -1,6 +1,5 @@
-import React, { useState } from 'react'
-import { X, GripVertical, Plus } from 'lucide-react'
-import { boardService } from '../../../services/api'
+import React from 'react'
+import { X, GripVertical } from 'lucide-react'
 import type { Board } from '../../../types'
 import styles from '../../../pages/Tasks.module.css'
 
@@ -22,8 +21,6 @@ export function PhasesModal({
   isOpen,
   onClose,
   selectedBoard,
-  setBoards,
-  setSelectedBoard,
   draggingPhase,
   dragOverIdx,
   handlePhaseDragStart,
@@ -31,9 +28,6 @@ export function PhasesModal({
   handlePhaseDragEnd,
   isDraggingPhasesRef
 }: PhasesModalProps) {
-  const [isDeletingPhase, setIsDeletingPhase] = useState(false)
-  const [isAddingPhase, setIsAddingPhase] = useState(false)
-
   if (!isOpen || !selectedBoard) return null
 
   return (
@@ -76,73 +70,8 @@ export function PhasesModal({
               <span className={styles['drag-handle'] || 'drag-handle'} style={{ cursor: 'grab' }}><GripVertical size={16} /></span>
               <div className={styles['phase-color']} style={{ backgroundColor: phase.color }}></div>
               <span className={styles['phase-name']}>{phase.name}</span>
-              <button
-                className={`${styles['btn-icon']} ${styles['phase-delete'] || 'phase-delete'}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (!window.confirm('¿Eliminar esta fase?')) return
-                  setIsDeletingPhase(true)
-                  boardService.removePhase(selectedBoard.id, phase.id)
-                    .then(() => boardService.getAll())
-                    .then((boardsRes: Board[]) => {
-                      setBoards(boardsRes)
-                      const found = boardsRes.find((b: Board) => b.id === selectedBoard.id)
-                      if (found) setSelectedBoard(found)
-                    })
-                    .catch((error: any) => {
-                      window.alert(error.response?.data?.error || 'Error al eliminar fase')
-                    })
-                    .finally(() => setIsDeletingPhase(false))
-                }}
-                title={isDeletingPhase ? "Eliminando..." : "Eliminar fase"}
-                disabled={isDeletingPhase}
-              >
-                {isDeletingPhase ? '...' : <X size={14} />}
-              </button>
             </div>
           ))}
-        </div>
-
-        <div className={styles['add-phase-form'] || 'add-phase-form'} onMouseUp={handlePhaseDragEnd}>
-          <input
-            type="text"
-            placeholder="Nombre de la nueva fase"
-            id="new-phase-name"
-            style={{ flex: 1, padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', marginRight: '8px' }}
-          />
-          <input
-            type="color"
-            id="new-phase-color"
-            defaultValue="#6b7280"
-            style={{ width: '40px', height: '40px', border: 'none', cursor: 'pointer' }}
-          />
-          <button
-            className={styles['btn-primary']}
-            style={{ marginLeft: '8px' }}
-            disabled={isAddingPhase}
-            onClick={async () => {
-              const nameInput = document.getElementById('new-phase-name') as HTMLInputElement
-              const colorInput = document.getElementById('new-phase-color') as HTMLInputElement
-              const name = nameInput.value.trim()
-              const color = colorInput.value
-              if (!name) return
-              setIsAddingPhase(true)
-              try {
-                await boardService.addPhase(selectedBoard.id, { name, color })
-                const boardsRes = await boardService.getAll()
-                setBoards(boardsRes)
-                const found = boardsRes.find(b => b.id === selectedBoard.id)
-                if (found) setSelectedBoard(found)
-                nameInput.value = ''
-              } catch (error) {
-                console.error('Error adding phase:', error)
-              } finally {
-                setIsAddingPhase(false)
-              }
-            }}
-          >
-            {isAddingPhase ? 'Agregando...' : <Plus size={18} />}
-          </button>
         </div>
       </div>
     </div>

@@ -65,13 +65,13 @@ func NewAdminService(
 func (s *adminService) GetDashboardMetrics() (*DashboardMetrics, error) {
 	var m DashboardMetrics
 
-	_, comp, _ := s.userRepo.GetAll("empleador", "", 0, 1)
+	_, comp, _ := s.userRepo.GetAll("empleador", "", 0, 0, 1)
 	m.TotalCompanies = int(comp)
 
-	_, prof, _ := s.userRepo.GetAll("profesional", "", 0, 1)
+	_, prof, _ := s.userRepo.GetAll("profesional", "", 0, 0, 1)
 	m.TotalProfessionals = int(prof)
 
-	_, man, _ := s.userRepo.GetAll("", "true", 0, 1)
+	_, man, _ := s.userRepo.GetAll("", "true", 0, 0, 1)
 	m.TotalManagers = int(man)
 
 	summary, _ := s.workHourRepo.GetSummary(nil)
@@ -109,9 +109,9 @@ func (s *adminService) GetRecentActivities() ([]repository.Activity, error) {
 }
 
 func (s *adminService) GetStats() (map[string]interface{}, error) {
-	_, totalUsersCount, _ := s.userRepo.GetAll("", "", 0, 1)
-	_, activeUsers, _ := s.userRepo.GetAll("", "", 0, 1) // Needs IsActive filter in UserRepository
-	_, comp, _ := s.userRepo.GetAll("empleador", "", 0, 1)
+	_, totalUsersCount, _ := s.userRepo.GetAll("", "", 0, 0, 1)
+	_, activeUsers, _ := s.userRepo.GetAll("", "", 0, 0, 1) // Needs IsActive filter in UserRepository
+	_, comp, _ := s.userRepo.GetAll("empleador", "", 0, 0, 1)
 	hours, _ := s.workHourRepo.GetTotalHoursMonth()
 	s.taskRepo.FindAll(nil, 0, 1)
 
@@ -125,7 +125,7 @@ func (s *adminService) GetStats() (map[string]interface{}, error) {
 }
 
 func (s *adminService) GetAllUsers(userType, isManager, isActive string, offset, limit int) ([]models.User, int64, error) {
-	return s.userRepo.GetAll(userType, isManager, offset, limit)
+	return s.userRepo.GetAll(userType, isManager, 0, offset, limit)
 }
 
 func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, error) {
@@ -200,7 +200,7 @@ func (s *adminService) ResetPassword(id uint, newPassword string) error {
 }
 
 func (s *adminService) CreateSuperAdmin(name, email, password string, force bool) (*models.User, error) {
-	_, count, _ := s.userRepo.GetAll("superadmin", "", 0, 1)
+	_, count, _ := s.userRepo.GetAll("superadmin", "", 0, 0, 1)
 	if count > 0 && !force {
 		return nil, errors.New("Superadmin already exists")
 	}

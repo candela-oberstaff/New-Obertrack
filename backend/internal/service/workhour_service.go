@@ -55,7 +55,11 @@ func (s *workHourService) parseStringVal(val interface{}) string {
 }
 
 func (s *workHourService) parseFloatVal(val interface{}) float64 {
-	if f, ok := val.(float64); ok {
+	if val == nil {
+		return 0
+	}
+	strVal := fmt.Sprintf("%v", val)
+	if f, err := strconv.ParseFloat(strVal, 64); err == nil {
 		return f
 	}
 	return 0
@@ -121,6 +125,8 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 				hoursWorked = 0
 			}
 		}
+	} else if workTypeStr == "recover" {
+		workType = models.WorkTypeRecover
 	} else if hoursWorked == 0 {
 		hoursWorked = 8
 	}
@@ -196,18 +202,39 @@ func (s *workHourService) Update(id uint, reqData map[string]interface{}) (*mode
 	workTypeStr := s.parseStringVal(reqData["work_type"])
 	if workTypeStr != "" {
 		workHour.WorkType = models.WorkType(workTypeStr)
-		if workTypeStr == "absence" {
-			workHour.HoursWorked = 0
-		} else {
-			workHour.HoursWorked = 8
-		}
 	}
 
-	if act := s.parseStringVal(reqData["activities"]); act != "" {
-		workHour.Activities = utils.SanitizeHTML(act)
+	if val, ok := reqData["absence_reason"]; ok {
+		workHour.AbsenceReason = s.parseStringVal(val)
 	}
-	if com := s.parseStringVal(reqData["comments"]); com != "" {
-		workHour.Comments = utils.SanitizeHTML(com)
+	if val, ok := reqData["absence_hours"]; ok {
+		workHour.AbsenceHours = s.parseFloatVal(val)
+	}
+
+	if workHour.WorkType == models.WorkTypeAbsence {
+		hoursWorked := 8.0 - workHour.AbsenceHours
+		if hoursWorked < 0 {
+			hoursWorked = 0
+		}
+		workHour.HoursWorked = hoursWorked
+	} else if workHour.WorkType == models.WorkTypeRecover {
+		workHour.AbsenceReason = ""
+		workHour.AbsenceHours = 0
+	} else {
+		workHour.HoursWorked = 8.0
+		workHour.AbsenceReason = ""
+		workHour.AbsenceHours = 0
+	}
+
+	if val, ok := reqData["hours_worked"]; ok {
+		workHour.HoursWorked = s.parseFloatVal(val)
+	}
+
+	if act, ok := reqData["activities"]; ok {
+		workHour.Activities = utils.SanitizeHTML(s.parseStringVal(act))
+	}
+	if com, ok := reqData["comments"]; ok {
+		workHour.Comments = utils.SanitizeHTML(s.parseStringVal(com))
 	}
 
 	if err := s.repo.Update(workHour); err != nil {

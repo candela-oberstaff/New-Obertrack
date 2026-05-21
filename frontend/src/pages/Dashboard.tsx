@@ -11,6 +11,7 @@ import {
   MessageSquare,
   User as UserIcon
 } from 'lucide-react'
+import Tooltip from '../components/Common/Tooltip'
 import styles from './Dashboard.module.css'
 
 const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -34,6 +35,8 @@ export default function Dashboard() {
 
   const today = useMemo(() => new Date(), [])
   const greeting = today.getHours() < 12 ? 'Buenos días' : today.getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'
+
+  const isEmployer = user?.user_type === 'empleador' || user?.is_superadmin || user?.is_manager
 
   if (isLoading) {
     return (
@@ -68,7 +71,10 @@ export default function Dashboard() {
             <Clock size={24} />
           </div>
           <div className={styles['stat-content']}>
-            <span className={styles['stat-label']}>Horas esta semana</span>
+            <span className={styles['stat-label']}>
+              Horas esta semana
+              <Tooltip content={isEmployer ? "Horas que los profesionales han registrado esta semana" : "Horas que registraste esta semana"} size={14} />
+            </span>
             <span className={styles['stat-value']}>{weekData.reduce((s, d) => s + d.hours, 0).toFixed(1)}h</span>
           </div>
         </div>
@@ -78,7 +84,10 @@ export default function Dashboard() {
             <CheckCircle2 size={24} />
           </div>
           <div className={styles['stat-content']}>
-            <span className={styles['stat-label']}>Horas aprobadas</span>
+            <span className={styles['stat-label']}>
+              Horas aprobadas
+              <Tooltip content={isEmployer ? "Horas registradas por los profesionales que ya fueron aprobadas" : "Horas registradas que ya fueron aprobadas"} size={14} />
+            </span>
             <span className={styles['stat-value']}>{summary.approved_hours.toFixed(1)}h</span>
           </div>
         </div>
@@ -88,7 +97,10 @@ export default function Dashboard() {
             <AlertTriangle size={24} />
           </div>
           <div className={styles['stat-content']}>
-            <span className={styles['stat-label']}>Pendientes</span>
+            <span className={styles['stat-label']}>
+              Pendientes
+              <Tooltip content={isEmployer ? "Horas registradas por los profesionales que no han sido aprobadas" : "Horas registradas que no han sido aprobadas"} size={14} />
+            </span>
             <span className={styles['stat-value']}>{summary.pending_hours.toFixed(1)}h</span>
           </div>
         </div>
@@ -98,7 +110,10 @@ export default function Dashboard() {
             <CheckSquare size={24} />
           </div>
           <div className={styles['stat-content']}>
-            <span className={styles['stat-label']}>Tareas completadas</span>
+            <span className={styles['stat-label']}>
+              Tareas completadas
+              <Tooltip content={isEmployer ? "Tareas completadas por el equipo este mes" : "Tareas que completaste este mes"} size={14} />
+            </span>
             <span className={styles['stat-value']}>{completedTasks.length}</span>
           </div>
         </div>
@@ -166,7 +181,10 @@ export default function Dashboard() {
 
         <div className={`${styles['dashboard-card']} ${styles['hours-card'] || 'hours-card'}`}>
           <div className={styles['card-header']}>
-            <h3>Registro reciente</h3>
+            <h3>
+              Registro reciente
+              <Tooltip content={isEmployer ? "Horas registradas recientemente por los profesionales" : "Horas registradas recientemente"} size={14} />
+            </h3>
             <button className={styles['btn-link']} onClick={() => navigate('/work-hours')}>Ver todas</button>
           </div>
           <div className={styles['hours-list']}>

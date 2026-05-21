@@ -6,7 +6,7 @@ import (
 )
 
 type UserRepository interface {
-	GetAll(role, isManager string, offset, limit int) ([]models.User, int64, error)
+	GetAll(role, isManager string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	GetByID(id uint) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
 	GetByResetToken(token string) (*models.User, error)
@@ -26,7 +26,7 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 	return &userRepository{db: db}
 }
 
-func (r *userRepository) GetAll(role, isManager string, offset, limit int) ([]models.User, int64, error) {
+func (r *userRepository) GetAll(role, isManager string, companyID uint, offset, limit int) ([]models.User, int64, error) {
 	var users []models.User
 	var total int64
 
@@ -42,6 +42,11 @@ func (r *userRepository) GetAll(role, isManager string, offset, limit int) ([]mo
 	if isManager != "" {
 		countQuery = countQuery.Where("is_manager = ?", isManager == "true")
 		findQuery = findQuery.Where("is_manager = ?", isManager == "true")
+	}
+
+	if companyID > 0 {
+		countQuery = countQuery.Where("empleador_id = ? OR id = ?", companyID, companyID)
+		findQuery = findQuery.Where("empleador_id = ? OR id = ?", companyID, companyID)
 	}
 
 	if err := countQuery.Count(&total).Error; err != nil {

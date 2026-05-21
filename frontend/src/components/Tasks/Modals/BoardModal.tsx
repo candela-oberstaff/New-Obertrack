@@ -1,4 +1,3 @@
-import { X, Plus } from 'lucide-react'
 import type { User } from '../../../types'
 import styles from '../../../pages/Tasks.module.css'
 
@@ -29,30 +28,20 @@ interface BoardModalProps {
   isCreatingBoard: boolean
 }
 
-export function BoardModal({
-  isOpen,
-  onClose,
-  newBoardData,
-  setNewBoardData,
-  assigneeSearch,
-  setAssigneeSearch,
-  filteredUsers,
-  newBoardPhaseSearch,
-  setNewBoardPhaseSearch,
-  onSubmit,
-  isCreatingBoard
-}: BoardModalProps) {
-  if (!isOpen) return null
+export function BoardModal(props: BoardModalProps) {
+  const {
+    isOpen,
+    onClose,
+    newBoardData,
+    setNewBoardData,
+    assigneeSearch,
+    setAssigneeSearch,
+    filteredUsers,
+    onSubmit,
+    isCreatingBoard
+  } = props
 
-  const handlePhaseAdd = () => {
-    if (newBoardPhaseSearch.trim()) {
-      setNewBoardData({
-        ...newBoardData,
-        phases: [...newBoardData.phases, { name: newBoardPhaseSearch.trim(), color: '#6b7280' }]
-      })
-      setNewBoardPhaseSearch('')
-    }
-  }
+  if (!isOpen) return null
 
   return (
     <div className={styles['modal-overlay']} onClick={onClose}>
@@ -148,51 +137,8 @@ export function BoardModal({
                 <div key={idx} className={styles['phase-item']}>
                   <div className={styles['phase-color']} style={{ backgroundColor: phase.color }}></div>
                   <span className={styles['phase-name']}>{phase.name}</span>
-                  {newBoardData.phases.length > 1 && (
-                    <button
-                      type="button"
-                      className={`${styles['btn-icon']} ${styles['phase-delete'] || 'phase-delete'}`}
-                      onClick={() => {
-                        setNewBoardData({
-                          ...newBoardData,
-                          phases: newBoardData.phases.filter((_: PhaseInput, i: number) => i !== idx)
-                        })
-                      }}
-                      title="Eliminar fase"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
                 </div>
               ))}
-            </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <input
-                type="text"
-                placeholder="Nueva fase..."
-                value={newBoardPhaseSearch}
-                onChange={(e) => setNewBoardPhaseSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handlePhaseAdd()
-                  }
-                }}
-                style={{ flex: 1, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px' }}
-              />
-              <input
-                type="color"
-                defaultValue="#6b7280"
-                style={{ width: '36px', height: '36px', border: 'none', cursor: 'pointer', padding: '2px' }}
-              />
-              <button
-                type="button"
-                className={styles['btn-primary']}
-                style={{ padding: '8px 12px' }}
-                onClick={handlePhaseAdd}
-              >
-                <Plus size={16} />
-              </button>
             </div>
           </div>
 

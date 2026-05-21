@@ -9,6 +9,7 @@ import {
   Calendar,
   Check
 } from 'lucide-react'
+import Tooltip from '../components/Common/Tooltip'
 import { useAuth } from '../context/AuthContext'
 import { useReports } from '../hooks/useReports'
 import { StatCard } from '../components/Common/StatCard'
@@ -40,7 +41,10 @@ export default function Reports() {
     <div className={styles['reports-page']}>
       <div className={styles['page-header']}>
         <div className={styles['header-left']}>
-          <h1><BarChart2 size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Reportes</h1>
+          <h1>
+            <BarChart2 size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Reportes{' '}
+            <Tooltip content="Detalles del registro de jornada de los profesionales" size={18} />
+          </h1>
           <p className={styles['header-subtitle']}>Análisis de productividad y rendimiento</p>
         </div>
       </div>
@@ -104,6 +108,7 @@ export default function Reports() {
                       label="Horas Totales"
                       value={`${hoursStats.total.toFixed(1)}h`}
                       progressText={`Meta: ${hoursStats.targetHours}h`}
+                      tooltip="Horas que los profesionales han registrado a lo largo de la semana"
                     />
                     <StatCard 
                       icon={CheckCircle2}
@@ -112,6 +117,7 @@ export default function Reports() {
                       value={`${hoursStats.approved.toFixed(1)}h`}
                       progressText={hoursStats.approved > 0 ? '✓ Verificadas' : 'Sin aprobar'}
                       progressColorClass="success"
+                      tooltip="Horas registradas por los profesionales que ya aprobaste"
                     />
                   </>
                 )}
@@ -123,6 +129,7 @@ export default function Reports() {
                   value={`${hoursStats.pending.toFixed(1)}h`}
                   progressText={hoursStats.pending > 0 ? 'Por aprobar' : 'Sin pendientes'}
                   progressColorClass="warning"
+                  tooltip="Horas registradas por los profesionales que tienes pendientes por aprobar"
                 />
 
                 <StatCard 
@@ -131,6 +138,7 @@ export default function Reports() {
                   label="Días Trabajados"
                   value={hoursStats.daysWorked}
                   progressText={user?.user_type !== 'profesional' ? 'Meta: 20 días' : undefined}
+                  tooltip="Cantidad de días que el profesional ha trabajado en el mes"
                 />
               </div>
 
@@ -141,7 +149,10 @@ export default function Reports() {
               />
 
               <div className={styles['detail-table']}>
-                <h3>Detalle de registros</h3>
+                <h3>
+                  Detalle de registros{' '}
+                  <Tooltip content="Fecha, hora y estado de los últimos registro hechos por el profesional" size={14} />
+                </h3>
                 <div className={styles['table-container']}>
                   <table className={styles['data-table']}>
                     <thead>

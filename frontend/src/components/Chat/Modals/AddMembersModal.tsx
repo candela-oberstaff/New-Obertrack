@@ -35,6 +35,25 @@ export function AddMembersModal({
               if (currentUser?.user_type === 'profesional' && (u.user_type === 'superadmin' || u.is_superadmin)) {
                 return false
               }
+
+              // Exclude superadmins
+              if (u.user_type === 'superadmin') return false
+
+              // Company restriction
+              let companyID = 0
+              if (currentUser?.user_type !== 'superadmin') {
+                companyID = currentUser?.user_type === 'empleador' ? currentUser.id : (currentUser?.empleador_id || 0)
+              }
+
+              if (companyID) {
+                if (u.user_type === 'empleador') {
+                  if (u.id !== companyID) return false
+                } else if (u.user_type === 'profesional' || u.user_type === 'empleado') {
+                  if (u.empleador_id !== companyID) return false
+                } else {
+                  return false
+                }
+              }
               
               return true
             })

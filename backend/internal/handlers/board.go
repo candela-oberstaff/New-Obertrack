@@ -44,7 +44,15 @@ func (h *BoardHandler) GetAll(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
-	boards, err := h.service.GetAll(userID, role, isSuperadmin)
+	var companyID uint
+	if !isSuperadmin && role != "superadmin" {
+		companyID = userID
+		if role == "profesional" {
+			companyID = middleware.GetEmpleadorID(c)
+		}
+	}
+
+	boards, err := h.service.GetAll(userID, role, isSuperadmin, companyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get boards"})
 		return
@@ -55,8 +63,18 @@ func (h *BoardHandler) GetAll(c *gin.Context) {
 
 func (h *BoardHandler) GetPublicBoards(c *gin.Context) {
 	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
 
-	boards, err := h.service.GetPublicBoards(userID)
+	var companyID uint
+	if !isSuperadmin && role != "superadmin" {
+		companyID = userID
+		if role == "profesional" {
+			companyID = middleware.GetEmpleadorID(c)
+		}
+	}
+
+	boards, err := h.service.GetPublicBoards(userID, companyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get public boards"})
 		return

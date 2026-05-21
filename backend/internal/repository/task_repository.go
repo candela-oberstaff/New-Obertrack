@@ -40,22 +40,27 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 		query = query.Joins("JOIN users ON users.id = tasks.created_by").Where("users.empleador_id = ?", employerID)
 	}
 	if boardID, ok := filters["board_id"].(uint); ok {
-		query = query.Where("board_id = ?", boardID)
+		query = query.Where("tasks.board_id = ?", boardID)
 	}
 	if status, ok := filters["status"].(string); ok {
-		query = query.Where("status = ?", status)
+		query = query.Where("tasks.status = ?", status)
 	}
 	if assigneeID, ok := filters["assignee_id"].(uint); ok {
-		query = query.Joins("JOIN task_users ON task_users.task_id = tasks.id").Where("task_users.user_id = ?", assigneeID)
+		query = query.Joins("LEFT JOIN task_users ON task_users.task_id = tasks.id")
 		if creatorID, ok := filters["created_by"].(uint); ok {
-			query = query.Or("tasks.created_by = ?", creatorID)
+			query = query.Where(r.db.Where("task_users.user_id = ?", assigneeID).Or("tasks.created_by = ?", creatorID))
 			delete(filters, "created_by") // Handled by Or
+		} else {
+			query = query.Where("task_users.user_id = ?", assigneeID)
 		}
 	} else if creatorID, ok := filters["created_by"].(uint); ok {
-		query = query.Where("created_by = ?", creatorID)
+		query = query.Where("tasks.created_by = ?", creatorID)
+	}
+	if companyID, ok := filters["company_id"].(uint); ok {
+		query = query.Where("tasks.board_id IN (SELECT id FROM boards WHERE created_by = ? OR created_by IN (SELECT id FROM users WHERE empleador_id = ?))", companyID, companyID)
 	}
 	if search, ok := filters["search"].(string); ok {
-		query = query.Where("title ILIKE ? OR description ILIKE ?", "%"+search+"%", "%"+search+"%")
+		query = query.Where("tasks.title ILIKE ? OR tasks.description ILIKE ?", "%"+search+"%", "%"+search+"%")
 	}
 
 	if err := query.Count(&total).Error; err != nil {
@@ -64,7 +69,7 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 
 	if err := query.Preload("Creator").Preload("Assignees").Preload("Board").Preload("Attachments").
 		Preload("Comments").Preload("Comments.User").
-		Offset(offset).Limit(limit).Order("created_at DESC").Find(&tasks).Error; err != nil {
+		Offset(offset).Limit(limit).Order("tasks.created_at DESC").Find(&tasks).Error; err != nil {
 		return nil, 0, err
 	}
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { userService } from '../../services/api'
 import type { User } from '../../types'
+import Tooltip from '../Common/Tooltip'
 import styles from '../../pages/Profile.module.css'
 
 interface ProfileFormProps {
@@ -40,10 +41,15 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
     }
   }
 
+  const isEmployer = user?.user_type === 'empleador' || user?.is_superadmin || user?.is_manager
+
   return (
     <div className={styles['info-card']}>
       <div className={styles['card-header']}>
-        <h3>Información Personal</h3>
+        <h3>
+          Información Personal{' '}
+          <Tooltip content={isEmployer ? "Registro de tu información personal" : "Registro de tu información personal (es necesaria para el registro de horas)."} size={14} />
+        </h3>
       </div>
       
       {message.text && (

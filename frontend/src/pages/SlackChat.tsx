@@ -111,6 +111,15 @@ export default function SlackChat() {
   const leaveChannel = async (id: number) => { try { await channelService.leaveChannel(id); if (selectedChannel?.id === id) setSelectedChannel(null); fetchChannels() } catch (e) { console.error(e) } }
   const addMember = async (id: number) => { if (selectedChannel) try { await channelService.addMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
   const removeMember = async (id: number) => { if (selectedChannel) try { await channelService.removeMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
+  const handleUpdateChannel = async (id: number, updates: { name: string; description: string }) => {
+    try {
+      const updated = await channelService.updateChannel(id, updates)
+      setSelectedChannel(updated as any)
+      fetchChannels()
+    } catch (e) {
+      console.error('Error updating channel:', e)
+    }
+  }
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault(); setIsResizing(true)
@@ -131,8 +140,8 @@ export default function SlackChat() {
   const sendThreadReply = async (content: string) => {
     if (selectedChannel && showThread && content.trim()) {
       try {
-        const reply = await channelService.sendThreadReply(selectedChannel.id, showThread.id, content)
-        setThreadReplies(prev => [...prev, reply])
+        // Don't add optimistically - WS delivers it to all clients including sender
+        await channelService.sendThreadReply(selectedChannel.id, showThread.id, content)
       } catch (e) { console.error(e) }
     }
   }
@@ -283,6 +292,7 @@ export default function SlackChat() {
           onRemoveMember={removeMember}
           onLeaveChannel={leaveChannel}
           onShowAddMembers={() => setShowAddMembers(true)}
+          onUpdateChannel={handleUpdateChannel}
         />
       )}
 
