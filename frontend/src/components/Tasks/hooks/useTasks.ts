@@ -66,10 +66,10 @@ export function useTasks({ boardId, showAllTasks }: UseTasksOptions = {}): UseTa
   const updateTask = useCallback(async (id: number, data: Partial<Task>) => {
     const previousTasks = [...tasks]
     try {
+      // Optimistic update (skip assignees — they come as objects not IDs)
       setTasks(currentTasks =>
         currentTasks.map(t => {
           if (t.id === id) {
-            // No actualizar asignados de forma optimista si solo vienen IDs
             const { assignees, ...rest } = data
             return { ...t, ...rest }
           }
@@ -78,8 +78,8 @@ export function useTasks({ boardId, showAllTasks }: UseTasksOptions = {}): UseTa
       )
 
       await taskService.update(id, data)
-      // We still fetch to ensure full sync (e.g., computed fields, timestamps)
-      fetchTasks()
+      // Await full sync so re-render gets fresh server state
+      await fetchTasks()
 
       if (selectedTask && selectedTask.id === id) {
         const updated = await taskService.getById(id)
@@ -89,6 +89,7 @@ export function useTasks({ boardId, showAllTasks }: UseTasksOptions = {}): UseTa
       console.error('Error updating task:', error)
       // Rollback on failure
       setTasks(previousTasks)
+      throw error
     }
   }, [fetchTasks, selectedTask, tasks])
 

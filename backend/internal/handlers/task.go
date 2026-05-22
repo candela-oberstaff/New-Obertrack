@@ -32,10 +32,10 @@ type CreateTaskRequest struct {
 }
 
 type UpdateTaskRequest struct {
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Status      string     `json:"status"`
-	Priority    string     `json:"priority"`
+	Title       *string    `json:"title"`
+	Description *string    `json:"description"`
+	Status      *string    `json:"status"`
+	Priority    *string    `json:"priority"`
 	StartDate   *time.Time `json:"start_date"`
 	EndDate     *time.Time `json:"end_date"`
 	Completed   *bool      `json:"completed"`
@@ -120,19 +120,19 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// Maps req elements dynamically
+	// Maps req elements dynamically — use pointers so empty strings are included
 	updates := map[string]interface{}{}
-	if req.Title != "" {
-		updates["title"] = req.Title
+	if req.Title != nil {
+		updates["title"] = *req.Title
 	}
-	if req.Description != "" {
-		updates["description"] = req.Description
+	if req.Description != nil {
+		updates["description"] = *req.Description
 	}
-	if req.Status != "" {
-		updates["status"] = req.Status
+	if req.Status != nil {
+		updates["status"] = *req.Status
 	}
-	if req.Priority != "" {
-		updates["priority"] = req.Priority
+	if req.Priority != nil {
+		updates["priority"] = *req.Priority
 	}
 	if req.Completed != nil {
 		updates["completed"] = *req.Completed
