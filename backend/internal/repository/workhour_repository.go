@@ -122,6 +122,14 @@ func (r *workHourRepository) GetSummary(filters map[string]interface{}) (map[str
 		query = query.Where("work_hours.user_id = ?", userID)
 	}
 
+	// Date range filters
+	if startDate, ok := filters["start_date"].(time.Time); ok {
+		query = query.Where("work_date >= ?", startDate)
+	}
+	if endDate, ok := filters["end_date"].(time.Time); ok {
+		query = query.Where("work_date <= ?", endDate)
+	}
+
 	var totalHours float64
 	var approvedHours float64
 

@@ -74,7 +74,7 @@ func (s *adminService) GetDashboardMetrics() (*DashboardMetrics, error) {
 	_, man, _ := s.userRepo.GetAll("", "true", 0, 0, 1)
 	m.TotalManagers = int(man)
 
-	summary, _ := s.workHourRepo.GetSummary(nil)
+	summary, _ := s.workHourRepo.GetSummary(make(map[string]interface{}))
 	m.TotalHoursWorked = summary["total_hours"]
 	m.ApprovedHours = summary["approved_hours"]
 	m.PendingHours = summary["pending_hours"]

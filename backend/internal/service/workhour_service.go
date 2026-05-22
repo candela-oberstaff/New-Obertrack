@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"strings"
+
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/utils"
@@ -157,8 +159,12 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 	}
 
 	if err := s.repo.Create(workHour); err != nil {
+		if strings.Contains(err.Error(), "duplicate") {
+			return nil, errors.New("Ya existe un registro para esta fecha. Solo puedes registrar un máximo de una jornada por día.")
+		}
 		return nil, errors.New("Failed to create work hour")
 	}
+
 
 	// Fetch with preload for response
 	finalWH, err := s.repo.FindByID(workHour.ID)
@@ -322,6 +328,12 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool) (map[string]float64, error) {
 	filters := make(map[string]interface{})
 
+	// Filter for the current month
+	now := time.Now()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	filters["start_date"] = startOfMonth
+	filters["end_date"] = now
+
 	if !isSuperadmin {
 		if role == string(models.UserTypeEmployer) || role == "empleador" {
 			filters["employer_id"] = userID
@@ -336,6 +348,12 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool
 func (s *workHourService) GetPending(empleadorID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error) {
 	filters := make(map[string]interface{})
 	filters["approved"] = false
+
+	// Filter to current month
+	now := time.Now()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	filters["start_date"] = startOfMonth
+	filters["end_date"] = now
 
 	if isSuperadmin {
 		res, _, err := s.repo.FindAll(filters, 0, 1000)
