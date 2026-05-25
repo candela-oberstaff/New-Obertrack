@@ -32,6 +32,9 @@ func Migrate(db *gorm.DB) error {
 		&SurveyQuestion{},
 		&SurveyResponse{},
 		&SurveyAnswer{},
+		&Contact{},
+		&Ticket{},
+		&TicketMessage{},
 	)
 	if err != nil {
 		log.Printf("Migration warning: %v", err)

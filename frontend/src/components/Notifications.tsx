@@ -48,7 +48,13 @@ export default function Notifications() {
       wsRef.current.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data)
-          if (message.type === 'task_assigned' || message.type === 'mention') {
+          if (
+            message.type === 'task_assigned' ||
+            message.type === 'mention' ||
+            message.type === 'task_created' ||
+            message.type === 'task_updated' ||
+            message.type === 'task_completed'
+          ) {
             const newNotification: Notification = {
               id: message.data?.id || Date.now(),
               user_id: 0,
@@ -61,7 +67,12 @@ export default function Notifications() {
             setNotifications(prev => [newNotification, ...prev])
             setUnreadCount(prev => prev + 1)
             
-            if (message.type === 'task_assigned') {
+            if (
+              message.type === 'task_assigned' ||
+              message.type === 'task_created' ||
+              message.type === 'task_updated' ||
+              message.type === 'task_completed'
+            ) {
               window.dispatchEvent(new CustomEvent('task-assigned'))
             }
           }
@@ -163,6 +174,9 @@ export default function Notifications() {
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'task_assigned': return <ClipboardList size={18} className="text-blue-500" />
+      case 'task_created': return <ClipboardList size={18} className="text-emerald-500" />
+      case 'task_updated': return <ClipboardList size={18} className="text-amber-500" />
+      case 'task_completed': return <CheckCircle2 size={18} className="text-green-500" />
       case 'work_hour_approved': return <CheckCircle2 size={18} className="text-green-500" />
       case 'work_hour_rejected': return <XCircle size={18} className="text-red-500" />
       case 'new_comment': return <MessageSquare size={18} className="text-indigo-500" />

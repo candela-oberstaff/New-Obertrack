@@ -91,6 +91,16 @@
   box-shadow: 0 4px 12px rgba(244, 114, 182, 0.2);
 }
 
+.plugin-btn-wa:hover {
+  color: #25D366;
+}
+
+.plugin-btn-wa.active {
+  background: #25D366;
+  color: white;
+  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3);
+}
+
 .outlet-container {
   flex: 1;
   display: flex;

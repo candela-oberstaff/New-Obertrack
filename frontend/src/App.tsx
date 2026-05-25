@@ -13,11 +13,14 @@ const WorkHours = lazy(() => import('./pages/WorkHours'))
 const Reports = lazy(() => import('./pages/Reports'))
 const SlackChat = lazy(() => import('./pages/SlackChat'))
 const GoogleChat = lazy(() => import('./pages/GoogleChat'))
+const WhatsApp = lazy(() => import('./pages/WhatsApp'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Admin = lazy(() => import('./pages/Admin'))
 const Tools = lazy(() => import('./components/Admin/Tools'))
 const Metrics = lazy(() => import('./pages/Metrics'))
 const SurveyViewer = lazy(() => import('./pages/SurveyViewer'))
+const TicketsBoard = lazy(() => import('./pages/Tickets/TicketsBoard'))
+const TicketDetail = lazy(() => import('./pages/Tickets/TicketDetail'))
 
 function Loading() {
   return (
@@ -119,12 +122,15 @@ function App() {
           <Route path="work-hours" element={<WorkHours />} />
           <Route path="chat" element={<SlackChat />} />
           <Route path="google-chat" element={<GoogleChat />} />
+          <Route path="whatsapp" element={<WhatsApp />} />
           <Route path="profile" element={<Profile />} />
           <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="admin/tools" element={<AdminRoute><Tools /></AdminRoute>} />
           <Route path="admin/metrics" element={<AdminRoute><Metrics /></AdminRoute>} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
+          <Route path="tickets" element={<TicketsBoard />} />
+          <Route path="tickets/:id" element={<TicketDetail />} />
         </Route>
       </Routes>
     </Suspense>

@@ -58,6 +58,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	emailHandler := handlers.NewEmailHandler(emailRepo, brevoSvc)
 	surveyHandler := handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc)
 	metricsHandler := handlers.NewMetricsHandler(metricsRepo)
+	wahaHandler := handlers.NewWahaHandler(db)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {
@@ -85,7 +86,10 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		}
 
 		// Webhooks
+		brevoInboundHandler := handlers.NewBrevoInboundHandler(db)
 		api.POST("/webhooks/brevo", emailHandler.HandleBrevoWebhook)
+		api.POST("/webhooks/brevo/inbound", brevoInboundHandler.HandleInbound)
+		api.POST("/webhooks/waha", wahaHandler.HandleWebhook)
 
 		// Google Chat Public Callback
 		api.POST("/google-chat/callback", googleChatHandler.HandleCallback)
@@ -263,6 +267,17 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			}
 			// Metrics logic
 			api.GET("/metrics", middleware.RequireSuperadmin(), metricsHandler.GetGlobalMetrics)
+
+			// Tickets logic
+			tickets := api.Group("/tickets")
+			{
+				wahaSvc := service.NewWahaService()
+				ticketHandler := handlers.NewTicketHandler(db, wahaSvc, brevoSvc)
+				tickets.GET("", ticketHandler.GetTickets)
+				tickets.GET("/:id", ticketHandler.GetTicket)
+				tickets.PUT("/:id", ticketHandler.UpdateTicket)
+				tickets.POST("/:id/messages", ticketHandler.SendMessage)
+			}
 		}
 	}
 

@@ -98,3 +98,11 @@ func (h *NotificationHub) NotifyUser(userID uint, notifType string, data interfa
 		Data:   data,
 	}
 }
+
+func (h *NotificationHub) BroadcastToAll(notifType string, data interface{}) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for userID := range h.clients {
+		h.NotifyUser(userID, notifType, data)
+	}
+}

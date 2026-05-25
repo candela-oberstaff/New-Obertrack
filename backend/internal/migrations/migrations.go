@@ -243,6 +243,24 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			ID: "20260525_add_ticket_system",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating ticket system tables (contacts, tickets, ticket_messages)...")
+				return tx.AutoMigrate(
+					&models.Contact{},
+					&models.Ticket{},
+					&models.TicketMessage{},
+				)
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					"ticket_messages",
+					"tickets",
+					"contacts",
+				)
+			},
+		},
 		// Future migrations go here
 	})
 

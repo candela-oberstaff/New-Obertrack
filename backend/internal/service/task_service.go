@@ -16,9 +16,9 @@ type TaskService interface {
 	GetAll(userID uint, role string, isManager, isSuperadmin bool, empleadorID uint, boardIDStr, status, priority string, offset, limit int) ([]models.Task, int64, error)
 	GetByID(id uint) (*models.Task, error)
 	Create(userID uint, isSuperadmin bool, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error)
-	Update(id uint, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error)
+	Update(id uint, updaterUserID uint, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error)
 	Delete(id uint) error
-	ToggleCompletion(id uint) (*models.Task, error)
+	ToggleCompletion(id uint, updaterUserID uint) (*models.Task, error)
 	AddComment(id uint, userID uint, content string) (*models.Comment, error)
 	AddAttachment(taskID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint) (*models.TaskAttachment, error)
 	DeleteAttachment(attachmentID uint) error
@@ -197,6 +197,7 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, title, description,
 		err := s.notifSvc.CreateNotification(assignee.ID, "task_assigned", "Nueva tarea asignada", fmt.Sprintf("Se te asignó la tarea: %s", task.Title), map[string]interface{}{
 			"task_id":  task.ID,
 			"board_id": task.BoardID,
+			"link":     "/tasks",
 		})
 		if err != nil {
 			log.Printf("[TaskService] Error creating internal notification for user %d: %v", assignee.ID, err)
@@ -210,13 +211,57 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, title, description,
 		}
 	}
 
+	// Notify employer/company
+	creator, _ := s.userRepo.GetByID(userID)
+	board, _ := s.boardRepo.GetByID(task.BoardID)
+	employerIDs := make(map[uint]bool)
+
+	// If the task creator is a professional and has an employer
+	if creator != nil && creator.UserType == models.UserTypeProfessional && creator.EmpleadorID != nil {
+		employerIDs[*creator.EmpleadorID] = true
+	}
+
+	// Also, if the board creator is an employer and not the task creator
+	if board != nil && board.CreatedBy != userID {
+		boardCreator, _ := s.userRepo.GetByID(board.CreatedBy)
+		if boardCreator != nil && (boardCreator.UserType == models.UserTypeEmployer || boardCreator.IsManager) {
+			employerIDs[board.CreatedBy] = true
+		}
+	}
+
+	for empID := range employerIDs {
+		if empID == userID {
+			continue
+		}
+		
+		creatorName := "Alguien"
+		if creator != nil {
+			creatorName = creator.Name
+		}
+		
+		err := s.notifSvc.CreateNotification(empID, "task_created", "Nueva tarea creada", fmt.Sprintf("%s creó la tarea: %s", creatorName, task.Title), map[string]interface{}{
+			"task_id":  task.ID,
+			"board_id": task.BoardID,
+			"link":     "/tasks",
+		})
+		if err != nil {
+			log.Printf("[TaskService] Error creating task_created notification for employer %d: %v", empID, err)
+		}
+	}
+
 	return finalTask, finalTask.Assignees, nil
 }
 
-func (s *taskService) Update(id uint, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error) {
+func (s *taskService) Update(id uint, updaterUserID uint, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error) {
 	task, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, nil, errors.New("Task not found")
+	}
+
+	// Keep track of assignees before update (to detect who is new vs existing)
+	currentAssigneeIDs := make(map[uint]bool)
+	for _, a := range task.Assignees {
+		currentAssigneeIDs[a.ID] = true
 	}
 
 	if len(reqData) > 0 {
@@ -249,28 +294,25 @@ func (s *taskService) Update(id uint, isSuperadmin bool, reqData map[string]inte
 			}
 		}
 
-		currentAssigneeIDs := make(map[uint]bool)
-		for _, a := range task.Assignees {
-			currentAssigneeIDs[a.ID] = true
-		}
-
 		s.repo.SyncAssignees(task, *assignees)
+	}
 
-		finalTask, err := s.repo.GetByID(task.ID)
-		if err != nil {
-			log.Printf("[TaskService] Error refreshing task %d for update notifications: %v", task.ID, err)
-		} else {
-			task = finalTask
-		}
+	// Fetch final refreshed task with preloads (assignees, board, creator)
+	finalTask, err := s.repo.GetByID(task.ID)
+	if err != nil {
+		log.Printf("[TaskService] Error refreshing task %d for update notifications: %v", task.ID, err)
+		return task, task.Assignees, nil
+	}
+	task = finalTask
 
-		log.Printf("[TaskService] Checking notifications for %d assignees in updated task: %s", len(task.Assignees), task.Title)
-
-		// Notify new assignees
+	// Notify new assignees (only if assignees changed)
+	if assignees != nil {
 		for _, u := range task.Assignees {
 			if !currentAssigneeIDs[u.ID] {
 				err := s.notifSvc.CreateNotification(u.ID, "task_assigned", "Nueva tarea asignada", fmt.Sprintf("Se te asignó la tarea: %s", task.Title), map[string]interface{}{
 					"task_id":  task.ID,
 					"board_id": task.BoardID,
+					"link":     "/tasks",
 				})
 				if err != nil {
 					log.Printf("[TaskService] Error creating internal notification for user %d: %v", u.ID, err)
@@ -279,14 +321,78 @@ func (s *taskService) Update(id uint, isSuperadmin bool, reqData map[string]inte
 				// Enviar DM vía Google Chat API
 				if u.Email != "" {
 					go s.googleChatSvc.SendDirectMessage(u.Email, fmt.Sprintf("¡Hola %s! Se te asignó a la tarea en Obertrack: *%s*", u.Name, task.Title))
-				} else {
-					log.Printf("[TaskService] Warning: Assignee %d (%s) has no email, skipping Google Chat notification", u.ID, u.Name)
 				}
 			}
 		}
-	} else {
-		finalTask, _ := s.repo.GetByID(task.ID)
-		task = finalTask
+	}
+
+	// Now handle modification notifications for employer and other assignees
+	updaterName := "Alguien"
+	var updater *models.User
+	if updaterUserID > 0 {
+		updater, _ = s.userRepo.GetByID(updaterUserID)
+		if updater != nil {
+			updaterName = updater.Name
+		}
+	}
+
+	// Employer IDs to notify
+	board, _ := s.boardRepo.GetByID(task.BoardID)
+	employerIDs := make(map[uint]bool)
+
+	if updater != nil && updater.UserType == models.UserTypeProfessional && updater.EmpleadorID != nil {
+		employerIDs[*updater.EmpleadorID] = true
+	}
+
+	if board != nil && board.CreatedBy != updaterUserID {
+		boardCreator, _ := s.userRepo.GetByID(board.CreatedBy)
+		if boardCreator != nil && (boardCreator.UserType == models.UserTypeEmployer || boardCreator.IsManager) {
+			employerIDs[board.CreatedBy] = true
+		}
+	}
+
+	for empID := range employerIDs {
+		if empID == updaterUserID {
+			continue
+		}
+
+		err := s.notifSvc.CreateNotification(empID, "task_updated", "Tarea modificada", fmt.Sprintf("%s modificó la tarea: %s", updaterName, task.Title), map[string]interface{}{
+			"task_id":  task.ID,
+			"board_id": task.BoardID,
+			"link":     "/tasks",
+		})
+		if err != nil {
+			log.Printf("[TaskService] Error creating task_updated notification for employer %d: %v", empID, err)
+		}
+
+		empUser, _ := s.userRepo.GetByID(empID)
+		if empUser != nil && empUser.Email != "" {
+			go s.googleChatSvc.SendDirectMessage(empUser.Email, fmt.Sprintf("¡Hola %s! *%s* modificó la tarea en Obertrack: *%s*", empUser.Name, updaterName, task.Title))
+		}
+	}
+
+	// Notify other assignees who were already assigned or whose assignment is preserved
+	for _, assignee := range task.Assignees {
+		if assignee.ID == updaterUserID {
+			continue
+		}
+		if assignees != nil && !currentAssigneeIDs[assignee.ID] {
+			// Skip newly assigned users, since they already got task_assigned
+			continue
+		}
+
+		err := s.notifSvc.CreateNotification(assignee.ID, "task_updated", "Tarea modificada", fmt.Sprintf("%s modificó la tarea: %s", updaterName, task.Title), map[string]interface{}{
+			"task_id":  task.ID,
+			"board_id": task.BoardID,
+			"link":     "/tasks",
+		})
+		if err != nil {
+			log.Printf("[TaskService] Error creating task_updated notification for assignee %d: %v", assignee.ID, err)
+		}
+
+		if assignee.Email != "" {
+			go s.googleChatSvc.SendDirectMessage(assignee.Email, fmt.Sprintf("¡Hola %s! *%s* modificó la tarea: *%s*", assignee.Name, updaterName, task.Title))
+		}
 	}
 
 	return task, task.Assignees, nil
@@ -298,7 +404,7 @@ func (s *taskService) Delete(id uint) error {
 	return s.repo.Delete(id)
 }
 
-func (s *taskService) ToggleCompletion(id uint) (*models.Task, error) {
+func (s *taskService) ToggleCompletion(id uint, updaterUserID uint) (*models.Task, error) {
 	task, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("Task not found")
@@ -319,7 +425,87 @@ func (s *taskService) ToggleCompletion(id uint) (*models.Task, error) {
 		return nil, err
 	}
 
-	return s.repo.GetByID(id)
+	// Fetch final refreshed task with preloads
+	finalTask, err := s.repo.GetByID(id)
+	if err != nil {
+		return task, nil
+	}
+	task = finalTask
+
+	updaterName := "Alguien"
+	var updater *models.User
+	if updaterUserID > 0 {
+		updater, _ = s.userRepo.GetByID(updaterUserID)
+		if updater != nil {
+			updaterName = updater.Name
+		}
+	}
+
+	actionVerb := "reabrió"
+	notifType := "task_updated"
+	title := "Tarea reabierta"
+	if completed {
+		actionVerb = "completó"
+		notifType = "task_completed"
+		title = "Tarea completada"
+	}
+
+	// Employer IDs to notify
+	board, _ := s.boardRepo.GetByID(task.BoardID)
+	employerIDs := make(map[uint]bool)
+
+	if updater != nil && updater.UserType == models.UserTypeProfessional && updater.EmpleadorID != nil {
+		employerIDs[*updater.EmpleadorID] = true
+	}
+
+	if board != nil && board.CreatedBy != updaterUserID {
+		boardCreator, _ := s.userRepo.GetByID(board.CreatedBy)
+		if boardCreator != nil && (boardCreator.UserType == models.UserTypeEmployer || boardCreator.IsManager) {
+			employerIDs[board.CreatedBy] = true
+		}
+	}
+
+	for empID := range employerIDs {
+		if empID == updaterUserID {
+			continue
+		}
+
+		err := s.notifSvc.CreateNotification(empID, notifType, title, fmt.Sprintf("%s %s la tarea: %s", updaterName, actionVerb, task.Title), map[string]interface{}{
+			"task_id":  task.ID,
+			"board_id": task.BoardID,
+			"link":     "/tasks",
+		})
+		if err != nil {
+			log.Printf("[TaskService] Error creating ToggleCompletion notification for employer %d: %v", empID, err)
+		}
+
+		empUser, _ := s.userRepo.GetByID(empID)
+		if empUser != nil && empUser.Email != "" {
+			go s.googleChatSvc.SendDirectMessage(empUser.Email, fmt.Sprintf("¡Hola %s! *%s* %s la tarea en Obertrack: *%s*", empUser.Name, updaterName, actionVerb, task.Title))
+		}
+	}
+
+	// Notify other assignees
+	for _, assignee := range task.Assignees {
+		if assignee.ID == updaterUserID {
+			continue
+		}
+
+		err := s.notifSvc.CreateNotification(assignee.ID, notifType, title, fmt.Sprintf("%s %s la tarea: %s", updaterName, actionVerb, task.Title), map[string]interface{}{
+			"task_id":  task.ID,
+			"board_id": task.BoardID,
+			"link":     "/tasks",
+		})
+		if err != nil {
+			log.Printf("[TaskService] Error creating ToggleCompletion notification for assignee %d: %v", assignee.ID, err)
+		}
+
+		if assignee.Email != "" {
+			go s.googleChatSvc.SendDirectMessage(assignee.Email, fmt.Sprintf("¡Hola %s! *%s* %s la tarea: *%s*", assignee.Name, updaterName, actionVerb, task.Title))
+		}
+	}
+
+	return task, nil
 }
 
 func (s *taskService) AddComment(id uint, userID uint, content string) (*models.Comment, error) {

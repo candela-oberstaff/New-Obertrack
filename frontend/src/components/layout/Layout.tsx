@@ -18,7 +18,9 @@ import {
   Plug,
   Wrench,
   Menu,
-  X
+  X,
+  Inbox,
+  MessageSquare
 } from 'lucide-react'
 import Avatar from '../Common/Avatar'
 import styles from './Layout.module.css'
@@ -31,7 +33,7 @@ export default function Layout() {
   const [totalChatUnread, setTotalChatUnread] = useState(0)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
 
-  const isChatPage = location.pathname.startsWith('/chat')
+  const isChatPage = location.pathname.startsWith('/chat') || location.pathname.startsWith('/whatsapp')
 
   useEffect(() => {
     setIsMobileSidebarOpen(false)
@@ -70,6 +72,7 @@ export default function Layout() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} /> },
+    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} /> },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} /> },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, adminOnly: true },
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} /> },
@@ -178,6 +181,13 @@ export default function Layout() {
             <Menu size={24} />
           </button>
           <div className={styles['top-bar-actions']}>
+            <NavLink
+              to="/whatsapp"
+              className={({ isActive }) => `${styles['plugin-btn']} ${styles['plugin-btn-wa']} ${isActive ? styles['active'] : ''}`}
+              title="WhatsApp"
+            >
+              <MessageSquare size={20} />
+            </NavLink>
             <NavLink
               to="/google-chat"
               className={({ isActive }) => `${styles['plugin-btn']} ${isActive ? styles['active'] : ''}`}

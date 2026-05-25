@@ -149,9 +149,10 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		return
 	}
 
+	userID := middleware.GetUserID(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
-	task, _, err := h.service.Update(uint(id), isSuperadmin, updates, req.Assignees)
+	task, _, err := h.service.Update(uint(id), userID, isSuperadmin, updates, req.Assignees)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -182,7 +183,8 @@ func (h *TaskHandler) ToggleCompletion(c *gin.Context) {
 		return
 	}
 
-	task, err := h.service.ToggleCompletion(uint(id))
+	userID := middleware.GetUserID(c)
+	task, err := h.service.ToggleCompletion(uint(id), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
