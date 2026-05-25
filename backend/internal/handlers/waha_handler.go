@@ -39,7 +39,8 @@ func NewWahaHandler(db *gorm.DB) *WahaHandler {
 func (h *WahaHandler) HandleWebhook(c *gin.Context) {
 	var payload WahaWebhookPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		log.Printf("WAHA Webhook bind error: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload", "details": err.Error()})
 		return
 	}
 

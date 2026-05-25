@@ -1,25 +1,27 @@
+/* ─────────────────────────────────────────
+   TICKETS – Layout general
+   El scroll principal lo da el outlet-container
+   de Layout, no este container.
+───────────────────────────────────────── */
 .container {
-  padding: 2rem;
-  height: calc(100vh - 64px);
+  padding: 1.5rem;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  gap: 1.5rem;
 }
 
 @media (max-width: 768px) {
   .container {
     padding: 1rem;
-    height: auto;
-    min-height: calc(100vh - 64px);
-    overflow: auto;
   }
 }
 
+/* ── Header ── */
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
   flex-wrap: wrap;
   gap: 1rem;
 }
@@ -29,14 +31,15 @@
   font-weight: var(--font-weight-bold);
   color: var(--primary-dark);
   letter-spacing: -0.02em;
+  margin: 0;
 }
 
+/* ── Board (pipeline kanban) ── */
 .board {
   display: flex;
   gap: 1.5rem;
-  flex: 1;
   overflow-x: auto;
-  padding-bottom: 1.5rem;
+  padding-bottom: 1rem;
   scroll-snap-type: x mandatory;
 }
 
@@ -66,7 +69,6 @@
   .column {
     width: 100%;
     min-width: 100%;
-    max-height: 450px;
   }
 }
 
@@ -84,10 +86,10 @@
   align-items: center;
 }
 
-.header-new { border-top: 4px solid var(--accent-alt); }
+.header-new        { border-top: 4px solid var(--accent-alt); }
 .header-in_progress { border-top: 4px solid var(--primary); }
-.header-waiting { border-top: 4px solid var(--warning); }
-.header-closed { border-top: 4px solid var(--gray-400); }
+.header-waiting    { border-top: 4px solid var(--warning); }
+.header-closed     { border-top: 4px solid var(--gray-400); }
 
 .countBadge {
   background: rgba(6, 11, 35, 0.08);
@@ -98,14 +100,20 @@
 }
 
 .ticketList {
-  flex: 1;
   padding: 1.25rem;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  max-height: 550px;
+  max-height: 520px;
+  /* scrollbar fino */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(204,51,204,0.25) transparent;
 }
+
+.ticketList::-webkit-scrollbar { width: 5px; }
+.ticketList::-webkit-scrollbar-track { background: transparent; }
+.ticketList::-webkit-scrollbar-thumb { background: rgba(204,51,204,0.25); border-radius: 3px; }
 
 .emptyColumn {
   display: flex;
@@ -174,32 +182,35 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.stage-new { background: rgba(0, 127, 255, 0.1); color: var(--color-azure); }
+.stage-new         { background: rgba(0, 127, 255, 0.1); color: var(--color-azure); }
 .stage-in_progress { background: rgba(204, 51, 204, 0.1); color: var(--primary); }
-.stage-waiting { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
-.stage-closed { background: rgba(142, 133, 178, 0.15); color: var(--gray-500); }
+.stage-waiting     { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+.stage-closed      { background: rgba(142, 133, 178, 0.15); color: var(--gray-500); }
 
-.waIcon { color: #25D366; }
+.waIcon   { color: #25D366; }
 .mailIcon { color: var(--color-fresh-sky); }
 
-/* Detail View Layout */
+/* ─────────────────────────────────────────
+   TICKET DETAIL – layout en dos columnas
+   Fluye normal; solo .chatMessages tiene
+   su propio scroll acotado.
+───────────────────────────────────────── */
 .detailContainer {
   display: flex;
   gap: 2rem;
-  height: 100%;
-  flex: 1;
-  overflow: hidden;
+  align-items: flex-start;  /* columnas crecen independientemente */
 }
 
 @media (max-width: 992px) {
   .detailContainer {
     flex-direction: column;
-    overflow: auto;
   }
 }
 
+/* ── Sidebar de contacto ── */
 .detailSidebar {
-  width: 320px;
+  width: 300px;
+  flex-shrink: 0;
   background: var(--glass-bg);
   backdrop-filter: var(--blur);
   border: 1px solid var(--glass-border);
@@ -209,6 +220,7 @@
   flex-direction: column;
   gap: 1.5rem;
   box-shadow: var(--shadow-sm);
+  /* en columna, se vuelve ancho completo */
 }
 
 @media (max-width: 992px) {
@@ -313,34 +325,37 @@
   gap: 0.5rem;
 }
 
-/* Chat Main Layout */
+/* ── Área de chat (columna derecha) ── */
 .detailMain {
   flex: 1;
+  min-width: 0;
   background: var(--white);
   border-radius: var(--radius);
   border: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   box-shadow: var(--shadow-sm);
 }
 
-@media (max-width: 992px) {
-  .detailMain {
-    height: 600px;
-    flex: none;
-  }
-}
-
+/* ── Mensajes: scroll propio y acotado ── */
 .chatMessages {
-  flex: 1;
   padding: 2rem;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   background: #faf9fd;
+  border-radius: var(--radius) var(--radius) 0 0;
+  /* altura mínima + máxima para el scroll acotado */
+  min-height: 220px;
+  max-height: 420px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(204,51,204,0.2) transparent;
 }
+
+.chatMessages::-webkit-scrollbar { width: 5px; }
+.chatMessages::-webkit-scrollbar-track { background: transparent; }
+.chatMessages::-webkit-scrollbar-thumb { background: rgba(204,51,204,0.2); border-radius: 3px; }
 
 .emptyMessages {
   display: flex;
@@ -348,26 +363,20 @@
   justify-content: center;
   align-items: center;
   height: 100%;
+  min-height: 160px;
   color: var(--gray-400);
   gap: 1rem;
 }
 
-.emptyIcon {
-  color: var(--gray-300);
-}
+.emptyIcon { color: var(--gray-300); }
 
 .messageWrapper {
   display: flex;
   width: 100%;
 }
 
-.messageWrapperAgent {
-  justify-content: flex-end;
-}
-
-.messageWrapperContact {
-  justify-content: flex-start;
-}
+.messageWrapperAgent   { justify-content: flex-end; }
+.messageWrapperContact { justify-content: flex-start; }
 
 .message {
   max-width: 65%;
@@ -381,9 +390,7 @@
 }
 
 @media (max-width: 576px) {
-  .message {
-    max-width: 85%;
-  }
+  .message { max-width: 85%; }
 }
 
 .messageAgent {
@@ -408,13 +415,8 @@
   gap: 1.5rem;
 }
 
-.senderName {
-  font-weight: var(--font-weight-bold);
-}
-
-.messageTime {
-  opacity: 0.8;
-}
+.senderName   { font-weight: var(--font-weight-bold); }
+.messageTime  { opacity: 0.8; }
 
 .messageContent {
   font-size: 0.95rem;
@@ -432,7 +434,7 @@
   justify-content: flex-end;
 }
 
-/* Chat Input styling */
+/* ── Input de respuesta ── */
 .chatInput {
   padding: 1.75rem;
   border-top: 1px solid var(--gray-100);
@@ -440,6 +442,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 
 .channelSelector {
@@ -463,9 +466,7 @@
   transition: all 0.2s ease;
 }
 
-.channelBtn:hover {
-  background: var(--gray-100);
-}
+.channelBtn:hover { background: var(--gray-100); }
 
 .channelBtn.active {
   background: var(--primary-dark);
@@ -520,6 +521,4 @@
   box-shadow: 0 6px 16px rgba(204, 51, 204, 0.4);
 }
 
-.sendBtn:active {
-  transform: translateY(0);
-}
+.sendBtn:active { transform: translateY(0); }

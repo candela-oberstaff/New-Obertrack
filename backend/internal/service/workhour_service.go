@@ -217,16 +217,17 @@ func (s *workHourService) Update(id uint, reqData map[string]interface{}) (*mode
 		workHour.AbsenceHours = s.parseFloatVal(val)
 	}
 
-	if workHour.WorkType == models.WorkTypeAbsence {
+	switch workHour.WorkType {
+	case models.WorkTypeAbsence:
 		hoursWorked := 8.0 - workHour.AbsenceHours
 		if hoursWorked < 0 {
 			hoursWorked = 0
 		}
 		workHour.HoursWorked = hoursWorked
-	} else if workHour.WorkType == models.WorkTypeRecover {
+	case models.WorkTypeRecover:
 		workHour.AbsenceReason = ""
 		workHour.AbsenceHours = 0
-	} else {
+	default:
 		workHour.HoursWorked = 8.0
 		workHour.AbsenceReason = ""
 		workHour.AbsenceHours = 0

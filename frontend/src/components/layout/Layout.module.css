@@ -111,9 +111,9 @@
   position: relative;
 }
 
-.outlet-container.chat-layout {
-  padding: 0;
-  overflow: hidden;
+.chat-layout {
+  padding: 0 !important;
+  overflow: hidden !important;
 }
 
 .sidebar-header {

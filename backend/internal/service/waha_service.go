@@ -9,15 +9,21 @@ import (
 )
 
 type WahaService struct {
-	apiURL string
-	apiKey string
+	apiURL  string
+	apiKey  string
+	session string
 }
 
 func NewWahaService() *WahaService {
 	return &WahaService{
-		apiURL: getEnvOrDefault("WAHA_API_URL", "http://localhost:3000"), // Default WAHA port
-		apiKey: getEnvOrDefault("WAHA_API_KEY", ""),                      // Optional API Key
+		apiURL:  getEnvOrDefault("WAHA_API_URL", "http://localhost:3000"), // Default WAHA port
+		apiKey:  getEnvOrDefault("WAHA_API_KEY", ""),                      // Optional API Key
+		session: getEnvOrDefault("WAHA_SESSION", "default"),               // Session name (e.g. 'default')
 	}
+}
+
+func (s *WahaService) GetSession() string {
+	return s.session
 }
 
 type WahaSendTextRequest struct {

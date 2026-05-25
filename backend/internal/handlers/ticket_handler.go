@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -106,13 +105,14 @@ func (h *TicketHandler) SendMessage(c *gin.Context) {
 
 	// Send external message if not note
 	var externalID string
-	if req.Channel == models.ChannelWhatsApp {
-		session := fmt.Sprintf("user_%d", uid)
+	switch req.Channel {
+	case models.ChannelWhatsApp:
+		session := h.wahaSvc.GetSession()
 		if err := h.wahaSvc.SendMessage(session, ticket.Contact.Phone, req.Content); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send WAHA message"})
 			return
 		}
-	} else if req.Channel == models.ChannelEmail {
+	case models.ChannelEmail:
 		if err := h.brevoSvc.SendEmail(ticket.Contact.Email, ticket.Contact.Name, ticket.Title, req.Content); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send Email"})
 			return

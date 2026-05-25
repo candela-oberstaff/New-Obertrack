@@ -34,23 +34,10 @@ export default function TicketsBoard() {
 
   const simulateWebhook = async () => {
     try {
-      await fetch('http://localhost:8080/api/webhooks/waha', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'message',
-          session: 'default',
-          payload: {
-            id: 'false_5491122334455@c.us_3A' + Date.now(),
-            from: '5491122334455@c.us',
-            to: 'me',
-            body: 'Hola, necesito ayuda con mi cuenta (Mensaje de prueba)',
-            type: 'chat',
-            fromMe: false,
-            timestamp: Date.now() / 1000
-          }
-        })
-      });
+      await ticketService.simulateWahaMessage(
+        '5491122334455',
+        'Hola, necesito ayuda con mi cuenta (Mensaje de prueba)'
+      );
       fetchTickets();
     } catch (error) {
       console.error('Error simulating webhook', error);

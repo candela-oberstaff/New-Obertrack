@@ -48,5 +48,22 @@ export const ticketService = {
   sendMessage: async (id: number, content: string, channel: 'whatsapp' | 'email' | 'note'): Promise<TicketMessage> => {
     const response = await api.post(`/tickets/${id}/messages`, { content, channel });
     return response.data;
+  },
+
+  simulateWahaMessage: async (phone: string, body: string): Promise<any> => {
+    const response = await api.post('/webhooks/waha', {
+      event: 'message',
+      session: 'default',
+      payload: {
+        id: 'false_' + phone + '@c.us_3A' + Date.now(),
+        from: phone + '@c.us',
+        to: 'me',
+        body: body,
+        type: 'chat',
+        fromMe: false,
+        timestamp: Math.floor(Date.now() / 1000)
+      }
+    });
+    return response.data;
   }
 };
