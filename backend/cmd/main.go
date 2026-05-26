@@ -52,6 +52,8 @@ func main() {
 
 	log.Println("Initializing routes...")
 	r := gin.Default()
+	// health/root endpoint
+	r.GET("/", func(c *gin.Context) { c.String(200, "Backend online") })
 
 	r.Use(middleware.CORS())
 	r.Use(middleware.RateLimitMiddleware())
