@@ -292,12 +292,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	r.GET("/health", func(c *gin.Context) {
-        c.JSON(200, gin.H{"status": "ok"})
-    })
-
-    // Añade esta ruta exacta para solucionar el Healthcheck de Docker
-    r.GET("/", func(c *gin.Context) {
-        c.JSON(200, gin.H{"status": "ok", "message": "Docker Healthcheck Passed"})
-    })
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok", "message": "Docker Healthcheck Passed"})
+	})
 }
