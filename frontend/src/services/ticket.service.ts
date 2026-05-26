@@ -65,5 +65,10 @@ export const ticketService = {
       }
     });
     return response.data;
+  },
+
+  getWahaStatus: async (): Promise<{ status: string; qr?: { image: string } }> => {
+    const response = await api.get('/tickets/waha/status');
+    return response.data;
   }
 };

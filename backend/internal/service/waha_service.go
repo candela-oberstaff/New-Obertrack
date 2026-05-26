@@ -161,6 +161,31 @@ func (s *WahaService) GetSessionStatusAndQR(session string) (*WahaSessionStatusR
 		return nil, fmt.Errorf("failed to decode session status: %w", err)
 	}
 
+	// WAHA v4 returns the status in "status". Standard states are: "SCAN_QR", "WORKING", "FAILED", etc.
+	// If the state is not "WORKING" (or "CONNECTED" depending on version), fetch the QR image from the auth endpoint
+	if status.Status != "WORKING" && status.Status != "CONNECTED" {
+		qrUrl := fmt.Sprintf("%s/api/%s/auth/qr", s.apiURL, session)
+		qrReq, err := http.NewRequest("GET", qrUrl, nil)
+		if err == nil {
+			qrReq.Header.Set("accept", "application/json")
+			if s.apiKey != "" {
+				qrReq.Header.Set("X-Api-Key", s.apiKey)
+			}
+			respQR, errQR := client.Do(qrReq)
+			if errQR == nil && respQR.StatusCode == 200 {
+				var qrData struct {
+					Raw   string `json:"raw"`
+					Image string `json:"image"`
+				}
+				if json.NewDecoder(respQR.Body).Decode(&qrData) == nil {
+					status.QR.Raw = qrData.Raw
+					status.QR.Image = qrData.Image
+				}
+				respQR.Body.Close()
+			}
+		}
+	}
+
 	return &status, nil
 }
 
