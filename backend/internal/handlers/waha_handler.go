@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -37,9 +40,22 @@ func NewWahaHandler(db *gorm.DB) *WahaHandler {
 }
 
 func (h *WahaHandler) HandleWebhook(c *gin.Context) {
+	// Read raw body for logging
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Printf("Error reading WAHA webhook body: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
+	// Log the raw JSON received
+	log.Printf("PAYLOAD DE WAHA RECIBIDO: %s", string(bodyBytes))
+
+	// Restore the body so it can be read again if needed
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 	var payload WahaWebhookPayload
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		log.Printf("WAHA Webhook bind error: %v", err)
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		log.Printf("WAHA Webhook unmarshal error: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload", "details": err.Error()})
 		return
 	}
