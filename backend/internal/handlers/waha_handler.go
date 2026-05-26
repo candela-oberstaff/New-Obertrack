@@ -60,8 +60,8 @@ func (h *WahaHandler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
-	// Only process incoming text messages
-	if payload.Event != "message" || payload.Payload.FromMe || payload.Payload.Type != "chat" {
+	// Only process incoming text messages (Corregido)
+	if payload.Event != "message" || payload.Payload.FromMe {
 		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
 		return
 	}
