@@ -101,6 +101,15 @@ export default function WhatsApp() {
   const [inputText, setInputText] = useState('')
   const [search, setSearch] = useState('')
   const [showMobileChat, setShowMobileChat] = useState(false)
+  const [wahaStatus, setWahaStatus] = useState<{ status: string; qr?: { image: string } } | null>(null)
+
+  useState(() => {
+    // Fetch WAHA connection status
+    fetch('/api/tickets/waha/status')
+      .then(res => res.json())
+      .then(data => setWahaStatus(data))
+      .catch(err => console.error('Error fetching WAHA status:', err))
+  })
 
   const activeContact = contacts.find(c => c.id === activeContactId) ?? null
   const filteredContacts = contacts.filter(c =>
@@ -130,6 +139,19 @@ export default function WhatsApp() {
             <span className={styles.sidebarTitle}>WhatsApp</span>
           </div>
           <div className={styles.sidebarHeaderActions}>
+            <span 
+              className={styles.statusDot} 
+              style={{ 
+                backgroundColor: wahaStatus?.status === 'CONNECTED' ? '#25D366' : '#EF4444',
+                display: 'inline-block',
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                alignSelf: 'center',
+                marginRight: '8px'
+              }}
+              title={`Estado: ${wahaStatus?.status || 'Desconocido'}`}
+            />
             <button className={styles.headerIconBtn} title="Nuevo chat">
               <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
                 <path d="M1 9l11-7 11 7v11a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" strokeWidth="1.5"/>
@@ -146,11 +168,50 @@ export default function WhatsApp() {
           </div>
         </div>
 
-        {/* Mock banner */}
-        <div className={styles.mockBanner}>
-          <span className={styles.mockBadge}>DEMO</span>
-          <span>Vista de maqueta · Sin conexión real</span>
+        {/* Dynamic connection banner */}
+        <div 
+          className={styles.mockBanner} 
+          style={{ 
+            background: wahaStatus?.status === 'CONNECTED' 
+              ? 'rgba(37, 211, 102, 0.08)' 
+              : 'rgba(239, 68, 68, 0.08)',
+            borderBottom: wahaStatus?.status === 'CONNECTED'
+              ? '1px solid rgba(37, 211, 102, 0.2)'
+              : '1px solid rgba(239, 68, 68, 0.2)',
+            color: wahaStatus?.status === 'CONNECTED' ? '#128C7E' : '#EF4444'
+          }}
+        >
+          <span 
+            className={styles.mockBadge}
+            style={{
+              background: wahaStatus?.status === 'CONNECTED'
+                ? 'linear-gradient(135deg, #25D366, #128C7E)'
+                : 'linear-gradient(135deg, #EF4444, #DC2626)'
+            }}
+          >
+            {wahaStatus?.status || 'CARGANDO'}
+          </span>
+          <span>
+            {wahaStatus?.status === 'CONNECTED' 
+              ? 'WhatsApp Conectado Correctamente' 
+              : 'Dispositivo Desconectado · Escanea el QR para conectar'}
+          </span>
         </div>
+
+        {/* QR scanner visual section */}
+        {wahaStatus?.status !== 'CONNECTED' && wahaStatus?.qr?.image && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', borderBottom: '1px solid #e9edef', gap: '10px' }}>
+            <h4 style={{ margin: 0, fontSize: '14px', color: '#41525d' }}>Vincular dispositivo con QR</h4>
+            <img 
+              src={wahaStatus.qr.image} 
+              alt="WAHA QR Code" 
+              style={{ width: '180px', height: '180px', border: '1px solid #e9edef', padding: '5px', borderRadius: '4px' }} 
+            />
+            <p style={{ margin: 0, fontSize: '11px', color: '#667781', textAlign: 'center' }}>
+              Abrí WhatsApp en tu teléfono &gt; Dispositivos vinculados &gt; Vincular un dispositivo
+            </p>
+          </div>
+        )}
 
         {/* Search */}
         <div className={styles.searchBar}>

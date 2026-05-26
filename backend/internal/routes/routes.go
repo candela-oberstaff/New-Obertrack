@@ -58,7 +58,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	emailHandler := handlers.NewEmailHandler(emailRepo, brevoSvc)
 	surveyHandler := handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc)
 	metricsHandler := handlers.NewMetricsHandler(metricsRepo)
-	wahaHandler := handlers.NewWahaHandler(db)
+	wahaHandler := handlers.NewWahaHandler(db, service.NewWahaService())
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {
@@ -279,6 +279,14 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				tickets.GET("/:id", ticketHandler.GetTicket)
 				tickets.PUT("/:id", ticketHandler.UpdateTicket)
 				tickets.POST("/:id/messages", ticketHandler.SendMessage)
+				tickets.GET("/waha/status", func(c *gin.Context) {
+					status, err := wahaSvc.GetSessionStatusAndQR("default")
+					if err != nil {
+						c.JSON(500, gin.H{"error": err.Error()})
+						return
+					}
+					c.JSON(200, status)
+				})
 			}
 		}
 	}
