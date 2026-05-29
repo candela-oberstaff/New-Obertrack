@@ -476,9 +476,9 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 		return nil, err
 	}
 
-	// Mismo payload esperado por la API de hilos de Zoho Desk, forzando canal interactivo
+	// 🚀 Cambio clave: Estructura exacta requerida por el endpoint /sendReply de Zoho Desk
 	payload := map[string]interface{}{
-		"channel": "phone", // En Zoho Desk APIv1 los Live Chats externos entran bajo subtipo 'phone' o 'whatsapp' según la config de mensajería interactiva
+		"channel": "phone", // O "whatsapp" si tienes la integración nativa avanzada dedicada
 		"content": content,
 	}
 
@@ -487,7 +487,8 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 		return nil, err
 	}
 
-	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s/threads", ticketID)
+	// 🚀 CORRECCIÓN DE URL: Se usa /sendReply en lugar de /threads para chats activos
+	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s/sendReply", ticketID)
 	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
@@ -504,11 +505,13 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 	}
 	defer resp.Body.Close()
 
+	// Si da 405 o cambia el formato de respuesta, leemos el body para depurar
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("reply whatsapp failed with status %d: %s", resp.StatusCode, string(respBody))
 	}
 
+	// Al usar sendReply, Zoho devuelve el objeto del hilo creado
 	var thread ZohoThread
 	if err := json.NewDecoder(resp.Body).Decode(&thread); err != nil {
 		return nil, err
