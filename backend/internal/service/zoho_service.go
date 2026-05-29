@@ -476,12 +476,10 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 		return nil, err
 	}
 
-	// 🚀 PAYLOAD CORREGIDO: Estructura exacta para /sendReply en canales de mensajería
+	// 🚀 PAYLOAD ULTRA LIMPIO: Solo lo estrictamente aceptado por Zoho Desk para /sendReply
 	payload := map[string]interface{}{
-		"channel":    "phone", // Mantén "phone" o cambia por "whatsapp" si tu canal es nativo avanzado
-		"text":       content, // Zoho Desk para mensajería instantánea prefiere "text" o "content" según versión
-		"content":    content, // Enviamos ambos para asegurar compatibilidad con tu DTO de respuesta
-		"isPublic":   true,    // Obligatorio en Zoho para que se dispache hacia el cliente final
+		"channel": "phone",   // 'phone' es el contenedor de mensajería en Zoho Desk v1
+		"content": content,   // El texto plano que recibirá el cliente en su WhatsApp
 	}
 
 	body, err := json.Marshal(payload)
@@ -506,19 +504,18 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 	}
 	defer resp.Body.Close()
 
+	// Si el servidor responde con cualquier cosa que no sea 200 o 201, capturamos el error real
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("reply whatsapp failed with status %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	// Al usar sendReply para mensajería, a veces Zoho devuelve un formato compacto.
-	// Si el Unmarshal falla abajo, es porque la respuesta mapea directo a un Thread estructurado.
+	// Leemos la respuesta con tolerancia a variaciones de formato
 	var thread ZohoThread
 	respBytes, _ := io.ReadAll(resp.Body)
 	
-	// Intentamos decodificar el JSON de la respuesta oficial de Zoho
 	if err := json.Unmarshal(respBytes, &thread); err != nil {
-		// Fallback por si la respuesta viene envuelta en un nodo "data"
+		// Fallback por si la respuesta viene dentro de un objeto "data"
 		var wrapper struct {
 			Data ZohoThread `json:"data"`
 		}
@@ -526,7 +523,8 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 			return &wrapper.Data, nil
 		}
 		
-		// Fallback de emergencia si el mensaje se envió con éxito pero cambió el formato de respuesta
+		// Fallback de contingencia: si Zoho devolvió 200/201 el mensaje ya salió hacia el cliente,
+		// creamos un objeto local para que tu frontend no rompa la vista.
 		return &ZohoThread{
 			ID:          "wh_" + fmt.Sprintf("%d", time.Now().Unix()),
 			Channel:     "phone",
@@ -537,6 +535,7 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 
 	return &thread, nil
 }
+
 // UpdateTicketStatus changes status or metadata on a Zoho Desk Ticket
 func (s *ZohoService) UpdateTicketStatus(ticketID string, stage string, status string, assigneeID string) error {
 	token, err := s.GetAccessToken()
