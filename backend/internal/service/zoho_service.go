@@ -468,69 +468,76 @@ func (s *ZohoService) ReplyTicket(ticketID string, content string, channel strin
 func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*ZohoThread, error) {
 	token, err := s.GetAccessToken()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error obteniendo token: %w", err)
 	}
 
 	orgID, err := s.getOrgID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error obteniendo orgID: %w", err)
 	}
 
-	// 🚀 PAYLOAD ULTRA LIMPIO: Solo lo estrictamente aceptado por Zoho Desk para /sendReply
+	// Payload exacto y limpio para Zoho Desk Chat/WhatsApp v1
 	payload := map[string]interface{}{
-		"channel": "phone",   // 'phone' es el contenedor de mensajería en Zoho Desk v1
-		"content": content,   // El texto plano que recibirá el cliente en su WhatsApp
+		"channel": "phone", // 'phone' mapea las integraciones de mensajería interactiva
+		"content": content,
 	}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error codificando json: %w", err)
 	}
 
 	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s/sendReply", ticketID)
 	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creando request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
 	req.Header.Set("orgId", orgID)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error ejecutando request a zoho: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Si el servidor responde con cualquier cosa que no sea 200 o 201, capturamos el error real
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("reply whatsapp failed with status %d: %s", resp.StatusCode, string(respBody))
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error leyendo respuesta de zoho: %w", err)
 	}
 
-	// Leemos la respuesta con tolerancia a variaciones de formato
+	// Si Zoho responde con error, exponemos el mensaje real en los logs de tu backend
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		log.Printf("[ZohoService] Error real de Zoho Desk (Status %d): %s", resp.StatusCode, string(respBytes))
+		return nil, fmt.Errorf("zoho retorno status %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	// Intentamos mapear la respuesta para el frontend
 	var thread ZohoThread
-	respBytes, _ := io.ReadAll(resp.Body)
-	
 	if err := json.Unmarshal(respBytes, &thread); err != nil {
-		// Fallback por si la respuesta viene dentro de un objeto "data"
+		// Intentamos buscar si vino envuelto en un objeto "data"
 		var wrapper struct {
 			Data ZohoThread `json:"data"`
 		}
-		if json.Unmarshal(respBytes, &wrapper) == nil {
+		if json.Unmarshal(respBytes, &wrapper) == nil && wrapper.Data.ID != "" {
 			return &wrapper.Data, nil
 		}
-		
-		// Fallback de contingencia: si Zoho devolvió 200/201 el mensaje ya salió hacia el cliente,
-		// creamos un objeto local para que tu frontend no rompa la vista.
-		return &ZohoThread{
+	}
+
+	// 🔥 SEGURO DE VIDA: Si Zoho aceptó el mensaje (200/201 OK) pero la estructura cambió,
+	// devolvemos un objeto simulado para que tu Go responda 200 al frontend y NO lance un 500.
+	if thread.ID == "" {
+		thread = ZohoThread{
 			ID:          "wh_" + fmt.Sprintf("%d", time.Now().Unix()),
 			Channel:     "phone",
 			Summary:     content,
+			Content:     content,
+			AuthorType:  "agent",
 			CreatedTime: time.Now(),
-		}, nil
+		}
 	}
 
 	return &thread, nil
