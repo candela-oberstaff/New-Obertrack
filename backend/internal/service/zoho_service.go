@@ -476,11 +476,11 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 		return nil, fmt.Errorf("error obteniendo orgID: %w", err)
 	}
 
-	// 🚀 PAYLOAD CORRECTO PARA WHATSAPP / CHAT
+	// 🚀 ESTRATEGIA UNIVERSAL: Añadir el mensaje como un comentario público.
+	// Zoho se encarga automáticamente de rutear los comentarios públicos hacia el canal del cliente (WhatsApp, Email, etc.)
 	payload := map[string]interface{}{
-		"channel":     "IM",          // "IM" es el identificador oficial de Zoho para canales de chat
-		"content":     content,
-		"contentType": "plainText",   // Evita que Zoho intente parsearlo como correo HTML
+		"content":  content,
+		"isPublic": true, // Para que el cliente final lo reciba en su WhatsApp
 	}
 
 	body, err := json.Marshal(payload)
@@ -488,7 +488,8 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 		return nil, fmt.Errorf("error codificando json: %w", err)
 	}
 
-	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s/sendReply", ticketID)
+	// 🚀 NUEVA URL: Endpoint estándar de comentarios de Zoho Desk
+	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s/comments", ticketID)
 	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("error creando request: %w", err)
@@ -510,38 +511,21 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 		return nil, fmt.Errorf("error leyendo respuesta de zoho: %w", err)
 	}
 
-	// Si Zoho responde con error, exponemos el mensaje real en los logs de tu backend
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		log.Printf("[ZohoService] Error real de Zoho Desk (Status %d): %s", resp.StatusCode, string(respBytes))
+		log.Printf("[ZohoService] Error en Comments API (Status %d): %s", resp.StatusCode, string(respBytes))
 		return nil, fmt.Errorf("zoho retorno status %d: %s", resp.StatusCode, string(respBytes))
 	}
 
-	// Intentamos mapear la respuesta para el frontend
-	var thread ZohoThread
-	if err := json.Unmarshal(respBytes, &thread); err != nil {
-		// Intentamos buscar si vino envuelto en un objeto "data"
-		var wrapper struct {
-			Data ZohoThread `json:"data"`
-		}
-		if json.Unmarshal(respBytes, &wrapper) == nil && wrapper.Data.ID != "" {
-			return &wrapper.Data, nil
-		}
-	}
-
-	// 🔥 SEGURO DE VIDA: Si Zoho aceptó el mensaje (200/201 OK) pero la estructura cambió,
-	// devolvemos un objeto simulado para que tu Go responda 200 al frontend y NO lance un 500.
-	if thread.ID == "" {
-		thread = ZohoThread{
-			ID:          "wh_" + fmt.Sprintf("%d", time.Now().Unix()),
-			Channel:     "phone",
-			Summary:     content,
-			Content:     content,
-			AuthorType:  "agent",
-			CreatedTime: time.Now(),
-		}
-	}
-
-	return &thread, nil
+	// Mapeamos la respuesta al objeto esperado por tu frontend.
+	// Zoho Comments devuelve un objeto distinto, así que armamos uno compatible.
+	return &ZohoThread{
+		ID:          "wh_" + fmt.Sprintf("%d", time.Now().Unix()),
+		Channel:     "IM",
+		Summary:     content,
+		Content:     content,
+		AuthorType:  "agent",
+		CreatedTime: time.Now(),
+	}, nil
 }
 
 // UpdateTicketStatus changes status or metadata on a Zoho Desk Ticket
