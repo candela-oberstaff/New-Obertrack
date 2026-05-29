@@ -476,10 +476,11 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 		return nil, fmt.Errorf("error obteniendo orgID: %w", err)
 	}
 
-	// Payload exacto y limpio para Zoho Desk Chat/WhatsApp v1
+	// 🚀 PAYLOAD CORRECTO PARA WHATSAPP / CHAT
 	payload := map[string]interface{}{
-		"channel": "phone", // 'phone' mapea las integraciones de mensajería interactiva
-		"content": content,
+		"channel":     "IM",          // "IM" es el identificador oficial de Zoho para canales de chat
+		"content":     content,
+		"contentType": "plainText",   // Evita que Zoho intente parsearlo como correo HTML
 	}
 
 	body, err := json.Marshal(payload)
