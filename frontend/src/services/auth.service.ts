@@ -14,8 +14,10 @@ export const authService = {
     company_name?: string;
     empleador_id?: number;
     phone_number?: string;
-    location?: string;
+    phone_country_code?: string;
+    country?: string;
     job_title?: string;
+    specialization?: string;
   }) => {
     const { data } = await api.post<{ user: User; access_token: string }>('/auth/register', userData)
     return data

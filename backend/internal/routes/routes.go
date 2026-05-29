@@ -2,6 +2,7 @@ package routes
 
 import (
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/obertrack/backend/internal/config"
@@ -58,7 +59,13 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 	emailHandler := handlers.NewEmailHandler(emailRepo, brevoSvc)
 	surveyHandler := handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc)
 	metricsHandler := handlers.NewMetricsHandler(metricsRepo)
-	wahaHandler := handlers.NewWahaHandler(db, service.NewWahaService())
+	wahaSvc := service.NewWahaService()
+	wahaHandler := handlers.NewWahaHandler(db, wahaSvc)
+	zohoSvc := service.NewZohoService()
+
+	// Start background WAHA Contact Synchronizer (runs every 5 minutes)
+	contactSyncSvc := service.NewContactSyncService(db, wahaSvc)
+	contactSyncSvc.Start(5 * time.Minute)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {
@@ -273,19 +280,16 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 			// Tickets logic
 			tickets := api.Group("/tickets")
 			{
-				wahaSvc := service.NewWahaService()
-				ticketHandler := handlers.NewTicketHandler(db, wahaSvc, brevoSvc)
+				ticketHandler := handlers.NewTicketHandler(db, zohoSvc, brevoSvc)
 				tickets.GET("", ticketHandler.GetTickets)
 				tickets.GET("/:id", ticketHandler.GetTicket)
 				tickets.PUT("/:id", ticketHandler.UpdateTicket)
 				tickets.POST("/:id/messages", ticketHandler.SendMessage)
-				tickets.GET("/waha/status", func(c *gin.Context) {
-					status, err := wahaSvc.GetSessionStatusAndQR("default")
-					if err != nil {
-						c.JSON(500, gin.H{"error": err.Error()})
-						return
-					}
-					c.JSON(200, status)
+				tickets.GET("/contacts", ticketHandler.GetContacts)
+				tickets.PUT("/contacts/:contactId", ticketHandler.UpdateContact)
+				tickets.GET("/zoho/status", func(c *gin.Context) {
+					// Zoho integration status stub
+					c.JSON(200, gin.H{"status": "connected", "service": "zoho_desk"})
 				})
 			}
 		}

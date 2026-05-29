@@ -47,8 +47,8 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
     <div className={styles['info-card']}>
       <div className={styles['card-header']}>
         <h3>
-          Información Personal{' '}
-          <Tooltip content={isEmployer ? "Registro de tu información personal" : "Registro de tu información personal (es necesaria para el registro de horas)."} size={14} />
+          Información {isEmployer ? 'de la Empresa' : 'Personal'}{' '}
+          <Tooltip content={isEmployer ? "Registro de información de la empresa" : "Registro de tu información personal (es necesaria para el registro de horas)."} size={14} />
         </h3>
       </div>
       
@@ -62,7 +62,7 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
         <form onSubmit={handleSubmit} className={styles['edit-form']}>
           <div className={styles['form-row']}>
             <div className={styles['form-group']}>
-              <label>Nombre completo</label>
+              <label>{isEmployer ? 'Nombre de la empresa' : 'Nombre completo'}</label>
               <input
                 type="text"
                 value={formData.name}
@@ -89,33 +89,28 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
                 onChange={(e) => setFormData({ ...formData, country: e.target.value })}
               />
             </div>
+            
+          </div>
+
+          {!isEmployer && (
             <div className={styles['form-group']}>
-              <label>Ciudad</label>
+              <label>Puesto / Cargo</label>
               <input
                 type="text"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                value={formData.job_title}
+                onChange={(e) => setFormData({ ...formData, job_title: e.target.value })}
+                placeholder="Ej: Desarrollador Frontend"
               />
             </div>
-          </div>
+          )}
 
           <div className={styles['form-group']}>
-            <label>Puesto / Cargo</label>
-            <input
-              type="text"
-              value={formData.job_title}
-              onChange={(e) => setFormData({ ...formData, job_title: e.target.value })}
-              placeholder="Ej: Desarrollador Frontend"
-            />
-          </div>
-
-          <div className={styles['form-group']}>
-            <label>Dirección</label>
+            <label>{isEmployer ? 'Ubicación' : 'Dirección'}</label>
             <textarea
               value={formData.location}
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               rows={2}
-              placeholder="Dirección completa"
+              placeholder={isEmployer ? "Ubicación de la empresa" : "Dirección completa"}
             />
           </div>
 
@@ -139,21 +134,19 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
             <span className={styles['info-label']}>País</span>
             <span className={styles['info-value']}>{user.country || 'No registrado'}</span>
           </div>
+          {!isEmployer && (
+            <div className={styles['info-item']}>
+              <span className={styles['info-label']}>Puesto</span>
+              <span className={styles['info-value']}>{user.job_title || 'No registrado'}</span>
+            </div>
+          )}
           <div className={styles['info-item']}>
-            <span className={styles['info-label']}>Ciudad</span>
-            <span className={styles['info-value']}>{user.city || 'No registrado'}</span>
-          </div>
-          <div className={styles['info-item']}>
-            <span className={styles['info-label']}>Puesto</span>
-            <span className={styles['info-value']}>{user.job_title || 'No registrado'}</span>
-          </div>
-          <div className={styles['info-item']}>
-            <span className={styles['info-label']}>Dirección</span>
+            <span className={styles['info-label']}>{isEmployer ? 'Ubicación' : 'Dirección'}</span>
             <span className={styles['info-value']}>{user.location || 'No registrada'}</span>
           </div>
-          {user.company_name && (
+          {isEmployer && user.company_name && (
             <div className={styles['info-item']}>
-              <span className={styles['info-label']}>Empresa</span>
+              <span className={styles['info-label']}>Razón Social / Empresa</span>
               <span className={styles['info-value']}>{user.company_name}</span>
             </div>
           )}

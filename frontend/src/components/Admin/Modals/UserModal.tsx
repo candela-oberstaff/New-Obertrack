@@ -149,14 +149,7 @@ export function UserModal({
                     onChange={e => setForm({ ...form, country: e.target.value })}
                   />
                 </div>
-                <div className={styles['form-group']}>
-                  <label>Ciudad</label>
-                  <input
-                    type="text"
-                    value={form.city}
-                    onChange={e => setForm({ ...form, city: e.target.value })}
-                  />
-                </div>
+                
               </div>
               <div className={styles['form-group']}>
                 <label className={styles['checkbox-label']}>

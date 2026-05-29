@@ -21,8 +21,11 @@ interface RegisterData {
   company_name?: string
   empleador_id?: number
   phone_number?: string
+  phone_country_code?: string
+  country?: string
   location?: string
   job_title?: string
+  specialization?: string
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)

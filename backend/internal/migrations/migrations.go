@@ -261,6 +261,26 @@ func Run(db *gorm.DB) error {
 				)
 			},
 		},
+		{
+			ID: "20260527_update_contacts_schema",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Migrating contacts schema updates (wa_id, company_name, parent_contact_id)...")
+				return tx.AutoMigrate(&models.Contact{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				migrator := tx.Migrator()
+				if migrator.HasColumn(&models.Contact{}, "wa_id") {
+					migrator.DropColumn(&models.Contact{}, "wa_id")
+				}
+				if migrator.HasColumn(&models.Contact{}, "company_name") {
+					migrator.DropColumn(&models.Contact{}, "company_name")
+				}
+				if migrator.HasColumn(&models.Contact{}, "parent_contact_id") {
+					migrator.DropColumn(&models.Contact{}, "parent_contact_id")
+				}
+				return nil
+			},
+		},
 		// Future migrations go here
 	})
 

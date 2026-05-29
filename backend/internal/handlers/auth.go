@@ -30,6 +30,7 @@ type RegisterRequest struct {
 	PhoneNumber string `json:"phone_number"`
 	Location    string `json:"location"`
 	JobTitle    string `json:"job_title"`
+	Country     string `json:"country"`
 }
 
 type LoginRequest struct {
@@ -89,7 +90,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, token, err := h.authService.Register(req.Name, req.Email, req.Password, req.UserType, req.CompanyName, req.EmpleadorID, req.PhoneNumber, req.Location, req.JobTitle)
+	user, token, err := h.authService.Register(req.Name, req.Email, req.Password, req.UserType, req.CompanyName, req.EmpleadorID, req.PhoneNumber, req.Country, req.Location, req.JobTitle)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Email already registered" {

@@ -78,18 +78,44 @@ func (s *WahaService) SendMessage(session string, toPhone string, text string) e
 }
 
 type WahaContactResponse struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Phone string `json:"phone"`
+	ID       string `json:"id"`       // e.g. "5491122334455@c.us" or "...@lid"
+	Name     string `json:"name"`     // Display name
+	Pushname string `json:"pushname"` // WhatsApp push name
+	Number   string `json:"number"`   // Real phone number (digits only)
 }
 
-// GetContact fetches contact details from WAHA
+// Phone returns the best available phone number for this contact.
+func (w *WahaContactResponse) Phone() string {
+	if w.Number != "" {
+		return w.Number
+	}
+	// Fall back to the numeric part of the ID
+	parts := strings.Split(w.ID, "@")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return ""
+}
+
+// DisplayName returns the best available display name.
+func (w *WahaContactResponse) DisplayName() string {
+	if w.Name != "" {
+		return w.Name
+	}
+	if w.Pushname != "" {
+		return w.Pushname
+	}
+	return ""
+}
+
+// GetContact fetches a single contact from WAHA by its WhatsApp ID.
+// WAHA v4 endpoint: GET /api/{session}/contacts?contactId={id}
 func (s *WahaService) GetContact(session string, contactID string) (*WahaContactResponse, error) {
 	if !strings.Contains(contactID, "@") {
 		contactID = fmt.Sprintf("%s@c.us", contactID)
 	}
 
-	url := fmt.Sprintf("%s/api/%s/contacts/all?id=%s", s.apiURL, session, contactID)
+	url := fmt.Sprintf("%s/api/%s/contacts?contactId=%s", s.apiURL, session, contactID)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -111,16 +137,45 @@ func (s *WahaService) GetContact(session string, contactID string) (*WahaContact
 		return nil, fmt.Errorf("waha API error: status %d", resp.StatusCode)
 	}
 
-	var contacts []WahaContactResponse
-	if err := json.NewDecoder(resp.Body).Decode(&contacts); err != nil {
+	var contact WahaContactResponse
+	if err := json.NewDecoder(resp.Body).Decode(&contact); err != nil {
 		return nil, fmt.Errorf("failed to decode contact: %w", err)
 	}
 
-	if len(contacts) > 0 {
-		return &contacts[0], nil
+	return &contact, nil
+}
+
+// GetAllContacts returns all contacts known to WAHA for a session.
+// WAHA v4 endpoint: GET /api/{session}/contacts/all
+func (s *WahaService) GetAllContacts(session string) ([]WahaContactResponse, error) {
+	url := fmt.Sprintf("%s/api/%s/contacts/all", s.apiURL, session)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return nil, fmt.Errorf("contact not found")
+	req.Header.Set("accept", "application/json")
+	if s.apiKey != "" {
+		req.Header.Set("X-Api-Key", s.apiKey)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch contacts from WAHA: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("waha API error: status %d", resp.StatusCode)
+	}
+
+	var contacts []WahaContactResponse
+	if err := json.NewDecoder(resp.Body).Decode(&contacts); err != nil {
+		return nil, fmt.Errorf("failed to decode contacts: %w", err)
+	}
+
+	return contacts, nil
 }
 
 type WahaSessionStatusResponse struct {

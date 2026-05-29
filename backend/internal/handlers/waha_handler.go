@@ -66,42 +66,72 @@ func (h *WahaHandler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
-	// Only process incoming text messages (Corregido)
-	if payload.Event != "message" || payload.Payload.FromMe {
+	// Only process incoming text/emoji messages.
+	// We ignore statuses (event "message" but From is "status@broadcast") and non-chat types like reactions.
+	if payload.Event != "message" || payload.Payload.FromMe || strings.Contains(payload.Payload.From, "status") || payload.Payload.Type != "chat" {
 		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
 		return
 	}
 
-	phone := strings.Split(payload.Payload.From, "@")[0]
-	
-	// Try to fetch actual name and phone from WAHA
-	resolvedName := "WA User " + phone
-	wahaContact, err := h.wahaSvc.GetContact(payload.Session, payload.Payload.From)
-	if err == nil && wahaContact != nil {
-		if wahaContact.Name != "" {
-			resolvedName = wahaContact.Name
-		}
-		if wahaContact.Phone != "" {
-			phone = wahaContact.Phone
-		}
-	} else {
-		log.Printf("Could not fetch WAHA contact info for %s: %v", payload.Payload.From, err)
+	// Raw WhatsApp ID (e.g. "275904655822850@lid" or "5491122334455@c.us")
+	waID := payload.Payload.From
+	// Numeric part only (used as a phone placeholder until we resolve the real number)
+	phonePart := strings.Split(waID, "@")[0]
+
+	// 1. Find or create Contact by wa_id
+	var contact models.Contact
+	res := h.DB.Where("wa_id = ?", waID).First(&contact)
+	if res.Error != nil {
+		// Also try by phone in case it was created before wa_id was tracked
+		res = h.DB.Where("phone = ?", phonePart).First(&contact)
 	}
 
-	// 1. Find or create Contact
-	var contact models.Contact
-	res := h.DB.Where("phone = ?", phone).First(&contact)
+	// Look up in users table to check if this phone number belongs to a professional or employer/company
+	var dbUser models.User
+	userFound := false
+	// Clean both numbers to compare (ignoring non-digits like '+')
+	cleanPhonePart := strings.TrimLeft(phonePart, "+")
+	if h.DB.Where("REPLACE(phone_number, '+', '') = ?", cleanPhonePart).First(&dbUser).Error == nil {
+		userFound = true
+	}
+
 	if res.Error != nil {
-		// Create new contact
+		// Contact does not exist. Create new one.
 		contact = models.Contact{
-			Phone: phone,
-			Name:  resolvedName,
+			WaID:  waID,
+			Phone: phonePart,
+			Name:  "WA User " + phonePart,
+		}
+		if userFound {
+			contact.Name = dbUser.Name
+			if dbUser.UserType == models.UserTypeEmployer {
+				contact.CompanyName = dbUser.CompanyName
+			} else if dbUser.UserType == models.UserTypeProfessional {
+				contact.CompanyName = "Profesional: " + dbUser.JobTitle
+			}
 		}
 		h.DB.Create(&contact)
-	} else if contact.Name == "WA User "+phone && resolvedName != "WA User "+phone {
-		// Update contact name if it was previously generic
-		contact.Name = resolvedName
-		h.DB.Save(&contact)
+	} else {
+		// Contact exists. Update its info if it matched a registered user now
+		updates := map[string]interface{}{}
+		if contact.WaID == "" {
+			updates["wa_id"] = waID
+		}
+		if userFound {
+			if strings.HasPrefix(contact.Name, "WA User ") {
+				updates["name"] = dbUser.Name
+			}
+			if contact.CompanyName == "" {
+				if dbUser.UserType == models.UserTypeEmployer {
+					updates["company_name"] = dbUser.CompanyName
+				} else if dbUser.UserType == models.UserTypeProfessional {
+					updates["company_name"] = "Profesional: " + dbUser.JobTitle
+				}
+			}
+		}
+		if len(updates) > 0 {
+			h.DB.Model(&contact).Updates(updates)
+		}
 	}
 
 	// 2. Find open Ticket for this contact updated in the last hour, or create a new one
@@ -112,7 +142,7 @@ func (h *WahaHandler) HandleWebhook(c *gin.Context) {
 		// Create new ticket
 		ticket = models.Ticket{
 			ContactID: contact.ID,
-			Title:     "WA: " + phone,
+			Title:     "WA: " + phonePart,
 			Stage:     models.StageNew,
 			Status:    "open",
 		}
@@ -138,6 +168,6 @@ func (h *WahaHandler) HandleWebhook(c *gin.Context) {
 		"message":   msg,
 	})
 
-	log.Printf("Received WAHA message from %s (%s) for ticket %d", contact.Name, fmt.Sprintf("+%s", phone), ticket.ID)
+	log.Printf("Received WAHA message from %s (%s) for ticket %d", contact.Name, fmt.Sprintf("+%s", phonePart), ticket.ID)
 	c.JSON(http.StatusOK, gin.H{"status": "processed"})
 }

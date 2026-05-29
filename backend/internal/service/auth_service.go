@@ -18,7 +18,7 @@ import (
 )
 
 type AuthService interface {
-	Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle string) (*models.User, string, error)
+	Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, country, location, jobTitle string) (*models.User, string, error)
 	Login(email, password string) (*models.User, string, error)
 	GetUserDetails(id uint) (*models.User, error)
 	GetPublicCompanies() ([]map[string]interface{}, error)
@@ -42,7 +42,7 @@ func NewAuthService(userRepo repository.UserRepository, jwtSecret string, brevoS
 	}
 }
 
-func (s *authService) Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle string) (*models.User, string, error) {
+func (s *authService) Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, country, location, jobTitle string) (*models.User, string, error) {
 	_, err := s.userRepo.GetByEmail(email)
 	if err == nil {
 		return nil, "", errors.New("Email already registered")
@@ -74,6 +74,7 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 		IsActive:     true,
 		EmpleadorID:  empleadorID,
 		PhoneNumber:  phoneNumber,
+		Country:      country,
 		Location:     location,
 		JobTitle:     jobTitle,
 	}
