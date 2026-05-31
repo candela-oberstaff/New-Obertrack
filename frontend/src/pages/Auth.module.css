@@ -1,0 +1,252 @@
+/* ============================================================
+   AUTH PAGES — Obertrack Brand Guide
+   Paleta: Prussian Blue base, Vivid Orchid accent, Neon Ice highlight
+   Fuente: Plus Jakarta Sans (via --font-sans token)
+   ============================================================ */
+
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(129, 43, 226, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(21, 244, 238, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 80%, rgba(204, 51, 204, 0.12) 0%, transparent 50%),
+    url('/auth_background.png') center/cover no-repeat,
+    #060b23;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle animated glow orb */
+.auth-container::before {
+  content: '';
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(204, 51, 204, 0.08) 0%, transparent 70%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border-radius: 50%;
+  animation: authGlow 8s ease-in-out infinite alternate;
+}
+
+@keyframes authGlow {
+  from { transform: translate(-50%, -50%) scale(1);   opacity: 0.6; }
+  to   { transform: translate(-50%, -50%) scale(1.2); opacity: 1;   }
+}
+
+.auth-card {
+  background: rgba(13, 19, 50, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  padding: 44px 40px 40px;
+  border-radius: 24px;
+  box-shadow:
+    0 24px 48px rgba(6, 11, 35, 0.6),
+    0 0 0 1px rgba(204, 51, 204, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  width: 100%;
+  max-width: 420px;
+  position: relative;
+  z-index: 1;
+}
+
+.register-card {
+  max-width: 500px !important;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.register-card form {
+  overflow-y: auto;
+  padding-right: 12px;
+  margin-right: -12px;
+  flex: 1;
+}
+
+.register-card form::-webkit-scrollbar {
+  width: 6px;
+}
+
+.register-card form::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.register-card form::-webkit-scrollbar-thumb {
+  background: rgba(204, 51, 204, 0.35);
+  border-radius: 999px;
+}
+
+.register-card form::-webkit-scrollbar-thumb:hover {
+  background: rgba(204, 51, 204, 0.65);
+}
+
+/* ── Logo ── */
+.auth-logo {
+  display: block;
+  height: 100px;
+  width: auto;
+  margin: 0 auto 8px;
+  object-fit: contain;
+}
+
+/* ── Tagline below logo ── */
+.auth-tagline {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(21, 244, 238, 0.7);
+  margin-bottom: 28px;
+}
+
+/* ── Section heading ── */
+.auth-card h2 {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 8px;
+  letter-spacing: -0.3px;
+}
+
+/* ── Auth header block (Register) ── */
+.auth-header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.auth-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.auth-header p {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ── Form ── */
+.form-group {
+  margin-bottom: 18px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 7px;
+  font-weight: 500;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 0.01em;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+  transition: all 0.2s;
+}
+
+.form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: rgba(204, 51, 204, 0.6);
+  background: rgba(204, 51, 204, 0.06);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.12);
+}
+
+.form-group select option {
+  background: #0d1332;
+  color: #ffffff;
+}
+
+/* ── Primary button ── */
+.auth-card button[type="submit"],
+.btn-primary {
+  width: 100%;
+  padding: 13px;
+  background: linear-gradient(135deg, #cc33cc 0%, #8b2be2 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 16px rgba(204, 51, 204, 0.35);
+}
+
+.auth-card button[type="submit"]:hover:not(:disabled),
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(204, 51, 204, 0.5);
+  background: linear-gradient(135deg, #d940d9 0%, #9b35f2 100%);
+}
+
+.auth-card button[type="submit"]:disabled,
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Error ── */
+.error-message {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  padding: 11px 14px;
+  border-radius: 10px;
+  margin-bottom: 18px;
+  font-size: 13px;
+}
+
+/* ── Footer link ── */
+.auth-link {
+  text-align: center;
+  margin-top: 22px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+}
+
+.auth-link a {
+  color: #15f4ee;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.auth-link a:hover {
+  color: #ffffff;
+}
+
+/* ── Field hint ── */
+.field-hint {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 6px;
+  line-height: 1.5;
+}

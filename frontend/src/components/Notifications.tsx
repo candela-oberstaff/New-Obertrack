@@ -1,0 +1,249 @@
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { notificationService, type Notification } from '../services/api'
+import { useAuth } from '../context/AuthContext'
+import { 
+  Bell, 
+  ClipboardList, 
+  CheckCircle2, 
+  XCircle, 
+  MessageSquare, 
+  AtSign 
+} from 'lucide-react'
+import styles from './Notifications.module.css'
+
+export default function Notifications() {
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [isOpen, setIsOpen] = useState(false)
+  const [_isLoading, _setIsLoading] = useState(false)
+  const navigate = useNavigate()
+  const wsRef = useRef<WebSocket | null>(null)
+  const { user } = useAuth()
+
+  useEffect(() => {
+    fetchNotifications()
+    const interval = setInterval(fetchUnreadCount, 30000)
+    return () => {
+      clearInterval(interval)
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
+
+    // Auth travels via the httpOnly cookie on the same-origin WS handshake.
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/ws/notifications`
+
+    const connect = () => {
+      wsRef.current = new WebSocket(wsUrl)
+
+      wsRef.current.onopen = () => {
+        console.log('Notifications WebSocket connected')
+      }
+
+      wsRef.current.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          if (
+            message.type === 'task_assigned' ||
+            message.type === 'mention' ||
+            message.type === 'task_created' ||
+            message.type === 'task_updated' ||
+            message.type === 'task_completed'
+          ) {
+            const newNotification: Notification = {
+              id: message.data?.id || Date.now(),
+              user_id: 0,
+              type: message.type,
+              title: message.data?.title || 'Nueva notificación',
+              message: message.data?.message || '',
+              read_at: undefined,
+              created_at: new Date().toISOString(),
+            }
+            setNotifications(prev => [newNotification, ...prev])
+            setUnreadCount(prev => prev + 1)
+            
+            if (
+              message.type === 'task_assigned' ||
+              message.type === 'task_created' ||
+              message.type === 'task_updated' ||
+              message.type === 'task_completed'
+            ) {
+              window.dispatchEvent(new CustomEvent('task-assigned'))
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing notification:', error)
+        }
+      }
+
+      wsRef.current.onclose = () => {
+        console.log('Notifications WebSocket disconnected')
+      }
+
+      wsRef.current.onerror = (error) => {
+        console.error('Notifications WebSocket error:', error)
+      }
+    }
+
+    connect()
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+    }
+  }, [user])
+
+  const fetchNotifications = async () => {
+    try {
+      const data = await notificationService.getAll()
+      if (!data) {
+        setNotifications([])
+        setUnreadCount(0)
+        return
+      }
+      setNotifications(data)
+      setUnreadCount(data.filter(n => !n.read_at).length)
+    } catch (error) {
+      console.error('Error fetching notifications:', error)
+    }
+  }
+
+  const fetchUnreadCount = async () => {
+    try {
+      const count = await notificationService.getUnreadCount()
+      setUnreadCount(count)
+    } catch (error) {
+      console.error('Error fetching unread count:', error)
+    }
+  }
+
+  const handleNotificationClick = async (notification: Notification) => {
+    // Mark as read if needed
+    if (!notification.read_at) {
+      handleMarkAsRead(notification.id)
+    }
+
+    // Close dropdown
+    setIsOpen(false)
+
+    // Handle navigation
+    if (notification.data) {
+      try {
+        let dataObj = notification.data;
+        if (typeof dataObj === 'string') {
+          dataObj = JSON.parse(dataObj);
+        }
+        
+        if ((dataObj as any).link) {
+          navigate((dataObj as any).link);
+        }
+      } catch (e) {
+        console.error("Error parsing notification data", e);
+      }
+    }
+  }
+
+  const handleMarkAsRead = async (id: number) => {
+    try {
+      await notificationService.markAsRead(id)
+      setNotifications(prev =>
+        prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n)
+      )
+      setUnreadCount(prev => Math.max(0, prev - 1))
+    } catch (error) {
+      console.error('Error marking as read:', error)
+    }
+  }
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await notificationService.markAllAsRead()
+      setNotifications(prev => prev.map(n => ({ ...n, read_at: new Date().toISOString() })))
+      setUnreadCount(0)
+    } catch (error) {
+      console.error('Error marking all as read:', error)
+    }
+  }
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'task_assigned': return <ClipboardList size={18} className="text-blue-500" />
+      case 'task_created': return <ClipboardList size={18} className="text-emerald-500" />
+      case 'task_updated': return <ClipboardList size={18} className="text-amber-500" />
+      case 'task_completed': return <CheckCircle2 size={18} className="text-green-500" />
+      case 'work_hour_approved': return <CheckCircle2 size={18} className="text-green-500" />
+      case 'work_hour_rejected': return <XCircle size={18} className="text-red-500" />
+      case 'new_comment': return <MessageSquare size={18} className="text-indigo-500" />
+      case 'mention': return <AtSign size={18} className="text-orange-500" />
+      default: return <Bell size={18} className="text-gray-500" />
+    }
+  }
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diff = now.getTime() - date.getTime()
+    const minutes = Math.floor(diff / 60000)
+    const hours = Math.floor(diff / 3600000)
+    const days = Math.floor(diff / 86400000)
+
+    if (minutes < 1) return 'Ahora'
+    if (minutes < 60) return `Hace ${minutes}m`
+    if (hours < 24) return `Hace ${hours}h`
+    if (days < 7) return `Hace ${days}d`
+    return date.toLocaleDateString('es-ES')
+  }
+
+  return (
+    <div className={styles['notifications-container']}>
+      <button className={styles['notification-bell']} onClick={() => setIsOpen(!isOpen)} title="Notificaciones">
+        <Bell size={20} />
+        {unreadCount > 0 && (
+          <span className={styles['notification-badge']}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+        )}
+      </button>
+
+      {isOpen && (
+        <div className={styles['notifications-dropdown']}>
+          <div className={styles['notifications-header']}>
+            <h3>Notificaciones</h3>
+            {unreadCount > 0 && (
+              <button className={styles['mark-all-read']} onClick={handleMarkAllAsRead}>
+                Marcar todas como leídas
+              </button>
+            )}
+          </div>
+
+          <div className={styles['notifications-list']}>
+            {notifications.length === 0 ? (
+              <div className={styles['no-notifications']}>No hay notificaciones</div>
+            ) : (
+              notifications.map(notification => (
+                <div
+                  key={notification.id}
+                  className={`${styles['notification-item']} ${!notification.read_at ? styles['unread'] : ''}`}
+                  onClick={() => handleNotificationClick(notification)}
+                >
+                  <span className={styles['notification-icon']}>{getNotificationIcon(notification.type)}</span>
+                  <div className={styles['notification-content']}>
+                    <div className={styles['notification-title']}>{notification.title}</div>
+                    <div className={styles['notification-message']}>{notification.message}</div>
+                    <div className={styles['notification-time']}>{formatDate(notification.created_at)}</div>
+                  </div>
+                  {!notification.read_at && <span className={styles['unread-dot']}></span>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

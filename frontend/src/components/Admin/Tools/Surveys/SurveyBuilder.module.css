@@ -1,0 +1,718 @@
+/* ============================================
+   SurveyBuilder.module.css
+   Styles for the SurveyBuilder component
+   ============================================ */
+
+/* ---- Layout Shell ---- */
+.builderContainer {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 80px);
+  background: #f8fafc;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.builderHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 40px;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex: 1;
+}
+
+.titleInput {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+  border: 1px solid transparent;
+  background: transparent;
+  outline: none;
+  width: 300px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.titleInput:focus,
+.titleInput:hover {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.headerActions {
+  display: flex;
+  gap: 16px;
+}
+
+.mobileActions {
+  display: none;
+  width: 100%;
+}
+
+.mobileActions select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  background: white;
+  outline: none;
+}
+
+.builderContent {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ---- Canvas Area ---- */
+.canvasArea {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.surveyForm {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.descriptionInput {
+  width: 100%;
+  min-height: 80px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 15px;
+  color: #475569;
+  resize: vertical;
+  outline: none;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.descriptionInput:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.1);
+}
+
+/* ---- Questions List ---- */
+.questionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.questionCard {
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: all 0.2s ease;
+}
+
+.questionCard:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.questionCard.dragging {
+  opacity: 0.5;
+  border: 2px dashed #8b5cf6;
+  box-shadow: none;
+}
+
+.questionHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dragHandle {
+  color: #94a3b8;
+  cursor: grab;
+  padding: 4px;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.questionTextInput {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  font-weight: 500;
+  color: #1e293b;
+  outline: none;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.questionTextInput:focus,
+.questionTextInput:hover {
+  background: #f8fafc;
+}
+
+.deleteBtn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deleteBtn:hover {
+  background: #fee2e2;
+}
+
+.questionBody {
+  padding-left: 28px;
+}
+
+/* ---- Question Body Mocks ---- */
+.mockInput {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  padding: 12px 16px;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.mockRating {
+  font-size: 24px;
+  letter-spacing: 4px;
+}
+
+.mockChoice {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+/* ---- Choice Editor ---- */
+.choiceEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.choiceOptionEdit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.choiceRadioMock {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #cbd5e1;
+  flex-shrink: 0;
+}
+
+.choiceInputEdit {
+  flex: 1;
+  border: 1px solid transparent;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px;
+  outline: none;
+  font-size: 14px;
+  transition: all 0.2s;
+  background: transparent;
+}
+
+.choiceInputEdit:focus {
+  border-bottom-color: #8b5cf6;
+}
+
+.removeOptionBtn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.removeOptionBtn:hover {
+  background: #f1f5f9;
+  color: #ef4444;
+}
+
+.addOptionBtn {
+  background: none;
+  border: none;
+  color: #8b5cf6;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  font-size: 14px;
+  width: fit-content;
+}
+
+.addOptionBtn:hover {
+  text-decoration: underline;
+}
+
+/* ---- Question Footer ---- */
+.questionFooter {
+  padding-left: 28px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.requiredToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #475569;
+  cursor: pointer;
+}
+
+.infoText {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ---- Toolbar ---- */
+.toolbarArea {
+  width: 280px;
+  background: white;
+  border-left: 1px solid #e2e8f0;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.toolbarArea h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #64748b;
+}
+
+.toolBtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  color: #475569;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toolBtn:hover {
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+  background: #f5f3ff;
+  transform: translateX(4px);
+}
+
+/* ---- Empty Questions ---- */
+.emptyQuestions {
+  text-align: center;
+  padding: 48px;
+  color: #94a3b8;
+  background: transparent;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  font-size: 15px;
+}
+
+/* ---- Settings Modal ---- */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.settingsModal {
+  background: white;
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalSlideUp 0.3s cubic-bezier(0.4,0,0.2,1);
+}
+
+@keyframes modalSlideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modalHeader {
+  padding: 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #1e293b;
+}
+
+.closeModal {
+  background: #f1f5f9;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.closeModal:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.modalBody {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.modalFooter {
+  padding: 24px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---- Settings Sections ---- */
+.settingsSection h4 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #1e293b;
+}
+
+.sectionHeaderFlex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* ---- Send Methods ---- */
+.methodsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.methodCard {
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.methodCard input {
+  position: absolute;
+  opacity: 0;
+}
+
+.methodCard.active {
+  border-color: #8b5cf6;
+  background: #f5f3ff;
+}
+
+.methodIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  transition: all 0.2s;
+}
+
+.methodCard.active .methodIcon {
+  background: #8b5cf6;
+  color: white;
+}
+
+.methodCard span {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.methodCard.active span {
+  color: #8b5cf6;
+}
+
+/* ---- Recipient Selection ---- */
+.selectionActions {
+  display: flex;
+  gap: 12px;
+}
+
+.selectionActions button {
+  background: none;
+  border: none;
+  color: #8b5cf6;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.selectionActions button:hover {
+  text-decoration: underline;
+}
+
+.searchContainer {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.searchContainer svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+
+.searchContainer input {
+  width: 100%;
+  padding: 10px 12px 10px 40px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  outline: none;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.searchContainer input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.1);
+}
+
+.userList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.userItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.userItem:hover {
+  background: #f8fafc;
+}
+
+.userItem.selected {
+  background: #f5f3ff;
+  border-color: #e0e7ff;
+}
+
+.userAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #64748b;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.selected .userAvatar {
+  background: #8b5cf6;
+  color: white;
+}
+
+.userInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.userName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.userEmail {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.checkboxMock {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #cbd5e1;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.selected .checkboxMock {
+  background: #8b5cf6;
+  border-color: #8b5cf6;
+}
+
+/* ---- Loader ---- */
+.loader {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1024px) {
+  .builderHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px;
+  }
+  
+  .headerLeft {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  
+  .titleInput {
+    width: 100%;
+    max-width: none;
+  }
+
+  .headerActions {
+    display: none;
+  }
+
+  .mobileActions {
+    display: block;
+  }
+  
+  .builderContent {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  
+  .canvasArea {
+    padding: 20px 16px;
+    overflow-y: visible;
+  }
+  
+  .toolbarArea {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+    padding: 20px 16px;
+  }
+  
+  .methodsGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .modalHeader, .modalBody, .modalFooter {
+    padding: 16px;
+  }
+}
+

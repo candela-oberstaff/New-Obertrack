@@ -1,0 +1,397 @@
+package migrations
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/go-gormigrate/gormigrate/v2"
+	"github.com/obertrack/backend/internal/models"
+	"gorm.io/gorm"
+)
+
+func Run(db *gorm.DB) error {
+	// Ensure the migrations table uses VARCHAR for its ID column.
+	// If the table was previously created with an integer id (which overflows
+	// for timestamp-style IDs like "202603251200"), drop it so gormigrate
+	// can recreate it with the correct type.
+	var colType string
+	row := db.Raw(`
+		SELECT data_type FROM information_schema.columns
+		WHERE table_name = 'migrations' AND column_name = 'id'
+		LIMIT 1
+	`).Row()
+	if err := row.Scan(&colType); err == nil && colType == "integer" {
+		log.Println("Dropping incompatible migrations table (integer id column)...")
+		if err := db.Exec(`DROP TABLE IF EXISTS migrations`).Error; err != nil {
+			return fmt.Errorf("failed to drop migrations table: %w", err)
+		}
+	}
+
+	options := &gormigrate.Options{
+		TableName:                 "migrations",
+		IDColumnName:              "id",
+		IDColumnSize:              255,
+		UseTransaction:            false,
+		ValidateUnknownMigrations: false,
+	}
+	m := gormigrate.New(db, options, []*gormigrate.Migration{
+		// Initial migration: create all existing tables
+		{
+			ID: "202603251200", // Current date/time as ID
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(
+					&models.User{},
+					&models.Board{},
+					&models.BoardMember{},
+					&models.Task{},
+					&models.TaskUser{},
+					&models.Comment{},
+					&models.TaskAttachment{},
+					&models.WorkHour{},
+					&models.Notification{},
+					&models.MassEmailLog{},
+					&models.Message{},
+					&models.Channel{},
+					&models.ChannelMember{},
+					&models.ChannelMessage{},
+					&models.MessageReaction{},
+					&models.StarredMessage{},
+					&models.UserStatus{},
+					&models.Mention{},
+				)
+			},
+		},
+		{
+			ID: "202603251500_add_task_attachments",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.TaskAttachment{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.TaskAttachment{})
+			},
+		},
+		{
+			ID: "202604161345_fix_task_null_constraints",
+			Migrate: func(tx *gorm.DB) error {
+				// Make start_date, end_date and order nullable to match current application logic
+				sql := `
+					ALTER TABLE tasks ALTER COLUMN start_date DROP NOT NULL;
+					ALTER TABLE tasks ALTER COLUMN end_date DROP NOT NULL;
+					ALTER TABLE tasks ALTER COLUMN "order" DROP NOT NULL;
+				`
+				return tx.Exec(sql).Error
+			},
+		},
+		{
+			ID: "202605131730_reset_email_tables_clean",
+			Migrate: func(tx *gorm.DB) error {
+				// Drop existing tables to avoid conflicts with old schemas
+				tx.Migrator().DropTable("email_campaigns", "email_templates")
+				return tx.AutoMigrate(&models.EmailTemplate{}, &models.EmailCampaign{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.EmailTemplate{}, &models.EmailCampaign{})
+			},
+		},
+		{
+			ID: "202605141135_add_email_recipient_list",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.EmailCampaign{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.EmailCampaign{}, "recipient_list")
+			},
+		},
+		{
+			ID: "202605141615_add_survey_tables",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(
+					&models.Survey{},
+					&models.SurveyQuestion{},
+					&models.SurveyResponse{},
+					&models.SurveyAnswer{},
+				)
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					&models.Survey{},
+					&models.SurveyQuestion{},
+					&models.SurveyResponse{},
+					&models.SurveyAnswer{},
+				)
+			},
+		},
+		{
+			ID: "202605151120_add_email_tracking",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.EmailCampaign{}, &models.EmailEvent{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				tx.Migrator().DropColumn(&models.EmailCampaign{}, "brevo_campaign_id")
+				return tx.Migrator().DropTable(&models.EmailEvent{})
+			},
+		},
+		{
+			ID: "202605181130_fix_duplicate_columns_and_tables",
+			Migrate: func(tx *gorm.DB) error {
+				// 1. Migrate users table (tipo_usuario -> user_type)
+				if tx.Migrator().HasColumn(&models.User{}, "tipo_usuario") {
+					log.Println("Migrating user_type data and dropping tipo_usuario...")
+					// Ensure user_type column exists
+					if !tx.Migrator().HasColumn(&models.User{}, "user_type") {
+						if err := tx.Migrator().AddColumn(&models.User{}, "user_type"); err != nil {
+							return err
+						}
+					}
+					// Copy and map values (Gorm was writing to tipo_usuario, so it is the source of truth for new users)
+					updateSQL := `
+						UPDATE users 
+						SET user_type = CASE 
+							WHEN tipo_usuario = 'empleado' THEN 'profesional'
+							WHEN tipo_usuario = 'empleador' THEN 'empleador'
+							WHEN tipo_usuario = 'superadmin' THEN 'superadmin'
+							ELSE 'profesional'
+						END 
+						WHERE tipo_usuario IS NOT NULL AND (user_type IS NULL OR user_type = '')
+					`
+					if err := tx.Exec(updateSQL).Error; err != nil {
+						return err
+					}
+					// Drop column tipo_usuario
+					if err := tx.Migrator().DropColumn(&models.User{}, "tipo_usuario"); err != nil {
+						return err
+					}
+				}
+
+				// 2. Migrate task_attachments table (filename -> file_name, stored_filename -> file_url)
+				if tx.Migrator().HasColumn(&models.TaskAttachment{}, "filename") {
+					log.Println("Migrating task_attachments filename -> file_name...")
+					if !tx.Migrator().HasColumn(&models.TaskAttachment{}, "file_name") {
+						if err := tx.Migrator().AddColumn(&models.TaskAttachment{}, "file_name"); err != nil {
+							return err
+						}
+					}
+					updateNameSQL := `UPDATE task_attachments SET file_name = filename WHERE filename IS NOT NULL AND (file_name IS NULL OR file_name = '')`
+					if err := tx.Exec(updateNameSQL).Error; err != nil {
+						return err
+					}
+				}
+				if tx.Migrator().HasColumn(&models.TaskAttachment{}, "stored_filename") {
+					log.Println("Migrating task_attachments stored_filename -> file_url...")
+					if !tx.Migrator().HasColumn(&models.TaskAttachment{}, "file_url") {
+						if err := tx.Migrator().AddColumn(&models.TaskAttachment{}, "file_url"); err != nil {
+							return err
+						}
+					}
+					updateUrlSQL := `UPDATE task_attachments SET file_url = stored_filename WHERE stored_filename IS NOT NULL AND (file_url IS NULL OR file_url = '')`
+					if err := tx.Exec(updateUrlSQL).Error; err != nil {
+						return err
+					}
+				}
+				// Now drop old columns filename and stored_filename
+				if tx.Migrator().HasColumn(&models.TaskAttachment{}, "filename") {
+					if err := tx.Migrator().DropColumn(&models.TaskAttachment{}, "filename"); err != nil {
+						return err
+					}
+				}
+				if tx.Migrator().HasColumn(&models.TaskAttachment{}, "stored_filename") {
+					if err := tx.Migrator().DropColumn(&models.TaskAttachment{}, "stored_filename"); err != nil {
+						return err
+					}
+				}
+
+				// 3. Migrate task_user -> task_users table
+				if tx.Migrator().HasTable("task_user") {
+					log.Println("Migrating task_user -> task_users...")
+					// Ensure task_users table exists
+					if err := tx.AutoMigrate(&models.TaskUser{}); err != nil {
+						return err
+					}
+					
+					// Copy rows
+					copySQL := `
+						INSERT INTO task_users (task_id, user_id) 
+						SELECT task_id, user_id FROM task_user
+						ON CONFLICT DO NOTHING
+					`
+					if err := tx.Exec(copySQL).Error; err != nil {
+						return err
+					}
+					
+					// Drop old table
+					if err := tx.Migrator().DropTable("task_user"); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			},
+		},
+		{
+			ID: "20260518_add_user_reset_token",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Migrating reset_token fields to users...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.User{}, "reset_token") {
+					tx.Migrator().DropColumn(&models.User{}, "reset_token")
+				}
+				if tx.Migrator().HasColumn(&models.User{}, "reset_token_expiry") {
+					tx.Migrator().DropColumn(&models.User{}, "reset_token_expiry")
+				}
+				return nil
+			},
+		},
+		{
+			ID: "20260525_add_ticket_system",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating ticket system tables (contacts, tickets, ticket_messages)...")
+				return tx.AutoMigrate(
+					&models.Contact{},
+					&models.Ticket{},
+					&models.TicketMessage{},
+				)
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					"ticket_messages",
+					"tickets",
+					"contacts",
+				)
+			},
+		},
+		{
+			ID: "202605271200_add_tutorials",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating tutorials table...")
+				return tx.AutoMigrate(&models.Tutorial{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.Tutorial{})
+			},
+		},
+		{
+			ID: "202605271600_add_tutorial_category_and_views",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding category to tutorials and creating tutorial_views...")
+				if err := tx.AutoMigrate(&models.Tutorial{}); err != nil {
+					return err
+				}
+				return tx.AutoMigrate(&models.TutorialView{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropTable(&models.TutorialView{}); err != nil {
+					return err
+				}
+				return tx.Migrator().DropColumn(&models.Tutorial{}, "category")
+			},
+		},
+		{
+			ID: "202605291200_add_tenant_id",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding tenant_id to boards, tasks, work_hours, channels, channel_messages and messages...")
+
+				if tx.Migrator().HasColumn(&models.Message{}, "company_id") && !tx.Migrator().HasColumn(&models.Message{}, "tenant_id") {
+					if err := tx.Migrator().RenameColumn(&models.Message{}, "company_id", "tenant_id"); err != nil {
+						return err
+					}
+				}
+
+				if err := tx.AutoMigrate(
+					&models.Board{},
+					&models.Task{},
+					&models.WorkHour{},
+					&models.Channel{},
+					&models.ChannelMessage{},
+					&models.Message{},
+				); err != nil {
+					return err
+				}
+
+				tenantExpr := "(SELECT CASE WHEN u.user_type = 'empleador' THEN u.id ELSE u.empleador_id END FROM users u WHERE u.id = %s)"
+
+				statements := []string{
+					fmt.Sprintf("UPDATE boards SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL OR tenant_id = 0", "boards.created_by"),
+					"UPDATE tasks SET tenant_id = (SELECT b.tenant_id FROM boards b WHERE b.id = tasks.board_id) WHERE tenant_id IS NULL OR tenant_id = 0",
+					fmt.Sprintf("UPDATE channels SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL OR tenant_id = 0", "channels.created_by"),
+					"UPDATE channel_messages SET tenant_id = (SELECT c.tenant_id FROM channels c WHERE c.id = channel_messages.channel_id) WHERE tenant_id IS NULL OR tenant_id = 0",
+					fmt.Sprintf("UPDATE work_hours SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL OR tenant_id = 0", "work_hours.user_id"),
+					fmt.Sprintf("UPDATE messages SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL", "messages.user_id"),
+				}
+
+				for _, sql := range statements {
+					if err := tx.Exec(sql).Error; err != nil {
+						return err
+					}
+				}
+
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, col := range []struct {
+					model interface{}
+					name  string
+				}{
+					{&models.Board{}, "tenant_id"},
+					{&models.Task{}, "tenant_id"},
+					{&models.WorkHour{}, "tenant_id"},
+					{&models.Channel{}, "tenant_id"},
+					{&models.ChannelMessage{}, "tenant_id"},
+				} {
+					if tx.Migrator().HasColumn(col.model, col.name) {
+						if err := tx.Migrator().DropColumn(col.model, col.name); err != nil {
+							return err
+						}
+					}
+				}
+				if tx.Migrator().HasColumn(&models.Message{}, "tenant_id") {
+					return tx.Migrator().RenameColumn(&models.Message{}, "tenant_id", "company_id")
+				}
+				return nil
+			},
+		},
+		{
+			ID: "202605291400_tenant_id_not_null",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Setting tenant_id NOT NULL on core tenant tables...")
+				for _, t := range []string{"boards", "tasks", "work_hours", "channels", "channel_messages"} {
+					if err := tx.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN tenant_id SET NOT NULL", t)).Error; err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, t := range []string{"boards", "tasks", "work_hours", "channels", "channel_messages"} {
+					if err := tx.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN tenant_id DROP NOT NULL", t)).Error; err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
+		{
+			ID: "202605301200_add_user_token_version",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding token_version to users (session revocation)...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.User{}, "token_version") {
+					return tx.Migrator().DropColumn(&models.User{}, "token_version")
+				}
+				return nil
+			},
+		},
+		// Future migrations go here
+	})
+
+	if err := m.Migrate(); err != nil {
+		log.Printf("Could not migrate: %v", err)
+		return err
+	}
+
+	log.Println("Migration successful")
+	return nil
+}
