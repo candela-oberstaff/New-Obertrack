@@ -497,18 +497,17 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 		return nil, fmt.Errorf("error parseando json del ticket: %w", err)
 	}
 
-	// Extraemos el extId del bloque source (que es el sessionId: "64053000001346071")
 	source, ok := ticketData["source"].(map[string]interface{})
 	if !ok || source["extId"] == nil {
 		return nil, fmt.Errorf("el ticket no contiene una sesion de mensajeria activa (source.extId)")
 	}
 	sessionID := source["extId"].(string)
 
-	// 2. 🚀 ARMAMOS EL PAYLOAD EXACTO QUE CAPTURÓ TU CONSOLA
+	// 2. 🚀 PAYLOAD LIQUIDADO SIN 'displayMessage'
 	payload := map[string]interface{}{
-		"displayMessage": content,
-		"contentType":    "text/plain",
-		"type":           "TEXT",
+		"text":        content,
+		"contentType": "text/plain",
+		"type":        "TEXT",
 	}
 
 	body, err := json.Marshal(payload)
@@ -516,8 +515,7 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 		return nil, fmt.Errorf("error codificando json: %w", err)
 	}
 
-	// 3. 🎯 LA URL SECRETA DE ZOHO DESK CAPTURADA
-	// Reemplazamos 'oberstaff' dinámicamente si fuera necesario, o lo dejamos fijo si es tu portal único.
+	// 3. 🎯 LA URL SECRETA QUE SÍ PASÓ EL ROUTING DE ZOHO
 	urlStr := fmt.Sprintf("https://desk.zoho.com/supportapi/zd/oberstaff/api/v1/im/sessions/%s/messages", sessionID)
 	
 	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
@@ -525,7 +523,6 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 		return nil, fmt.Errorf("error creando request: %w", err)
 	}
 
-	// Inyectamos las credenciales normales de tu app
 	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
 	req.Header.Set("orgId", orgID)
 	req.Header.Set("Content-Type", "application/json")
@@ -541,7 +538,6 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 		return nil, fmt.Errorf("error leyendo respuesta: %w", err)
 	}
 
-	// Si responde 200 OK (como viste en la consola), ¡estamos del otro lado!
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		log.Printf("[ZohoService] Error usando endpoint de consola (Status %d): %s", resp.StatusCode, string(respBytes))
 		return nil, fmt.Errorf("zoho retorno status %d: %s", resp.StatusCode, string(respBytes))
