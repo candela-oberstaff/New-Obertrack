@@ -285,12 +285,31 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 				tickets.GET("/:id", ticketHandler.GetTicket)
 				tickets.PUT("/:id", ticketHandler.UpdateTicket)
 				tickets.POST("/:id/messages", ticketHandler.SendMessage)
+				tickets.POST("/:id/sendReply", ticketHandler.SendReply)
 				tickets.GET("/contacts", ticketHandler.GetContacts)
 				tickets.PUT("/contacts/:contactId", ticketHandler.UpdateContact)
 				tickets.GET("/zoho/status", func(c *gin.Context) {
 					// Zoho integration status stub
 					c.JSON(200, gin.H{"status": "connected", "service": "zoho_desk"})
 				})
+			}
+
+			// WhatsApp Chats — per-agent view + unassigned queue
+			whatsappHandler := handlers.NewWhatsAppHandler(db, zohoSvc)
+			chats := api.Group("/chats")
+			{
+				// GET  /api/chats/me           → tickets assigned to the logged-in agent
+				chats.GET("/me", whatsappHandler.GetMyChats)
+				// GET  /api/chats/unassigned   → tickets with no assignee
+				chats.GET("/unassigned", whatsappHandler.GetUnassignedChats)
+				// POST /api/chats/sync-agent   → force-refresh zoho_agent_id from Zoho by email
+				chats.POST("/sync-agent", whatsappHandler.SyncAgentID)
+				// GET  /api/chats/:ticketId/messages  → conversation thread
+				chats.GET("/:ticketId/messages", whatsappHandler.GetMessages)
+				// PATCH /api/chats/:ticketId/assign   → take ownership of an unassigned chat
+				chats.PATCH("/:ticketId/assign", whatsappHandler.AssignToMe)
+				// POST  /api/chats/:ticketId/send     → send a WhatsApp message
+				chats.POST("/:ticketId/send", whatsappHandler.SendMessage)
 			}
 		}
 	}

@@ -1,107 +1,142 @@
 import Avatar from '../../components/Common/Avatar'
-import { Search } from 'lucide-react'
-import { Ticket } from '../../services/ticket.service'
+import { Search, Users, User } from 'lucide-react'
+import { WhatsAppChatTicket } from '../../services/ticket.service'
 import styles from '../WhatsApp.module.css'
 
 interface ChatListProps {
   user: any
-  tickets: Ticket[]
-  activeTicket: Ticket | null
+  tickets: WhatsAppChatTicket[]
+  activeTicket: WhatsAppChatTicket | null
   loadingTickets: boolean
-  wahaStatus: { status: string; qr?: { image: string } } | null
   search: string
   setSearch: (val: string) => void
-  handleSelectTicket: (ticket: Ticket) => void
+  handleSelectTicket: (ticket: WhatsAppChatTicket) => void
   showMobileChat: boolean
-  filteredTickets: Ticket[]
-  lastMsg: (ticket: Ticket) => string
+  filteredTickets: WhatsAppChatTicket[]
   formatTime: (iso: string) => string
   getInitials: (name: string) => string
-  isConnected: (status?: string) => boolean
+  activeTab: 'me' | 'unassigned'
+  setActiveTab: (tab: 'me' | 'unassigned') => void
+  myChatsCount: number
+  unassignedChatsCount: number
+  displayName: (ticket: WhatsAppChatTicket) => string
 }
 
 export default function ChatList({
   user,
   activeTicket,
   loadingTickets,
-  wahaStatus,
   search,
   setSearch,
   handleSelectTicket,
   showMobileChat,
   filteredTickets,
-  lastMsg,
   formatTime,
   getInitials,
-  isConnected
+  activeTab,
+  setActiveTab,
+  myChatsCount,
+  unassignedChatsCount,
+  displayName
 }: ChatListProps) {
+
+  const handleTabClick = (tab: 'me' | 'unassigned') => {
+    setActiveTab(tab)
+    setSearch('')
+  }
+
   return (
     <aside className={`${styles.sidebar} ${showMobileChat ? styles.sidebarHidden : ''}`}>
-      {/* Header */}
       <div className={styles.sidebarHeader}>
         <div className={styles.sidebarHeaderLeft}>
           <Avatar src={user?.avatar} name={user?.name} size="sm" />
           <span className={styles.sidebarTitle}>WhatsApp</span>
         </div>
-        <div className={styles.sidebarHeaderActions}>
-          <span
-            style={{
-              backgroundColor: isConnected(wahaStatus?.status ?? '') ? '#25D366' : '#EF4444',
-              display: 'inline-block',
-              width: '10px',
-              height: '10px',
-              borderRadius: '50%',
-              alignSelf: 'center',
-              marginRight: '8px',
-              flexShrink: 0
-            }}
-            title={`Estado: ${wahaStatus?.status ?? 'Desconocido'}`}
-          />
-        </div>
       </div>
 
-      {/* Connection banner */}
-      <div
-        className={styles.mockBanner}
-        style={{
-          background: isConnected(wahaStatus?.status ?? '') ? 'rgba(37,211,102,0.08)' : 'rgba(239,68,68,0.08)',
-          borderBottom: isConnected(wahaStatus?.status ?? '') ? '1px solid rgba(37,211,102,0.2)' : '1px solid rgba(239,68,68,0.2)',
-          color: isConnected(wahaStatus?.status ?? '') ? '#128C7E' : '#EF4444'
-        }}
-      >
-        <span
-          className={styles.mockBadge}
+      <div style={{ display: 'flex', borderBottom: '1px solid #e9edef', flexShrink: 0 }}>
+        <button
+          onClick={() => handleTabClick('me')}
           style={{
-            background: isConnected(wahaStatus?.status ?? '')
-              ? 'linear-gradient(135deg,#25D366,#128C7E)'
-              : 'linear-gradient(135deg,#EF4444,#DC2626)'
+            flex: 1,
+            padding: '12px 8px',
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: activeTab === 'me' ? 600 : 400,
+            color: activeTab === 'me' ? '#128C7E' : '#54656f',
+            borderBottom: activeTab === 'me' ? '2px solid #128C7E' : '2px solid transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            transition: 'all 0.15s',
+            fontFamily: 'inherit'
           }}
         >
-          {wahaStatus?.status ?? 'CARGANDO'}
-        </span>
-        <span>
-          {isConnected(wahaStatus?.status ?? '')
-            ? 'WhatsApp Conectado'
-            : 'Desconectado · Escanea el QR para conectar'}
-        </span>
+          <User size={14} />
+          Mis Chats
+          {myChatsCount > 0 && (
+            <span style={{
+              background: '#25D366',
+              color: 'white',
+              fontSize: '10px',
+              fontWeight: 700,
+              minWidth: '18px',
+              height: '18px',
+              borderRadius: '9px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 4px'
+            }}>
+              {myChatsCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => handleTabClick('unassigned')}
+          style={{
+            flex: 1,
+            padding: '12px 8px',
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: activeTab === 'unassigned' ? 600 : 400,
+            color: activeTab === 'unassigned' ? '#128C7E' : '#54656f',
+            borderBottom: activeTab === 'unassigned' ? '2px solid #128C7E' : '2px solid transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            transition: 'all 0.15s',
+            fontFamily: 'inherit'
+          }}
+        >
+          <Users size={14} />
+          Sin Asignar
+          {unassignedChatsCount > 0 && (
+            <span style={{
+              background: '#EF4444',
+              color: 'white',
+              fontSize: '10px',
+              fontWeight: 700,
+              minWidth: '18px',
+              height: '18px',
+              borderRadius: '9px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 4px'
+            }}>
+              {unassignedChatsCount}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* QR code when disconnected */}
-      {!isConnected(wahaStatus?.status ?? '') && wahaStatus?.qr?.image && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', borderBottom: '1px solid #e9edef', gap: '10px' }}>
-          <h4 style={{ margin: 0, fontSize: '14px', color: '#41525d' }}>Vincular dispositivo</h4>
-          <img
-            src={wahaStatus.qr.image}
-            alt="WAHA QR Code"
-            style={{ width: '180px', height: '180px', border: '1px solid #e9edef', padding: '5px', borderRadius: '4px' }}
-          />
-          <p style={{ margin: 0, fontSize: '11px', color: '#667781', textAlign: 'center' }}>
-            WhatsApp {'>'} Dispositivos vinculados {'>'} Vincular un dispositivo
-          </p>
-        </div>
-      )}
-
-      {/* Search */}
       <div className={styles.searchBar}>
         <Search size={16} className={styles.searchIcon} />
         <input
@@ -113,7 +148,6 @@ export default function ChatList({
         />
       </div>
 
-      {/* Ticket / contact list */}
       <ul className={styles.contactList}>
         {loadingTickets ? (
           <li style={{ padding: '20px', textAlign: 'center', color: '#667781', fontSize: '14px' }}>
@@ -121,36 +155,35 @@ export default function ChatList({
           </li>
         ) : filteredTickets.length === 0 ? (
           <li style={{ padding: '20px', textAlign: 'center', color: '#667781', fontSize: '14px' }}>
-            No hay conversaciones aún
+            {search ? 'Sin resultados' : (activeTab === 'unassigned' ? 'No hay chats sin asignar' : 'No hay conversaciones aún')}
           </li>
         ) : (
           filteredTickets.map(ticket => (
             <li
-              key={ticket.id}
-              className={`${styles.contactItem} ${activeTicket?.id === ticket.id ? styles.contactItemActive : ''}`}
+              key={ticket.zoho_id}
+              className={`${styles.contactItem} ${activeTicket?.zoho_id === ticket.zoho_id ? styles.contactItemActive : ''}`}
               onClick={() => handleSelectTicket(ticket)}
             >
               <div className={styles.contactAvatarWrap}>
                 <div className={styles.contactAvatar}>
-                  {getInitials(ticket.contact?.name ?? ticket.title)}
+                  {getInitials(displayName(ticket))}
                 </div>
               </div>
               <div className={styles.contactInfo}>
                 <div className={styles.contactRow}>
                   <span className={styles.contactName}>
-                    {ticket.contact?.name ?? ticket.title}
-                    {ticket.contact?.company_name && (
+                    {displayName(ticket)}
+                    {ticket.contact_phone && (
                       <span style={{ fontSize: '10px', color: '#128C7E', marginLeft: '6px', background: 'rgba(18,140,126,0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 'normal' }}>
-                        {ticket.contact.company_name}
+                        {ticket.contact_phone}
                       </span>
                     )}
                   </span>
-                  <span className={styles.contactTime}>{formatTime(ticket.updated_at)}</span>
+                  <span className={styles.contactTime}>{formatTime(ticket.modified_time)}</span>
                 </div>
                 <div className={styles.contactRow}>
                   <span className={styles.contactLastMsg}>
-                    {ticket.contact?.parent_contact && `[Empresa: ${ticket.contact.parent_contact.name}] `}
-                    {lastMsg(ticket)}
+                    {ticket.subject || 'Chat de WhatsApp'}
                   </span>
                   {ticket.status === 'open' && (
                     <span className={styles.unreadBadge} style={{ background: '#25D366' }}>•</span>

@@ -465,7 +465,9 @@ func (s *ZohoService) ReplyTicket(ticketID string, content string, channel strin
 // 🚀 METODO AGREGADO: ReplyWhatsAppLiveChat para h.zohoSvc.ReplyWhatsAppLiveChat
 // 🚀 ======================================================================
 
-func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*ZohoThread, error) {
+// ReplyWhatsAppLiveChat envía una respuesta de WhatsApp real al cliente usando la API de Mensajería Instantánea de Zoho Desk.
+// Esto evita que el mensaje se guarde como un simple comentario y mantiene el formato nativo de chat.
+func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, agentEmail string) (*ZohoThread, error) {
 	token, err := s.GetAccessToken()
 	if err != nil {
 		return nil, fmt.Errorf("error obteniendo token: %w", err)
@@ -476,11 +478,37 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 		return nil, fmt.Errorf("error obteniendo orgID: %w", err)
 	}
 
-	// 🚀 ESTRATEGIA UNIVERSAL: Añadir el mensaje como un comentario público.
-	// Zoho se encarga automáticamente de rutear los comentarios públicos hacia el canal del cliente (WhatsApp, Email, etc.)
+	// 1. 🔍 OBTENER EL TICKET PARA EXTRAER EL SESSION ID DE WHATSAPP
+	ticketURL := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s", ticketID)
+	ticketReq, _ := http.NewRequest("GET", ticketURL, nil)
+	ticketReq.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	ticketReq.Header.Set("orgId", orgID)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	ticketResp, err := client.Do(ticketReq)
+	if err != nil {
+		return nil, fmt.Errorf("error consultando ticket: %w", err)
+	}
+	defer ticketResp.Body.Close()
+
+	ticketBytes, _ := io.ReadAll(ticketResp.Body)
+	var ticketData map[string]interface{}
+	if err := json.Unmarshal(ticketBytes, &ticketData); err != nil {
+		return nil, fmt.Errorf("error parseando json del ticket: %w", err)
+	}
+
+	// Extraemos el extId del bloque source (que es el sessionId: "64053000001346071")
+	source, ok := ticketData["source"].(map[string]interface{})
+	if !ok || source["extId"] == nil {
+		return nil, fmt.Errorf("el ticket no contiene una sesion de mensajeria activa (source.extId)")
+	}
+	sessionID := source["extId"].(string)
+
+	// 2. 🚀 ARMAMOS EL PAYLOAD EXACTO QUE CAPTURÓ TU CONSOLA
 	payload := map[string]interface{}{
-		"content":  content,
-		"isPublic": true, // Para que el cliente final lo reciba en su WhatsApp
+		"displayMessage": content,
+		"contentType":    "text/plain",
+		"type":           "TEXT",
 	}
 
 	body, err := json.Marshal(payload)
@@ -488,39 +516,42 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string) (*Z
 		return nil, fmt.Errorf("error codificando json: %w", err)
 	}
 
-	// 🚀 NUEVA URL: Endpoint estándar de comentarios de Zoho Desk
-	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s/comments", ticketID)
+	// 3. 🎯 LA URL SECRETA DE ZOHO DESK CAPTURADA
+	// Reemplazamos 'oberstaff' dinámicamente si fuera necesario, o lo dejamos fijo si es tu portal único.
+	urlStr := fmt.Sprintf("https://desk.zoho.com/supportapi/zd/oberstaff/api/v1/im/sessions/%s/messages", sessionID)
+	
 	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("error creando request: %w", err)
 	}
 
+	// Inyectamos las credenciales normales de tu app
 	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
 	req.Header.Set("orgId", orgID)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error ejecutando request a zoho: %w", err)
+		return nil, fmt.Errorf("error ejecutando request al endpoint de consola: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error leyendo respuesta de zoho: %w", err)
+		return nil, fmt.Errorf("error leyendo respuesta: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		log.Printf("[ZohoService] Error en Comments API (Status %d): %s", resp.StatusCode, string(respBytes))
+	// Si responde 200 OK (como viste en la consola), ¡estamos del otro lado!
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		log.Printf("[ZohoService] Error usando endpoint de consola (Status %d): %s", resp.StatusCode, string(respBytes))
 		return nil, fmt.Errorf("zoho retorno status %d: %s", resp.StatusCode, string(respBytes))
 	}
 
-	// Mapeamos la respuesta al objeto esperado por tu frontend.
-	// Zoho Comments devuelve un objeto distinto, así que armamos uno compatible.
+	log.Printf("[ZohoService] ✅ ¡WhatsApp enviado con éxito usando la pasarela oficial de Zoho!")
+
 	return &ZohoThread{
 		ID:          "wh_" + fmt.Sprintf("%d", time.Now().Unix()),
-		Channel:     "IM",
+		Channel:     "WhatsApp",
 		Summary:     content,
 		Content:     content,
 		AuthorType:  "agent",
@@ -699,4 +730,123 @@ func (s *ZohoService) GetAgent(agentID string) (AgentInfo, error) {
 	s.mu.Unlock()
 
 	return info, nil
+}
+
+// GetAgentByEmail looks up a Zoho Desk agent by email address and returns AgentInfo including the Zoho agent ID.
+// Used during login to sync the web user's ZohoAgentID field.
+func (s *ZohoService) GetAgentByEmail(email string) (string, AgentInfo, error) {
+	token, err := s.GetAccessToken()
+	if err != nil {
+		return "", AgentInfo{}, err
+	}
+
+	orgID, err := s.getOrgID()
+	if err != nil {
+		return "", AgentInfo{}, err
+	}
+
+	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/agents?emailId=%s&limit=1", url.QueryEscape(email))
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return "", AgentInfo{}, err
+	}
+	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	req.Header.Set("orgId", orgID)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", AgentInfo{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", AgentInfo{}, fmt.Errorf("get agent by email failed status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Data []struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			EmailID string `json:"emailId"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", AgentInfo{}, err
+	}
+	if len(result.Data) == 0 {
+		return "", AgentInfo{}, fmt.Errorf("no Zoho agent found for email %s", email)
+	}
+
+	ag := result.Data[0]
+	info := AgentInfo{Name: ag.Name, Email: ag.EmailID}
+
+	s.mu.Lock()
+	s.agentCache[ag.ID] = info
+	s.mu.Unlock()
+
+	return ag.ID, info, nil
+}
+
+	// ListWhatsAppTickets returns WhatsApp tickets filtered by assigneeId (use "unassigned" for open queue)
+	// and status (e.g. "open"). Results are sorted by most recently modified.
+	func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modifiedTimeRange string) ([]ZohoTicket, error) {
+		token, err := s.GetAccessToken()
+		if err != nil {
+			return nil, err
+		}
+
+		orgID, err := s.getOrgID()
+		if err != nil {
+			return nil, err
+		}
+
+		params := url.Values{}
+		params.Set("channelCode", "ATENCION_AL_CLIENTE")
+		params.Set("sortBy", "-modifiedTime")
+		params.Set("limit", "50")
+		if assigneeID != "" {
+			params.Set("assigneeId", assigneeID)
+		}
+		if status != "" {
+			params.Set("status", status)
+		}
+		if modifiedTimeRange != "" {
+			params.Set("modifiedTimeRange", modifiedTimeRange)
+		}
+
+		urlStr := "https://desk.zoho.com/api/v1/tickets?" + params.Encode()
+		req, err := http.NewRequest("GET", urlStr, nil)
+		if err != nil {
+			return nil, err
+		}
+	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	req.Header.Set("orgId", orgID)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list whatsapp tickets failed status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ticketsResp struct {
+		Data []ZohoTicket `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ticketsResp); err != nil {
+		return nil, err
+	}
+
+	return ticketsResp.Data, nil
+}
+
+// AssignTicket assigns a Zoho Desk ticket to the given agent ID.
+func (s *ZohoService) AssignTicket(ticketID string, zohoAgentID string) error {
+	return s.UpdateTicketStatus(ticketID, "", "", zohoAgentID)
 }

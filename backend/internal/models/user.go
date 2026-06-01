@@ -42,6 +42,7 @@ type User struct {
 	Country             string         `gorm:"size:100" json:"country"`
 	City                string         `gorm:"size:100" json:"city"`
 	Location            string         `gorm:"type:text" json:"location"`
+	ZohoAgentID         string         `gorm:"size:100;index" json:"zoho_agent_id,omitempty"`
 	GoogleCalendarToken string         `gorm:"type:text" json:"-"`
 	GoogleFormsToken    string         `gorm:"type:text" json:"-"`
 	RememberToken       string         `gorm:"size:100" json:"-"`

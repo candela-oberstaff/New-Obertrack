@@ -280,8 +280,23 @@ func Run(db *gorm.DB) error {
 				}
 				return nil
 			},
+	},
+	{
+		ID: "202606011320_add_zoho_agent_id_to_users",
+		Migrate: func(tx *gorm.DB) error {
+			// If the column doesn't exist, add it
+			if !tx.Migrator().HasColumn(&models.User{}, "zoho_agent_id") {
+				if err := tx.Migrator().AddColumn(&models.User{}, "zoho_agent_id"); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
-		// Future migrations go here
+		Rollback: func(tx *gorm.DB) error {
+			return tx.Migrator().DropColumn(&models.User{}, "zoho_agent_id")
+		},
+	},
+	// Future migrations go here
 	})
 
 	if err := m.Migrate(); err != nil {

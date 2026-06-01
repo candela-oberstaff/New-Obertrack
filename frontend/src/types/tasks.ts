@@ -19,6 +19,7 @@ export interface User {
   country?: string
   city?: string
   location?: string
+  zoho_agent_id?: string
   created_at: string
   updated_at: string
   password?: string

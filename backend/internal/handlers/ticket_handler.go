@@ -43,8 +43,6 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 	type TicketDTO struct {
 		ZohoID        string             `json:"zoho_id"`
 		ID            uint               `json:"id"`
-		ContactID     uint               `json:"contact_id"`
-		Contact       models.Contact     `json:"contact,omitempty"`
 		Title         string             `json:"title"`
 		Channel       string             `json:"channel"`
 		Stage         models.TicketStage `json:"stage"`
@@ -54,7 +52,7 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 		AssigneeID    string             `json:"assignee_id,omitempty"`
 		AssigneeName  string             `json:"assignee_name,omitempty"`
 		AssigneeEmail string             `json:"assignee_email,omitempty"`
-		Sentiment     string             `json:"sentiment,omitempty"` 
+		Sentiment     string             `json:"sentiment,omitempty"`
 	}
 
 	var tickets []TicketDTO
@@ -78,31 +76,28 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 		}
 
 		sentiment := zt.Sentiment
-		var customerTone string 
+		var customerTone string
+		_ = customerTone
+		/* 🚀 Desactivado temporalmente para evitar 500 si Ollama falla
 		if sentiment == "" || sentiment == "null" {
 			sentiment, customerTone = h.analyzeZiaInsights(zt.Subject)
-			_ = customerTone 
+			_ = customerTone
 		}
+		*/
 
 		t := TicketDTO{
-			ZohoID: zt.ID,
-			ID:     uint(hashStringToUint(zt.ID)),
-			Contact: models.Contact{
-				ID:    uint(hashStringToUint(zt.ContactID)),
-				Name:  zt.ContactName,
-				Phone: zt.Phone,
-				Email: zt.Email,
-			},
-			Title:         zt.Subject,
-			Channel:       zt.Channel,
-			Stage:         stage,
-			Status:        zt.Status,
-			CreatedAt:     zt.CreatedTime,
-			UpdatedAt:     zt.ModifiedTime,
-			AssigneeID:    zt.AssigneeID,
-			AssigneeName:  assigneeName,
-			AssigneeEmail: assigneeEmail, // 🚀 Corregido mapeo limpio
-			Sentiment:     sentiment,
+			ZohoID:     zt.ID,
+			ID:         uint(hashStringToUint(zt.ID)),
+			Title:      zt.Subject,
+			Channel:    zt.Channel,
+			Stage:      stage,
+			Status:     zt.Status,
+			CreatedAt:  zt.CreatedTime,
+			UpdatedAt:  zt.ModifiedTime,
+			AssigneeID: zt.AssigneeID,
+			AssigneeName: assigneeName,
+			AssigneeEmail: assigneeEmail,
+			Sentiment:    sentiment,
 		}
 		tickets = append(tickets, t)
 	}
@@ -158,17 +153,17 @@ func (h *TicketHandler) GetTicket(c *gin.Context) {
 	}
 
 	var assigneeName, assigneeEmail string
-if zt.AssigneeID != "" {
-	if agentInfo, err := h.zohoSvc.GetAgent(zt.AssigneeID); err == nil {
-		assigneeName = agentInfo.Name
-		assigneeEmail = agentInfo.Email
+	if zt.AssigneeID != "" {
+		if agentInfo, err := h.zohoSvc.GetAgent(zt.AssigneeID); err == nil {
+			assigneeName = agentInfo.Name
+			assigneeEmail = agentInfo.Email
+		}
 	}
-}
 
 	var messages []models.TicketMessage
 	for _, thread := range threads {
 		channel := models.ChannelWhatsApp
-		if strings.ToLower(thread.Channel) == "email" {
+		if strings.EqualFold(thread.Channel, "email") {
 			channel = models.ChannelEmail
 		}
 
@@ -256,6 +251,7 @@ if zt.AssigneeID != "" {
 	sentiment := zt.Sentiment
 	customerTone := zt.CustomerTone
 
+	/* 🚀 Desactivado temporalmente para evitar 500 si Ollama falla
 	if sentiment == "" || sentiment == "null" || customerTone == "" || customerTone == "null" {
 		contextText := zt.Subject
 		if zt.Description != "" {
@@ -263,6 +259,7 @@ if zt.AssigneeID != "" {
 		}
 		sentiment, customerTone = h.analyzeZiaInsights(contextText)
 	}
+	*/
 
 	dto := TicketDetailDTO{
 		ID:           uint(hashStringToUint(zt.ID)),
@@ -370,7 +367,8 @@ func (h *TicketHandler) SendMessage(c *gin.Context) {
 
 	// 🚀 SI EL CANAL ES WHATSAPP:
 	if req.Channel == models.ChannelWhatsApp {
-		thread, err := h.zohoSvc.ReplyWhatsAppLiveChat(zohoTicketID, req.Content)
+		agentEmail := c.GetString("email")
+		thread, err := h.zohoSvc.ReplyWhatsAppLiveChat(zohoTicketID, req.Content, agentEmail)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send WhatsApp via Zoho: " + err.Error()})
 			return
@@ -393,6 +391,48 @@ func (h *TicketHandler) SendMessage(c *gin.Context) {
 	thread, err := h.zohoSvc.ReplyTicket(zohoTicketID, req.Content, zohoChannel)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to dispatch email to Zoho Desk: " + err.Error()})
+		return
+	}
+
+	msg := models.TicketMessage{
+		ID:         uint(hashStringToUint(thread.ID)),
+		TicketID:   uint(hashStringToUint(zohoTicketID)),
+		SenderType: models.SenderTypeAgent,
+		Channel:    req.Channel,
+		Content:    req.Content,
+		CreatedAt:  thread.CreatedTime,
+	}
+	c.JSON(http.StatusOK, msg)
+}
+
+// SendReply sends a reply specifically for chat section, targeting WhatsApp channel
+func (h *TicketHandler) SendReply(c *gin.Context) {
+	ticketIDStr := c.Param("id")
+	zohoTicketID := getZohoIDFromParam(ticketIDStr, h.DB)
+	if zohoTicketID == "" {
+		zohoTicketID = ticketIDStr
+	}
+
+	var req struct {
+		Content string                `json:"content" binding:"required"`
+		Channel models.MessageChannel `json:"channel" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Content and channel are required"})
+		return
+	}
+
+	// Verify that the channel is WhatsApp as required for chat section replies
+	if req.Channel != models.ChannelWhatsApp {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Channel must be 'whatsapp' for chat section replies"})
+		return
+	}
+
+	// Send via WhatsApp channel using Zoho Desk
+	agentEmail := c.GetString("email")
+	thread, err := h.zohoSvc.ReplyWhatsAppLiveChat(zohoTicketID, req.Content, agentEmail)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send WhatsApp reply: " + err.Error()})
 		return
 	}
 

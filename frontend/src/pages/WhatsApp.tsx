@@ -1,15 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import styles from './WhatsApp.module.css'
-import { ticketService, Ticket } from '../services/ticket.service'
+import { ticketService, WhatsAppChatTicket, WhatsAppMessageDTO } from '../services/ticket.service'
 import ChatList from './WhatsApp/ChatList'
 import ChatWindow from './WhatsApp/ChatWindow'
 import EmptyState from './WhatsApp/EmptyState'
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-const isConnected = (status?: string) =>
-  status === 'CONNECTED' || status === 'WORKING'
+type ChatTab = 'me' | 'unassigned'
 
 const formatTime = (iso: string) => {
   const d = new Date(iso)
@@ -26,83 +23,139 @@ const formatTime = (iso: string) => {
 const getInitials = (name: string) =>
   name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 
+const displayName = (ticket: WhatsAppChatTicket) =>
+  ticket.contact_name.trim() || ticket.subject || ticket.contact_phone || 'Sin nombre'
+
 export default function WhatsApp() {
   const { user } = useAuth()
-  const [searchParams] = useSearchParams()
-  const ticketIdParam = searchParams.get('ticketId')
-  const [tickets, setTickets] = useState<Ticket[]>([])
-  const [activeTicket, setActiveTicket] = useState<Ticket | null>(null)
+  const [activeTab, setActiveTab] = useState<ChatTab>('me')
+  const [myChats, setMyChats] = useState<WhatsAppChatTicket[]>([])
+  const [unassignedChats, setUnassignedChats] = useState<WhatsAppChatTicket[]>([])
+  const [activeTicket, setActiveTicket] = useState<WhatsAppChatTicket | null>(null)
+  const [activeMessages, setActiveMessages] = useState<WhatsAppMessageDTO[]>([])
   const [loadingTickets, setLoadingTickets] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [lastModified, setLastModified] = useState<string | null>(null)
   const [inputText, setInputText] = useState('')
   const [sending, setSending] = useState(false)
   const [search, setSearch] = useState('')
   const [showMobileChat, setShowMobileChat] = useState(false)
-  const [wahaStatus, setWahaStatus] = useState<{ status: string; qr?: { image: string } } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Fetch WAHA status — poll every 5 s while disconnected, stop once connected
-  useEffect(() => {
-    const fetchStatus = () => {
-      ticketService.getWahaStatus()
-        .then(data => setWahaStatus(data))
-        .catch(err => console.error('Error fetching WAHA status:', err))
-    }
+  const currentChats = activeTab === 'me' ? myChats : unassignedChats
 
-    fetchStatus() // initial call
+  const fetchTickets = async (isPoll = false) => {
+    if (!isPoll) setLoadingTickets(true)
+    try {
+      const lastModifiedTime = lastModified || undefined
+      const [my, unassigned] = await Promise.all([
+        ticketService.getMyWhatsAppChats(lastModifiedTime),
+        ticketService.getUnassignedWhatsAppChats(lastModifiedTime),
+      ])
 
-    const interval = setInterval(() => {
-      // Only keep polling while not connected
-      if (!isConnected(wahaStatus?.status)) {
-        fetchStatus()
+      // Logic to merge deltas or replace
+      if (isPoll) {
+        // Delta sync: update only if there's new data
+        if (my.length > 0) {
+          setMyChats(prev => {
+            const newChats = [...my]
+            const existingIds = new Set(newChats.map(c => c.zoho_id))
+            prev.forEach(c => {
+              if (!existingIds.has(c.zoho_id)) newChats.push(c)
+            })
+            return newChats.sort((a, b) => new Date(b.modified_time).getTime() - new Date(a.modified_time).getTime())
+          })
+        }
+        if (unassigned.length > 0) {
+          setUnassignedChats(prev => {
+            const newChats = [...unassigned]
+            const existingIds = new Set(newChats.map(c => c.zoho_id))
+            prev.forEach(c => {
+              if (!existingIds.has(c.zoho_id)) newChats.push(c)
+            })
+            return newChats.sort((a, b) => new Date(b.modified_time).getTime() - new Date(a.modified_time).getTime())
+          })
+        }
+      } else {
+        // Cold start
+        setMyChats(my)
+        setUnassignedChats(unassigned)
       }
-    }, 5000)
+
+      // Update lastModified timestamp from the most recent ticket
+      const allFetched = [...my, ...unassigned]
+      if (allFetched.length > 0) {
+        const newest = allFetched.reduce((max, t) => 
+          new Date(t.modified_time) > new Date(max) ? t.modified_time : max, 
+          allFetched[0].modified_time
+        )
+        setLastModified(newest)
+      }
+    } catch (err) {
+      console.error('Error fetching WhatsApp chats:', err)
+    } finally {
+      if (!isPoll) setLoadingTickets(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTickets()
+    
+    // Setup long polling loop (every 30 seconds)
+    const interval = setInterval(() => {
+      fetchTickets(true)
+    }, 30000)
 
     return () => clearInterval(interval)
-  }, [wahaStatus?.status])
+  }, []) // Empty deps for mount/unmount
 
-  // Fetch tickets list
+  // Handle active messages polling when a chat is open
   useEffect(() => {
-    setLoadingTickets(true)
-    ticketService.getTickets()
-      .then(data => {
-        setTickets(data)
-      })
-      .catch(err => console.error('Error fetching tickets:', err))
-      .finally(() => setLoadingTickets(false))
-  }, [])
+    if (!activeTicket) return
 
-  // Auto-select ticket from query param when tickets are loaded
-  useEffect(() => {
-    if (ticketIdParam && tickets.length > 0) {
-      const found = tickets.find(t => t.zoho_id === ticketIdParam)
-      if (found) {
-        handleSelectTicket(found)
+    const pollMessages = async () => {
+      try {
+        const msgs = await ticketService.getChatMessages(activeTicket.zoho_id)
+        // Only update if length changed or something simple for now
+        // A better approach would be checking last message ID
+        setActiveMessages(prev => {
+          if (msgs.length !== prev.length) return msgs
+          return prev
+        })
+      } catch (err) {
+        console.error('Error polling messages:', err)
       }
     }
-  }, [ticketIdParam, tickets])
 
-  // Scroll to bottom on new messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [activeTicket?.messages])
+    const interval = setInterval(pollMessages, 10000)
+    return () => clearInterval(interval)
+  }, [activeTicket?.zoho_id])
 
-  const handleSelectTicket = async (ticket: Ticket) => {
+  const handleSelectTicket = async (ticket: WhatsAppChatTicket) => {
     setShowMobileChat(true)
     setLoadingMessages(true)
+    setActiveTicket(ticket)
+    setActiveMessages([])
+    setInputText('')
     try {
-      const full = await ticketService.getTicket(ticket.zoho_id)
-      setActiveTicket(full.ticket)
+      const msgs = await ticketService.getChatMessages(ticket.zoho_id)
+      setActiveMessages(msgs)
     } catch (err) {
-      console.error('Error fetching ticket detail:', err)
+      console.error('Error fetching messages:', err)
     } finally {
       setLoadingMessages(false)
     }
   }
 
-  const handleBack = () => {
-    setShowMobileChat(false)
-    setActiveTicket(null)
+  const handleAssign = async () => {
+    if (!activeTicket) return
+    try {
+      await ticketService.assignChat(activeTicket.zoho_id)
+      await fetchTickets()
+      setActiveTicket(prev => prev ? { ...prev, assignee_id: user?.zoho_agent_id || '' } : null)
+    } catch (err) {
+      console.error('Error assigning chat:', err)
+    }
   }
 
   const handleSend = async () => {
@@ -111,67 +164,74 @@ export default function WhatsApp() {
     setInputText('')
     setSending(true)
     try {
-      const newMsg = await ticketService.sendMessage(activeTicket.zoho_id, text, 'whatsapp')
-      setActiveTicket(prev => prev ? {
-        ...prev,
-        messages: [...(prev.messages ?? []), newMsg]
-      } : null)
+      const newMsg = await ticketService.sendWhatsAppMessage(activeTicket.zoho_id, text)
+      setActiveMessages(prev => [...prev, newMsg])
     } catch (err) {
       console.error('Error sending message:', err)
-      setInputText(text) // restore on error
+      setInputText(text)
     } finally {
       setSending(false)
     }
   }
 
-  // Get last WA message for sidebar preview
-  const lastMsg = (ticket: Ticket) => {
-    const msgs = ticket.messages ?? []
-    if (msgs.length === 0) return 'Sin mensajes'
-    const last = msgs[msgs.length - 1]
-    return last.content
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [activeMessages])
+
+  const handleBack = () => {
+    setShowMobileChat(false)
+    setActiveTicket(null)
+    setActiveMessages([])
+    setInputText('')
   }
 
-  const filteredTickets = tickets.filter(t =>
-    (t.contact?.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (t.contact?.phone ?? '').includes(search)
+  const isUnassignedChat = activeTab === 'unassigned'
+  const isAssignedToMe = activeTicket?.assignee_id === user?.zoho_agent_id
+
+  const filteredTickets = currentChats.filter(t =>
+    (t.contact_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+    (t.contact_phone ?? '').includes(search) ||
+    (t.subject ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
   return (
     <div className={styles.page}>
       <ChatList
         user={user}
-        tickets={tickets}
+        tickets={currentChats}
         activeTicket={activeTicket}
         loadingTickets={loadingTickets}
-        wahaStatus={wahaStatus}
         search={search}
         setSearch={setSearch}
         handleSelectTicket={handleSelectTicket}
         showMobileChat={showMobileChat}
         filteredTickets={filteredTickets}
-        lastMsg={lastMsg}
         formatTime={formatTime}
         getInitials={getInitials}
-        isConnected={isConnected}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        myChatsCount={myChats.length}
+        unassignedChatsCount={unassignedChats.length}
+        displayName={displayName}
       />
 
       {activeTicket ? (
         <ChatWindow
           activeTicket={activeTicket}
-          setActiveTicket={setActiveTicket}
-          tickets={tickets}
-          setTickets={setTickets}
+          activeMessages={activeMessages}
           loadingMessages={loadingMessages}
           inputText={inputText}
           setInputText={setInputText}
           sending={sending}
           handleSend={handleSend}
+          handleAssign={handleAssign}
           handleBack={handleBack}
           showMobileChat={showMobileChat}
           messagesEndRef={messagesEndRef}
           getInitials={getInitials}
           formatTime={formatTime}
+          isUnassignedChat={isUnassignedChat}
+          isAssignedToMe={isAssignedToMe}
         />
       ) : (
         <EmptyState />
