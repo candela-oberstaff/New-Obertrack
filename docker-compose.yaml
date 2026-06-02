@@ -63,7 +63,7 @@ services:
       dockerfile: Dockerfile
     # Host:Container — container Nginx listens on 8080 (unprivileged).
     ports:
-      - "80:8080"
+      - "8081:8080"
     restart: unless-stopped
     depends_on:
       - backend
