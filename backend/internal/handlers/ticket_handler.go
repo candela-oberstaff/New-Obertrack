@@ -38,7 +38,7 @@ func ticketErrorStatus(err error) int {
 }
 
 func (h *TicketHandler) GetTickets(c *gin.Context) {
-	tickets, err := h.svc.List(middleware.GetUserID(c), middleware.IsSuperadmin(c))
+	tickets, err := h.svc.List(middleware.GetUserID(c), middleware.GetUserRole(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tickets"})
 		return
@@ -48,7 +48,7 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 
 func (h *TicketHandler) GetTicket(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
-	ticket, err := h.svc.Get(uint(id), middleware.GetUserID(c), middleware.IsSuperadmin(c))
+	ticket, err := h.svc.Get(uint(id), middleware.GetUserID(c), middleware.GetUserRole(c))
 	if err != nil {
 		c.JSON(ticketErrorStatus(err), gin.H{"error": err.Error()})
 		return
@@ -69,7 +69,7 @@ func (h *TicketHandler) UpdateTicket(c *gin.Context) {
 		return
 	}
 
-	ticket, err := h.svc.Update(uint(id), middleware.GetUserID(c), middleware.IsSuperadmin(c), req.Stage, req.Status, req.AssignedTo)
+	ticket, err := h.svc.Update(uint(id), middleware.GetUserID(c), middleware.GetUserRole(c), req.Stage, req.Status, req.AssignedTo)
 	if err != nil {
 		c.JSON(ticketErrorStatus(err), gin.H{"error": err.Error()})
 		return
@@ -89,7 +89,7 @@ func (h *TicketHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	msg, err := h.svc.SendAgentMessage(uint(id), middleware.GetUserID(c), middleware.IsSuperadmin(c), req.Content, req.Channel)
+	msg, err := h.svc.SendAgentMessage(uint(id), middleware.GetUserID(c), middleware.GetUserRole(c), req.Content, req.Channel)
 	if err != nil {
 		c.JSON(ticketErrorStatus(err), gin.H{"error": err.Error()})
 		return

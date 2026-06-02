@@ -45,6 +45,104 @@
 .sidebarHeaderActions {
   display: flex;
   gap: 4px;
+  align-items: center;
+}
+
+.tabContainer {
+  display: flex;
+  border-bottom: 1px solid #e9edef;
+  flex-shrink: 0;
+  background: #fafbfc;
+}
+
+.tabButton {
+  flex: 1;
+  padding: 12px 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 400;
+  color: #54656f;
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.tabButton:hover {
+  background: #f0f2f5;
+  color: #111b21;
+}
+
+.tabButtonActive {
+  color: #128C7E !important;
+  font-weight: 600 !important;
+  border-bottom-color: #128C7E !important;
+}
+
+.tabBadge {
+  background: #25D366;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.tabBadgeUnassigned {
+  background: #EF4444;
+}
+
+.assignButton {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: none;
+  background: linear-gradient(135deg, #25D366, #128C7E);
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(37, 211, 102, 0.3);
+  transition: transform 0.15s;
+  font-family: inherit;
+}
+
+.assignButton:hover {
+  transform: scale(1.03);
+}
+
+.assignButton:active {
+  transform: scale(0.98);
+}
+
+.assignedBadge {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(37, 211, 102, 0.1);
+  color: #128C7E;
+  font-weight: 600;
+}
+
+.inputDisabledMessage {
+  padding: 14px 16px;
+  background: #f0f2f5;
+  text-align: center;
+  color: #667781;
+  font-size: 13px;
+  border-top: 1px solid #e9edef;
 }
 
 .headerIconBtn {
@@ -63,29 +161,6 @@
 
 .headerIconBtn:hover {
   background: #e9edef;
-}
-
-/* Mock banner */
-.mockBanner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: linear-gradient(90deg, rgba(37, 211, 102, 0.08) 0%, rgba(18, 140, 126, 0.05) 100%);
-  border-bottom: 1px solid rgba(37, 211, 102, 0.2);
-  font-size: 11px;
-  color: #128C7E;
-  font-weight: 500;
-}
-
-.mockBadge {
-  background: linear-gradient(135deg, #25D366, #128C7E);
-  color: white;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
 }
 
 /* Search */

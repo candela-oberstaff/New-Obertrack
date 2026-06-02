@@ -55,9 +55,6 @@ func (s *ContactSyncService) Sync() {
 		if c.ID != "" {
 			byWaID[c.ID] = c
 		}
-		if c.Number != "" {
-			byNumber[c.Number] = c
-		}
 		// Also index by the numeric part of the ID
 		numPart := strings.Split(c.ID, "@")[0]
 		if numPart != "" {
@@ -92,14 +89,14 @@ func (s *ContactSyncService) Sync() {
 		updates := map[string]interface{}{}
 
 		// Update name if it's generic or empty
-		displayName := match.DisplayName()
+		displayName := match.GetDisplayName()
 		if displayName != "" && (contact.Name == "" || strings.HasPrefix(contact.Name, "WA User ")) {
 			updates["name"] = displayName
 			changed = true
 		}
 
 		// Update phone if it's just the numeric WA ID (not a real formatted number)
-		realPhone := match.Phone()
+		realPhone := match.GetPhone()
 		if realPhone != "" && realPhone != contact.Phone {
 			updates["phone"] = realPhone
 			changed = true

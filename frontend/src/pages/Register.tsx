@@ -160,6 +160,7 @@ export default function Register() {
                 options={[
                   { value: 'profesional', label: 'Profesional (Profesional que presta servicios)' },
                   { value: 'empleador', label: 'Empresa (Dueño o Administrador de empresa)' },
+                  { value: 'customer_success', label: 'Customer Success (Gestión de soporte)' },
                 ]}
               />
             </div>

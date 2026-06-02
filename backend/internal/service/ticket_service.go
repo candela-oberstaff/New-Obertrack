@@ -14,10 +14,10 @@ import (
 // webhook ingestion both go through it, so DB access stays in the repository
 // layer (audit: handlers must not touch *gorm.DB directly).
 type TicketService interface {
-	List(requesterID uint, isSuper bool) ([]models.Ticket, error)
-	Get(id, requesterID uint, isSuper bool) (*models.Ticket, error)
-	Update(id, requesterID uint, isSuper bool, stage models.TicketStage, status string, assignedTo *uint) (*models.Ticket, error)
-	SendAgentMessage(id, agentID uint, isSuper bool, content string, channel models.MessageChannel) (*models.TicketMessage, error)
+	List(requesterID uint, userType string) ([]models.Ticket, error)
+	Get(id, requesterID uint, userType string) (*models.Ticket, error)
+	Update(id, requesterID uint, userType string, stage models.TicketStage, status string, assignedTo *uint) (*models.Ticket, error)
+	SendAgentMessage(id, agentID uint, userType string, content string, channel models.MessageChannel) (*models.TicketMessage, error)
 
 	IngestWhatsApp(session, from, body, externalID string) error
 	IngestEmail(fromEmail, fromName, subject, textBody, messageID string) error
@@ -34,37 +34,37 @@ func NewTicketService(repo repository.TicketRepository, wahaSvc *WahaService, br
 }
 
 // canAccess returns true if the caller may view/act on the ticket.
-func canAccessTicket(t *models.Ticket, requesterID uint, isSuper bool) bool {
-	if isSuper {
+func (s *ticketService) canAccess(t *models.Ticket, requesterID uint, userType string) bool {
+	if userType == string(models.UserTypeSuperadmin) || userType == string(models.UserTypeCustomerSuccess) {
 		return true
 	}
 	return t.AssignedTo != nil && *t.AssignedTo == requesterID
 }
 
-func (s *ticketService) List(requesterID uint, isSuper bool) ([]models.Ticket, error) {
-	if isSuper {
+func (s *ticketService) List(requesterID uint, userType string) ([]models.Ticket, error) {
+	if userType == string(models.UserTypeSuperadmin) || userType == string(models.UserTypeCustomerSuccess) {
 		return s.repo.List(nil)
 	}
 	return s.repo.List(&requesterID)
 }
 
-func (s *ticketService) Get(id, requesterID uint, isSuper bool) (*models.Ticket, error) {
+func (s *ticketService) Get(id, requesterID uint, userType string) (*models.Ticket, error) {
 	ticket, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, apperrors.ErrNotFound
 	}
-	if !canAccessTicket(ticket, requesterID, isSuper) {
+	if !s.canAccess(ticket, requesterID, userType) {
 		return nil, apperrors.ErrAccessDenied
 	}
 	return ticket, nil
 }
 
-func (s *ticketService) Update(id, requesterID uint, isSuper bool, stage models.TicketStage, status string, assignedTo *uint) (*models.Ticket, error) {
+func (s *ticketService) Update(id, requesterID uint, userType string, stage models.TicketStage, status string, assignedTo *uint) (*models.Ticket, error) {
 	ticket, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, apperrors.ErrNotFound
 	}
-	if !canAccessTicket(ticket, requesterID, isSuper) {
+	if !s.canAccess(ticket, requesterID, userType) {
 		return nil, apperrors.ErrAccessDenied
 	}
 
@@ -84,12 +84,12 @@ func (s *ticketService) Update(id, requesterID uint, isSuper bool, stage models.
 	return ticket, nil
 }
 
-func (s *ticketService) SendAgentMessage(id, agentID uint, isSuper bool, content string, channel models.MessageChannel) (*models.TicketMessage, error) {
+func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, content string, channel models.MessageChannel) (*models.TicketMessage, error) {
 	ticket, err := s.repo.GetWithContact(id)
 	if err != nil {
 		return nil, apperrors.ErrNotFound
 	}
-	if !canAccessTicket(ticket, agentID, isSuper) {
+	if !s.canAccess(ticket, agentID, userType) {
 		return nil, apperrors.ErrAccessDenied
 	}
 

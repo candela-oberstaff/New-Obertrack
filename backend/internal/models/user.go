@@ -11,9 +11,10 @@ type TaskStatus string
 type TaskPriority string
 
 const (
-	UserTypeEmployer     UserType = "empleador"
-	UserTypeProfessional UserType = "profesional"
-	UserTypeSuperadmin   UserType = "superadmin"
+	UserTypeEmployer        UserType = "empleador"
+	UserTypeProfessional    UserType = "profesional"
+	UserTypeSuperadmin      UserType = "superadmin"
+	UserTypeCustomerSuccess UserType = "customer_success"
 
 	TaskStatusTodo      TaskStatus = "por_hacer"
 	TaskStatusInProcess TaskStatus = "en_proceso"
@@ -52,6 +53,7 @@ type User struct {
 	// TokenVersion is bumped to invalidate all previously issued access/refresh
 	// tokens for this user (logout-all, password change, suspension) — audit A-04.
 	TokenVersion        int            `gorm:"not null;default:0" json:"-"`
+	ZohoAgentID         string         `gorm:"size:255" json:"zoho_agent_id"`
 	CreatedAt           time.Time      `json:"created_at"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`
