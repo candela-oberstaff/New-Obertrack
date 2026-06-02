@@ -35,11 +35,15 @@ func (r *boardRepository) FindAll(filters map[string]interface{}) ([]models.Boar
 		query = query.Where("boards.created_by = ? OR boards.id IN (SELECT board_id FROM board_members WHERE user_id = ?)", userID, userID)
 	}
 
-	if companyID, ok := filters["company_id"].(uint); ok {
-		query = query.Where("boards.created_by = ? OR boards.created_by IN (SELECT id FROM users WHERE empleador_id = ?)", companyID, companyID)
+	if tenantID, ok := filters["tenant_id"].(uint); ok {
+		query = query.Where("boards.tenant_id = ?", tenantID)
+	} else if companyID, ok := filters["company_id"].(uint); ok {
+		query = query.Where("boards.tenant_id = ?", companyID)
 	}
 
-	err := query.Preload("Members").Preload("Creator").Order("boards.created_at DESC").Find(&boards).Error
+	err := query.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
+		return db.Order("\"order\" ASC")
+	}).Order("boards.created_at DESC").Find(&boards).Error
 	return boards, err
 }
 

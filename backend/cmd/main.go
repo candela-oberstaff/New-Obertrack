@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -52,6 +53,22 @@ func main() {
 
 	log.Println("Initializing routes...")
 	r := gin.Default()
+
+	// Trust only known reverse proxies so X-Forwarded-For cannot be spoofed to
+	// bypass rate limiting (audit finding A-05). Configure TRUSTED_PROXIES as a
+	// comma-separated list of CIDRs; defaults to private ranges (e.g. the Docker
+	// network where Nginx runs).
+	trusted := []string{"127.0.0.1/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+	if tp := os.Getenv("TRUSTED_PROXIES"); tp != "" {
+		trusted = strings.Split(tp, ",")
+		for i := range trusted {
+			trusted[i] = strings.TrimSpace(trusted[i])
+		}
+	}
+	if err := r.SetTrustedProxies(trusted); err != nil {
+		log.Fatalf("Failed to set trusted proxies: %v", err)
+	}
+
 	// health/root endpoint
 	r.GET("/", func(c *gin.Context) { c.String(200, "Backend online") })
 

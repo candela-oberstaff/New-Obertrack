@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { Task, User, TaskPriority, TaskStatus } from '../../../types'
 import { RichTextEditor } from '../RichTextEditor'
 import { ColumnType } from '../types'
+import { Select } from '../../ui/Select'
 import { X, Check } from 'lucide-react'
 
 interface TaskDetailEditFormProps {
@@ -86,26 +87,26 @@ export function TaskDetailEditForm({
       <div className={styles['form-row']}>
         <div className={styles['form-group']}>
           <label>Prioridad</label>
-          <select
+          <Select
+            fullWidth
             value={formData.priority}
-            onChange={(e) => setFormData({ ...formData, priority: e.target.value as TaskPriority })}
-          >
-            <option value="low">Baja</option>
-            <option value="medium">Media</option>
-            <option value="high">Alta</option>
-            <option value="urgent">Urgente</option>
-          </select>
+            onChange={(v) => setFormData({ ...formData, priority: v as TaskPriority })}
+            options={[
+              { value: 'low', label: 'Baja' },
+              { value: 'medium', label: 'Media' },
+              { value: 'high', label: 'Alta' },
+              { value: 'urgent', label: 'Urgente' },
+            ]}
+          />
         </div>
         <div className={styles['form-group']}>
           <label>Estado</label>
-          <select
+          <Select
+            fullWidth
             value={formData.status}
-            onChange={(e) => setFormData({ ...formData, status: e.target.value as TaskStatus })}
-          >
-            {columns.map(col => (
-              <option key={col.id} value={col.id}>{col.title}</option>
-            ))}
-          </select>
+            onChange={(v) => setFormData({ ...formData, status: v as TaskStatus })}
+            options={columns.map(col => ({ value: col.id, label: col.title }))}
+          />
         </div>
       </div>
       <div className={styles['form-row']}>

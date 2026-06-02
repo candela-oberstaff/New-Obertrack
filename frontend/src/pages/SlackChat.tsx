@@ -18,7 +18,7 @@ import { formatTime, highlightMentions, getUserColor } from '../components/Chat/
 import styles from './SlackChat.module.css'
 
 export default function SlackChat() {
-  const { user, token } = useAuth()
+  const { user } = useAuth()
   const {
     channels, selectedChannel, setSelectedChannel,
     messages, setMessages, pinnedMessages,
@@ -29,7 +29,7 @@ export default function SlackChat() {
     showThread, setShowThread, threadReplies, setThreadReplies,
     sendMessage, sendTypingIndicator, startRecording, stopRecording,
     editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels
-  } = useSlackChat(user as any, token)
+  } = useSlackChat(user as any)
 
   const [showNewChannelModal, setShowNewChannelModal] = useState(false)
   const [showChannelSettings, setShowChannelSettings] = useState(false)

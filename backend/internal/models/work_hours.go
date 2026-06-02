@@ -17,6 +17,7 @@ const (
 type WorkHour struct {
 	ID             uint           `gorm:"primaryKey" json:"id"`
 	UserID         uint           `gorm:"not null;uniqueIndex:idx_user_date" json:"user_id"`
+	TenantID       uint           `gorm:"index" json:"tenant_id"`
 	User           User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	WorkDate       time.Time      `gorm:"type:date;not null;uniqueIndex:idx_user_date" json:"work_date"`
 	WorkType       WorkType       `gorm:"type:varchar(20);not null;default:'complete'" json:"work_type"`

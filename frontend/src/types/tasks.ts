@@ -19,10 +19,60 @@ export interface User {
   country?: string
   city?: string
   location?: string
-  zoho_agent_id?: string
   created_at: string
   updated_at: string
   password?: string
+}
+
+export interface Tenant {
+  id: number
+  company_name: string
+  owner_name: string
+  owner_email: string
+  is_active: boolean
+  user_count: number
+  board_count: number
+  task_count: number
+  created_at: string
+}
+
+export interface EmployeeSummary {
+  id: number
+  name: string
+  email: string
+  avatar?: string
+  user_type: string
+  is_active: boolean
+  is_manager: boolean
+  hours_this_month: number
+  tasks_assigned: number
+  tasks_completed: number
+  last_active?: string | null
+}
+
+export interface EmployeeWorkHour {
+  id: number
+  work_date: string
+  work_type: string
+  hours_worked: number
+  approved: boolean
+  activities: string
+}
+
+export interface EmployeeTask {
+  id: number
+  title: string
+  status: string
+  completed: boolean
+  end_date?: string | null
+  board_name: string
+}
+
+export interface EmployeeTracking {
+  user: User
+  summary: EmployeeSummary
+  work_hours: EmployeeWorkHour[]
+  tasks: EmployeeTask[]
 }
 
 export interface Task {

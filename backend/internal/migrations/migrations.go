@@ -262,41 +262,129 @@ func Run(db *gorm.DB) error {
 			},
 		},
 		{
-			ID: "20260527_update_contacts_schema",
+			ID: "202605271200_add_tutorials",
 			Migrate: func(tx *gorm.DB) error {
-				log.Println("Migrating contacts schema updates (wa_id, company_name, parent_contact_id)...")
-				return tx.AutoMigrate(&models.Contact{})
+				log.Println("Creating tutorials table...")
+				return tx.AutoMigrate(&models.Tutorial{})
 			},
 			Rollback: func(tx *gorm.DB) error {
-				migrator := tx.Migrator()
-				if migrator.HasColumn(&models.Contact{}, "wa_id") {
-					migrator.DropColumn(&models.Contact{}, "wa_id")
+				return tx.Migrator().DropTable(&models.Tutorial{})
+			},
+		},
+		{
+			ID: "202605271600_add_tutorial_category_and_views",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding category to tutorials and creating tutorial_views...")
+				if err := tx.AutoMigrate(&models.Tutorial{}); err != nil {
+					return err
 				}
-				if migrator.HasColumn(&models.Contact{}, "company_name") {
-					migrator.DropColumn(&models.Contact{}, "company_name")
+				return tx.AutoMigrate(&models.TutorialView{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropTable(&models.TutorialView{}); err != nil {
+					return err
 				}
-				if migrator.HasColumn(&models.Contact{}, "parent_contact_id") {
-					migrator.DropColumn(&models.Contact{}, "parent_contact_id")
+				return tx.Migrator().DropColumn(&models.Tutorial{}, "category")
+			},
+		},
+		{
+			ID: "202605291200_add_tenant_id",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding tenant_id to boards, tasks, work_hours, channels, channel_messages and messages...")
+
+				if tx.Migrator().HasColumn(&models.Message{}, "company_id") && !tx.Migrator().HasColumn(&models.Message{}, "tenant_id") {
+					if err := tx.Migrator().RenameColumn(&models.Message{}, "company_id", "tenant_id"); err != nil {
+						return err
+					}
+				}
+
+				if err := tx.AutoMigrate(
+					&models.Board{},
+					&models.Task{},
+					&models.WorkHour{},
+					&models.Channel{},
+					&models.ChannelMessage{},
+					&models.Message{},
+				); err != nil {
+					return err
+				}
+
+				tenantExpr := "(SELECT CASE WHEN u.user_type = 'empleador' THEN u.id ELSE u.empleador_id END FROM users u WHERE u.id = %s)"
+
+				statements := []string{
+					fmt.Sprintf("UPDATE boards SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL OR tenant_id = 0", "boards.created_by"),
+					"UPDATE tasks SET tenant_id = (SELECT b.tenant_id FROM boards b WHERE b.id = tasks.board_id) WHERE tenant_id IS NULL OR tenant_id = 0",
+					fmt.Sprintf("UPDATE channels SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL OR tenant_id = 0", "channels.created_by"),
+					"UPDATE channel_messages SET tenant_id = (SELECT c.tenant_id FROM channels c WHERE c.id = channel_messages.channel_id) WHERE tenant_id IS NULL OR tenant_id = 0",
+					fmt.Sprintf("UPDATE work_hours SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL OR tenant_id = 0", "work_hours.user_id"),
+					fmt.Sprintf("UPDATE messages SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL", "messages.user_id"),
+				}
+
+				for _, sql := range statements {
+					if err := tx.Exec(sql).Error; err != nil {
+						return err
+					}
+				}
+
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, col := range []struct {
+					model interface{}
+					name  string
+				}{
+					{&models.Board{}, "tenant_id"},
+					{&models.Task{}, "tenant_id"},
+					{&models.WorkHour{}, "tenant_id"},
+					{&models.Channel{}, "tenant_id"},
+					{&models.ChannelMessage{}, "tenant_id"},
+				} {
+					if tx.Migrator().HasColumn(col.model, col.name) {
+						if err := tx.Migrator().DropColumn(col.model, col.name); err != nil {
+							return err
+						}
+					}
+				}
+				if tx.Migrator().HasColumn(&models.Message{}, "tenant_id") {
+					return tx.Migrator().RenameColumn(&models.Message{}, "tenant_id", "company_id")
 				}
 				return nil
 			},
-	},
-	{
-		ID: "202606011320_add_zoho_agent_id_to_users",
-		Migrate: func(tx *gorm.DB) error {
-			// If the column doesn't exist, add it
-			if !tx.Migrator().HasColumn(&models.User{}, "zoho_agent_id") {
-				if err := tx.Migrator().AddColumn(&models.User{}, "zoho_agent_id"); err != nil {
-					return err
+		},
+		{
+			ID: "202605291400_tenant_id_not_null",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Setting tenant_id NOT NULL on core tenant tables...")
+				for _, t := range []string{"boards", "tasks", "work_hours", "channels", "channel_messages"} {
+					if err := tx.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN tenant_id SET NOT NULL", t)).Error; err != nil {
+						return err
+					}
 				}
-			}
-			return nil
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, t := range []string{"boards", "tasks", "work_hours", "channels", "channel_messages"} {
+					if err := tx.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN tenant_id DROP NOT NULL", t)).Error; err != nil {
+						return err
+					}
+				}
+				return nil
+			},
 		},
-		Rollback: func(tx *gorm.DB) error {
-			return tx.Migrator().DropColumn(&models.User{}, "zoho_agent_id")
+		{
+			ID: "202605301200_add_user_token_version",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding token_version to users (session revocation)...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.User{}, "token_version") {
+					return tx.Migrator().DropColumn(&models.User{}, "token_version")
+				}
+				return nil
+			},
 		},
-	},
-	// Future migrations go here
+		// Future migrations go here
 	})
 
 	if err := m.Migrate(); err != nil {

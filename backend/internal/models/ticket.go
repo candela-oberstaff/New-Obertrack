@@ -7,17 +7,13 @@ import (
 )
 
 type Contact struct {
-	ID              uint           `gorm:"primaryKey" json:"id"`
-	Name            string         `gorm:"size:255" json:"name"`
-	Phone           string         `gorm:"size:50;index" json:"phone"`
-	WaID            string         `gorm:"size:100;index" json:"wa_id"` // WhatsApp internal ID (e.g. 123@lid or 123@c.us)
-	Email           string         `gorm:"size:255;index" json:"email"`
-	CompanyName     string         `gorm:"size:255" json:"company_name"`     // Optional company name
-	ParentContactID *uint          `gorm:"index" json:"parent_contact_id"`    // For linking secondary contacts to a primary company contact
-	ParentContact   *Contact       `gorm:"foreignKey:ParentContactID" json:"parent_contact,omitempty"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	Name      string         `gorm:"size:255" json:"name"`
+	Phone     string         `gorm:"size:50;index" json:"phone"`
+	Email     string         `gorm:"size:255;index" json:"email"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (Contact) TableName() string {
@@ -38,7 +34,6 @@ type Ticket struct {
 	ContactID   uint           `gorm:"not null;index" json:"contact_id"`
 	Contact     Contact        `gorm:"foreignKey:ContactID" json:"contact,omitempty"`
 	Title       string         `gorm:"size:255" json:"title"`
-	Channel     string         `gorm:"-" json:"channel,omitempty"` // Zoho channel: WhatsApp, Email, etc.
 	Stage       TicketStage    `gorm:"type:varchar(50);default:'new';index" json:"stage"`
 	Status      string         `gorm:"size:50;default:'open'" json:"status"` // open/closed
 	AssignedTo  *uint          `gorm:"index" json:"assigned_to,omitempty"`
@@ -48,8 +43,6 @@ type Ticket struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Messages []TicketMessage `json:"messages,omitempty"`
-	ZohoID   string          `gorm:"-" json:"zoho_id"`
-	Sentiment   string         `gorm:"-" json:"sentiment,omitempty"`
 }
 
 func (Ticket) TableName() string {

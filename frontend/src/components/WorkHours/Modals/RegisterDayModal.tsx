@@ -1,5 +1,6 @@
 import { X, Check, AlertCircle } from 'lucide-react'
 import { RichTextEditor } from '../../Tasks/RichTextEditor'
+import { Select } from '../../ui/Select'
 import styles from '../../../pages/WorkHours.module.css'
 
 interface RegisterDayModalProps {
@@ -75,37 +76,41 @@ export function RegisterDayModal({
             <>
               <div className={styles['form-group']}>
                 <label>Motivo de ausencia</label>
-                <select
-                  value={formData.absence_reason}
-                  onChange={(e) => setFormData({ ...formData, absence_reason: e.target.value })}
+                <Select
+                  fullWidth
                   required
-                >
-                  <option value="">Selecciona un motivo</option>
-                  <option value="enfermedad">Enfermedad</option>
-                  <option value="cita_medica">Cita Médica</option>
-                  <option value="emergencia_familiar">Emergencia Familiar</option>
-                  <option value="vacaciones">Vacaciones</option>
-                  <option value="permiso_personal">Permiso Personal</option>
-                  <option value="otro">Otro</option>
-                </select>
+                  value={formData.absence_reason}
+                  onChange={(v) => setFormData({ ...formData, absence_reason: String(v) })}
+                  placeholder="Selecciona un motivo"
+                  options={[
+                    { value: 'enfermedad', label: 'Enfermedad' },
+                    { value: 'cita_medica', label: 'Cita Médica' },
+                    { value: 'emergencia_familiar', label: 'Emergencia Familiar' },
+                    { value: 'vacaciones', label: 'Vacaciones' },
+                    { value: 'permiso_personal', label: 'Permiso Personal' },
+                    { value: 'otro', label: 'Otro' },
+                  ]}
+                />
               </div>
 
               <div className={styles['form-group']}>
                 <label>Horas de ausencia</label>
-                <select
-                  value={formData.absence_hours}
-                  onChange={(e) => setFormData({ ...formData, absence_hours: Number(e.target.value) })}
+                <Select
+                  fullWidth
                   required
-                >
-                  <option value={1}>1 hora</option>
-                  <option value={2}>2 horas</option>
-                  <option value={3}>3 horas</option>
-                  <option value={4}>4 horas</option>
-                  <option value={5}>5 horas</option>
-                  <option value={6}>6 horas</option>
-                  <option value={7}>7 horas</option>
-                  <option value={8}>8 horas (día completo)</option>
-                </select>
+                  value={formData.absence_hours}
+                  onChange={(v) => setFormData({ ...formData, absence_hours: Number(v) })}
+                  options={[
+                    { value: 1, label: '1 hora' },
+                    { value: 2, label: '2 horas' },
+                    { value: 3, label: '3 horas' },
+                    { value: 4, label: '4 horas' },
+                    { value: 5, label: '5 horas' },
+                    { value: 6, label: '6 horas' },
+                    { value: 7, label: '7 horas' },
+                    { value: 8, label: '8 horas (día completo)' },
+                  ]}
+                />
                 <p className={styles['form-hint']}>
                   Horas a registrar: {Math.max(0, 8 - (formData.absence_hours || 0))}h
                 </p>

@@ -2,7 +2,10 @@ import type { Task, TaskAttachment } from '../../../types'
 import { ColumnType } from '../types'
 import { TaskAttachmentsSection } from './TaskAttachmentsSection'
 import { TaskCommentsSection } from './TaskCommentsSection'
+import { Select } from '../../ui/Select'
+import { useConfirm } from '../../ui/ConfirmProvider'
 import { Pencil, Trash2 } from 'lucide-react'
+import { sanitizeHtml } from '../../../utils/sanitize'
 
 type TaskComment = NonNullable<Task['comments']>[number]
 
@@ -37,6 +40,8 @@ export function TaskDetailView({
   onAttachmentAdded,
   onAttachmentDeleted
 }: TaskDetailViewProps) {
+  const confirm = useConfirm()
+
   const getPriorityColor = (priority: string) => {
     const colors: Record<string, string> = {
       urgent: '#ef4444',
@@ -47,24 +52,24 @@ export function TaskDetailView({
     return colors[priority] || '#6b7280'
   }
 
-  const handleDelete = () => {
-    if (confirm('¿Eliminar esta tarea?')) {
-      onDelete()
-    }
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: 'Eliminar tarea',
+      message: '¿Seguro que deseas eliminar esta tarea? Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (ok) onDelete()
   }
 
   return (
     <>
       <div className={styles['task-status-bar']}>
-        <select
+        <Select
           value={task.status}
-          onChange={(e) => onStatusChange(e.target.value)}
-          className={styles['status-select']}
-        >
-          {columns.map((col) => (
-            <option key={col.id} value={col.id}>{col.title}</option>
-          ))}
-        </select>
+          onChange={(v) => onStatusChange(String(v))}
+          options={columns.map((col) => ({ value: col.id, label: col.title }))}
+        />
         <span
           className={styles['priority-badge']}
           style={{ backgroundColor: getPriorityColor(task.priority) }}
@@ -78,7 +83,7 @@ export function TaskDetailView({
       <div className={styles['task-section']}>
         <h4>Descripción</h4>
         {task.description ? (
-          <div className={styles['task-description-html']} dangerouslySetInnerHTML={{ __html: task.description }} />
+          <div className={styles['task-description-html']} dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.description) }} />
         ) : (
           <p>Sin descripción</p>
         )}

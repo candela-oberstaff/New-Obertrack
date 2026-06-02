@@ -12,6 +12,7 @@ type Board struct {
 	Description string         `gorm:"type:text" json:"description"`
 	Color       string         `gorm:"size:20;default:'#3b82f6'" json:"color"`
 	CreatedBy   uint           `gorm:"not null;index" json:"created_by"`
+	TenantID    uint           `gorm:"index" json:"tenant_id"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
@@ -66,6 +67,7 @@ type Task struct {
 	Completed   bool           `gorm:"default:false" json:"completed"`
 	CreatedBy   uint           `gorm:"not null;index" json:"created_by"`
 	BoardID     uint           `gorm:"index:idx_status_board" json:"board_id"`
+	TenantID    uint           `gorm:"index" json:"tenant_id"`
 	Order       int            `gorm:"default:0" json:"order"`
 	VisiblePara *uint          `gorm:"index" json:"visible_para,omitempty"`
 	Creator     User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`

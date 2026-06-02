@@ -1,5 +1,8 @@
+import { Plus, X } from 'lucide-react'
 import type { User } from '../../../types'
 import styles from '../../../pages/Tasks.module.css'
+
+const DEFAULT_PHASE_COLOR = '#6b7280'
 
 interface PhaseInput {
   name: string
@@ -42,6 +45,30 @@ export function BoardModal(props: BoardModalProps) {
   } = props
 
   if (!isOpen) return null
+
+  // For the native color input (only understands hex), fall back to a default
+  // when a phase color is a CSS variable like 'var(--primary)'.
+  const colorForInput = (color: string) =>
+    color?.startsWith('#') ? color : DEFAULT_PHASE_COLOR
+
+  const updatePhase = (idx: number, patch: Partial<PhaseInput>) => {
+    const phases = newBoardData.phases.map((p, i) => (i === idx ? { ...p, ...patch } : p))
+    setNewBoardData({ ...newBoardData, phases })
+  }
+
+  const addPhase = () => {
+    setNewBoardData({
+      ...newBoardData,
+      phases: [...newBoardData.phases, { name: '', color: DEFAULT_PHASE_COLOR }],
+    })
+  }
+
+  const removePhase = (idx: number) => {
+    setNewBoardData({
+      ...newBoardData,
+      phases: newBoardData.phases.filter((_, i) => i !== idx),
+    })
+  }
 
   return (
     <div className={styles['modal-overlay']} onClick={onClose}>
@@ -132,14 +159,39 @@ export function BoardModal(props: BoardModalProps) {
 
           <div className={styles['form-group']}>
             <label>Fases del tablero</label>
-            <div className={styles['phases-list']} style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '12px' }}>
+            <div className={styles['phases-list']} style={{ maxHeight: '220px', overflowY: 'auto', marginBottom: '12px' }}>
               {newBoardData.phases.map((phase: PhaseInput, idx: number) => (
-                <div key={idx} className={styles['phase-item']}>
-                  <div className={styles['phase-color']} style={{ backgroundColor: phase.color }}></div>
-                  <span className={styles['phase-name']}>{phase.name}</span>
+                <div key={idx} className={styles['phase-item']} style={{ cursor: 'default' }}>
+                  <input
+                    type="color"
+                    value={colorForInput(phase.color)}
+                    onChange={(e) => updatePhase(idx, { color: e.target.value })}
+                    title="Color de la fase"
+                    style={{ width: '32px', height: '32px', padding: 0, border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0 }}
+                  />
+                  <input
+                    type="text"
+                    value={phase.name}
+                    onChange={(e) => updatePhase(idx, { name: e.target.value })}
+                    placeholder="Nombre de la fase"
+                    className={styles['phase-name']}
+                    style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px 10px' }}
+                  />
+                  <button
+                    type="button"
+                    className={styles['phase-delete']}
+                    onClick={() => removePhase(idx)}
+                    disabled={newBoardData.phases.length <= 1}
+                    title={newBoardData.phases.length <= 1 ? 'Debe haber al menos una fase' : 'Eliminar fase'}
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
               ))}
             </div>
+            <button type="button" className={styles['btn-secondary'] || 'btn-secondary'} onClick={addPhase} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '8px 12px' }}>
+              <Plus size={16} /> Agregar fase
+            </button>
           </div>
 
           <div className={styles['modal-actions']}>

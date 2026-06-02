@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react'
 import { Bold, Italic, Underline, List, ListOrdered, Link as LinkIcon, Heading2, Type } from 'lucide-react'
+import { sanitizeHtml } from '../../utils/sanitize'
 import styles from './RichTextEditor.module.css'
 
 interface RichTextEditorProps {
@@ -15,8 +16,9 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
   // Sync value from prop to innerHTML
   useEffect(() => {
     if (editorRef.current && !isInternalChange.current) {
-      if (editorRef.current.innerHTML !== value) {
-        editorRef.current.innerHTML = value || ''
+      const safe = sanitizeHtml(value)
+      if (editorRef.current.innerHTML !== safe) {
+        editorRef.current.innerHTML = safe
       }
     }
     isInternalChange.current = false

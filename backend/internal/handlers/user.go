@@ -16,7 +16,7 @@ type UserHandler struct {
 
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" binding:"required"`
-	NewPassword     string `json:"new_password" binding:"required,min=6"`
+	NewPassword     string `json:"new_password" binding:"required,min=8"`
 }
 
 func NewUserHandler(s service.UserService) *UserHandler {
@@ -44,11 +44,7 @@ func (h *UserHandler) GetAll(c *gin.Context) {
 
 	var companyID uint
 	if !middleware.IsSuperadmin(c) {
-		companyID = middleware.GetUserID(c)
-		userRole := middleware.GetUserRole(c)
-		if userRole == "profesional" {
-			companyID = middleware.GetEmpleadorID(c)
-		}
+		companyID = middleware.GetTenantID(c)
 	}
 
 	users, total, err := h.service.GetAll(role, isManager, companyID, offset, limit)
@@ -72,9 +68,17 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.GetByID(uint(id))
+	requesterID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+
+	user, err := h.service.GetByID(uint(id), requesterID, tenantID, isSuperadmin)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		status := http.StatusNotFound
+		if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -157,11 +161,19 @@ func (h *UserHandler) Update(c *gin.Context) {
 		updates["location"] = req.Location
 	}
 
-	user, err := h.service.Update(uint(id), updates)
+	requesterID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	user, err := h.service.Update(uint(id), requesterID, tenantID, role, isManager, isSuperadmin, updates)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "User not found" {
 			status = http.StatusNotFound
+		} else if err.Error() == "Access denied" {
+			status = http.StatusForbidden
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
@@ -177,8 +189,20 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Delete(uint(id)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+	requesterID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	if err := h.service.Delete(uint(id), requesterID, tenantID, role, isManager, isSuperadmin); err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "User not found" {
+			status = http.StatusNotFound
+		} else if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -192,7 +216,13 @@ func (h *UserHandler) ToggleStatus(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.ToggleStatus(uint(id))
+	requesterID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	user, err := h.service.ToggleStatus(uint(id), requesterID, tenantID, role, isManager, isSuperadmin)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "User not found" {
@@ -212,7 +242,13 @@ func (h *UserHandler) PromoteToManager(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.PromoteToManager(uint(id))
+	requesterID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	user, err := h.service.PromoteToManager(uint(id), requesterID, tenantID, role, isManager, isSuperadmin)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "User not found" {
@@ -256,7 +292,13 @@ func (h *UserHandler) AssignToManager(c *gin.Context) {
 		return
 	}
 
-	professional, err := h.service.AssignToManager(uint(professionalID), req.ManagerID)
+	requesterID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	professional, err := h.service.AssignToManager(uint(professionalID), req.ManagerID, requesterID, tenantID, role, isManager, isSuperadmin)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Professional not found" || err.Error() == "Manager not found" {

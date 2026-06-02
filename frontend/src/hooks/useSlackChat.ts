@@ -3,8 +3,9 @@ import { channelService, uploadService } from '../services/api'
 import type { User } from '../types'
 import type { Channel, Message, ChannelMember } from '../types/chat'
 import { playNotificationSound } from '../components/Chat/ChatUtils'
+import { useConfirm } from '../components/ui/ConfirmProvider'
 
-export function useSlackChat(user: User | null, token: string | null) {
+export function useSlackChat(user: User | null) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -20,6 +21,8 @@ export function useSlackChat(user: User | null, token: string | null) {
   const [showThread, setShowThread] = useState<Message | null>(null)
   const [threadReplies, setThreadReplies] = useState<Message[]>([])
   
+  const confirm = useConfirm()
+
   const wsRef = useRef<WebSocket | null>(null)
   const typingTimeoutRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -85,8 +88,9 @@ export function useSlackChat(user: User | null, token: string | null) {
   const connectWebSocket = useCallback(() => {
     if (wsRef.current) wsRef.current.close()
 
+    // Auth travels via the httpOnly cookie on the same-origin WS handshake.
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/ws/channels?token=${token}`
+    const wsUrl = `${protocol}//${window.location.host}/ws/channels`
     const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => setIsConnected(true)
@@ -142,7 +146,7 @@ export function useSlackChat(user: User | null, token: string | null) {
     ws.onclose = () => setIsConnected(false)
     ws.onerror = () => setIsConnected(false)
     wsRef.current = ws
-  }, [token, selectedChannel, user?.id, handleTyping, fetchPinnedMessages])
+  }, [selectedChannel, user?.id, handleTyping, fetchPinnedMessages])
 
   useEffect(() => {
     fetchChannels()
@@ -213,10 +217,16 @@ export function useSlackChat(user: User | null, token: string | null) {
   }
 
   const deleteMessage = async (id: number) => {
-    if (selectedChannel && confirm('¿Eliminar mensaje?')) {
-      setMessages(prev => prev.map(m => m.id === id ? { ...m, is_deleted: true, content: '[Mensaje eliminado]' } : m))
-      try { await channelService.deleteMessage(selectedChannel.id, id) } catch (e) { console.error(e) }
-    }
+    if (!selectedChannel) return
+    const ok = await confirm({
+      title: 'Eliminar mensaje',
+      message: '¿Eliminar este mensaje?',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!ok) return
+    setMessages(prev => prev.map(m => m.id === id ? { ...m, is_deleted: true, content: '[Mensaje eliminado]' } : m))
+    try { await channelService.deleteMessage(selectedChannel.id, id) } catch (e) { console.error(e) }
   }
 
   const pinMessage = async (id: number) => {

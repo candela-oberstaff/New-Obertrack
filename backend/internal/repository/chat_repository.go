@@ -30,16 +30,13 @@ func (r *chatRepository) FindAllWithFilters(filters map[string]interface{}, limi
 	var messages []models.Message
 	query := r.db.Model(&models.Message{})
 
-	if employerID, ok := filters["employer_id"].(uint); ok {
-		query = query.Joins("JOIN users ON users.id = messages.user_id").
-			Where("users.empleador_id = ? OR (messages.company_id = ? AND messages.company_id IS NOT NULL)", employerID, employerID)
+	if tenantID, ok := filters["tenant_id"].(uint); ok {
+		query = query.Where("messages.tenant_id = ?", tenantID)
+	} else if employerID, ok := filters["employer_id"].(uint); ok {
+		query = query.Where("messages.tenant_id = ?", employerID)
 	} else {
 		if userIDs, ok := filters["user_ids"].([]uint); ok {
 			query = query.Where("user_id IN (?)", userIDs)
-		}
-
-		if companyID, ok := filters["company_id"].(uint); ok {
-			query = query.Where("company_id = ?", companyID)
 		}
 
 		if userID, ok := filters["user_id"].(uint); ok {

@@ -16,10 +16,10 @@ import (
 type WorkHourService interface {
 	GetAll(userID uint, role string, isSuperadmin bool, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
 	Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error)
-	Update(id uint, reqData map[string]interface{}) (*models.WorkHour, error)
+	Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error)
 	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool) error
 	GetSummary(userID uint, role string, isSuperadmin bool) (map[string]float64, error)
-	GetPending(empleadorID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error)
+	GetPending(tenantID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error)
 	SendReportEmail(employerID uint, month int, year int) error
 	GetPDFReportBytes(userID uint, month int, year int) ([]byte, string, error)
 	GetExcelReportBytes(userID uint, month int, year int) ([]byte, string, error)
@@ -133,8 +133,11 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 		hoursWorked = 8
 	}
 
+	creator, _ := s.userRepo.GetByID(userID)
+
 	workHour := &models.WorkHour{
 		UserID:        userID,
+		TenantID:      models.TenantForUser(creator),
 		WorkDate:      workDate,
 		WorkType:      workType,
 		HoursWorked:   hoursWorked,
@@ -192,10 +195,25 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 	return finalWH, err
 }
 
-func (s *workHourService) Update(id uint, reqData map[string]interface{}) (*models.WorkHour, error) {
+func (s *workHourService) Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error) {
 	workHour, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, errors.New("Work hour not found")
+	}
+
+	if !isSuperadmin {
+		if tenantID == 0 || workHour.TenantID != tenantID {
+			return nil, errors.New("Access denied")
+		}
+		allowed := workHour.UserID == userID || isEmployerRole(role)
+		if !allowed && isManager {
+			if owner, err := s.userRepo.GetByID(workHour.UserID); err == nil && owner.ManagerID != nil && *owner.ManagerID == userID {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return nil, errors.New("Access denied")
+		}
 	}
 
 	workDateStr := s.parseStringVal(reqData["work_date"])
@@ -337,7 +355,7 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool
 
 	if !isSuperadmin {
 		if role == string(models.UserTypeEmployer) || role == "empleador" {
-			filters["employer_id"] = userID
+			filters["tenant_id"] = userID
 		} else {
 			filters["user_id"] = userID
 		}
@@ -346,7 +364,7 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool
 	return s.repo.GetSummary(filters)
 }
 
-func (s *workHourService) GetPending(empleadorID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error) {
+func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error) {
 	filters := make(map[string]interface{})
 	filters["approved"] = false
 
@@ -362,14 +380,14 @@ func (s *workHourService) GetPending(empleadorID, userID uint, role string, isSu
 	}
 
 	if role == "empresa" || role == "empleador" {
-		empleadorID = userID
+		tenantID = userID
 	}
 
-	if empleadorID == 0 {
+	if tenantID == 0 {
 		return nil, errors.New("Only employers can access this resource")
 	}
 
-	filters["employer_id"] = empleadorID
+	filters["tenant_id"] = tenantID
 
 	res, _, err := s.repo.FindAll(filters, 0, 1000)
 	return res, err

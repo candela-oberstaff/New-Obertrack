@@ -6,6 +6,7 @@ import SurveyBuilder from './SurveyBuilder';
 import SurveyResults from './SurveyResults';
 import SurveyCard from './components/SurveyCard';
 import { surveyService, Survey } from '../../../../services/surveyService';
+import { useConfirm } from '../../../ui/ConfirmProvider';
 
 interface SurveysProps {
   setHeaderAction: (node: React.ReactNode) => void;
@@ -17,6 +18,7 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
   const [editingSurvey, setEditingSurvey] = useState<Survey | null>(null);
   const [viewingResultsFor, setViewingResultsFor] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const confirm = useConfirm();
 
   const fetchSurveys = async () => {
     try {
@@ -84,14 +86,19 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
   };
 
   const handleDeleteSurvey = async (surveyId: number) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta encuesta?')) {
-      try {
-        await surveyService.deleteSurvey(surveyId);
-        fetchSurveys();
-      } catch (err) {
-        console.error('Error deleting survey', err);
-        alert('Error al eliminar la encuesta');
-      }
+    const ok = await confirm({
+      title: 'Eliminar encuesta',
+      message: '¿Estás seguro de que deseas eliminar esta encuesta?',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await surveyService.deleteSurvey(surveyId);
+      fetchSurveys();
+    } catch (err) {
+      console.error('Error deleting survey', err);
+      alert('Error al eliminar la encuesta');
     }
   };
 

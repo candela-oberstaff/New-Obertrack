@@ -5,6 +5,7 @@ import { emailService } from '../../../../services/emailService';
 import CampaignGrid from './components/CampaignGrid';
 import styles from './EmailMarketing.module.css';
 import commonStyles from '../Tools.module.css';
+import { useConfirm } from '../../../ui/ConfirmProvider';
 
 interface EmailMarketingProps {
   onToggleFullScreen: (isFull: boolean) => void;
@@ -17,6 +18,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
   const [availableRecipients, setAvailableRecipients] = useState<any[]>([]);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const confirm = useConfirm();
 
   useEffect(() => {
     fetchCampaigns();
@@ -205,14 +207,19 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
   };
 
   const handleDelete = async (campaignId: number) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta campaña?')) {
-      try {
-        await emailService.deleteCampaign(campaignId);
-        fetchCampaigns();
-      } catch (error) {
-        console.error("Error deleting campaign:", error);
-        alert("Error al eliminar la campaña.");
-      }
+    const ok = await confirm({
+      title: 'Eliminar campaña',
+      message: '¿Estás seguro de que deseas eliminar esta campaña?',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await emailService.deleteCampaign(campaignId);
+      fetchCampaigns();
+    } catch (error) {
+      console.error("Error deleting campaign:", error);
+      alert("Error al eliminar la campaña.");
     }
   };
 

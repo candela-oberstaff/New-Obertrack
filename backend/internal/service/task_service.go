@@ -13,15 +13,15 @@ import (
 )
 
 type TaskService interface {
-	GetAll(userID uint, role string, isManager, isSuperadmin bool, empleadorID uint, boardIDStr, status, priority string, offset, limit int) ([]models.Task, int64, error)
-	GetByID(id uint) (*models.Task, error)
-	Create(userID uint, isSuperadmin bool, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error)
-	Update(id uint, updaterUserID uint, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error)
-	Delete(id uint) error
-	ToggleCompletion(id uint, updaterUserID uint) (*models.Task, error)
-	AddComment(id uint, userID uint, content string) (*models.Comment, error)
-	AddAttachment(taskID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint) (*models.TaskAttachment, error)
-	DeleteAttachment(attachmentID uint) error
+	GetAll(userID uint, role string, isManager, isSuperadmin bool, tenantID uint, boardIDStr, status, priority string, offset, limit int) ([]models.Task, int64, error)
+	GetByID(id uint, tenantID uint, isSuperadmin bool) (*models.Task, error)
+	Create(userID uint, isSuperadmin bool, tenantID uint, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error)
+	Update(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error)
+	Delete(id uint, tenantID uint, userID uint, role string, isManager, isSuperadmin bool) error
+	ToggleCompletion(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool) (*models.Task, error)
+	AddComment(id uint, tenantID uint, userID uint, content string, isSuperadmin bool) (*models.Comment, error)
+	AddAttachment(taskID uint, tenantID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint, isSuperadmin bool) (*models.TaskAttachment, error)
+	DeleteAttachment(attachmentID uint, tenantID uint, isSuperadmin bool) error
 }
 
 type taskService struct {
@@ -30,6 +30,74 @@ type taskService struct {
 	boardRepo     repository.BoardRepository
 	notifSvc      NotificationService
 	googleChatSvc GoogleChatService
+}
+
+func (s *taskService) authorizeBoardTenant(boardID, tenantID uint, isSuperadmin bool) error {
+	if isSuperadmin {
+		return nil
+	}
+
+	board, err := s.boardRepo.GetByID(boardID)
+	if err != nil {
+		return errors.New("El tablero especificado no existe o fue eliminado")
+	}
+
+	if board.CreatedBy == tenantID {
+		return nil
+	}
+	if board.Creator.EmpleadorID != nil && *board.Creator.EmpleadorID == tenantID {
+		return nil
+	}
+
+	return errors.New("No tienes permiso para acceder a ese tablero")
+}
+
+func (s *taskService) authorizeTaskTenant(task *models.Task, tenantID uint, isSuperadmin bool) error {
+	if isSuperadmin {
+		return nil
+	}
+
+	board, err := s.boardRepo.GetByID(task.BoardID)
+	if err != nil {
+		return errors.New("Tarea no encontrada")
+	}
+
+	if board.CreatedBy == tenantID {
+		return nil
+	}
+	if board.Creator.EmpleadorID != nil && *board.Creator.EmpleadorID == tenantID {
+		return nil
+	}
+
+	return errors.New("No tienes permiso para acceder a esta tarea")
+}
+
+func (s *taskService) canModifyTask(task *models.Task, userID uint, role string, isManager bool) bool {
+	if isEmployerRole(role) || isManager {
+		return true
+	}
+	if task.CreatedBy == userID {
+		return true
+	}
+	for _, a := range task.Assignees {
+		if a.ID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *taskService) authorizeTaskByID(id, tenantID uint, isSuperadmin bool) (*models.Task, error) {
+	task, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("Tarea no encontrada")
+	}
+
+	if err := s.authorizeTaskTenant(task, tenantID, isSuperadmin); err != nil {
+		return nil, err
+	}
+
+	return task, nil
 }
 
 func NewTaskService(
@@ -48,7 +116,7 @@ func NewTaskService(
 	}
 }
 
-func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin bool, empleadorID uint, boardIDStr, status, priority string, offset, limit int) ([]models.Task, int64, error) {
+func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin bool, tenantID uint, boardIDStr, status, priority string, offset, limit int) ([]models.Task, int64, error) {
 	filters := make(map[string]interface{})
 
 	if boardIDStr != "" && boardIDStr != "all" {
@@ -59,20 +127,13 @@ func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin b
 	}
 
 	if !isSuperadmin {
-		companyID := userID
-		if role == string(models.UserTypeProfessional) || role == "profesional" {
-			companyID = empleadorID
-		}
-		if companyID > 0 {
-			filters["company_id"] = companyID
+		if tenantID > 0 {
+			filters["tenant_id"] = tenantID
 		}
 
 		if role == string(models.UserTypeProfessional) || role == "profesional" {
 			filters["assignee_id"] = userID
 			filters["created_by"] = userID
-		} else if (role == string(models.UserTypeEmployer) || role == "empleador") && empleadorID > 0 {
-			// This logic could be a repository method for "FindAllByEmployer"
-			filters["employer_id"] = empleadorID
 		} else if !isManager {
 			filters["created_by"] = userID
 		}
@@ -88,8 +149,12 @@ func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin b
 	return s.repo.FindAll(filters, offset, limit)
 }
 
-func (s *taskService) GetByID(id uint) (*models.Task, error) {
-	return s.repo.GetByID(id)
+func (s *taskService) GetByID(id uint, tenantID uint, isSuperadmin bool) (*models.Task, error) {
+	task, err := s.authorizeTaskByID(id, tenantID, isSuperadmin)
+	if err != nil {
+		return nil, err
+	}
+	return task, nil
 }
 
 func (s *taskService) validateAssignees(boardID uint, assignees []uint, isSuperadmin bool) error {
@@ -122,7 +187,7 @@ func (s *taskService) validateAssignees(boardID uint, assignees []uint, isSupera
 	return nil
 }
 
-func (s *taskService) Create(userID uint, isSuperadmin bool, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error) {
+func (s *taskService) Create(userID uint, isSuperadmin bool, tenantID uint, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error) {
 
 	if title == "" {
 		return nil, nil, errors.New("Title is required")
@@ -130,6 +195,12 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, title, description,
 
 	if boardID == 0 {
 		return nil, nil, errors.New("Debes seleccionar un tablero para crear una tarea")
+	}
+
+	if boardID > 0 {
+		if err := s.authorizeBoardTenant(boardID, tenantID, isSuperadmin); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	if len(assignees) > 0 && boardID > 0 {
@@ -157,6 +228,11 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, title, description,
 		}
 	}
 
+	var boardTenant uint
+	if b, err := s.boardRepo.GetByID(boardID); err == nil {
+		boardTenant = b.TenantID
+	}
+
 	task := &models.Task{
 		Title:       utils.SanitizeHTML(title),
 		Description: utils.SanitizeHTML(description),
@@ -164,6 +240,7 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, title, description,
 		Priority:    models.PriorityMedium,
 		CreatedBy:   userID,
 		BoardID:     boardID,
+		TenantID:    boardTenant,
 	}
 
 	if priority != "" {
@@ -252,10 +329,14 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, title, description,
 	return finalTask, finalTask.Assignees, nil
 }
 
-func (s *taskService) Update(id uint, updaterUserID uint, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error) {
-	task, err := s.repo.GetByID(id)
+func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error) {
+	task, err := s.authorizeTaskByID(id, tenantID, isSuperadmin)
 	if err != nil {
-		return nil, nil, errors.New("Task not found")
+		return nil, nil, err
+	}
+
+	if !isSuperadmin && !s.canModifyTask(task, updaterUserID, role, isManager) {
+		return nil, nil, errors.New("Access denied")
 	}
 
 	// Keep track of assignees before update (to detect who is new vs existing)
@@ -398,16 +479,27 @@ func (s *taskService) Update(id uint, updaterUserID uint, isSuperadmin bool, req
 	return task, task.Assignees, nil
 }
 
-func (s *taskService) Delete(id uint) error {
+func (s *taskService) Delete(id uint, tenantID uint, userID uint, role string, isManager, isSuperadmin bool) error {
+	task, err := s.authorizeTaskByID(id, tenantID, isSuperadmin)
+	if err != nil {
+		return err
+	}
+	if !isSuperadmin && !s.canModifyTask(task, userID, role, isManager) {
+		return errors.New("Access denied")
+	}
 	// Delete related notifications
 	_ = s.notifSvc.DeleteByTaskID(id)
 	return s.repo.Delete(id)
 }
 
-func (s *taskService) ToggleCompletion(id uint, updaterUserID uint) (*models.Task, error) {
-	task, err := s.repo.GetByID(id)
+func (s *taskService) ToggleCompletion(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool) (*models.Task, error) {
+	task, err := s.authorizeTaskByID(id, tenantID, isSuperadmin)
 	if err != nil {
-		return nil, errors.New("Task not found")
+		return nil, err
+	}
+
+	if !isSuperadmin && !s.canModifyTask(task, updaterUserID, role, isManager) {
+		return nil, errors.New("Access denied")
 	}
 
 	completed := !task.Completed
@@ -508,10 +600,9 @@ func (s *taskService) ToggleCompletion(id uint, updaterUserID uint) (*models.Tas
 	return task, nil
 }
 
-func (s *taskService) AddComment(id uint, userID uint, content string) (*models.Comment, error) {
-	_, err := s.repo.GetByID(id)
-	if err != nil {
-		return nil, errors.New("Task not found")
+func (s *taskService) AddComment(id uint, tenantID uint, userID uint, content string, isSuperadmin bool) (*models.Comment, error) {
+	if _, err := s.authorizeTaskByID(id, tenantID, isSuperadmin); err != nil {
+		return nil, err
 	}
 
 	comment := &models.Comment{
@@ -527,7 +618,11 @@ func (s *taskService) AddComment(id uint, userID uint, content string) (*models.
 	return s.repo.GetComment(comment.ID)
 }
 
-func (s *taskService) AddAttachment(taskID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint) (*models.TaskAttachment, error) {
+func (s *taskService) AddAttachment(taskID uint, tenantID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint, isSuperadmin bool) (*models.TaskAttachment, error) {
+	if _, err := s.authorizeTaskByID(taskID, tenantID, isSuperadmin); err != nil {
+		return nil, err
+	}
+
 	attachment := &models.TaskAttachment{
 		TaskID:     taskID,
 		FileName:   fileName,
@@ -543,9 +638,12 @@ func (s *taskService) AddAttachment(taskID uint, fileName, fileURL string, fileS
 	return attachment, nil
 }
 
-func (s *taskService) DeleteAttachment(attachmentID uint) error {
+func (s *taskService) DeleteAttachment(attachmentID uint, tenantID uint, isSuperadmin bool) error {
 	attachment, err := s.repo.GetAttachmentByID(attachmentID)
 	if err != nil {
+		return err
+	}
+	if _, err := s.authorizeTaskByID(attachment.TaskID, tenantID, isSuperadmin); err != nil {
 		return err
 	}
 	return s.repo.DeleteAttachment(attachment)

@@ -16,6 +16,8 @@ interface UseBoardsReturn {
   fetchPublicBoards: () => Promise<void>
   updateBoardMembers: (boardId: number, memberIds: number[]) => Promise<void>
   reorderPhases: (boardId: number, phaseIds: number[]) => Promise<void>
+  addPhase: (boardId: number, phase: { name: string; color?: string }) => Promise<void>
+  removePhase: (boardId: number, phaseId: number) => Promise<void>
   newBoardData: CreateBoardInput
   setNewBoardData: React.Dispatch<React.SetStateAction<CreateBoardInput>>
 }
@@ -164,6 +166,18 @@ export function useBoards(): UseBoardsReturn {
     await fetchBoards()
   }, [fetchBoards])
 
+  const addPhase = useCallback(async (boardId: number, phase: { name: string; color?: string }) => {
+    const updated = await boardService.addPhase(boardId, phase)
+    setBoards((prev) => prev.map((b) => (b.id === boardId ? updated : b)))
+    setSelectedBoardState((current) => (current?.id === boardId ? updated : current))
+  }, [])
+
+  const removePhase = useCallback(async (boardId: number, phaseId: number) => {
+    const updated = await boardService.removePhase(boardId, phaseId)
+    setBoards((prev) => prev.map((b) => (b.id === boardId ? updated : b)))
+    setSelectedBoardState((current) => (current?.id === boardId ? updated : current))
+  }, [])
+
   return {
     boards,
     selectedBoard,
@@ -178,6 +192,8 @@ export function useBoards(): UseBoardsReturn {
     fetchPublicBoards,
     updateBoardMembers,
     reorderPhases,
+    addPhase,
+    removePhase,
     newBoardData,
     setNewBoardData,
   }

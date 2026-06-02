@@ -31,20 +31,26 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 )
 
+type channelRegistration struct {
+	conn   *websocket.Conn
+	userID uint
+}
+
 type ChannelHub struct {
 	clients        map[*websocket.Conn]uint
 	broadcast      chan ChannelWSMessage
-	register       chan *websocket.Conn
+	register       chan channelRegistration
 	unregister     chan *websocket.Conn
 	mu             sync.RWMutex
 	MessageHandler func(msg ChannelWSMessage)
+	MemberResolver func(channelID uint) map[uint]bool
 }
 
 func NewChannelHub(messageHandler func(msg ChannelWSMessage)) *ChannelHub {
 	return &ChannelHub{
 		clients:        make(map[*websocket.Conn]uint),
 		broadcast:      make(chan ChannelWSMessage),
-		register:       make(chan *websocket.Conn),
+		register:       make(chan channelRegistration),
 		unregister:     make(chan *websocket.Conn),
 		MessageHandler: messageHandler,
 	}
@@ -56,9 +62,9 @@ func (h *ChannelHub) Run() {
 
 	for {
 		select {
-		case client := <-h.register:
+		case reg := <-h.register:
 			h.mu.Lock()
-			h.clients[client] = 0
+			h.clients[reg.conn] = reg.userID
 			h.mu.Unlock()
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -68,8 +74,18 @@ func (h *ChannelHub) Run() {
 			}
 			h.mu.Unlock()
 		case message := <-h.broadcast:
+			if message.ChannelID == 0 {
+				continue
+			}
+			var members map[uint]bool
+			if h.MemberResolver != nil {
+				members = h.MemberResolver(message.ChannelID)
+			}
 			h.mu.Lock()
-			for client := range h.clients {
+			for client, uid := range h.clients {
+				if members == nil || !members[uid] {
+					continue
+				}
 				err := client.WriteJSON(message)
 				if err != nil {
 					client.Close()
@@ -100,10 +116,7 @@ func (h *ChannelHub) HandleConnection(w http.ResponseWriter, r *http.Request, us
 		return
 	}
 
-	h.mu.Lock()
-	h.clients[conn] = userID
-	h.mu.Unlock()
-	h.register <- conn
+	h.register <- channelRegistration{conn: conn, userID: userID}
 
 	conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {

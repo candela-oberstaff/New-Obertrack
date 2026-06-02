@@ -56,8 +56,10 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 	} else if creatorID, ok := filters["created_by"].(uint); ok {
 		query = query.Where("tasks.created_by = ?", creatorID)
 	}
-	if companyID, ok := filters["company_id"].(uint); ok {
-		query = query.Where("tasks.board_id IN (SELECT id FROM boards WHERE created_by = ? OR created_by IN (SELECT id FROM users WHERE empleador_id = ?))", companyID, companyID)
+	if tenantID, ok := filters["tenant_id"].(uint); ok {
+		query = query.Where("tasks.tenant_id = ?", tenantID)
+	} else if companyID, ok := filters["company_id"].(uint); ok {
+		query = query.Where("tasks.tenant_id = ?", companyID)
 	}
 	if search, ok := filters["search"].(string); ok {
 		query = query.Where("tasks.title ILIKE ? OR tasks.description ILIKE ?", "%"+search+"%", "%"+search+"%")

@@ -6,15 +6,15 @@ import (
 )
 
 type ChatService interface {
-	GetMessages(userID uint, role string, isSuperadmin bool, empleadorID uint) ([]models.Message, error)
-	SendMessage(userID uint, role string, empleadorID uint, content string) (*ChatMessageResponse, error)
+	GetMessages(userID uint, role string, isSuperadmin bool, tenantID uint) ([]models.Message, error)
+	SendMessage(userID uint, role string, tenantID uint, content string) (*ChatMessageResponse, error)
 }
 
 type ChatMessageResponse struct {
-	Type      string    `json:"type"`
-	Content   string    `json:"content"`
-	UserID    uint      `json:"user_id"`
-	CompanyID *uint     `json:"company_id,omitempty"`
+	Type     string `json:"type"`
+	Content  string `json:"content"`
+	UserID   uint   `json:"user_id"`
+	TenantID *uint  `json:"tenant_id,omitempty"`
 }
 
 type chatService struct {
@@ -25,14 +25,14 @@ func NewChatService(repo repository.ChatRepository) ChatService {
 	return &chatService{repo: repo}
 }
 
-func (s *chatService) GetMessages(userID uint, role string, isSuperadmin bool, empleadorID uint) ([]models.Message, error) {
+func (s *chatService) GetMessages(userID uint, role string, isSuperadmin bool, tenantID uint) ([]models.Message, error) {
 	filters := make(map[string]interface{})
 
 	if !isSuperadmin {
 		if role == string(models.UserTypeEmployer) || role == "empleador" {
-			filters["employer_id"] = userID
-		} else if empleadorID > 0 {
-			filters["employer_id"] = empleadorID
+			filters["tenant_id"] = userID
+		} else if tenantID > 0 {
+			filters["tenant_id"] = tenantID
 		} else {
 			filters["user_id"] = userID
 		}
@@ -41,18 +41,18 @@ func (s *chatService) GetMessages(userID uint, role string, isSuperadmin bool, e
 	return s.repo.FindAllWithFilters(filters, 100)
 }
 
-func (s *chatService) SendMessage(userID uint, role string, empleadorID uint, content string) (*ChatMessageResponse, error) {
-	var companyID *uint
+func (s *chatService) SendMessage(userID uint, role string, tenantID uint, content string) (*ChatMessageResponse, error) {
+	var tid *uint
 	if role == string(models.UserTypeEmployer) || role == "empleador" {
-		companyID = &userID
-	} else if empleadorID > 0 {
-		companyID = &empleadorID
+		tid = &userID
+	} else if tenantID > 0 {
+		tid = &tenantID
 	}
 
 	msg := models.Message{
-		UserID:    userID,
-		CompanyID: companyID,
-		Content:   content,
+		UserID:   userID,
+		TenantID: tid,
+		Content:  content,
 	}
 
 	if err := s.repo.Create(&msg); err != nil {
@@ -60,9 +60,9 @@ func (s *chatService) SendMessage(userID uint, role string, empleadorID uint, co
 	}
 
 	return &ChatMessageResponse{
-		Type:      "chat_message",
-		Content:   content,
-		UserID:    userID,
-		CompanyID: companyID,
+		Type:     "chat_message",
+		Content:  content,
+		UserID:   userID,
+		TenantID: tid,
 	}, nil
 }

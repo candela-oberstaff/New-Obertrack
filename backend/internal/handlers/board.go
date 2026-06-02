@@ -45,11 +45,8 @@ func (h *BoardHandler) GetAll(c *gin.Context) {
 	isSuperadmin := middleware.IsSuperadmin(c)
 
 	var companyID uint
-	if !isSuperadmin && role != "superadmin" {
-		companyID = userID
-		if role == "profesional" {
-			companyID = middleware.GetEmpleadorID(c)
-		}
+	if !isSuperadmin {
+		companyID = middleware.GetTenantID(c)
 	}
 
 	boards, err := h.service.GetAll(userID, role, isSuperadmin, companyID)
@@ -63,15 +60,11 @@ func (h *BoardHandler) GetAll(c *gin.Context) {
 
 func (h *BoardHandler) GetPublicBoards(c *gin.Context) {
 	userID := middleware.GetUserID(c)
-	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
 	var companyID uint
-	if !isSuperadmin && role != "superadmin" {
-		companyID = userID
-		if role == "profesional" {
-			companyID = middleware.GetEmpleadorID(c)
-		}
+	if !isSuperadmin {
+		companyID = middleware.GetTenantID(c)
 	}
 
 	boards, err := h.service.GetPublicBoards(userID, companyID)
@@ -118,7 +111,12 @@ func (h *BoardHandler) GetByID(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
-	board, err := h.service.GetByID(userID, role, isSuperadmin, uint(id))
+	var companyID uint
+	if !isSuperadmin {
+		companyID = middleware.GetTenantID(c)
+	}
+
+	board, err := h.service.GetByID(userID, role, isSuperadmin, companyID, uint(id))
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Board not found" {
@@ -184,9 +182,19 @@ func (h *BoardHandler) Update(c *gin.Context) {
 		updates["color"] = req.Color
 	}
 
-	board, err := h.service.Update(uint(id), updates, req.MemberIDs)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	board, err := h.service.Update(uint(id), tenantID, userID, role, isManager, isSuperadmin, updates, req.MemberIDs)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		status := http.StatusNotFound
+		if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -234,9 +242,19 @@ func (h *BoardHandler) AddPhase(c *gin.Context) {
 		return
 	}
 
-	board, err := h.service.AddPhase(uint(id), req.Name, req.Color)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	board, err := h.service.AddPhase(uint(id), tenantID, userID, role, isManager, isSuperadmin, req.Name, req.Color)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		status := http.StatusInternalServerError
+		if err.Error() == "Access denied" || err.Error() == "Board not found" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -256,11 +274,19 @@ func (h *BoardHandler) RemovePhase(c *gin.Context) {
 		return
 	}
 
-	board, err := h.service.RemovePhase(uint(boardID), uint(phaseID))
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	board, err := h.service.RemovePhase(uint(boardID), uint(phaseID), tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err.Error() == "Phase not found on this board" || err.Error() == "Board not found" {
 			status = http.StatusNotFound
+		} else if err.Error() == "Access denied" {
+			status = http.StatusForbidden
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
@@ -286,9 +312,19 @@ func (h *BoardHandler) ReorderPhases(c *gin.Context) {
 		return
 	}
 
-	board, err := h.service.ReorderPhases(uint(boardID), req.PhaseIDs)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	board, err := h.service.ReorderPhases(uint(boardID), tenantID, userID, role, isManager, isSuperadmin, req.PhaseIDs)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		status := http.StatusNotFound
+		if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 

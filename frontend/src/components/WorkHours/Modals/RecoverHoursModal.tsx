@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { X, Clock } from 'lucide-react'
+import { Select } from '../../ui/Select'
 import styles from '../../../pages/WorkHours.module.css'
 
 interface RecoverHoursModalProps {
@@ -61,15 +62,13 @@ export function RecoverHoursModal({
 
           <div className={styles['form-group']}>
             <label>Horas recuperadas</label>
-            <select
-              value={hours}
-              onChange={(e) => setHours(Number(e.target.value))}
+            <Select
+              fullWidth
               required
-            >
-              {[1, 2, 3, 4, 5, 6, 7, 8].map(h => (
-                <option key={h} value={h}>{h} {h === 1 ? 'hora' : 'horas'}</option>
-              ))}
-            </select>
+              value={hours}
+              onChange={(v) => setHours(Number(v))}
+              options={[1, 2, 3, 4, 5, 6, 7, 8].map(h => ({ value: h, label: `${h} ${h === 1 ? 'hora' : 'horas'}` }))}
+            />
           </div>
 
           <div className={styles['form-group']}>

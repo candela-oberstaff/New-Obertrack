@@ -1,6 +1,7 @@
 import React from 'react'
 import { X, Paperclip } from 'lucide-react'
 import { RichTextEditor } from '../RichTextEditor'
+import { Select } from '../../ui/Select'
 import type { User } from '../../../types'
 import styles from '../../../pages/Tasks.module.css'
 
@@ -70,16 +71,17 @@ export function NewTaskModal({
 
               <div className={styles['setting-item']}>
                 <label>Prioridad</label>
-                <select
+                <Select
+                  fullWidth
                   value={newTaskData.priority}
-                  onChange={(e) => setNewTaskData({ ...newTaskData, priority: e.target.value })}
-                  className={styles['setting-select']}
-                >
-                  <option value="low">Baja</option>
-                  <option value="medium">Media</option>
-                  <option value="high">Alta</option>
-                  <option value="urgent">Urgente</option>
-                </select>
+                  onChange={(v) => setNewTaskData({ ...newTaskData, priority: v })}
+                  options={[
+                    { value: 'low', label: 'Baja' },
+                    { value: 'medium', label: 'Media' },
+                    { value: 'high', label: 'Alta' },
+                    { value: 'urgent', label: 'Urgente' },
+                  ]}
+                />
               </div>
 
               <div className={styles['setting-item']}>

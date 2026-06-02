@@ -20,11 +20,12 @@ func (s *workHourService) getReportWorkHours(userID uint, month int, year int) (
 	}
 
 	var employerID uint
-	if user.EmpleadorID != nil {
-		employerID = *user.EmpleadorID
-	}
 	if user.IsSuperadmin {
 		employerID = 0
+	} else if user.UserType == models.UserTypeEmployer {
+		employerID = user.ID
+	} else if user.EmpleadorID != nil {
+		employerID = *user.EmpleadorID
 	}
 
 	startDateStr := fmt.Sprintf("%d-%02d-01", year, month)
@@ -33,7 +34,7 @@ func (s *workHourService) getReportWorkHours(userID uint, month int, year int) (
 
 	filters := make(map[string]interface{})
 	if !user.IsSuperadmin {
-		filters["employer_id"] = employerID
+		filters["tenant_id"] = employerID
 	}
 	
 	if start, err := time.Parse("2006-01-02", startDateStr); err == nil {

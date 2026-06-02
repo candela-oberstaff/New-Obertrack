@@ -1,3 +1,4 @@
+import { Select } from '../../ui/Select'
 import styles from '../../../pages/SlackChat.module.css'
 
 interface NewChannelModalProps {
@@ -41,13 +42,15 @@ export function NewChannelModal({
         </div>
         <div className={styles['form-group']}>
           <label>Tipo</label>
-          <select
+          <Select
+            fullWidth
             value={newChannel.type}
-            onChange={(e) => setNewChannel({...newChannel, type: e.target.value as 'public' | 'private'})}
-          >
-            <option value="public">Público</option>
-            <option value="private">Privado</option>
-          </select>
+            onChange={(v) => setNewChannel({...newChannel, type: v as 'public' | 'private'})}
+            options={[
+              { value: 'public', label: 'Público' },
+              { value: 'private', label: 'Privado' },
+            ]}
+          />
         </div>
         <div className={styles['modal-actions']}>
           <button onClick={onClose}>Cancelar</button>

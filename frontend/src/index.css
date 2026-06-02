@@ -35,6 +35,10 @@
    Paleta: Mini brand guideline
    ================================================================ */
 :root {
+  /* Force light rendering of native controls (select popups, scrollbars,
+     date pickers) so they don't inherit the OS dark theme. */
+  color-scheme: light;
+
   /* ── Brand Colors ── */
   /* Violet */
   --color-violet: #ee82ee;        /* RGB 238,130,238 / Hex ee82ee */
@@ -157,6 +161,24 @@ body::before {
 button, a, input, select, textarea {
   font-family: inherit;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Native <select> dropdown options — keep them light and on-brand so the
+   popup list matches the rest of the UI instead of the OS dark theme. */
+select {
+  color-scheme: light;
+}
+
+select option {
+  background-color: var(--white);
+  color: var(--black);
+  padding: 8px 12px;
+}
+
+select option:checked,
+select option:hover {
+  background-color: var(--primary-soft);
+  color: var(--black);
 }
 
 img {

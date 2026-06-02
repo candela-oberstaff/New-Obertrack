@@ -15,7 +15,12 @@ var (
 	ErrSuperadminBlocked = fmt.Errorf("professionals cannot add superadmins")
 	ErrChannelNotFound   = fmt.Errorf("channel not found")
 	ErrUserNotFound      = fmt.Errorf("user not found")
+	ErrCrossTenant       = fmt.Errorf("user belongs to a different tenant")
 )
+
+func isSuperadminUser(user *models.User) bool {
+	return user != nil && (user.IsSuperadmin || user.UserType == models.UserTypeSuperadmin)
+}
 
 type ChannelService interface {
 	GetChannels(userID uint) ([]ChannelWithUnread, error)
@@ -137,11 +142,14 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 		return existing, nil
 	}
 
+	creator, _ := s.userRepo.GetByID(userID)
+
 	channel := &models.Channel{
 		Name:        name,
 		Description: description,
 		Type:        cType,
 		CreatedBy:   userID,
+		TenantID:    models.TenantForUser(creator),
 		IsActive:    true,
 	}
 
@@ -167,6 +175,15 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 			}
 		}
 		for _, id := range filteredIDs {
+			// Only add members that belong to the same tenant as the channel
+			// (audit finding M-01). Superadmins are allowed cross-tenant.
+			member, err := s.userRepo.GetByID(id)
+			if err != nil || member == nil {
+				continue
+			}
+			if !isSuperadminUser(member) && models.TenantForUser(member) != channel.TenantID {
+				continue
+			}
 			s.repo.AddMember(&models.ChannelMember{
 				ChannelID: channel.ID,
 				UserID:    id,
@@ -228,13 +245,19 @@ func (s *channelService) AddMember(channelID, userID, memberToAdd uint) error {
 		return ErrUnauthorized
 	}
 
+	target, err := s.userRepo.GetByID(memberToAdd)
+	if err != nil {
+		return ErrUserNotFound
+	}
+
 	// Rule: Professionals cannot add Superadmins
 	actor, err := s.userRepo.GetByID(userID)
-	if err == nil && actor.UserType == models.UserTypeProfessional {
-		target, err := s.userRepo.GetByID(memberToAdd)
-		if err == nil && (target.UserType == models.UserTypeSuperadmin || target.IsSuperadmin) {
-			return ErrSuperadminBlocked
-		}
+	if err == nil && actor.UserType == models.UserTypeProfessional && isSuperadminUser(target) {
+		return ErrSuperadminBlocked
+	}
+
+	if !isSuperadminUser(target) && models.TenantForUser(target) != channel.TenantID {
+		return ErrCrossTenant
 	}
 
 	if isMember, _ := s.repo.IsMember(channelID, memberToAdd); isMember {

@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { taskService } from '../../../services/api'
+import { useConfirm } from '../../ui/ConfirmProvider'
 import type { TaskAttachment } from '../../../types'
 import {
   X,
@@ -27,6 +28,7 @@ export function TaskAttachmentsSection({
 }: TaskAttachmentsSectionProps) {
   const [isUploadingFile, setIsUploadingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const confirm = useConfirm()
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -44,7 +46,13 @@ export function TaskAttachmentsSection({
   }
 
   const handleDeleteAttachment = async (attachmentId: number) => {
-    if (!confirm('¿Eliminar este archivo?')) return
+    const ok = await confirm({
+      title: 'Eliminar archivo',
+      message: '¿Eliminar este archivo adjunto?',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!ok) return
     try {
       await taskService.deleteAttachment(taskId, attachmentId)
       onAttachmentDeleted(attachmentId)

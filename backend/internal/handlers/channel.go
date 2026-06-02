@@ -59,11 +59,26 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 
 func (h *ChannelHandler) GetChannel(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
-
+	// authorize access: must be member or superadmin
+	userID := middleware.GetUserID(c)
+	isSuper := middleware.IsSuperadmin(c)
 	channel, err := h.svc.GetChannel(uint(id))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
 		return
+	}
+	if !isSuper {
+		allowed := false
+		for _, m := range channel.Members {
+			if m.ID == userID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, channel)
@@ -107,14 +122,29 @@ func (h *ChannelHandler) DeleteChannel(c *gin.Context) {
 
 func (h *ChannelHandler) GetMembers(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	userID := middleware.GetUserID(c)
+	isSuper := middleware.IsSuperadmin(c)
 
-	members, err := h.svc.GetChannel(uint(id))
+	channel, err := h.svc.GetChannel(uint(id))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
 		return
 	}
+	if !isSuper {
+		allowed := false
+		for _, m := range channel.Members {
+			if m.ID == userID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+	}
 
-	c.JSON(http.StatusOK, members.Members)
+	c.JSON(http.StatusOK, channel.Members)
 }
 
 func (h *ChannelHandler) AddMember(c *gin.Context) {
@@ -194,6 +224,25 @@ func (h *ChannelHandler) LeaveChannel(c *gin.Context) {
 func (h *ChannelHandler) GetMessages(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	userID := middleware.GetUserID(c)
+	// ensure membership
+	channel, err := h.svc.GetChannel(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
+		return
+	}
+	if !middleware.IsSuperadmin(c) {
+		allowed := false
+		for _, m := range channel.Members {
+			if m.ID == userID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+	}
 
 	messages, err := h.svc.GetMessages(uint(id), userID)
 	if err != nil {
@@ -218,6 +267,26 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// membership check
+	channel, err := h.svc.GetChannel(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
+		return
+	}
+	if !middleware.IsSuperadmin(c) {
+		allowed := false
+		for _, m := range channel.Members {
+			if m.ID == userID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
 	}
 
 	message, _, err := h.svc.SendMessage(uint(id), userID, req.Content, req.Attachment, req.FileName, req.FileSize)
@@ -251,6 +320,26 @@ func (h *ChannelHandler) EditMessage(c *gin.Context) {
 		return
 	}
 
+	// membership check
+	channel, err := h.svc.GetChannel(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
+		return
+	}
+	if !middleware.IsSuperadmin(c) {
+		allowed := false
+		for _, m := range channel.Members {
+			if m.ID == userID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+	}
+
 	message, err := h.svc.EditMessage(uint(id), uint(messageID), userID, req.Content)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -271,6 +360,25 @@ func (h *ChannelHandler) DeleteMessage(c *gin.Context) {
 	messageID, _ := strconv.ParseUint(c.Param("messageId"), 10, 32)
 	userID := middleware.GetUserID(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	// membership check
+	channel, err := h.svc.GetChannel(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
+		return
+	}
+	if !isSuperadmin {
+		allowed := false
+		for _, m := range channel.Members {
+			if m.ID == userID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+	}
 
 	if err := h.svc.DeleteMessage(uint(id), uint(messageID), userID, isSuperadmin); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -300,6 +408,26 @@ func (h *ChannelHandler) AddReaction(c *gin.Context) {
 		return
 	}
 
+	// membership check
+	channel, err := h.svc.GetChannel(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
+		return
+	}
+	if !middleware.IsSuperadmin(c) {
+		allowed := false
+		for _, m := range channel.Members {
+			if m.ID == userID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+	}
+
 	reaction, err := h.svc.AddReaction(uint(id), uint(messageID), userID, req.Emoji)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -327,6 +455,26 @@ func (h *ChannelHandler) RemoveReaction(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// membership check
+	channel, err := h.svc.GetChannel(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
+		return
+	}
+	if !middleware.IsSuperadmin(c) {
+		allowed := false
+		for _, m := range channel.Members {
+			if m.ID == userID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
 	}
 
 	if err := h.svc.RemoveReaction(uint(id), uint(messageID), userID, req.Emoji); err != nil {

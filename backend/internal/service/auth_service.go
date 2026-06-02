@@ -2,12 +2,14 @@ package service
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"time"
+	"unicode"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -17,14 +19,49 @@ import (
 	"github.com/obertrack/backend/internal/repository"
 )
 
+// hashResetToken returns a SHA-256 hex digest. Reset tokens are stored hashed so
+// a DB leak does not allow password resets (audit finding M-09).
+func hashResetToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// ValidatePasswordStrength enforces a minimum password policy (audit finding
+// M-08): at least 8 chars with a mix of letters and digits.
+func ValidatePasswordStrength(pw string) error {
+	if len(pw) < 8 {
+		return errors.New("la contraseña debe tener al menos 8 caracteres")
+	}
+	var hasLetter, hasDigit bool
+	for _, r := range pw {
+		switch {
+		case unicode.IsLetter(r):
+			hasLetter = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		}
+	}
+	if !hasLetter || !hasDigit {
+		return errors.New("la contraseña debe incluir letras y números")
+	}
+	return nil
+}
+
 type AuthService interface {
-	Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, country, location, jobTitle string) (*models.User, string, error)
-	Login(email, password string) (*models.User, string, error)
+	Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle string) (*models.User, string, string, error)
+	Login(email, password string) (*models.User, string, string, error)
+	Refresh(refreshToken string) (*models.User, string, string, error)
 	GetUserDetails(id uint) (*models.User, error)
+	GetTokenVersion(id uint) (int, error)
 	GetPublicCompanies() ([]map[string]interface{}, error)
 	ForgotPassword(email string) error
 	ResetPassword(token, newPassword string) error
 }
+
+const (
+	accessTokenTTL  = 2 * time.Hour
+	refreshTokenTTL = 7 * 24 * time.Hour
+)
 
 type authService struct {
 	userRepo  repository.UserRepository
@@ -42,15 +79,25 @@ func NewAuthService(userRepo repository.UserRepository, jwtSecret string, brevoS
 	}
 }
 
-func (s *authService) Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, country, location, jobTitle string) (*models.User, string, error) {
+func (s *authService) Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle string) (*models.User, string, string, error) {
+	if err := ValidatePasswordStrength(password); err != nil {
+		return nil, "", "", err
+	}
+
 	_, err := s.userRepo.GetByEmail(email)
 	if err == nil {
-		return nil, "", errors.New("Email already registered")
+		return nil, "", "", errors.New("Email already registered")
+	}
+
+	// Prevent privilege escalation via public self-registration: superadmin
+	// accounts can never be created through this endpoint (audit finding B-01).
+	if userTypeStr == "superadmin" {
+		return nil, "", "", errors.New("Tipo de usuario no válido")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, "", errors.New("Failed to hash password")
+		return nil, "", "", errors.New("Failed to hash password")
 	}
 
 	// Logic to classify role
@@ -74,39 +121,78 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 		IsActive:     true,
 		EmpleadorID:  empleadorID,
 		PhoneNumber:  phoneNumber,
-		Country:      country,
 		Location:     location,
 		JobTitle:     jobTitle,
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
-	token, err := s.generateToken(user)
+	access, refresh, err := s.generateTokenPair(user)
 	if err != nil {
-		return nil, "", errors.New("Failed to generate token")
+		return nil, "", "", errors.New("Failed to generate token")
 	}
 
-	return user, token, nil
+	return user, access, refresh, nil
 }
 
-func (s *authService) Login(email, password string) (*models.User, string, error) {
+func (s *authService) Login(email, password string) (*models.User, string, string, error) {
 	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
-		return nil, "", errors.New("Invalid credentials")
+		return nil, "", "", errors.New("Invalid credentials")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return nil, "", errors.New("Invalid credentials")
+		return nil, "", "", errors.New("Invalid credentials")
 	}
 
-	token, err := s.generateToken(user)
+	if !user.IsActive {
+		return nil, "", "", errors.New("Tu cuenta ha sido suspendida. Contacta al administrador.")
+	}
+
+	if user.UserType == models.UserTypeProfessional && user.EmpleadorID != nil {
+		if employer, err := s.userRepo.GetByID(*user.EmpleadorID); err == nil && !employer.IsActive {
+			return nil, "", "", errors.New("El acceso de tu empresa ha sido suspendido. Contacta al administrador.")
+		}
+	}
+
+	access, refresh, err := s.generateTokenPair(user)
 	if err != nil {
-		return nil, "", errors.New("Failed to generate token")
+		return nil, "", "", errors.New("Failed to generate token")
 	}
 
-	return user, token, nil
+	return user, access, refresh, nil
+}
+
+// Refresh validates a refresh token and, if the session is still valid, issues a
+// fresh access+refresh pair (rotation).
+func (s *authService) Refresh(refreshToken string) (*models.User, string, string, error) {
+	claims := &middleware.Claims{}
+	token, err := jwt.ParseWithClaims(refreshToken, claims, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(s.jwtSecret), nil
+	}, jwt.WithValidMethods([]string{"HS256"}))
+	if err != nil || !token.Valid || claims.TokenType != "refresh" {
+		return nil, "", "", errors.New("invalid refresh token")
+	}
+
+	user, err := s.userRepo.GetByID(claims.UserID)
+	if err != nil {
+		return nil, "", "", errors.New("invalid refresh token")
+	}
+	// Session revocation check (audit finding A-04).
+	if !user.IsActive || user.TokenVersion != claims.TokenVersion {
+		return nil, "", "", errors.New("session expired")
+	}
+
+	access, refresh, err := s.generateTokenPair(user)
+	if err != nil {
+		return nil, "", "", errors.New("Failed to generate token")
+	}
+	return user, access, refresh, nil
 }
 
 func (s *authService) GetUserDetails(id uint) (*models.User, error) {
@@ -117,22 +203,54 @@ func (s *authService) GetUserDetails(id uint) (*models.User, error) {
 	return user, nil
 }
 
-func (s *authService) generateToken(user *models.User) (string, error) {
-	claims := middleware.Claims{
+func (s *authService) GetTokenVersion(id uint) (int, error) {
+	user, err := s.userRepo.GetByID(id)
+	if err != nil {
+		return 0, err
+	}
+	return user.TokenVersion, nil
+}
+
+func (s *authService) generateTokenPair(user *models.User) (string, string, error) {
+	tenantID := user.EmpleadorID
+	if tenantID == nil && user.UserType == models.UserTypeEmployer {
+		tenantID = &user.ID
+	}
+
+	base := middleware.Claims{
 		UserID:       user.ID,
+		TenantID:     tenantID,
 		Email:        user.Email,
 		Role:         string(user.UserType),
 		IsManager:    user.IsManager,
 		IsSuperadmin: user.IsSuperadmin,
 		EmpleadorID:  user.EmpleadorID,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.jwtExpiry)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
+		TokenVersion: user.TokenVersion,
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(s.jwtSecret))
+	accessClaims := base
+	accessClaims.TokenType = "access"
+	accessClaims.RegisteredClaims = jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(accessTokenTTL)),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+	}
+	access, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(s.jwtSecret))
+	if err != nil {
+		return "", "", err
+	}
+
+	refreshClaims := base
+	refreshClaims.TokenType = "refresh"
+	refreshClaims.RegisteredClaims = jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(refreshTokenTTL)),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+	}
+	refresh, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(s.jwtSecret))
+	if err != nil {
+		return "", "", err
+	}
+
+	return access, refresh, nil
 }
 
 func (s *authService) GetPublicCompanies() ([]map[string]interface{}, error) {
@@ -172,9 +290,10 @@ func (s *authService) ForgotPassword(email string) error {
 	}
 	token := hex.EncodeToString(tokenBytes)
 
-	// Set token with 1-hour expiry
+	// Set token with 1-hour expiry. Store only the HASH; the raw token is sent
+	// in the email link (audit finding M-09).
 	expiry := time.Now().Add(1 * time.Hour)
-	user.ResetToken = token
+	user.ResetToken = hashResetToken(token)
 	user.ResetTokenExpiry = &expiry
 
 	if err := s.userRepo.Save(user); err != nil {
@@ -250,7 +369,12 @@ func (s *authService) ForgotPassword(email string) error {
 }
 
 func (s *authService) ResetPassword(token, newPassword string) error {
-	user, err := s.userRepo.GetByResetToken(token)
+	if err := ValidatePasswordStrength(newPassword); err != nil {
+		return err
+	}
+
+	// Look up by the hashed token (audit finding M-09).
+	user, err := s.userRepo.GetByResetToken(hashResetToken(token))
 	if err != nil {
 		return errors.New("invalid or expired reset token")
 	}
@@ -270,10 +394,11 @@ func (s *authService) ResetPassword(token, newPassword string) error {
 		return errors.New("failed to hash password")
 	}
 
-	// Update password and clear token
+	// Update password, clear token, and revoke all existing sessions (A-04).
 	user.Password = string(hashedPassword)
 	user.ResetToken = ""
 	user.ResetTokenExpiry = nil
+	user.TokenVersion++
 
 	if err := s.userRepo.Save(user); err != nil {
 		return errors.New("failed to update password")

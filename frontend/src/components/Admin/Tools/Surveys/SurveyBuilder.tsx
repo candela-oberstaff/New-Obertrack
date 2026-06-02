@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Save, Send, Plus, Trash2, GripVertical, Settings, Star, X, Search, Check } from 'lucide-react';
 import styles from './SurveyBuilder.module.css';
 import commonStyles from '../Tools.module.css';
+import { Select } from '../../../ui/Select';
 import { SurveyQuestion } from '../../../../services/surveyService';
 import { userService } from '../../../../services/user.service';
 import { User } from '../../../../types';
@@ -213,22 +214,22 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
           </button>
         </div>
         <div className={styles.mobileActions}>
-          <select 
+          <Select
+            fullWidth
+            disabled={isSending}
             value=""
-            onChange={(e) => {
-              const val = e.target.value;
+            placeholder="Acciones..."
+            onChange={(val) => {
               if (val === 'settings') setShowSettings(true);
               if (val === 'save') handleSave();
               if (val === 'send') handleSend();
-              e.target.value = '';
             }}
-            disabled={isSending}
-          >
-            <option value="" disabled>Acciones...</option>
-            <option value="settings">Configuración</option>
-            <option value="save">Guardar Borrador</option>
-            <option value="send">Continuar y Enviar</option>
-          </select>
+            options={[
+              { value: 'settings', label: 'Configuración' },
+              { value: 'save', label: 'Guardar Borrador' },
+              { value: 'send', label: 'Continuar y Enviar' },
+            ]}
+          />
         </div>
       </header>
 

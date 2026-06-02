@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, ClipboardList } from 'lucide-react';
 import EmailMarketing from './EmailMarketing';
 import Surveys from './Surveys';
+import { Select } from '../../ui/Select';
 import styles from './Tools.module.css';
 
 type ToolTab = 'email' | 'surveys';
@@ -25,13 +26,13 @@ const Tools: React.FC = () => {
   return (
     <div className={`${styles['tools-page']} ${isFullScreen ? styles['fullscreen-mode'] : ''}`}>
       {!isFullScreen && (
-        <div className={styles['tools-top-bar']}>
+        <div className={styles['tools-top-bar']} data-tour="tools-header">
           <div className={styles['tools-header']}>
             <h1>Admin Tools</h1>
           </div>
 
           <div className={styles['tools-nav-group']}>
-            <div className={styles['tools-tabs']}>
+            <div className={styles['tools-tabs']} data-tour="tools-tabs">
               <button 
                 className={`${styles['tab-btn']} ${activeTab === 'email' ? styles.active : ''}`}
                 onClick={() => setActiveTab('email')}
@@ -47,20 +48,22 @@ const Tools: React.FC = () => {
             </div>
             
             <div className={styles['mobile-tabs']}>
-              <select 
-                value={activeTab} 
-                onChange={(e) => setActiveTab(e.target.value as ToolTab)}
-              >
-                <option value="email">Email</option>
-                <option value="surveys">Encuestas</option>
-              </select>
+              <Select
+                fullWidth
+                value={activeTab}
+                onChange={(v) => setActiveTab(v as ToolTab)}
+                options={[
+                  { value: 'email', label: 'Email' },
+                  { value: 'surveys', label: 'Encuestas' },
+                ]}
+              />
             </div>
-            {extraAction}
+            <div data-tour="tools-extra-action">{extraAction}</div>
           </div>
         </div>
       )}
 
-      <div className={styles['tools-content']}>
+      <div className={styles['tools-content']} data-tour="tools-content">
         {renderContent()}
       </div>
     </div>

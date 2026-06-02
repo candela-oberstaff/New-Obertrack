@@ -71,8 +71,10 @@ func (r *workHourRepository) ApproveMultiple(ids []uint, approvedBy uint, approv
 func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, limit int) ([]models.WorkHour, int64, error) {
 	query := r.db.Model(&models.WorkHour{})
 
-	if employerID, ok := filters["employer_id"].(uint); ok {
-		query = query.Joins("JOIN users ON users.id = work_hours.user_id").Where("users.empleador_id = ?", employerID)
+	if tenantID, ok := filters["tenant_id"].(uint); ok {
+		query = query.Where("work_hours.tenant_id = ?", tenantID)
+	} else if employerID, ok := filters["employer_id"].(uint); ok {
+		query = query.Where("work_hours.tenant_id = ?", employerID)
 	}
 
 	if managerID, ok := filters["manager_id"].(uint); ok {
@@ -114,8 +116,10 @@ func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, lim
 func (r *workHourRepository) GetSummary(filters map[string]interface{}) (map[string]float64, error) {
 	query := r.db.Model(&models.WorkHour{})
 
-	if employerID, ok := filters["employer_id"].(uint); ok {
-		query = query.Joins("JOIN users ON users.id = work_hours.user_id").Where("users.empleador_id = ?", employerID)
+	if tenantID, ok := filters["tenant_id"].(uint); ok {
+		query = query.Where("work_hours.tenant_id = ?", tenantID)
+	} else if employerID, ok := filters["employer_id"].(uint); ok {
+		query = query.Where("work_hours.tenant_id = ?", employerID)
 	}
 
 	if userID, ok := filters["user_id"].(uint); ok {

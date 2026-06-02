@@ -40,4 +40,36 @@ export const adminService = {
     const { data } = await api.post(`/admin/users/${id}/reset-password`, { new_password: newPassword })
     return data
   },
+  getTenants: async () => {
+    const { data } = await api.get('/admin/tenants')
+    return data
+  },
+  getTenant: async (id: number) => {
+    const { data } = await api.get(`/admin/tenants/${id}`)
+    return data
+  },
+  getTenantEmployees: async (id: number) => {
+    const { data } = await api.get(`/admin/tenants/${id}/employees`)
+    return data
+  },
+  getEmployeeTracking: async (id: number) => {
+    const { data } = await api.get(`/admin/employees/${id}/tracking`)
+    return data
+  },
+  getTenantActivity: async (id: number) => {
+    const { data } = await api.get(`/admin/tenants/${id}/activity`)
+    return data
+  },
+  createTenant: async (tenantData: { company_name: string; user_id?: number; name?: string; email?: string; password?: string }) => {
+    const { data } = await api.post('/admin/tenants', tenantData)
+    return data
+  },
+  suspendTenant: async (id: number) => {
+    const { data } = await api.post(`/admin/tenants/${id}/suspend`)
+    return data
+  },
+  activateTenant: async (id: number) => {
+    const { data } = await api.post(`/admin/tenants/${id}/activate`)
+    return data
+  },
 }

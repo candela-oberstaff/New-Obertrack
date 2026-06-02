@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/service"
@@ -65,6 +66,22 @@ func (h *SurveyHandler) GetSurveys(c *gin.Context) {
 	c.JSON(http.StatusOK, surveys)
 }
 
+func surveyHasRecipient(recipientList string, userID uint) bool {
+	if recipientList == "" {
+		return false
+	}
+	var ids []int
+	if err := json.Unmarshal([]byte(recipientList), &ids); err != nil {
+		return false
+	}
+	for _, id := range ids {
+		if uint(id) == userID {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *SurveyHandler) GetSurvey(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	survey, err := h.repo.GetSurveyByID(uint(id))
@@ -72,6 +89,15 @@ func (h *SurveyHandler) GetSurvey(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Survey not found"})
 		return
 	}
+
+	if !middleware.IsSuperadmin(c) {
+		if !surveyHasRecipient(survey.RecipientList, middleware.GetUserID(c)) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+		survey.Responses = nil
+	}
+
 	c.JSON(http.StatusOK, survey)
 }
 
@@ -83,11 +109,21 @@ func (h *SurveyHandler) SubmitResponse(c *gin.Context) {
 		return
 	}
 
-	response.SurveyID = uint(id)
-	userID, _ := c.Get("user_id")
-	if uid, ok := userID.(uint); ok {
-		response.UserID = uid
+	userID := middleware.GetUserID(c)
+	if !middleware.IsSuperadmin(c) {
+		survey, err := h.repo.GetSurveyByID(uint(id))
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Survey not found"})
+			return
+		}
+		if !surveyHasRecipient(survey.RecipientList, userID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
 	}
+
+	response.SurveyID = uint(id)
+	response.UserID = userID
 	now := time.Now()
 	response.CompletedAt = &now
 
@@ -127,10 +163,17 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 		return
 	}
 
-	// Fetch users
+	// Fetch users (respect tenant unless superadmin)
 	var users []models.User
+	tenantID := middleware.GetTenantID(c)
+	isSuper := middleware.IsSuperadmin(c)
 	for _, rid := range recipientIDs {
 		if user, err := h.userRepo.GetByID(uint(rid)); err == nil {
+			if !isSuper {
+				if models.TenantForUser(user) != tenantID {
+					continue
+				}
+			}
 			users = append(users, *user)
 		}
 	}

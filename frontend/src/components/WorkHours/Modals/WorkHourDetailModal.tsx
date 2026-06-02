@@ -1,6 +1,7 @@
 import { X, Check, Pencil } from 'lucide-react'
 import type { WorkHour } from '../../../types'
 import { parseLocalDate } from '../utils'
+import { sanitizeHtml } from '../../../utils/sanitize'
 import styles from '../../../pages/WorkHours.module.css'
 
 interface WorkHourDetailModalProps {
@@ -67,7 +68,7 @@ export function WorkHourDetailModal({
               <div
                 className={styles['detail-text']}
               dangerouslySetInnerHTML={{
-                __html: workHour.activities
+                __html: sanitizeHtml(workHour.activities)
               }}
               />
             </div>

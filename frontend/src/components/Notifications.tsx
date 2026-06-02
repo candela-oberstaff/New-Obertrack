@@ -19,7 +19,7 @@ export default function Notifications() {
   const [_isLoading, _setIsLoading] = useState(false)
   const navigate = useNavigate()
   const wsRef = useRef<WebSocket | null>(null)
-  const { token } = useAuth()
+  const { user } = useAuth()
 
   useEffect(() => {
     fetchNotifications()
@@ -33,10 +33,11 @@ export default function Notifications() {
   }, [])
 
   useEffect(() => {
-    if (!token) return
+    if (!user) return
 
+    // Auth travels via the httpOnly cookie on the same-origin WS handshake.
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/ws/notifications?token=${token}`
+    const wsUrl = `${protocol}//${window.location.host}/ws/notifications`
 
     const connect = () => {
       wsRef.current = new WebSocket(wsUrl)
@@ -97,7 +98,7 @@ export default function Notifications() {
         wsRef.current.close()
       }
     }
-  }, [token])
+  }, [user])
 
   const fetchNotifications = async () => {
     try {

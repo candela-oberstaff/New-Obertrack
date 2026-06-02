@@ -36,6 +36,15 @@ type AdminService interface {
 	DeleteUser(id uint) error
 	ResetPassword(id uint, newPassword string) error
 
+	GetTenants() ([]repository.TenantSummary, error)
+	GetTenant(id uint) (*repository.TenantSummary, error)
+	GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error)
+	GetTenantActivities(id uint) ([]repository.Activity, error)
+	SetTenantStatus(id uint, active bool) (*models.User, error)
+	CreateTenant(name, companyName, email, password string) (*models.User, error)
+	AssignTenant(userID uint, companyName string) (*models.User, error)
+	GetEmployeeTracking(userID uint) (map[string]interface{}, error)
+
 	CreateSuperAdmin(name, email, password string, force bool) (*models.User, error)
 	ResetSuperAdmin(name, email, password string) (*models.User, error)
 	MakeSuperAdmin(email string) (*models.User, error)
@@ -197,6 +206,116 @@ func (s *adminService) ResetPassword(id uint, newPassword string) error {
 	}
 
 	return s.userRepo.Update(user, map[string]interface{}{"password": string(hashedPassword)})
+}
+
+func (s *adminService) GetTenants() ([]repository.TenantSummary, error) {
+	return s.repo.GetTenants()
+}
+
+func (s *adminService) GetTenant(id uint) (*repository.TenantSummary, error) {
+	return s.repo.GetTenantByID(id)
+}
+
+func (s *adminService) GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error) {
+	return s.repo.GetTenantEmployees(id)
+}
+
+func (s *adminService) GetEmployeeTracking(userID uint) (map[string]interface{}, error) {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return nil, errors.New("Employee not found")
+	}
+
+	summary, err := s.repo.GetEmployeeSummary(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	workHours, err := s.repo.GetEmployeeWorkHours(userID, 60)
+	if err != nil {
+		return nil, err
+	}
+
+	tasks, err := s.repo.GetEmployeeTasks(userID, 60)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"user":       user,
+		"summary":    summary,
+		"work_hours": workHours,
+		"tasks":      tasks,
+	}, nil
+}
+
+func (s *adminService) GetTenantActivities(id uint) ([]repository.Activity, error) {
+	return s.repo.GetTenantActivities(id)
+}
+
+func (s *adminService) SetTenantStatus(id uint, active bool) (*models.User, error) {
+	user, err := s.userRepo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("Tenant not found")
+	}
+	if user.UserType != models.UserTypeEmployer {
+		return nil, errors.New("El usuario indicado no es una empresa")
+	}
+	if err := s.userRepo.Update(user, map[string]interface{}{"is_active": active}); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (s *adminService) AssignTenant(userID uint, companyName string) (*models.User, error) {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return nil, errors.New("Usuario no encontrado")
+	}
+	if user.IsSuperadmin {
+		return nil, errors.New("No se puede asignar un superadmin como responsable")
+	}
+	if user.UserType == models.UserTypeEmployer {
+		return nil, errors.New("El usuario ya es responsable de una empresa")
+	}
+
+	updates := map[string]interface{}{
+		"user_type":    models.UserTypeEmployer,
+		"company_name": companyName,
+		"is_active":    true,
+		"is_manager":   false,
+		"empleador_id": nil,
+		"manager_id":   nil,
+	}
+	if err := s.userRepo.Update(user, updates); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func (s *adminService) CreateTenant(name, companyName, email, password string) (*models.User, error) {
+	if _, err := s.userRepo.GetByEmail(email); err == nil {
+		return nil, errors.New("Email already registered")
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, errors.New("Failed to hash password")
+	}
+
+	user := &models.User{
+		Name:        name,
+		Email:       email,
+		Password:    string(hashedPassword),
+		UserType:    models.UserTypeEmployer,
+		CompanyName: companyName,
+		IsActive:    true,
+	}
+
+	if err := s.userRepo.Create(user); err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 func (s *adminService) CreateSuperAdmin(name, email, password string, force bool) (*models.User, error) {

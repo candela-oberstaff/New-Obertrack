@@ -24,7 +24,7 @@ export function WorkHourList({
   isEmployer
 }: WorkHourListProps) {
   return (
-    <div className={styles['hours-list-section']}>
+    <div className={styles['hours-list-section']} data-tour="work-hours-list">
       <div className={styles['list-header']}>
         <h3>
           {selectedDate

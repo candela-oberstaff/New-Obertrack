@@ -33,12 +33,65 @@ type Activity struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+type TenantSummary struct {
+	ID          uint      `json:"id"`
+	CompanyName string    `json:"company_name"`
+	OwnerName   string    `json:"owner_name"`
+	OwnerEmail  string    `json:"owner_email"`
+	IsActive    bool      `json:"is_active"`
+	UserCount   int       `json:"user_count"`
+	BoardCount  int       `json:"board_count"`
+	TaskCount   int       `json:"task_count"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type EmployeeSummary struct {
+	ID             uint       `json:"id"`
+	Name           string     `json:"name"`
+	Email          string     `json:"email"`
+	Avatar         string     `json:"avatar"`
+	UserType       string     `json:"user_type"`
+	IsActive       bool       `json:"is_active"`
+	IsManager      bool       `json:"is_manager"`
+	HoursThisMonth float64    `json:"hours_this_month"`
+	TasksAssigned  int        `json:"tasks_assigned"`
+	TasksCompleted int        `json:"tasks_completed"`
+	LastActive     *time.Time `json:"last_active"`
+}
+
+type EmployeeWorkHour struct {
+	ID          uint      `json:"id"`
+	WorkDate    time.Time `json:"work_date"`
+	WorkType    string    `json:"work_type"`
+	HoursWorked float64   `json:"hours_worked"`
+	Approved    bool      `json:"approved"`
+	Activities  string    `json:"activities"`
+}
+
+type EmployeeTask struct {
+	ID        uint       `json:"id"`
+	Title     string     `json:"title"`
+	Status    string     `json:"status"`
+	Completed bool       `json:"completed"`
+	EndDate   *time.Time `json:"end_date"`
+	BoardName string     `json:"board_name"`
+}
+
 type AdminRepository interface {
 	GetCompaniesMetrics() ([]CompanyMetric, error)
 	GetInactiveUsersList(since time.Time) ([]InactiveUser, error)
 	GetRecentActivities() ([]Activity, error)
 	CountInactiveWarning(since time.Time) (int64, error)
 	DeleteSuperadmins() error
+
+	GetTenants() ([]TenantSummary, error)
+	GetTenantByID(id uint) (*TenantSummary, error)
+	GetTenantActivities(tenantID uint) ([]Activity, error)
+
+	GetTenantEmployees(tenantID uint) ([]EmployeeSummary, error)
+	GetEmployeeSummary(userID uint) (*EmployeeSummary, error)
+	GetEmployeeWorkHours(userID uint, limit int) ([]EmployeeWorkHour, error)
+	GetEmployeeTasks(userID uint, limit int) ([]EmployeeTask, error)
 }
 
 type adminRepository struct {
@@ -140,4 +193,129 @@ func (r *adminRepository) GetRecentActivities() ([]Activity, error) {
 
 func (r *adminRepository) DeleteSuperadmins() error {
 	return r.db.Where("user_type = ?", "superadmin").Delete(&models.User{}).Error
+}
+
+const tenantSelect = `
+	SELECT
+		u.id,
+		COALESCE(NULLIF(u.company_name, ''), u.name) as company_name,
+		u.name as owner_name,
+		u.email as owner_email,
+		u.is_active,
+		u.created_at,
+		COUNT(DISTINCT m.id) as user_count,
+		COUNT(DISTINCT b.id) as board_count,
+		COUNT(DISTINCT t.id) as task_count
+	FROM users u
+	LEFT JOIN users m ON m.empleador_id = u.id AND m.deleted_at IS NULL
+	LEFT JOIN boards b ON b.tenant_id = u.id AND b.deleted_at IS NULL
+	LEFT JOIN tasks t ON t.tenant_id = u.id AND t.deleted_at IS NULL
+	WHERE u.user_type = 'empleador' AND u.deleted_at IS NULL
+`
+
+func (r *adminRepository) GetTenants() ([]TenantSummary, error) {
+	var tenants []TenantSummary
+	err := r.db.Raw(tenantSelect + `
+		GROUP BY u.id
+		ORDER BY u.created_at DESC
+	`).Scan(&tenants).Error
+	return tenants, err
+}
+
+func (r *adminRepository) GetTenantByID(id uint) (*TenantSummary, error) {
+	var tenant TenantSummary
+	err := r.db.Raw(tenantSelect+`
+		AND u.id = ?
+		GROUP BY u.id
+	`, id).Scan(&tenant).Error
+	if err != nil {
+		return nil, err
+	}
+	if tenant.ID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &tenant, nil
+}
+
+const employeeMetrics = `
+	u.id, u.name, u.email, u.avatar, u.user_type, u.is_active, u.is_manager,
+	COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh WHERE wh.user_id = u.id AND wh.deleted_at IS NULL AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
+	(SELECT COUNT(*) FROM task_users tu WHERE tu.user_id = u.id) as tasks_assigned,
+	(SELECT COUNT(*) FROM task_users tu JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL WHERE tu.user_id = u.id AND t.completed = true) as tasks_completed,
+	(SELECT MAX(wh.work_date) FROM work_hours wh WHERE wh.user_id = u.id AND wh.deleted_at IS NULL) as last_active
+`
+
+func (r *adminRepository) GetTenantEmployees(tenantID uint) ([]EmployeeSummary, error) {
+	var employees []EmployeeSummary
+	err := r.db.Raw(`
+		SELECT `+employeeMetrics+`
+		FROM users u
+		WHERE u.empleador_id = ? AND u.deleted_at IS NULL
+		ORDER BY u.name
+	`, tenantID).Scan(&employees).Error
+	return employees, err
+}
+
+func (r *adminRepository) GetEmployeeSummary(userID uint) (*EmployeeSummary, error) {
+	var employee EmployeeSummary
+	err := r.db.Raw(`
+		SELECT `+employeeMetrics+`
+		FROM users u
+		WHERE u.id = ? AND u.deleted_at IS NULL
+	`, userID).Scan(&employee).Error
+	if err != nil {
+		return nil, err
+	}
+	if employee.ID == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &employee, nil
+}
+
+func (r *adminRepository) GetEmployeeWorkHours(userID uint, limit int) ([]EmployeeWorkHour, error) {
+	var hours []EmployeeWorkHour
+	err := r.db.Raw(`
+		SELECT id, work_date, work_type, hours_worked, approved, activities
+		FROM work_hours
+		WHERE user_id = ? AND deleted_at IS NULL
+		ORDER BY work_date DESC
+		LIMIT ?
+	`, userID, limit).Scan(&hours).Error
+	return hours, err
+}
+
+func (r *adminRepository) GetEmployeeTasks(userID uint, limit int) ([]EmployeeTask, error) {
+	var tasks []EmployeeTask
+	err := r.db.Raw(`
+		SELECT t.id, t.title, t.status, t.completed, t.end_date, COALESCE(b.name, '') as board_name
+		FROM tasks t
+		JOIN task_users tu ON tu.task_id = t.id
+		LEFT JOIN boards b ON b.id = t.board_id
+		WHERE tu.user_id = ? AND t.deleted_at IS NULL
+		ORDER BY t.created_at DESC
+		LIMIT ?
+	`, userID, limit).Scan(&tasks).Error
+	return tasks, err
+}
+
+func (r *adminRepository) GetTenantActivities(tenantID uint) ([]Activity, error) {
+	var activities []Activity
+	err := r.db.Raw(`
+		SELECT
+			'work_hour' as type,
+			u.name as user,
+			COALESCE(e.company_name, '-') as company,
+			CASE
+				WHEN wh.work_type = 'complete' THEN 'Registró jornada completa'
+				ELSE 'Registró ausencia'
+			END as details,
+			wh.created_at as timestamp
+		FROM work_hours wh
+		JOIN users u ON u.id = wh.user_id
+		LEFT JOIN users e ON e.id = u.empleador_id
+		WHERE wh.tenant_id = ?
+		ORDER BY wh.created_at DESC
+		LIMIT 20
+	`, tenantID).Scan(&activities).Error
+	return activities, err
 }

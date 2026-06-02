@@ -18,7 +18,8 @@ func (s *channelService) GetMessages(channelID, userID uint) ([]models.ChannelMe
 }
 
 func (s *channelService) SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64) (*models.ChannelMessage, []uint, error) {
-	if _, err := s.repo.GetChannel(channelID); err != nil {
+	channel, err := s.repo.GetChannel(channelID)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -28,6 +29,7 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 
 	message := &models.ChannelMessage{
 		ChannelID:  channelID,
+		TenantID:   channel.TenantID,
 		UserID:     userID,
 		Content:    content,
 		Attachment: attachment,
@@ -121,6 +123,10 @@ func (s *channelService) DeleteMessage(channelID, messageID, userID uint, isSupe
 }
 
 func (s *channelService) AddReaction(channelID, messageID, userID uint, emoji string) (*models.MessageReaction, error) {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+		return nil, fmt.Errorf("you are not a member of this channel")
+	}
+
 	if _, err := s.repo.GetMessage(messageID); err != nil {
 		return nil, err
 	}
@@ -143,10 +149,17 @@ func (s *channelService) AddReaction(channelID, messageID, userID uint, emoji st
 }
 
 func (s *channelService) RemoveReaction(channelID, messageID, userID uint, emoji string) error {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+		return fmt.Errorf("you are not a member of this channel")
+	}
 	return s.repo.RemoveReaction(messageID, userID, emoji)
 }
 
 func (s *channelService) PinMessage(channelID, messageID, userID uint) (*models.ChannelMessage, error) {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+		return nil, fmt.Errorf("you are not a member of this channel")
+	}
+
 	if _, err := s.repo.GetMessage(messageID); err != nil {
 		return nil, err
 	}
@@ -159,6 +172,10 @@ func (s *channelService) PinMessage(channelID, messageID, userID uint) (*models.
 }
 
 func (s *channelService) UnpinMessage(channelID, messageID, userID uint) (*models.ChannelMessage, error) {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+		return nil, fmt.Errorf("you are not a member of this channel")
+	}
+
 	if _, err := s.repo.GetMessage(messageID); err != nil {
 		return nil, err
 	}
@@ -189,6 +206,10 @@ func (s *channelService) GetThreadReplies(channelID, messageID, userID uint) ([]
 }
 
 func (s *channelService) SendThreadReply(channelID, messageID, userID uint, content string) (*models.ChannelMessage, error) {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+		return nil, fmt.Errorf("you are not a member of this channel")
+	}
+
 	parentMessage, err := s.repo.GetMessage(messageID)
 	if err != nil {
 		return nil, err
@@ -200,6 +221,7 @@ func (s *channelService) SendThreadReply(channelID, messageID, userID uint, cont
 
 	message := &models.ChannelMessage{
 		ChannelID: channelID,
+		TenantID:  parentMessage.TenantID,
 		UserID:    userID,
 		Content:   content,
 		ParentID:  &parentMessage.ID,
@@ -258,6 +280,16 @@ func (s *channelService) CreateDirectMessage(userID, recipientID uint) (*DirectM
 		return nil, fmt.Errorf("cannot create DM with yourself")
 	}
 
+	creator, _ := s.userRepo.GetByID(userID)
+	recipient, err := s.userRepo.GetByID(recipientID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	if !isSuperadminUser(creator) && !isSuperadminUser(recipient) && models.TenantForUser(creator) != models.TenantForUser(recipient) {
+		return nil, ErrCrossTenant
+	}
+
 	dmName := fmt.Sprintf("DM-%d-%d", userID, recipientID)
 	if userID > recipientID {
 		dmName = fmt.Sprintf("DM-%d-%d", recipientID, userID)
@@ -272,6 +304,7 @@ func (s *channelService) CreateDirectMessage(userID, recipientID uint) (*DirectM
 		Name:      dmName,
 		Type:      models.ChannelTypeDirect,
 		CreatedBy: userID,
+		TenantID:  models.TenantForUser(creator),
 		IsActive:  true,
 	}
 

@@ -47,7 +47,7 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isManager := middleware.IsManager(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
-	empleadorID := middleware.GetEmpleadorID(c)
+	tenantID := middleware.GetTenantID(c)
 
 	boardIDStr := c.Query("board_id")
 	status := c.Query("status")
@@ -57,7 +57,7 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	tasks, total, err := h.service.GetAll(userID, role, isManager, isSuperadmin, empleadorID, boardIDStr, status, priority, offset, limit)
+	tasks, total, err := h.service.GetAll(userID, role, isManager, isSuperadmin, tenantID, boardIDStr, status, priority, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tasks", "details": err.Error()})
 		return
@@ -78,7 +78,8 @@ func (h *TaskHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	task, err := h.service.GetByID(uint(id))
+	tenantID := middleware.GetTenantID(c)
+	task, err := h.service.GetByID(uint(id), tenantID, middleware.IsSuperadmin(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
@@ -96,8 +97,9 @@ func (h *TaskHandler) Create(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	tenantID := middleware.GetTenantID(c)
 
-	task, _, err := h.service.Create(userID, isSuperadmin, req.Title, req.Description, req.Priority, req.EndDate, req.Assignees, req.BoardID)
+	task, _, err := h.service.Create(userID, isSuperadmin, tenantID, req.Title, req.Description, req.Priority, req.EndDate, req.Assignees, req.BoardID)
 	if err != nil {
 		fmt.Printf("[DEBUG] Create Task Error: %v\n", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -151,10 +153,17 @@ func (h *TaskHandler) Update(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	tenantID := middleware.GetTenantID(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
 
-	task, _, err := h.service.Update(uint(id), userID, isSuperadmin, updates, req.Assignees)
+	task, _, err := h.service.Update(uint(id), tenantID, userID, role, isManager, isSuperadmin, updates, req.Assignees)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		status := http.StatusInternalServerError
+		if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -168,8 +177,16 @@ func (h *TaskHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Delete(uint(id)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete task"})
+	tenantID := middleware.GetTenantID(c)
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+	if err := h.service.Delete(uint(id), tenantID, userID, role, isManager, middleware.IsSuperadmin(c)); err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -184,9 +201,17 @@ func (h *TaskHandler) ToggleCompletion(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserID(c)
-	task, err := h.service.ToggleCompletion(uint(id), userID)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+	task, err := h.service.ToggleCompletion(uint(id), tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		status := http.StatusInternalServerError
+		if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -209,8 +234,10 @@ func (h *TaskHandler) AddComment(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
 
-	comment, err := h.service.AddComment(uint(id), userID, req.Content)
+	comment, err := h.service.AddComment(uint(id), tenantID, userID, req.Content, isSuperadmin)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -226,8 +253,9 @@ func (h *TaskHandler) AddAttachment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
 		return
 	}
+	tenantID := middleware.GetTenantID(c)
 
-	task, err := h.service.GetByID(uint(taskID))
+	task, err := h.service.GetByID(uint(taskID), tenantID, middleware.IsSuperadmin(c))
 	if err != nil || task == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
@@ -257,6 +285,7 @@ func (h *TaskHandler) AddAttachment(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
 	filename := fmt.Sprintf("task_%d_%d_%d%s", taskID, userID, time.Now().UnixNano(), ext)
 	filepath_ := filepath.Join(uploadPath, filename)
 
@@ -266,7 +295,7 @@ func (h *TaskHandler) AddAttachment(c *gin.Context) {
 	}
 
 	// Now handled by service
-	attachment, err := h.service.AddAttachment(uint(taskID), file.Filename, fmt.Sprintf("/api/uploads/%s", filename), file.Size, contentType, userID)
+	attachment, err := h.service.AddAttachment(uint(taskID), tenantID, file.Filename, fmt.Sprintf("/api/uploads/%s", filename), file.Size, contentType, userID, isSuperadmin)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save attachment info"})
 		return
@@ -282,7 +311,8 @@ func (h *TaskHandler) DeleteAttachment(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.DeleteAttachment(uint(attachmentID)); err != nil {
+	tenantID := middleware.GetTenantID(c)
+	if err := h.service.DeleteAttachment(uint(attachmentID), tenantID, middleware.IsSuperadmin(c)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete attachment"})
 		return
 	}

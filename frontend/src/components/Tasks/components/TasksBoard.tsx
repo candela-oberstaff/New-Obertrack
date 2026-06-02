@@ -11,11 +11,14 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { Plus, X } from 'lucide-react'
 import { Column } from '../Column'
 import { TaskCard } from '../TaskCard'
 import type { Task, Board } from '../../../types'
 import type { ColumnType, Phase } from '../types'
 import styles from '../../../pages/Tasks.module.css'
+
+const DEFAULT_PHASE_COLOR = '#6b7280'
 
 interface TasksBoardProps {
   tasks: Task[]
@@ -24,6 +27,9 @@ interface TasksBoardProps {
   onUpdateTask: (id: number, data: Partial<Task>) => Promise<void>
   onMovePhaseLeft?: (idx: number) => void
   onMovePhaseRight?: (idx: number) => void
+  onReorderPhase?: (fromIdx: number, toIdx: number) => void
+  onAddPhase?: (phase: { name: string; color: string }) => Promise<void>
+  isSavingPhase?: boolean
 }
 
 const DEFAULT_COLUMNS: ColumnType[] = [
@@ -37,12 +43,55 @@ export function TasksBoard({
   selectedBoard,
   onTaskClick,
   onUpdateTask,
+  onReorderPhase,
+  onAddPhase,
+  isSavingPhase = false,
 }: TasksBoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [localColumnOrder] = useState<string[] | null>(() => {
     const saved = localStorage.getItem('columnOrder')
     return saved ? JSON.parse(saved) : null
   })
+
+  // Column (phase) drag-and-drop state
+  const [draggedColIdx, setDraggedColIdx] = useState<number | null>(null)
+  const [dragOverColIdx, setDragOverColIdx] = useState<number | null>(null)
+
+  // Inline "add phase" state
+  const [addingPhase, setAddingPhase] = useState(false)
+  const [newPhaseName, setNewPhaseName] = useState('')
+  const [newPhaseColor, setNewPhaseColor] = useState(DEFAULT_PHASE_COLOR)
+
+  const canManagePhases = !!(selectedBoard?.phases?.length && onReorderPhase)
+
+  const handleColDragStart = useCallback((idx: number) => {
+    setDraggedColIdx(idx)
+  }, [])
+
+  const handleColDragEnter = useCallback((idx: number) => {
+    setDragOverColIdx((prev) => (prev === idx ? prev : idx))
+  }, [])
+
+  const handleColDrop = useCallback((idx: number) => {
+    if (draggedColIdx !== null && draggedColIdx !== idx) {
+      onReorderPhase?.(draggedColIdx, idx)
+    }
+    setDraggedColIdx(null)
+    setDragOverColIdx(null)
+  }, [draggedColIdx, onReorderPhase])
+
+  const handleColDragEnd = useCallback(() => {
+    setDraggedColIdx(null)
+    setDragOverColIdx(null)
+  }, [])
+
+  const submitNewPhase = useCallback(async () => {
+    if (!newPhaseName.trim() || isSavingPhase || !onAddPhase) return
+    await onAddPhase({ name: newPhaseName.trim(), color: newPhaseColor })
+    setNewPhaseName('')
+    setNewPhaseColor(DEFAULT_PHASE_COLOR)
+    setAddingPhase(false)
+  }, [newPhaseName, newPhaseColor, isSavingPhase, onAddPhase])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -135,13 +184,13 @@ export function TasksBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className={styles['kanban-board']}>
+      <div className={styles['kanban-board']} data-tour="tasks-board">
         {(selectedBoard?.phases?.length
           ? selectedBoard.phases
           : localColumnOrder
             ? localColumnOrder.map(id => DEFAULT_COLUMNS.find(c => c.id === id) || DEFAULT_COLUMNS[0])
             : DEFAULT_COLUMNS
-        ).map((p: Phase | ColumnType) => {
+        ).map((p: Phase | ColumnType, idx: number) => {
           const isPhase = !!(p as Phase).name
           const column = {
             id: isPhase ? ((p as Phase).status || (p as Phase).name.toLowerCase().replace(/\s+/g, '_')) : (p as ColumnType).id,
@@ -154,9 +203,71 @@ export function TasksBoard({
               column={column}
               tasks={getTasksByStatus(column.id)}
               onTaskClick={onTaskClick}
+              index={idx}
+              columnDraggable={canManagePhases}
+              isColumnDragging={draggedColIdx === idx}
+              isColumnDragOver={dragOverColIdx === idx && draggedColIdx !== idx}
+              onColumnDragStart={handleColDragStart}
+              onColumnDragEnter={handleColDragEnter}
+              onColumnDrop={handleColDrop}
+              onColumnDragEnd={handleColDragEnd}
             />
           )
         })}
+
+        {canManagePhases && onAddPhase && (
+          <div className={styles['add-column']}>
+            {addingPhase ? (
+              <div className={styles['add-column-form']}>
+                <div className={styles['add-column-row']}>
+                  <input
+                    type="color"
+                    value={newPhaseColor.startsWith('#') ? newPhaseColor : DEFAULT_PHASE_COLOR}
+                    onChange={(e) => setNewPhaseColor(e.target.value)}
+                    title="Color de la fase"
+                    style={{ width: '36px', height: '36px', padding: 0, border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0 }}
+                  />
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newPhaseName}
+                    onChange={(e) => setNewPhaseName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); submitNewPhase() }
+                      if (e.key === 'Escape') { setAddingPhase(false); setNewPhaseName('') }
+                    }}
+                    placeholder="Nombre de la fase..."
+                    style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 12px', minWidth: 0 }}
+                  />
+                </div>
+                <div className={styles['add-column-actions']}>
+                  <button
+                    type="button"
+                    className={styles['btn-primary']}
+                    onClick={submitNewPhase}
+                    disabled={isSavingPhase || !newPhaseName.trim()}
+                    style={{ flex: 1 }}
+                  >
+                    {isSavingPhase ? 'Guardando...' : 'Agregar'}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles['btn-icon']}
+                    onClick={() => { setAddingPhase(false); setNewPhaseName('') }}
+                    title="Cancelar"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className={styles['add-column-btn']} onClick={() => setAddingPhase(true)}>
+                <Plus size={20} />
+                <span>Agregar fase</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <DragOverlay>

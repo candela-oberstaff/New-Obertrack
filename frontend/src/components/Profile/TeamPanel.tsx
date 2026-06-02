@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { userService } from '../../services/api'
 import type { User } from '../../types'
 import Avatar from '../Common/Avatar'
+import { useConfirm } from '../ui/ConfirmProvider'
 import styles from '../../pages/Profile.module.css'
 
 interface TeamPanelProps {
@@ -13,6 +14,7 @@ interface TeamPanelProps {
 export function TeamPanel({ type, employerId }: TeamPanelProps) {
   const [teamMembers, setTeamMembers] = useState<User[]>([])
   const [message, setMessage] = useState('')
+  const confirm = useConfirm()
 
   const fetchTeam = async () => {
     try {
@@ -34,7 +36,13 @@ export function TeamPanel({ type, employerId }: TeamPanelProps) {
   }, [type, employerId])
 
   const handlePromoteToManager = async (targetUserId: number) => {
-    if (!window.confirm('¿Promover a este profesional a Manager?')) return
+    const ok = await confirm({
+      title: 'Promover a Manager',
+      message: '¿Promover a este profesional a Manager?',
+      confirmLabel: 'Promover',
+      variant: 'primary',
+    })
+    if (!ok) return
     try {
       await userService.promoteToManager(targetUserId)
       fetchTeam()

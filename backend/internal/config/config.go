@@ -2,12 +2,17 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+// weakDefaultJWTSecret is the placeholder shipped in .env.example. It must never
+// be used in a real deployment because it is public knowledge.
+const weakDefaultJWTSecret = "your-super-secret-jwt-key-change-in-production"
 
 type Config struct {
 	DBHost     string
@@ -21,7 +26,7 @@ type Config struct {
 }
 
 func LoadConfig() *Config {
-	return &Config{
+	cfg := &Config{
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5432"),
 		DBUser:     getEnv("DB_USER", "postgres"),
@@ -31,6 +36,15 @@ func LoadConfig() *Config {
 		ServerPort: getEnv("SERVER_PORT", "8080"),
 		DBSSLMode:  getEnv("DB_SSL_MODE", "disable"),
 	}
+
+	// Fail fast on an insecure JWT secret. An empty, default, or short secret
+	// allows anyone to forge superadmin tokens (see audit finding C-02).
+	if cfg.JWTSecret == "" || cfg.JWTSecret == weakDefaultJWTSecret || len(cfg.JWTSecret) < 32 {
+		log.Fatal("FATAL: JWT_SECRET is missing, uses the example default, or is shorter than 32 bytes. " +
+			"Generate a strong secret, e.g.: openssl rand -base64 48")
+	}
+
+	return cfg
 }
 
 func (c *Config) GetDSN() string {
@@ -43,13 +57,20 @@ func (c *Config) GetDSN() string {
 
 func InitDB(cfg *Config) (*gorm.DB, error) {
 	dsn := cfg.GetDSN()
-	fmt.Println("DSN:", dsn)
+	// Never log the DSN: it contains the DB password in clear text (audit finding C-04).
+	log.Printf("Connecting to database host=%s db=%s sslmode=%s", cfg.DBHost, cfg.DBName, cfg.DBSSLMode)
+
+	// In production, avoid logging every SQL query (it leaks personal/payroll data).
+	gormLogLevel := logger.Warn
+	if os.Getenv("GIN_MODE") != "release" {
+		gormLogLevel = logger.Info
+	}
 
 	db, err := gorm.Open(postgres.New(postgres.Config{
 		DSN:                  dsn,
 		PreferSimpleProtocol: true,
 	}), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(gormLogLevel),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Settings } from 'lucide-react';
 import { Block } from '../types';
+import { Select } from '../../../../ui/Select';
 import styles from '../Builder.module.css';
 
 interface PropertiesPanelProps {
@@ -175,20 +176,14 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedBlock, onUpda
         {selectedBlock.type === 'text' && (
           <div className={styles['prop-control']}>
             <label>Tamaño de fuente</label>
-            <select
+            <Select
+              fullWidth
               value={selectedBlock.style.fontSize}
-              onChange={(e) => onUpdateBlock(selectedBlock.id, {
-                style: { ...selectedBlock.style, fontSize: e.target.value }
+              onChange={(v) => onUpdateBlock(selectedBlock.id, {
+                style: { ...selectedBlock.style, fontSize: String(v) }
               })}
-            >
-              <option value="12px">12px</option>
-              <option value="14px">14px</option>
-              <option value="16px">16px</option>
-              <option value="18px">18px</option>
-              <option value="20px">20px</option>
-              <option value="24px">24px</option>
-              <option value="32px">32px</option>
-            </select>
+              options={['12px', '14px', '16px', '18px', '20px', '24px', '32px'].map(s => ({ value: s, label: s }))}
+            />
           </div>
         )}
       </div>

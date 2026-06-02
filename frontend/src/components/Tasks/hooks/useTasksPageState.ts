@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import { useNotification } from '../../../context/NotificationContext'
+import { useConfirm } from '../../ui/ConfirmProvider'
 import { userService, taskService } from '../../../services/api'
 import type { User, Board, Task, CreateTaskInput, Phase } from '../../../types'
 import { ColumnType } from '../types'
@@ -29,6 +30,7 @@ const DEFAULT_COLUMNS: ColumnType[] = [
 export function useTasksPageState() {
   const { user } = useAuth()
   const { error: showError } = useNotification()
+  const confirm = useConfirm()
 
   // Users state
   const [users, setUsers] = useState<User[]>([])
@@ -38,7 +40,9 @@ export function useTasksPageState() {
   const [showNewTaskModal, setShowNewTaskModal] = useState(false)
   const [showBoardModal, setShowBoardModal] = useState(false)
   const [showBoardMembersModal, setShowBoardMembersModal] = useState(false)
+  const [showPhasesModal, setShowPhasesModal] = useState(false)
   const [showJoinBoardModal, setShowJoinBoardModal] = useState(false)
+  const [isSavingPhase, setIsSavingPhase] = useState(false)
   const [optimisticMembers, setOptimisticMembers] = useState<number[]>([])
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isDeletingBoard, setIsDeletingBoard] = useState(false)
@@ -88,6 +92,8 @@ export function useTasksPageState() {
     fetchPublicBoards,
     updateBoardMembers,
     reorderPhases,
+    addPhase,
+    removePhase,
   } = useBoards()
 
   // Tasks hook
@@ -167,7 +173,13 @@ export function useTasksPageState() {
 
   // Board actions
   const handleDeleteBoard = useCallback(async (boardId: number) => {
-    if (!confirm('¿Eliminar este tablero? Esta acción no se puede deshacer.')) return
+    const ok = await confirm({
+      title: 'Eliminar tablero',
+      message: '¿Eliminar este tablero? Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!ok) return
     setIsDeletingBoard(true)
     try {
       await deleteBoard(boardId)
@@ -179,7 +191,7 @@ export function useTasksPageState() {
     } finally {
       setIsDeletingBoard(false)
     }
-  }, [deleteBoard, selectedBoard, setSelectedTask])
+  }, [deleteBoard, selectedBoard, setSelectedTask, confirm])
 
   // Handle board form submission - transform BoardFormData to CreateBoardInput
   const handleBoardSubmit = useCallback(async (data: BoardFormData) => {
@@ -252,6 +264,52 @@ export function useTasksPageState() {
     setSelectedBoard({ ...selectedBoard, phases: newPhases })
     reorderPhases(selectedBoard.id, newPhases.map((p: Phase) => p.id))
   }, [selectedBoard, setSelectedBoard, reorderPhases])
+
+  // Move a phase from one position to another (drag & drop on the board)
+  const handleReorderPhaseByIndex = useCallback((fromIdx: number, toIdx: number) => {
+    if (!selectedBoard?.phases || !selectedBoard.id) return
+    if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return
+    const newPhases = [...selectedBoard.phases]
+    if (fromIdx >= newPhases.length || toIdx >= newPhases.length) return
+    const [moved] = newPhases.splice(fromIdx, 1)
+    newPhases.splice(toIdx, 0, moved)
+    setSelectedBoard({ ...selectedBoard, phases: newPhases })
+    reorderPhases(selectedBoard.id, newPhases.map((p: Phase) => p.id))
+  }, [selectedBoard, setSelectedBoard, reorderPhases])
+
+  // Add / remove phases on an existing board
+  const handleAddPhase = useCallback(async (phase: { name: string; color: string }) => {
+    if (!selectedBoard?.id || !phase.name.trim()) return
+    setIsSavingPhase(true)
+    try {
+      await addPhase(selectedBoard.id, { name: phase.name.trim(), color: phase.color })
+    } catch (error) {
+      console.error('Error adding phase:', error)
+      showError('No se pudo agregar la fase')
+    } finally {
+      setIsSavingPhase(false)
+    }
+  }, [selectedBoard, addPhase, showError])
+
+  const handleRemovePhase = useCallback(async (phaseId: number) => {
+    if (!selectedBoard?.id) return
+    const ok = await confirm({
+      title: 'Eliminar fase',
+      message: '¿Eliminar esta fase? Las tareas en esta fase podrían verse afectadas.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!ok) return
+    setIsSavingPhase(true)
+    try {
+      await removePhase(selectedBoard.id, phaseId)
+    } catch (error: any) {
+      console.error('Error removing phase:', error)
+      showError(error?.response?.data?.error || 'No se pudo eliminar la fase')
+    } finally {
+      setIsSavingPhase(false)
+    }
+  }, [selectedBoard, removePhase, showError, confirm])
 
   const handleOpenNewTaskModal = () => {
     if (!selectedBoard) {
@@ -375,6 +433,9 @@ export function useTasksPageState() {
     setShowBoardModal,
     showBoardMembersModal,
     setShowBoardMembersModal,
+    showPhasesModal,
+    setShowPhasesModal,
+    isSavingPhase,
     showJoinBoardModal,
     setShowJoinBoardModal,
     optimisticMembers,
@@ -384,6 +445,7 @@ export function useTasksPageState() {
     isJoiningBoard,
     draggingPhase,
     dragOverIdx,
+    isDraggingPhasesRef,
     newTaskData,
     setNewTaskData,
     boardFormData,
@@ -408,6 +470,9 @@ export function useTasksPageState() {
     handlePhaseDragEnd,
     handleMovePhaseLeft,
     handleMovePhaseRight,
+    handleReorderPhaseByIndex,
+    handleAddPhase,
+    handleRemovePhase,
     handleOpenNewTaskModal,
     handleCreateTask,
     handleUpdateTask,

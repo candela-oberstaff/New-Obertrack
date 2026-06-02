@@ -20,6 +20,7 @@ type Channel struct {
 	Description   string         `gorm:"size:500" json:"description"`
 	Type          ChannelType    `gorm:"type:varchar(20);not null;default:'public';uniqueIndex:idx_channel_name_type" json:"type"`
 	CreatedBy     uint           `gorm:"not null;index" json:"created_by"`
+	TenantID      uint           `gorm:"index" json:"tenant_id"`
 	CreatedByUser User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	IsActive      bool           `gorm:"default:true" json:"is_active"`
 	CreatedAt     time.Time      `json:"created_at"`
@@ -49,6 +50,7 @@ func (ChannelMember) TableName() string {
 type ChannelMessage struct {
 	ID         uint              `gorm:"primaryKey" json:"id"`
 	ChannelID  uint              `gorm:"not null;index:idx_channel_msg_channel_deleted" json:"channel_id"`
+	TenantID   uint              `gorm:"index" json:"tenant_id"`
 	UserID     uint              `gorm:"not null;index" json:"user_id"`
 	User       User              `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Content    string            `gorm:"type:text" json:"content"`

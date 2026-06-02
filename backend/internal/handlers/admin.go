@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/service"
 )
 
@@ -159,6 +160,14 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
+	// Guard: an admin must not be able to deactivate their own account. Doing so
+	// would lock them out the moment their session ends (login blocks inactive
+	// users), with no way to recover if they are the last active superadmin.
+	if req.IsActive != nil && !*req.IsActive && uint(id) == middleware.GetUserID(c) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No puedes desactivar tu propia cuenta."})
+		return
+	}
+
 	updates := map[string]interface{}{}
 	if req.Name != "" {
 		updates["name"] = req.Name
@@ -250,6 +259,151 @@ func (h *AdminHandler) ResetPassword(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
+}
+
+func (h *AdminHandler) GetTenants(c *gin.Context) {
+	tenants, err := h.service.GetTenants()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tenants"})
+		return
+	}
+	c.JSON(http.StatusOK, tenants)
+}
+
+func (h *AdminHandler) GetTenant(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	tenant, err := h.service.GetTenant(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tenant not found"})
+		return
+	}
+	c.JSON(http.StatusOK, tenant)
+}
+
+func (h *AdminHandler) GetTenantEmployees(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	employees, err := h.service.GetTenantEmployees(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tenant employees"})
+		return
+	}
+	c.JSON(http.StatusOK, employees)
+}
+
+func (h *AdminHandler) GetEmployeeTracking(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid employee ID"})
+		return
+	}
+
+	tracking, err := h.service.GetEmployeeTracking(uint(id))
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Employee not found" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, tracking)
+}
+
+func (h *AdminHandler) GetTenantActivity(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	activities, err := h.service.GetTenantActivities(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tenant activity"})
+		return
+	}
+	c.JSON(http.StatusOK, activities)
+}
+
+func (h *AdminHandler) SetTenantStatus(c *gin.Context, active bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	tenant, err := h.service.SetTenantStatus(uint(id), active)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Tenant not found" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, tenant)
+}
+
+func (h *AdminHandler) SuspendTenant(c *gin.Context) {
+	h.SetTenantStatus(c, false)
+}
+
+func (h *AdminHandler) ActivateTenant(c *gin.Context) {
+	h.SetTenantStatus(c, true)
+}
+
+func (h *AdminHandler) CreateTenant(c *gin.Context) {
+	var req struct {
+		Name        string `json:"name"`
+		CompanyName string `json:"company_name" binding:"required"`
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+		UserID      *uint  `json:"user_id"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.UserID != nil {
+		tenant, err := h.service.AssignTenant(*req.UserID, req.CompanyName)
+		if err != nil {
+			status := http.StatusBadRequest
+			if err.Error() == "Usuario no encontrado" {
+				status = http.StatusNotFound
+			}
+			c.JSON(status, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, tenant)
+		return
+	}
+
+	if req.Name == "" || req.Email == "" || req.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name, email y password son obligatorios para crear una cuenta nueva"})
+		return
+	}
+
+	tenant, err := h.service.CreateTenant(req.Name, req.CompanyName, req.Email, req.Password)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Email already registered" {
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, tenant)
 }
 
 func (h *AdminHandler) GetStats(c *gin.Context) {

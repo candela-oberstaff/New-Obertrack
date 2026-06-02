@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"html"
 	"net/http"
 	"os"
 )
@@ -157,103 +156,4 @@ func getEnvOrDefault(key, fallback string) string {
 		return val
 	}
 	return fallback
-}
-
-// SendTicketUpdateEmail sends a ticket update email using a styled HTML template.
-func (s *BrevoService) SendTicketUpdateEmail(toEmail, toName string, ticketID uint, ticketTitle, content string) error {
-	if s.apiKey == "" {
-		return fmt.Errorf("BREVO_API_KEY is not configured")
-	}
-
-	subject := fmt.Sprintf("[Obertrack - Ticket #%d] %s", ticketID, ticketTitle)
-
-	// Clean up content to preserve linebreaks in HTML
-	escapedContent := html.EscapeString(content)
-	htmlContent := fmt.Sprintf(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #f3f4f6;
-      color: #1f2937;
-      margin: 0;
-      padding: 0;
-    }
-    .container {
-      max-width: 600px;
-      margin: 40px auto;
-      background-color: #ffffff;
-      border-radius: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-      overflow: hidden;
-      border: 1px solid #e5e7eb;
-    }
-    .header {
-      background: linear-gradient(135deg, #6366f1, #4f46e5);
-      padding: 24px 32px;
-      color: #ffffff;
-    }
-    .header h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 700;
-    }
-    .header p {
-      margin: 4px 0 0 0;
-      font-size: 13px;
-      opacity: 0.9;
-    }
-    .content {
-      padding: 32px;
-      line-height: 1.6;
-      font-size: 15px;
-    }
-    .message-box {
-      background-color: #f9fafb;
-      border-left: 4px solid #6366f1;
-      padding: 16px 20px;
-      margin: 20px 0;
-      border-radius: 4px;
-      font-size: 15px;
-      color: #374151;
-      white-space: pre-wrap;
-    }
-    .footer {
-      background-color: #f9fafb;
-      padding: 20px 32px;
-      text-align: center;
-      font-size: 12px;
-      color: #6b7280;
-      border-top: 1px solid #e5e7eb;
-    }
-    .footer p {
-      margin: 4px 0;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h2>Obertrack Soporte</h2>
-      <p>Actualización del Ticket #%d - %s</p>
-    </div>
-    <div class="content">
-      <p>Estimado/a %s,</p>
-      <p>Hemos enviado una actualización a tu consulta. A continuación puedes ver el mensaje:</p>
-      
-      <div class="message-box">%s</div>
-      
-      <p>Si tienes alguna duda o deseas agregar más información, puedes responder directamente a este correo.</p>
-    </div>
-    <div class="footer">
-      <p>Este es un correo automático enviado por <strong>Obertrack</strong>.</p>
-      <p>&copy; 2026 Obertrack. Todos los derechos reservados.</p>
-    </div>
-  </div>
-</body>
-</html>`, ticketID, ticketTitle, toName, escapedContent)
-
-	return s.SendEmail(toEmail, toName, subject, htmlContent)
 }

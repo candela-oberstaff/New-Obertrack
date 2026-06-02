@@ -11,16 +11,16 @@ type BoardService interface {
 	GetAll(userID uint, role string, isSuperadmin bool, companyID uint) ([]models.Board, error)
 	GetPublicBoards(userID uint, companyID uint) ([]models.Board, error)
 	JoinBoard(userID, boardID uint) (*models.Board, error)
-	GetByID(userID uint, role string, isSuperadmin bool, boardID uint) (*models.Board, error)
+	GetByID(userID uint, role string, isSuperadmin bool, companyID uint, boardID uint) (*models.Board, error)
 	Create(userID uint, name, description, color string, memberIDs []uint, phases []struct {
 		Name  string
 		Color string
 	}) (*models.Board, error)
-	Update(boardID uint, updates map[string]interface{}, memberIDs []uint) (*models.Board, error)
+	Update(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}, memberIDs []uint) (*models.Board, error)
 	Delete(userID, boardID uint) error
-	AddPhase(boardID uint, name, color string) (*models.Board, error)
-	RemovePhase(boardID, phaseID uint) (*models.Board, error)
-	ReorderPhases(boardID uint, phaseIDs []uint) (*models.Board, error)
+	AddPhase(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, name, color string) (*models.Board, error)
+	RemovePhase(boardID, phaseID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error)
+	ReorderPhases(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, phaseIDs []uint) (*models.Board, error)
 }
 
 type boardService struct {
@@ -35,6 +35,23 @@ func NewBoardService(repo repository.BoardRepository, userRepo repository.UserRe
 	}
 }
 
+func (s *boardService) authorizeBoardTenant(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error) {
+	board, err := s.repo.GetByID(boardID)
+	if err != nil {
+		return nil, errors.New("Board not found")
+	}
+	if isSuperadmin {
+		return board, nil
+	}
+	if tenantID == 0 || board.TenantID != tenantID {
+		return nil, errors.New("Access denied")
+	}
+	if board.CreatedBy == userID || isEmployerRole(role) || isManager {
+		return board, nil
+	}
+	return nil, errors.New("Access denied")
+}
+
 func (s *boardService) GetAll(userID uint, role string, isSuperadmin bool, companyID uint) ([]models.Board, error) {
 	filters := make(map[string]interface{})
 
@@ -43,7 +60,7 @@ func (s *boardService) GetAll(userID uint, role string, isSuperadmin bool, compa
 	}
 
 	if companyID > 0 {
-		filters["company_id"] = companyID
+		filters["tenant_id"] = companyID
 	}
 
 	return s.repo.FindAll(filters)
@@ -53,7 +70,7 @@ func (s *boardService) GetPublicBoards(userID uint, companyID uint) ([]models.Bo
 	// Simplified: boards that I'm NOT in.
 	filters := make(map[string]interface{})
 	if companyID > 0 {
-		filters["company_id"] = companyID
+		filters["tenant_id"] = companyID
 	}
 	all, err := s.repo.FindAll(filters)
 	if err != nil {
@@ -79,6 +96,8 @@ func (s *boardService) GetPublicBoards(userID uint, companyID uint) ([]models.Bo
 	return public, nil
 }
 
+
+
 func (s *boardService) JoinBoard(userID, boardID uint) (*models.Board, error) {
 	board, err := s.repo.GetByID(boardID)
 	if err != nil {
@@ -96,6 +115,15 @@ func (s *boardService) JoinBoard(userID, boardID uint) (*models.Board, error) {
 		return nil, errors.New("User not found")
 	}
 
+	creator, err := s.userRepo.GetByID(board.CreatedBy)
+	if err != nil {
+		return nil, errors.New("Board creator not found")
+	}
+
+	if tenantForUser(user) == 0 || tenantForUser(user) != tenantForUser(creator) {
+		return nil, errors.New("No tienes permisos para unirte a este tablero")
+	}
+
 	if err := s.repo.AddMember(board, user); err != nil {
 		return nil, err
 	}
@@ -103,10 +131,21 @@ func (s *boardService) JoinBoard(userID, boardID uint) (*models.Board, error) {
 	return s.repo.GetByID(boardID)
 }
 
-func (s *boardService) GetByID(userID uint, role string, isSuperadmin bool, boardID uint) (*models.Board, error) {
+func (s *boardService) GetByID(userID uint, role string, isSuperadmin bool, companyID uint, boardID uint) (*models.Board, error) {
 	board, err := s.repo.GetByID(boardID)
 	if err != nil {
 		return nil, errors.New("Board not found")
+	}
+
+	// Enforce tenant: if caller is not superadmin, ensure board belongs to caller's tenant
+	if !isSuperadmin && companyID > 0 {
+		creator, err := s.userRepo.GetByID(board.CreatedBy)
+		if err != nil {
+			return nil, errors.New("Board creator not found")
+		}
+		if tenantForUser(creator) != companyID {
+			return nil, errors.New("Access denied")
+		}
 	}
 
 	if !isSuperadmin && role != "superadmin" {
@@ -132,18 +171,20 @@ func (s *boardService) Create(userID uint, name, description, color string, memb
 		color = "#3b82f6"
 	}
 
+	user, _ := s.userRepo.GetByID(userID)
+
 	board := &models.Board{
 		Name:        name,
 		Description: description,
 		Color:       color,
 		CreatedBy:   userID,
+		TenantID:    models.TenantForUser(user),
 	}
 
 	if err := s.repo.Create(board); err != nil {
 		return nil, err
 	}
 
-	user, _ := s.userRepo.GetByID(userID)
 	if user != nil {
 		s.repo.AddMember(board, user)
 	}
@@ -152,7 +193,7 @@ func (s *boardService) Create(userID uint, name, description, color string, memb
 		for _, mid := range memberIDs {
 			if mid != userID {
 				m, _ := s.userRepo.GetByID(mid)
-				if m != nil {
+				if m != nil && (isSuperadminUser(m) || models.TenantForUser(m) == board.TenantID) {
 					s.repo.AddMember(board, m)
 				}
 			}
@@ -193,10 +234,10 @@ func (s *boardService) Create(userID uint, name, description, color string, memb
 	return s.repo.GetByID(board.ID)
 }
 
-func (s *boardService) Update(boardID uint, updates map[string]interface{}, memberIDs []uint) (*models.Board, error) {
-	board, err := s.repo.GetByID(boardID)
+func (s *boardService) Update(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}, memberIDs []uint) (*models.Board, error) {
+	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {
-		return nil, errors.New("Board not found")
+		return nil, err
 	}
 
 	if len(updates) > 0 {
@@ -206,15 +247,12 @@ func (s *boardService) Update(boardID uint, updates map[string]interface{}, memb
 	}
 
 	if memberIDs != nil {
-		// Replace all members
-		// In a real refactor we should have a more granular update method in Repo
-		// but let's assume we replace them all for now to keep it consistent with original
 		for _, m := range board.Members {
 			s.repo.RemoveMember(board, m.ID)
 		}
 		for _, mid := range memberIDs {
 			user, _ := s.userRepo.GetByID(mid)
-			if user != nil {
+			if user != nil && (isSuperadminUser(user) || models.TenantForUser(user) == board.TenantID) {
 				s.repo.AddMember(board, user)
 			}
 		}
@@ -238,10 +276,10 @@ func (s *boardService) Delete(userID, boardID uint) error {
 	return s.repo.Delete(board)
 }
 
-func (s *boardService) AddPhase(boardID uint, name, color string) (*models.Board, error) {
-	board, err := s.repo.GetByID(boardID)
+func (s *boardService) AddPhase(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, name, color string) (*models.Board, error) {
+	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {
-		return nil, errors.New("Board not found")
+		return nil, err
 	}
 
 	maxOrder := -1
@@ -268,10 +306,10 @@ func (s *boardService) AddPhase(boardID uint, name, color string) (*models.Board
 	return s.repo.GetByID(boardID)
 }
 
-func (s *boardService) RemovePhase(boardID, phaseID uint) (*models.Board, error) {
-	board, err := s.repo.GetByID(boardID)
+func (s *boardService) RemovePhase(boardID, phaseID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error) {
+	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {
-		return nil, errors.New("Board not found")
+		return nil, err
 	}
 
 	found := false
@@ -301,10 +339,10 @@ func (s *boardService) RemovePhase(boardID, phaseID uint) (*models.Board, error)
 	return s.repo.GetByID(boardID)
 }
 
-func (s *boardService) ReorderPhases(boardID uint, phaseIDs []uint) (*models.Board, error) {
-	board, err := s.repo.GetByID(boardID)
+func (s *boardService) ReorderPhases(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, phaseIDs []uint) (*models.Board, error) {
+	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {
-		return nil, errors.New("Board not found")
+		return nil, err
 	}
 
 	if err := s.repo.UpdatePhasesOrder(board, phaseIDs); err != nil {

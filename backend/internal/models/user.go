@@ -42,7 +42,6 @@ type User struct {
 	Country             string         `gorm:"size:100" json:"country"`
 	City                string         `gorm:"size:100" json:"city"`
 	Location            string         `gorm:"type:text" json:"location"`
-	ZohoAgentID         string         `gorm:"size:100;index" json:"zoho_agent_id,omitempty"`
 	GoogleCalendarToken string         `gorm:"type:text" json:"-"`
 	GoogleFormsToken    string         `gorm:"type:text" json:"-"`
 	RememberToken       string         `gorm:"size:100" json:"-"`
@@ -50,6 +49,9 @@ type User struct {
 	ManagerID           *uint          `gorm:"index" json:"manager_id,omitempty"`
 	ResetToken          string         `gorm:"size:100;index" json:"-"`
 	ResetTokenExpiry    *time.Time     `json:"-"`
+	// TokenVersion is bumped to invalidate all previously issued access/refresh
+	// tokens for this user (logout-all, password change, suspension) — audit A-04.
+	TokenVersion        int            `gorm:"not null;default:0" json:"-"`
 	CreatedAt           time.Time      `json:"created_at"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`
@@ -57,4 +59,17 @@ type User struct {
 
 func (User) TableName() string {
 	return "users"
+}
+
+func TenantForUser(user *User) uint {
+	if user == nil {
+		return 0
+	}
+	if user.UserType == UserTypeEmployer {
+		return user.ID
+	}
+	if user.EmpleadorID != nil {
+		return *user.EmpleadorID
+	}
+	return 0
 }

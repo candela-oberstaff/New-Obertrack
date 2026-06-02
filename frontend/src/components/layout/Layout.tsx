@@ -20,13 +20,18 @@ import {
   Menu,
   X,
   Inbox,
-  MessageSquare
+  MessageSquare,
+  GraduationCap,
+  Building2,
+  Compass,
+  Map
 } from 'lucide-react'
 import Avatar from '../Common/Avatar'
+import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
 import styles from './Layout.module.css'
 
 export default function Layout() {
-  const { user, logout, token } = useAuth()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
@@ -41,7 +46,7 @@ export default function Layout() {
 
 
   useEffect(() => {
-    if (!token) return
+    if (!user) return
 
     const fetchTotalUnread = async () => {
       try {
@@ -62,7 +67,16 @@ export default function Layout() {
       clearInterval(interval)
       window.removeEventListener('chat-unread-updated', handleChatUpdate)
     }
-  }, [token])
+  }, [user])
+
+  useEffect(() => {
+    if (!user?.id || window.innerWidth < 768) return
+    const key = `obertrack_tour_seen_${user.id}`
+    if (localStorage.getItem(key)) return
+    localStorage.setItem(key, '1')
+    const timer = setTimeout(() => startSystemTour(), 800)
+    return () => clearTimeout(timer)
+  }, [user?.id])
 
   const handleLogout = () => {
     logout()
@@ -72,18 +86,21 @@ export default function Layout() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} /> },
-    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} /> },
+    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, superadminOnly: true },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} /> },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, adminOnly: true },
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} /> },
+    { path: '/tutoriales', label: 'Tutoriales', icon: <GraduationCap size={20} /> },
     { path: '/profile', label: 'Perfil', icon: <User size={20} /> },
   ].filter(item => {
+    if (item.superadminOnly && !user?.is_superadmin) return false
     if (item.adminOnly && !user?.is_superadmin && user?.user_type !== 'empleador') return false
     return true
   })
 
   if (user?.is_superadmin) {
     navItems.splice(1, 0, { path: '/admin', label: 'Admin', icon: <Settings size={20} /> })
+    navItems.splice(2, 0, { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} /> })
     // Add Tools after Chat (which is currently at index 5 or 6 depending on Admin)
     const toolsIndex = navItems.findIndex(item => item.path === '/admin/tools')
     if (toolsIndex !== -1) {
@@ -146,6 +163,8 @@ export default function Layout() {
             <NavLink
               key={item.path}
               to={item.path}
+              end={navItems.some(other => other.path !== item.path && other.path.startsWith(item.path + '/'))}
+              data-tour={item.path}
               className={({ isActive }) => `${styles['nav-item']} ${isActive ? styles['active'] : ''}`}
               title={item.label}
             >
@@ -181,6 +200,27 @@ export default function Layout() {
             <Menu size={24} />
           </button>
           <div className={styles['top-bar-actions']}>
+            <button
+              type="button"
+              className={`${styles['tour-btn']} ${styles['tour-btn-secondary']}`}
+              onClick={startSystemTour}
+              title="Recorrido del menú lateral"
+              aria-label="Recorrido del menú lateral"
+            >
+              <Map size={18} />
+              <span>Menú</span>
+            </button>
+            <button
+              type="button"
+              className={styles['tour-btn']}
+              onClick={() => startCurrentPageTour(location.pathname)}
+              title="Recorrido guiado"
+              aria-label="Recorrido guiado"
+              data-tour="topbar-current-tour"
+            >
+              <Compass size={18} />
+              <span>Recorrido guiado</span>
+            </button>
             <NavLink
               to="/whatsapp"
               className={({ isActive }) => `${styles['plugin-btn']} ${styles['plugin-btn-wa']} ${isActive ? styles['active'] : ''}`}

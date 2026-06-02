@@ -74,11 +74,9 @@ export function useChat(): UseChatReturn {
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-    const token = localStorage.getItem('token')
-    if (!token) return
-
+    // Auth travels via the httpOnly cookie on the same-origin WS handshake.
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/ws/channels?token=${token}`
+    const wsUrl = `${protocol}//${window.location.host}/ws/channels`
     const ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {

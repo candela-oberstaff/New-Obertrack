@@ -400,7 +400,7 @@ export default function WorkHours() {
 
   return (
     <div className={styles['work-hours-page']}>
-      <div className={styles['wh-page-header']}>
+      <div className={styles['wh-page-header']} data-tour="work-hours-header">
         <div className={styles['header-left']}>
           <h1>
             <Clock size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} />{' '}
@@ -414,7 +414,7 @@ export default function WorkHours() {
           </p>
         </div>
         {isEmployer ? (
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }} data-tour="work-hours-actions">
             <button 
               className={styles['btn-secondary'] || 'btn-secondary'} 
               onClick={handleDownloadPDF}
@@ -440,7 +440,7 @@ export default function WorkHours() {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px' }} data-tour="work-hours-actions">
             {totalAbsenceHoursToRecover > 0 && (
               <button className={styles['btn-secondary']} onClick={() => setShowRecoverModal(true)}>
                 Recuperar horas
@@ -469,7 +469,7 @@ export default function WorkHours() {
       )}
 
       {!isEmployer && totalAbsenceHoursToRecover > 0 && (
-        <div style={{ backgroundColor: '#fffbeb', border: '1px solid #f59e0b', color: '#b45309', padding: '16px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px', margin: '16px 0', fontSize: '14px', fontWeight: '500', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
+        <div data-tour="work-hours-alert" style={{ backgroundColor: '#fffbeb', border: '1px solid #f59e0b', color: '#b45309', padding: '16px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px', margin: '16px 0', fontSize: '14px', fontWeight: '500', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
           <AlertCircle size={20} style={{ color: '#d97706', flexShrink: 0 }} />
           <div>
             <strong>Recordatorio de ausencias:</strong> Tienes un total de <strong>{totalAbsenceHoursToRecover.toFixed(1)}h</strong> pendientes de recuperar debido a tus ausencias registradas este mes. Puedes coordinar con tu empleador para recuperarlas en otro momento.
@@ -487,7 +487,7 @@ export default function WorkHours() {
       />
 
       <div className={styles['work-hours-content']}>
-        <div className={styles['calendar-section']}>
+        <div className={styles['calendar-section']} data-tour="work-hours-calendar">
           <div className={styles['calendar-header']}>
             <button className={styles['nav-btn']} onClick={prevMonth}><ChevronLeft size={20} /></button>
             <h3>

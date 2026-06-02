@@ -1,5 +1,6 @@
 import { User } from '../../../types'
 import { X } from 'lucide-react'
+import { Select } from '../../ui/Select'
 import styles from '../Admin.module.css'
 
 interface UserModalProps {
@@ -71,13 +72,15 @@ export function UserModal({
           {mode === 'create' && (
             <div className={styles['form-group']}>
               <label>Tipo de Usuario</label>
-              <select
+              <Select
+                fullWidth
                 value={form.user_type}
-                onChange={e => setForm({ ...form, user_type: e.target.value })}
-              >
-                <option value="profesional">Profesional</option>
-                <option value="empleador">Empresa</option>
-              </select>
+                onChange={v => setForm({ ...form, user_type: String(v) })}
+                options={[
+                  { value: 'profesional', label: 'Profesional' },
+                  { value: 'empleador', label: 'Empresa' },
+                ]}
+              />
             </div>
           )}
 
@@ -96,27 +99,25 @@ export function UserModal({
             <>
               <div className={styles['form-group']}>
                 <label>Empresa (Empleador)</label>
-                <select
+                <Select
+                  fullWidth
+                  clearable
+                  placeholder="Seleccionar empresa..."
                   value={form.empleador_id || ''}
-                  onChange={e => setForm({ ...form, empleador_id: e.target.value ? Number(e.target.value) : undefined })}
-                >
-                  <option value="">Seleccionar empresa...</option>
-                  {employers.map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.company_name || emp.name}</option>
-                  ))}
-                </select>
+                  onChange={v => setForm({ ...form, empleador_id: v ? Number(v) : undefined })}
+                  options={employers.map(emp => ({ value: emp.id, label: emp.company_name || emp.name }))}
+                />
               </div>
               <div className={styles['form-group']}>
                 <label>Manager Asignado</label>
-                <select
+                <Select
+                  fullWidth
+                  clearable
+                  placeholder="Sin manager asignado"
                   value={form.manager_id || ''}
-                  onChange={e => setForm({ ...form, manager_id: e.target.value ? Number(e.target.value) : undefined })}
-                >
-                  <option value="">Sin manager asignado</option>
-                  {managers.filter(m => m.id !== form.empleador_id).map(m => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
+                  onChange={v => setForm({ ...form, manager_id: v ? Number(v) : undefined })}
+                  options={managers.filter(m => m.id !== form.empleador_id).map(m => ({ value: m.id, label: m.name }))}
+                />
               </div>
             </>
           )}
@@ -149,7 +150,14 @@ export function UserModal({
                     onChange={e => setForm({ ...form, country: e.target.value })}
                   />
                 </div>
-                
+                <div className={styles['form-group']}>
+                  <label>Ciudad</label>
+                  <input
+                    type="text"
+                    value={form.city}
+                    onChange={e => setForm({ ...form, city: e.target.value })}
+                  />
+                </div>
               </div>
               <div className={styles['form-group']}>
                 <label className={styles['checkbox-label']}>

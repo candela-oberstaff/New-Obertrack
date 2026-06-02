@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAdmin } from '../hooks'
 import {
   Users,
@@ -10,16 +11,17 @@ import {
   Check,
   Trash2,
   RefreshCw,
-  Shield
+  Shield,
+  Eye
 } from 'lucide-react'
 import Avatar from '../components/Common/Avatar'
+import { Select } from '../components/ui/Select'
 import styles from '../components/Admin/Admin.module.css'
 
 export default function Admin() {
   const {
     stats,
     users,
-    companies,
     recentActivity,
     isLoading,
     activeTab,
@@ -30,6 +32,7 @@ export default function Admin() {
     promoteToManager,
   } = useAdmin()
 
+  const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState<any>(null)
@@ -44,7 +47,6 @@ export default function Admin() {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'users', label: 'Usuarios', icon: Users },
-    { id: 'companies', label: 'Empresas', icon: Building2 },
     { id: 'activity', label: 'Actividad', icon: Activity },
   ]
 
@@ -68,12 +70,12 @@ export default function Admin() {
 
   return (
     <div className={styles['admin-page']}>
-      <div className={styles['admin-header']}>
+      <div className={styles['admin-header']} data-tour="admin-header">
         <h1>Panel de Administración</h1>
-        <p>Gestiona usuarios, empresas y actividad</p>
+        <p>Gestiona usuarios y actividad</p>
       </div>
 
-      <div className={styles['admin-tabs']}>
+      <div className={styles['admin-tabs']} data-tour="admin-tabs">
         {tabs.map(tab => (
           <button
             key={tab.id}
@@ -87,20 +89,18 @@ export default function Admin() {
       </div>
 
       <div className={styles['mobile-tabs']}>
-        <select 
-          value={activeTab} 
-          onChange={(e) => setActiveTab(e.target.value)}
-        >
-          {tabs.map(tab => (
-            <option key={tab.id} value={tab.id}>{tab.label}</option>
-          ))}
-        </select>
+        <Select
+          fullWidth
+          value={activeTab}
+          onChange={(v) => setActiveTab(String(v))}
+          options={tabs.map(tab => ({ value: tab.id, label: tab.label }))}
+        />
       </div>
 
       <div className={styles['admin-content']}>
         {activeTab === 'dashboard' && (
           <div className={styles['dashboard-tab']}>
-            <div className={styles['stats-grid']}>
+            <div className={styles['stats-grid']} data-tour="admin-stats">
               <div className={styles['stat-card']}>
                 <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}>
                   <Users size={26} />
@@ -139,7 +139,7 @@ export default function Admin() {
               </div>
             </div>
 
-            <div className={styles['recent-activity-section']}>
+            <div className={styles['recent-activity-section']} data-tour="admin-recent-activity">
               <h3>Actividad Reciente</h3>
               {recentActivity.length === 0 ? (
                 <p className={styles['empty-message']}>No hay actividad reciente</p>
@@ -167,7 +167,7 @@ export default function Admin() {
         {activeTab === 'users' && (
           <div className={styles['users-tab']}>
             <div className={styles['tab-header']}>
-              <div className={styles['search-box']}>
+              <div className={styles['search-box']} data-tour="admin-search">
                 <Search size={18} />
                 <input
                   type="text"
@@ -178,7 +178,7 @@ export default function Admin() {
               </div>
             </div>
 
-            <div className={styles['users-table']}>
+            <div className={styles['users-table']} data-tour="admin-users-table">
               <table>
                 <thead>
                   <tr>
@@ -214,7 +214,14 @@ export default function Admin() {
                         </span>
                       </td>
                       <td>
-                        <div className={styles['action-buttons']}>
+                        <div className={styles['action-buttons']} data-tour="admin-user-actions">
+                          <button
+                            className={styles['btn-icon']}
+                            onClick={() => navigate(`/admin/users/${u.id}`)}
+                            title="Ver detalles"
+                          >
+                            <Eye size={16} />
+                          </button>
                           <button
                             className={styles['btn-icon']}
                             onClick={() => toggleUserStatus(u.id)}
@@ -258,43 +265,6 @@ export default function Admin() {
           </div>
         )}
 
-        {activeTab === 'companies' && (
-          <div className={styles['companies-tab']}>
-            {companies.length === 0 ? (
-              <div className={styles['empty-state']}>
-                <Building2 size={40} />
-                <p>No hay empresas registradas</p>
-              </div>
-            ) : (
-              <div className={styles['companies-grid']}>
-                {companies.map((company: any, index: number) => (
-                  <div key={company.id || `company-${index}`} className={styles['company-card']}>
-                    <div className={styles['company-header']}>
-                      <Avatar 
-                        src={company.logo} 
-                        name={company.name} 
-                        size="md" 
-                      />
-                      <div className={styles['company-info']}>
-                        <h4>{company.name}</h4>
-                        <p>{company.email}</p>
-                      </div>
-                    </div>
-                    <div className={styles['company-stats']}>
-                      <div className={styles['company-stat']}>
-                        <span className={styles['stat-value']}>
-                          {users.filter((u: any) => u.empleador_id === company.id).length}
-                        </span>
-                        <span className={styles['stat-label']}>Empleados</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {activeTab === 'activity' && (
           <div className={styles['activity-tab']}>
             {recentActivity.length === 0 ? (
@@ -303,7 +273,7 @@ export default function Admin() {
                 <p>No hay actividad registrada</p>
               </div>
             ) : (
-              <div className={styles['activity-list-full']}>
+              <div className={styles['activity-list-full']} data-tour="admin-activity-list">
                 {recentActivity.map((activity: any, index: number) => {
                   const date = activity.created_at ? new Date(activity.created_at) : null;
                   const isValidDate = date && !isNaN(date.getTime());
@@ -341,6 +311,7 @@ export default function Admin() {
           </div>
         </div>
       )}
+
     </div>
   )
 }

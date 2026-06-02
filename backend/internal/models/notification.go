@@ -41,7 +41,7 @@ type Message struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	UserID    uint           `gorm:"index" json:"user_id"`
 	User      User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	CompanyID *uint          `gorm:"index" json:"company_id,omitempty"`
+	TenantID  *uint          `gorm:"index" json:"tenant_id,omitempty"`
 	Content   string         `gorm:"type:text" json:"content"`
 	CreatedAt time.Time      `json:"created_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

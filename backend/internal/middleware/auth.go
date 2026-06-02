@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -11,15 +12,23 @@ import (
 
 type Claims struct {
 	UserID       uint   `json:"user_id"`
+	TenantID     *uint  `json:"tenant_id,omitempty"`
 	Email        string `json:"email"`
 	Role         string `json:"role"`
 	IsManager    bool   `json:"is_manager"`
 	IsSuperadmin bool   `json:"is_superadmin"`
 	EmpleadorID  *uint  `json:"empleador_id,omitempty"`
+	TokenVersion int    `json:"tv"`
+	TokenType    string `json:"typ"` // "access" or "refresh"
 	jwt.RegisteredClaims
 }
 
-func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
+// TokenVersionGetter returns the current token version for a user, used to
+// enforce session revocation (audit finding A-04). When nil, the check is
+// skipped.
+type TokenVersionGetter func(userID uint) (int, error)
+
+func AuthMiddleware(jwtSecret string, tvGetter TokenVersionGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := ""
 
@@ -31,8 +40,12 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			}
 		}
 
+		// Primary transport: httpOnly cookie set at login (audit finding A-03).
+		// The browser sends it automatically, including on same-origin WS upgrades.
 		if tokenString == "" {
-			tokenString = c.Query("token")
+			if cookie, err := c.Cookie("access_token"); err == nil {
+				tokenString = cookie
+			}
 		}
 
 		if tokenString == "" {
@@ -43,8 +56,13 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		}
 
 		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+			// Pin the signing algorithm to HMAC to prevent algorithm-confusion
+			// attacks (audit finding A-07).
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
 			return []byte(jwtSecret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}))
 
 		if err != nil || !token.Valid {
 			log.Printf("[AUTH] Invalid token for request %s %s: %v", c.Request.Method, c.Request.URL.Path, err)
@@ -60,12 +78,32 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
+		// Reject refresh tokens on protected routes — only access tokens are valid
+		// for API/WS requests.
+		if claims.TokenType == "refresh" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token type"})
+			c.Abort()
+			return
+		}
+
+		// Enforce session revocation: the token's version must match the user's
+		// current version (audit finding A-04).
+		if tvGetter != nil {
+			current, err := tvGetter(claims.UserID)
+			if err != nil || current != claims.TokenVersion {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
+				c.Abort()
+				return
+			}
+		}
+
 		c.Set("user_id", claims.UserID)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
 		c.Set("is_manager", claims.IsManager)
 		c.Set("is_superadmin", claims.IsSuperadmin)
 		c.Set("empleador_id", claims.EmpleadorID)
+		c.Set("tenant_id", claims.TenantID)
 
 		c.Next()
 	}
@@ -140,4 +178,20 @@ func GetEmpleadorID(c *gin.Context) uint {
 		}
 	}
 	return 0
+}
+
+func GetTenantID(c *gin.Context) uint {
+	tenantID, exists := c.Get("tenant_id")
+	if exists && tenantID != nil {
+		switch v := tenantID.(type) {
+		case uint:
+			return v
+		case *uint:
+			if v != nil {
+				return *v
+			}
+		}
+	}
+
+	return GetEmpleadorID(c)
 }

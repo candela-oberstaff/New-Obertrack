@@ -21,23 +21,34 @@ type ChatWSMessage struct {
 	Type      string    `json:"type"`
 	Content   string    `json:"content"`
 	UserID    uint      `json:"user_id"`
-	CompanyID *uint     `json:"company_id,omitempty"`
+	TenantID  *uint     `json:"tenant_id,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
+type chatClient struct {
+	userID       uint
+	tenantID     uint
+	isSuperadmin bool
+}
+
+type chatRegistration struct {
+	conn *websocket.Conn
+	meta chatClient
+}
+
 type ChatHub struct {
-	clients        map[*websocket.Conn]uint
+	clients        map[*websocket.Conn]chatClient
 	broadcast      chan ChatWSMessage
-	register       chan *websocket.Conn
+	register       chan chatRegistration
 	unregister     chan *websocket.Conn
 	MessageHandler func(msg ChatWSMessage)
 }
 
 func NewChatHub(messageHandler func(msg ChatWSMessage)) *ChatHub {
 	return &ChatHub{
-		clients:        make(map[*websocket.Conn]uint),
+		clients:        make(map[*websocket.Conn]chatClient),
 		broadcast:      make(chan ChatWSMessage),
-		register:       make(chan *websocket.Conn),
+		register:       make(chan chatRegistration),
 		unregister:     make(chan *websocket.Conn),
 		MessageHandler: messageHandler,
 	}
@@ -49,15 +60,22 @@ func (h *ChatHub) Run() {
 
 	for {
 		select {
-		case client := <-h.register:
-			h.clients[client] = 0
+		case reg := <-h.register:
+			h.clients[reg.conn] = reg.meta
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				client.Close()
 			}
 		case message := <-h.broadcast:
-			for client := range h.clients {
+			msgTenant := uint(0)
+			if message.TenantID != nil {
+				msgTenant = *message.TenantID
+			}
+			for client, meta := range h.clients {
+				if !meta.isSuperadmin && meta.tenantID != msgTenant {
+					continue
+				}
 				err := client.WriteJSON(message)
 				if err != nil {
 					log.Printf("error: %v", err)
@@ -80,15 +98,14 @@ func (h *ChatHub) Run() {
 	}
 }
 
-func (h *ChatHub) HandleConnection(w http.ResponseWriter, r *http.Request, userID uint) {
+func (h *ChatHub) HandleConnection(w http.ResponseWriter, r *http.Request, userID, tenantID uint, isSuperadmin bool) {
 	conn, err := ChatUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("WebSocket upgrade error:", err)
 		return
 	}
 
-	h.register <- conn
-	h.clients[conn] = userID
+	h.register <- chatRegistration{conn: conn, meta: chatClient{userID: userID, tenantID: tenantID, isSuperadmin: isSuperadmin}}
 
 	go func() {
 		defer func() {
@@ -109,6 +126,8 @@ func (h *ChatHub) HandleConnection(w http.ResponseWriter, r *http.Request, userI
 
 			msg.UserID = userID
 			msg.Timestamp = time.Now()
+			t := tenantID
+			msg.TenantID = &t
 			h.broadcast <- msg
 		}
 	}()

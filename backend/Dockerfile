@@ -13,20 +13,22 @@ COPY vendor/ ./vendor/
 # Copy the source code
 COPY . .
 
-# Build the application
+# Build the application (static binary)
 RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -o main ./cmd/main.go
 
-# ... (etapa builder igual)
+# Run stage — pinned dig’d minimal base (audit findings A-02, M-06)
+FROM alpine:3.20
 
-# Run stage
-FROM alpine:latest
-
-# Instalar curl para el healthcheck
-RUN apk add --no-cache curl
+# Install curl for the healthcheck and create an unprivileged user
+RUN apk add --no-cache curl ca-certificates \
+    && adduser -D -u 10001 appuser
 
 WORKDIR /app
 
 COPY --from=builder /app/main .
+
+# Drop root privileges (audit finding A-02)
+USER appuser
 
 EXPOSE 8080
 

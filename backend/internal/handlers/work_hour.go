@@ -80,11 +80,19 @@ func (h *WorkHourHandler) Update(c *gin.Context) {
 		return
 	}
 
-	workHour, err := h.svc.Update(uint(id), req)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	workHour, err := h.svc.Update(uint(id), tenantID, userID, role, isManager, isSuperadmin, req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Work hour not found" {
 			status = http.StatusNotFound
+		} else if err.Error() == "Access denied" {
+			status = http.StatusForbidden
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
@@ -137,12 +145,12 @@ func (h *WorkHourHandler) GetSummary(c *gin.Context) {
 }
 
 func (h *WorkHourHandler) GetPending(c *gin.Context) {
-	empleadorID := middleware.GetEmpleadorID(c)
+	tenantID := middleware.GetTenantID(c)
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
-	pending, err := h.svc.GetPending(empleadorID, userID, role, isSuperadmin)
+	pending, err := h.svc.GetPending(tenantID, userID, role, isSuperadmin)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Only employers can access this resource" {

@@ -89,11 +89,11 @@ export default function Chat() {
 
   return (
     <div className={styles['chat-page']}>
-      <div className={styles['chat-sidebar']}>
+      <div className={styles['chat-sidebar']} data-tour="chat-sidebar">
         <div className={styles['sidebar-header']}>
           <h2>Chat</h2>
         </div>
-        <div className={styles['search-box']}>
+        <div className={styles['search-box']} data-tour="chat-search">
           <input
             type="text"
             placeholder="Buscar usuarios..."
@@ -101,7 +101,7 @@ export default function Chat() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className={styles['users-list']}>
+        <div className={styles['users-list']} data-tour="chat-users">
           {filteredUsers.length === 0 ? (
             <div className={styles['no-users']}>
               {searchQuery ? 'No se encontraron usuarios' : 'No hay usuarios disponibles'}
@@ -126,7 +126,7 @@ export default function Chat() {
       </div>
 
       <div className={styles['chat-main']}>
-        <div className={styles['messages-container']}>
+        <div className={styles['messages-container']} data-tour="chat-messages">
           <div className={styles['messages-list']}>
             {messages.map((msg: any, index: number) => {
               const isOwn = msg.user_id === user?.id || msg.UserID === user?.id
@@ -164,7 +164,7 @@ export default function Chat() {
           </div>
         </div>
 
-        <div className={styles['chat-input']}>
+        <div className={styles['chat-input']} data-tour="chat-input">
           <input
             ref={inputRef}
             type="text"

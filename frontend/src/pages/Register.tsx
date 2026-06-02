@@ -6,6 +6,7 @@ import styles from './Auth.module.css'
 import AuthLayout from '../components/layout/AuthLayout'
 import { ProfessionalFields } from '../components/Auth/ProfessionalFields'
 import { EmployerFields } from '../components/Auth/EmployerFields'
+import { Select } from '../components/ui/Select'
 
 export default function Register() {
   const [name, setName] = useState('')
@@ -13,13 +14,11 @@ export default function Register() {
   const [password, setPassword] = useState('')
   const [userType, setUserType] = useState('profesional')
   const [companyName, setCompanyName] = useState('')
-  const [country, setCountry] = useState('')
-  const [specialization, setSpecialization] = useState('')
-  const [companies, setCompanies] = useState<{ id: number; name: string }[]>([])
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | ''>('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [location, setLocation] = useState('')
   const [jobTitle, setJobTitle] = useState('')
+  const [companies, setCompanies] = useState<{ id: number; name: string }[]>([])
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   
@@ -48,18 +47,37 @@ export default function Register() {
         setError('Debes seleccionar una empresa para registrarte como profesional')
         return
       }
-      if (!phoneNumber?.trim()) { setError('El teléfono es obligatorio'); return }
-      if (!country.trim()) { setError('El país es obligatorio'); return }
-      if (!location.trim()) { setError('La ubicación es obligatoria'); return }
-      if (!jobTitle.trim()) { setError('El rol o cargo es obligatorio'); return }
+      if (!phoneNumber.trim()) {
+        setError('El teléfono es obligatorio')
+        return
+      }
+      if (!location.trim()) {
+        setError('La ubicación es obligatoria')
+        return
+      }
+      if (!jobTitle.trim()) {
+        setError('El rol o cargo es obligatorio')
+        return
+      }
     }
+
     if (userType === 'empleador') {
-      if (!companyName.trim()) { setError('El nombre de la empresa es obligatorio'); return }
-      if (!name.trim()) { setError('El nombre del dueño es obligatorio'); return }
-      if (!phoneNumber?.trim()) { setError('El teléfono es obligatorio'); return }
-      if (!country.trim()) { setError('El país es obligatorio'); return }
-      if (!location.trim()) { setError('La ubicación es obligatoria'); return }
-      if (!specialization.trim()) { setError('El área de especialización es obligatoria'); return }
+      if (!companyName.trim()) {
+        setError('El nombre de la empresa es obligatorio')
+        return
+      }
+      if (!name.trim()) {
+        setError('El nombre del dueño es obligatorio')
+        return
+      }
+      if (!phoneNumber.trim()) {
+        setError('El teléfono es obligatorio')
+        return
+      }
+      if (!location.trim()) {
+        setError('La ubicación es obligatoria')
+        return
+      }
     }
 
     setIsLoading(true)
@@ -72,12 +90,9 @@ export default function Register() {
         user_type: userType,
         company_name: userType === 'empleador' ? companyName : undefined,
         empleador_id: userType === 'profesional' ? (selectedCompanyId as number) : undefined,
-        phone_number: phoneNumber ?? '',
-        phone_country_code: '',
-        country: country,
+        phone_number: phoneNumber,
         location: location,
         job_title: userType === 'profesional' ? jobTitle : undefined,
-        specialization: userType === 'empleador' ? specialization : undefined,
       })
       navigate('/dashboard')
     } catch (err: unknown) {
@@ -127,25 +142,26 @@ export default function Register() {
               <input
                 id="password"
                 type="password"
-                placeholder="Min. 6 caracteres"
+                placeholder="Min. 8 caracteres con letras y números"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
               />
             </div>
 
             <div className={styles['form-group']}>
               <label htmlFor="userType">Tipo de usuario</label>
-              <select
+              <Select
+                fullWidth
                 id="userType"
                 value={userType}
-                onChange={(e) => setUserType(e.target.value)}
-              >
-                <option value="profesional">Profesional (Profesional que presta servicios)</option>
-                <option value="empleador">Empresa (Dueño o Administrador de empresa)</option>
-                <option value="superadmin">Super Admin</option>
-              </select>
+                onChange={(v) => setUserType(String(v))}
+                options={[
+                  { value: 'profesional', label: 'Profesional (Profesional que presta servicios)' },
+                  { value: 'empleador', label: 'Empresa (Dueño o Administrador de empresa)' },
+                ]}
+              />
             </div>
 
             {userType === 'profesional' && (
@@ -154,8 +170,6 @@ export default function Register() {
                 setJobTitle={setJobTitle}
                 phoneNumber={phoneNumber}
                 setPhoneNumber={setPhoneNumber}
-                country={country}
-                setCountry={setCountry}
                 location={location}
                 setLocation={setLocation}
                 selectedCompanyId={selectedCompanyId}
@@ -171,12 +185,8 @@ export default function Register() {
                 setCompanyName={setCompanyName}
                 phoneNumber={phoneNumber}
                 setPhoneNumber={setPhoneNumber}
-                country={country}
-                setCountry={setCountry}
                 location={location}
                 setLocation={setLocation}
-                specialization={specialization}
-                setSpecialization={setSpecialization}
                 styles={styles}
               />
             )}

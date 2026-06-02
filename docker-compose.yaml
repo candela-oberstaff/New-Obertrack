@@ -1,20 +1,54 @@
-version: '3.8'
-
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: obertrack-db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    # Do NOT publish the DB port to the host in production (audit finding M-03).
+    # It is reachable on the internal Docker network by the backend only.
+    # For local debugging, bind to localhost explicitly: "127.0.0.1:5434:5432".
+    expose:
+      - "5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   backend:
+    container_name: obertrack-backend
     build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
-      - JWT_SECRET=${JWT_SECRET}
-      - SERVER_PORT=8080
-    restart: always
-    # AÑADE ESTO:
+      GIN_MODE: release                       # audit finding C-01 (disables /seed gate)
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_SSL_MODE: ${DB_SSL_MODE:-require}     # audit finding M-02
+      JWT_SECRET: ${JWT_SECRET}
+      SERVER_PORT: "8080"
+      # Security-relevant secrets (audit findings C-03, C-06, A-05).
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12}
+      SEED_BOOTSTRAP_TOKEN: ${SEED_BOOTSTRAP_TOKEN}
+      BREVO_WEBHOOK_TOKEN: ${BREVO_WEBHOOK_TOKEN}
+      WAHA_WEBHOOK_HMAC: ${WAHA_WEBHOOK_HMAC}
+      GOOGLE_CHAT_VERIFY_TOKEN: ${GOOGLE_CHAT_VERIFY_TOKEN}
+    # Backend not published directly; traffic flows through the frontend proxy.
+    expose:
+      - "8080"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 10s
@@ -23,7 +57,16 @@ services:
       start_period: 20s
 
   frontend:
+    container_name: obertrack-frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    restart: always
+    # Host:Container — container Nginx listens on 8080 (unprivileged).
+    ports:
+      - "80:8080"
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

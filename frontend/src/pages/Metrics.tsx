@@ -11,6 +11,7 @@ import { metricsService, MetricsData } from '../services/metrics.service';
 import EmailTab from '../components/Admin/Metrics/EmailTab';
 import SurveyTab from '../components/Admin/Metrics/SurveyTab';
 import AdvancedTab from '../components/Admin/Metrics/AdvancedTab';
+import { Select } from '../components/ui/Select';
 
 const MetricsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'emails' | 'surveys' | 'advanced'>('emails');
@@ -42,29 +43,27 @@ const MetricsPage: React.FC = () => {
 
   return (
     <div className={styles.metricsContainer}>
-      <header className={styles.metricsHeader}>
+      <header className={styles.metricsHeader} data-tour="metrics-header">
         <div>
           <h1>Métricas</h1>
           <p>Visualización real del engagement basada en eventos registrados</p>
         </div>
-        <div className={styles.headerActions}>
-          <div className={styles.periodSelector}>
-            <Calendar size={16} />
-            <select
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value))}
-              className={styles.selectFilter}
-            >
-              <option value={7}>Últimos 7 días</option>
-              <option value={30}>Últimos 30 días</option>
-              <option value={90}>Últimos 90 días</option>
-              <option value={365}>Último año</option>
-            </select>
-          </div>
+        <div className={styles.headerActions} data-tour="metrics-period">
+          <Select
+            value={days}
+            onChange={(v) => setDays(Number(v))}
+            leftIcon={<Calendar size={16} />}
+            options={[
+              { value: 7, label: 'Últimos 7 días' },
+              { value: 30, label: 'Últimos 30 días' },
+              { value: 90, label: 'Últimos 90 días' },
+              { value: 365, label: 'Último año' },
+            ]}
+          />
         </div>
       </header>
 
-      <nav className={styles.metricsTabs}>
+      <nav className={styles.metricsTabs} data-tour="metrics-tabs">
         <button
           className={activeTab === 'emails' ? styles.active : ''}
           onClick={() => setActiveTab('emails')}
@@ -86,17 +85,19 @@ const MetricsPage: React.FC = () => {
       </nav>
 
       <div className={styles.mobileTabs}>
-        <select 
-          value={activeTab} 
-          onChange={(e) => setActiveTab(e.target.value as any)}
-        >
-          <option value="emails">Emails</option>
-          <option value="surveys">Encuestas</option>
-          <option value="advanced">Avanzado</option>
-        </select>
+        <Select
+          fullWidth
+          value={activeTab}
+          onChange={(v) => setActiveTab(v as any)}
+          options={[
+            { value: 'emails', label: 'Emails' },
+            { value: 'surveys', label: 'Encuestas' },
+            { value: 'advanced', label: 'Avanzado' },
+          ]}
+        />
       </div>
 
-      <div className={styles.tabContent}>
+      <div className={styles.tabContent} data-tour="metrics-content">
         {activeTab === 'emails' && <EmailTab data={data} />}
         {activeTab === 'surveys' && <SurveyTab data={data} />}
         {activeTab === 'advanced' && <AdvancedTab data={data} />}

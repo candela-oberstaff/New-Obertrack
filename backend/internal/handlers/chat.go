@@ -23,9 +23,9 @@ func (h *ChatHandler) GetMessages(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
-	empleadorID := middleware.GetEmpleadorID(c)
+	tenantID := middleware.GetTenantID(c)
 
-	messages, err := h.svc.GetMessages(userID, role, isSuperadmin, empleadorID)
+	messages, err := h.svc.GetMessages(userID, role, isSuperadmin, tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch messages"})
 		return
@@ -37,7 +37,7 @@ func (h *ChatHandler) GetMessages(c *gin.Context) {
 func (h *ChatHandler) SendMessage(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
-	empleadorID := middleware.GetEmpleadorID(c)
+	tenantID := middleware.GetTenantID(c)
 
 	var req struct {
 		Content string `json:"content" binding:"required"`
@@ -48,17 +48,17 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	response, err := h.svc.SendMessage(userID, role, empleadorID, req.Content)
+	response, err := h.svc.SendMessage(userID, role, tenantID, req.Content)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	h.hub.Broadcast(websocket.ChatWSMessage{
-		Type:      response.Type,
-		Content:   response.Content,
-		UserID:    response.UserID,
-		CompanyID: response.CompanyID,
+		Type:     response.Type,
+		Content:  response.Content,
+		UserID:   response.UserID,
+		TenantID: response.TenantID,
 	})
 
 	c.JSON(http.StatusOK, gin.H{"status": "sent"})
@@ -66,5 +66,7 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 
 func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 	userID := middleware.GetUserID(c)
-	h.hub.HandleConnection(c.Writer, c.Request, userID)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	h.hub.HandleConnection(c.Writer, c.Request, userID, tenantID, isSuperadmin)
 }

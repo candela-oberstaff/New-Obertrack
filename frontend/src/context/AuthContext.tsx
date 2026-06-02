@@ -5,10 +5,9 @@ import { authService } from '../services/api'
 
 interface AuthContextType {
   user: User | null
-  token: string | null
   login: (email: string, password: string) => Promise<void>
   register: (data: RegisterData) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   isLoading: boolean
   setUser: (user: User | null) => void
 }
@@ -21,31 +20,26 @@ interface RegisterData {
   company_name?: string
   empleador_id?: number
   phone_number?: string
-  phone_country_code?: string
-  country?: string
   location?: string
   job_title?: string
-  specialization?: string
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'))
   const [isLoading, setIsLoading] = useState(true)
 
+  // Auth state is driven by the httpOnly session cookie. On load we ask the
+  // server who we are; if the cookie is missing/expired this 401s and we stay
+  // logged out (audit findings A-03/A-04).
   useEffect(() => {
     const initAuth = async () => {
-      const storedToken = localStorage.getItem('token')
-      if (storedToken) {
-        try {
-          const userData = await authService.me()
-          setUser(userData)
-        } catch {
-          localStorage.removeItem('token')
-          setToken(null)
-        }
+      try {
+        const userData = await authService.me()
+        setUser(userData)
+      } catch {
+        setUser(null)
       }
       setIsLoading(false)
     }
@@ -54,16 +48,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const response = await authService.login(email, password)
-    localStorage.setItem('token', response.access_token)
-    setToken(response.access_token)
     setUser(response.user)
   }
 
   const register = async (data: RegisterData) => {
     try {
       const response = await authService.register(data)
-      localStorage.setItem('token', response.access_token)
-      setToken(response.access_token)
       setUser(response.user)
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.data) {
@@ -74,14 +64,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const logout = () => {
-    localStorage.removeItem('token')
-    setToken(null)
-    setUser(null)
+  const logout = async () => {
+    try {
+      await authService.logout()
+    } finally {
+      setUser(null)
+    }
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, isLoading, setUser }}>
+    <AuthContext.Provider value={{ user, login, register, logout, isLoading, setUser }}>
       {children}
     </AuthContext.Provider>
   )
