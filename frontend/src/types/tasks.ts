@@ -22,6 +22,7 @@ export interface User {
   created_at: string
   updated_at: string
   password?: string
+  zoho_agent_id?: string
 }
 
 export interface Tenant {
