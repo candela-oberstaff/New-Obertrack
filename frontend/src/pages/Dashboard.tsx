@@ -49,7 +49,7 @@ export default function Dashboard() {
 
   return (
     <div className={styles['dashboard']}>
-      <div className={styles['dashboard-header']}>
+      <div className={styles['dashboard-header']} data-tour="dashboard-header">
         <div className={styles['header-content']}>
           <div className={styles['greeting']}>
             <span className={styles['greeting-text']}>{greeting}, {user?.name?.split(' ')[0]}</span>
@@ -65,7 +65,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className={styles['stats-row']}>
+      <div className={styles['stats-row']} data-tour="dashboard-stats">
         <div className={styles['stat-card-large']}>
           <div className={`${styles['stat-icon']} ${styles['blue']}`}>
             <Clock size={24} />
@@ -120,7 +120,7 @@ export default function Dashboard() {
       </div>
 
       <div className={styles['dashboard-grid']}>
-        <div className={`${styles['dashboard-card']} ${styles['chart-card']}`}>
+        <div className={`${styles['dashboard-card']} ${styles['chart-card']}`} data-tour="dashboard-hours-chart">
           <div className={styles['card-header']}>
             <h3>Horas de la semana</h3>
             <span className={styles['card-subtitle']}>Meta: 8h/día</span>
@@ -148,7 +148,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className={`${styles['dashboard-card']} ${styles['tasks-card'] || 'tasks-card'}`}>
+        <div className={`${styles['dashboard-card']} ${styles['tasks-card'] || 'tasks-card'}`} data-tour="dashboard-tasks-card">
           <div className={styles['card-header']}>
             <h3>Próximas tareas</h3>
             <button className={styles['btn-link']} onClick={() => navigate('/tasks')}>Ver todas</button>
@@ -179,7 +179,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className={`${styles['dashboard-card']} ${styles['hours-card'] || 'hours-card'}`}>
+        <div className={`${styles['dashboard-card']} ${styles['hours-card'] || 'hours-card'}`} data-tour="dashboard-hours-card">
           <div className={styles['card-header']}>
             <h3>
               Registro reciente
@@ -215,7 +215,7 @@ export default function Dashboard() {
         </div>
 
         {(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') && employees.length > 0 && (
-          <div className={`${styles['dashboard-card']} ${styles['team-card'] || 'team-card'}`}>
+          <div className={`${styles['dashboard-card']} ${styles['team-card'] || 'team-card'}`} data-tour="dashboard-team-card">
             <div className={styles['card-header']}>
               <h3>Equipo de trabajo</h3>
               <span className={styles['card-badge']}>{employees.length}</span>
@@ -237,7 +237,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className={styles['quick-actions']}>
+      <div className={styles['quick-actions']} data-tour="dashboard-quick-actions">
         <button className={styles['action-card']} onClick={() => navigate('/tasks')}>
           <span className={styles['action-icon']}><ClipboardList size={24} /></span>
           <span className={styles['action-label']}>Tareas</span>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 import styles from './Auth.module.css'
 import AuthLayout from '../components/layout/AuthLayout'
@@ -20,8 +21,12 @@ export default function Login() {
     try {
       await login(email, password)
       navigate('/dashboard')
-    } catch (err) {
-      setError('Credenciales inválidas')
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.status === 429) {
+        setError('Demasiados intentos. Espera un momento e inténtalo de nuevo.')
+      } else {
+        setError('Credenciales inválidas')
+      }
     } finally {
       setIsLoading(false)
     }

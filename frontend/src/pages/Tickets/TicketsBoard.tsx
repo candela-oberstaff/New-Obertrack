@@ -46,18 +46,19 @@ export default function TicketsBoard() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
+      <div className={styles.header} data-tour="tickets-header">
         <h1>Tickets (WhatsApp & Email)</h1>
         <button 
           onClick={simulateWebhook}
           className={styles.sendBtn}
+          data-tour="tickets-action"
           style={{ padding: '0.6rem 1.2rem', boxShadow: 'none' }}
         >
           Simular Mensaje WhatsApp
         </button>
       </div>
 
-      <div className={styles.board}>
+      <div className={styles.board} data-tour="tickets-board">
         {STAGES.map((stage) => (
           <TicketColumn
             key={stage.id}

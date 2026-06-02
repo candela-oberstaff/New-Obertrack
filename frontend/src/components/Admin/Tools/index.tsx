@@ -26,13 +26,13 @@ const Tools: React.FC = () => {
   return (
     <div className={`${styles['tools-page']} ${isFullScreen ? styles['fullscreen-mode'] : ''}`}>
       {!isFullScreen && (
-        <div className={styles['tools-top-bar']}>
+        <div className={styles['tools-top-bar']} data-tour="tools-header">
           <div className={styles['tools-header']}>
             <h1>Admin Tools</h1>
           </div>
 
           <div className={styles['tools-nav-group']}>
-            <div className={styles['tools-tabs']}>
+            <div className={styles['tools-tabs']} data-tour="tools-tabs">
               <button 
                 className={`${styles['tab-btn']} ${activeTab === 'email' ? styles.active : ''}`}
                 onClick={() => setActiveTab('email')}
@@ -58,12 +58,12 @@ const Tools: React.FC = () => {
                 ]}
               />
             </div>
-            {extraAction}
+            <div data-tour="tools-extra-action">{extraAction}</div>
           </div>
         </div>
       )}
 
-      <div className={styles['tools-content']}>
+      <div className={styles['tools-content']} data-tour="tools-content">
         {renderContent()}
       </div>
     </div>

@@ -17,7 +17,7 @@ type rateLimiter struct {
 
 var limiter = &rateLimiter{
 	requests: make(map[string][]time.Time),
-	limit:    100,
+	limit:    600,
 	window:   time.Minute,
 }
 

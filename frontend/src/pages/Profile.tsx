@@ -68,7 +68,7 @@ export default function Profile() {
 
   return (
     <div className={styles['profile-page']}>
-      <div className={styles['profile-header']}>
+      <div className={styles['profile-header']} data-tour="profile-header">
         <div className={styles['profile-cover']}></div>
         <div className={styles['profile-main']}>
           <div className={styles['profile-avatar-section']}>
@@ -103,7 +103,7 @@ export default function Profile() {
       </div>
 
       <div className={styles['profile-content']}>
-        <div className={styles['profile-main-info']}>
+        <div className={styles['profile-main-info']} data-tour="profile-form">
           {user && (
             <ProfileForm 
               user={user} 
@@ -115,7 +115,7 @@ export default function Profile() {
         </div>
 
         <div className={styles['profile-sidebar']}>
-          <div className={styles['sidebar-card']} style={{ marginBottom: '16px' }}>
+          <div className={styles['sidebar-card']} style={{ marginBottom: '16px' }} data-tour="profile-options">
             <h3 style={{ marginBottom: '12px' }}>Opciones</h3>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button 
@@ -135,7 +135,7 @@ export default function Profile() {
             </div>
           </div>
 
-          <div className={styles['sidebar-card']}>
+          <div className={styles['sidebar-card']} data-tour="profile-stats">
             <h3>
               Estadísticas{' '}
               <Tooltip content="Estado actual de tu cuenta y fecha en la que te uniste a Obertrack" size={14} />
@@ -160,7 +160,7 @@ export default function Profile() {
              <TeamPanel type="employer" userId={user.id} employerId={user.empleador_id} />
           )}
           
-          <div className={styles['sidebar-card']}>
+          <div className={styles['sidebar-card']} data-tour="profile-account">
             <h3>Cuenta</h3>
             <button className={styles['btn-logout']} onClick={logout}>
               Cerrar Sesión

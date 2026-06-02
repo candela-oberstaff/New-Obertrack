@@ -184,7 +184,7 @@ export function TasksBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className={styles['kanban-board']}>
+      <div className={styles['kanban-board']} data-tour="tasks-board">
         {(selectedBoard?.phases?.length
           ? selectedBoard.phases
           : localColumnOrder

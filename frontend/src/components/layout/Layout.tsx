@@ -22,10 +22,12 @@ import {
   Inbox,
   MessageSquare,
   GraduationCap,
-  Building2
+  Building2,
+  Compass,
+  Map
 } from 'lucide-react'
 import Avatar from '../Common/Avatar'
-import { startSystemTour } from '../../lib/tour'
+import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
 import styles from './Layout.module.css'
 
 export default function Layout() {
@@ -84,13 +86,14 @@ export default function Layout() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} /> },
-    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} /> },
+    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, superadminOnly: true },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} /> },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, adminOnly: true },
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} /> },
     { path: '/tutoriales', label: 'Tutoriales', icon: <GraduationCap size={20} /> },
     { path: '/profile', label: 'Perfil', icon: <User size={20} /> },
   ].filter(item => {
+    if (item.superadminOnly && !user?.is_superadmin) return false
     if (item.adminOnly && !user?.is_superadmin && user?.user_type !== 'empleador') return false
     return true
   })
@@ -197,6 +200,27 @@ export default function Layout() {
             <Menu size={24} />
           </button>
           <div className={styles['top-bar-actions']}>
+            <button
+              type="button"
+              className={`${styles['tour-btn']} ${styles['tour-btn-secondary']}`}
+              onClick={startSystemTour}
+              title="Recorrido del menú lateral"
+              aria-label="Recorrido del menú lateral"
+            >
+              <Map size={18} />
+              <span>Menú</span>
+            </button>
+            <button
+              type="button"
+              className={styles['tour-btn']}
+              onClick={() => startCurrentPageTour(location.pathname)}
+              title="Recorrido guiado"
+              aria-label="Recorrido guiado"
+              data-tour="topbar-current-tour"
+            >
+              <Compass size={18} />
+              <span>Recorrido guiado</span>
+            </button>
             <NavLink
               to="/whatsapp"
               className={({ isActive }) => `${styles['plugin-btn']} ${styles['plugin-btn-wa']} ${isActive ? styles['active'] : ''}`}

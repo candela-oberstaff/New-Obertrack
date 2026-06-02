@@ -43,12 +43,12 @@ const MetricsPage: React.FC = () => {
 
   return (
     <div className={styles.metricsContainer}>
-      <header className={styles.metricsHeader}>
+      <header className={styles.metricsHeader} data-tour="metrics-header">
         <div>
           <h1>Métricas</h1>
           <p>Visualización real del engagement basada en eventos registrados</p>
         </div>
-        <div className={styles.headerActions}>
+        <div className={styles.headerActions} data-tour="metrics-period">
           <Select
             value={days}
             onChange={(v) => setDays(Number(v))}
@@ -63,7 +63,7 @@ const MetricsPage: React.FC = () => {
         </div>
       </header>
 
-      <nav className={styles.metricsTabs}>
+      <nav className={styles.metricsTabs} data-tour="metrics-tabs">
         <button
           className={activeTab === 'emails' ? styles.active : ''}
           onClick={() => setActiveTab('emails')}
@@ -97,7 +97,7 @@ const MetricsPage: React.FC = () => {
         />
       </div>
 
-      <div className={styles.tabContent}>
+      <div className={styles.tabContent} data-tour="metrics-content">
         {activeTab === 'emails' && <EmailTab data={data} />}
         {activeTab === 'surveys' && <SurveyTab data={data} />}
         {activeTab === 'advanced' && <AdvancedTab data={data} />}

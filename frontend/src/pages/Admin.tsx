@@ -70,12 +70,12 @@ export default function Admin() {
 
   return (
     <div className={styles['admin-page']}>
-      <div className={styles['admin-header']}>
+      <div className={styles['admin-header']} data-tour="admin-header">
         <h1>Panel de Administración</h1>
         <p>Gestiona usuarios y actividad</p>
       </div>
 
-      <div className={styles['admin-tabs']}>
+      <div className={styles['admin-tabs']} data-tour="admin-tabs">
         {tabs.map(tab => (
           <button
             key={tab.id}
@@ -100,7 +100,7 @@ export default function Admin() {
       <div className={styles['admin-content']}>
         {activeTab === 'dashboard' && (
           <div className={styles['dashboard-tab']}>
-            <div className={styles['stats-grid']}>
+            <div className={styles['stats-grid']} data-tour="admin-stats">
               <div className={styles['stat-card']}>
                 <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}>
                   <Users size={26} />
@@ -139,7 +139,7 @@ export default function Admin() {
               </div>
             </div>
 
-            <div className={styles['recent-activity-section']}>
+            <div className={styles['recent-activity-section']} data-tour="admin-recent-activity">
               <h3>Actividad Reciente</h3>
               {recentActivity.length === 0 ? (
                 <p className={styles['empty-message']}>No hay actividad reciente</p>
@@ -167,7 +167,7 @@ export default function Admin() {
         {activeTab === 'users' && (
           <div className={styles['users-tab']}>
             <div className={styles['tab-header']}>
-              <div className={styles['search-box']}>
+              <div className={styles['search-box']} data-tour="admin-search">
                 <Search size={18} />
                 <input
                   type="text"
@@ -178,7 +178,7 @@ export default function Admin() {
               </div>
             </div>
 
-            <div className={styles['users-table']}>
+            <div className={styles['users-table']} data-tour="admin-users-table">
               <table>
                 <thead>
                   <tr>
@@ -214,7 +214,7 @@ export default function Admin() {
                         </span>
                       </td>
                       <td>
-                        <div className={styles['action-buttons']}>
+                        <div className={styles['action-buttons']} data-tour="admin-user-actions">
                           <button
                             className={styles['btn-icon']}
                             onClick={() => navigate(`/admin/users/${u.id}`)}
@@ -273,7 +273,7 @@ export default function Admin() {
                 <p>No hay actividad registrada</p>
               </div>
             ) : (
-              <div className={styles['activity-list-full']}>
+              <div className={styles['activity-list-full']} data-tour="admin-activity-list">
                 {recentActivity.map((activity: any, index: number) => {
                   const date = activity.created_at ? new Date(activity.created_at) : null;
                   const isValidDate = date && !isNaN(date.getTime());

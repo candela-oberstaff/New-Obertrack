@@ -1,0 +1,2693 @@
+[
+  {
+    "role": "public",
+    "check": "invalid login shows error",
+    "ok": true,
+    "url": "http://localhost/login",
+    "state": {
+      "nav": [],
+      "h1": "",
+      "h2": "Iniciar Sesion",
+      "errors": [
+        "Credenciales invalidas"
+      ],
+      "buttons": [
+        "Iniciar Sesion"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "public",
+    "check": "register page sanity",
+    "ok": true,
+    "url": "http://localhost/login",
+    "exposesSuperAdmin": false,
+    "passwordMin": null,
+    "passwordPlaceholder": null,
+    "state": {
+      "nav": [],
+      "h1": "",
+      "h2": "Iniciar Sesion",
+      "errors": [],
+      "buttons": [
+        "Iniciar Sesion"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "public",
+    "check": "forgot password submit",
+    "ok": false,
+    "url": "http://localhost/login",
+    "state": {
+      "nav": [],
+      "h1": "",
+      "h2": "Iniciar Sesion",
+      "errors": [],
+      "buttons": [
+        "Iniciar Sesion"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "public",
+    "check": "console",
+    "ok": true,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    ]
+  },
+  {
+    "role": "superadmin",
+    "check": "login",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /dashboard",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /admin",
+    "ok": true,
+    "url": "http://localhost/admin",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Panel de Administración",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Dashboard",
+        "Usuarios",
+        "Actividad",
+        "Dashboard"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /admin/tenants",
+    "ok": true,
+    "url": "http://localhost/admin/tenants",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Empresas",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Nueva empresa",
+        "Suspender empresa"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /admin/tools",
+    "ok": true,
+    "url": "http://localhost/admin/tools",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Admin Tools",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Email",
+        "Encuestas",
+        "Email",
+        "Nueva Campaña"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /admin/metrics",
+    "ok": true,
+    "url": "http://localhost/admin/metrics",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Métricas",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Últimos 30 días",
+        "Emails",
+        "Encuestas",
+        "Avanzado",
+        "Emails"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /tasks",
+    "ok": true,
+    "url": "http://localhost/tasks",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Tareas",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Desarrollo",
+        "Crear tablero",
+        "Unirse a Tablero",
+        "Gestionar miembros",
+        "Gestionar fases",
+        "+ Nueva Tarea",
+        "Agregar fase"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /tickets",
+    "ok": true,
+    "url": "http://localhost/tickets",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Tickets (WhatsApp & Email)",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Simular Mensaje WhatsApp"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /work-hours",
+    "ok": true,
+    "url": "http://localhost/work-hours",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Registro de Actividades de mi Equipo",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Descargar PDF",
+        "Descargar Excel",
+        "Enviar por Correo",
+        "Ver horas faltantes"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /reports",
+    "ok": true,
+    "url": "http://localhost/reports",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Reportes",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Horas",
+        "Tareas"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /chat",
+    "ok": true,
+    "url": "http://localhost/chat",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "Selecciona un canal",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Seleccionar canal",
+        "Nuevo canal",
+        "+",
+        "+",
+        "←",
+        "+ Crear tu primer canal"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /tutoriales",
+    "ok": true,
+    "url": "http://localhost/tutoriales",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Tutoriales",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Recorrido guiado",
+        "Nuevo tutorial",
+        "Todos1",
+        "General1",
+        "Arrastrar para reordenar",
+        "Editar",
+        "Eliminar"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "route /profile",
+    "ok": true,
+    "url": "http://localhost/profile",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/admin",
+          "title": "Admin"
+        },
+        {
+          "text": "",
+          "href": "/admin/tenants",
+          "title": "Empresas"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/tickets",
+          "title": "Tickets"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/admin/tools",
+          "title": "Tools"
+        },
+        {
+          "text": "",
+          "href": "/admin/metrics",
+          "title": "Métricas"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "QA Superadmin",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Cambiar Contraseña",
+        "Editar Perfil",
+        "Cerrar Sesión"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "superadmin",
+    "check": "console/network",
+    "ok": true,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    ],
+    "failedResponses": [
+      {
+        "url": "http://localhost/api/auth/me",
+        "status": 401
+      },
+      {
+        "url": "http://localhost/api/auth/refresh",
+        "status": 401
+      }
+    ]
+  },
+  {
+    "role": "empleador",
+    "check": "login",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "route /dashboard",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "route /tasks",
+    "ok": true,
+    "url": "http://localhost/tasks",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Tareas",
+      "h2": "No tienes tableros",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Crear Tablero",
+        "Unirse a Tablero"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "route /work-hours",
+    "ok": true,
+    "url": "http://localhost/work-hours",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Registro de Actividades de mi Equipo",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Descargar PDF",
+        "Descargar Excel",
+        "Enviar por Correo",
+        "Ver horas faltantes"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "route /reports",
+    "ok": true,
+    "url": "http://localhost/reports",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Reportes",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Todos los empleados",
+        "Horas",
+        "Tareas"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "route /chat",
+    "ok": true,
+    "url": "http://localhost/chat",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "Selecciona un canal",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Seleccionar canal",
+        "Nuevo canal",
+        "+",
+        "+",
+        "←",
+        "+ Crear tu primer canal"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "route /tutoriales",
+    "ok": true,
+    "url": "http://localhost/tutoriales",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Tutoriales",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Recorrido guiado",
+        "Todos1",
+        "General1"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "route /profile",
+    "ok": true,
+    "url": "http://localhost/profile",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "QA Empresa Admin",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Cambiar Contraseña",
+        "Editar Perfil",
+        "Cerrar Sesión"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "forbidden /admin",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "forbidden /admin/tenants",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "forbidden /admin/metrics",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "forbidden /tickets",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/reports",
+          "title": "Reportes"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "empleador",
+    "check": "console/network",
+    "ok": true,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    ],
+    "failedResponses": [
+      {
+        "url": "http://localhost/api/auth/me",
+        "status": 401
+      },
+      {
+        "url": "http://localhost/api/auth/refresh",
+        "status": 401
+      }
+    ]
+  },
+  {
+    "role": "profesional",
+    "check": "login",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "route /dashboard",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "route /tasks",
+    "ok": true,
+    "url": "http://localhost/tasks",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Tareas",
+      "h2": "No tienes tableros",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Crear Tablero",
+        "Unirse a Tablero"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "route /work-hours",
+    "ok": true,
+    "url": "http://localhost/work-hours",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Mi Jornada",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Registrar Día"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "route /chat",
+    "ok": true,
+    "url": "http://localhost/chat",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "Selecciona un canal",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Seleccionar canal",
+        "Nuevo canal",
+        "+",
+        "+",
+        "←",
+        "+ Crear tu primer canal"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "route /tutoriales",
+    "ok": true,
+    "url": "http://localhost/tutoriales",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "Tutoriales",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Recorrido guiado",
+        "Todos1",
+        "General1"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "route /profile",
+    "ok": true,
+    "url": "http://localhost/profile",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "QA Profesional",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "Cambiar Contraseña",
+        "Editar Perfil",
+        "Cerrar Sesión"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "forbidden /admin",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "forbidden /admin/tenants",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "forbidden /admin/metrics",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "forbidden /reports",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "forbidden /tickets",
+    "ok": true,
+    "url": "http://localhost/dashboard",
+    "state": {
+      "nav": [
+        {
+          "text": "",
+          "href": "/dashboard",
+          "title": "Dashboard"
+        },
+        {
+          "text": "",
+          "href": "/tasks",
+          "title": "Tareas"
+        },
+        {
+          "text": "",
+          "href": "/work-hours",
+          "title": "Horas"
+        },
+        {
+          "text": "",
+          "href": "/chat",
+          "title": "Chat"
+        },
+        {
+          "text": "",
+          "href": "/tutoriales",
+          "title": "Tutoriales"
+        },
+        {
+          "text": "",
+          "href": "/profile",
+          "title": "Perfil"
+        }
+      ],
+      "h1": "",
+      "h2": "",
+      "errors": [],
+      "buttons": [
+        "Cerrar menú",
+        "Expandir",
+        "Cerrar Sesión",
+        "Abrir menú",
+        "Notificaciones",
+        "+ Nueva Tarea",
+        "Ver todas",
+        "Ver todas",
+        "Tareas",
+        "Horas",
+        "Chat",
+        "Perfil"
+      ],
+      "bodyHasNaN": false,
+      "bodyHasUndefined": false
+    }
+  },
+  {
+    "role": "profesional",
+    "check": "console/network",
+    "ok": true,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+      "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    ],
+    "failedResponses": [
+      {
+        "url": "http://localhost/api/auth/me",
+        "status": 401
+      },
+      {
+        "url": "http://localhost/api/auth/refresh",
+        "status": 401
+      }
+    ]
+  }
+]

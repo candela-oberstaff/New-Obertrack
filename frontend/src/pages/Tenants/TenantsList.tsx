@@ -93,18 +93,18 @@ export default function TenantsList() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
+      <div className={styles.header} data-tour="tenants-header">
         <div>
           <h1>Empresas</h1>
           <p>Gestiona los clientes de la plataforma Oberstaff</p>
         </div>
-        <button className={styles.primaryBtn} onClick={() => setShowCreate(true)}>
+        <button className={styles.primaryBtn} onClick={() => setShowCreate(true)} data-tour="tenants-create">
           <Plus size={18} />
           Nueva empresa
         </button>
       </div>
 
-      <div className={styles.kpis}>
+      <div className={styles.kpis} data-tour="tenants-kpis">
         <div className={styles.kpiCard}>
           <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}>
             <Building2 size={24} />
@@ -143,7 +143,7 @@ export default function TenantsList() {
         </div>
       </div>
 
-      <div className={styles.searchBox}>
+      <div className={styles.searchBox} data-tour="tenants-search">
         <Search size={18} />
         <input
           type="text"
@@ -156,12 +156,12 @@ export default function TenantsList() {
       {error && <p className={styles.errorMsg}>{error}</p>}
 
       {filtered.length === 0 ? (
-        <div className={styles.empty}>
+        <div className={styles.empty} data-tour="tenants-list">
           <Building2 size={40} />
           <p>No hay empresas que coincidan</p>
         </div>
       ) : (
-        <div className={styles.tableWrap}>
+        <div className={styles.tableWrap} data-tour="tenants-list">
           <table className={styles.table}>
             <thead>
               <tr>

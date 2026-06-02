@@ -12,6 +12,12 @@ const api = axios.create({
 // If refresh fails, redirect to login.
 let refreshing: Promise<void> | null = null
 
+const publicAuthPaths = ['/login', '/register', '/forgot-password', '/reset-password']
+
+function isPublicAuthPath(pathname: string) {
+  return publicAuthPaths.some((path) => pathname === path || pathname.startsWith(`${path}?`))
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -33,7 +39,7 @@ api.interceptors.response.use(
         return api(original)
       } catch (refreshErr) {
         refreshing = null
-        if (window.location.pathname !== '/login') {
+        if (!isPublicAuthPath(window.location.pathname)) {
           window.location.href = '/login'
         }
         return Promise.reject(refreshErr)

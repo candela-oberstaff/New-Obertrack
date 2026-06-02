@@ -65,7 +65,7 @@ export function WorkHourStats({
   }
 
   return (
-    <div className={styles['stats-row-container']}>
+    <div className={styles['stats-row-container']} data-tour="work-hours-stats">
       {showLeftBtn && (
         <button className={styles['scroll-btn-left']} onClick={scrollLeft} aria-label="Ver tarjetas anteriores">
           <ChevronLeft size={20} />

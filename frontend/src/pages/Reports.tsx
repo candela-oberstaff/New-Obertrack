@@ -40,7 +40,7 @@ export default function Reports() {
 
   return (
     <div className={styles['reports-page']}>
-      <div className={styles['page-header']}>
+      <div className={styles['page-header']} data-tour="reports-header">
         <div className={styles['header-left']}>
           <h1>
             <BarChart2 size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Reportes{' '}
@@ -50,7 +50,7 @@ export default function Reports() {
         </div>
       </div>
 
-      <div className={styles['reports-filters']}>
+      <div className={styles['reports-filters']} data-tour="reports-filters">
         {(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') && employees.length > 0 && (
           <Select
             value={selectedEmployee}
@@ -97,7 +97,7 @@ export default function Reports() {
         <>
           {reportType === 'hours' && (
             <div className={styles['reports-content']}>
-              <div className={styles['stats-grid']}>
+              <div className={styles['stats-grid']} data-tour="reports-stats">
                 {user?.user_type !== 'profesional' && (
                   <>
                     <StatCard 
@@ -140,13 +140,15 @@ export default function Reports() {
                 />
               </div>
 
-              <ReportsCharts 
-                dailyData={dailyData}
-                workHours={workHours}
-                user={user as any}
-              />
+              <div data-tour="reports-charts">
+                <ReportsCharts 
+                  dailyData={dailyData}
+                  workHours={workHours}
+                  user={user as any}
+                />
+              </div>
 
-              <div className={styles['detail-table']}>
+              <div className={styles['detail-table']} data-tour="reports-detail">
                 <h3>
                   Detalle de registros{' '}
                   <Tooltip content="Fecha, hora y estado de los últimos registro hechos por el profesional" size={14} />
@@ -187,14 +189,14 @@ export default function Reports() {
 
           {reportType === 'tasks' && (
             <div className={styles['reports-content']}>
-              <div className={styles['stats-grid']}>
+              <div className={styles['stats-grid']} data-tour="reports-stats">
                 <StatCard icon={CheckSquare} iconColorClass="blue" label="Total Tareas" value={tasks.length} />
                 <StatCard icon={Check} iconColorClass="green" label="Completadas" value={tasks.filter(t => t.status === 'finalizado').length} />
                 <StatCard icon={Clock} iconColorClass="orange" label="En Proceso" value={tasks.filter(t => t.status === 'en_proceso').length} />
                 <StatCard icon={AlertCircle} iconColorClass="red" label="Por Hacer" value={tasks.filter(t => t.status === 'por_hacer').length} />
               </div>
 
-              <div className={styles['reports-section']}>
+              <div className={styles['reports-section']} data-tour="reports-charts">
                 <div className={styles['section-header']}>
                   <h3>Distribución de Prioridades</h3>
                 </div>
@@ -215,7 +217,7 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div className={styles['reports-section']}>
+              <div className={styles['reports-section']} data-tour="reports-detail">
                 <div className={styles['section-header']}>
                   <h3>Tareas Críticas Pendientes</h3>
                   <span className={styles['badge-count']}>

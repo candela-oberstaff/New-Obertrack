@@ -142,11 +142,11 @@ export default function Register() {
               <input
                 id="password"
                 type="password"
-                placeholder="Min. 6 caracteres"
+                placeholder="Min. 8 caracteres con letras y números"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
               />
             </div>
 
@@ -160,7 +160,6 @@ export default function Register() {
                 options={[
                   { value: 'profesional', label: 'Profesional (Profesional que presta servicios)' },
                   { value: 'empleador', label: 'Empresa (Dueño o Administrador de empresa)' },
-                  { value: 'superadmin', label: 'Super Admin' },
                 ]}
               />
             </div>

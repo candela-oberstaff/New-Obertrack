@@ -19,8 +19,8 @@ export default function ResetPassword() {
     e.preventDefault()
     setError('')
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.')
+    if (password.length < 8) {
+      setError('La contraseña debe tener al menos 8 caracteres e incluir letras y números.')
       return
     }
 
@@ -40,8 +40,11 @@ export default function ResetPassword() {
       await authService.resetPassword(token, password)
       setSuccess(true)
       setTimeout(() => navigate('/login'), 3000)
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Ocurrió un error. Intenta de nuevo.'
+    } catch (err: unknown) {
+      const responseError = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+        : undefined
+      const msg = responseError || 'Ocurrió un error. Intenta de nuevo.'
       if (msg.includes('expired')) {
         setError('El enlace ha expirado. Solicita uno nuevo.')
       } else if (msg.includes('invalid')) {
@@ -58,18 +61,20 @@ export default function ResetPassword() {
     <AuthLayout title="Nueva Contraseña">
       {success ? (
         <div style={{ textAlign: 'center', marginTop: '16px' }}>
-          <div style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '50%',
-            background: 'rgba(16, 185, 129, 0.15)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 16px',
-            fontSize: '28px',
-          }}>
-            ✅
+          <div
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'rgba(16, 185, 129, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              fontSize: '28px',
+            }}
+          >
+            ✓
           </div>
           <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '15px', lineHeight: '1.6', marginBottom: '16px' }}>
             Tu contraseña ha sido actualizada exitosamente.
@@ -78,7 +83,7 @@ export default function ResetPassword() {
             Serás redirigido al inicio de sesión en unos segundos...
           </p>
           <p className={styles['auth-link']} style={{ marginTop: '24px' }}>
-            <a href="/login">Ir al inicio de sesión →</a>
+            <a href="/login">Ir al inicio de sesión</a>
           </p>
         </div>
       ) : (
@@ -110,9 +115,9 @@ export default function ResetPassword() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Mínimo 8 caracteres con letras y números"
                     required
-                    minLength={6}
+                    minLength={8}
                   />
                 </div>
 
@@ -125,7 +130,7 @@ export default function ResetPassword() {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Repite tu contraseña"
                     required
-                    minLength={6}
+                    minLength={8}
                   />
                 </div>
 
@@ -135,7 +140,7 @@ export default function ResetPassword() {
               </form>
 
               <p className={styles['auth-link']}>
-                <a href="/login">← Volver al inicio de sesión</a>
+                <a href="/login">Volver al inicio de sesión</a>
               </p>
             </>
           )}

@@ -46,6 +46,7 @@ export function TutorialCard({ tutorial, isAdmin, isViewed, sortable, onOpen, on
       style={style}
       className={`${styles['tutorial-card']} ${!tutorial.is_active ? styles['inactive'] : ''} ${isDragging ? styles['dragging'] : ''}`}
       onClick={handleCardClick}
+      data-tour="tutorial-card"
     >
       <div className={styles['tutorial-card-header']}>
         <div className={styles['tutorial-card-icon']}>
@@ -58,7 +59,7 @@ export function TutorialCard({ tutorial, isAdmin, isViewed, sortable, onOpen, on
             </span>
           )}
           {isAdmin && (
-            <div className={styles['tutorial-card-actions']}>
+            <div className={styles['tutorial-card-actions']} data-tour="tutorial-card-actions">
               {sortable && (
                 <button
                   type="button"

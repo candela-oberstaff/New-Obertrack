@@ -97,18 +97,19 @@ export default function Tasks() {
   if (boards.length === 0) {
     return (
       <div className={styles['tasks-page']}>
-        <div className={styles['page-header']}>
+        <div className={styles['page-header']} data-tour="tasks-header">
           <h1>Tareas</h1>
         </div>
-        <div className={styles['tasks-loading']}>
+        <div className={styles['tasks-loading']} data-tour="tasks-empty">
           <h2>No tienes tableros</h2>
           <p>Crea tu primer tablero para organizar tus tareas</p>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button className={styles['btn-primary']} onClick={openBoardModal}>
+            <button className={styles['btn-primary']} onClick={openBoardModal} data-tour="tasks-create-board">
               <Plus size={18} /> Crear Tablero
             </button>
             <button 
               className={styles['btn-secondary'] || 'btn-secondary'} 
+              data-tour="tasks-join-board"
               onClick={() => {
                 fetchPublicBoards()
                 setShowJoinBoardModal(true)
@@ -137,10 +138,10 @@ export default function Tasks() {
 
   return (
     <div className={styles['tasks-page']}>
-      <div className={styles['page-header']}>
+      <div className={styles['page-header']} data-tour="tasks-header">
         <div className={styles['header-left']}>
           <h1>Tareas</h1>
-          <div className={styles['board-selector']}>
+          <div className={styles['board-selector']} data-tour="tasks-board-selector">
             {boards.length > 0 && (
               <>
                 <Select
@@ -150,11 +151,12 @@ export default function Tasks() {
                   placeholder="Seleccione un tablero..."
                   options={boards.map(b => ({ value: b.id, label: b.name, color: b.color || 'var(--primary)' }))}
                 />
-                <button className={styles['btn-icon']} onClick={openBoardModal} title="Crear tablero">
+                <button className={styles['btn-icon']} onClick={openBoardModal} title="Crear tablero" data-tour="tasks-create-board">
                   <Plus size={18} />
                 </button>
                 <button
                   className={`${styles['btn-secondary'] || 'btn-secondary'} ${styles['btn-sm'] || 'btn-sm'}`}
+                  data-tour="tasks-join-board"
                   onClick={() => {
                     fetchPublicBoards()
                     setShowJoinBoardModal(true)
@@ -167,6 +169,7 @@ export default function Tasks() {
                   <>
                     <button
                       className={`${styles['btn-icon']} ${styles['members-btn'] || 'members-btn'}`}
+                      data-tour="tasks-members"
                       onClick={() => {
                         setOptimisticMembers(selectedBoard.members?.map((m: User) => m.id) || [])
                         setShowBoardMembersModal(true)
@@ -178,6 +181,7 @@ export default function Tasks() {
                     </button>
                     <button
                       className={styles['btn-icon']}
+                      data-tour="tasks-phases"
                       onClick={() => setShowPhasesModal(true)}
                       title="Gestionar fases"
                       style={{ marginLeft: '4px' }}
@@ -201,13 +205,13 @@ export default function Tasks() {
             )}
           </div>
         </div>
-        <button className={styles['btn-primary']} onClick={handleOpenNewTaskModal}>
+        <button className={styles['btn-primary']} onClick={handleOpenNewTaskModal} data-tour="tasks-new-task">
           + Nueva Tarea
         </button>
       </div>
 
       {!selectedBoard ? (
-        <div className={styles['tasks-loading']} style={{ background: 'transparent' }}>
+        <div className={styles['tasks-loading']} style={{ background: 'transparent' }} data-tour="tasks-empty">
           <div className={styles['empty-state-glass'] || styles['dashboard-card']}>
             <CheckSquare size={64} style={{ color: 'var(--primary)', marginBottom: '24px', opacity: 0.6 }} />
             <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--black)', marginBottom: '12px' }}>
@@ -217,11 +221,12 @@ export default function Tasks() {
               Elige uno de tus tableros en el menú superior o crea uno nuevo para empezar a gestionar tus tareas.
             </p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-              <button className={styles['btn-primary']} onClick={openBoardModal}>
+              <button className={styles['btn-primary']} onClick={openBoardModal} data-tour="tasks-create-board">
                 <Plus size={18} /> Crear Nuevo Tablero
               </button>
               <button 
                 className={styles['btn-secondary'] || 'btn-secondary'} 
+                data-tour="tasks-join-board"
                 onClick={() => {
                   fetchPublicBoards()
                   setShowJoinBoardModal(true)

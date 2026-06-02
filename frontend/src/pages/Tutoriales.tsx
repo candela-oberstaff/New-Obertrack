@@ -1,5 +1,5 @@
 import { Plus, BookOpen, Search, Compass } from 'lucide-react'
-import { startSystemTour } from '../lib/tour'
+import { startCurrentPageTour } from '../lib/tour'
 import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { useTutorialsPageState, ALL_CATEGORIES } from '../components/Tutorials/hooks/useTutorialsPageState'
@@ -73,7 +73,7 @@ export default function Tutoriales() {
 
   return (
     <div className={styles['tutorials-page']}>
-      <header className={styles['tutorials-header']}>
+      <header className={styles['tutorials-header']} data-tour="tutoriales-header">
         <div>
           <h1>Tutoriales</h1>
           <p className={styles['tutorials-date']}>
@@ -84,11 +84,11 @@ export default function Tutoriales() {
           </p>
         </div>
         <div className={styles['tutorials-header-actions']}>
-          <button type="button" className={styles['tutorials-tour-btn']} onClick={startSystemTour}>
+          <button type="button" className={styles['tutorials-tour-btn']} onClick={() => startCurrentPageTour('/tutoriales')} data-tour="tutoriales-current-tour">
             <Compass size={18} /> Recorrido guiado
           </button>
           {isAdmin && (
-            <button type="button" className={styles['tutorials-create-btn']} onClick={openCreate}>
+            <button type="button" className={styles['tutorials-create-btn']} onClick={openCreate} data-tour="tutoriales-create">
               <Plus size={18} /> Nuevo tutorial
             </button>
           )}
@@ -97,7 +97,7 @@ export default function Tutoriales() {
 
       {tutorials.length > 0 && (
         <div className={styles['tutorials-toolbar']}>
-          <div className={styles['tutorials-tabs']}>
+          <div className={styles['tutorials-tabs']} data-tour="tutoriales-tabs">
             <button
               type="button"
               className={`${styles['tutorials-tab']} ${categoryFilter === ALL_CATEGORIES ? styles['active'] : ''}`}
@@ -121,7 +121,7 @@ export default function Tutoriales() {
               )
             })}
           </div>
-          <div className={styles['tutorials-search']}>
+          <div className={styles['tutorials-search']} data-tour="tutoriales-search">
             <Search size={16} />
             <input
               type="search"
@@ -145,7 +145,7 @@ export default function Tutoriales() {
               : 'Tu administrador todavía no ha publicado tutoriales.'}
           </p>
           {isAdmin && (
-            <button type="button" className={styles['tutorials-create-btn']} onClick={openCreate}>
+            <button type="button" className={styles['tutorials-create-btn']} onClick={openCreate} data-tour="tutoriales-create">
               <Plus size={18} /> Crear primer tutorial
             </button>
           )}
@@ -159,7 +159,7 @@ export default function Tutoriales() {
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={filteredTutorials.map(t => t.id)} strategy={rectSortingStrategy}>
-            <div className={styles['tutorials-grid']}>
+            <div className={styles['tutorials-grid']} data-tour="tutoriales-grid">
               {filteredTutorials.map((tutorial) => (
                 <TutorialCard
                   key={tutorial.id}
