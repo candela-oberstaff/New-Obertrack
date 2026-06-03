@@ -97,6 +97,11 @@ func mapTicketToDTO(t service.ZohoTicket) WhatsAppTicketDTO {
 
 // GetMyChats returns the WhatsApp tickets assigned to the logged‑in agent.
 func (h *WhatsAppHandler) GetMyChats(c *gin.Context) {
+	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
+
 	zohoAgentID, err := h.resolveZohoAgentID(c)
 	if err != nil {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{
@@ -138,6 +143,11 @@ func (h *WhatsAppHandler) GetMyChats(c *gin.Context) {
 
 // GetUnassignedChats returns incoming WhatsApp tickets not yet assigned to any agent.
 func (h *WhatsAppHandler) GetUnassignedChats(c *gin.Context) {
+	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
+
 	modifiedSince := c.Query("modifiedSince")
 	var modifiedTimeRange string
 	if modifiedSince != "" {
@@ -168,6 +178,11 @@ func (h *WhatsAppHandler) GetUnassignedChats(c *gin.Context) {
 // GetMessages returns the full conversation thread for a ticket.
 // It uses the /conversations endpoint (GetTicketThreads) for the clean chat log.
 func (h *WhatsAppHandler) GetMessages(c *gin.Context) {
+	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
+
 	ticketID := c.Param("ticketId")
 	if ticketID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ticketId es requerido"})
@@ -261,6 +276,11 @@ func (h *WhatsAppHandler) GetMessages(c *gin.Context) {
 
 // AssignToMe assigns an unassigned ticket to the current agent.
 func (h *WhatsAppHandler) AssignToMe(c *gin.Context) {
+	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
+
 	ticketID := c.Param("ticketId")
 	if ticketID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ticketId es requerido"})
@@ -296,6 +316,11 @@ type WhatsAppSendRequest struct {
 // SendMessage sends a message through Zoho Desk's public comment API,
 // which routes it back to the client via the ticket's active channel (WhatsApp).
 func (h *WhatsAppHandler) SendMessage(c *gin.Context) {
+	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
+
 	ticketID := c.Param("ticketId")
 	if ticketID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ticketId es requerido"})

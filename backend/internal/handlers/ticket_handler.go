@@ -38,6 +38,10 @@ func ticketErrorStatus(err error) int {
 }
 
 func (h *TicketHandler) GetTickets(c *gin.Context) {
+	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
 	tickets, err := h.svc.List(middleware.GetUserID(c), middleware.GetUserRole(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tickets"})
@@ -47,6 +51,10 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 }
 
 func (h *TicketHandler) GetTicket(c *gin.Context) {
+	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	ticket, err := h.svc.Get(uint(id), middleware.GetUserID(c), middleware.GetUserRole(c))
 	if err != nil {
@@ -57,6 +65,10 @@ func (h *TicketHandler) GetTicket(c *gin.Context) {
 }
 
 func (h *TicketHandler) UpdateTicket(c *gin.Context) {
+	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
 	var req struct {
@@ -78,6 +90,10 @@ func (h *TicketHandler) UpdateTicket(c *gin.Context) {
 }
 
 func (h *TicketHandler) SendMessage(c *gin.Context) {
+	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 
 	var req struct {

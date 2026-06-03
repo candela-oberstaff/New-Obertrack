@@ -26,26 +26,23 @@ type WorkHourService interface {
 }
 
 type workHourService struct {
-	repo          repository.WorkHourRepository
-	userRepo      repository.UserRepository
-	notifSvc      NotificationService
-	googleChatSvc GoogleChatService
-	brevoSvc      *BrevoService
+	repo     repository.WorkHourRepository
+	userRepo repository.UserRepository
+	notifSvc NotificationService
+	brevoSvc *BrevoService
 }
 
 func NewWorkHourService(
 	repo repository.WorkHourRepository,
 	userRepo repository.UserRepository,
 	notifSvc NotificationService,
-	googleChatSvc GoogleChatService,
 	brevoSvc *BrevoService,
 ) WorkHourService {
 	return &workHourService{
-		repo:          repo,
-		userRepo:      userRepo,
-		notifSvc:      notifSvc,
-		googleChatSvc: googleChatSvc,
-		brevoSvc:      brevoSvc,
+		repo:     repo,
+		userRepo: userRepo,
+		notifSvc: notifSvc,
+		brevoSvc: brevoSvc,
 	}
 }
 
@@ -172,21 +169,17 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 	// Fetch with preload for response
 	finalWH, err := s.repo.FindByID(workHour.ID)
 	if err == nil && finalWH != nil {
-		// Notificar al Manager y al Empleador
+		// Notificar al Manager y al Empleador internamente
 		go func() {
 			user, _ := s.userRepo.GetByID(finalWH.UserID)
 			if user != nil {
 				// Notificar al Manager
 				if user.ManagerID != nil {
-					if manager, err := s.userRepo.GetByID(*user.ManagerID); err == nil {
-						s.googleChatSvc.SendWorkHourCard(manager.Email, finalWH.ID, user.Name, finalWH.WorkDate.Format("2006-01-02"), finalWH.HoursWorked, finalWH.Activities)
-					}
+					_ = s.notifSvc.CreateNotification(*user.ManagerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID})
 				}
 				// Notificar al Empleador
 				if user.EmpleadorID != nil {
-					if employer, err := s.userRepo.GetByID(*user.EmpleadorID); err == nil {
-						s.googleChatSvc.SendWorkHourCard(employer.Email, finalWH.ID, user.Name, finalWH.WorkDate.Format("2006-01-02"), finalWH.HoursWorked, finalWH.Activities)
-					}
+					_ = s.notifSvc.CreateNotification(*user.EmpleadorID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID})
 				}
 			}
 		}()
@@ -327,17 +320,17 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 						dates += h.WorkDate.Format("02/01")
 					}
 					profMsg := fmt.Sprintf("✅ Tus horas de los días *%s* han sido aprobadas.", dates)
-					s.googleChatSvc.SendDirectMessage(professional.Email, profMsg)
+					_ = s.notifSvc.CreateNotification(professional.ID, "work_hour_approved", "Jornadas aprobadas", profMsg, map[string]interface{}{"dates": dates})
 				}
 			}
 
-			// 2. Notificar al aprobador (Resumen masivo)
+			// 2. Notificar al aprobador (Resumen masivo) internamente
 			if approver != nil {
 				summary := "📢 *Resumen de Aprobación de Jornadas*\nSe han aprobado las jornadas de los siguientes profesionales:\n"
 				for _, name := range approvedNames {
 					summary += fmt.Sprintf("• %s\n", name)
 				}
-				s.googleChatSvc.SendDirectMessage(approver.Email, summary)
+				_ = s.notifSvc.CreateNotification(approver.ID, "work_hour_approved_summary", "Resumen de aprobación", summary, nil)
 			}
 		}()
 	}

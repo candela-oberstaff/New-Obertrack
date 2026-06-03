@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
-import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute } from './guards'
+import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
 
 const Login = lazy(() => import('../pages/Login'))
@@ -14,7 +14,6 @@ const Tasks = lazy(() => import('../pages/Tasks'))
 const WorkHours = lazy(() => import('../pages/WorkHours'))
 const Reports = lazy(() => import('../pages/Reports'))
 const SlackChat = lazy(() => import('../pages/SlackChat'))
-const GoogleChat = lazy(() => import('../pages/GoogleChat'))
 const WhatsApp = lazy(() => import('../pages/WhatsApp'))
 const Profile = lazy(() => import('../pages/Profile'))
 const Admin = lazy(() => import('../pages/Admin'))
@@ -50,8 +49,7 @@ export function AppRoutes() {
           <Route path="tasks" element={<Tasks />} />
           <Route path="work-hours" element={<WorkHours />} />
           <Route path="chat" element={<SlackChat />} />
-          <Route path="google-chat" element={<GoogleChat />} />
-          <Route path="whatsapp" element={<WhatsApp />} />
+          <Route path="whatsapp" element={<CustomerSuccessRoute><WhatsApp /></CustomerSuccessRoute>} />
           <Route path="profile" element={<Profile />} />
           <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="admin/users/:id" element={<AdminRoute><AdminUserDetail /></AdminRoute>} />
@@ -63,8 +61,8 @@ export function AppRoutes() {
           <Route path="tutoriales" element={<Tutoriales />} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
-          <Route path="tickets" element={<AdminRoute><TicketsBoard /></AdminRoute>} />
-          <Route path="tickets/:id" element={<AdminRoute><TicketDetail /></AdminRoute>} />
+          <Route path="tickets" element={<CustomerSuccessRoute><TicketsBoard /></CustomerSuccessRoute>} />
+          <Route path="tickets/:id" element={<CustomerSuccessRoute><TicketDetail /></CustomerSuccessRoute>} />
         </Route>
       </Routes>
     </Suspense>

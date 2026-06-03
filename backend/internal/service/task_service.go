@@ -25,11 +25,10 @@ type TaskService interface {
 }
 
 type taskService struct {
-	repo          repository.TaskRepository
-	userRepo      repository.UserRepository
-	boardRepo     repository.BoardRepository
-	notifSvc      NotificationService
-	googleChatSvc GoogleChatService
+	repo      repository.TaskRepository
+	userRepo  repository.UserRepository
+	boardRepo repository.BoardRepository
+	notifSvc  NotificationService
 }
 
 func (s *taskService) authorizeBoardTenant(boardID, tenantID uint, isSuperadmin bool) error {
@@ -105,14 +104,12 @@ func NewTaskService(
 	userRepo repository.UserRepository,
 	boardRepo repository.BoardRepository,
 	notifSvc NotificationService,
-	googleChatSvc GoogleChatService,
 ) TaskService {
 	return &taskService{
-		repo:          repo,
-		userRepo:      userRepo,
-		boardRepo:     boardRepo,
-		notifSvc:      notifSvc,
-		googleChatSvc: googleChatSvc,
+		repo:      repo,
+		userRepo:  userRepo,
+		boardRepo: boardRepo,
+		notifSvc:  notifSvc,
 	}
 }
 
@@ -280,12 +277,6 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, tenantID uint, titl
 			log.Printf("[TaskService] Error creating internal notification for user %d: %v", assignee.ID, err)
 		}
 
-		// Enviar DM vía Google Chat API
-		if assignee.Email != "" {
-			go s.googleChatSvc.SendDirectMessage(assignee.Email, fmt.Sprintf("¡Hola %s! Se te asignó una nueva tarea en Obertrack: *%s*", assignee.Name, task.Title))
-		} else {
-			log.Printf("[TaskService] Warning: Assignee %d (%s) has no email, skipping Google Chat notification", assignee.ID, assignee.Name)
-		}
 	}
 
 	// Notify employer/company
@@ -399,10 +390,6 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 					log.Printf("[TaskService] Error creating internal notification for user %d: %v", u.ID, err)
 				}
 
-				// Enviar DM vía Google Chat API
-				if u.Email != "" {
-					go s.googleChatSvc.SendDirectMessage(u.Email, fmt.Sprintf("¡Hola %s! Se te asignó a la tarea en Obertrack: *%s*", u.Name, task.Title))
-				}
 			}
 		}
 	}
@@ -446,10 +433,6 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 			log.Printf("[TaskService] Error creating task_updated notification for employer %d: %v", empID, err)
 		}
 
-		empUser, _ := s.userRepo.GetByID(empID)
-		if empUser != nil && empUser.Email != "" {
-			go s.googleChatSvc.SendDirectMessage(empUser.Email, fmt.Sprintf("¡Hola %s! *%s* modificó la tarea en Obertrack: *%s*", empUser.Name, updaterName, task.Title))
-		}
 	}
 
 	// Notify other assignees who were already assigned or whose assignment is preserved
@@ -471,9 +454,6 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 			log.Printf("[TaskService] Error creating task_updated notification for assignee %d: %v", assignee.ID, err)
 		}
 
-		if assignee.Email != "" {
-			go s.googleChatSvc.SendDirectMessage(assignee.Email, fmt.Sprintf("¡Hola %s! *%s* modificó la tarea: *%s*", assignee.Name, updaterName, task.Title))
-		}
 	}
 
 	return task, task.Assignees, nil
@@ -571,10 +551,6 @@ func (s *taskService) ToggleCompletion(id uint, tenantID uint, updaterUserID uin
 			log.Printf("[TaskService] Error creating ToggleCompletion notification for employer %d: %v", empID, err)
 		}
 
-		empUser, _ := s.userRepo.GetByID(empID)
-		if empUser != nil && empUser.Email != "" {
-			go s.googleChatSvc.SendDirectMessage(empUser.Email, fmt.Sprintf("¡Hola %s! *%s* %s la tarea en Obertrack: *%s*", empUser.Name, updaterName, actionVerb, task.Title))
-		}
 	}
 
 	// Notify other assignees
@@ -592,9 +568,6 @@ func (s *taskService) ToggleCompletion(id uint, tenantID uint, updaterUserID uin
 			log.Printf("[TaskService] Error creating ToggleCompletion notification for assignee %d: %v", assignee.ID, err)
 		}
 
-		if assignee.Email != "" {
-			go s.googleChatSvc.SendDirectMessage(assignee.Email, fmt.Sprintf("¡Hola %s! *%s* %s la tarea: *%s*", assignee.Name, updaterName, actionVerb, task.Title))
-		}
 	}
 
 	return task, nil

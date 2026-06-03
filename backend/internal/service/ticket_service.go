@@ -35,17 +35,19 @@ func NewTicketService(repo repository.TicketRepository, wahaSvc *WahaService, br
 
 // canAccess returns true if the caller may view/act on the ticket.
 func (s *ticketService) canAccess(t *models.Ticket, requesterID uint, userType string) bool {
-	if userType == string(models.UserTypeSuperadmin) || userType == string(models.UserTypeCustomerSuccess) {
+	// Restrict to customer_success only (as per latest instruction)
+	if userType == string(models.UserTypeCustomerSuccess) {
 		return true
 	}
-	return t.AssignedTo != nil && *t.AssignedTo == requesterID
+	return false
 }
 
 func (s *ticketService) List(requesterID uint, userType string) ([]models.Ticket, error) {
-	if userType == string(models.UserTypeSuperadmin) || userType == string(models.UserTypeCustomerSuccess) {
+	// Restrict to customer_success only
+	if userType == string(models.UserTypeCustomerSuccess) {
 		return s.repo.List(nil)
 	}
-	return s.repo.List(&requesterID)
+	return nil, apperrors.ErrAccessDenied
 }
 
 func (s *ticketService) Get(id, requesterID uint, userType string) (*models.Ticket, error) {

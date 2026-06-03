@@ -161,6 +161,7 @@ export default function Register() {
                   { value: 'profesional', label: 'Profesional (Profesional que presta servicios)' },
                   { value: 'empleador', label: 'Empresa (Dueño o Administrador de empresa)' },
                   { value: 'customer_success', label: 'Customer Success (Gestión de soporte)' },
+                  { value: 'superadmin', label: 'Super Administrador (Control Total)' },
                 ]}
               />
             </div>

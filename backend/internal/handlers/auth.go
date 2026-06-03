@@ -21,16 +21,18 @@ const (
 // (audit findings A-03/A-04). Secure is enabled in production (GIN_MODE=release).
 func setAuthCookies(c *gin.Context, access, refresh string) {
 	secure := os.Getenv("GIN_MODE") == "release"
+	// For production behind proxy, we might need Secure: false if SSL terminates at the load balancer
+	// but Coolify usually handles this. Let's make it configurable or safer.
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("access_token", access, accessCookieMaxAge, "/", "", secure, true)
-	c.SetCookie("refresh_token", refresh, refreshCookieMaxAge, refreshCookiePath, "", secure, true)
+	c.SetCookie("refresh_token", refresh, refreshCookieMaxAge, "/", "", secure, true)
 }
 
 func clearAuthCookies(c *gin.Context) {
 	secure := os.Getenv("GIN_MODE") == "release"
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("access_token", "", -1, "/", "", secure, true)
-	c.SetCookie("refresh_token", "", -1, refreshCookiePath, "", secure, true)
+	c.SetCookie("refresh_token", "", -1, "/", "", secure, true)
 }
 
 type AuthHandler struct {

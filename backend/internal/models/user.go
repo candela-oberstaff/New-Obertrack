@@ -43,8 +43,6 @@ type User struct {
 	Country             string         `gorm:"size:100" json:"country"`
 	City                string         `gorm:"size:100" json:"city"`
 	Location            string         `gorm:"type:text" json:"location"`
-	GoogleCalendarToken string         `gorm:"type:text" json:"-"`
-	GoogleFormsToken    string         `gorm:"type:text" json:"-"`
 	RememberToken       string         `gorm:"size:100" json:"-"`
 	EmailVerifiedAt     *time.Time     `json:"email_verified_at,omitempty"`
 	ManagerID           *uint          `gorm:"index" json:"manager_id,omitempty"`

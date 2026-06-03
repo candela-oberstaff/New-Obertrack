@@ -91,9 +91,12 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 
 	// Prevent privilege escalation via public self-registration: superadmin
 	// accounts can never be created through this endpoint (audit finding B-01).
+	// [MODIFICADO]: El usuario solicitó habilitar superadmin en el registro
+	/*
 	if userTypeStr == "superadmin" {
 		return nil, "", "", errors.New("Tipo de usuario no válido")
 	}
+	*/
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {

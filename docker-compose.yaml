@@ -41,7 +41,6 @@ services:
       SEED_BOOTSTRAP_TOKEN: ${SEED_BOOTSTRAP_TOKEN}
       BREVO_WEBHOOK_TOKEN: ${BREVO_WEBHOOK_TOKEN}
       WAHA_WEBHOOK_HMAC: ${WAHA_WEBHOOK_HMAC}
-      GOOGLE_CHAT_VERIFY_TOKEN: ${GOOGLE_CHAT_VERIFY_TOKEN}
     # Backend not published directly; traffic flows through the frontend proxy.
     expose:
       - "8080"
