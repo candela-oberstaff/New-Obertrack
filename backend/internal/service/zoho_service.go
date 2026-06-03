@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -470,85 +471,117 @@ func (s *ZohoService) ReplyTicket(ticketID string, content string, channel strin
 func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, agentEmail string) (*ZohoThread, error) {
 	token, err := s.GetAccessToken()
 	if err != nil {
-		return nil, fmt.Errorf("error obteniendo token: %w", err)
+		return nil, err
 	}
-
 	orgID, err := s.getOrgID()
 	if err != nil {
-		return nil, fmt.Errorf("error obteniendo orgID: %w", err)
+		return nil, err
 	}
 
-	// 1. 🔍 OBTENER EL TICKET PARA EXTRAER EL SESSION ID DE WHATSAPP
-	ticketURL := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s", ticketID)
-	ticketReq, _ := http.NewRequest("GET", ticketURL, nil)
-	ticketReq.Header.Set("Authorization", "Zoho-oauthtoken "+token)
-	ticketReq.Header.Set("orgId", orgID)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	ticketResp, err := client.Do(ticketReq)
-	if err != nil {
-		return nil, fmt.Errorf("error consultando ticket: %w", err)
-	}
-	defer ticketResp.Body.Close()
-
-	ticketBytes, _ := io.ReadAll(ticketResp.Body)
-	var ticketData map[string]interface{}
-	if err := json.Unmarshal(ticketBytes, &ticketData); err != nil {
-		return nil, fmt.Errorf("error parseando json del ticket: %w", err)
-	}
-
-	source, ok := ticketData["source"].(map[string]interface{})
-	if !ok || source["extId"] == nil {
-		return nil, fmt.Errorf("el ticket no contiene una sesion de mensajeria activa (source.extId)")
-	}
-	sessionID := source["extId"].(string)
-
-	// 2. 🚀 PAYLOAD LIQUIDADO SIN 'displayMessage'
-	payload := map[string]interface{}{
-		"text":        content,
-		"contentType": "text/plain",
-		"type":        "TEXT",
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("error codificando json: %w", err)
-	}
-
-	// 3. 🎯 LA URL SECRETA QUE SÍ PASÓ EL ROUTING DE ZOHO
-	urlStr := fmt.Sprintf("https://desk.zoho.com/supportapi/zd/oberstaff/api/v1/im/sessions/%s/messages", sessionID)
-	
-	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, fmt.Errorf("error creando request: %w", err)
-	}
-
+	// 1. OBTENER EL CONVERSATION ID
+	// La API pública de Zoho requiere este ID específico para mensajería
+	convURL := fmt.Sprintf("https://desk.zoho.com/api/v1/conversations?ticketId=%s", ticketID)
+	req, _ := http.NewRequest("GET", convURL, nil)
 	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
 	req.Header.Set("orgId", orgID)
-	req.Header.Set("Content-Type", "application/json")
 
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error ejecutando request al endpoint de consola: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(resp.Body)
+	// Parseamos la respuesta para encontrar el ID de la conversación de WhatsApp
+	var convResponse struct {
+		Data []struct {
+			ID      string `json:"id"`
+			Channel string `json:"channel"`
+		} `json:"data"`
+	}
+	json.NewDecoder(resp.Body).Decode(&convResponse)
+
+	var conversationID string
+	for _, conv := range convResponse.Data {
+		if strings.EqualFold(conv.Channel, "WhatsApp") {
+			conversationID = conv.ID
+			break
+		}
+	}
+
+	// FALLBACK: Si no encontramos conversación por canal, usamos el endpoint /sendReply con fromEmailAddress
+	if conversationID == "" {
+		log.Printf("[ZohoService] No conversation found for ticket %s, falling back to sendReply", ticketID)
+		payload := map[string]interface{}{
+			"channel":          "IM",
+			"contentType":      "plainText",
+			"content":          content,
+			"fromEmailAddress": agentEmail,
+		}
+		body, _ := json.Marshal(payload)
+		urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s/sendReply", ticketID)
+		postReq, _ := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
+		postReq.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+		postReq.Header.Set("orgId", orgID)
+		postReq.Header.Set("Content-Type", "application/json")
+
+		postResp, err := client.Do(postReq)
+		if err != nil {
+			return nil, err
+		}
+		defer postResp.Body.Close()
+
+		if postResp.StatusCode != http.StatusCreated && postResp.StatusCode != http.StatusOK {
+			respBytes, _ := io.ReadAll(postResp.Body)
+			return nil, fmt.Errorf("error enviando mensaje via sendReply (Status %d): %s", postResp.StatusCode, string(respBytes))
+		}
+
+		return &ZohoThread{
+			ID:          "wh_" + fmt.Sprintf("%d", time.Now().Unix()),
+			Channel:     "WhatsApp",
+			Content:     content,
+			AuthorType:  "agent",
+			CreatedTime: time.Now(),
+		}, nil
+	}
+
+	// 2. ENVIAR MENSAJE VÍA IM FRAMEWORK (API PÚBLICA)
+	// Esta ruta sí acepta el Zoho-oauthtoken si tienes el scope 'Desk.messaging.ALL'
+	url := fmt.Sprintf("https://desk.zoho.com/api/v1/im/conversations/%s/messages", conversationID)
+
+	payload := map[string]interface{}{
+		"message": map[string]interface{}{
+			"text": content,
+			"type": "text",
+		},
+		"from": map[string]interface{}{
+			"type":  "agent",
+			"email": agentEmail,
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	postReq, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	postReq.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	postReq.Header.Set("orgId", orgID)
+	postReq.Header.Set("Content-Type", "application/json")
+
+	postResp, err := client.Do(postReq)
 	if err != nil {
-		return nil, fmt.Errorf("error leyendo respuesta: %w", err)
+		return nil, err
+	}
+	defer postResp.Body.Close()
+
+	if postResp.StatusCode != http.StatusCreated && postResp.StatusCode != http.StatusOK {
+		respBytes, _ := io.ReadAll(postResp.Body)
+		return nil, fmt.Errorf("error enviando mensaje (Status %d): %s", postResp.StatusCode, string(respBytes))
 	}
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		log.Printf("[ZohoService] Error usando endpoint de consola (Status %d): %s", resp.StatusCode, string(respBytes))
-		return nil, fmt.Errorf("zoho retorno status %d: %s", resp.StatusCode, string(respBytes))
-	}
-
-	log.Printf("[ZohoService] ✅ ¡WhatsApp enviado con éxito usando la pasarela oficial de Zoho!")
+	log.Printf("[ZohoService] ✅ Mensaje enviado exitosamente vía API pública.")
 
 	return &ZohoThread{
-		ID:          "wh_" + fmt.Sprintf("%d", time.Now().Unix()),
+		ID:          conversationID,
 		Channel:     "WhatsApp",
-		Summary:     content,
 		Content:     content,
 		AuthorType:  "agent",
 		CreatedTime: time.Now(),
