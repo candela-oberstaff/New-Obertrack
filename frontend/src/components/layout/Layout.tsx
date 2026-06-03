@@ -92,7 +92,7 @@ export default function Layout() {
     { path: '/tutoriales', label: 'Tutoriales', icon: <GraduationCap size={20} /> },
     { path: '/profile', label: 'Perfil', icon: <User size={20} /> },
   ].filter(item => {
-    if (item.customerSuccessOnly && user?.user_type !== 'customer_success') return false
+    if (item.customerSuccessOnly && !user?.is_superadmin && user?.user_type !== 'customer_success') return false
     if (item.adminOnly && !user?.is_superadmin && user?.user_type !== 'empleador') return false
     return true
   })
@@ -220,7 +220,7 @@ export default function Layout() {
               <Compass size={18} />
               <span>Recorrido guiado</span>
             </button>
-            {user?.user_type === 'customer_success' && (
+            {(user?.is_superadmin || user?.user_type === 'customer_success') && (
               <NavLink
                 to="/whatsapp"
                 className={({ isActive }) => `${styles['plugin-btn']} ${styles['plugin-btn-wa']} ${isActive ? styles['active'] : ''}`}

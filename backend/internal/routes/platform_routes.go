@@ -1,10 +1,24 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/models"
 )
+
+func requireSupportInboxAccess() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if middleware.IsSuperadmin(c) || middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess) {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Support inbox access required"})
+		c.Abort()
+	}
+}
 
 // registerPlatformRoutes wires cross-cutting platform features: file uploads,
 // email marketing, surveys, tutorials and the support-ticket inbox.
@@ -53,21 +67,32 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		tutorials.DELETE("/:id", middleware.RequireSuperadmin(), d.tutorial.Delete)
 	}
 
-	// Support inbox — global platform support, superadmin only.
 	tickets := api.Group("/tickets")
-	tickets.Use(middleware.RequireSuperadmin())
+	tickets.Use(requireSupportInboxAccess())
 	{
 		tickets.GET("/waha/status", func(c *gin.Context) {
 			status, err := d.wahaSvc.GetSessionStatusAndQR("default")
 			if err != nil {
-				c.JSON(500, gin.H{"error": err.Error()})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
-			c.JSON(200, status)
+			c.JSON(http.StatusOK, status)
 		})
+		tickets.GET("/statuses", d.ticket.GetTicketStatuses)
 		tickets.GET("", d.ticket.GetTickets)
 		tickets.GET("/:id", d.ticket.GetTicket)
 		tickets.PUT("/:id", d.ticket.UpdateTicket)
 		tickets.POST("/:id/messages", d.ticket.SendMessage)
+	}
+
+	chats := api.Group("/chats")
+	chats.Use(requireSupportInboxAccess())
+	{
+		chats.GET("/me", d.whatsapp.GetMyChats)
+		chats.GET("/unassigned", d.whatsapp.GetUnassignedChats)
+		chats.GET("/:ticketId/messages", d.whatsapp.GetMessages)
+		chats.PATCH("/:ticketId/assign", d.whatsapp.AssignToMe)
+		chats.POST("/:ticketId/send", d.whatsapp.SendMessage)
+		chats.POST("/sync-agent", d.whatsapp.SyncAgentID)
 	}
 }

@@ -41,6 +41,10 @@ services:
       SEED_BOOTSTRAP_TOKEN: ${SEED_BOOTSTRAP_TOKEN}
       BREVO_WEBHOOK_TOKEN: ${BREVO_WEBHOOK_TOKEN}
       WAHA_WEBHOOK_HMAC: ${WAHA_WEBHOOK_HMAC}
+      ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}
+      ZOHO_CLIENT_SECRET: ${ZOHO_CLIENT_SECRET}
+      ZOHO_REFRESH_TOKEN: ${ZOHO_REFRESH_TOKEN}
+      ZOHO_REDIRECT_URI: ${ZOHO_REDIRECT_URI}
     # Backend not published directly; traffic flows through the frontend proxy.
     expose:
       - "8080"

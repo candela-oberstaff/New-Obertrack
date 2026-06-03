@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Ticket, LinkedUser, ticketService } from '../../services/ticket.service';
+import { Ticket, LinkedUser, TicketStatusOption, ticketService } from '../../services/ticket.service';
 import ContactSidebar from './components/ContactSidebar';
 import MessageTimeline from './components/MessageTimeline';
 import ChatInputArea from './components/ChatInputArea';
@@ -14,6 +14,23 @@ const STAGE_LABELS: Record<string, { label: string; color: string }> = {
   closed:      { label: 'Cerrado',      color: 'var(--gray-400)' },
 };
 
+const DEFAULT_STATUS_OPTIONS: TicketStatusOption[] = [
+  { value: 'Open', label: 'Open', status_type: 'Open', stage: 'in_progress' },
+  { value: 'OnHold', label: 'On Hold', status_type: 'OnHold', stage: 'waiting' },
+  { value: 'Escalated', label: 'Escalated', status_type: 'Open', stage: 'in_progress' },
+  { value: 'Closed', label: 'Closed', status_type: 'Closed', stage: 'closed' },
+];
+
+function mergeStatusOptions(...groups: TicketStatusOption[][]): TicketStatusOption[] {
+  const seen = new Set<string>();
+  return groups.flat().filter(option => {
+    const key = option.value.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export default function TicketDetail() {
   // The route param is now the real Zoho Desk ticket ID string
   const { id } = useParams<{ id: string }>();
@@ -23,10 +40,26 @@ export default function TicketDetail() {
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sendError, setSendError]   = useState<string | null>(null);
+  const [stageError, setStageError] = useState<string | null>(null);
+  const [updatingStage, setUpdatingStage] = useState(false);
+  const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>(DEFAULT_STATUS_OPTIONS);
 
   useEffect(() => {
     if (id) fetchTicket(id, false);
   }, [id]);
+
+  useEffect(() => {
+    const fetchStatuses = async () => {
+      try {
+        const statuses = await ticketService.getTicketStatuses();
+        setStatusOptions(mergeStatusOptions(DEFAULT_STATUS_OPTIONS, statuses ?? []));
+      } catch (error) {
+        console.error('Error fetching ticket statuses:', error);
+        setStatusOptions(DEFAULT_STATUS_OPTIONS);
+      }
+    };
+    fetchStatuses();
+  }, []);
 
   const fetchTicket = async (zohoId: string, silent: boolean) => {
     if (!silent) setLoading(true);
@@ -59,13 +92,26 @@ export default function TicketDetail() {
     }
   };
 
-  const handleStageChange = async (newStage: 'new' | 'in_progress' | 'waiting' | 'closed') => {
+  const handleStatusChange = async (newStatus: string) => {
     if (!ticket) return;
+    const previousTicket = ticket;
+    const selectedOption = statusOptions.find(option => option.value === newStatus);
+    setStageError(null);
+    setUpdatingStage(true);
+    setTicket(prev => prev ? {
+      ...prev,
+      status: newStatus,
+      stage: selectedOption?.stage ?? prev.stage,
+    } : null);
     try {
-      await ticketService.updateTicket(ticket.zoho_id, { stage: newStage });
-      setTicket(prev => prev ? { ...prev, stage: newStage } : null);
-    } catch (error) {
-      console.error('Error updating ticket stage:', error);
+      const updatedTicket = await ticketService.updateTicket(ticket.zoho_id, { status: newStatus });
+      setTicket(prev => prev ? { ...prev, ...updatedTicket } : updatedTicket);
+    } catch (error: any) {
+      console.error('Error updating ticket status:', error);
+      setTicket(previousTicket);
+      setStageError(error?.response?.data?.error || 'No se pudo actualizar el estado en Zoho Desk.');
+    } finally {
+      setUpdatingStage(false);
     }
   };
 
@@ -182,7 +228,10 @@ export default function TicketDetail() {
         <ContactSidebar
           ticket={ticket}
           linkedUser={linkedUser}
-          onStageChange={handleStageChange}
+          statusOptions={statusOptions}
+          onStatusChange={handleStatusChange}
+          stageError={stageError}
+          updatingStage={updatingStage}
         />
 
         {/* Chat area */}

@@ -69,7 +69,7 @@ export function CustomerSuccessRoute({ children }: RouteGuardProps) {
     return <Navigate to={ROUTES.login} replace />
   }
 
-  if (user.user_type !== 'customer_success') {
+  if (!user.is_superadmin && user.user_type !== 'customer_success') {
     return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
   }
 

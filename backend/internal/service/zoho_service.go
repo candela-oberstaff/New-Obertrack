@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -29,6 +30,42 @@ type ZohoService struct {
 	orgID        string
 	agentCache   map[string]AgentInfo
 	mu           sync.RWMutex
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func looksLikePhone(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false
+	}
+
+	digits := 0
+	for _, r := range trimmed {
+		if r >= '0' && r <= '9' {
+			digits++
+			continue
+		}
+		if !strings.ContainsRune("+ -().", r) {
+			return false
+		}
+	}
+	return digits >= 7
+}
+
+func cleanContactName(values ...string) string {
+	name := firstNonEmpty(values...)
+	if looksLikePhone(name) || name == "." || name == "-" {
+		return ""
+	}
+	return name
 }
 
 func NewZohoService() *ZohoService {
@@ -207,11 +244,183 @@ type ZohoTicket struct {
 	IsEscalated  bool      `json:"isEscalated,omitempty"`
 	WebURL       string    `json:"webUrl,omitempty"`
 	// Contact details fetched separately
-	ContactPhone  string `json:"-"`
-	ContactEmail  string `json:"-"`
+	ContactPhone string `json:"-"`
+	ContactEmail string `json:"-"`
 	// Assignee/owner details fetched separately
 	AssigneeName  string `json:"-"`
 	AssigneeEmail string `json:"-"`
+}
+
+type ZohoTicketStatus struct {
+	Value      string `json:"value"`
+	Label      string `json:"label"`
+	StatusType string `json:"status_type,omitempty"`
+}
+
+func uniqueTicketStatuses(tickets []ZohoTicket) []ZohoTicketStatus {
+	statuses := make([]ZohoTicketStatus, 0)
+	seen := make(map[string]bool)
+	for _, ticket := range tickets {
+		status := strings.TrimSpace(ticket.Status)
+		if status == "" || seen[strings.ToLower(status)] {
+			continue
+		}
+		seen[strings.ToLower(status)] = true
+		statuses = append(statuses, ZohoTicketStatus{
+			Value:      status,
+			Label:      status,
+			StatusType: ticket.StatusType,
+		})
+	}
+	return statuses
+}
+
+func defaultTicketStatuses() []ZohoTicketStatus {
+	return []ZohoTicketStatus{
+		{Value: "Open", Label: "Open", StatusType: "Open"},
+		{Value: "OnHold", Label: "On Hold", StatusType: "OnHold"},
+		{Value: "Escalated", Label: "Escalated", StatusType: "Open"},
+		{Value: "Closed", Label: "Closed", StatusType: "Closed"},
+	}
+}
+
+func mergeTicketStatuses(groups ...[]ZohoTicketStatus) []ZohoTicketStatus {
+	statuses := make([]ZohoTicketStatus, 0)
+	seen := make(map[string]bool)
+	for _, group := range groups {
+		for _, status := range group {
+			value := strings.TrimSpace(status.Value)
+			if value == "" {
+				continue
+			}
+			key := strings.ToLower(value)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			if strings.TrimSpace(status.Label) == "" {
+				status.Label = value
+			}
+			status.Value = value
+			statuses = append(statuses, status)
+		}
+	}
+	return statuses
+}
+
+func addAllowedStatus(statuses *[]ZohoTicketStatus, seen map[string]bool, raw interface{}) {
+	var value, label, statusType string
+
+	switch item := raw.(type) {
+	case string:
+		value = strings.TrimSpace(item)
+		label = value
+	case map[string]interface{}:
+		for _, key := range []string{"value", "name", "apiName", "status", "statusName"} {
+			if v, ok := item[key].(string); ok && strings.TrimSpace(v) != "" {
+				value = strings.TrimSpace(v)
+				break
+			}
+		}
+		for _, key := range []string{"displayValue", "displayLabel", "label", "name", "status"} {
+			if v, ok := item[key].(string); ok && strings.TrimSpace(v) != "" {
+				label = strings.TrimSpace(v)
+				break
+			}
+		}
+		for _, key := range []string{"type", "statusType"} {
+			if v, ok := item[key].(string); ok && strings.TrimSpace(v) != "" {
+				statusType = strings.TrimSpace(v)
+				break
+			}
+		}
+	default:
+		return
+	}
+
+	if value == "" {
+		return
+	}
+	if label == "" {
+		label = value
+	}
+	key := strings.ToLower(value)
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	*statuses = append(*statuses, ZohoTicketStatus{Value: value, Label: label, StatusType: statusType})
+}
+
+// ListTicketStatuses retrieves the status picklist configured in Zoho Desk.
+// If the token lacks Desk.fields.READ, it falls back to statuses observed in recent tickets.
+func (s *ZohoService) ListTicketStatuses() ([]ZohoTicketStatus, error) {
+	token, err := s.GetAccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	orgID, err := s.getOrgID()
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client{}
+	for _, urlStr := range []string{
+		"https://desk.zoho.com/api/v1/fields?module=tickets",
+		"https://desk.zoho.com/api/v1/organizationFields?module=tickets",
+	} {
+		req, err := http.NewRequest("GET", urlStr, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+		req.Header.Set("orgId", orgID)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("[ZohoService] Could not read ticket status field from %s: status %d", urlStr, resp.StatusCode)
+			continue
+		}
+
+		var fieldsResponse struct {
+			Data []map[string]interface{} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &fieldsResponse); err != nil {
+			continue
+		}
+
+		for _, field := range fieldsResponse.Data {
+			apiName, _ := field["apiName"].(string)
+			displayLabel, _ := field["displayLabel"].(string)
+			if !strings.EqualFold(apiName, "status") && !strings.EqualFold(displayLabel, "status") {
+				continue
+			}
+
+			statuses := make([]ZohoTicketStatus, 0)
+			seen := make(map[string]bool)
+			if allowedValues, ok := field["allowedValues"].([]interface{}); ok {
+				for _, allowed := range allowedValues {
+					addAllowedStatus(&statuses, seen, allowed)
+				}
+			}
+			if len(statuses) > 0 {
+				return statuses, nil
+			}
+		}
+	}
+
+	tickets, err := s.ListTickets()
+	if err != nil {
+		return nil, err
+	}
+	return mergeTicketStatuses(defaultTicketStatuses(), uniqueTicketStatuses(tickets)), nil
 }
 
 // ListTickets retrieves the active tickets list from Zoho Desk API
@@ -317,30 +526,48 @@ func (s *ZohoService) GetTicketDetail(ticketID string) (*ZohoTicket, error) {
 			cResp, cErr := client.Do(cReq)
 			if cErr == nil && cResp.StatusCode == http.StatusOK {
 				var contact struct {
-					FirstName string `json:"firstName"`
-					LastName  string `json:"lastName"`
-					FullName  string `json:"fullName"`
-					Phone     string `json:"phone"`
-					Email     string `json:"email"`
+					FirstName      string `json:"firstName"`
+					LastName       string `json:"lastName"`
+					FullName       string `json:"fullName"`
+					Phone          string `json:"phone"`
+					Mobile         string `json:"mobile"`
+					Email          string `json:"email"`
+					SecondaryEmail string `json:"secondaryEmail"`
 				}
 				if json.NewDecoder(cResp.Body).Decode(&contact) == nil {
 					if ticket.Phone == "" {
-						ticket.Phone = contact.Phone
+						ticket.Phone = firstNonEmpty(contact.Phone, contact.Mobile)
 					}
+					ticket.ContactPhone = firstNonEmpty(ticket.ContactPhone, ticket.Phone, contact.Phone, contact.Mobile)
 					if ticket.Email == "" {
-						ticket.Email = contact.Email
+						ticket.Email = firstNonEmpty(contact.Email, contact.SecondaryEmail)
 					}
+					ticket.ContactEmail = firstNonEmpty(ticket.ContactEmail, ticket.Email, contact.Email, contact.SecondaryEmail)
 					if ticket.ContactName == "" {
-						if contact.FullName != "" {
-							ticket.ContactName = contact.FullName
-						} else {
-							ticket.ContactName = contact.FirstName + " " + contact.LastName
+						ticket.ContactName = cleanContactName(
+							contact.FullName,
+							strings.TrimSpace(contact.FirstName+" "+contact.LastName),
+							contact.FirstName,
+							contact.LastName,
+						)
+					}
+					if ticket.Phone == "" {
+						phoneCandidate := firstNonEmpty(contact.FullName, contact.FirstName, contact.LastName)
+						if looksLikePhone(phoneCandidate) {
+							ticket.Phone = phoneCandidate
 						}
 					}
 				}
 				cResp.Body.Close()
 			}
 		}
+	}
+
+	if looksLikePhone(ticket.ContactName) {
+		if ticket.Phone == "" {
+			ticket.Phone = ticket.ContactName
+		}
+		ticket.ContactName = ""
 	}
 
 	if ticket.AssigneeID != "" {
@@ -422,7 +649,7 @@ func (s *ZohoService) ReplyTicket(ticketID string, content string, channel strin
 	}
 
 	payload := map[string]interface{}{
-		"channel": channel, 
+		"channel": channel,
 		"content": content,
 	}
 
@@ -517,7 +744,7 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 
 	// 3. 🎯 LA URL SECRETA QUE SÍ PASÓ EL ROUTING DE ZOHO
 	urlStr := fmt.Sprintf("https://desk.zoho.com/supportapi/zd/oberstaff/api/v1/im/sessions/%s/messages", sessionID)
-	
+
 	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("error creando request: %w", err)
@@ -785,38 +1012,38 @@ func (s *ZohoService) GetAgentByEmail(email string) (string, AgentInfo, error) {
 	return ag.ID, info, nil
 }
 
-	// ListWhatsAppTickets returns WhatsApp tickets filtered by assigneeId (use "unassigned" for open queue)
-	// and status (e.g. "open"). Results are sorted by most recently modified.
-	func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modifiedTimeRange string) ([]ZohoTicket, error) {
-		token, err := s.GetAccessToken()
-		if err != nil {
-			return nil, err
-		}
+// ListWhatsAppTickets returns WhatsApp tickets filtered by assigneeId (use "unassigned" for open queue)
+// and status (e.g. "open"). Results are sorted by most recently modified.
+func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modifiedTimeRange string) ([]ZohoTicket, error) {
+	token, err := s.GetAccessToken()
+	if err != nil {
+		return nil, err
+	}
 
-		orgID, err := s.getOrgID()
-		if err != nil {
-			return nil, err
-		}
+	orgID, err := s.getOrgID()
+	if err != nil {
+		return nil, err
+	}
 
-		params := url.Values{}
-		params.Set("channelCode", "ATENCION_AL_CLIENTE")
-		params.Set("sortBy", "-modifiedTime")
-		params.Set("limit", "50")
-		if assigneeID != "" {
-			params.Set("assigneeId", assigneeID)
-		}
-		if status != "" {
-			params.Set("status", status)
-		}
-		if modifiedTimeRange != "" {
-			params.Set("modifiedTimeRange", modifiedTimeRange)
-		}
+	params := url.Values{}
+	params.Set("channelCode", "ATENCION_AL_CLIENTE")
+	params.Set("sortBy", "-modifiedTime")
+	params.Set("limit", "50")
+	if assigneeID != "" {
+		params.Set("assigneeId", assigneeID)
+	}
+	if status != "" {
+		params.Set("status", status)
+	}
+	if modifiedTimeRange != "" {
+		params.Set("modifiedTimeRange", modifiedTimeRange)
+	}
 
-		urlStr := "https://desk.zoho.com/api/v1/tickets?" + params.Encode()
-		req, err := http.NewRequest("GET", urlStr, nil)
-		if err != nil {
-			return nil, err
-		}
+	urlStr := "https://desk.zoho.com/api/v1/tickets?" + params.Encode()
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
 	req.Header.Set("orgId", orgID)
 
