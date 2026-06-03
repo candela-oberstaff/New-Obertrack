@@ -306,11 +306,15 @@ func Run(db *gorm.DB) error {
 					}
 				}
 
-				// Check for board_members constraint issue: sometimes orphaned rows exist
-				// Let's ensure we don't have board_members with user_id that doesn't exist in users
+				// Check for board_members and channel_members constraint issue: orphaned rows exist
+				// Ensure we don't have members with user_id that doesn't exist in users
 				if tx.Migrator().HasTable("board_members") {
 					log.Println("Cleaning up orphaned board_members before migration...")
 					tx.Exec(`DELETE FROM board_members WHERE user_id NOT IN (SELECT id FROM users)`)
+				}
+				if tx.Migrator().HasTable("channel_members") {
+					log.Println("Cleaning up orphaned channel_members before migration...")
+					tx.Exec(`DELETE FROM channel_members WHERE user_id NOT IN (SELECT id FROM users)`)
 				}
 
 				if err := tx.AutoMigrate(
