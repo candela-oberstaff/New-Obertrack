@@ -66,8 +66,8 @@ export function useAdmin(): UseAdminReturn {
       if (statsData.status === 'fulfilled' && statsData.value) {
         const data = statsData.value;
         setStats({
-          totalUsers: (data.total_companies || 0) + (data.total_professionals || 0) + (data.total_managers || 0),
-          activeUsers: data.active_today || 0,
+          totalUsers: data.total_users || 0,
+          activeUsers: data.active_users || 0,
           totalTasks: data.total_tasks || 0,
           totalBoards: boardsData.status === 'fulfilled' ? (boardsData.value?.length || 0) : 0
         })

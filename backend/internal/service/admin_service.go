@@ -10,6 +10,8 @@ import (
 )
 
 type DashboardMetrics struct {
+	TotalUsers         int     `json:"total_users"`
+	ActiveUsers        int     `json:"active_users"`
 	TotalCompanies     int     `json:"total_companies"`
 	TotalProfessionals int     `json:"total_professionals"`
 	TotalManagers      int     `json:"total_managers"`
@@ -73,6 +75,12 @@ func NewAdminService(
 
 func (s *adminService) GetDashboardMetrics() (*DashboardMetrics, error) {
 	var m DashboardMetrics
+
+	totalUsers, _ := s.userRepo.Count("", "", "", 0)
+	m.TotalUsers = int(totalUsers)
+
+	activeUsers, _ := s.userRepo.Count("", "", "true", 0)
+	m.ActiveUsers = int(activeUsers)
 
 	_, comp, _ := s.userRepo.GetAll("empleador", "", 0, 0, 1)
 	m.TotalCompanies = int(comp)
