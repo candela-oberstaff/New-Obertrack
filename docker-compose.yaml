@@ -27,8 +27,8 @@ services:
       dockerfile: Dockerfile
     environment:
       GIN_MODE: release                       # audit finding C-01 (disables /seed gate)
-      DB_HOST: db
-      DB_PORT: "5432"
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
