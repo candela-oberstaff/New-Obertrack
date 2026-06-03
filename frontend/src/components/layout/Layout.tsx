@@ -15,7 +15,6 @@ import {
   ChevronRight,
   ChevronLeft,
   LogOut,
-  Plug,
   Wrench,
   Menu,
   X,
@@ -86,14 +85,14 @@ export default function Layout() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} /> },
-    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, superadminOnly: true },
+    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, customerSuccessOnly: true },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} /> },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, adminOnly: true },
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} /> },
     { path: '/tutoriales', label: 'Tutoriales', icon: <GraduationCap size={20} /> },
     { path: '/profile', label: 'Perfil', icon: <User size={20} /> },
   ].filter(item => {
-    if (item.superadminOnly && !user?.is_superadmin) return false
+    if (item.customerSuccessOnly && user?.user_type !== 'customer_success') return false
     if (item.adminOnly && !user?.is_superadmin && user?.user_type !== 'empleador') return false
     return true
   })
@@ -221,20 +220,15 @@ export default function Layout() {
               <Compass size={18} />
               <span>Recorrido guiado</span>
             </button>
-            <NavLink
-              to="/whatsapp"
-              className={({ isActive }) => `${styles['plugin-btn']} ${styles['plugin-btn-wa']} ${isActive ? styles['active'] : ''}`}
-              title="WhatsApp"
-            >
-              <MessageSquare size={20} />
-            </NavLink>
-            <NavLink
-              to="/google-chat"
-              className={({ isActive }) => `${styles['plugin-btn']} ${isActive ? styles['active'] : ''}`}
-              title="Google Chat"
-            >
-              <Plug size={20} />
-            </NavLink>
+            {user?.user_type === 'customer_success' && (
+              <NavLink
+                to="/whatsapp"
+                className={({ isActive }) => `${styles['plugin-btn']} ${styles['plugin-btn-wa']} ${isActive ? styles['active'] : ''}`}
+                title="WhatsApp"
+              >
+                <MessageSquare size={20} />
+              </NavLink>
+            )}
             <Notifications />
           </div>
         </div>

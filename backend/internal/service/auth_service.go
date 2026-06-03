@@ -110,6 +110,8 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 	switch userTypeStr {
 	case "empleador", "empresa":
 		userType = models.UserTypeEmployer
+	case "customer_success":
+		userType = models.UserTypeCustomerSuccess
 	case "superadmin":
 		userType = models.UserTypeSuperadmin
 		isSuperadmin = true

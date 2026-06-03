@@ -58,6 +58,24 @@ export function ReportsRoute({ children }: RouteGuardProps) {
   return <>{children}</>
 }
 
+export function CustomerSuccessRoute({ children }: RouteGuardProps) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <Navigate to={ROUTES.login} replace />
+  }
+
+  if (user.user_type !== 'customer_success') {
+    return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
+  }
+
+  return <>{children}</>
+}
+
 export function AuthRoute({ children }: RouteGuardProps) {
   const { user, isLoading } = useAuth()
 

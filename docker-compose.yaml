@@ -27,8 +27,8 @@ services:
       dockerfile: Dockerfile
     environment:
       GIN_MODE: release                       # audit finding C-01 (disables /seed gate)
-      DB_HOST: db
-      DB_PORT: "5432"
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
@@ -41,7 +41,6 @@ services:
       SEED_BOOTSTRAP_TOKEN: ${SEED_BOOTSTRAP_TOKEN}
       BREVO_WEBHOOK_TOKEN: ${BREVO_WEBHOOK_TOKEN}
       WAHA_WEBHOOK_HMAC: ${WAHA_WEBHOOK_HMAC}
-      GOOGLE_CHAT_VERIFY_TOKEN: ${GOOGLE_CHAT_VERIFY_TOKEN}
     # Backend not published directly; traffic flows through the frontend proxy.
     expose:
       - "8080"
@@ -63,7 +62,7 @@ services:
       dockerfile: Dockerfile
     # Host:Container — container Nginx listens on 8080 (unprivileged).
     ports:
-      - "80:8080"
+      - "8081:8080"
     restart: unless-stopped
     depends_on:
       - backend

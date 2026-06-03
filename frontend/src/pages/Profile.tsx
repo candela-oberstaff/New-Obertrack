@@ -56,6 +56,7 @@ export default function Profile() {
     if (user?.is_superadmin) return 'Super Administrador'
     if (user?.is_manager) return 'Manager'
     if (user?.user_type === 'empleador') return 'Empresa'
+    if (user?.user_type === 'customer_success') return 'Customer Success'
     return 'Profesional'
   }
 
@@ -63,6 +64,7 @@ export default function Profile() {
     if (user?.is_superadmin) return '#8b5cf6'
     if (user?.is_manager) return '#f59e0b'
     if (user?.user_type === 'empleador') return 'var(--primary)'
+    if (user?.user_type === 'customer_success') return '#cc33cc'
     return '#10b981'
   }
 

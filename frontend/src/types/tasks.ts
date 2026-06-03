@@ -1,4 +1,4 @@
-export type UserType = 'empleador' | 'profesional' | 'superadmin'
+export type UserType = 'empleador' | 'profesional' | 'superadmin' | 'customer_success'
 export type TaskStatus = 'por_hacer' | 'en_proceso' | 'finalizado'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
@@ -22,6 +22,7 @@ export interface User {
   created_at: string
   updated_at: string
   password?: string
+  zoho_agent_id?: string
 }
 
 export interface Tenant {

@@ -8,7 +8,7 @@ interface TicketColumnProps {
   title: string;
   stage: string;
   tickets: Ticket[];
-  onTicketClick: (id: number) => void;
+  onTicketClick: (zohoId: string) => void;
   index?: number;
   draggable?: boolean;
   isDragging?: boolean;
@@ -74,10 +74,10 @@ export default function TicketColumn({
           </div>
         ) : (
           tickets.map(ticket => (
-            <TicketCard 
-              key={ticket.id} 
-              ticket={ticket} 
-              onClick={() => onTicketClick(ticket.id)} 
+            <TicketCard
+              key={ticket.zoho_id || ticket.id}
+              ticket={ticket}
+              onClick={() => onTicketClick(ticket.zoho_id)}
             />
           ))
         )}

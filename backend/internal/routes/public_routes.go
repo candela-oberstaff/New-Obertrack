@@ -38,12 +38,6 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 		middleware.WahaHMACAuth(),
 		d.waha.HandleWebhook)
 
-	// Google Chat callback — shared verification token (interim control; ideally
-	// verify the Google-signed Bearer JWT against Google's public certs).
-	api.POST("/google-chat/callback",
-		middleware.SharedSecretAuth("GOOGLE_CHAT_VERIFY_TOKEN", "X-Obertrack-Token"),
-		d.googleChat.HandleCallback)
-
 	// Administrative seed routes — bootstrap only. Require BOTH a non-release
 	// build AND a secret bootstrap token (audit finding C-01).
 	if os.Getenv("GIN_MODE") != "release" {

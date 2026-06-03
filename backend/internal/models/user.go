@@ -11,9 +11,10 @@ type TaskStatus string
 type TaskPriority string
 
 const (
-	UserTypeEmployer     UserType = "empleador"
-	UserTypeProfessional UserType = "profesional"
-	UserTypeSuperadmin   UserType = "superadmin"
+	UserTypeEmployer        UserType = "empleador"
+	UserTypeProfessional    UserType = "profesional"
+	UserTypeSuperadmin      UserType = "superadmin"
+	UserTypeCustomerSuccess UserType = "customer_success"
 
 	TaskStatusTodo      TaskStatus = "por_hacer"
 	TaskStatusInProcess TaskStatus = "en_proceso"
@@ -42,8 +43,6 @@ type User struct {
 	Country             string         `gorm:"size:100" json:"country"`
 	City                string         `gorm:"size:100" json:"city"`
 	Location            string         `gorm:"type:text" json:"location"`
-	GoogleCalendarToken string         `gorm:"type:text" json:"-"`
-	GoogleFormsToken    string         `gorm:"type:text" json:"-"`
 	RememberToken       string         `gorm:"size:100" json:"-"`
 	EmailVerifiedAt     *time.Time     `json:"email_verified_at,omitempty"`
 	ManagerID           *uint          `gorm:"index" json:"manager_id,omitempty"`
@@ -52,6 +51,7 @@ type User struct {
 	// TokenVersion is bumped to invalidate all previously issued access/refresh
 	// tokens for this user (logout-all, password change, suspension) — audit A-04.
 	TokenVersion        int            `gorm:"not null;default:0" json:"-"`
+	ZohoAgentID         string         `gorm:"size:255" json:"zoho_agent_id"`
 	CreatedAt           time.Time      `json:"created_at"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`

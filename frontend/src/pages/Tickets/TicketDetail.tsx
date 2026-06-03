@@ -1,69 +1,88 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Ticket, ticketService } from '../../services/ticket.service';
+import { Ticket, LinkedUser, ticketService } from '../../services/ticket.service';
 import ContactSidebar from './components/ContactSidebar';
 import MessageTimeline from './components/MessageTimeline';
 import ChatInputArea from './components/ChatInputArea';
 import styles from './Tickets.module.css';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ExternalLink, RefreshCw } from 'lucide-react';
+
+const STAGE_LABELS: Record<string, { label: string; color: string }> = {
+  new:         { label: 'Nuevo',        color: 'var(--color-azure)' },
+  in_progress: { label: 'En Progreso',  color: 'var(--primary)' },
+  waiting:     { label: 'Esperando',    color: 'var(--warning)' },
+  closed:      { label: 'Cerrado',      color: 'var(--gray-400)' },
+};
 
 export default function TicketDetail() {
+  // The route param is now the real Zoho Desk ticket ID string
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [ticket, setTicket]         = useState<Ticket | null>(null);
+  const [linkedUser, setLinkedUser] = useState<LinkedUser | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sendError, setSendError]   = useState<string | null>(null);
 
   useEffect(() => {
-    if (id) fetchTicket(Number(id));
+    if (id) fetchTicket(id, false);
   }, [id]);
 
-  const fetchTicket = async (ticketId: number) => {
-    setLoading(true);
+  const fetchTicket = async (zohoId: string, silent: boolean) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
     try {
-      const data = await ticketService.getTicket(ticketId);
-      setTicket(data);
+      const data = await ticketService.getTicket(decodeURIComponent(zohoId));
+      setTicket(data.ticket);
+      setLinkedUser(data.linked_user);
     } catch (error) {
       console.error('Error fetching ticket:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   const handleSendResponse = async (content: string, channel: 'whatsapp' | 'email') => {
     if (!ticket) return;
+    setSendError(null);
     try {
-      const newMessage = await ticketService.sendMessage(ticket.id, content, channel);
+      const newMessage = await ticketService.sendMessage(ticket.zoho_id, content, channel);
       setTicket(prev => prev ? {
         ...prev,
-        messages: [...(prev.messages || []), newMessage]
+        messages: [...(prev.messages || []), newMessage],
       } : null);
-    } catch (error) {
-      console.error('Error sending message:', error);
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || 'No se pudo enviar el mensaje. Intenta de nuevo.';
+      setSendError(msg);
+      throw error;
     }
   };
 
   const handleStageChange = async (newStage: 'new' | 'in_progress' | 'waiting' | 'closed') => {
     if (!ticket) return;
     try {
-      const updated = await ticketService.updateTicket(ticket.id, { stage: newStage });
-      setTicket(prev => prev ? { ...prev, stage: updated.stage } : null);
+      await ticketService.updateTicket(ticket.zoho_id, { stage: newStage });
+      setTicket(prev => prev ? { ...prev, stage: newStage } : null);
     } catch (error) {
       console.error('Error updating ticket stage:', error);
     }
   };
 
+  /* ── Loading ── */
   if (loading) {
     return (
-      <div className={styles.container} style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <p style={{ color: 'var(--gray-500)', fontSize: '1.1rem' }}>Cargando ticket...</p>
+      <div className={styles.container} style={{ justifyContent: 'center', alignItems: 'center', paddingTop: '4rem' }}>
+        <p style={{ color: 'var(--gray-400)', fontSize: '1rem' }}>Cargando ticket desde Zoho Desk…</p>
       </div>
     );
   }
 
+  /* ── Not Found ── */
   if (!ticket) {
     return (
-      <div className={styles.container} style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <p style={{ color: 'var(--danger)', fontSize: '1.1rem' }}>Ticket no encontrado.</p>
+      <div className={styles.container} style={{ justifyContent: 'center', alignItems: 'center', paddingTop: '4rem' }}>
+        <p style={{ color: 'var(--danger)', fontSize: '1rem' }}>Ticket no encontrado.</p>
         <button onClick={() => navigate('/tickets')} className={styles.sendBtn} style={{ marginTop: '1rem' }}>
           Volver a Tickets
         </button>
@@ -71,41 +90,111 @@ export default function TicketDetail() {
     );
   }
 
+  const stageMeta = STAGE_LABELS[ticket.stage] ?? STAGE_LABELS['new'];
+  const zohoId = ticket.zoho_id;
+
   return (
     <div className={styles.container}>
-      <div className={styles.header} style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button 
-            onClick={() => navigate('/tickets')} 
-            className={styles.channelBtn} 
-            style={{ padding: '0.5rem', borderRadius: '50%' }}
+      {/* ── Header ── */}
+      <div className={styles.header} style={{ marginBottom: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => navigate('/tickets')}
+            className={styles.channelBtn}
+            style={{ padding: '0.5rem', borderRadius: '50%', flexShrink: 0 }}
             aria-label="Volver"
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={17} />
           </button>
-          <h1 style={{ margin: 0 }}>Ticket #{ticket.id} - {ticket.title}</h1>
+
+          <h1 style={{ margin: 0, fontSize: '1.35rem' }}>
+            {ticket.title}
+          </h1>
+
+          {/* Stage badge */}
+          <span style={{
+            fontSize: '0.75rem', fontWeight: 700, padding: '0.25rem 0.7rem',
+            borderRadius: '99px', border: `1px solid ${stageMeta.color}`,
+            color: stageMeta.color, background: `${stageMeta.color}18`,
+          }}>
+            {stageMeta.label}
+          </span>
+
+          {/* Channel badge */}
+          {ticket.channel && (
+            <span style={{
+              fontSize: '0.72rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+              borderRadius: '99px', background: 'rgba(99,102,241,0.1)',
+              color: 'var(--primary)', border: '1px solid rgba(99,102,241,0.2)',
+            }}>
+              {ticket.channel}
+            </span>
+          )}
+
+          {/* Zoho ID link */}
+          {(ticket.web_url || zohoId) && (
+            <a
+              href={ticket.web_url || `https://desk.zoho.com/support/oberstaff/ShowHomePage.do#Cases/dv/${zohoId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: '0.75rem', color: 'var(--gray-400)', display: 'flex',
+                alignItems: 'center', gap: '0.25rem', textDecoration: 'none',
+              }}
+              title="Abrir en Zoho Desk"
+            >
+              <ExternalLink size={12} />
+              Ver en Zoho Desk
+            </a>
+          )}
         </div>
+
+        {/* Refresh */}
+        <button
+          onClick={() => id && fetchTicket(id, true)}
+          className={styles.channelBtn}
+          disabled={refreshing}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem' }}
+        >
+          <RefreshCw size={13} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+          {refreshing ? 'Actualizando…' : 'Actualizar'}
+        </button>
       </div>
 
+      {/* ── Send error banner ── */}
+      {sendError && (
+        <div style={{
+          padding: '0.75rem 1.1rem', borderRadius: 'var(--radius-sm)',
+          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+          color: '#dc2626', fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between',
+        }}>
+          ⚠️ {sendError}
+          <button
+            onClick={() => setSendError(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontWeight: 700 }}
+          >✕</button>
+        </div>
+      )}
+
+      {/* ── Detail body ── */}
       <div className={styles.detailContainer}>
-        {/* Contact Details & Ticket Controls */}
-        <ContactSidebar 
-          ticket={ticket} 
-          onStageChange={handleStageChange} 
+        {/* Sidebar */}
+        <ContactSidebar
+          ticket={ticket}
+          linkedUser={linkedUser}
+          onStageChange={handleStageChange}
         />
 
-        {/* Message Flow & Response Area */}
+        {/* Chat area */}
         <div className={styles.detailMain}>
-          <MessageTimeline 
-            ticket={ticket} 
-            contact={ticket.contact} 
-          />
-          
-          <ChatInputArea 
-            onSend={handleSendResponse} 
-          />
+          <MessageTimeline ticket={ticket} contact={ticket.contact} />
+          <ChatInputArea onSend={handleSendResponse} />
         </div>
       </div>
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 }

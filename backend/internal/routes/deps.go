@@ -34,7 +34,6 @@ type deps struct {
 	metrics      *handlers.MetricsHandler
 	tutorial     *handlers.TutorialHandler
 	ticket       *handlers.TicketHandler
-	googleChat   *handlers.GoogleChatHandler
 	waha         *handlers.WahaHandler
 	brevoInbound *handlers.BrevoInboundHandler
 
@@ -60,7 +59,6 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	ticketRepo := repository.NewTicketRepository(db)
 
 	// Integrations
-	googleChatSvc := service.NewGoogleChatService()
 	brevoSvc := service.NewBrevoService()
 	wahaSvc := service.NewWahaService()
 
@@ -71,9 +69,9 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	channelSvc := service.NewChannelService(channelRepo, userRepo, notifSvc)
 	ticketSvc := service.NewTicketService(ticketRepo, wahaSvc, brevoSvc)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, brevoSvc)
-	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, googleChatSvc, brevoSvc)
+	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
-	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc, googleChatSvc)
+	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo)
 	boardSvc := service.NewBoardService(boardRepo, userRepo)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
@@ -115,7 +113,6 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		metrics:      handlers.NewMetricsHandler(metricsRepo),
 		tutorial:     handlers.NewTutorialHandler(tutorialSvc),
 		ticket:       handlers.NewTicketHandler(ticketSvc),
-		googleChat:   handlers.NewGoogleChatHandler(workHourSvc, userSvc),
 		waha:         handlers.NewWahaHandler(ticketSvc),
 		brevoInbound: handlers.NewBrevoInboundHandler(ticketSvc),
 
