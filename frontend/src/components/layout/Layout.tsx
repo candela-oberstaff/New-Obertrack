@@ -15,7 +15,6 @@ import {
   ChevronRight,
   ChevronLeft,
   LogOut,
-  Plug,
   Wrench,
   Menu,
   X,
