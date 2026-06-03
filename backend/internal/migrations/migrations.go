@@ -374,8 +374,22 @@ func Run(db *gorm.DB) error {
 			ID: "202605291400_tenant_id_not_null",
 			Migrate: func(tx *gorm.DB) error {
 				log.Println("Setting tenant_id NOT NULL on core tenant tables...")
-				for _, t := range []string{"boards", "tasks", "work_hours", "channels", "channel_messages"} {
+
+				// Ensure no null values exist before setting NOT NULL
+				// We use a safe fallback (1 or first superadmin) if they are still null
+				fallbackTenantID := 1
+				var firstUser models.User
+				if err := tx.Where("user_type = ?", "superadmin").First(&firstUser).Error; err == nil {
+					fallbackTenantID = int(firstUser.ID)
+				}
+
+				tables := []string{"boards", "tasks", "work_hours", "channels", "channel_messages"}
+				for _, t := range tables {
+					updateSQL := fmt.Sprintf("UPDATE %s SET tenant_id = %d WHERE tenant_id IS NULL OR tenant_id = 0", t, fallbackTenantID)
+					tx.Exec(updateSQL)
+
 					if err := tx.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN tenant_id SET NOT NULL", t)).Error; err != nil {
+						log.Printf("Warning: could not set NOT NULL on %s.tenant_id: %v", t, err)
 						return err
 					}
 				}
