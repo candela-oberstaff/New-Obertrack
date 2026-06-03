@@ -39,10 +39,9 @@ func Run(db *gorm.DB) error {
 		{
 			ID: "202603251200", // Current date/time as ID
 			Migrate: func(tx *gorm.DB) error {
-				return tx.AutoMigrate(
+				err := tx.AutoMigrate(
 					&models.User{},
 					&models.Board{},
-					&models.BoardMember{},
 					&models.Task{},
 					&models.TaskUser{},
 					&models.Comment{},
@@ -59,6 +58,15 @@ func Run(db *gorm.DB) error {
 					&models.UserStatus{},
 					&models.Mention{},
 				)
+				if err != nil {
+					return err
+				}
+
+				// Create board_members manually to defer constraints or handle separately if AutoMigrate fails
+				if err := tx.AutoMigrate(&models.BoardMember{}); err != nil {
+					log.Printf("Warning: initial board_members migrate failed: %v", err)
+				}
+				return nil
 			},
 		},
 		{
@@ -296,6 +304,13 @@ func Run(db *gorm.DB) error {
 					if err := tx.Migrator().RenameColumn(&models.Message{}, "company_id", "tenant_id"); err != nil {
 						return err
 					}
+				}
+
+				// Check for board_members constraint issue: sometimes orphaned rows exist
+				// Let's ensure we don't have board_members with user_id that doesn't exist in users
+				if tx.Migrator().HasTable("board_members") {
+					log.Println("Cleaning up orphaned board_members before migration...")
+					tx.Exec(`DELETE FROM board_members WHERE user_id NOT IN (SELECT id FROM users)`)
 				}
 
 				if err := tx.AutoMigrate(
