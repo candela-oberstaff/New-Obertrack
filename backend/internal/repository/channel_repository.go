@@ -11,7 +11,8 @@ type ChannelRepository interface {
 	// Channels
 	GetChannelsByUser(userID uint) ([]models.Channel, error)
 	GetChannel(id uint) (*models.Channel, error)
-	GetChannelByNameAndType(name string, channelType models.ChannelType) (*models.Channel, error)
+	GetChannelByNameAndType(name string, channelType models.ChannelType, tenantID uint) (*models.Channel, error)
+	IsExplicitMember(channelID, userID uint) (bool, error)
 	CreateChannel(channel *models.Channel) error
 	UpdateChannel(channel *models.Channel, updates map[string]interface{}) error
 	DeleteChannel(id uint) error
@@ -114,13 +115,19 @@ func (r *channelRepository) GetChannel(id uint) (*models.Channel, error) {
 	return &channel, nil
 }
 
-func (r *channelRepository) GetChannelByNameAndType(name string, channelType models.ChannelType) (*models.Channel, error) {
+func (r *channelRepository) GetChannelByNameAndType(name string, channelType models.ChannelType, tenantID uint) (*models.Channel, error) {
 	var channel models.Channel
-	err := r.db.Where("name = ? AND type = ?", name, channelType).First(&channel).Error
+	err := r.db.Where("name = ? AND type = ? AND tenant_id = ?", name, channelType, tenantID).First(&channel).Error
 	if err != nil {
 		return nil, err
 	}
 	return &channel, nil
+}
+
+func (r *channelRepository) IsExplicitMember(channelID, userID uint) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.ChannelMember{}).Where("channel_id = ? AND user_id = ?", channelID, userID).Count(&count).Error
+	return count > 0, err
 }
 
 func (r *channelRepository) CreateChannel(channel *models.Channel) error {

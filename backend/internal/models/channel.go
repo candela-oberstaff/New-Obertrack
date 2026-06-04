@@ -16,11 +16,11 @@ const (
 
 type Channel struct {
 	ID            uint           `gorm:"primaryKey" json:"id"`
-	Name          string         `gorm:"size:100;not null;uniqueIndex:idx_channel_name_type" json:"name"`
+	Name          string         `gorm:"size:100;not null;uniqueIndex:idx_channel_name_type_tenant" json:"name"`
 	Description   string         `gorm:"size:500" json:"description"`
-	Type          ChannelType    `gorm:"type:varchar(20);not null;default:'public';uniqueIndex:idx_channel_name_type" json:"type"`
+	Type          ChannelType    `gorm:"type:varchar(20);not null;default:'public';uniqueIndex:idx_channel_name_type_tenant" json:"type"`
 	CreatedBy     uint           `gorm:"not null;index" json:"created_by"`
-	TenantID      uint           `gorm:"index" json:"tenant_id"`
+	TenantID      uint           `gorm:"uniqueIndex:idx_channel_name_type_tenant" json:"tenant_id"`
 	CreatedByUser User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	IsActive      bool           `gorm:"default:true" json:"is_active"`
 	CreatedAt     time.Time      `json:"created_at"`

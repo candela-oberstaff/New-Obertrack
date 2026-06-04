@@ -137,19 +137,20 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 		cType = models.ChannelTypePrivate
 	}
 
-	// Check if channel already exists
-	if existing, _ := s.repo.GetChannelByNameAndType(name, cType); existing != nil {
+	creator, _ := s.userRepo.GetByID(userID)
+	tenantID := models.TenantForUser(creator)
+
+	// Check if channel already exists for this tenant
+	if existing, _ := s.repo.GetChannelByNameAndType(name, cType, tenantID); existing != nil {
 		return existing, nil
 	}
-
-	creator, _ := s.userRepo.GetByID(userID)
 
 	channel := &models.Channel{
 		Name:        name,
 		Description: description,
 		Type:        cType,
 		CreatedBy:   userID,
-		TenantID:    models.TenantForUser(creator),
+		TenantID:    tenantID,
 		IsActive:    true,
 	}
 
@@ -157,7 +158,7 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 		return nil, err
 	}
 
-	// Add creator as member
+	// Add creator as explicit member
 	s.repo.AddMember(&models.ChannelMember{
 		ChannelID: channel.ID,
 		UserID:    userID,
@@ -260,7 +261,7 @@ func (s *channelService) AddMember(channelID, userID, memberToAdd uint) error {
 		return ErrCrossTenant
 	}
 
-	if isMember, _ := s.repo.IsMember(channelID, memberToAdd); isMember {
+	if isMember, _ := s.repo.IsExplicitMember(channelID, memberToAdd); isMember {
 		return ErrAlreadyMember
 	}
 
