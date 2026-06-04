@@ -22,6 +22,7 @@ func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	tenantID := middleware.GetTenantID(c)
 
 	userIDFilter := c.Query("user_id")
 	startDate := c.Query("start_date")
@@ -30,7 +31,7 @@ func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	workHours, total, err := h.svc.GetAll(userID, role, isSuperadmin, userIDFilter, startDate, endDate, offset, limit)
+	workHours, total, err := h.svc.GetAll(userID, role, isSuperadmin, tenantID, userIDFilter, startDate, endDate, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch work hours"})
 		return

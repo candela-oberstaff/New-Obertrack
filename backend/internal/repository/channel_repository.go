@@ -61,7 +61,7 @@ type ChannelRepository interface {
 	CreateMention(mention *models.Mention) error
 
 	// Users
-	GetActiveUsers() ([]models.User, error)
+	GetActiveUsers(tenantID uint) ([]models.User, error)
 	FindUserByNamePrefix(name string) (*models.User, error)
 
 	// Custom
@@ -355,9 +355,13 @@ func (r *channelRepository) CreateMention(mention *models.Mention) error {
 
 // Users
 
-func (r *channelRepository) GetActiveUsers() ([]models.User, error) {
+func (r *channelRepository) GetActiveUsers(tenantID uint) ([]models.User, error) {
 	var users []models.User
-	err := r.db.Where("is_active = ?", true).Find(&users).Error
+	query := r.db.Where("is_active = ?", true)
+	if tenantID > 0 {
+		query = query.Where("empleador_id = ? OR id = ?", tenantID, tenantID)
+	}
+	err := query.Find(&users).Error
 	return users, err
 }
 

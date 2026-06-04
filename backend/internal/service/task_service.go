@@ -127,13 +127,9 @@ func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin b
 		if tenantID > 0 {
 			filters["tenant_id"] = tenantID
 		}
-
-		if role == string(models.UserTypeProfessional) || role == "profesional" {
-			filters["assignee_id"] = userID
-			filters["created_by"] = userID
-		} else if !isManager {
-			filters["created_by"] = userID
-		}
+		// All tenant-scoped users (employers, professionals, managers) see
+		// all tasks within their tenant via the tenant_id filter above.
+		// No per-user assignee/creator restriction needed.
 	}
 
 	if status != "" {

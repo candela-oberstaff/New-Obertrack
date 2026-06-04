@@ -89,32 +89,18 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 		return nil, "", "", errors.New("Email already registered")
 	}
 
-	if userTypeStr == "superadmin" {
-		_, total, err := s.userRepo.GetAll("superadmin", "", 0, 0, 1)
-		if err != nil {
-			return nil, "", "", errors.New("No se pudo validar si ya existe un superadmin")
-		}
-		if total > 0 {
-			return nil, "", "", errors.New("Ya existe un superadmin registrado")
-		}
-	}
-
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, "", "", errors.New("Failed to hash password")
 	}
 
-	// Logic to classify role
+	// Only "profesional" and "empleador" are allowed via public registration.
+	// superadmin and customer_success must be created through the admin panel.
 	userType := models.UserTypeProfessional
 	isSuperadmin := false
 	switch userTypeStr {
 	case "empleador", "empresa":
 		userType = models.UserTypeEmployer
-	case "customer_success":
-		userType = models.UserTypeCustomerSuccess
-	case "superadmin":
-		userType = models.UserTypeSuperadmin
-		isSuperadmin = true
 	}
 
 	user := &models.User{

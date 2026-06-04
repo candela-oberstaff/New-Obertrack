@@ -14,7 +14,7 @@ import (
 )
 
 type WorkHourService interface {
-	GetAll(userID uint, role string, isSuperadmin bool, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
+	GetAll(userID uint, role string, isSuperadmin bool, tenantID uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
 	Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error)
 	Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error)
 	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool) error
@@ -64,13 +64,14 @@ func (s *workHourService) parseFloatVal(val interface{}) float64 {
 	return 0
 }
 
-func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
+func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, tenantID uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
 	filters := make(map[string]interface{})
 
 	if !isSuperadmin {
-		if role == string(models.UserTypeEmployer) || role == "empleador" {
-			filters["employer_id"] = userID
+		if tenantID > 0 {
+			filters["tenant_id"] = tenantID
 		} else if role == string(models.UserTypeProfessional) || role == "profesional" {
+			// Fallback: orphan professionals without a tenant see only their own
 			filters["user_id"] = userID
 		}
 	}

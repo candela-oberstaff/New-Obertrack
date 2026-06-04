@@ -54,7 +54,7 @@ type ChannelService interface {
 	GetStatuses(userIDs []uint) ([]models.UserStatus, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
 	MarkAsRead(channelID, userID uint) error
-	GetAllUsers() ([]models.User, error)
+	GetAllUsers(tenantID uint, isSuperadmin bool) ([]models.User, error)
 }
 
 type ChannelWithUnread struct {
@@ -302,6 +302,15 @@ func (s *channelService) Join(channelID, userID uint) error {
 
 	if isMember, _ := s.repo.IsMember(channelID, userID); isMember {
 		return fmt.Errorf("already a member")
+	}
+
+	// Tenant isolation: user must belong to the same tenant as the channel.
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return ErrUserNotFound
+	}
+	if !isSuperadminUser(user) && models.TenantForUser(user) != channel.TenantID {
+		return ErrCrossTenant
 	}
 
 	return s.repo.AddMember(&models.ChannelMember{
