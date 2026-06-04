@@ -1,10 +1,6 @@
 package handlers
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -28,6 +24,10 @@ type WhatsAppHandler struct {
 
 func NewWhatsAppHandler(db *gorm.DB, zohoSvc *service.ZohoService) *WhatsAppHandler {
 	return &WhatsAppHandler{DB: db, zohoSvc: zohoSvc}
+}
+
+func canUseWhatsAppInbox(c *gin.Context) bool {
+	return middleware.IsSuperadmin(c) || middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess)
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ func mapTicketToDTO(t service.ZohoTicket) WhatsAppTicketDTO {
 
 // GetMyChats returns the WhatsApp tickets assigned to the logged‑in agent.
 func (h *WhatsAppHandler) GetMyChats(c *gin.Context) {
-	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+	if !canUseWhatsAppInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
 		return
 	}
@@ -143,7 +143,7 @@ func (h *WhatsAppHandler) GetMyChats(c *gin.Context) {
 
 // GetUnassignedChats returns incoming WhatsApp tickets not yet assigned to any agent.
 func (h *WhatsAppHandler) GetUnassignedChats(c *gin.Context) {
-	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+	if !canUseWhatsAppInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
 		return
 	}
@@ -178,7 +178,7 @@ func (h *WhatsAppHandler) GetUnassignedChats(c *gin.Context) {
 // GetMessages returns the full conversation thread for a ticket.
 // It uses the /conversations endpoint (GetTicketThreads) for the clean chat log.
 func (h *WhatsAppHandler) GetMessages(c *gin.Context) {
-	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+	if !canUseWhatsAppInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
 		return
 	}
@@ -198,70 +198,70 @@ func (h *WhatsAppHandler) GetMessages(c *gin.Context) {
 	var messages []WhatsAppMessageDTO
 
 	for _, thread := range threads {
-			// Try to get individual sub‑messages (richer granularity for IM channels)
-			subMsgs, err := h.zohoSvc.GetThreadMessages(thread.ID)
-			if err == nil && len(subMsgs) > 0 {
-				for _, sub := range subMsgs {
-					if sub.Summary == "" {
-						continue
-					}
-
-					direction := "incoming"
-					authorType := "contact"
-					if sub.Author != nil && strings.EqualFold(sub.Author.Type, "AGENT") {
-						direction = "outgoing"
-						authorType = "agent"
-					} else if strings.EqualFold(sub.Direction, "OUT") {
-						direction = "outgoing"
-						authorType = "agent"
-					}
-
-					authorName := ""
-					if sub.Author != nil {
-						authorName = sub.Author.Name
-					}
-
-					messages = append(messages, WhatsAppMessageDTO{
-						ID:          sub.ID,
-						Content:     stripHTMLWA(sub.Summary),
-						Direction:   direction,
-						AuthorName:  authorName,
-						AuthorType:  authorType,
-						CreatedTime: sub.CreatedTime,
-					})
-				}
-			} else {
-				// Fallback: use thread‑level data
-				direction := "incoming"
-				authorType := "contact"
-				switch strings.ToLower(thread.AuthorType) {
-				case "agent":
-					direction = "outgoing"
-					authorType = "agent"
-				case "system":
-					authorType = "system"
-				}
-
-				content := thread.Content
-				if content == "" {
-					content = thread.Summary
-				}
-				if content == "" {
+		// Try to get individual sub‑messages (richer granularity for IM channels)
+		subMsgs, err := h.zohoSvc.GetThreadMessages(thread.ID)
+		if err == nil && len(subMsgs) > 0 {
+			for _, sub := range subMsgs {
+				if sub.Summary == "" {
 					continue
 				}
 
-				// Determine channel from thread.Channel for consistency
-				_ = thread.Channel // Keep for reference, though WhatsApp section is typically WhatsApp
+				direction := "incoming"
+				authorType := "contact"
+				if sub.Author != nil && strings.EqualFold(sub.Author.Type, "AGENT") {
+					direction = "outgoing"
+					authorType = "agent"
+				} else if strings.EqualFold(sub.Direction, "OUT") {
+					direction = "outgoing"
+					authorType = "agent"
+				}
+
+				authorName := ""
+				if sub.Author != nil {
+					authorName = sub.Author.Name
+				}
 
 				messages = append(messages, WhatsAppMessageDTO{
-					ID:          thread.ID,
-					Content:     stripHTMLWA(content),
+					ID:          sub.ID,
+					Content:     stripHTMLWA(sub.Summary),
 					Direction:   direction,
-					AuthorName:  thread.AuthorName,
+					AuthorName:  authorName,
 					AuthorType:  authorType,
-					CreatedTime: thread.CreatedTime,
+					CreatedTime: sub.CreatedTime,
 				})
 			}
+		} else {
+			// Fallback: use thread‑level data
+			direction := "incoming"
+			authorType := "contact"
+			switch strings.ToLower(thread.AuthorType) {
+			case "agent":
+				direction = "outgoing"
+				authorType = "agent"
+			case "system":
+				authorType = "system"
+			}
+
+			content := thread.Content
+			if content == "" {
+				content = thread.Summary
+			}
+			if content == "" {
+				continue
+			}
+
+			// Determine channel from thread.Channel for consistency
+			_ = thread.Channel // Keep for reference, though WhatsApp section is typically WhatsApp
+
+			messages = append(messages, WhatsAppMessageDTO{
+				ID:          thread.ID,
+				Content:     stripHTMLWA(content),
+				Direction:   direction,
+				AuthorName:  thread.AuthorName,
+				AuthorType:  authorType,
+				CreatedTime: thread.CreatedTime,
+			})
+		}
 	}
 
 	// Chronological order (oldest first, like WhatsApp)
@@ -276,7 +276,7 @@ func (h *WhatsAppHandler) GetMessages(c *gin.Context) {
 
 // AssignToMe assigns an unassigned ticket to the current agent.
 func (h *WhatsAppHandler) AssignToMe(c *gin.Context) {
-	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+	if !canUseWhatsAppInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
 		return
 	}
@@ -316,7 +316,7 @@ type WhatsAppSendRequest struct {
 // SendMessage sends a message through Zoho Desk's public comment API,
 // which routes it back to the client via the ticket's active channel (WhatsApp).
 func (h *WhatsAppHandler) SendMessage(c *gin.Context) {
-	if middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+	if !canUseWhatsAppInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
 		return
 	}
@@ -333,80 +333,24 @@ func (h *WhatsAppHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	// Send request to /tickets/{ticketId}/sendReply endpoint
-	// This will be handled by the ticket handler which will communicate with Zoho Desk
-	
-	// Construct the endpoint URL
-	var baseURL string
-	if c.Request.URL.Scheme != "" && c.Request.Host != "" {
-		baseURL = fmt.Sprintf("%s://%s", c.Request.URL.Scheme, c.Request.Host)
-	} else {
-		// Fallback to localhost if we can't determine the scheme/host
-		baseURL = "http://localhost:8080"
-	}
-	
-	// Remove trailing slash if present
-	baseURL = strings.TrimRight(baseURL, "/")
-	
-	endpoint := fmt.Sprintf("%s/api/tickets/%s/sendReply", baseURL, ticketID)
-	
-	// Create HTTP request with content and channel parameters
-	reqBody, _ := json.Marshal(map[string]interface{}{
-		"content": req.Content,
-		"channel": "whatsapp", // As required by the endpoint
-	})
-	
-	httpReq, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(reqBody))
+	thread, err := h.zohoSvc.ReplyWhatsAppLiveChat(ticketID, req.Content, c.GetString("email"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "No se pudo enviar el mensaje por Zoho: " + err.Error()})
 		return
 	}
-	
-	// Set headers
-	httpReq.Header.Set("Content-Type", "application/json")
-	
-	// Add auth token if available
-	if token := c.GetHeader("Authorization"); token != "" {
-		httpReq.Header.Set("Authorization", token)
+
+	createdAt := time.Now()
+	if thread != nil && !thread.CreatedTime.IsZero() {
+		createdAt = thread.CreatedTime
 	}
-	
-	// Make the request
-	client := &http.Client{}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send request: " + err.Error()})
-		return
-	}
-	defer resp.Body.Close()
-	
-	// Read response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read response: " + err.Error()})
-		return
-	}
-	
-	// Check if successful
-	if resp.StatusCode != http.StatusOK {
-		c.JSON(resp.StatusCode, gin.H{"error": "Failed to send reply: " + string(respBody)})
-		return
-	}
-	
-	// Parse the response to return to client
-	var ticketMessage models.TicketMessage
-	if err := json.Unmarshal(respBody, &ticketMessage); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse response: " + err.Error()})
-		return
-	}
-	
-	// Convert to WhatsAppMessageDTO for consistency with existing API
+
 	c.JSON(http.StatusOK, WhatsAppMessageDTO{
-		ID:          fmt.Sprintf("%d", ticketMessage.ID),
-		Content:     ticketMessage.Content,
+		ID:          thread.ID,
+		Content:     req.Content,
 		Direction:   "outgoing",
-		AuthorName:  "", // We don't have this in TicketMessage
+		AuthorName:  "",
 		AuthorType:  "agent",
-		CreatedTime: ticketMessage.CreatedAt,
+		CreatedTime: createdAt,
 	})
 }
 

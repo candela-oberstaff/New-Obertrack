@@ -28,8 +28,10 @@ La topología de comunicación y sincronización de mensajes está diseñada de 
 Para interactuar con la API de Zoho Desk, utilizamos una aplicación OAuth tipo **Web-Based** creada en la [Zoho API Console](https://api-console.zoho.com/).
 
 ### Credenciales de la Aplicación
-* **Client ID:** `1000.7HY6VNVBSCQRSG4UG7IHVSH38OTL4W`
-* **Client Secret:** `c073908ca502db2a0324ce110864009fbcbecf6f50`
+* **Client ID:** definido en `ZOHO_CLIENT_ID`
+* **Client Secret:** definido en `ZOHO_CLIENT_SECRET`
+* **Refresh Token:** definido en `ZOHO_REFRESH_TOKEN`
+* **Redirect URI:** definido en `ZOHO_REDIRECT_URI`
 * **Ámbitos de API requeridos (Scopes):**
   * `ZohoDesk.tickets.READ` (Para listar y ver detalles de los tickets)
   * `ZohoDesk.tickets.CREATE` (Para responder y crear nuevos hilos/threads)
@@ -56,8 +58,8 @@ El backend intercambia el código recibido por los tokens:
 * **Método:** `POST`
 * **Cuerpo (x-www-form-urlencoded):**
   * `code`: `{AUTHORIZATION_CODE}`
-  * `client_id`: `1000.7HY6VNVBSCQRSG4UG7IHVSH38OTL4W`
-  * `client_secret`: `c073908ca502db2a0324ce110864009fbcbecf6f50`
+  * `client_id`: `{ZOHO_CLIENT_ID}`
+  * `client_secret`: `{ZOHO_CLIENT_SECRET}`
   * `redirect_uri`: `{YOUR_REDIRECT_URI}`
   * `grant_type`: `authorization_code`
 
@@ -66,8 +68,8 @@ Cada hora, o cuando las APIs devuelvan un error `401 Unauthorized`, el backend r
 * **URL:** `https://accounts.zoho.com/oauth/v2/token`
 * **Cuerpo (x-www-form-urlencoded):**
   * `refresh_token`: `{REFRESH_TOKEN}`
-  * `client_id`: `1000.7HY6VNVBSCQRSG4UG7IHVSH38OTL4W`
-  * `client_secret`: `c073908ca502db2a0324ce110864009fbcbecf6f50`
+  * `client_id`: `{ZOHO_CLIENT_ID}`
+  * `client_secret`: `{ZOHO_CLIENT_SECRET}`
   * `grant_type`: `refresh_token`
 
 ---
@@ -81,12 +83,17 @@ Obtiene todos los tickets ordenados por última actualización:
 * **Endpoint:** `GET https://desk.zoho.com/api/v1/tickets?sortBy=-modifiedTime&limit=50`
 * **Uso:** Rellena la lista principal del dashboard del agente.
 
-### 2. Obtener Conversaciones (Threads / WhatsApp History)
+### 2. Obtener Detalle de Ticket
+Obtiene la información completa de un ticket específico. Es el endpoint base para conocer contacto, estado, canal, `source.extId`, agente asignado y metadatos necesarios antes de responder o dibujar el detalle.
+* **Endpoint:** `GET https://desk.zoho.com/api/v1/tickets/{ticketId}`
+* **Uso:** Alimenta la vista de detalle en `/tickets/:id` y permite extraer datos necesarios para mensajería oficial.
+
+### 3. Obtener Conversaciones (Threads / WhatsApp History)
 Obtiene el historial cronológico de un ticket específico:
 * **Endpoint:** `GET https://desk.zoho.com/api/v1/tickets/{ticketId}/threads`
 * **Uso:** Dibuja la ventana de chat y conversación interactiva en el panel del agente.
 
-### 3. Responder al Ticket (Enviar mensaje de WhatsApp)
+### 4. Responder al Ticket (Enviar mensaje de WhatsApp)
 Agrega una respuesta al ticket que se despacha automáticamente a través de la integración de WhatsApp activa en Zoho Desk:
 * **Endpoint:** `POST https://desk.zoho.com/api/v1/tickets/{ticketId}/threads`
 * **Cuerpo (JSON):**
@@ -97,7 +104,7 @@ Agrega una respuesta al ticket que se despacha automáticamente a través de la 
   }
   ```
 
-### 4. Actualizar Estado o Asignación del Ticket
+### 5. Actualizar Estado o Asignación del Ticket
 * **Endpoint:** `PATCH https://desk.zoho.com/api/v1/tickets/{ticketId}`
 * **Cuerpo (JSON):**
   ```json

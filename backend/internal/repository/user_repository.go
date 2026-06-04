@@ -7,6 +7,7 @@ import (
 
 type UserRepository interface {
 	GetAll(role, isManager string, companyID uint, offset, limit int) ([]models.User, int64, error)
+	Count(role, isManager, isActive string, companyID uint) (int64, error)
 	GetByID(id uint) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
 	GetByResetToken(token string) (*models.User, error)
@@ -55,6 +56,32 @@ func (r *userRepository) GetAll(role, isManager string, companyID uint, offset, 
 
 	err := findQuery.Offset(offset).Limit(limit).Find(&users).Error
 	return users, total, err
+}
+
+func (r *userRepository) Count(role, isManager, isActive string, companyID uint) (int64, error) {
+	var total int64
+	query := r.db.Model(&models.User{})
+
+	if role != "" {
+		query = query.Where("user_type = ?", role)
+	}
+
+	if isManager != "" {
+		query = query.Where("is_manager = ?", isManager == "true")
+	}
+
+	if isActive != "" {
+		query = query.Where("is_active = ?", isActive == "true")
+	}
+
+	if companyID > 0 {
+		query = query.Where("empleador_id = ? OR id = ?", companyID, companyID)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 func (r *userRepository) GetByID(id uint) (*models.User, error) {

@@ -65,11 +65,11 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 		query = query.Where("tasks.title ILIKE ? OR tasks.description ILIKE ?", "%"+search+"%", "%"+search+"%")
 	}
 
-	if err := query.Count(&total).Error; err != nil {
+	if err := query.Session(&gorm.Session{}).Distinct("tasks.id").Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	if err := query.Preload("Creator").Preload("Assignees").Preload("Board").Preload("Attachments").
+	if err := query.Select("DISTINCT tasks.*").Preload("Creator").Preload("Assignees").Preload("Board").Preload("Attachments").
 		Preload("Comments").Preload("Comments.User").
 		Offset(offset).Limit(limit).Order("tasks.created_at DESC").Find(&tasks).Error; err != nil {
 		return nil, 0, err

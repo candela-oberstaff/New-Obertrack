@@ -65,6 +65,16 @@
   scroll-snap-align: start;
 }
 
+.columnDragging {
+  opacity: 0.55;
+  transform: scale(0.98);
+}
+
+.columnDragOver {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(204, 51, 204, 0.16), var(--shadow);
+}
+
 @media (max-width: 768px) {
   .column {
     width: 100%;
@@ -84,6 +94,29 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: grab;
+  user-select: none;
+}
+
+.columnHeader:active {
+  cursor: grabbing;
+}
+
+.columnTitle {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.5rem;
+}
+
+.columnTitle h3 {
+  margin: 0;
+}
+
+.columnGrip {
+  color: var(--gray-400);
+  display: flex;
+  flex-shrink: 0;
 }
 
 .header-new        { border-top: 4px solid var(--accent-alt); }

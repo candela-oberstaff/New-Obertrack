@@ -34,6 +34,7 @@ type deps struct {
 	metrics      *handlers.MetricsHandler
 	tutorial     *handlers.TutorialHandler
 	ticket       *handlers.TicketHandler
+	whatsapp     *handlers.WhatsAppHandler
 	waha         *handlers.WahaHandler
 	brevoInbound *handlers.BrevoInboundHandler
 
@@ -61,6 +62,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// Integrations
 	brevoSvc := service.NewBrevoService()
 	wahaSvc := service.NewWahaService()
+	zohoSvc := service.NewZohoService()
 
 	// Services
 	userSvc := service.NewUserService(userRepo)
@@ -112,7 +114,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		survey:       handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
 		metrics:      handlers.NewMetricsHandler(metricsRepo),
 		tutorial:     handlers.NewTutorialHandler(tutorialSvc),
-		ticket:       handlers.NewTicketHandler(ticketSvc),
+		ticket:       handlers.NewTicketHandler(db, zohoSvc),
+		whatsapp:     handlers.NewWhatsAppHandler(db, zohoSvc),
 		waha:         handlers.NewWahaHandler(ticketSvc),
 		brevoInbound: handlers.NewBrevoInboundHandler(ticketSvc),
 

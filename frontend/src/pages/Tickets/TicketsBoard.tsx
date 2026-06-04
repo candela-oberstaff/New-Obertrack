@@ -7,19 +7,45 @@ import { RefreshCw, Ticket as TicketIcon, Filter, User as UserIcon } from 'lucid
 import { useAuth } from '../../context/AuthContext';
 
 const STAGES = [
-  { id: 'new',         title: 'Nuevo' },
+  { id: 'new', title: 'Nuevo' },
   { id: 'in_progress', title: 'En Progreso' },
-  { id: 'waiting',     title: 'Esperando' },
-  { id: 'closed',      title: 'Cerrado' },
+  { id: 'waiting', title: 'Esperando' },
+  { id: 'closed', title: 'Cerrado' },
 ] as const;
+
+const STAGE_ORDER_STORAGE_KEY = 'ticketsStageOrder';
+
+type TicketStageConfig = typeof STAGES[number];
+
+function getInitialStageOrder(): TicketStageConfig[] {
+  try {
+    const saved = localStorage.getItem(STAGE_ORDER_STORAGE_KEY);
+    if (!saved) return [...STAGES];
+
+    const savedIds = JSON.parse(saved);
+    if (!Array.isArray(savedIds)) return [...STAGES];
+
+    const ordered = savedIds
+      .map((id: unknown) => STAGES.find(stage => stage.id === id))
+      .filter((stage): stage is TicketStageConfig => Boolean(stage));
+    const missing = STAGES.filter(stage => !ordered.some(item => item.id === stage.id));
+
+    return [...ordered, ...missing];
+  } catch {
+    return [...STAGES];
+  }
+}
 
 export default function TicketsBoard() {
   const { user } = useAuth();
-  const [tickets, setTickets]     = useState<Ticket[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [stages, setStages] = useState<TicketStageConfig[]>(getInitialStageOrder);
+  const [draggedStageIdx, setDraggedStageIdx] = useState<number | null>(null);
+  const [dragOverStageIdx, setDragOverStageIdx] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [error, setError]         = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [filterOwn, setFilterOwn] = useState(false);
   const navigate = useNavigate();
 
@@ -27,6 +53,7 @@ export default function TicketsBoard() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     setError(null);
+
     try {
       const data = await ticketService.getTickets();
       setTickets(data ?? []);
@@ -39,16 +66,44 @@ export default function TicketsBoard() {
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
     fetchTickets();
   }, [fetchTickets]);
 
-  // Auto-refresh every 60 seconds
+  useEffect(() => {
+    localStorage.setItem(STAGE_ORDER_STORAGE_KEY, JSON.stringify(stages.map(stage => stage.id)));
+  }, [stages]);
+
   useEffect(() => {
     const interval = setInterval(() => fetchTickets(true), 60_000);
     return () => clearInterval(interval);
   }, [fetchTickets]);
+
+  const handleStageDragStart = useCallback((idx: number) => {
+    setDraggedStageIdx(idx);
+  }, []);
+
+  const handleStageDragEnter = useCallback((idx: number) => {
+    setDragOverStageIdx(prev => (prev === idx ? prev : idx));
+  }, []);
+
+  const handleStageDrop = useCallback((idx: number) => {
+    if (draggedStageIdx !== null && draggedStageIdx !== idx) {
+      setStages(current => {
+        const next = [...current];
+        const [dragged] = next.splice(draggedStageIdx, 1);
+        next.splice(idx, 0, dragged);
+        return next;
+      });
+    }
+    setDraggedStageIdx(null);
+    setDragOverStageIdx(null);
+  }, [draggedStageIdx]);
+
+  const handleStageDragEnd = useCallback(() => {
+    setDraggedStageIdx(null);
+    setDragOverStageIdx(null);
+  }, []);
 
   const openTicket = (zohoId: string) => navigate(`/tickets/${encodeURIComponent(zohoId)}`);
 
@@ -63,24 +118,25 @@ export default function TicketsBoard() {
 
   return (
     <div className={styles.container}>
-      {/* ── Header ── */}
       <div className={styles.header}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <TicketIcon size={22} style={{ color: 'var(--primary)' }} />
           <h1>Tickets de Soporte</h1>
           {total > 0 && (
             <span style={{
-              fontSize: '0.8rem', fontWeight: 600, padding: '0.25rem 0.65rem',
-              borderRadius: '99px', background: 'rgba(204,51,204,0.12)',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              padding: '0.25rem 0.65rem',
+              borderRadius: '99px',
+              background: 'rgba(204,51,204,0.12)',
               color: 'var(--primary)',
             }}>
-              Total {total} 
+              Total {total}
             </span>
           )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {/* Filter Toggle */}
           {user?.email && (
             <div style={{
               display: 'flex',
@@ -146,36 +202,45 @@ export default function TicketsBoard() {
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem' }}
           >
             <RefreshCw size={14} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
-            {refreshing ? 'Actualizando…' : 'Actualizar'}
+            {refreshing ? 'Actualizando...' : 'Actualizar'}
           </button>
         </div>
       </div>
 
-      {/* ── Error ── */}
       {error && (
         <div style={{
-          padding: '0.85rem 1.25rem', borderRadius: 'var(--radius-sm)',
-          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-          color: '#dc2626', fontSize: '0.9rem',
+          padding: '0.85rem 1.25rem',
+          borderRadius: 'var(--radius-sm)',
+          background: 'rgba(239,68,68,0.08)',
+          border: '1px solid rgba(239,68,68,0.2)',
+          color: '#dc2626',
+          fontSize: '0.9rem',
         }}>
-          ⚠️ {error}
+          {error}
         </div>
       )}
 
-      {/* ── Board ── */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem', color: 'var(--gray-400)' }}>
-          Cargando tickets desde Zoho Desk…
+          Cargando tickets desde Zoho Desk...
         </div>
       ) : (
         <div className={styles.board}>
-          {STAGES.map((stage) => (
+          {stages.map((stage, idx) => (
             <TicketColumn
               key={stage.id}
               title={stage.title}
               stage={stage.id}
               tickets={filteredTickets.filter(t => t.stage === stage.id)}
               onTicketClick={openTicket}
+              index={idx}
+              draggable
+              isDragging={draggedStageIdx === idx}
+              isDragOver={dragOverStageIdx === idx && draggedStageIdx !== idx}
+              onDragStart={handleStageDragStart}
+              onDragEnter={handleStageDragEnter}
+              onDrop={handleStageDrop}
+              onDragEnd={handleStageDragEnd}
             />
           ))}
         </div>

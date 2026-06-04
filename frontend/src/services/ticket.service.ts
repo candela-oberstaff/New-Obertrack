@@ -47,6 +47,13 @@ export interface Ticket {
   assignee_email?: string;
 }
 
+export interface TicketStatusOption {
+  value: string;
+  label: string;
+  status_type?: string;
+  stage: Ticket['stage'];
+}
+
 export interface LinkedUser {
   id: number;
   name: string;
@@ -87,6 +94,11 @@ export interface WhatsAppMessageDTO {
 export const ticketService = {
   getTickets: async (): Promise<Ticket[]> => {
     const response = await api.get('/tickets')
+    return response.data
+  },
+
+  getTicketStatuses: async (): Promise<TicketStatusOption[]> => {
+    const response = await api.get('/tickets/statuses')
     return response.data
   },
 

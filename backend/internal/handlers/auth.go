@@ -117,6 +117,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if err.Error() == "Email already registered" {
 			status = http.StatusConflict
+		} else if err.Error() == "Ya existe un superadmin registrado" {
+			status = http.StatusConflict
+		} else if err.Error() == "Tipo de usuario no válido" {
+			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return

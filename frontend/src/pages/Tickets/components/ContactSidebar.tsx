@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { Ticket, LinkedUser } from '../../../services/ticket.service';
+import { Ticket, LinkedUser, TicketStatusOption } from '../../../services/ticket.service';
+import { Select } from '../../../components/ui/Select';
 import styles from '../Tickets.module.css';
 import {
   User, Phone, Mail, Clock, AlertCircle, Building2,
@@ -9,13 +10,39 @@ import {
 interface ContactSidebarProps {
   ticket: Ticket;
   linkedUser: LinkedUser | null;
-  onStageChange: (newStage: 'new' | 'in_progress' | 'waiting' | 'closed') => void;
+  statusOptions: TicketStatusOption[];
+  onStatusChange: (newStatus: string) => void;
+  stageError?: string | null;
+  updatingStage?: boolean;
 }
 
-export default function ContactSidebar({ ticket, linkedUser, onStageChange }: ContactSidebarProps) {
+export default function ContactSidebar({ ticket, linkedUser, statusOptions, onStatusChange, stageError, updatingStage = false }: ContactSidebarProps) {
   const navigate = useNavigate();
 
   const isProfessional = linkedUser?.user_type === 'profesional';
+  const currentStatusOption = {
+    value: ticket.status,
+    label: ticket.status === 'OnHold' ? 'On Hold' : ticket.status,
+    stage: ticket.stage,
+  };
+  const options = statusOptions.some(option => option.value === ticket.status)
+    ? statusOptions
+    : [
+        ...statusOptions,
+        currentStatusOption,
+      ].filter(option => option.value);
+  const statusColor = (stage: Ticket['stage']) => {
+    switch (stage) {
+      case 'closed':
+        return 'var(--gray-400)';
+      case 'waiting':
+        return 'var(--warning)';
+      case 'in_progress':
+        return 'var(--primary)';
+      default:
+        return 'var(--color-azure)';
+    }
+  };
 
   return (
     <aside className={styles.detailSidebar}>
@@ -358,17 +385,29 @@ export default function ContactSidebar({ ticket, linkedUser, onStageChange }: Co
         <h4 className={styles.sectionTitle}>Estado de Gestión</h4>
         <div className={styles.controlGroup}>
           <label className={styles.fieldLabel} htmlFor="stage-select">Etapa actual</label>
-          <select 
+          <Select
             id="stage-select"
-            value={ticket.stage} 
-            onChange={(e) => onStageChange(e.target.value as any)}
-            className={styles.select}
-          >
-            <option value="new">Nuevo</option>
-            <option value="in_progress">En Progreso</option>
-            <option value="waiting">Esperando respuesta</option>
-            <option value="closed">Cerrado</option>
-          </select>
+            value={ticket.status || ''}
+            onChange={(value) => onStatusChange(String(value))}
+            options={options.map(option => ({
+              value: option.value,
+              label: option.label,
+              color: statusColor(option.stage),
+            }))}
+            placeholder="Seleccionar estado"
+            fullWidth
+            disabled={updatingStage}
+          />
+          {updatingStage && (
+            <span className={styles.label} style={{ marginTop: 6, display: 'block' }}>
+              Actualizando en Zoho Desk...
+            </span>
+          )}
+          {stageError && (
+            <span style={{ marginTop: 6, display: 'block', color: '#dc2626', fontSize: '0.78rem', fontWeight: 600 }}>
+              {stageError}
+            </span>
+          )}
         </div>
         
         <div className={styles.ticketMeta}>

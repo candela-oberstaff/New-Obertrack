@@ -4,15 +4,17 @@ import type { User } from '../../types'
 import Avatar from '../Common/Avatar'
 import { useConfirm } from '../ui/ConfirmProvider'
 import styles from '../../pages/Profile.module.css'
+import { Search, Building, Shield, Briefcase, ArrowUp, ArrowDown, Users } from 'lucide-react'
 
 interface TeamPanelProps {
   type: 'manager' | 'employer'
-  userId: number
+  userId?: number
   employerId?: number
 }
 
-export function TeamPanel({ type, employerId }: TeamPanelProps) {
+export function TeamPanel({ type }: TeamPanelProps) {
   const [teamMembers, setTeamMembers] = useState<User[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
   const [message, setMessage] = useState('')
   const confirm = useConfirm()
 
@@ -22,9 +24,8 @@ export function TeamPanel({ type, employerId }: TeamPanelProps) {
         const data = await userService.getMyTeam()
         setTeamMembers(data)
       } else {
-        const data = await userService.getAll()
-        const allUsers = data.data || []
-        setTeamMembers(allUsers.filter((u: User) => u.user_type === 'profesional' && u.empleador_id === employerId))
+        const data = await userService.getEmployees()
+        setTeamMembers(data)
       }
     } catch (error) {
       console.error('Error fetching team:', error)
@@ -33,39 +34,69 @@ export function TeamPanel({ type, employerId }: TeamPanelProps) {
 
   useEffect(() => {
     fetchTeam()
-  }, [type, employerId])
+  }, [type])
 
-  const handlePromoteToManager = async (targetUserId: number) => {
+  const handlePromoteToManager = async (targetUserId: number, isAlreadyManager: boolean) => {
     const ok = await confirm({
-      title: 'Promover a Manager',
-      message: '¿Promover a este profesional a Manager?',
-      confirmLabel: 'Promover',
-      variant: 'primary',
+      title: isAlreadyManager ? 'Quitar rol de Manager' : 'Promover a Manager',
+      message: isAlreadyManager 
+        ? '¿Quitar el rol de Manager a este profesional?' 
+        : '¿Promover a este profesional a Manager?',
+      confirmLabel: isAlreadyManager ? 'Quitar' : 'Promover',
+      variant: isAlreadyManager ? 'danger' : 'primary',
     })
     if (!ok) return
     try {
       await userService.promoteToManager(targetUserId)
       fetchTeam()
-      setMessage('Usuario promovido a Manager')
+      setMessage(isAlreadyManager ? 'Rol de Manager removido' : 'Usuario promovido a Manager')
       setTimeout(() => setMessage(''), 3000)
     } catch (error) {
-      setMessage('Error al promover usuario')
+      setMessage('Error al cambiar rol del usuario')
     }
   }
 
   if (teamMembers.length === 0) return null
 
+  const filteredMembers = teamMembers.filter(member => 
+    (member.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (member.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
   return (
     <div className={`${styles['sidebar-card']} ${type === 'manager' ? styles['team-card'] : ''}`}>
-      <h3>{type === 'manager' ? '👥 Mi Equipo' : '🏢 Personal de la Empresa'}</h3>
+      <h3 className={styles['sidebar-header-title']}>
+        {type === 'manager' ? (
+          <>
+            <Users size={16} style={{ color: '#06b6d4' }} /> Mi Equipo
+          </>
+        ) : (
+          <>
+            <Building size={16} style={{ color: '#4f46e5' }} /> Personal de la Empresa
+          </>
+        )}
+      </h3>
       <p className={styles['team-count']}>
         {teamMembers.length} profesional(es) {type === 'manager' ? 'a mi cargo' : 'registrado(s)'}
       </p>
 
+      {teamMembers.length > 0 && (
+        <div className={styles['search-bar-container']}>
+          <Search size={14} className={styles['search-icon']} />
+          <input 
+            type="text" 
+            placeholder="Buscar por nombre o email..." 
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className={styles['search-input']}
+          />
+        </div>
+      )}
+
       {message && <p className={styles['alert']} style={{ padding: '8px', fontSize: '13px', marginTop: '8px', marginBottom: '8px' }}>{message}</p>}
 
       <div className={styles['team-list']}>
-        {teamMembers.map(member => (
+        {filteredMembers.map(member => (
           <div key={member.id} className={styles['team-member']}>
             <Avatar 
               src={member.avatar} 
@@ -74,21 +105,35 @@ export function TeamPanel({ type, employerId }: TeamPanelProps) {
             />
             <div className={styles['member-info']}>
               <span className={styles['member-name']}>{member.name}</span>
-              <span className={styles['member-role']}>
-                {type === 'employer' && member.is_manager ? '👔 Manager' : (member.job_title || '💼 Profesional')}
+              <span className={styles['member-role']} style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                {member.is_manager ? (
+                  <>
+                    <Shield size={12} style={{ color: '#f59e0b', flexShrink: 0 }} /> Manager
+                  </>
+                ) : (
+                  <>
+                    <Briefcase size={12} style={{ color: '#64748b', flexShrink: 0 }} /> {member.job_title || 'Profesional'}
+                  </>
+                )}
               </span>
             </div>
-            {type === 'employer' && !member.is_manager && (
+            {type === 'employer' && (
               <button 
                 className={styles['btn-promote']}
-                onClick={() => handlePromoteToManager(member.id)}
-                title="Promover a Manager"
+                onClick={() => handlePromoteToManager(member.id, member.is_manager || false)}
+                title={member.is_manager ? "Quitar rol de Manager" : "Promover a Manager"}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px' }}
               >
-                ⬆️
+                {member.is_manager ? <ArrowDown size={14} style={{ color: '#ef4444' }} /> : <ArrowUp size={14} style={{ color: '#10b981' }} />}
               </button>
             )}
           </div>
         ))}
+        {filteredMembers.length === 0 && (
+          <p style={{ textAlign: 'center', fontSize: '12px', color: '#64748b', padding: '12px 0' }}>
+            No se encontraron profesionales
+          </p>
+        )}
       </div>
     </div>
   )

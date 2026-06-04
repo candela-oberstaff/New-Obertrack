@@ -131,7 +131,7 @@ func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin b
 		if role == string(models.UserTypeProfessional) || role == "profesional" {
 			filters["assignee_id"] = userID
 			filters["created_by"] = userID
-		} else if !isManager {
+		} else if !isManager && !isEmployerRole(role) {
 			filters["created_by"] = userID
 		}
 	}

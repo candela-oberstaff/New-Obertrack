@@ -54,7 +54,7 @@ type ChannelService interface {
 	GetStatuses(userIDs []uint) ([]models.UserStatus, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
 	MarkAsRead(channelID, userID uint) error
-	GetAllUsers() ([]models.User, error)
+	GetAllUsers(tenantID uint, isSuperadmin bool) ([]models.User, error)
 }
 
 type ChannelWithUnread struct {

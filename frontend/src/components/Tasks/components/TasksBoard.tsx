@@ -10,6 +10,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core'
+import { snapCenterToCursor } from '@dnd-kit/modifiers'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { Plus, X } from 'lucide-react'
 import { Column } from '../Column'
@@ -270,9 +271,9 @@ export function TasksBoard({
         )}
       </div>
 
-      <DragOverlay>
+      <DragOverlay modifiers={[snapCenterToCursor]}>
         {activeTask ? (
-          <TaskCard task={activeTask} onClick={() => { }} />
+          <TaskCard task={activeTask} isDragging onClick={() => { }} />
         ) : null}
       </DragOverlay>
     </DndContext>

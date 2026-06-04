@@ -156,10 +156,10 @@ export default function Profile() {
 
           {canApprove && <PendingHoursPanel />}
 
-          {user?.is_manager && user?.id && <TeamPanel type="manager" userId={user.id} />}
+          {user?.is_manager && user?.id && <TeamPanel type="manager" />}
 
           {(user?.user_type === 'empleador' || user?.is_superadmin) && user?.id && (
-             <TeamPanel type="employer" userId={user.id} employerId={user.empleador_id} />
+             <TeamPanel type="employer" />
           )}
           
           <div className={styles['sidebar-card']} data-tour="profile-account">
