@@ -295,7 +295,7 @@ func (s *channelService) CreateDirectMessage(userID, recipientID uint) (*DirectM
 		dmName = fmt.Sprintf("DM-%d-%d", recipientID, userID)
 	}
 
-	dmChannel, err := s.repo.GetChannelByNameAndType(dmName, models.ChannelTypeDirect)
+	dmChannel, err := s.repo.GetChannelByNameAndType(dmName, models.ChannelTypeDirect, models.TenantForUser(creator))
 	if err == nil && dmChannel != nil {
 		return s.buildDMResponse(dmChannel, recipientID)
 	}
