@@ -61,7 +61,7 @@ type ChannelRepository interface {
 	CreateMention(mention *models.Mention) error
 
 	// Users
-	GetActiveUsers(tenantID uint) ([]models.User, error)
+	GetActiveUsers(tenantID uint, isSuperadmin bool) ([]models.User, error)
 	FindUserByNamePrefix(name string) (*models.User, error)
 
 	// Custom
@@ -355,13 +355,16 @@ func (r *channelRepository) CreateMention(mention *models.Mention) error {
 
 // Users
 
-func (r *channelRepository) GetActiveUsers(tenantID uint) ([]models.User, error) {
+func (r *channelRepository) GetActiveUsers(tenantID uint, isSuperadmin bool) ([]models.User, error) {
 	var users []models.User
-	query := r.db.Where("is_active = ?", true)
-	if tenantID > 0 {
-		query = query.Where("empleador_id = ? OR id = ?", tenantID, tenantID)
+	q := r.db.Where("is_active = ?", true)
+	if !isSuperadmin && tenantID > 0 {
+		// Only return users that belong to the same company:
+		// - The employer themselves (id = tenantID)
+		// - Professionals under that employer (empleador_id = tenantID)
+		q = q.Where("id = ? OR empleador_id = ?", tenantID, tenantID)
 	}
-	err := query.Find(&users).Error
+	err := q.Find(&users).Error
 	return users, err
 }
 

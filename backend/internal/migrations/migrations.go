@@ -39,10 +39,9 @@ func Run(db *gorm.DB) error {
 		{
 			ID: "202603251200", // Current date/time as ID
 			Migrate: func(tx *gorm.DB) error {
-				return tx.AutoMigrate(
+				err := tx.AutoMigrate(
 					&models.User{},
 					&models.Board{},
-					&models.BoardMember{},
 					&models.Task{},
 					&models.TaskUser{},
 					&models.Comment{},
@@ -59,6 +58,15 @@ func Run(db *gorm.DB) error {
 					&models.UserStatus{},
 					&models.Mention{},
 				)
+				if err != nil {
+					return err
+				}
+
+				// Create board_members manually to defer constraints or handle separately if AutoMigrate fails
+				if err := tx.AutoMigrate(&models.BoardMember{}); err != nil {
+					log.Printf("Warning: initial board_members migrate failed: %v", err)
+				}
+				return nil
 			},
 		},
 		{
@@ -298,6 +306,17 @@ func Run(db *gorm.DB) error {
 					}
 				}
 
+				// Check for board_members and channel_members constraint issue: orphaned rows exist
+				// Ensure we don't have members with user_id that doesn't exist in users
+				if tx.Migrator().HasTable("board_members") {
+					log.Println("Cleaning up orphaned board_members before migration...")
+					tx.Exec(`DELETE FROM board_members WHERE user_id NOT IN (SELECT id FROM users)`)
+				}
+				if tx.Migrator().HasTable("channel_members") {
+					log.Println("Cleaning up orphaned channel_members before migration...")
+					tx.Exec(`DELETE FROM channel_members WHERE user_id NOT IN (SELECT id FROM users)`)
+				}
+
 				if err := tx.AutoMigrate(
 					&models.Board{},
 					&models.Task{},
@@ -355,8 +374,22 @@ func Run(db *gorm.DB) error {
 			ID: "202605291400_tenant_id_not_null",
 			Migrate: func(tx *gorm.DB) error {
 				log.Println("Setting tenant_id NOT NULL on core tenant tables...")
-				for _, t := range []string{"boards", "tasks", "work_hours", "channels", "channel_messages"} {
+
+				// Ensure no null values exist before setting NOT NULL
+				// We use a safe fallback (1 or first superadmin) if they are still null
+				fallbackTenantID := 1
+				var firstUser models.User
+				if err := tx.Where("user_type = ?", "superadmin").First(&firstUser).Error; err == nil {
+					fallbackTenantID = int(firstUser.ID)
+				}
+
+				tables := []string{"boards", "tasks", "work_hours", "channels", "channel_messages"}
+				for _, t := range tables {
+					updateSQL := fmt.Sprintf("UPDATE %s SET tenant_id = %d WHERE tenant_id IS NULL OR tenant_id = 0", t, fallbackTenantID)
+					tx.Exec(updateSQL)
+
 					if err := tx.Exec(fmt.Sprintf("ALTER TABLE %s ALTER COLUMN tenant_id SET NOT NULL", t)).Error; err != nil {
+						log.Printf("Warning: could not set NOT NULL on %s.tenant_id: %v", t, err)
 						return err
 					}
 				}

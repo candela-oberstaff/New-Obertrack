@@ -117,6 +117,8 @@ export default function Layout() {
     if (user?.is_superadmin) return 'Super Admin'
     if (user?.is_manager) return 'Manager'
     if (user?.user_type === 'empleador') return 'Empresa'
+    if (user?.user_type === 'customer_success') return 'Customer Success'
+    if (user?.user_type === 'superadmin') return 'Super Admin'
     return 'Profesional'
   }
 

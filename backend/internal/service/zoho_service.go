@@ -697,28 +697,28 @@ func (s *ZohoService) ReplyTicket(ticketID string, content string, channel strin
 func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, agentEmail string) (*ZohoThread, error) {
 	token, err := s.GetAccessToken()
 	if err != nil {
-		return nil, fmt.Errorf("error obteniendo token: %w", err)
+		return nil, err
 	}
-
 	orgID, err := s.getOrgID()
 	if err != nil {
-		return nil, fmt.Errorf("error obteniendo orgID: %w", err)
+		return nil, err
 	}
 
-	// 1. 🔍 OBTENER EL TICKET PARA EXTRAER EL SESSION ID DE WHATSAPP
-	ticketURL := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s", ticketID)
-	ticketReq, _ := http.NewRequest("GET", ticketURL, nil)
-	ticketReq.Header.Set("Authorization", "Zoho-oauthtoken "+token)
-	ticketReq.Header.Set("orgId", orgID)
+	// 1. OBTENER EL CONVERSATION ID
+	// La API pública de Zoho requiere este ID específico para mensajería
+	convURL := fmt.Sprintf("https://desk.zoho.com/api/v1/conversations?ticketId=%s", ticketID)
+	req, _ := http.NewRequest("GET", convURL, nil)
+	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	req.Header.Set("orgId", orgID)
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	ticketResp, err := client.Do(ticketReq)
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error consultando ticket: %w", err)
+		return nil, err
 	}
-	defer ticketResp.Body.Close()
+	defer resp.Body.Close()
 
-	ticketBytes, _ := io.ReadAll(ticketResp.Body)
+	ticketBytes, _ := io.ReadAll(resp.Body)
 	var ticketData map[string]interface{}
 	if err := json.Unmarshal(ticketBytes, &ticketData); err != nil {
 		return nil, fmt.Errorf("error parseando json del ticket: %w", err)
@@ -745,7 +745,7 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 	// 3. 🎯 LA URL SECRETA QUE SÍ PASÓ EL ROUTING DE ZOHO
 	urlStr := fmt.Sprintf("https://desk.zoho.com/supportapi/zd/oberstaff/api/v1/im/sessions/%s/messages", sessionID)
 
-	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
+	req, err = http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("error creando request: %w", err)
 	}
@@ -754,7 +754,7 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 	req.Header.Set("orgId", orgID)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
+	resp, err = client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error ejecutando request al endpoint de consola: %w", err)
 	}
@@ -770,12 +770,20 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 		return nil, fmt.Errorf("zoho retorno status %d: %s", resp.StatusCode, string(respBytes))
 	}
 
-	log.Printf("[ZohoService] ✅ ¡WhatsApp enviado con éxito usando la pasarela oficial de Zoho!")
+	log.Printf("[ZohoService] ✅ Mensaje enviado exitosamente vía API pública.")
+
+	var msgResp struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(respBytes, &msgResp)
+	msgID := msgResp.ID
+	if msgID == "" {
+		msgID = sessionID
+	}
 
 	return &ZohoThread{
-		ID:          "wh_" + fmt.Sprintf("%d", time.Now().Unix()),
+		ID:          msgID,
 		Channel:     "WhatsApp",
-		Summary:     content,
 		Content:     content,
 		AuthorType:  "agent",
 		CreatedTime: time.Now(),

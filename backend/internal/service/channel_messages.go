@@ -365,8 +365,5 @@ func (s *channelService) MarkAsRead(channelID, userID uint) error {
 }
 
 func (s *channelService) GetAllUsers(tenantID uint, isSuperadmin bool) ([]models.User, error) {
-	if isSuperadmin {
-		return s.repo.GetActiveUsers(0) // 0 = no filter, returns all
-	}
-	return s.repo.GetActiveUsers(tenantID)
+	return s.repo.GetActiveUsers(tenantID, isSuperadmin)
 }

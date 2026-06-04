@@ -105,6 +105,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "La ubicación es obligatoria para empresas"})
 			return
 		}
+	case "superadmin", "customer_success":
+		// Allowed types with no additional field validation for now
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Tipo de usuario no válido"})
 		return

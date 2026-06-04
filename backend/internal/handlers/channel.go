@@ -739,7 +739,6 @@ func (h *ChannelHandler) HandleWebSocket(c *gin.Context) {
 func (h *ChannelHandler) GetAllUsers(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
-
 	users, err := h.svc.GetAllUsers(tenantID, isSuperadmin)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

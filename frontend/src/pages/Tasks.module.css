@@ -871,18 +871,17 @@
   gap: 10px;
 }
 
-/* Task Card */
 .kanban-card {
   background: white;
   border-radius: var(--radius);
   padding: 16px;
   cursor: grab;
   box-shadow: var(--shadow);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   border: 1px solid var(--gray-200);
 }
 
-.kanban-card:hover {
+.kanban-card:hover:not(.dragging) {
   box-shadow: var(--shadow-md);
   transform: translateY(-4px) scale(1.02);
   border-color: var(--black);

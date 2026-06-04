@@ -143,7 +143,6 @@ export function useTasksPageState() {
 
     if (!companyID) return false
 
-    // Verify candidate is linked to the company
     if (u.user_type === 'empleador') {
       return u.id === companyID
     }
