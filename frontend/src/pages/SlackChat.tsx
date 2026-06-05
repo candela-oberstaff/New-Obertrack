@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { channelService, uploadService } from '../services/api'
 import type { User } from '../types'
@@ -19,6 +20,9 @@ import styles from './SlackChat.module.css'
 
 export default function SlackChat() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const userIdParam = searchParams.get('userId')
+
   const {
     channels, selectedChannel, setSelectedChannel,
     messages, setMessages, pinnedMessages,
@@ -54,6 +58,32 @@ export default function SlackChat() {
     const icon = document.querySelector("link[rel*='icon']") as HTMLLinkElement
     if (icon) setOriginalFavicon(icon.href)
   }, [])
+
+  useEffect(() => {
+    if (userIdParam && allUsers.length > 0) {
+      const recipientId = parseInt(userIdParam)
+      if (recipientId && recipientId !== user?.id) {
+        // Try to find if a DM with this user already exists in channels
+        const existingDm = channels.find(c => 
+          c.type === 'direct' && c.recipient?.id === recipientId
+        )
+        if (existingDm) {
+          setSelectedChannel(existingDm)
+          setSearchParams({}, { replace: true })
+        } else {
+          // Check if the recipient exists in allUsers
+          const recipientExists = allUsers.some(u => u.id === recipientId)
+          if (recipientExists) {
+            channelService.createDM(recipientId).then(async (dm) => {
+              await fetchChannels()
+              setSelectedChannel(dm as any)
+              setSearchParams({}, { replace: true })
+            }).catch(e => console.error(e))
+          }
+        }
+      }
+    }
+  }, [userIdParam, allUsers, channels, user?.id, setSearchParams, setSelectedChannel, fetchChannels])
 
   useEffect(() => { scrollToBottom() }, [messages])
 
