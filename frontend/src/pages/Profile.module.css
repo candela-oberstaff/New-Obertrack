@@ -364,7 +364,8 @@
   color: #64748b;
 }
 
-.btn-promote {
+.btn-promote,
+.btn-message {
   padding: 6px 10px;
   border: none;
   background: #f1f5f9;
@@ -372,10 +373,18 @@
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-promote:hover {
   background: #e2e8f0;
+  transform: scale(1.1);
+}
+
+.btn-message:hover {
+  background: #e0e7ff;
   transform: scale(1.1);
 }
 

@@ -31,7 +31,13 @@ export function sanitizeHtml(dirty: string | null | undefined): string {
 export function htmlToText(html: string | null | undefined): string {
   if (!html) return ''
   const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
-  return clean.replace(/\s+/g, ' ').trim()
+  
+  // Decode HTML entities (like &nbsp;, &amp;, etc.) using standard DOMParser
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(clean, 'text/html')
+  const decoded = doc.body.textContent || ''
+  
+  return decoded.replace(/\s+/g, ' ').trim()
 }
 
 // Harden anchor links: open in new tab without leaking the opener and block
