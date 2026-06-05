@@ -18,6 +18,7 @@ type WorkHourService interface {
 	Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error)
 	Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error)
 	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) error
+	Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) error
 	GetSummary(userID uint, role string, isSuperadmin bool, tenantID uint) (map[string]float64, error)
 	GetPending(tenantID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error)
 	SendReportEmail(employerID uint, month int, year int) error
@@ -166,7 +167,6 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 		return nil, errors.New("Failed to create work hour")
 	}
 
-
 	// Fetch with preload for response
 	finalWH, err := s.repo.FindByID(workHour.ID)
 	if err == nil && finalWH != nil {
@@ -262,6 +262,16 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 		workHour.Comments = utils.SanitizeHTML(s.parseStringVal(com))
 	}
 
+	if workHour.UserID == userID && !isEmployerRole(role) && !isManager && !isSuperadmin {
+		workHour.Approved = false
+		workHour.ApprovedBy = nil
+		workHour.ApprovedAt = nil
+		workHour.Rejected = false
+		workHour.RejectedBy = nil
+		workHour.RejectedAt = nil
+		workHour.RejectionReason = ""
+	}
+
 	if err := s.repo.Update(workHour); err != nil {
 		return nil, errors.New("Failed to update work hour")
 	}
@@ -334,7 +344,9 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 					professional := hours[0].User
 					dates := ""
 					for i, h := range hours {
-						if i > 0 { dates += ", " }
+						if i > 0 {
+							dates += ", "
+						}
 						dates += h.WorkDate.Format("02/01")
 					}
 					profMsg := fmt.Sprintf("✅ Tus horas de los días *%s* han sido aprobadas.", dates)
@@ -349,6 +361,79 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 					summary += fmt.Sprintf("• %s\n", name)
 				}
 				_ = s.notifSvc.CreateNotification(approver.ID, "work_hour_approved_summary", "Resumen de aprobación", summary, nil)
+			}
+		}()
+	}
+	return err
+}
+
+func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) error {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("Rejection reason is required")
+	}
+
+	var workHours []models.WorkHour
+	var err error
+	if !isSuperadmin && tenantID > 0 {
+		workHours, err = s.repo.FindManyByIDsAndTenant(ids, tenantID)
+	} else {
+		workHours, err = s.repo.FindManyByIDs(ids)
+	}
+	if err != nil {
+		return errors.New("Failed to fetch work hours")
+	}
+
+	if len(workHours) == 0 {
+		return errors.New("No work hours found")
+	}
+
+	for _, wh := range workHours {
+		canReject := false
+
+		if isSuperadmin {
+			canReject = true
+		} else if role == string(models.UserTypeEmployer) || role == "empleador" {
+			if wh.User.EmpleadorID != nil && *wh.User.EmpleadorID == userID {
+				canReject = true
+			}
+		} else if role == "manager" || isManager {
+			if wh.User.ManagerID != nil && *wh.User.ManagerID == userID {
+				canReject = true
+			}
+		}
+
+		if !canReject {
+			return errors.New("Not authorized to reject work hours for user")
+		}
+	}
+
+	if !isSuperadmin && tenantID > 0 {
+		err = s.repo.RejectMultipleAndTenant(ids, userID, time.Now(), utils.SanitizeHTML(reason), tenantID)
+	} else {
+		err = s.repo.RejectMultiple(ids, userID, time.Now(), utils.SanitizeHTML(reason))
+	}
+	if err == nil {
+		go func() {
+			userHours := make(map[uint][]models.WorkHour)
+			for _, wh := range workHours {
+				userHours[wh.UserID] = append(userHours[wh.UserID], wh)
+			}
+
+			for _, hours := range userHours {
+				if len(hours) == 0 {
+					continue
+				}
+				professional := hours[0].User
+				dates := ""
+				for i, h := range hours {
+					if i > 0 {
+						dates += ", "
+					}
+					dates += h.WorkDate.Format("02/01")
+				}
+				msg := fmt.Sprintf("Tus horas de los dÃ­as %s fueron rechazadas. Motivo: %s", dates, reason)
+				_ = s.notifSvc.CreateNotification(professional.ID, "work_hour_rejected", "Jornadas rechazadas", msg, map[string]interface{}{"dates": dates, "reason": reason})
 			}
 		}()
 	}
@@ -378,6 +463,7 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool
 func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error) {
 	filters := make(map[string]interface{})
 	filters["approved"] = false
+	filters["rejected"] = false
 
 	// Filter to current month
 	now := time.Now()
@@ -403,4 +489,3 @@ func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuper
 	res, _, err := s.repo.FindAll(filters, 0, 1000)
 	return res, err
 }
-

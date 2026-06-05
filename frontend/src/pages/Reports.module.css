@@ -541,6 +541,11 @@
   color: #d97706;
 }
 
+.status-pill.rejected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .stats-grid {

@@ -10,6 +10,7 @@ interface WorkHourStatsProps {
   summary: {
     approved_hours: number
     pending_hours: number
+    rejected_hours?: number
   }
   isEmployer?: boolean
   employerTodayActiveCount?: number
@@ -126,6 +127,18 @@ export function WorkHourStats({
             <span className={styles['stat-value']}>{summary.pending_hours.toFixed(1)}h</span>
           </div>
         </div>
+        {(summary.rejected_hours || 0) > 0 && (
+          <div className={`${styles['stat-card-mini']} ${styles['rejected'] || 'rejected'}`}>
+            <span className={styles['stat-icon']}><AlertCircle size={20} /></span>
+            <div className={styles['stat-info']}>
+              <span className={styles['stat-label']}>
+                Rechazadas{' '}
+                <Tooltip content="Horas revisadas que requieren corrección" size={12} style={{ marginLeft: '4px' }} />
+              </span>
+              <span className={styles['stat-value']}>{(summary.rejected_hours || 0).toFixed(1)}h</span>
+            </div>
+          </div>
+        )}
         <div className={`${styles['stat-card-mini']} ${styles['absence'] || 'absence'}`}>
           <span className={styles['stat-icon']}><AlertCircle size={20} /></span>
           <div className={styles['stat-info']}>

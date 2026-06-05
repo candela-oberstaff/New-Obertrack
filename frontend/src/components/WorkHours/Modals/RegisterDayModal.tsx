@@ -16,6 +16,8 @@ interface RegisterDayModalProps {
   setFormData: (data: any) => void
   onSubmit: (e: React.FormEvent) => void
   today: string
+  error?: string | null
+  isSubmitting?: boolean
 }
 
 export function RegisterDayModal({
@@ -24,7 +26,9 @@ export function RegisterDayModal({
   formData,
   setFormData,
   onSubmit,
-  today
+  today,
+  error,
+  isSubmitting = false
 }: RegisterDayModalProps) {
   if (!isOpen) return null
 
@@ -135,12 +139,19 @@ export function RegisterDayModal({
             />
           </div>
 
+          {error && (
+            <div className={styles['form-error']} role="alert">
+              <AlertCircle size={18} />
+              <span>{error}</span>
+            </div>
+          )}
+
           <div className={styles['modal-actions']}>
-            <button type="button" className={styles['btn-cancel']} onClick={onClose}>
+            <button type="button" className={styles['btn-cancel']} onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </button>
-            <button type="submit" className={styles['btn-primary']}>
-              Registrar
+            <button type="submit" className={styles['btn-primary']} disabled={isSubmitting}>
+              {isSubmitting ? 'Guardando...' : 'Registrar'}
             </button>
           </div>
         </form>

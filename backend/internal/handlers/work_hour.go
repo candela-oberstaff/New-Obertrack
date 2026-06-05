@@ -132,6 +132,37 @@ func (h *WorkHourHandler) Approve(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Work hours approved"})
 }
 
+func (h *WorkHourHandler) Reject(c *gin.Context) {
+	var req struct {
+		IDs    []uint `json:"ids" binding:"required"`
+		Reason string `json:"reason" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	isManager := middleware.IsManager(c)
+	tenantID := middleware.GetTenantID(c)
+
+	err := h.svc.Reject(req.IDs, userID, role, isSuperadmin, isManager, tenantID, req.Reason)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "No work hours found" || err.Error() == "Rejection reason is required" {
+			status = http.StatusBadRequest
+		} else if err.Error() == "Not authorized to reject work hours for user" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Work hours rejected"})
+}
+
 func (h *WorkHourHandler) GetSummary(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)

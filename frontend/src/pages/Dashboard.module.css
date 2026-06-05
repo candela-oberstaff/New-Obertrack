@@ -427,6 +427,10 @@
   color: #f59e0b;
 }
 
+.hours-status.rejected {
+  color: #dc2626;
+}
+
 /* Team List */
 .team-list {
   padding: 8px 16px 16px;

@@ -38,6 +38,12 @@ export default function Reports() {
     setMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`)
   }
 
+  const getWorkHourStatus = (wh: any) => {
+    if (wh.approved) return { className: 'approved', label: 'Aprobado' }
+    if (wh.rejected) return { className: 'rejected', label: 'Rechazado' }
+    return { className: 'pending', label: 'Pendiente' }
+  }
+
   return (
     <div className={styles['reports-page']}>
       <div className={styles['page-header']} data-tour="reports-header">
@@ -173,8 +179,8 @@ export default function Reports() {
                             <td>{new Date(wh.work_date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}</td>
                             <td>{user?.user_type === 'profesional' ? '1 Día' : `${wh.hours_worked}h`}</td>
                             <td>
-                              <span className={`${styles['status-pill']} ${wh.approved ? styles['approved'] : styles['pending']}`}>
-                                {wh.approved ? 'Aprobado' : 'Pendiente'}
+                              <span className={`${styles['status-pill']} ${styles[getWorkHourStatus(wh).className]}`}>
+                                {getWorkHourStatus(wh).label}
                               </span>
                             </td>
                           </tr>
