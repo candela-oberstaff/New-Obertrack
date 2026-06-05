@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,6 +18,28 @@ import (
 	"github.com/obertrack/backend/internal/service"
 	"github.com/obertrack/backend/internal/utils"
 )
+
+// surveyHMACSecret returns the secret key used for signing survey quick-response tokens.
+func surveyHMACSecret() string {
+	secret := os.Getenv("SURVEY_TOKEN_SECRET")
+	if secret == "" {
+		secret = "obertrack-survey-default-secret"
+	}
+	return secret
+}
+
+// generateSurveyToken creates an HMAC-SHA256 token for a survey+user combination.
+func generateSurveyToken(surveyID, userID uint) string {
+	mac := hmac.New(sha256.New, []byte(surveyHMACSecret()))
+	mac.Write([]byte(fmt.Sprintf("%d:%d", surveyID, userID)))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// verifySurveyToken checks that the provided token matches the expected HMAC for survey+user.
+func verifySurveyToken(surveyID, userID uint, token string) bool {
+	expected := generateSurveyToken(surveyID, userID)
+	return hmac.Equal([]byte(expected), []byte(token))
+}
 
 type SurveyHandler struct {
 	repo         repository.SurveyRepository
@@ -227,7 +252,8 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 				`, ratingQuestion.Text)
 
 				for i := 1; i <= 5; i++ {
-					quickLink := fmt.Sprintf("%s/api/surveys/%d/quick-response?user_id=%d&q_id=%d&score=%d", frontendURL, survey.ID, user.ID, ratingQuestion.ID, i)
+					token := generateSurveyToken(survey.ID, user.ID)
+					quickLink := fmt.Sprintf("%s/api/surveys/%d/quick-response?user_id=%d&q_id=%d&score=%d&t=%s", frontendURL, survey.ID, user.ID, ratingQuestion.ID, i, token)
 					actionHtml += fmt.Sprintf(`<a href="%s" class="rating-btn" style="text-align:center; text-decoration:none; display:inline-block; width:45px; height:45px; line-height:45px; background-color:#f1f5f9; color:#cc33cc; border-radius:50%%; margin:0 5px; font-weight:bold; font-size:18px;">%d</a>`, quickLink, i)
 				}
 				
@@ -313,6 +339,7 @@ func (h *SurveyHandler) QuickResponse(c *gin.Context) {
 	userIDStr := c.Query("user_id")
 	questionIDStr := c.Query("q_id")
 	scoreStr := c.Query("score")
+	token := c.Query("t")
 
 	surveyID, err1 := strconv.ParseUint(surveyIDStr, 10, 32)
 	userID, err2 := strconv.ParseUint(userIDStr, 10, 32)
@@ -321,6 +348,42 @@ func (h *SurveyHandler) QuickResponse(c *gin.Context) {
 
 	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
 		c.String(http.StatusBadRequest, "Parámetros inválidos.")
+		return
+	}
+
+	// Verify HMAC token to prevent impersonation
+	if token == "" || !verifySurveyToken(uint(surveyID), uint(userID), token) {
+		c.String(http.StatusForbidden, "Token de validación inválido o expirado.")
+		return
+	}
+
+	// Validate survey exists and is active
+	survey, err := h.repo.GetSurveyByID(uint(surveyID))
+	if err != nil || survey == nil {
+		c.String(http.StatusNotFound, "Encuesta no encontrada.")
+		return
+	}
+	if survey.Status != models.SurveyStatusActive {
+		c.String(http.StatusBadRequest, "Esta encuesta ya no está activa.")
+		return
+	}
+
+	// Validate question belongs to this survey
+	questionValid := false
+	for _, q := range survey.Questions {
+		if q.ID == uint(questionID) {
+			questionValid = true
+			break
+		}
+	}
+	if !questionValid {
+		c.String(http.StatusBadRequest, "Pregunta no válida para esta encuesta.")
+		return
+	}
+
+	// Validate score range
+	if score < 1 || score > 10 {
+		c.String(http.StatusBadRequest, "El puntaje debe estar entre 1 y 10.")
 		return
 	}
 
@@ -338,7 +401,7 @@ func (h *SurveyHandler) QuickResponse(c *gin.Context) {
 		},
 	}
 
-	// We ignore duplicates here for simplicity. 
+	// We ignore duplicates here for simplicity.
 	// In production, we might check if response already exists and update.
 	_ = h.repo.CreateResponse(&response)
 

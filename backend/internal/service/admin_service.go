@@ -190,6 +190,11 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 		if newEmpID > 0 && user.EmpleadorID != nil && *user.EmpleadorID != newEmpID {
 			return nil, errors.New("Este usuario ya está vinculado a una empresa y no se puede cambiar a otra")
 		}
+		// When empleador_id changes, invalidate the user's existing JWT so the
+		// next login/refresh picks up the new tenant_id in the token claims.
+		if newEmpID > 0 && (user.EmpleadorID == nil || *user.EmpleadorID != newEmpID) {
+			updates["token_version"] = user.TokenVersion + 1
+		}
 	}
 
 	if err := s.userRepo.Update(user, updates); err != nil {

@@ -46,6 +46,13 @@ api.interceptors.response.use(
       }
     }
 
+    // Surface tenant-scope rejections with a clear error message
+    if (status === 403) {
+      const serverMsg = error.response?.data?.error || 'Access denied'
+      const enhanced = new Error(serverMsg)
+      return Promise.reject(enhanced)
+    }
+
     return Promise.reject(error)
   }
 )

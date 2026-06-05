@@ -63,7 +63,7 @@ type ChannelRepository interface {
 
 	// Users
 	GetActiveUsers(tenantID uint, isSuperadmin bool) ([]models.User, error)
-	FindUserByNamePrefix(name string) (*models.User, error)
+	FindUserByNamePrefix(name string, tenantID uint) (*models.User, error)
 
 	// Custom
 	SearchMessages(channelID uint, query string, limit int) ([]models.ChannelMessage, error)
@@ -395,19 +395,35 @@ func (r *channelRepository) CreateMention(mention *models.Mention) error {
 func (r *channelRepository) GetActiveUsers(tenantID uint, isSuperadmin bool) ([]models.User, error) {
 	var users []models.User
 	q := r.db.Where("is_active = ?", true)
-	if !isSuperadmin && tenantID > 0 {
+
+	// Exclude internal roles from the chat user list (superadmin, customer_success)
+	if !isSuperadmin {
+		q = q.Where("user_type NOT IN ?", []string{"superadmin", "customer_success"})
+	}
+
+	if isSuperadmin {
+		// Superadmins can see everyone
+	} else if tenantID > 0 {
 		// Only return users that belong to the same company:
 		// - The employer themselves (id = tenantID)
 		// - Professionals under that employer (empleador_id = tenantID)
 		q = q.Where("id = ? OR empleador_id = ?", tenantID, tenantID)
+	} else {
+		// No tenant context — only return the user themselves as a safety measure
+		// to avoid leaking users from other companies.
+		q = q.Where("1 = 0")
 	}
 	err := q.Find(&users).Error
 	return users, err
 }
 
-func (r *channelRepository) FindUserByNamePrefix(name string) (*models.User, error) {
+func (r *channelRepository) FindUserByNamePrefix(name string, tenantID uint) (*models.User, error) {
 	var user models.User
-	err := r.db.Where("name ILIKE ?", name+"%").First(&user).Error
+	q := r.db.Where("name ILIKE ?", name+"%")
+	if tenantID > 0 {
+		q = q.Where("id = ? OR empleador_id = ?", tenantID, tenantID)
+	}
+	err := q.First(&user).Error
 	if err != nil {
 		return nil, err
 	}

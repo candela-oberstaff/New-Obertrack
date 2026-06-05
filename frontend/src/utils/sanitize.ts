@@ -30,6 +30,8 @@ export function sanitizeHtml(dirty: string | null | undefined): string {
  */
 export function htmlToText(html: string | null | undefined): string {
   if (!html) return ''
+  // DOMPurify strips tags but returns HTML-encoded text (e.g. "&amp;" instead of "&").
+  // Use a textarea to decode all HTML entities back to their plain-text equivalents.
   const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
   
   // Decode HTML entities (like &nbsp;, &amp;, etc.) using standard DOMParser

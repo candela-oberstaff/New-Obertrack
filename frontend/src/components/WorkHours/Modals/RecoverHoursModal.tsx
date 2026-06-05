@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Clock } from 'lucide-react'
+import { X, Clock, AlertCircle, Loader2 } from 'lucide-react'
 import { Select } from '../../ui/Select'
 import styles from '../../../pages/WorkHours.module.css'
 
@@ -21,15 +21,26 @@ export function RecoverHoursModal({
   const [date, setDate] = useState(today)
   const [hours, setHours] = useState<number>(1)
   const [comments, setComments] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   if (!isOpen) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await onSubmit(date, hours, comments)
-    setComments('')
-    setHours(1)
-    onClose()
+    setError(null)
+    setIsSubmitting(true)
+    try {
+      await onSubmit(date, hours, comments)
+      setComments('')
+      setHours(1)
+      onClose()
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Error al guardar la recuperación. Intenta de nuevo.'
+      setError(msg)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -48,6 +59,13 @@ export function RecoverHoursModal({
           </div>
         </div>
 
+        {error && (
+          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <div>{error}</div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           <div className={styles['form-group']}>
             <label>Fecha de recuperación</label>
@@ -55,7 +73,7 @@ export function RecoverHoursModal({
               type="date"
               value={date}
               max={today}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => { setDate(e.target.value); setError(null) }}
               required
             />
           </div>
@@ -66,7 +84,7 @@ export function RecoverHoursModal({
               fullWidth
               required
               value={hours}
-              onChange={(v) => setHours(Number(v))}
+              onChange={(v) => { setHours(Number(v)); setError(null) }}
               options={[1, 2, 3, 4, 5, 6, 7, 8].map(h => ({ value: h, label: `${h} ${h === 1 ? 'hora' : 'horas'}` }))}
             />
           </div>
@@ -75,7 +93,7 @@ export function RecoverHoursModal({
             <label>Actividades / Comentarios</label>
             <textarea
               value={comments}
-              onChange={(e) => setComments(e.target.value)}
+              onChange={(e) => { setComments(e.target.value); setError(null) }}
               placeholder="Describe brevemente qué tareas realizaste..."
               rows={3}
               required
@@ -84,11 +102,12 @@ export function RecoverHoursModal({
           </div>
 
           <div className={styles['modal-actions']}>
-            <button type="button" className={styles['btn-cancel']} onClick={onClose}>
+            <button type="button" className={styles['btn-cancel']} onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </button>
-            <button type="submit" className={styles['btn-primary']} disabled={hours <= 0}>
-              Guardar Recuperación
+            <button type="submit" className={styles['btn-primary']} disabled={hours <= 0 || isSubmitting} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              {isSubmitting && <Loader2 size={16} className="animate-spin" />}
+              {isSubmitting ? 'Guardando...' : 'Guardar Recuperación'}
             </button>
           </div>
         </form>

@@ -493,8 +493,9 @@ func (h *ChannelHandler) RemoveReaction(c *gin.Context) {
 
 func (h *ChannelHandler) GetReactions(c *gin.Context) {
 	messageID, _ := strconv.ParseUint(c.Param("messageId"), 10, 32)
+	userID := middleware.GetUserID(c)
 
-	reactions, err := h.svc.GetReactions(uint(messageID))
+	reactions, err := h.svc.GetReactions(uint(messageID), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
