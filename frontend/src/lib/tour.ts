@@ -23,20 +23,29 @@ interface ModuleTour {
   steps: ModuleTourStep[]
 }
 
-const SECTIONS: TourSection[] = [
-  { path: '/dashboard', title: 'Dashboard', description: 'Tu punto de partida: un resumen general de la actividad y los indicadores clave.' },
-  { path: '/admin', title: 'Admin', description: 'Panel para gestionar usuarios de la plataforma y ver la actividad.' },
-  { path: '/admin/tenants', title: 'Empresas', description: 'Administra las empresas, sus empleados y el seguimiento de cada una.' },
-  { path: '/tasks', title: 'Tareas', description: 'Tableros y tareas para organizar el trabajo del equipo por fases.' },
-  { path: '/tickets', title: 'Tickets', description: 'Bandeja de soporte para atender y dar seguimiento a las solicitudes.' },
-  { path: '/work-hours', title: 'Horas', description: 'Registra tus jornadas y revisa o aprueba las horas trabajadas.' },
-  { path: '/reports', title: 'Reportes', description: 'Informes y exportaciones de horas y productividad.' },
-  { path: '/chat', title: 'Chat', description: 'Mensajería interna por canales y mensajes directos con tu equipo.' },
-  { path: '/admin/tools', title: 'Tools', description: 'Herramientas administrativas avanzadas de la plataforma.' },
-  { path: '/admin/metrics', title: 'Métricas', description: 'Métricas globales del sistema.' },
-  { path: '/tutoriales', title: 'Tutoriales', description: 'Guías en video para aprender a usar cada sección de Obertrack.' },
-  { path: '/profile', title: 'Perfil', description: 'Tu cuenta: datos personales, preferencias y configuración.' },
-]
+function getSections(role?: string): TourSection[] {
+  const isEmployer = role === 'empleador' || role === 'empresa'
+  const isManager = role === 'manager'
+
+  const workHoursDesc = isEmployer || isManager
+    ? 'Revisa y aprueba las jornadas registradas por tu profesional.'
+    : 'Registra tus jornadas y lleva control de tus horas trabajadas.'
+
+  return [
+    { path: '/dashboard', title: 'Dashboard', description: 'Tu punto de partida: un resumen general de la actividad y los indicadores clave.' },
+    { path: '/admin', title: 'Admin', description: 'Panel para gestionar usuarios de la plataforma y ver la actividad.' },
+    { path: '/admin/tenants', title: 'Empresas', description: 'Administra las empresas, sus empleados y el seguimiento de cada una.' },
+    { path: '/tasks', title: 'Tareas', description: 'Tableros y tareas para organizar el trabajo del equipo por fases.' },
+    { path: '/tickets', title: 'Tickets', description: 'Bandeja de soporte para atender y dar seguimiento a las solicitudes.' },
+    { path: '/work-hours', title: 'Horas', description: workHoursDesc },
+    { path: '/reports', title: 'Reportes', description: 'Informes y exportaciones de horas y productividad.' },
+    { path: '/chat', title: 'Chat', description: 'Mensajería interna por canales y mensajes directos con tu equipo.' },
+    { path: '/admin/tools', title: 'Tools', description: 'Herramientas administrativas avanzadas de la plataforma.' },
+    { path: '/admin/metrics', title: 'Métricas', description: 'Métricas globales del sistema.' },
+    { path: '/tutoriales', title: 'Tutoriales', description: 'Guías en video para aprender a usar cada sección de Obertrack.' },
+    { path: '/profile', title: 'Perfil', description: 'Tu cuenta: datos personales, preferencias y configuración.' },
+  ]
+}
 
 const MODULE_TOURS: ModuleTour[] = [
   {
@@ -240,7 +249,9 @@ function getVisibleModuleSteps(moduleTour: ModuleTour): DriveStep[] {
   return steps
 }
 
-export function startSystemTour() {
+export function startSystemTour(role?: string) {
+  const sections = getSections(role)
+
   const steps: DriveStep[] = [
     {
       popover: {
@@ -250,7 +261,7 @@ export function startSystemTour() {
     },
   ]
 
-  for (const section of SECTIONS) {
+  for (const section of sections) {
     const selector = `[data-tour="${section.path}"]`
     if (isVisible(document.querySelector(selector))) {
       steps.push({

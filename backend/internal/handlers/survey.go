@@ -324,6 +324,36 @@ func (h *SurveyHandler) QuickResponse(c *gin.Context) {
 		return
 	}
 
+	// Validate survey exists and is active
+	survey, err := h.repo.GetSurveyByID(uint(surveyID))
+	if err != nil || survey == nil {
+		c.String(http.StatusNotFound, "Encuesta no encontrada.")
+		return
+	}
+	if survey.Status != models.SurveyStatusActive {
+		c.String(http.StatusBadRequest, "Esta encuesta ya no está activa.")
+		return
+	}
+
+	// Validate question belongs to this survey
+	questionValid := false
+	for _, q := range survey.Questions {
+		if q.ID == uint(questionID) {
+			questionValid = true
+			break
+		}
+	}
+	if !questionValid {
+		c.String(http.StatusBadRequest, "Pregunta no válida para esta encuesta.")
+		return
+	}
+
+	// Validate score range
+	if score < 1 || score > 10 {
+		c.String(http.StatusBadRequest, "El puntaje debe estar entre 1 y 10.")
+		return
+	}
+
 	// Save the response
 	now := time.Now()
 	response := models.SurveyResponse{
@@ -338,7 +368,7 @@ func (h *SurveyHandler) QuickResponse(c *gin.Context) {
 		},
 	}
 
-	// We ignore duplicates here for simplicity. 
+	// We ignore duplicates here for simplicity.
 	// In production, we might check if response already exists and update.
 	_ = h.repo.CreateResponse(&response)
 

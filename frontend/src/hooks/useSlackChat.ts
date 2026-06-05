@@ -250,6 +250,6 @@ export function useSlackChat(user: User | null) {
     typingUsers, isRecording, isUploading, setIsUploading,
     showThread, setShowThread, threadReplies, setThreadReplies,
     sendMessage, sendTypingIndicator, startRecording, stopRecording,
-    editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels
+    editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels, fetchAllUsers
   }
 }

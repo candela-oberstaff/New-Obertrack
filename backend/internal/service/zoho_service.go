@@ -416,7 +416,7 @@ func (s *ZohoService) ListTicketStatuses() ([]ZohoTicketStatus, error) {
 		}
 	}
 
-	tickets, err := s.ListTickets()
+	tickets, err := s.ListTickets("")
 	if err != nil {
 		return nil, err
 	}
@@ -424,7 +424,7 @@ func (s *ZohoService) ListTicketStatuses() ([]ZohoTicketStatus, error) {
 }
 
 // ListTickets retrieves the active tickets list from Zoho Desk API
-func (s *ZohoService) ListTickets() ([]ZohoTicket, error) {
+func (s *ZohoService) ListTickets(assigneeID string) ([]ZohoTicket, error) {
 	token, err := s.GetAccessToken()
 	if err != nil {
 		return nil, err
@@ -435,7 +435,14 @@ func (s *ZohoService) ListTickets() ([]ZohoTicket, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("GET", "https://desk.zoho.com/api/v1/tickets?sortBy=-modifiedTime&limit=50", nil)
+	params := url.Values{}
+	params.Set("sortBy", "-modifiedTime")
+	params.Set("limit", "50")
+	if assigneeID != "" {
+		params.Set("assigneeId", assigneeID)
+	}
+
+	req, err := http.NewRequest("GET", "https://desk.zoho.com/api/v1/tickets?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}

@@ -42,7 +42,7 @@ type ChannelService interface {
 	PinMessage(channelID, messageID, userID uint) (*models.ChannelMessage, error)
 	UnpinMessage(channelID, messageID, userID uint) (*models.ChannelMessage, error)
 	GetPinnedMessages(channelID, userID uint) ([]models.ChannelMessage, error)
-	GetReactions(messageID uint) ([]models.MessageReaction, error)
+	GetReactions(messageID, userID uint) ([]models.MessageReaction, error)
 	GetThreadReplies(channelID, messageID, userID uint) ([]models.ChannelMessage, error)
 	SendThreadReply(channelID, messageID, userID uint, content string) (*models.ChannelMessage, error)
 	StarMessage(messageID, userID uint) error
@@ -84,6 +84,26 @@ type channelService struct {
 
 func NewChannelService(repo repository.ChannelRepository, userRepo repository.UserRepository, notifSvc NotificationService) ChannelService {
 	return &channelService{repo: repo, userRepo: userRepo, notifSvc: notifSvc}
+}
+
+// authorizeChannelTenant loads the channel and verifies the user belongs to
+// the same tenant. Returns the channel if authorized, or an error.
+func (s *channelService) authorizeChannelTenant(channelID, userID uint, isSuperadmin bool) (*models.Channel, error) {
+	channel, err := s.repo.GetChannel(channelID)
+	if err != nil {
+		return nil, ErrChannelNotFound
+	}
+	if isSuperadmin {
+		return channel, nil
+	}
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+	if !isSuperadminUser(user) && models.TenantForUser(user) != channel.TenantID {
+		return nil, ErrCrossTenant
+	}
+	return channel, nil
 }
 
 func (s *channelService) GetChannels(userID uint) ([]ChannelWithUnread, error) {
@@ -128,6 +148,8 @@ func (s *channelService) GetChannels(userID uint) ([]ChannelWithUnread, error) {
 }
 
 func (s *channelService) GetChannel(id uint) (*models.Channel, error) {
+	// Tenant/membership is enforced at the handler level.
+	// For direct tenant-scoped access use authorizeChannelTenant instead.
 	return s.repo.GetChannel(id)
 }
 
@@ -198,7 +220,7 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 }
 
 func (s *channelService) Update(id, userID uint, name, description string) (*models.Channel, error) {
-	channel, err := s.repo.GetChannel(id)
+	channel, err := s.authorizeChannelTenant(id, userID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +229,7 @@ func (s *channelService) Update(id, userID uint, name, description string) (*mod
 		return nil, fmt.Errorf("only channel creator can update")
 	}
 
-	updates := map[string]interface{}{}
+	updates := map[string]any{}
 	if name != "" {
 		updates["name"] = name
 	}
@@ -223,7 +245,7 @@ func (s *channelService) Update(id, userID uint, name, description string) (*mod
 }
 
 func (s *channelService) Delete(id, userID uint, isSuperadmin bool) error {
-	channel, err := s.repo.GetChannel(id)
+	channel, err := s.authorizeChannelTenant(id, userID, isSuperadmin)
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,7 @@ type WorkHourRepository interface {
 	Create(workHour *models.WorkHour) error
 	FindByID(id uint) (*models.WorkHour, error)
 	FindManyByIDs(ids []uint) ([]models.WorkHour, error)
+	FindManyByIDsAndTenant(ids []uint, tenantID uint) ([]models.WorkHour, error)
 	FindByUserAndDate(userID uint, date time.Time) (*models.WorkHour, error)
 	Update(workHour *models.WorkHour) error
 	ApproveMultiple(ids []uint, approvedBy uint, approvedAt time.Time) error
@@ -45,6 +46,16 @@ func (r *workHourRepository) FindByID(id uint) (*models.WorkHour, error) {
 func (r *workHourRepository) FindManyByIDs(ids []uint) ([]models.WorkHour, error) {
 	var workHours []models.WorkHour
 	err := r.db.Preload("User").Where("id IN ?", ids).Find(&workHours).Error
+	return workHours, err
+}
+
+func (r *workHourRepository) FindManyByIDsAndTenant(ids []uint, tenantID uint) ([]models.WorkHour, error) {
+	var workHours []models.WorkHour
+	q := r.db.Preload("User").Where("id IN ?", ids)
+	if tenantID > 0 {
+		q = q.Where("tenant_id = ?", tenantID)
+	}
+	err := q.Find(&workHours).Error
 	return workHours, err
 }
 

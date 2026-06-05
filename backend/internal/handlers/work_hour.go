@@ -115,8 +115,9 @@ func (h *WorkHourHandler) Approve(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 	isManager := middleware.IsManager(c)
+	tenantID := middleware.GetTenantID(c)
 
-	err := h.svc.Approve(req.IDs, userID, role, isSuperadmin, isManager)
+	err := h.svc.Approve(req.IDs, userID, role, isSuperadmin, isManager, tenantID)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "No work hours found" {
@@ -135,8 +136,9 @@ func (h *WorkHourHandler) GetSummary(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	tenantID := middleware.GetTenantID(c)
 
-	summary, err := h.svc.GetSummary(userID, role, isSuperadmin)
+	summary, err := h.svc.GetSummary(userID, role, isSuperadmin, tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get summary"})
 		return

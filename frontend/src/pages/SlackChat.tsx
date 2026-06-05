@@ -172,6 +172,7 @@ export default function SlackChat() {
           chatSidebarWidth={chatSidebarWidth}
           setShowNewChannelModal={setShowNewChannelModal}
           setShowNewDmModal={setShowNewDmModal}
+          fetchAllUsers={fetchAllUsers}
           onMouseDownResize={handleMouseDown}
           isResizing={isResizing}
         />
@@ -225,7 +226,7 @@ export default function SlackChat() {
               {showMentionDropdown && (
                 <div className={styles['mention-dropdown']}>
                   {mentionFilterUsers.map(u => (
-                    <div key={u.id} className={styles['mention-user-item'] || 'mention-user-item'} onClick={() => {
+                    <div key={u.id} className={styles['mention-option']} onClick={() => {
                       const lastAt = newMessage.lastIndexOf('@')
                       setNewMessage(newMessage.slice(0, lastAt + 1) + u.name + ' ')
                       setShowMentionDropdown(false)

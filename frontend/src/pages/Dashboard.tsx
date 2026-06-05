@@ -203,6 +203,9 @@ export default function Dashboard() {
                   <div className={styles['hour-info']}>
                     <span className={styles['hours-value']}>
                       {wh.hours_worked >= 8 ? 'Jornada completa' : wh.hours_worked > 0 ? `${wh.hours_worked}h` : 'Ausencia'}
+                      {isEmployer && wh.user?.name && (
+                        <span className={styles['hour-author']}> — {wh.user.name}</span>
+                      )}
                     </span>
                     <span className={`${styles['hours-status']} ${wh.approved ? styles['approved'] : styles['pending']}`}>
                       {wh.approved ? 'Aprobado' : 'Pendiente'}
