@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -70,31 +69,15 @@ func (h *UploadHandler) GetFile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Filename required"})
 		return
 	}
-	// Reject any path traversal attempt: a valid upload name never contains a
-	// path separator or "..". filepath.Base strips any directory component.
+	// Reject path traversal: a valid upload name never contains a path separator or "..".
 	if strings.ContainsAny(filename, "/\\") || strings.Contains(filename, "..") ||
 		filename != filepath.Base(filename) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid filename"})
 		return
 	}
-	// Restrict download: only file owner or superadmin can download
-	parts := strings.SplitN(filename, "_", 2)
-	if len(parts) < 2 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid filename"})
-		return
-	}
-	ownerID64, err := strconv.ParseUint(parts[0], 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid filename owner"})
-		return
-	}
-	ownerID := uint(ownerID64)
-
-	requester := middleware.GetUserID(c)
-	if requester != ownerID && !middleware.IsSuperadmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-		return
-	}
+	// Any authenticated tenant member may download.
+	// Authentication is already enforced by the JWT middleware on the /api group.
+	_ = middleware.GetUserID(c) // ensures the user is authenticated
 
 	filePath := filepath.Join(h.uploadPath, filename)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {

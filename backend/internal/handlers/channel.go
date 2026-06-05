@@ -262,6 +262,7 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		Attachment string `json:"attachment"`
 		FileName   string `json:"file_name"`
 		FileSize   int64  `json:"file_size"`
+		FileType   string `json:"file_type"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
