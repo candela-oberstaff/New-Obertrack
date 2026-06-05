@@ -38,6 +38,12 @@ export default function Dashboard() {
 
   const isEmployer = user?.user_type === 'empleador' || user?.is_superadmin || user?.is_manager
 
+  const getWorkHourStatus = (wh: any) => {
+    if (wh.approved) return { className: 'approved', label: 'Aprobado' }
+    if (wh.rejected) return { className: 'rejected', label: 'Rechazado' }
+    return { className: 'pending', label: 'Pendiente' }
+  }
+
   if (isLoading) {
     return (
       <div className={styles['dashboard-loading']}>
@@ -207,8 +213,8 @@ export default function Dashboard() {
                         <span className={styles['hour-author']}> — {wh.user.name}</span>
                       )}
                     </span>
-                    <span className={`${styles['hours-status']} ${wh.approved ? styles['approved'] : styles['pending']}`}>
-                      {wh.approved ? 'Aprobado' : 'Pendiente'}
+                    <span className={`${styles['hours-status']} ${styles[getWorkHourStatus(wh).className]}`}>
+                      {getWorkHourStatus(wh).label}
                     </span>
                   </div>
                 </div>

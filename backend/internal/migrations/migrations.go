@@ -215,7 +215,7 @@ func Run(db *gorm.DB) error {
 					if err := tx.AutoMigrate(&models.TaskUser{}); err != nil {
 						return err
 					}
-					
+
 					// Copy rows
 					copySQL := `
 						INSERT INTO task_users (task_id, user_id) 
@@ -225,7 +225,7 @@ func Run(db *gorm.DB) error {
 					if err := tx.Exec(copySQL).Error; err != nil {
 						return err
 					}
-					
+
 					// Drop old table
 					if err := tx.Migrator().DropTable("task_user"); err != nil {
 						return err
@@ -413,6 +413,23 @@ func Run(db *gorm.DB) error {
 			Rollback: func(tx *gorm.DB) error {
 				if tx.Migrator().HasColumn(&models.User{}, "token_version") {
 					return tx.Migrator().DropColumn(&models.User{}, "token_version")
+				}
+				return nil
+			},
+		},
+		{
+			ID: "202606051820_add_work_hour_rejection_fields",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding rejection fields to work_hours...")
+				return tx.AutoMigrate(&models.WorkHour{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, column := range []string{"rejected", "rejected_by", "rejected_at", "rejection_reason"} {
+					if tx.Migrator().HasColumn(&models.WorkHour{}, column) {
+						if err := tx.Migrator().DropColumn(&models.WorkHour{}, column); err != nil {
+							return err
+						}
+					}
 				}
 				return nil
 			},

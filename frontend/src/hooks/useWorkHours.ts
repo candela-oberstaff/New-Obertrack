@@ -6,6 +6,7 @@ interface WorkHoursSummary {
   total_hours: number
   approved_hours: number
   pending_hours: number
+  rejected_hours: number
 }
 
 interface WorkHourFormData {
@@ -41,6 +42,7 @@ interface UseWorkHoursReturn {
   createWorkHour: (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours'> & { id?: number; absence_reason?: string; absence_hours?: number }) => Promise<void>
   approveWorkHours: (ids: number[]) => Promise<void>
   approveSingle: (id: number) => Promise<void>
+  rejectSingle: (id: number, reason: string) => Promise<void>
 
   // Computed
   filteredHours: WorkHour[]
@@ -55,7 +57,7 @@ const JORNADA_COMPLETA = 8
 export function useWorkHours(user: any): UseWorkHoursReturn {
   const [workHours, setWorkHours] = useState<WorkHour[]>([])
   const [pendingHours, setPendingHours] = useState<WorkHour[]>([])
-  const [summary, setSummary] = useState<WorkHoursSummary>({ total_hours: 0, approved_hours: 0, pending_hours: 0 })
+  const [summary, setSummary] = useState<WorkHoursSummary>({ total_hours: 0, approved_hours: 0, pending_hours: 0, rejected_hours: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
@@ -130,6 +132,11 @@ export function useWorkHours(user: any): UseWorkHoursReturn {
     fetchData()
   }, [fetchData])
 
+  const rejectSingle = useCallback(async (id: number, reason: string) => {
+    await workHourService.reject([id], reason)
+    fetchData()
+  }, [fetchData])
+
   const resetForm = useCallback(() => {
     setFormData({
       work_date: new Date().toISOString().split('T')[0],
@@ -147,9 +154,9 @@ export function useWorkHours(user: any): UseWorkHoursReturn {
 
   const pendingForSelectedDate = useMemo(() => {
     if (selectedDate) {
-      return filteredHours.filter(wh => !wh.approved && wh.hours_worked > 0)
+      return filteredHours.filter(wh => !wh.approved && !wh.rejected && wh.hours_worked > 0)
     }
-    return workHours.filter(wh => !wh.approved && wh.hours_worked > 0)
+    return workHours.filter(wh => !wh.approved && !wh.rejected && wh.hours_worked > 0)
   }, [filteredHours, selectedDate, workHours])
 
   const weekHours = useMemo(() => {
@@ -189,6 +196,7 @@ export function useWorkHours(user: any): UseWorkHoursReturn {
     createWorkHour,
     approveWorkHours,
     approveSingle,
+    rejectSingle,
     filteredHours,
     pendingForSelectedDate,
     weekHours,

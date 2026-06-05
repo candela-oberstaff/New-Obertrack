@@ -61,10 +61,11 @@ export function useReports(user: User | null) {
   const hoursStats = useMemo(() => {
     const total = workHours.reduce((sum, wh) => sum + wh.hours_worked, 0)
     const approved = workHours.filter(wh => wh.approved).reduce((sum, wh) => sum + wh.hours_worked, 0)
-    const pending = total - approved
+    const rejected = workHours.filter(wh => wh.rejected).reduce((sum, wh) => sum + wh.hours_worked, 0)
+    const pending = Math.max(0, total - approved - rejected)
     const daysWorked = new Set(workHours.map(wh => wh.work_date.split('T')[0])).size
     const targetHours = 160
-    return { total, approved, pending, daysWorked, targetHours, progress: Math.min((total / targetHours) * 100, 100) }
+    return { total, approved, pending, rejected, daysWorked, targetHours, progress: Math.min((total / targetHours) * 100, 100) }
   }, [workHours])
 
   const dailyData = useMemo(() => {

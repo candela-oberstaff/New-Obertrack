@@ -138,6 +138,11 @@ export interface WorkHour {
   approved_by?: number
   approved_at?: string
   approved_by_user?: User
+  rejected?: boolean
+  rejected_by?: number
+  rejected_at?: string
+  rejected_by_user?: User
+  rejection_reason?: string
   comments?: string
   absence_reason?: string
   absence_hours?: number

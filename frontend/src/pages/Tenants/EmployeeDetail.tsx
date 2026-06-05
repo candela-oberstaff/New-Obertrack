@@ -25,6 +25,12 @@ export default function EmployeeDetail() {
     if (ok) await resetPassword('temporary123')
   }
 
+  const getWorkHourStatus = (wh: any) => {
+    if (wh.approved) return { className: styles.badgeActive, label: 'Aprobada' }
+    if (wh.rejected) return { className: styles.badgeRejected, label: 'Rechazada' }
+    return { className: styles.badgePending, label: 'Pendiente' }
+  }
+
   if (isLoading) {
     return (
       <div className={styles.page}>
@@ -141,8 +147,8 @@ export default function EmployeeDetail() {
                     <td><span className={styles.typeBadge}>{wh.work_type === 'complete' ? 'Jornada' : 'Ausencia'}</span></td>
                     <td>{wh.hours_worked?.toFixed(1)} h</td>
                     <td>
-                      <span className={`${styles.badge} ${wh.approved ? styles.badgeActive : styles.badgePending}`}>
-                        {wh.approved ? 'Aprobada' : 'Pendiente'}
+                      <span className={`${styles.badge} ${getWorkHourStatus(wh).className}`}>
+                        {getWorkHourStatus(wh).label}
                       </span>
                     </td>
                     <td className={styles.truncate}>{wh.activities || '—'}</td>

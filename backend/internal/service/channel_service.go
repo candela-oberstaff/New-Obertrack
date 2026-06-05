@@ -77,9 +77,9 @@ type DirectMessageResponse struct {
 }
 
 type channelService struct {
-	repo        repository.ChannelRepository
-	userRepo    repository.UserRepository
-	notifSvc    NotificationService
+	repo     repository.ChannelRepository
+	userRepo repository.UserRepository
+	notifSvc NotificationService
 }
 
 func NewChannelService(repo repository.ChannelRepository, userRepo repository.UserRepository, notifSvc NotificationService) ChannelService {
@@ -115,7 +115,7 @@ func (s *channelService) GetChannels(userID uint) ([]ChannelWithUnread, error) {
 	var result []ChannelWithUnread
 	for _, ch := range channels {
 		unreadCount, _ := s.repo.GetUnreadCount(ch.ID, userID)
-		
+
 		var recipient *models.User
 		if ch.Type == models.ChannelTypeDirect {
 			members, err := s.repo.GetMembers(ch.ID)
@@ -357,4 +357,3 @@ func (s *channelService) Leave(channelID, userID uint) error {
 
 	return s.repo.RemoveMember(channelID, userID)
 }
-

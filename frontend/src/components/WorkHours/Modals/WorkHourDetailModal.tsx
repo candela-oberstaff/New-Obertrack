@@ -1,4 +1,5 @@
-import { X, Check, Pencil } from 'lucide-react'
+import { useState } from 'react'
+import { X, Check, Pencil, XCircle } from 'lucide-react'
 import type { WorkHour } from '../../../types'
 import { parseLocalDate } from '../utils'
 import { sanitizeHtml } from '../../../utils/sanitize'
@@ -9,6 +10,7 @@ interface WorkHourDetailModalProps {
   onClose: () => void
   canApprove: boolean
   onApprove: (id: number) => Promise<void>
+  onReject: (id: number, reason: string) => Promise<void>
   onEdit: (wh: WorkHour) => void
   isEmployer?: boolean
 }
@@ -18,10 +20,40 @@ export function WorkHourDetailModal({
   onClose,
   canApprove,
   onApprove,
+  onReject,
   onEdit,
   isEmployer = false
 }: WorkHourDetailModalProps) {
+  const [showRejectForm, setShowRejectForm] = useState(false)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
   if (!workHour) return null
+
+  const statusClass = workHour.approved ? 'approved' : workHour.rejected ? 'rejected' : 'pending'
+  const statusLabel = workHour.approved ? 'Aprobado' : workHour.rejected ? 'Rechazado' : 'Pendiente'
+
+  const handleApprove = async () => {
+    setIsSubmitting(true)
+    try {
+      await onApprove(workHour.id)
+      onClose()
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleReject = async () => {
+    const reason = rejectionReason.trim()
+    if (!reason) return
+    setIsSubmitting(true)
+    try {
+      await onReject(workHour.id, reason)
+      onClose()
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className={styles['modal-overlay']} onClick={onClose}>
@@ -75,23 +107,50 @@ export function WorkHourDetailModal({
           )}
           <div className={styles['detail-row']}>
             <span className={styles['detail-label']}>Estado</span>
-            <span className={`${styles['status-pill']} ${workHour.approved ? styles['approved'] : styles['pending']}`}>
-              {workHour.approved ? 'Aprobado' : 'Pendiente'}
+            <span className={`${styles['status-pill']} ${styles[statusClass]}`}>
+              {statusLabel}
             </span>
           </div>
+          {!workHour.approved && workHour.rejected && workHour.rejection_reason && (
+            <div className={styles['detail-rejection']}>
+              <span className={styles['detail-label']}>Motivo del rechazo</span>
+              <p>{workHour.rejection_reason}</p>
+            </div>
+          )}
+          {showRejectForm && (
+            <div className={styles['reject-form']}>
+              <label htmlFor="rejection-reason">Motivo del rechazo</label>
+              <textarea
+                id="rejection-reason"
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Indica qué debe corregirse en este registro..."
+                rows={3}
+                autoFocus
+              />
+            </div>
+          )}
         </div>
         <div className={styles['detail-actions']}>
-          <button className={styles['btn-cancel']} onClick={onClose}>Cerrar</button>
-          {!isEmployer && (
+          {!isEmployer && !workHour.approved && (
             <button className={styles['btn-secondary']} onClick={() => onEdit(workHour)}>
               <Pencil size={16} /> Editar
             </button>
           )}
+          {canApprove && !workHour.approved && !workHour.rejected && !showRejectForm && (
+            <button className={styles['btn-danger-outline']} onClick={() => setShowRejectForm(true)}>
+              <XCircle size={16} /> Rechazar
+            </button>
+          )}
+          {canApprove && !workHour.approved && !workHour.rejected && showRejectForm && (
+            <button className={styles['btn-danger']} onClick={handleReject} disabled={!rejectionReason.trim() || isSubmitting}>
+              <XCircle size={16} /> Confirmar rechazo
+            </button>
+          )}
           {canApprove && !workHour.approved && (
-            <button className={styles['btn-primary']} onClick={async () => {
-              await onApprove(workHour.id)
-              onClose()
-            }}><Check size={16} /> Aprobar</button>
+            <button className={styles['btn-primary']} onClick={handleApprove} disabled={isSubmitting}>
+              <Check size={16} /> Aprobar
+            </button>
           )}
         </div>
       </div>

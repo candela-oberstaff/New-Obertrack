@@ -23,6 +23,12 @@ export function WorkHourList({
   onItemClick,
   isEmployer
 }: WorkHourListProps) {
+  const getStatus = (wh: WorkHour) => {
+    if (wh.approved) return { className: 'approved', label: 'Aprobado' }
+    if (wh.rejected) return { className: 'rejected', label: 'Rechazado' }
+    return { className: 'pending', label: 'Pendiente' }
+  }
+
   return (
     <div className={styles['hours-list-section']} data-tour="work-hours-list">
       <div className={styles['list-header']}>
@@ -72,8 +78,8 @@ export function WorkHourList({
                 {wh.activities && <p className={styles['hours-comments']}>{wh.activities.replace(/<[^>]*>/g, '')}</p>}
               </div>
               <div className={styles['hour-status']}>
-                <span className={`${styles['status-pill']} ${wh.approved ? styles['approved'] : styles['pending']}`}>
-                  {wh.approved ? 'Aprobado' : 'Pendiente'}
+                <span className={`${styles['status-pill']} ${styles[getStatus(wh).className]}`}>
+                  {getStatus(wh).label}
                 </span>
               </div>
             </div>

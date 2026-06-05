@@ -27,6 +27,7 @@ export function TaskAttachmentsSection({
   styles
 }: TaskAttachmentsSectionProps) {
   const [isUploadingFile, setIsUploadingFile] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const confirm = useConfirm()
 
@@ -34,11 +35,13 @@ export function TaskAttachmentsSection({
     const file = e.target.files?.[0]
     if (!file) return
     setIsUploadingFile(true)
+    setUploadError(null)
     try {
       const attachment = await taskService.addAttachment(taskId, file)
       onAttachmentAdded(attachment)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error)
+      setUploadError(error?.message || 'Error al subir el archivo. Intenta nuevamente.')
     } finally {
       setIsUploadingFile(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -141,6 +144,11 @@ export function TaskAttachmentsSection({
       >
         {isUploadingFile ? '⏳ Subiendo...' : <><Paperclip size={14} /> Adjuntar archivo</>}
       </label>
+      {uploadError && (
+        <p style={{ fontSize: '12px', color: '#ef4444', marginTop: '6px' }}>
+          ⚠️ {uploadError}
+        </p>
+      )}
     </div>
   )
 }
