@@ -14,11 +14,11 @@ import (
 )
 
 type WorkHourService interface {
-	GetAll(userID uint, role string, isSuperadmin bool, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
+	GetAll(userID uint, role string, isSuperadmin bool, tenantID uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
 	Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error)
 	Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error)
-	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool) error
-	GetSummary(userID uint, role string, isSuperadmin bool) (map[string]float64, error)
+	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) error
+	GetSummary(userID uint, role string, isSuperadmin bool, tenantID uint) (map[string]float64, error)
 	GetPending(tenantID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error)
 	SendReportEmail(employerID uint, month int, year int) error
 	GetPDFReportBytes(userID uint, month int, year int) ([]byte, string, error)
@@ -64,13 +64,14 @@ func (s *workHourService) parseFloatVal(val interface{}) float64 {
 	return 0
 }
 
-func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
+func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, tenantID uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
 	filters := make(map[string]interface{})
 
 	if !isSuperadmin {
-		if role == string(models.UserTypeEmployer) || role == "empleador" {
-			filters["employer_id"] = userID
+		if tenantID > 0 {
+			filters["tenant_id"] = tenantID
 		} else if role == string(models.UserTypeProfessional) || role == "profesional" {
+			// Fallback: orphan professionals without a tenant see only their own
 			filters["user_id"] = userID
 		}
 	}
@@ -189,7 +190,13 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 }
 
 func (s *workHourService) Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error) {
-	workHour, err := s.repo.FindByID(id)
+	var workHour *models.WorkHour
+	var err error
+	if !isSuperadmin && tenantID > 0 {
+		workHour, err = s.repo.FindByIDAndTenant(id, tenantID)
+	} else {
+		workHour, err = s.repo.FindByID(id)
+	}
 	if err != nil {
 		return nil, errors.New("Work hour not found")
 	}
@@ -262,8 +269,15 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 	return s.repo.FindByID(workHour.ID)
 }
 
-func (s *workHourService) Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool) error {
-	workHours, err := s.repo.FindManyByIDs(ids)
+func (s *workHourService) Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) error {
+	// Use tenant-scoped query for defense-in-depth
+	var workHours []models.WorkHour
+	var err error
+	if !isSuperadmin && tenantID > 0 {
+		workHours, err = s.repo.FindManyByIDsAndTenant(ids, tenantID)
+	} else {
+		workHours, err = s.repo.FindManyByIDs(ids)
+	}
 	if err != nil {
 		return errors.New("Failed to fetch work hours")
 	}
@@ -292,7 +306,11 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 		}
 	}
 
-	err = s.repo.ApproveMultiple(ids, userID, time.Now())
+	if !isSuperadmin && tenantID > 0 {
+		err = s.repo.ApproveMultipleAndTenant(ids, userID, time.Now(), tenantID)
+	} else {
+		err = s.repo.ApproveMultiple(ids, userID, time.Now())
+	}
 	if err == nil {
 		// Notificaciones de aprobación
 		go func() {
@@ -337,7 +355,7 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 	return err
 }
 
-func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool) (map[string]float64, error) {
+func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool, tenantID uint) (map[string]float64, error) {
 	filters := make(map[string]interface{})
 
 	// Filter for the current month
@@ -347,8 +365,8 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool
 	filters["end_date"] = now
 
 	if !isSuperadmin {
-		if role == string(models.UserTypeEmployer) || role == "empleador" {
-			filters["tenant_id"] = userID
+		if (role == string(models.UserTypeEmployer) || role == "empleador" || role == "manager") && tenantID > 0 {
+			filters["tenant_id"] = tenantID
 		} else {
 			filters["user_id"] = userID
 		}

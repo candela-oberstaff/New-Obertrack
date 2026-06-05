@@ -17,7 +17,7 @@ type BoardService interface {
 		Color string
 	}) (*models.Board, error)
 	Update(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}, memberIDs []uint) (*models.Board, error)
-	Delete(userID, boardID uint) error
+	Delete(userID, boardID, tenantID uint, isSuperadmin bool) error
 	AddPhase(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, name, color string) (*models.Board, error)
 	RemovePhase(boardID, phaseID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error)
 	ReorderPhases(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, phaseIDs []uint) (*models.Board, error)
@@ -36,7 +36,13 @@ func NewBoardService(repo repository.BoardRepository, userRepo repository.UserRe
 }
 
 func (s *boardService) authorizeBoardTenant(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error) {
-	board, err := s.repo.GetByID(boardID)
+	var board *models.Board
+	var err error
+	if isSuperadmin || tenantID == 0 {
+		board, err = s.repo.GetByID(boardID)
+	} else {
+		board, err = s.repo.GetByIDAndTenant(boardID, tenantID)
+	}
 	if err != nil {
 		return nil, errors.New("Board not found")
 	}
@@ -62,23 +68,30 @@ func (s *boardService) authorizeBoardTenant(boardID, tenantID, userID uint, role
 func (s *boardService) GetAll(userID uint, role string, isSuperadmin bool, companyID uint) ([]models.Board, error) {
 	filters := make(map[string]interface{})
 
-	if !isSuperadmin && role != "superadmin" {
-		filters["user_id"] = userID
-	}
-
 	if companyID > 0 {
+		// Employers and managers see all boards within their tenant (no per-user restriction).
+		// Professionals still need the user_id filter so they only see boards they belong to.
 		filters["tenant_id"] = companyID
+		if !isEmployerRole(role) && role != "manager" {
+			filters["user_id"] = userID
+		}
+	} else if !isSuperadmin && role != "superadmin" {
+		// No tenant context available — fall back to user scoping
+		filters["user_id"] = userID
 	}
 
 	return s.repo.FindAll(filters)
 }
 
 func (s *boardService) GetPublicBoards(userID uint, companyID uint) ([]models.Board, error) {
-	// Simplified: boards that I'm NOT in.
-	filters := make(map[string]interface{})
-	if companyID > 0 {
-		filters["tenant_id"] = companyID
+	// Safety: if no tenant context, return empty instead of leaking boards from
+	// all companies (same pattern as GetActiveUsers).
+	if companyID == 0 {
+		return []models.Board{}, nil
 	}
+
+	// Simplified: boards that I'm NOT in.
+	filters := map[string]interface{}{"tenant_id": companyID}
 	all, err := s.repo.FindAll(filters)
 	if err != nil {
 		return nil, err
@@ -127,7 +140,8 @@ func (s *boardService) JoinBoard(userID, boardID uint) (*models.Board, error) {
 		return nil, errors.New("Board creator not found")
 	}
 
-	if tenantForUser(user) == 0 || tenantForUser(user) != tenantForUser(creator) {
+	// Superadmins can join any board
+	if !isSuperadminUser(user) && tenantForUser(user) != tenantForUser(creator) {
 		return nil, errors.New("No tienes permisos para unirte a este tablero")
 	}
 
@@ -273,18 +287,25 @@ func (s *boardService) Update(boardID, tenantID, userID uint, role string, isMan
 	return s.repo.GetByID(boardID)
 }
 
-func (s *boardService) Delete(userID, boardID uint) error {
+func (s *boardService) Delete(userID, boardID, tenantID uint, isSuperadmin bool) error {
 	board, err := s.repo.GetByID(boardID)
 	if err != nil {
 		return errors.New("Board not found")
+	}
+
+	if isSuperadmin {
+		return s.repo.Delete(board)
+	}
+
+	// Verify tenant ownership
+	if tenantID == 0 || board.TenantID != tenantID {
+		return errors.New("Access denied")
 	}
 
 	if board.CreatedBy != userID {
 		return errors.New("Solo el creador puede eliminar el tablero")
 	}
 
-	// In a real implementation, Repo.Delete should handle cleanup of phases/members via cascades
-	// or we can add a Repo.HardDeleteBoard that does all this.
 	return s.repo.Delete(board)
 }
 

@@ -321,6 +321,7 @@ export function useTasksPageState() {
   // Task actions
   const handleCreateTask = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isCreatingTask) return
     try {
       const boardId = selectedBoard?.id || (boards.length > 0 ? boards[0].id : 0)
 
@@ -368,7 +369,7 @@ export function useTasksPageState() {
     } finally {
       setIsCreatingTask(false)
     }
-  }, [selectedBoard, boards, newTaskData, createTask, fetchTasks, showError])
+  }, [selectedBoard, boards, newTaskData, createTask, fetchTasks, showError, isCreatingTask])
 
   const handleUpdateTask = useCallback(async (id: number, data: Partial<User | Task | any>) => {
     await updateTask(id, data)

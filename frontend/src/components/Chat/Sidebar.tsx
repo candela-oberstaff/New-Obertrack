@@ -12,6 +12,7 @@ interface SidebarProps {
   chatSidebarWidth: number
   setShowNewChannelModal: (show: boolean) => void
   setShowNewDmModal: (show: boolean) => void
+  fetchAllUsers: () => Promise<void>
   onMouseDownResize: (e: React.MouseEvent) => void
   isResizing: boolean
 }
@@ -27,6 +28,7 @@ export function Sidebar({
   chatSidebarWidth,
   setShowNewChannelModal,
   setShowNewDmModal,
+  fetchAllUsers,
   onMouseDownResize,
   isResizing
 }: SidebarProps) {
@@ -81,7 +83,7 @@ export function Sidebar({
                 <span>Mensajes directos</span>
                 <button 
                   className={styles['add-btn-mini']}
-                  onClick={() => setShowNewDmModal(true)}
+                  onClick={() => { fetchAllUsers(); setShowNewDmModal(true) }}
                   title="Nuevo mensaje directo"
                 >
                   +

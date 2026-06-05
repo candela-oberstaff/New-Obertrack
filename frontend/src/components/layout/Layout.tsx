@@ -29,6 +29,10 @@ import Avatar from '../Common/Avatar'
 import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
 import styles from './Layout.module.css'
 
+// Module-level flag prevents the auto-tour from firing more than once per
+// browser session, even if the Layout component unmounts/remounts.
+let systemTourShownThisSession = false
+
 export default function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -70,10 +74,12 @@ export default function Layout() {
 
   useEffect(() => {
     if (!user?.id || window.innerWidth < 768) return
+    if (systemTourShownThisSession) return
     const key = `obertrack_tour_seen_${user.id}`
     if (localStorage.getItem(key)) return
     localStorage.setItem(key, '1')
-    const timer = setTimeout(() => startSystemTour(), 800)
+    systemTourShownThisSession = true
+    const timer = setTimeout(() => startSystemTour(user.user_type), 800)
     return () => clearTimeout(timer)
   }, [user?.id])
 
@@ -204,7 +210,7 @@ export default function Layout() {
             <button
               type="button"
               className={`${styles['tour-btn']} ${styles['tour-btn-secondary']}`}
-              onClick={startSystemTour}
+              onClick={() => startSystemTour(user?.user_type)}
               title="Recorrido del menú lateral"
               aria-label="Recorrido del menú lateral"
             >

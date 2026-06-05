@@ -209,8 +209,10 @@ func (h *BoardHandler) Delete(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
 
-	if err := h.service.Delete(userID, uint(id)); err != nil {
+	if err := h.service.Delete(userID, uint(id), tenantID, isSuperadmin); err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Board not found" {
 			status = http.StatusNotFound

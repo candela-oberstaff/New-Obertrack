@@ -8,6 +8,7 @@ import (
 type TaskRepository interface {
 	FindAll(filters map[string]interface{}, offset, limit int) ([]models.Task, int64, error)
 	GetByID(id uint) (*models.Task, error)
+	GetByIDAndTenant(id, tenantID uint) (*models.Task, error)
 	Create(task *models.Task) error
 	Update(task *models.Task, updates map[string]interface{}) error
 	Delete(id uint) error
@@ -81,6 +82,16 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 func (r *taskRepository) GetByID(id uint) (*models.Task, error) {
 	var task models.Task
 	if err := r.db.Preload("Creator").Preload("Assignees").Preload("Comments").
+		Preload("Comments.User").Preload("Attachments").First(&task, id).Error; err != nil {
+		return nil, err
+	}
+	return &task, nil
+}
+
+func (r *taskRepository) GetByIDAndTenant(id, tenantID uint) (*models.Task, error) {
+	var task models.Task
+	if err := r.db.Where("tenant_id = ?", tenantID).
+		Preload("Creator").Preload("Assignees").Preload("Comments").
 		Preload("Comments.User").Preload("Attachments").First(&task, id).Error; err != nil {
 		return nil, err
 	}

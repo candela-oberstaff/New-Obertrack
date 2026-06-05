@@ -409,6 +409,12 @@
   color: #111827;
 }
 
+.hour-author {
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 2px;
+}
+
 .hours-status {
   font-size: 12px;
 }

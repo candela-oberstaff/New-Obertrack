@@ -63,6 +63,12 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 func (s *channelService) processMentions(messageID uint, content string, channelID uint) []uint {
 	var mentionedUserIDs []uint
 
+	// Resolve channel tenant for scoped user lookup
+	var tenantID uint
+	if ch, err := s.repo.GetChannel(channelID); err == nil {
+		tenantID = ch.TenantID
+	}
+
 	words := strings.Fields(content)
 	for _, word := range words {
 		if strings.HasPrefix(word, "@") {
@@ -72,7 +78,7 @@ func (s *channelService) processMentions(messageID uint, content string, channel
 				continue
 			}
 
-			user, err := s.repo.FindUserByNamePrefix(name)
+			user, err := s.repo.FindUserByNamePrefix(name, tenantID)
 			if err == nil && user != nil {
 				if isMember, _ := s.repo.IsMember(channelID, user.ID); isMember {
 					mentionedUserIDs = append(mentionedUserIDs, user.ID)
@@ -194,7 +200,16 @@ func (s *channelService) GetPinnedMessages(channelID, userID uint) ([]models.Cha
 	return s.repo.GetPinnedMessages(channelID)
 }
 
-func (s *channelService) GetReactions(messageID uint) ([]models.MessageReaction, error) {
+func (s *channelService) GetReactions(messageID, userID uint) ([]models.MessageReaction, error) {
+	message, err := s.repo.GetMessage(messageID)
+	if err != nil {
+		return nil, err
+	}
+
+	if isMember, _ := s.repo.IsMember(message.ChannelID, userID); !isMember {
+		return nil, fmt.Errorf("you are not a member of this channel")
+	}
+
 	return s.repo.GetReactions(messageID)
 }
 
@@ -235,8 +250,14 @@ func (s *channelService) SendThreadReply(channelID, messageID, userID uint, cont
 }
 
 func (s *channelService) StarMessage(messageID, userID uint) error {
-	if _, err := s.repo.GetMessage(messageID); err != nil {
+	message, err := s.repo.GetMessage(messageID)
+	if err != nil {
 		return err
+	}
+
+	// Verify membership: user must belong to the message's channel
+	if isMember, _ := s.repo.IsMember(message.ChannelID, userID); !isMember {
+		return fmt.Errorf("you are not a member of this channel")
 	}
 
 	return s.repo.StarMessage(&models.StarredMessage{
@@ -264,7 +285,25 @@ func (s *channelService) GetStarredMessages(userID uint) ([]models.ChannelMessag
 		return []models.ChannelMessage{}, nil
 	}
 
-	return s.repo.FindManyMessagesByIDs(messageIDs)
+	messages, err := s.repo.FindManyMessagesByIDs(messageIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter by tenant: only return messages belonging to the user's tenant
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return nil, err
+	}
+	tenantID := models.TenantForUser(user)
+
+	var filtered []models.ChannelMessage
+	for _, msg := range messages {
+		if msg.TenantID == tenantID || isSuperadminUser(user) {
+			filtered = append(filtered, msg)
+		}
+	}
+	return filtered, nil
 }
 
 func (s *channelService) SearchMessages(channelID, userID uint, query string) ([]models.ChannelMessage, error) {
@@ -361,6 +400,9 @@ func (s *channelService) GetTotalUnreadCount(userID uint) (int64, error) {
 }
 
 func (s *channelService) MarkAsRead(channelID, userID uint) error {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+		return fmt.Errorf("you are not a member of this channel")
+	}
 	return s.repo.MarkAsRead(channelID, userID)
 }
 

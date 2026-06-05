@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"hash/fnv"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -162,13 +163,64 @@ func linkedUserByPhone(db *gorm.DB, phone string) *models.User {
 	return &user
 }
 
+// resolveZohoAgentID reads the current user's ZohoAgentID from the DB.
+// It lazily fetches it from Zoho when missing, using the user's email.
+func (h *TicketHandler) resolveZohoAgentID(c *gin.Context) (string, error) {
+	userID := middleware.GetUserID(c)
+
+	var user models.User
+	if err := h.db.First(&user, userID).Error; err != nil {
+		return "", err
+	}
+
+	if user.ZohoAgentID != "" {
+		return user.ZohoAgentID, nil
+	}
+
+	// Lazy-sync: match by email against Zoho Desk agents
+	zohoID, _, err := h.zohoSvc.GetAgentByEmail(user.Email)
+	if err != nil {
+		log.Printf("[Tickets] Could not sync Zoho agent ID for user %d (%s): %v", userID, user.Email, err)
+		return "", err
+	}
+
+	// Persist for subsequent requests
+	h.db.Model(&user).Update("zoho_agent_id", zohoID)
+	return zohoID, nil
+}
+
+// isTicketOwner checks that the ticket is assigned to the current user (or allows superadmins).
+func (h *TicketHandler) isTicketOwner(c *gin.Context, zt *service.ZohoTicket) bool {
+	if middleware.IsSuperadmin(c) {
+		return true
+	}
+	agentID, err := h.resolveZohoAgentID(c)
+	if err != nil {
+		return false
+	}
+	return zt.AssigneeID == agentID
+}
+
 func (h *TicketHandler) GetTickets(c *gin.Context) {
 	if !canUseSupportInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
 		return
 	}
 
-	zohoTickets, err := h.zohoSvc.ListTickets()
+	// Superadmins see all tickets; customer_success only see their own
+	var assigneeID string
+	if !middleware.IsSuperadmin(c) {
+		var err error
+		assigneeID, err = h.resolveZohoAgentID(c)
+		if err != nil {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error": "No se pudo obtener tu ID de agente en Zoho. Asegurate de que tu correo esté registrado allí.",
+			})
+			return
+		}
+	}
+
+	zohoTickets, err := h.zohoSvc.ListTickets(assigneeID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch tickets from Zoho Desk: " + err.Error()})
 		return
@@ -211,6 +263,12 @@ func (h *TicketHandler) GetTicket(c *gin.Context) {
 	zt, err := h.zohoSvc.GetTicketDetail(ticketID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch ticket from Zoho Desk: " + err.Error()})
+		return
+	}
+
+	// Verify the ticket is assigned to the current agent
+	if !h.isTicketOwner(c, zt) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: ticket not assigned to you"})
 		return
 	}
 
@@ -271,6 +329,17 @@ func (h *TicketHandler) UpdateTicket(c *gin.Context) {
 		return
 	}
 
+	// Verify ownership before updating
+	zt, err := h.zohoSvc.GetTicketDetail(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch ticket from Zoho Desk: " + err.Error()})
+		return
+	}
+	if !h.isTicketOwner(c, zt) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: ticket not assigned to you"})
+		return
+	}
+
 	var req struct {
 		Stage      models.TicketStage `json:"stage"`
 		Status     string             `json:"status"`
@@ -295,18 +364,29 @@ func (h *TicketHandler) UpdateTicket(c *gin.Context) {
 		return
 	}
 
-	zt, err := h.zohoSvc.GetTicketDetail(c.Param("id"))
+	updated, err := h.zohoSvc.GetTicketDetail(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"zoho_id": c.Param("id"), "stage": req.Stage, "status": status})
 		return
 	}
 
-	c.JSON(http.StatusOK, ticketDTOFromZoho(*zt, nil))
+	c.JSON(http.StatusOK, ticketDTOFromZoho(*updated, nil))
 }
 
 func (h *TicketHandler) SendMessage(c *gin.Context) {
 	if !canUseSupportInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+
+	// Verify ownership before sending
+	zt, err := h.zohoSvc.GetTicketDetail(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch ticket from Zoho Desk: " + err.Error()})
+		return
+	}
+	if !h.isTicketOwner(c, zt) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied: ticket not assigned to you"})
 		return
 	}
 
@@ -321,15 +401,15 @@ func (h *TicketHandler) SendMessage(c *gin.Context) {
 
 	var (
 		thread *service.ZohoThread
-		err    error
+		sendErr error
 	)
 	if req.Channel == models.ChannelWhatsApp {
-		thread, err = h.zohoSvc.ReplyWhatsAppLiveChat(c.Param("id"), req.Content, c.GetString("email"))
+		thread, sendErr = h.zohoSvc.ReplyWhatsAppLiveChat(c.Param("id"), req.Content, c.GetString("email"))
 	} else {
-		thread, err = h.zohoSvc.ReplyTicket(c.Param("id"), req.Content, string(req.Channel))
+		thread, sendErr = h.zohoSvc.ReplyTicket(c.Param("id"), req.Content, string(req.Channel))
 	}
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send message through Zoho Desk: " + err.Error()})
+	if sendErr != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send message through Zoho Desk: " + sendErr.Error()})
 		return
 	}
 

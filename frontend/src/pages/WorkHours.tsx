@@ -616,7 +616,6 @@ export default function WorkHours() {
             activities: comments,
             hours_worked: hours,
           } as any)
-          setShowRecoverModal(false)
         }}
         today={today}
         absenceHoursToRecover={totalAbsenceHoursToRecover}
