@@ -18,8 +18,12 @@ export const workHourService = {
     const { data } = await api.post('/work-hours/approve', { ids })
     return data
   },
+  reject: async (ids: number[], reason: string) => {
+    const { data } = await api.post('/work-hours/reject', { ids, reason })
+    return data
+  },
   getSummary: async () => {
-    const { data } = await api.get<{ total_hours: number; approved_hours: number; pending_hours: number }>('/work-hours/summary')
+    const { data } = await api.get<{ total_hours: number; approved_hours: number; pending_hours: number; rejected_hours: number }>('/work-hours/summary')
     return data
   },
   getPending: async () => {

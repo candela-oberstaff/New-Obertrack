@@ -45,6 +45,7 @@ export default function WorkHours() {
     createWorkHour,
     approveWorkHours,
     approveSingle,
+    rejectSingle,
     filteredHours,
     pendingForSelectedDate,
     weekHours,
@@ -60,6 +61,8 @@ export default function WorkHours() {
   const [isMailing, setIsMailing] = useState(false)
   const [mailSuccess, setMailSuccess] = useState<string | null>(null)
   const [mailError, setMailError] = useState<string | null>(null)
+  const [workHourFormError, setWorkHourFormError] = useState<string | null>(null)
+  const [isSavingWorkHour, setIsSavingWorkHour] = useState(false)
 
   const isEmployer = user?.user_type === 'empleador' || user?.is_superadmin
 
@@ -324,6 +327,8 @@ export default function WorkHours() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setWorkHourFormError(null)
+    setIsSavingWorkHour(true)
     try {
       if (editingId) {
         await createWorkHour({
@@ -342,8 +347,16 @@ export default function WorkHours() {
       setShowModal(false)
       setEditingId(null)
       resetForm()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving work hour:', error)
+      setWorkHourFormError(
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'No se pudo guardar el registro. Intenta nuevamente.'
+      )
+    } finally {
+      setIsSavingWorkHour(false)
     }
   }
 
@@ -358,6 +371,7 @@ export default function WorkHours() {
       absence_hours: wh.absence_hours || 0,
     })
     setEditingId(wh.id)
+    setWorkHourFormError(null)
     setShowModal(true)
     setSelectedWorkHour(null)
   }
@@ -448,6 +462,7 @@ export default function WorkHours() {
             )}
             <button className={styles['btn-primary']} onClick={() => {
               setEditingId(null)
+              setWorkHourFormError(null)
               resetForm()
               setShowModal(true)
             }}>
@@ -550,11 +565,14 @@ export default function WorkHours() {
         onClose={() => {
           setShowModal(false)
           setEditingId(null)
+          setWorkHourFormError(null)
         }}
         formData={formData}
         setFormData={setFormData}
         onSubmit={handleSubmit}
         today={today}
+        error={workHourFormError}
+        isSubmitting={isSavingWorkHour}
       />
 
       <WorkHourDetailModal 
@@ -562,6 +580,7 @@ export default function WorkHours() {
         onClose={() => setSelectedWorkHour(null)}
         canApprove={canApprove}
         onApprove={approveSingle}
+        onReject={rejectSingle}
         onEdit={handleEdit}
         isEmployer={isEmployer}
       />

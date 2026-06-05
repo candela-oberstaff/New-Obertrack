@@ -37,6 +37,7 @@ func registerWorkRoutes(api *gin.RouterGroup, d *deps) {
 		workHours.POST("", d.workHour.Create)
 		workHours.PUT("/:id", d.workHour.Update)
 		workHours.POST("/approve", d.workHour.Approve)
+		workHours.POST("/reject", d.workHour.Reject)
 		workHours.GET("/summary", d.workHour.GetSummary)
 		workHours.GET("/pending", d.workHour.GetPending)
 		workHours.POST("/send-report", d.workHour.SendReport)

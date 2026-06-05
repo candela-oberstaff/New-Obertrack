@@ -17,6 +17,8 @@ type WorkHourRepository interface {
 	Update(workHour *models.WorkHour) error
 	ApproveMultiple(ids []uint, approvedBy uint, approvedAt time.Time) error
 	ApproveMultipleAndTenant(ids []uint, approvedBy uint, approvedAt time.Time, tenantID uint) error
+	RejectMultiple(ids []uint, rejectedBy uint, rejectedAt time.Time, reason string) error
+	RejectMultipleAndTenant(ids []uint, rejectedBy uint, rejectedAt time.Time, reason string, tenantID uint) error
 	FindAll(filters map[string]interface{}, offset, limit int) ([]models.WorkHour, int64, error)
 	GetSummary(filters map[string]interface{}) (map[string]float64, error)
 	CountActiveToday() (int64, error)
@@ -80,10 +82,15 @@ func (r *workHourRepository) Update(workHour *models.WorkHour) error {
 func (r *workHourRepository) ApproveMultiple(ids []uint, approvedBy uint, approvedAt time.Time) error {
 	return r.db.Model(&models.WorkHour{}).
 		Where("id IN ?", ids).
-		Updates(map[string]interface{}{
-			"approved":    true,
-			"approved_by": approvedBy,
-			"approved_at": approvedAt,
+		Select("approved", "approved_by", "approved_at", "rejected", "rejected_by", "rejected_at", "rejection_reason").
+		Updates(models.WorkHour{
+			Approved:        true,
+			ApprovedBy:      &approvedBy,
+			ApprovedAt:      &approvedAt,
+			Rejected:        false,
+			RejectedBy:      nil,
+			RejectedAt:      nil,
+			RejectionReason: "",
 		}).Error
 }
 
@@ -91,10 +98,44 @@ func (r *workHourRepository) ApproveMultipleAndTenant(ids []uint, approvedBy uin
 	return r.db.Model(&models.WorkHour{}).
 		Where("id IN ?", ids).
 		Where("tenant_id = ?", tenantID).
+		Select("approved", "approved_by", "approved_at", "rejected", "rejected_by", "rejected_at", "rejection_reason").
+		Updates(models.WorkHour{
+			Approved:        true,
+			ApprovedBy:      &approvedBy,
+			ApprovedAt:      &approvedAt,
+			Rejected:        false,
+			RejectedBy:      nil,
+			RejectedAt:      nil,
+			RejectionReason: "",
+		}).Error
+}
+
+func (r *workHourRepository) RejectMultiple(ids []uint, rejectedBy uint, rejectedAt time.Time, reason string) error {
+	return r.db.Model(&models.WorkHour{}).
+		Where("id IN ?", ids).
 		Updates(map[string]interface{}{
-			"approved":    true,
-			"approved_by": approvedBy,
-			"approved_at": approvedAt,
+			"approved":         false,
+			"approved_by":      nil,
+			"approved_at":      nil,
+			"rejected":         true,
+			"rejected_by":      rejectedBy,
+			"rejected_at":      rejectedAt,
+			"rejection_reason": reason,
+		}).Error
+}
+
+func (r *workHourRepository) RejectMultipleAndTenant(ids []uint, rejectedBy uint, rejectedAt time.Time, reason string, tenantID uint) error {
+	return r.db.Model(&models.WorkHour{}).
+		Where("id IN ?", ids).
+		Where("tenant_id = ?", tenantID).
+		Updates(map[string]interface{}{
+			"approved":         false,
+			"approved_by":      nil,
+			"approved_at":      nil,
+			"rejected":         true,
+			"rejected_by":      rejectedBy,
+			"rejected_at":      rejectedAt,
+			"rejection_reason": reason,
 		}).Error
 }
 
@@ -127,6 +168,10 @@ func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, lim
 		query = query.Where("approved = ?", approved)
 	}
 
+	if rejected, ok := filters["rejected"].(bool); ok {
+		query = query.Where("rejected = ?", rejected)
+	}
+
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -135,6 +180,7 @@ func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, lim
 	var workHours []models.WorkHour
 	err := query.Preload("User").
 		Preload("ApprovedByUser").
+		Preload("RejectedByUser").
 		Offset(offset).
 		Limit(limit).
 		Order("work_date DESC").
@@ -144,43 +190,55 @@ func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, lim
 }
 
 func (r *workHourRepository) GetSummary(filters map[string]interface{}) (map[string]float64, error) {
-	query := r.db.Model(&models.WorkHour{})
+	baseQuery := func() *gorm.DB {
+		query := r.db.Model(&models.WorkHour{})
 
-	if tenantID, ok := filters["tenant_id"].(uint); ok {
-		query = query.Where("work_hours.tenant_id = ?", tenantID)
-	} else if employerID, ok := filters["employer_id"].(uint); ok {
-		query = query.Where("work_hours.tenant_id = ?", employerID)
-	}
+		if tenantID, ok := filters["tenant_id"].(uint); ok {
+			query = query.Where("work_hours.tenant_id = ?", tenantID)
+		} else if employerID, ok := filters["employer_id"].(uint); ok {
+			query = query.Where("work_hours.tenant_id = ?", employerID)
+		}
 
-	if userID, ok := filters["user_id"].(uint); ok {
-		query = query.Where("work_hours.user_id = ?", userID)
-	}
+		if userID, ok := filters["user_id"].(uint); ok {
+			query = query.Where("work_hours.user_id = ?", userID)
+		}
 
-	// Date range filters
-	if startDate, ok := filters["start_date"].(time.Time); ok {
-		query = query.Where("work_date >= ?", startDate)
-	}
-	if endDate, ok := filters["end_date"].(time.Time); ok {
-		query = query.Where("work_date <= ?", endDate)
+		if startDate, ok := filters["start_date"].(time.Time); ok {
+			query = query.Where("work_date >= ?", startDate)
+		}
+		if endDate, ok := filters["end_date"].(time.Time); ok {
+			query = query.Where("work_date <= ?", endDate)
+		}
+
+		return query
 	}
 
 	var totalHours float64
 	var approvedHours float64
+	var rejectedHours float64
 
-	// Total hours
-	if err := query.Select("COALESCE(SUM(hours_worked), 0)").Scan(&totalHours).Error; err != nil {
+	if err := baseQuery().Select("COALESCE(SUM(hours_worked), 0)").Scan(&totalHours).Error; err != nil {
 		return nil, err
 	}
 
-	// Approved hours
-	if err := query.Where("approved = true").Select("COALESCE(SUM(hours_worked), 0)").Scan(&approvedHours).Error; err != nil {
+	if err := baseQuery().Where("approved = true").Select("COALESCE(SUM(hours_worked), 0)").Scan(&approvedHours).Error; err != nil {
 		return nil, err
+	}
+
+	if err := baseQuery().Where("rejected = true").Select("COALESCE(SUM(hours_worked), 0)").Scan(&rejectedHours).Error; err != nil {
+		return nil, err
+	}
+
+	pendingHours := totalHours - approvedHours - rejectedHours
+	if pendingHours < 0 {
+		pendingHours = 0
 	}
 
 	return map[string]float64{
 		"total_hours":    totalHours,
 		"approved_hours": approvedHours,
-		"pending_hours":  totalHours - approvedHours,
+		"pending_hours":  pendingHours,
+		"rejected_hours": rejectedHours,
 	}, nil
 }
 func (r *workHourRepository) CountActiveToday() (int64, error) {
