@@ -3,8 +3,6 @@ import { useAuth } from '../context/AuthContext'
 import { userService, uploadService } from '../services/api'
 import { ProfileForm } from '../components/Profile/ProfileForm'
 import { PasswordModal } from '../components/Profile/PasswordModal'
-import { PendingHoursPanel } from '../components/Profile/PendingHoursPanel'
-import { TeamPanel } from '../components/Profile/TeamPanel'
 import Avatar from '../components/Common/Avatar'
 import Tooltip from '../components/Common/Tooltip'
 import styles from './Profile.module.css'
@@ -16,10 +14,6 @@ export default function Profile() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   const avatarInputRef = useRef<HTMLInputElement>(null)
-  
-  const canApprove = user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador'
-
-
 
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,13 +148,7 @@ export default function Profile() {
             </div>
           </div>
 
-          {canApprove && <PendingHoursPanel />}
 
-          {user?.is_manager && user?.id && <TeamPanel type="manager" />}
-
-          {(user?.user_type === 'empleador' || user?.is_superadmin) && user?.id && (
-             <TeamPanel type="employer" />
-          )}
           
           <div className={styles['sidebar-card']} data-tour="profile-account">
             <h3>Cuenta</h3>
