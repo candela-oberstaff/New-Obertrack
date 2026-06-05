@@ -2,7 +2,7 @@ import api from './client'
 import type { Task, PaginatedResponse, CreateTaskInput } from '../types'
 
 export const taskService = {
-  getAll: async (params?: { status?: string; priority?: string; page?: number; limit?: number }) => {
+  getAll: async (params?: { status?: string; priority?: string; page?: number; limit?: number; assignee_id?: string }) => {
     const { data } = await api.get<PaginatedResponse<Task>>('/tasks', { params })
     return data
   },
