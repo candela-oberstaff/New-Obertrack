@@ -45,9 +45,12 @@ services:
       ZOHO_CLIENT_SECRET: ${ZOHO_CLIENT_SECRET}
       ZOHO_REFRESH_TOKEN: ${ZOHO_REFRESH_TOKEN}
       ZOHO_REDIRECT_URI: ${ZOHO_REDIRECT_URI}
+      UPLOAD_PATH: "/app/uploads"
     # Backend not published directly; traffic flows through the frontend proxy.
     expose:
       - "8080"
+    volumes:
+      - uploads:/app/uploads
     restart: unless-stopped
     depends_on:
       db:
@@ -73,3 +76,4 @@ services:
 
 volumes:
   pgdata:
+  uploads:
