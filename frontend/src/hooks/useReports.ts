@@ -39,7 +39,7 @@ export function useReports(user: User | null) {
 
       const [hoursRes, tasksRes] = await Promise.allSettled([
         workHourService.getAll({ user_id: userIdFilter, start_date: startDate, end_date: endDate }),
-        taskService.getAll({ assignee_id: userIdFilter })
+        taskService.getAll({ assignee_id: userIdFilter, start_date: startDate, end_date: endDate })
       ])
 
       if (hoursRes.status === 'fulfilled') setWorkHours(hoursRes.value?.data || [])

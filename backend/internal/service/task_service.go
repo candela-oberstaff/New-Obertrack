@@ -13,7 +13,7 @@ import (
 )
 
 type TaskService interface {
-	GetAll(userID uint, role string, isManager, isSuperadmin bool, tenantID uint, boardIDStr, status, priority, assigneeIDStr string, offset, limit int) ([]models.Task, int64, error)
+	GetAll(userID uint, role string, isManager, isSuperadmin bool, tenantID uint, boardIDStr, status, priority, assigneeIDStr, startDate, endDate string, offset, limit int) ([]models.Task, int64, error)
 	GetByID(id uint, tenantID uint, isSuperadmin bool) (*models.Task, error)
 	Create(userID uint, isSuperadmin bool, tenantID uint, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error)
 	Update(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error)
@@ -119,7 +119,7 @@ func NewTaskService(
 	}
 }
 
-func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin bool, tenantID uint, boardIDStr, status, priority, assigneeIDStr string, offset, limit int) ([]models.Task, int64, error) {
+func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin bool, tenantID uint, boardIDStr, status, priority, assigneeIDStr, startDate, endDate string, offset, limit int) ([]models.Task, int64, error) {
 	filters := make(map[string]interface{})
 
 	if boardIDStr != "" && boardIDStr != "all" {
@@ -134,6 +134,13 @@ func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin b
 		if err == nil {
 			filters["assignee_id"] = uint(assigneeID)
 		}
+	}
+
+	if startDate != "" {
+		filters["start_date"] = startDate
+	}
+	if endDate != "" {
+		filters["end_date"] = endDate
 	}
 
 	if !isSuperadmin {

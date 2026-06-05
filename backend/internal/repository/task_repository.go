@@ -62,6 +62,13 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 	} else if companyID, ok := filters["company_id"].(uint); ok {
 		query = query.Where("tasks.tenant_id = ?", companyID)
 	}
+
+	if startDate, ok := filters["start_date"].(string); ok && startDate != "" {
+		query = query.Where("tasks.created_at >= ?", startDate)
+	}
+	if endDate, ok := filters["end_date"].(string); ok && endDate != "" {
+		query = query.Where("tasks.created_at <= ?", endDate)
+	}
 	if search, ok := filters["search"].(string); ok {
 		query = query.Where("tasks.title ILIKE ? OR tasks.description ILIKE ?", "%"+search+"%", "%"+search+"%")
 	}
