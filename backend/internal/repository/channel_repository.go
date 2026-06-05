@@ -11,7 +11,7 @@ type ChannelRepository interface {
 	// Channels
 	GetChannelsByUser(userID uint) ([]models.Channel, error)
 	GetChannel(id uint) (*models.Channel, error)
-	GetChannelByNameAndType(name string, channelType models.ChannelType) (*models.Channel, error)
+	GetChannelByNameAndType(name string, channelType models.ChannelType, tenantID uint) (*models.Channel, error)
 	CreateChannel(channel *models.Channel) error
 	UpdateChannel(channel *models.Channel, updates map[string]interface{}) error
 	DeleteChannel(id uint) error
@@ -105,9 +105,13 @@ func (r *channelRepository) GetChannel(id uint) (*models.Channel, error) {
 	return &channel, nil
 }
 
-func (r *channelRepository) GetChannelByNameAndType(name string, channelType models.ChannelType) (*models.Channel, error) {
+func (r *channelRepository) GetChannelByNameAndType(name string, channelType models.ChannelType, tenantID uint) (*models.Channel, error) {
 	var channel models.Channel
-	err := r.db.Where("name = ? AND type = ?", name, channelType).First(&channel).Error
+	q := r.db.Where("name = ? AND type = ?", name, channelType)
+	if tenantID > 0 {
+		q = q.Where("tenant_id = ?", tenantID)
+	}
+	err := q.First(&channel).Error
 	if err != nil {
 		return nil, err
 	}

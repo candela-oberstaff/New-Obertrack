@@ -8,6 +8,7 @@ import (
 type BoardRepository interface {
 	FindAll(filters map[string]interface{}) ([]models.Board, error)
 	GetByID(id uint) (*models.Board, error)
+	GetByIDAndTenant(id, tenantID uint) (*models.Board, error)
 	Create(board *models.Board) error
 	Update(board *models.Board, updates map[string]interface{}) error
 	Delete(board *models.Board) error
@@ -52,6 +53,17 @@ func (r *boardRepository) GetByID(id uint) (*models.Board, error) {
 	if err := r.db.Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
 		return db.Order("\"order\" ASC")
 	}).First(&board, id).Error; err != nil {
+		return nil, err
+	}
+	return &board, nil
+}
+
+func (r *boardRepository) GetByIDAndTenant(id, tenantID uint) (*models.Board, error) {
+	var board models.Board
+	if err := r.db.Where("tenant_id = ?", tenantID).
+		Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
+			return db.Order("\"order\" ASC")
+		}).First(&board, id).Error; err != nil {
 		return nil, err
 	}
 	return &board, nil

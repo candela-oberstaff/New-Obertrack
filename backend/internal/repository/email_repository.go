@@ -1,5 +1,9 @@
 package repository
 
+// EmailRepository manages email templates and campaigns.
+// NOTE: No tenant_id filtering — all endpoints are behind RequireSuperadmin()
+// middleware (see routes/platform_routes.go). Do NOT expose to non-superadmin users.
+
 import (
 	"time"
 

@@ -10,11 +10,13 @@ import (
 type WorkHourRepository interface {
 	Create(workHour *models.WorkHour) error
 	FindByID(id uint) (*models.WorkHour, error)
+	FindByIDAndTenant(id, tenantID uint) (*models.WorkHour, error)
 	FindManyByIDs(ids []uint) ([]models.WorkHour, error)
 	FindManyByIDsAndTenant(ids []uint, tenantID uint) ([]models.WorkHour, error)
 	FindByUserAndDate(userID uint, date time.Time) (*models.WorkHour, error)
 	Update(workHour *models.WorkHour) error
 	ApproveMultiple(ids []uint, approvedBy uint, approvedAt time.Time) error
+	ApproveMultipleAndTenant(ids []uint, approvedBy uint, approvedAt time.Time, tenantID uint) error
 	FindAll(filters map[string]interface{}, offset, limit int) ([]models.WorkHour, int64, error)
 	GetSummary(filters map[string]interface{}) (map[string]float64, error)
 	CountActiveToday() (int64, error)
@@ -40,6 +42,12 @@ func (r *workHourRepository) Create(workHour *models.WorkHour) error {
 func (r *workHourRepository) FindByID(id uint) (*models.WorkHour, error) {
 	var workHour models.WorkHour
 	err := r.db.First(&workHour, id).Error
+	return &workHour, err
+}
+
+func (r *workHourRepository) FindByIDAndTenant(id, tenantID uint) (*models.WorkHour, error) {
+	var workHour models.WorkHour
+	err := r.db.Where("tenant_id = ?", tenantID).First(&workHour, id).Error
 	return &workHour, err
 }
 
@@ -72,6 +80,17 @@ func (r *workHourRepository) Update(workHour *models.WorkHour) error {
 func (r *workHourRepository) ApproveMultiple(ids []uint, approvedBy uint, approvedAt time.Time) error {
 	return r.db.Model(&models.WorkHour{}).
 		Where("id IN ?", ids).
+		Updates(map[string]interface{}{
+			"approved":    true,
+			"approved_by": approvedBy,
+			"approved_at": approvedAt,
+		}).Error
+}
+
+func (r *workHourRepository) ApproveMultipleAndTenant(ids []uint, approvedBy uint, approvedAt time.Time, tenantID uint) error {
+	return r.db.Model(&models.WorkHour{}).
+		Where("id IN ?", ids).
+		Where("tenant_id = ?", tenantID).
 		Updates(map[string]interface{}{
 			"approved":    true,
 			"approved_by": approvedBy,

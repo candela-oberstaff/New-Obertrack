@@ -159,12 +159,13 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 		cType = models.ChannelTypePrivate
 	}
 
-	// Check if channel already exists
-	if existing, _ := s.repo.GetChannelByNameAndType(name, cType); existing != nil {
+	creator, _ := s.userRepo.GetByID(userID)
+	tenantID := models.TenantForUser(creator)
+
+	// Check if channel already exists within the same tenant
+	if existing, _ := s.repo.GetChannelByNameAndType(name, cType, tenantID); existing != nil {
 		return existing, nil
 	}
-
-	creator, _ := s.userRepo.GetByID(userID)
 
 	channel := &models.Channel{
 		Name:        name,
@@ -296,7 +297,7 @@ func (s *channelService) AddMember(channelID, userID, memberToAdd uint) error {
 }
 
 func (s *channelService) RemoveMember(channelID, userID, memberToRemove uint) error {
-	channel, err := s.repo.GetChannel(channelID)
+	channel, err := s.authorizeChannelTenant(channelID, userID, false)
 	if err != nil {
 		return err
 	}
@@ -345,7 +346,7 @@ func (s *channelService) Join(channelID, userID uint) error {
 }
 
 func (s *channelService) Leave(channelID, userID uint) error {
-	channel, err := s.repo.GetChannel(channelID)
+	channel, err := s.authorizeChannelTenant(channelID, userID, false)
 	if err != nil {
 		return err
 	}

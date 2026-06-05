@@ -1,5 +1,9 @@
 package repository
 
+// SurveyRepository manages surveys, questions and responses.
+// NOTE: No tenant_id filtering — CRUD endpoints are behind RequireSuperadmin()
+// middleware. The QuickResponse endpoint (public) is validated separately in the handler.
+
 import (
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"

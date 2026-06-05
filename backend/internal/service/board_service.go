@@ -36,7 +36,13 @@ func NewBoardService(repo repository.BoardRepository, userRepo repository.UserRe
 }
 
 func (s *boardService) authorizeBoardTenant(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error) {
-	board, err := s.repo.GetByID(boardID)
+	var board *models.Board
+	var err error
+	if isSuperadmin || tenantID == 0 {
+		board, err = s.repo.GetByID(boardID)
+	} else {
+		board, err = s.repo.GetByIDAndTenant(boardID, tenantID)
+	}
 	if err != nil {
 		return nil, errors.New("Board not found")
 	}

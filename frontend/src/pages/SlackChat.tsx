@@ -28,7 +28,7 @@ export default function SlackChat() {
     typingUsers, isRecording, isUploading, setIsUploading,
     showThread, setShowThread, threadReplies, setThreadReplies,
     sendMessage, sendTypingIndicator, startRecording, stopRecording,
-    editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels
+    editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels, fetchAllUsers
   } = useSlackChat(user as any)
 
   const [showNewChannelModal, setShowNewChannelModal] = useState(false)

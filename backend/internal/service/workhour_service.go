@@ -190,7 +190,13 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 }
 
 func (s *workHourService) Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error) {
-	workHour, err := s.repo.FindByID(id)
+	var workHour *models.WorkHour
+	var err error
+	if !isSuperadmin && tenantID > 0 {
+		workHour, err = s.repo.FindByIDAndTenant(id, tenantID)
+	} else {
+		workHour, err = s.repo.FindByID(id)
+	}
 	if err != nil {
 		return nil, errors.New("Work hour not found")
 	}
@@ -300,7 +306,11 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 		}
 	}
 
-	err = s.repo.ApproveMultiple(ids, userID, time.Now())
+	if !isSuperadmin && tenantID > 0 {
+		err = s.repo.ApproveMultipleAndTenant(ids, userID, time.Now(), tenantID)
+	} else {
+		err = s.repo.ApproveMultiple(ids, userID, time.Now())
+	}
 	if err == nil {
 		// Notificaciones de aprobación
 		go func() {
