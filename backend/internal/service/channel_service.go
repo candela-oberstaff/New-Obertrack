@@ -172,7 +172,7 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 		Description: description,
 		Type:        cType,
 		CreatedBy:   userID,
-		TenantID:    models.TenantForUser(creator),
+		TenantID:    tenantID,
 		IsActive:    true,
 	}
 
@@ -180,7 +180,7 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 		return nil, err
 	}
 
-	// Add creator as member
+	// Add creator as explicit member
 	s.repo.AddMember(&models.ChannelMember{
 		ChannelID: channel.ID,
 		UserID:    userID,
@@ -283,7 +283,7 @@ func (s *channelService) AddMember(channelID, userID, memberToAdd uint) error {
 		return ErrCrossTenant
 	}
 
-	if isMember, _ := s.repo.IsMember(channelID, memberToAdd); isMember {
+	if isMember, _ := s.repo.IsExplicitMember(channelID, memberToAdd); isMember {
 		return ErrAlreadyMember
 	}
 

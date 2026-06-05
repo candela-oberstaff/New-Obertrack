@@ -12,6 +12,7 @@ import {
   User as UserIcon
 } from 'lucide-react'
 import Tooltip from '../components/Common/Tooltip'
+import { TeamPanel } from '../components/Profile/TeamPanel'
 import styles from './Dashboard.module.css'
 
 const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -22,7 +23,6 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const {
     workHours,
-    employees,
     summary,
     isLoading,
     weekData,
@@ -223,25 +223,14 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') && employees.length > 0 && (
-          <div className={`${styles['dashboard-card']} ${styles['team-card'] || 'team-card'}`} data-tour="dashboard-team-card">
-            <div className={styles['card-header']}>
-              <h3>Equipo de trabajo</h3>
-              <span className={styles['card-badge']}>{employees.length}</span>
-            </div>
-            <div className={styles['team-list']}>
-              {employees.slice(0, 6).map(emp => (
-                <div key={emp.id} className={styles['team-member']}>
-                  <div className={styles['member-avatar']}>
-                    {emp.name?.charAt(0).toUpperCase()}
-                  </div>
-                  <div className={styles['member-info']}>
-                    <span className={styles['member-name']}>{emp.name}</span>
-                    <span className={styles['member-role']}>{emp.job_title || emp.user_type}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+        {(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') && (
+          <div data-tour="dashboard-team-card">
+            {user?.is_manager && !user?.is_superadmin && !user?.user_type?.includes('empleador') && (
+              <TeamPanel type="manager" />
+            )}
+            {(user?.user_type === 'empleador' || user?.is_superadmin) && (
+              <TeamPanel type="employer" />
+            )}
           </div>
         )}
       </div>

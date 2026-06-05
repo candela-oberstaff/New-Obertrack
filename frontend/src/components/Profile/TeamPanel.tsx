@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { userService } from '../../services/api'
 import type { User } from '../../types'
 import Avatar from '../Common/Avatar'
 import { useConfirm } from '../ui/ConfirmProvider'
 import styles from '../../pages/Profile.module.css'
-import { Search, Building, Shield, Briefcase, ArrowUp, ArrowDown, Users } from 'lucide-react'
+import { Search, Building, Shield, Briefcase, ArrowUp, ArrowDown, Users, MessageSquare } from 'lucide-react'
 
 interface TeamPanelProps {
   type: 'manager' | 'employer'
@@ -13,6 +14,7 @@ interface TeamPanelProps {
 }
 
 export function TeamPanel({ type }: TeamPanelProps) {
+  const navigate = useNavigate()
   const [teamMembers, setTeamMembers] = useState<User[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [message, setMessage] = useState('')
@@ -117,6 +119,14 @@ export function TeamPanel({ type }: TeamPanelProps) {
                 )}
               </span>
             </div>
+            <button 
+              className={styles['btn-message']}
+              onClick={() => navigate(`/chat?userId=${member.id}`)}
+              title="Enviar mensaje directo"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', marginRight: '4px' }}
+            >
+              <MessageSquare size={14} style={{ color: '#4f46e5' }} />
+            </button>
             {type === 'employer' && (
               <button 
                 className={styles['btn-promote']}

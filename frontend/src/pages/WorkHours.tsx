@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import type { WorkHour } from '../types'
 import { useWorkHours } from '../hooks'
@@ -65,6 +65,37 @@ export default function WorkHours() {
   const [isSavingWorkHour, setIsSavingWorkHour] = useState(false)
 
   const isEmployer = user?.user_type === 'empleador' || user?.is_superadmin
+
+  const actionBtnsRef = useRef<HTMLDivElement>(null)
+  const [showBtnLeft, setShowBtnLeft] = useState(false)
+  const [showBtnRight, setShowBtnRight] = useState(false)
+
+  const checkBtnScroll = () => {
+    if (actionBtnsRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = actionBtnsRef.current
+      setShowBtnLeft(scrollLeft > 5)
+      setShowBtnRight(scrollLeft < scrollWidth - clientWidth - 5)
+    }
+  }
+
+  useEffect(() => {
+    const el = actionBtnsRef.current
+    if (el) {
+      checkBtnScroll()
+      el.addEventListener('scroll', checkBtnScroll)
+      window.addEventListener('resize', checkBtnScroll)
+      const timer = setTimeout(checkBtnScroll, 100)
+      return () => {
+        el.removeEventListener('scroll', checkBtnScroll)
+        window.removeEventListener('resize', checkBtnScroll)
+        clearTimeout(timer)
+      }
+    }
+  }, [isEmployer])
+
+  const scrollBtnsLeft = () => actionBtnsRef.current?.scrollBy({ left: -160, behavior: 'smooth' })
+  const scrollBtnsRight = () => actionBtnsRef.current?.scrollBy({ left: 160, behavior: 'smooth' })
+
 
   const employerTodayActiveCount = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0]
@@ -428,30 +459,40 @@ export default function WorkHours() {
           </p>
         </div>
         {isEmployer ? (
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }} data-tour="work-hours-actions">
-            <button 
-              className={styles['btn-secondary'] || 'btn-secondary'} 
-              onClick={handleDownloadPDF}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1', padding: '10px 16px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s' }}
-            >
-              <FileText size={16} /> Descargar PDF
-            </button>
-            <button 
-              className={styles['btn-secondary'] || 'btn-secondary'} 
-              onClick={handleDownloadExcel}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', backgroundColor: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1', padding: '10px 16px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s' }}
-            >
-              <Download size={16} /> Descargar Excel
-            </button>
-            <button 
-              className={styles['btn-primary']} 
-              onClick={handleSendEmail} 
-              disabled={isMailing}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s' }}
-            >
-              {isMailing ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
-              {isMailing ? 'Enviando...' : 'Enviar por Correo'}
-            </button>
+          <div className={styles['action-buttons-container']} data-tour="work-hours-actions">
+            {showBtnLeft && (
+              <button className={styles['scroll-btn-left']} onClick={scrollBtnsLeft} aria-label="Ver botones anteriores">
+                <ChevronLeft size={20} />
+              </button>
+            )}
+            <div className={styles['action-buttons-scroll']} ref={actionBtnsRef}>
+              <button
+                onClick={handleDownloadPDF}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1', padding: '9px 14px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', fontSize: '13px', whiteSpace: 'nowrap' }}
+              >
+                <FileText size={15} /> Descargar PDF
+              </button>
+              <button
+                onClick={handleDownloadExcel}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1', padding: '9px 14px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', fontSize: '13px', whiteSpace: 'nowrap' }}
+              >
+                <Download size={15} /> Descargar Excel
+              </button>
+              <button
+                className={styles['btn-primary']}
+                onClick={handleSendEmail}
+                disabled={isMailing}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', fontSize: '13px', whiteSpace: 'nowrap' }}
+              >
+                {isMailing ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
+                {isMailing ? 'Enviando...' : 'Enviar por Correo'}
+              </button>
+            </div>
+            {showBtnRight && (
+              <button className={styles['scroll-btn-right']} onClick={scrollBtnsRight} aria-label="Ver más botones">
+                <ChevronRight size={20} />
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: '8px' }} data-tour="work-hours-actions">

@@ -364,7 +364,8 @@
   color: #64748b;
 }
 
-.btn-promote {
+.btn-promote,
+.btn-message {
   padding: 6px 10px;
   border: none;
   background: #f1f5f9;
@@ -372,10 +373,18 @@
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-promote:hover {
   background: #e2e8f0;
+  transform: scale(1.1);
+}
+
+.btn-message:hover {
+  background: #e0e7ff;
   transform: scale(1.1);
 }
 
@@ -671,4 +680,104 @@
   margin: 0 0 16px 0;
 }
 
+/* Team list */
+.team-count {
+  font-size: 12px;
+  color: #64748b;
+  margin: -8px 0 12px 0;
+}
 
+.team-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.team-member:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.member-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.member-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.member-role {
+  display: block;
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* Action buttons in team member row */
+.btn-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid #c7d2fe;
+  background: #eef2ff;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+
+.btn-message:hover {
+  background: #e0e7ff;
+  border-color: #818cf8;
+  transform: scale(1.08);
+}
+
+.btn-promote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid #d1fae5;
+  background: #ecfdf5;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+
+.btn-promote:hover {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+  transform: scale(1.08);
+}
+
+/* When btn-promote is in "demote" state (the icon is red) */
+.btn-promote:has(svg[style*="ef4444"]) {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.btn-promote:has(svg[style*="ef4444"]):hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}

@@ -7,6 +7,9 @@ import (
 )
 
 func Migrate(db *gorm.DB) error {
+	// Drop old unique index without tenant_id if it exists
+	_ = db.Migrator().DropIndex(&Channel{}, "idx_channel_name_type")
+
 	err := db.AutoMigrate(
 		&User{},
 		&Board{},

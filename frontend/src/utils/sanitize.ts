@@ -33,9 +33,13 @@ export function htmlToText(html: string | null | undefined): string {
   // DOMPurify strips tags but returns HTML-encoded text (e.g. "&amp;" instead of "&").
   // Use a textarea to decode all HTML entities back to their plain-text equivalents.
   const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
-  const decoder = document.createElement('textarea')
-  decoder.innerHTML = clean
-  return (decoder.value || clean).replace(/\s+/g, ' ').trim()
+  
+  // Decode HTML entities (like &nbsp;, &amp;, etc.) using standard DOMParser
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(clean, 'text/html')
+  const decoded = doc.body.textContent || ''
+  
+  return decoded.replace(/\s+/g, ' ').trim()
 }
 
 // Harden anchor links: open in new tab without leaking the opener and block

@@ -14,6 +14,7 @@
   padding: 32px;
   background: transparent;
   flex-shrink: 0;
+  gap: 24px;
 }
 
 .header-left {
@@ -21,6 +22,28 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Action Buttons Scrollable Container */
+.action-buttons-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.action-buttons-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+.action-buttons-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .header-left h1 {
@@ -230,6 +253,17 @@
     justify-content: flex-start !important;
     flex-wrap: wrap !important;
     gap: 8px !important;
+  }
+
+  .action-buttons-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .action-buttons-scroll {
+    flex: 1 !important;
+    min-width: 0 !important;
   }
 }
 

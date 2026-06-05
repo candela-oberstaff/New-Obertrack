@@ -52,7 +52,14 @@ func (s *boardService) authorizeBoardTenant(boardID, tenantID, userID uint, role
 	if tenantID == 0 || board.TenantID != tenantID {
 		return nil, errors.New("Access denied")
 	}
-	if board.CreatedBy == userID || isEmployerRole(role) || isManager {
+	isMember := false
+	for _, m := range board.Members {
+		if m.ID == userID {
+			isMember = true
+			break
+		}
+	}
+	if board.CreatedBy == userID || isEmployerRole(role) || isManager || isMember {
 		return board, nil
 	}
 	return nil, errors.New("Access denied")
@@ -252,6 +259,11 @@ func (s *boardService) Update(boardID, tenantID, userID uint, role string, isMan
 	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {
 		return nil, err
+	}
+
+	// Only creator, employer or manager can update board metadata/members
+	if !isSuperadmin && board.CreatedBy != userID && !isEmployerRole(role) && !isManager {
+		return nil, errors.New("Access denied")
 	}
 
 	if len(updates) > 0 {

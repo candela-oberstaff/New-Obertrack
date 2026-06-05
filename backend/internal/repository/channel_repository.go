@@ -12,6 +12,7 @@ type ChannelRepository interface {
 	GetChannelsByUser(userID uint) ([]models.Channel, error)
 	GetChannel(id uint) (*models.Channel, error)
 	GetChannelByNameAndType(name string, channelType models.ChannelType, tenantID uint) (*models.Channel, error)
+	IsExplicitMember(channelID, userID uint) (bool, error)
 	CreateChannel(channel *models.Channel) error
 	UpdateChannel(channel *models.Channel, updates map[string]interface{}) error
 	DeleteChannel(id uint) error
@@ -85,12 +86,21 @@ func (r *channelRepository) GetDB() *gorm.DB {
 // Channels
 
 func (r *channelRepository) GetChannelsByUser(userID uint) ([]models.Channel, error) {
+	var user models.User
+	if err := r.db.First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+	tenantID := models.TenantForUser(&user)
+
 	var channels []models.Channel
 	err := r.db.Table("channels").
 		Select("DISTINCT channels.*").
+		Joins("LEFT JOIN channel_members ON channel_members.channel_id = channels.id").
 		Where("channels.is_active = ?", true).
-		Joins("JOIN channel_members ON channel_members.channel_id = channels.id").
-		Where("channel_members.user_id = ?", userID).
+		Where(
+			r.db.Where("channel_members.user_id = ?", userID).
+				Or("channels.type = ? AND channels.tenant_id = ?", models.ChannelTypePublic, tenantID),
+		).
 		Order("channels.created_at DESC").
 		Find(&channels).Error
 	return channels, err
@@ -107,15 +117,17 @@ func (r *channelRepository) GetChannel(id uint) (*models.Channel, error) {
 
 func (r *channelRepository) GetChannelByNameAndType(name string, channelType models.ChannelType, tenantID uint) (*models.Channel, error) {
 	var channel models.Channel
-	q := r.db.Where("name = ? AND type = ?", name, channelType)
-	if tenantID > 0 {
-		q = q.Where("tenant_id = ?", tenantID)
-	}
-	err := q.First(&channel).Error
+	err := r.db.Where("name = ? AND type = ? AND tenant_id = ?", name, channelType, tenantID).First(&channel).Error
 	if err != nil {
 		return nil, err
 	}
 	return &channel, nil
+}
+
+func (r *channelRepository) IsExplicitMember(channelID, userID uint) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.ChannelMember{}).Where("channel_id = ? AND user_id = ?", channelID, userID).Count(&count).Error
+	return count > 0, err
 }
 
 func (r *channelRepository) CreateChannel(channel *models.Channel) error {
@@ -160,7 +172,28 @@ func (r *channelRepository) RemoveMember(channelID, userID uint) error {
 func (r *channelRepository) IsMember(channelID, userID uint) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.ChannelMember{}).Where("channel_id = ? AND user_id = ?", channelID, userID).Count(&count).Error
-	return count > 0, err
+	if err != nil {
+		return false, err
+	}
+	if count > 0 {
+		return true, nil
+	}
+
+	var channel models.Channel
+	if err := r.db.First(&channel, channelID).Error; err != nil {
+		return false, err
+	}
+	if channel.Type == models.ChannelTypePublic {
+		var user models.User
+		if err := r.db.First(&user, userID).Error; err != nil {
+			return false, err
+		}
+		if models.TenantForUser(&user) == channel.TenantID {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // Messages
