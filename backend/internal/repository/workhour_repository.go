@@ -152,6 +152,11 @@ func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, lim
 		query = query.Joins("JOIN users ON users.id = work_hours.user_id").Where("users.manager_id = ?", managerID)
 	}
 
+	if managerOrUserID, ok := filters["manager_or_user_id"].(uint); ok {
+		query = query.Joins("JOIN users manager_scope ON manager_scope.id = work_hours.user_id").
+			Where("work_hours.user_id = ? OR manager_scope.manager_id = ?", managerOrUserID, managerOrUserID)
+	}
+
 	if userID, ok := filters["user_id"].(uint); ok {
 		query = query.Where("work_hours.user_id = ?", userID)
 	}

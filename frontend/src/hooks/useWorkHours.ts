@@ -75,17 +75,24 @@ export function useWorkHours(user: any): UseWorkHoursReturn {
     try {
       const isEmployer = user?.user_type === 'empleador'
       const isSuperadmin = user?.is_superadmin
+      const isManager = user?.is_manager
 
       const [hoursRes, summaryRes] = await Promise.all([
         workHourService.getAll({}),
         workHourService.getSummary(),
       ])
-      setWorkHours(hoursRes.data || [])
       setSummary(summaryRes)
 
-      if (isEmployer || isSuperadmin) {
+      if (isEmployer || isSuperadmin || isManager) {
         const pendingRes = await workHourService.getPending()
         setPendingHours(pendingRes || [])
+        const byID = new Map<number, WorkHour>()
+        ;(hoursRes.data || []).forEach((wh) => byID.set(wh.id, wh))
+        ;(pendingRes || []).forEach((wh) => byID.set(wh.id, wh))
+        setWorkHours(Array.from(byID.values()))
+      } else {
+        setWorkHours(hoursRes.data || [])
+        setPendingHours([])
       }
     } catch (error) {
       console.error('Error fetching data:', error)

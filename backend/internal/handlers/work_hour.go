@@ -183,8 +183,9 @@ func (h *WorkHourHandler) GetPending(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	isManager := middleware.IsManager(c)
 
-	pending, err := h.svc.GetPending(tenantID, userID, role, isSuperadmin)
+	pending, err := h.svc.GetPending(tenantID, userID, role, isSuperadmin, isManager)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Only employers can access this resource" {
