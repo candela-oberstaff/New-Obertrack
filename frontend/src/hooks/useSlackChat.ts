@@ -27,6 +27,16 @@ export function useSlackChat(user: User | null) {
   const typingTimeoutRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+  const selectedChannelIdRef = useRef<number | null>(null)
+  const userIdRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    selectedChannelIdRef.current = selectedChannel?.id ?? null
+  }, [selectedChannel?.id])
+
+  useEffect(() => {
+    userIdRef.current = user?.id ?? null
+  }, [user?.id])
 
   const fetchChannels = useCallback(async () => {
     try {
@@ -74,7 +84,7 @@ export function useSlackChat(user: User | null) {
   }, [])
 
   const handleTyping = useCallback((userId: number, userName: string, channelId: number) => {
-    if (channelId !== selectedChannel?.id || userId === user?.id) return
+    if (channelId !== selectedChannelIdRef.current || userId === userIdRef.current) return
     setTypingUsers(prev => new Map(prev).set(userId, userName))
     if (typingTimeoutRef.current.has(userId)) clearTimeout(typingTimeoutRef.current.get(userId)!)
     const timeout = setTimeout(() => {
@@ -83,10 +93,10 @@ export function useSlackChat(user: User | null) {
       })
     }, 3000)
     typingTimeoutRef.current.set(userId, timeout)
-  }, [selectedChannel?.id, user?.id])
+  }, [])
 
   const connectWebSocket = useCallback(() => {
-    if (wsRef.current) wsRef.current.close()
+    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) return
 
     // Auth travels via the httpOnly cookie on the same-origin WS handshake.
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -97,27 +107,30 @@ export function useSlackChat(user: User | null) {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data)
-        if (msg.channel_id === selectedChannel?.id) {
+        const selectedChannelId = selectedChannelIdRef.current
+        const currentUserId = userIdRef.current
+
+        if (selectedChannelId !== null && msg.channel_id === selectedChannelId) {
           if (msg.type === 'message') {
-            if (msg.user_id === user?.id) return
+            if (msg.user_id === currentUserId) return
             setMessages(prev => {
               const filtered = msg.data.tempId ? prev.filter(m => m.tempId !== msg.data.tempId) : prev
               return [...filtered, msg.data]
             })
             playNotificationSound()
-            channelService.markAsRead(selectedChannel!.id).then(() => {
+            channelService.markAsRead(selectedChannelId).then(() => {
               window.dispatchEvent(new CustomEvent('chat-unread-updated'))
               fetchChannels()
             })
-            setChannels(prev => prev.map(c => c.id === selectedChannel!.id ? { ...c, unread_count: 0 } : c))
+            setChannels(prev => prev.map(c => c.id === selectedChannelId ? { ...c, unread_count: 0 } : c))
           } else if (msg.type === 'typing') {
             handleTyping(msg.user_id, msg.user_name, msg.channel_id)
           } else if (msg.type === 'message_pinned') {
             setMessages(prev => prev.map(m => m.id === msg.data.id ? { ...m, is_pinned: true } : m))
-            fetchPinnedMessages(selectedChannel!.id)
+            fetchPinnedMessages(selectedChannelId)
           } else if (msg.type === 'message_unpinned') {
             setMessages(prev => prev.map(m => m.id === msg.data.id ? { ...m, is_pinned: false } : m))
-            fetchPinnedMessages(selectedChannel!.id)
+            fetchPinnedMessages(selectedChannelId)
           } else if (msg.type === 'message_edited') {
             setMessages(prev => prev.map(m => m.id === msg.data.id ? { ...m, ...msg.data, is_edited: true } : m))
           } else if (msg.type === 'message_deleted') {
@@ -135,7 +148,7 @@ export function useSlackChat(user: User | null) {
               ))
             }
           }
-        } else if (msg.type === 'message' && msg.user_id !== user?.id) {
+        } else if (msg.type === 'message' && msg.user_id !== currentUserId) {
           setUnreadCount(prev => prev + 1)
           playNotificationSound()
           setChannels(prev => prev.map(c => c.id === msg.channel_id ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c))
@@ -146,27 +159,28 @@ export function useSlackChat(user: User | null) {
     ws.onclose = () => setIsConnected(false)
     ws.onerror = () => setIsConnected(false)
     wsRef.current = ws
-  }, [selectedChannel, user?.id, handleTyping, fetchPinnedMessages])
+  }, [fetchChannels, fetchPinnedMessages, handleTyping])
 
   useEffect(() => {
     fetchChannels()
     fetchAllUsers()
+    connectWebSocket()
     return () => { if (wsRef.current) wsRef.current.close() }
-  }, [fetchChannels, fetchAllUsers])
+  }, [fetchChannels, fetchAllUsers, connectWebSocket])
 
   useEffect(() => {
-    if (selectedChannel) {
-      fetchMessages(selectedChannel.id)
-      fetchChannelMembers(selectedChannel.id)
-      fetchPinnedMessages(selectedChannel.id)
-      connectWebSocket()
-      channelService.markAsRead(selectedChannel.id).then(() => {
+    const selectedChannelId = selectedChannel?.id
+    if (selectedChannelId) {
+      fetchMessages(selectedChannelId)
+      fetchChannelMembers(selectedChannelId)
+      fetchPinnedMessages(selectedChannelId)
+      channelService.markAsRead(selectedChannelId).then(() => {
         window.dispatchEvent(new CustomEvent('chat-unread-updated'))
         fetchChannels()
       })
-      setChannels(prev => prev.map(c => c.id === selectedChannel.id ? { ...c, unread_count: 0 } : c))
+      setChannels(prev => prev.map(c => c.id === selectedChannelId ? { ...c, unread_count: 0 } : c))
     }
-  }, [selectedChannel, fetchMessages, fetchChannelMembers, fetchPinnedMessages, connectWebSocket])
+  }, [selectedChannel?.id, fetchMessages, fetchChannelMembers, fetchPinnedMessages, fetchChannels])
 
   const sendMessage = useCallback((attachment?: { url: string; filename: string }, tempId?: string, contentOverride?: string) => {
     const textToSend = contentOverride !== undefined ? contentOverride : newMessage
