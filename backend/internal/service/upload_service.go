@@ -2,9 +2,10 @@ package service
 
 import (
 	"fmt"
+	"log"
+	"mime/multipart"
 	"os"
 	"path/filepath"
-	"mime/multipart"
 	"strings"
 	"time"
 )
@@ -17,11 +18,11 @@ type UploadService interface {
 }
 
 type UploadResponse struct {
-	URL       string `json:"url"`
-	Filename  string `json:"filename"`
-	Size      int64  `json:"size"`
-	Type      string `json:"type"`
-	Path      string `json:"path"`
+	URL      string `json:"url"`
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
+	Type     string `json:"type"`
+	Path     string `json:"path"`
 }
 
 type uploadService struct {
@@ -33,7 +34,9 @@ func NewUploadService(uploadPath string) UploadService {
 	if uploadPath == "" {
 		uploadPath = "./uploads"
 	}
-	os.MkdirAll(uploadPath, 0755)
+	if err := os.MkdirAll(uploadPath, 0755); err != nil {
+		log.Printf("failed to create upload directory %q: %v", uploadPath, err)
+	}
 	return &uploadService{
 		uploadPath:  uploadPath,
 		maxFileSize: 50 << 20, // 50MB
@@ -42,36 +45,37 @@ func NewUploadService(uploadPath string) UploadService {
 
 func (s *uploadService) GetAllowedMimeTypes() map[string]string {
 	return map[string]string{
-		"application/pdf":                                                                                             ".pdf",
-		"application/msword":                                                                                        ".doc",
-		"application/vnd.openxmlformats-officedocument.wordprocessingml.document":                                        ".docx",
-		"application/vnd.ms-excel":                                                                                   ".xls",
-		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":                                            ".xlsx",
-		"image/jpeg":                                                                                                ".jpg",
-		"image/png":                                                                                                 ".png",
-		"image/gif":                                                                                                 ".gif",
-		"image/webp":                                                                                                ".webp",
-		"audio/mpeg":                                                                                                ".mp3",
-		"audio/wav":                                                                                                 ".wav",
-		"audio/ogg":                                                                                                 ".ogg",
-		"audio/webm":                                                                                                ".webm",
+		"application/pdf":    ".pdf",
+		"application/msword": ".doc",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+		"application/vnd.ms-excel": ".xls",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+		"image/jpeg": ".jpg",
+		"image/png":  ".png",
+		"image/gif":  ".gif",
+		"image/webp": ".webp",
+		"audio/mpeg": ".mp3",
+		"audio/wav":  ".wav",
+		"audio/ogg":  ".ogg",
+		"audio/webm": ".webm",
 	}
 }
 
 func (s *uploadService) ValidateFile(file *multipart.FileHeader) (string, error) {
-    // Use header from multipart file
-    contentType := file.Header.Get("Content-Type")
-    ext, allowed := s.GetAllowedMimeTypes()[contentType]
-    if !allowed {
-        return "", fmt.Errorf("file type not allowed")
-    }
-    if file.Size > s.maxFileSize {
-        return "", fmt.Errorf("file too large (max 50MB)")
-    }
-    return ext, nil
+	// Use header from multipart file
+	contentType := normalizeContentType(file.Header.Get("Content-Type"))
+	ext, allowed := s.GetAllowedMimeTypes()[contentType]
+	if !allowed {
+		return "", fmt.Errorf("file type not allowed")
+	}
+	if file.Size > s.maxFileSize {
+		return "", fmt.Errorf("file too large (max 50MB)")
+	}
+	return ext, nil
 }
 
 func (s *uploadService) GenerateFilename(userID uint, originalName string, contentType string) (string, string, int64, error) {
+	contentType = normalizeContentType(contentType)
 	ext, allowed := s.GetAllowedMimeTypes()[contentType]
 	if !allowed {
 		return "", "", 0, fmt.Errorf("file type not allowed")
@@ -97,4 +101,12 @@ func (s *uploadService) sanitizeFilename(name string) string {
 		name = name[:50]
 	}
 	return name
+}
+
+func normalizeContentType(contentType string) string {
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = strings.TrimSpace(contentType[:idx])
+	}
+	return contentType
 }
