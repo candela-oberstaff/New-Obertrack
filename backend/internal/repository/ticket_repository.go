@@ -25,8 +25,13 @@ type TicketRepository interface {
 	GetByID(id uint) (*models.Ticket, error)
 	GetWithContact(id uint) (*models.Ticket, error)
 	List(assignedTo *uint) ([]models.Ticket, error)
+	ListByOrigin(origin string) ([]models.Ticket, error)
+	ListInternalReport(start, end time.Time) ([]models.Ticket, error)
 
 	CreateMessage(m *models.TicketMessage) error
+
+	CreateTransfer(t *models.TicketTransfer) error
+	ListTransfers(origin, ref string) ([]models.TicketTransfer, error)
 }
 
 type ticketRepository struct {
@@ -119,6 +124,38 @@ func (r *ticketRepository) List(assignedTo *uint) ([]models.Ticket, error) {
 	return tickets, nil
 }
 
+func (r *ticketRepository) ListByOrigin(origin string) ([]models.Ticket, error) {
+	var tickets []models.Ticket
+	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages").
+		Where("origin = ?", origin).Order("updated_at desc").Find(&tickets).Error; err != nil {
+		return nil, err
+	}
+	return tickets, nil
+}
+
+func (r *ticketRepository) ListInternalReport(start, end time.Time) ([]models.Ticket, error) {
+	var tickets []models.Ticket
+	if err := r.db.Preload("Messages").
+		Where("origin = ? AND created_at BETWEEN ? AND ?", models.OriginInternal, start, end).
+		Order("created_at desc").Find(&tickets).Error; err != nil {
+		return nil, err
+	}
+	return tickets, nil
+}
+
 func (r *ticketRepository) CreateMessage(m *models.TicketMessage) error {
 	return r.db.Create(m).Error
+}
+
+func (r *ticketRepository) CreateTransfer(t *models.TicketTransfer) error {
+	return r.db.Create(t).Error
+}
+
+func (r *ticketRepository) ListTransfers(origin, ref string) ([]models.TicketTransfer, error) {
+	var transfers []models.TicketTransfer
+	if err := r.db.Where("origin = ? AND ticket_ref = ?", origin, ref).
+		Order("created_at desc").Find(&transfers).Error; err != nil {
+		return nil, err
+	}
+	return transfers, nil
 }

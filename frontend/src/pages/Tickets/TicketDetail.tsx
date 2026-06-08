@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Ticket, LinkedUser, TicketStatusOption, ticketService } from '../../services/ticket.service';
+import { Ticket, LinkedUser, TicketStatusOption, TicketTransfer, ZohoAgent, ticketService } from '../../services/ticket.service';
 import ContactSidebar from './components/ContactSidebar';
 import MessageTimeline from './components/MessageTimeline';
 import ChatInputArea from './components/ChatInputArea';
+import TransferTicketModal from './components/TransferTicketModal';
 import styles from './Tickets.module.css';
-import { ArrowLeft, ExternalLink, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ExternalLink, RefreshCw, ArrowRightLeft, History } from 'lucide-react';
 
 const STAGE_LABELS: Record<string, { label: string; color: string }> = {
   new:         { label: 'Nuevo',        color: 'var(--color-azure)' },
@@ -43,6 +44,14 @@ export default function TicketDetail() {
   const [stageError, setStageError] = useState<string | null>(null);
   const [updatingStage, setUpdatingStage] = useState(false);
   const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>(DEFAULT_STATUS_OPTIONS);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transfers, setTransfers] = useState<TicketTransfer[]>([]);
+  const [zohoAgents, setZohoAgents] = useState<ZohoAgent[]>([]);
+
+  const openTransfer = async () => {
+    try { setZohoAgents(await ticketService.getZohoAgents()); } catch { /* ignore */ }
+    setShowTransfer(true);
+  };
 
   useEffect(() => {
     if (id) fetchTicket(id, false);
@@ -68,6 +77,7 @@ export default function TicketDetail() {
       const data = await ticketService.getTicket(decodeURIComponent(zohoId));
       setTicket(data.ticket);
       setLinkedUser(data.linked_user);
+      ticketService.getTicketTransfers('zoho', data.ticket.zoho_id).then(setTransfers).catch(() => {});
     } catch (error) {
       console.error('Error fetching ticket:', error);
     } finally {
@@ -195,17 +205,28 @@ export default function TicketDetail() {
           )}
         </div>
 
-        {/* Refresh */}
-        <button
-          onClick={() => id && fetchTicket(id, true)}
-          className={styles.channelBtn}
-          disabled={refreshing}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem' }}
-        >
-          <RefreshCw size={13} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
-          {refreshing ? 'Actualizando…' : 'Actualizar'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* Transfer */}
+          <button
+            onClick={openTransfer}
+            className={styles.channelBtn}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem' }}
+          >
+            <ArrowRightLeft size={13} /> Traspasar
+          </button>
+          {/* Refresh */}
+          <button
+            onClick={() => id && fetchTicket(id, true)}
+            className={styles.channelBtn}
+            disabled={refreshing}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem' }}
+          >
+            <RefreshCw size={13} style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }} />
+            {refreshing ? 'Actualizando…' : 'Actualizar'}
+          </button>
+        </div>
       </div>
+      {/* (Transfer is also available in the sidebar below, always visible) */}
 
       {/* ── Send error banner ── */}
       {sendError && (
@@ -232,14 +253,44 @@ export default function TicketDetail() {
           onStatusChange={handleStatusChange}
           stageError={stageError}
           updatingStage={updatingStage}
+          onTransfer={openTransfer}
         />
 
         {/* Chat area */}
         <div className={styles.detailMain}>
+          {transfers.length > 0 && (
+            <div style={{ padding: '0.85rem 1.1rem', borderBottom: '1px solid var(--glass-border, #e2e8f0)' }}>
+              <h4 style={{ fontSize: '0.82rem', fontWeight: 700, margin: '0 0 0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-secondary)' }}>
+                <History size={14} /> Historial de traspasos
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                {transfers.map(tr => (
+                  <div key={tr.id} style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>{tr.from_name || 'Sin asignar'} → {tr.to_name}</strong>
+                    {' '}por {tr.by_name} · {new Date(tr.created_at).toLocaleString()}
+                    {tr.reason ? ` — ${tr.reason}` : ''}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <MessageTimeline ticket={ticket} contact={ticket.contact} />
           <ChatInputArea onSend={handleSendResponse} />
         </div>
       </div>
+
+      {showTransfer && (
+        <TransferTicketModal
+          options={zohoAgents
+            .filter(a => a.zoho_agent_id !== ticket.assignee_id)
+            .map(a => ({ value: a.zoho_agent_id, label: `${a.name}${a.email ? ` (${a.email})` : ''}` }))}
+          onClose={() => setShowTransfer(false)}
+          onTransfer={async (value, reason) => {
+            await ticketService.transferZohoTicket(ticket.zoho_id, String(value), reason);
+            if (id) await fetchTicket(id, true);
+          }}
+        />
+      )}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

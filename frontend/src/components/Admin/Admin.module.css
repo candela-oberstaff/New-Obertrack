@@ -642,14 +642,255 @@
 
 /* Modal Premium */
 .modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
   background: rgba(15, 23, 42, 0.6);
   backdrop-filter: blur(8px);
 }
 
 .modal {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  background: var(--bg-primary, #fff);
+  border-radius: 20px;
+  padding: 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.06));
+  box-shadow: 0 30px 60px -15px rgba(15, 23, 42, 0.35);
 }
+
+/* Delete-confirmation modal (no form/header wrapper) */
+.modal > h2 {
+  margin: 0;
+  padding: 1.5rem 1.5rem 0.5rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.modal > p {
+  margin: 0 0 0.5rem;
+  padding: 0 1.5rem;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.92rem;
+}
+
+/* ── Modal form (UserModal) ───────────────────────────── */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--glass-border, #eef2f7);
+  background: linear-gradient(135deg, rgba(204, 51, 204, 0.06), rgba(139, 92, 246, 0.06));
+  flex-shrink: 0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.close-btn:hover { background: rgba(15, 23, 42, 0.1); color: var(--text-primary, #0f172a); }
+
+/* The form scrolls; header/footer stay put. */
+.modal form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.modal form > .form-group,
+.modal form > .form-row {
+  margin: 0 1.5rem;
+}
+.modal form > .form-group:first-of-type { margin-top: 1.25rem; }
+
+.modal .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 1.25rem;
+}
+
+.modal .form-group label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #64748b);
+}
+
+.modal .form-group input[type="text"],
+.modal .form-group input[type="email"],
+.modal .form-group input[type="password"] {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  font-size: 0.92rem;
+  background: var(--bg-secondary, #f8fafc);
+  color: var(--text-primary, #0f172a);
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.modal .form-group input::placeholder { color: var(--gray-400, #94a3b8); }
+
+.modal .form-group input:focus {
+  outline: none;
+  background: var(--bg-primary, #fff);
+  border-color: var(--primary, #cc33cc);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.14);
+}
+
+.form-row {
+  display: flex;
+  gap: 0.85rem;
+}
+.form-row .form-group { flex: 1; }
+
+/* Section heading inside the modal form */
+.section-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--primary, #cc33cc);
+  margin: 1.4rem 1.5rem 0.6rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--glass-border, #eef2f7);
+}
+.modal form > .section-label:first-child { margin-top: 1.25rem; }
+
+/* Permissions group: two toggle rows in a card */
+.permissions-group {
+  margin: 0 1.5rem 1rem;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Checkboxes rendered as toggle-switch rows */
+.checkbox-label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem !important;
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  color: var(--text-primary, #0f172a) !important;
+  cursor: pointer;
+  padding: 0.75rem 0.95rem;
+  background: var(--bg-secondary, #f8fafc);
+  transition: background 0.15s;
+}
+.permissions-group .checkbox-label + .checkbox-label {
+  border-top: 1px solid var(--glass-border, #e2e8f0);
+}
+.checkbox-label:hover { background: rgba(204, 51, 204, 0.04); }
+
+.checkbox-label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--gray-300, #cbd5e1);
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  margin: 0;
+}
+.checkbox-label input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s;
+}
+.checkbox-label input[type="checkbox"]:checked {
+  background: var(--primary, #cc33cc);
+}
+.checkbox-label input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+}
+
+.password-reset-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.password-input { flex: 1; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 1rem 1.5rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--glass-border, #eef2f7);
+  background: var(--bg-primary, #fff);
+  flex-shrink: 0;
+}
+
+.modal .btn-primary {
+  padding: 0.65rem 1.4rem;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, var(--primary, #cc33cc), #8b5cf6);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.88rem;
+  box-shadow: 0 6px 16px -6px rgba(204, 51, 204, 0.6);
+  transition: transform 0.12s, box-shadow 0.15s, opacity 0.15s;
+}
+.modal .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -8px rgba(204, 51, 204, 0.7); }
+.modal .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.modal .btn-secondary {
+  padding: 0.65rem 1.4rem;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border, #cbd5e1);
+  background: transparent;
+  color: var(--text-secondary, #475569);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: background 0.15s;
+}
+.modal .btn-secondary:hover { background: var(--bg-secondary, #f1f5f9); }
 
 .btn-danger {
   background: #ef4444;

@@ -117,7 +117,10 @@ func (r *userRepository) Update(user *models.User, updates map[string]interface{
 }
 
 func (r *userRepository) Delete(id uint) error {
-	return r.db.Unscoped().Delete(&models.User{}, id).Error
+	// Soft delete: sets deleted_at and keeps the row so foreign keys
+	// (work_hours, tickets, audit_logs, etc.) stay valid and history is
+	// preserved. The user disappears from all normal queries.
+	return r.db.Delete(&models.User{}, id).Error
 }
 
 func (r *userRepository) GetEmployees(employerID uint) ([]models.User, error) {

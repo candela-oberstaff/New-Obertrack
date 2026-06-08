@@ -27,10 +27,11 @@ type WorkHourService interface {
 }
 
 type workHourService struct {
-	repo     repository.WorkHourRepository
-	userRepo repository.UserRepository
-	notifSvc NotificationService
-	brevoSvc *BrevoService
+	repo      repository.WorkHourRepository
+	userRepo  repository.UserRepository
+	notifSvc  NotificationService
+	brevoSvc  *BrevoService
+	ticketSvc TicketService
 }
 
 func NewWorkHourService(
@@ -38,12 +39,14 @@ func NewWorkHourService(
 	userRepo repository.UserRepository,
 	notifSvc NotificationService,
 	brevoSvc *BrevoService,
+	ticketSvc TicketService,
 ) WorkHourService {
 	return &workHourService{
-		repo:     repo,
-		userRepo: userRepo,
-		notifSvc: notifSvc,
-		brevoSvc: brevoSvc,
+		repo:      repo,
+		userRepo:  userRepo,
+		notifSvc:  notifSvc,
+		brevoSvc:  brevoSvc,
+		ticketSvc: ticketSvc,
 	}
 }
 
@@ -418,6 +421,12 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 	}
 	if err == nil {
 		go func() {
+			// Resolve who rejected once (same approver for the whole batch).
+			rejectedByName := ""
+			if approver, err := s.userRepo.GetByID(userID); err == nil && approver != nil {
+				rejectedByName = approver.Name
+			}
+
 			userHours := make(map[uint][]models.WorkHour)
 			for _, wh := range workHours {
 				userHours[wh.UserID] = append(userHours[wh.UserID], wh)
@@ -437,6 +446,26 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 				}
 				msg := fmt.Sprintf("Tus horas de los dÃ­as %s fueron rechazadas. Motivo: %s", dates, reason)
 				_ = s.notifSvc.CreateNotification(professional.ID, "work_hour_rejected", "Jornadas rechazadas", msg, map[string]interface{}{"dates": dates, "reason": reason})
+
+				// Surface the rejection as an internal alert in the support tickets area.
+				if s.ticketSvc != nil {
+					companyName := ""
+					if professional.EmpleadorID != nil {
+						if employer, err := s.userRepo.GetByID(*professional.EmpleadorID); err == nil && employer != nil {
+							companyName = employer.CompanyName
+						}
+					}
+					_ = s.ticketSvc.CreateWorkHourRejectionAlert(RejectionAlertInput{
+						ProfessionalID:    professional.ID,
+						ProfessionalName:  professional.Name,
+						ProfessionalEmail: professional.Email,
+						ProfessionalPhone: professional.PhoneNumber,
+						CompanyName:       companyName,
+						RejectedByName:    rejectedByName,
+						Dates:             dates,
+						Reason:            reason,
+					})
+				}
 			}
 		}()
 	}

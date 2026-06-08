@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
+	"github.com/obertrack/backend/internal/audit"
 	"github.com/obertrack/backend/internal/config"
 	"github.com/obertrack/backend/internal/migrations"
 	"github.com/obertrack/backend/internal/middleware"
@@ -50,6 +51,9 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 	log.Println("Database migrations completed successfully")
+
+	// Record every row change (any table) as a "data" audit entry.
+	audit.RegisterDataAuditHooks(db)
 
 	log.Println("Initializing routes...")
 	r := gin.Default()

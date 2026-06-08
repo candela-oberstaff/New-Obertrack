@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Check, Pencil, XCircle } from 'lucide-react'
 import type { WorkHour } from '../../../types'
 import { parseLocalDate } from '../utils'
@@ -27,6 +27,13 @@ export function WorkHourDetailModal({
   const [showRejectForm, setShowRejectForm] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Reset the reject form whenever the modal opens a different record (or
+  // closes), so the textarea/reason never leaks into another registro.
+  useEffect(() => {
+    setShowRejectForm(false)
+    setRejectionReason('')
+  }, [workHour?.id])
 
   if (!workHour) return null
 

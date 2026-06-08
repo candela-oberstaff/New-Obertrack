@@ -223,6 +223,9 @@
 .waIcon   { color: #25D366; }
 .mailIcon { color: var(--color-fresh-sky); }
 
+.badge-internal { background: rgba(217, 119, 6, 0.12); color: #b45309; }
+.badge-zoho     { background: rgba(99, 102, 241, 0.1); color: #4f46e5; }
+
 /* ─────────────────────────────────────────
    TICKET DETAIL – layout en dos columnas
    Fluye normal; solo .chatMessages tiene

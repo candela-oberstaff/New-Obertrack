@@ -160,6 +160,8 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		PhoneNumber string `json:"phone_number"`
 		Country     string `json:"country"`
 		City        string `json:"city"`
+		Location    string `json:"location"`
+		CompanyName string `json:"company_name"`
 		IsActive    *bool  `json:"is_active"`
 		IsManager   *bool  `json:"is_manager"`
 		UserType    string `json:"user_type"`
@@ -198,6 +200,12 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	}
 	if req.City != "" {
 		updates["city"] = req.City
+	}
+	if req.Location != "" {
+		updates["location"] = req.Location
+	}
+	if req.CompanyName != "" {
+		updates["company_name"] = req.CompanyName
 	}
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive

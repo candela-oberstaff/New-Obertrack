@@ -4,7 +4,7 @@ import { Select } from '../../../components/ui/Select';
 import styles from '../Tickets.module.css';
 import {
   User, Phone, Mail, Clock, AlertCircle, Building2,
-  Briefcase, MapPin, MessageCircle, Shield, Brain, TrendingUp
+  Briefcase, MapPin, MessageCircle, Shield, Brain, TrendingUp, ArrowRightLeft
 } from 'lucide-react';
 
 interface ContactSidebarProps {
@@ -14,9 +14,10 @@ interface ContactSidebarProps {
   onStatusChange: (newStatus: string) => void;
   stageError?: string | null;
   updatingStage?: boolean;
+  onTransfer?: () => void;
 }
 
-export default function ContactSidebar({ ticket, linkedUser, statusOptions, onStatusChange, stageError, updatingStage = false }: ContactSidebarProps) {
+export default function ContactSidebar({ ticket, linkedUser, statusOptions, onStatusChange, stageError, updatingStage = false, onTransfer }: ContactSidebarProps) {
   const navigate = useNavigate();
 
   const isProfessional = linkedUser?.user_type === 'profesional';
@@ -408,8 +409,22 @@ export default function ContactSidebar({ ticket, linkedUser, statusOptions, onSt
               {stageError}
             </span>
           )}
+          {onTransfer && (
+            <button
+              onClick={onTransfer}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                width: '100%', marginTop: '12px', padding: '9px 14px',
+                borderRadius: '8px', border: '1px solid var(--primary)', cursor: 'pointer', fontWeight: 600,
+                fontSize: '13px', background: 'transparent', color: 'var(--primary)',
+              }}
+            >
+              <ArrowRightLeft size={15} />
+              Traspasar ticket
+            </button>
+          )}
         </div>
-        
+
         <div className={styles.ticketMeta}>
           {ticket.ticket_number && (
             <div className={styles.metaRow}>

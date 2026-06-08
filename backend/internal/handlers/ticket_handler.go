@@ -4,6 +4,7 @@ import (
 	"hash/fnv"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,12 +17,13 @@ import (
 )
 
 type TicketHandler struct {
-	db      *gorm.DB
-	zohoSvc *service.ZohoService
+	db        *gorm.DB
+	zohoSvc   *service.ZohoService
+	ticketSvc service.TicketService
 }
 
-func NewTicketHandler(db *gorm.DB, zohoSvc *service.ZohoService) *TicketHandler {
-	return &TicketHandler{db: db, zohoSvc: zohoSvc}
+func NewTicketHandler(db *gorm.DB, zohoSvc *service.ZohoService, ticketSvc service.TicketService) *TicketHandler {
+	return &TicketHandler{db: db, zohoSvc: zohoSvc, ticketSvc: ticketSvc}
 }
 
 func canUseSupportInbox(c *gin.Context) bool {
@@ -110,6 +112,7 @@ func ticketDTOFromZoho(zt service.ZohoTicket, messages []models.TicketMessage) g
 		"assignee_email": zt.AssigneeEmail,
 		"created_at":     zt.CreatedTime,
 		"updated_at":     zt.ModifiedTime,
+		"origin":         models.OriginZoho,
 		"contact": gin.H{
 			"id":    hashStringToUint(zt.ContactID),
 			"name":  contactName,
@@ -117,6 +120,44 @@ func ticketDTOFromZoho(zt service.ZohoTicket, messages []models.TicketMessage) g
 			"email": contactEmail,
 		},
 		"messages": messages,
+	}
+}
+
+// ticketDTOFromInternal maps a locally stored internal alert ticket to the same
+// shape the board consumes for Zoho tickets, tagged with origin "internal".
+func ticketDTOFromInternal(t models.Ticket) gin.H {
+	messages := t.Messages
+	if messages == nil {
+		messages = []models.TicketMessage{}
+	}
+	assigneeName := ""
+	assigneeEmail := ""
+	if t.Assignee != nil {
+		assigneeName = t.Assignee.Name
+		assigneeEmail = t.Assignee.Email
+	}
+	return gin.H{
+		"id":                 t.ID,
+		"zoho_id":            "",
+		"assigned_to":        t.AssignedTo,
+		"assignee_name":      assigneeName,
+		"assignee_email":     assigneeEmail,
+		"title":              t.Title,
+		"description":        t.Description,
+		"stage":              t.Stage,
+		"status":             t.Status,
+		"origin":             models.OriginInternal,
+		"user_id":            t.UserID,
+		"professional_email": t.ProfessionalEmail,
+		"professional_phone": t.ProfessionalPhone,
+		"company_name":       t.CompanyName,
+		"rejected_by_name":   t.RejectedByName,
+		"reason":             t.Reason,
+		"work_dates":         t.WorkDates,
+		"created_at":         t.CreatedAt,
+		"updated_at":         t.UpdatedAt,
+		"contact":            nil,
+		"messages":           messages,
 	}
 }
 
@@ -220,18 +261,303 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 		}
 	}
 
-	zohoTickets, err := h.zohoSvc.ListTickets(assigneeID)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch tickets from Zoho Desk: " + err.Error()})
-		return
+	tickets := make([]gin.H, 0)
+
+	// Internal Obertrack alerts (e.g. work-hour rejections) come first and are
+	// visible to all support users. A Zoho outage must not hide them.
+	if h.ticketSvc != nil {
+		internal, ierr := h.ticketSvc.ListInternal()
+		if ierr != nil {
+			log.Printf("[Tickets] failed to list internal alerts: %v", ierr)
+		} else {
+			for _, t := range internal {
+				tickets = append(tickets, ticketDTOFromInternal(t))
+			}
+		}
 	}
 
-	tickets := make([]gin.H, 0, len(zohoTickets))
-	for _, zt := range zohoTickets {
-		tickets = append(tickets, ticketDTOFromZoho(zt, nil))
+	zohoTickets, err := h.zohoSvc.ListTickets(assigneeID)
+	if err != nil {
+		// Degrade gracefully: still return internal alerts if Zoho is unavailable.
+		log.Printf("[Tickets] failed to fetch from Zoho Desk: %v", err)
+	} else {
+		for _, zt := range zohoTickets {
+			tickets = append(tickets, ticketDTOFromZoho(zt, nil))
+		}
 	}
 
 	c.JSON(http.StatusOK, tickets)
+}
+
+// UpdateInternalTicket changes the stage/status of an internal alert ticket
+// (e.g. marking a work-hour rejection alert as resolved). It never touches Zoho.
+func (h *TicketHandler) UpdateInternalTicket(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+
+	var req struct {
+		Stage  string `json:"stage"`
+		Status string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ticket, err := h.ticketSvc.UpdateInternal(uint(id), models.TicketStage(req.Stage), req.Status)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Internal ticket not found"})
+		return
+	}
+	c.JSON(http.StatusOK, ticketDTOFromInternal(*ticket))
+}
+
+// GetInternalTicket returns a single internal alert ticket (for its detail page).
+func (h *TicketHandler) GetInternalTicket(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+	ticket, err := h.ticketSvc.GetInternal(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Internal ticket not found"})
+		return
+	}
+	c.JSON(http.StatusOK, ticketDTOFromInternal(*ticket))
+}
+
+// AddInternalNote appends a follow-up note to an internal alert ticket.
+func (h *TicketHandler) AddInternalNote(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	msg, err := h.ticketSvc.AddInternalNote(uint(id), middleware.GetUserID(c), req.Content)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No se pudo agregar la nota"})
+		return
+	}
+	c.JSON(http.StatusCreated, msg)
+}
+
+// GetRejectionReport returns internal work-hour-rejection alerts for a month,
+// for the rejections report table/export.
+func (h *TicketHandler) GetRejectionReport(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	now := time.Now()
+	month, _ := strconv.Atoi(c.Query("month"))
+	year, _ := strconv.Atoi(c.Query("year"))
+	if month < 1 || month > 12 {
+		month = int(now.Month())
+	}
+	if year < 2000 {
+		year = now.Year()
+	}
+	start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, now.Location())
+	end := start.AddDate(0, 1, 0).Add(-time.Nanosecond)
+
+	tickets, err := h.ticketSvc.ListInternalReport(start, end)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to build rejection report"})
+		return
+	}
+
+	items := make([]gin.H, 0, len(tickets))
+	for _, t := range tickets {
+		items = append(items, ticketDTOFromInternal(t))
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": len(items), "month": month, "year": year})
+}
+
+// GetSupportAgents lists active customer_success users (transfer targets).
+func (h *TicketHandler) GetSupportAgents(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	agents, err := h.ticketSvc.ListSupportAgents()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list agents"})
+		return
+	}
+	out := make([]gin.H, 0, len(agents))
+	for _, a := range agents {
+		out = append(out, gin.H{"id": a.ID, "name": a.Name, "email": a.Email, "zoho_agent_id": a.ZohoAgentID})
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// GetTicketTransfers returns the transfer history for a ticket.
+func (h *TicketHandler) GetTicketTransfers(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	transfers, err := h.ticketSvc.ListTransfers(c.Query("origin"), c.Query("ref"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list transfers"})
+		return
+	}
+	c.JSON(http.StatusOK, transfers)
+}
+
+// TransferInternalTicket reassigns an internal alert ticket to another agent.
+func (h *TicketHandler) TransferInternalTicket(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+	var req struct {
+		ToUserID uint   `json:"to_user_id" binding:"required"`
+		Reason   string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	ticket, err := h.ticketSvc.TransferInternal(uint(id), req.ToUserID, middleware.GetUserID(c), middleware.IsSuperadmin(c), req.Reason)
+	if err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": "No se pudo traspasar el ticket"})
+		return
+	}
+	c.JSON(http.StatusOK, ticketDTOFromInternal(*ticket))
+}
+
+// TransferZohoTicket reassigns a Zoho Desk ticket to another support agent.
+func (h *TicketHandler) TransferZohoTicket(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	ticketID := c.Param("id")
+	var req struct {
+		ToAgentID string `json:"to_agent_id" binding:"required"` // Zoho agent id
+		Reason    string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	zt, err := h.zohoSvc.GetTicketDetail(ticketID)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch ticket from Zoho Desk: " + err.Error()})
+		return
+	}
+	if !h.isTicketOwner(c, zt) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Solo el responsable actual o un superadmin pueden traspasar este ticket"})
+		return
+	}
+
+	// Resolve the target Zoho agent (name/email).
+	agent, err := h.zohoSvc.GetAgent(req.ToAgentID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Agente de Zoho no encontrado"})
+		return
+	}
+
+	if err := h.zohoSvc.AssignTicket(ticketID, req.ToAgentID); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "No se pudo reasignar en Zoho Desk: " + err.Error()})
+		return
+	}
+
+	// Cross-reference Zoho agents with local users (by email) for notifications.
+	var toUserID *uint
+	if agent.Email != "" {
+		var u models.User
+		if err := h.db.Where("email = ?", agent.Email).First(&u).Error; err == nil {
+			toUserID = &u.ID
+		}
+	}
+	var fromUserID *uint
+	if zt.AssigneeEmail != "" {
+		var prev models.User
+		if err := h.db.Where("email = ?", zt.AssigneeEmail).First(&prev).Error; err == nil {
+			fromUserID = &prev.ID
+		}
+	}
+	var byName string
+	if by, err := h.ticketSvc.GetUserName(middleware.GetUserID(c)); err == nil {
+		byName = by
+	}
+	_ = h.ticketSvc.RecordTransfer(service.TransferInput{
+		Origin:      models.OriginZoho,
+		TicketRef:   ticketID,
+		TicketTitle: zt.Subject,
+		FromUserID:  fromUserID,
+		FromName:    zt.AssigneeName,
+		ToUserID:    toUserID,
+		ToName:      agent.Name,
+		ByUserID:    middleware.GetUserID(c),
+		ByName:      byName,
+		Reason:      req.Reason,
+	})
+
+	c.JSON(http.StatusOK, gin.H{"message": "Ticket traspasado", "assignee_id": req.ToAgentID})
+}
+
+// GetZohoAgents lists Zoho Desk agents (transfer targets for Zoho tickets),
+// cross-referenced with local users by email when a match exists.
+func (h *TicketHandler) GetZohoAgents(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	agents, err := h.zohoSvc.ListAgents()
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "No se pudieron obtener los agentes de Zoho: " + err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(agents))
+	for _, a := range agents {
+		var uid *uint
+		if a.Email != "" {
+			var u models.User
+			if err := h.db.Where("email = ?", a.Email).First(&u).Error; err == nil {
+				uid = &u.ID
+			}
+		}
+		out = append(out, gin.H{"zoho_agent_id": a.ID, "name": a.Name, "email": a.Email, "user_id": uid})
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 func (h *TicketHandler) GetTicketStatuses(c *gin.Context) {
