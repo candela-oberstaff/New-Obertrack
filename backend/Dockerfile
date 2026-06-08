@@ -20,16 +20,18 @@ RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -o main ./cmd/main.go
 FROM alpine:3.20
 
 # Install curl for the healthcheck and create an unprivileged user
-RUN apk add --no-cache curl ca-certificates \
-    && adduser -D -u 10001 appuser
+RUN apk add --no-cache curl ca-certificates su-exec \
+    && adduser -D -u 10001 appuser \
+    && mkdir -p /app/uploads \
+    && chown appuser:appuser /app/uploads
 
 WORKDIR /app
 
 COPY --from=builder /app/main .
-
-# Drop root privileges (audit finding A-02)
-USER appuser
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8080
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["./main"]

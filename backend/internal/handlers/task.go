@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -292,7 +293,14 @@ func (h *TaskHandler) AddAttachment(c *gin.Context) {
 	filename := fmt.Sprintf("task_%d_%d_%d%s", taskID, userID, time.Now().UnixNano(), ext)
 	filepath_ := filepath.Join(uploadPath, filename)
 
+	if err := os.MkdirAll(uploadPath, 0755); err != nil {
+		log.Printf("failed to create upload directory %q: %v", uploadPath, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to prepare upload directory"})
+		return
+	}
+
 	if err := c.SaveUploadedFile(file, filepath_); err != nil {
+		log.Printf("failed to save task attachment %q: %v", filepath_, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
 		return
 	}

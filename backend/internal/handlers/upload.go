@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 )
 
 type UploadHandler struct {
-	svc       service.UploadService
+	svc        service.UploadService
 	uploadPath string
 }
 
@@ -22,7 +23,9 @@ func NewUploadHandler(svc service.UploadService, uploadPath string) *UploadHandl
 	if uploadPath == "" {
 		uploadPath = "./uploads"
 	}
-	os.MkdirAll(uploadPath, 0755)
+	if err := os.MkdirAll(uploadPath, 0755); err != nil {
+		log.Printf("failed to create upload directory %q: %v", uploadPath, err)
+	}
 	return &UploadHandler{
 		svc:        svc,
 		uploadPath: uploadPath,
@@ -48,7 +51,14 @@ func (h *UploadHandler) UploadFile(c *gin.Context) {
 	filename := fmt.Sprintf("%d_%d_%s%s", userID, file.Size, sanitizeFilename(file.Filename), ext)
 	filePath := filepath.Join(h.uploadPath, filename)
 
+	if err := os.MkdirAll(h.uploadPath, 0755); err != nil {
+		log.Printf("failed to create upload directory %q: %v", h.uploadPath, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to prepare upload directory"})
+		return
+	}
+
 	if err := c.SaveUploadedFile(file, filePath); err != nil {
+		log.Printf("failed to save upload %q: %v", filePath, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
 		return
 	}
