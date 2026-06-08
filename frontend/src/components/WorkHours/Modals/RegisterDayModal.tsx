@@ -1,6 +1,7 @@
 import { X, Check, AlertCircle } from 'lucide-react'
 import { RichTextEditor } from '../../Tasks/RichTextEditor'
 import { Select } from '../../ui/Select'
+import { htmlToText } from '../../../utils/sanitize'
 import styles from '../../../pages/WorkHours.module.css'
 
 interface RegisterDayModalProps {
@@ -31,6 +32,9 @@ export function RegisterDayModal({
   isSubmitting = false
 }: RegisterDayModalProps) {
   if (!isOpen) return null
+
+  const hasActivities = htmlToText(formData.activities).length > 0
+  const isSubmitDisabled = isSubmitting || !hasActivities
 
   return (
     <div className={styles['modal-overlay']} onClick={onClose}>
@@ -150,7 +154,7 @@ export function RegisterDayModal({
             <button type="button" className={styles['btn-cancel']} onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </button>
-            <button type="submit" className={styles['btn-primary']} disabled={isSubmitting}>
+            <button type="submit" className={styles['btn-primary']} disabled={isSubmitDisabled}>
               {isSubmitting ? 'Guardando...' : 'Registrar'}
             </button>
           </div>

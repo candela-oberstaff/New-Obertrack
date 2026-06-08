@@ -33,6 +33,35 @@ type Activity struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+type AbsenceReportItem struct {
+	ID            uint      `json:"id"`
+	UserID        uint      `json:"user_id"`
+	User          string    `json:"user"`
+	Company       string    `json:"company"`
+	WorkDate      time.Time `json:"work_date"`
+	HoursWorked   float64   `json:"hours_worked"`
+	AbsenceHours  float64   `json:"absence_hours"`
+	AbsenceReason string    `json:"absence_reason"`
+	Approved      bool      `json:"approved"`
+	Rejected      bool      `json:"rejected"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type AbsenceReasonCount struct {
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
+}
+
+type AbsenceReport struct {
+	TotalAbsences int                  `json:"total_absences"`
+	AbsenceHours  float64              `json:"absence_hours"`
+	PendingReview int                  `json:"pending_review"`
+	Approved      int                  `json:"approved"`
+	Rejected      int                  `json:"rejected"`
+	Reasons       []AbsenceReasonCount `gorm:"-" json:"reasons"`
+	Items         []AbsenceReportItem  `gorm:"-" json:"items"`
+}
+
 type TenantSummary struct {
 	ID          uint      `json:"id"`
 	CompanyName string    `json:"company_name"`
@@ -81,6 +110,7 @@ type AdminRepository interface {
 	GetCompaniesMetrics() ([]CompanyMetric, error)
 	GetInactiveUsersList(since time.Time) ([]InactiveUser, error)
 	GetRecentActivities() ([]Activity, error)
+	GetAbsenceReport(startDate, endDate time.Time) (*AbsenceReport, error)
 	CountInactiveWarning(since time.Time) (int64, error)
 	DeleteSuperadmins() error
 
@@ -189,6 +219,73 @@ func (r *adminRepository) GetRecentActivities() ([]Activity, error) {
 		LIMIT 20
 	`).Scan(&activities).Error
 	return activities, err
+}
+
+func (r *adminRepository) GetAbsenceReport(startDate, endDate time.Time) (*AbsenceReport, error) {
+	report := &AbsenceReport{
+		Reasons: []AbsenceReasonCount{},
+		Items:   []AbsenceReportItem{},
+	}
+
+	err := r.db.Raw(`
+		SELECT
+			COUNT(*) as total_absences,
+			COALESCE(SUM(wh.absence_hours), 0) as absence_hours,
+			COUNT(CASE WHEN wh.approved = false AND wh.rejected = false THEN 1 END) as pending_review,
+			COUNT(CASE WHEN wh.approved = true THEN 1 END) as approved,
+			COUNT(CASE WHEN wh.rejected = true THEN 1 END) as rejected
+		FROM work_hours wh
+		WHERE wh.work_type = 'absence'
+			AND wh.deleted_at IS NULL
+			AND wh.work_date BETWEEN ? AND ?
+	`, startDate, endDate).Scan(report).Error
+	if err != nil {
+		return nil, err
+	}
+
+	err = r.db.Raw(`
+		SELECT
+			COALESCE(NULLIF(wh.absence_reason, ''), 'Sin motivo') as reason,
+			COUNT(*) as count
+		FROM work_hours wh
+		WHERE wh.work_type = 'absence'
+			AND wh.deleted_at IS NULL
+			AND wh.work_date BETWEEN ? AND ?
+		GROUP BY reason
+		ORDER BY count DESC, reason ASC
+		LIMIT 5
+	`, startDate, endDate).Scan(&report.Reasons).Error
+	if err != nil {
+		return nil, err
+	}
+
+	err = r.db.Raw(`
+		SELECT
+			wh.id,
+			wh.user_id,
+			u.name as user,
+			COALESCE(e.company_name, '-') as company,
+			wh.work_date,
+			wh.hours_worked,
+			wh.absence_hours,
+			COALESCE(NULLIF(wh.absence_reason, ''), 'Sin motivo') as absence_reason,
+			wh.approved,
+			wh.rejected,
+			wh.created_at
+		FROM work_hours wh
+		JOIN users u ON u.id = wh.user_id
+		LEFT JOIN users e ON e.id = u.empleador_id
+		WHERE wh.work_type = 'absence'
+			AND wh.deleted_at IS NULL
+			AND wh.work_date BETWEEN ? AND ?
+		ORDER BY wh.work_date DESC, wh.created_at DESC
+		LIMIT 25
+	`, startDate, endDate).Scan(&report.Items).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return report, nil
 }
 
 func (r *adminRepository) DeleteSuperadmins() error {

@@ -17,6 +17,10 @@ export const adminService = {
     const { data } = await api.get('/admin/recent-activity')
     return data
   },
+  getAbsenceReport: async (params?: { month?: number; year?: number }) => {
+    const { data } = await api.get('/admin/absence-report', { params })
+    return data
+  },
   getStats: async () => {
     const { data } = await api.get('/admin/stats')
     return data

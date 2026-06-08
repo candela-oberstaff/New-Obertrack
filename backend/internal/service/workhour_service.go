@@ -69,10 +69,13 @@ func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, te
 	filters := make(map[string]interface{})
 
 	if !isSuperadmin {
-		if tenantID > 0 {
-			filters["tenant_id"] = tenantID
-		} else if role == string(models.UserTypeProfessional) || role == "profesional" {
-			// Fallback: orphan professionals without a tenant see only their own
+		if isEmployerRole(role) || role == "manager" {
+			// Employers and managers see all work hours within their tenant
+			if tenantID > 0 {
+				filters["tenant_id"] = tenantID
+			}
+		} else {
+			// Professionals only ever see their own work hours
 			filters["user_id"] = userID
 		}
 	}

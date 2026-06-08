@@ -38,11 +38,14 @@ type User struct {
 	IsActive            bool           `gorm:"default:true" json:"is_active"`
 	EmpleadorID         *uint          `gorm:"index" json:"empleador_id,omitempty"`
 	CompanyName         string         `gorm:"size:255" json:"company_name"`
+	Industry            string         `gorm:"size:255" json:"industry"`
 	JobTitle            string         `gorm:"size:255" json:"job_title"`
 	PhoneNumber         string         `gorm:"size:50" json:"phone_number"`
 	Country             string         `gorm:"size:100" json:"country"`
+	State               string         `gorm:"size:100" json:"state"`
 	City                string         `gorm:"size:100" json:"city"`
 	Location            string         `gorm:"type:text" json:"location"`
+	Address             string         `gorm:"type:text" json:"address"`
 	RememberToken       string         `gorm:"size:100" json:"-"`
 	EmailVerifiedAt     *time.Time     `json:"email_verified_at,omitempty"`
 	ManagerID           *uint          `gorm:"index" json:"manager_id,omitempty"`

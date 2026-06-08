@@ -146,6 +146,240 @@
   margin-top: 4px;
 }
 
+.operations-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.activity-status-card,
+.absence-report-card {
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow);
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.section-heading h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.section-heading p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.section-heading svg {
+  color: #ef4444;
+  flex-shrink: 0;
+}
+
+.status-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.status-metric {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.status-metric strong {
+  display: block;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.status-metric span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  margin-top: 4px;
+  line-height: 1.2;
+}
+
+.status-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.status-metric.success .status-icon {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.status-metric.warning .status-icon {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.status-metric.danger .status-icon {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.watch-list,
+.absence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.watch-list-header {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.watch-row,
+.absence-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.watch-row > div:not(:first-child),
+.absence-row > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.watch-row strong,
+.absence-row strong {
+  display: block;
+  color: #0f172a;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.watch-row span,
+.absence-row span,
+.absence-row small {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.days-badge {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309 !important;
+  font-weight: 800;
+  margin-top: 0 !important;
+}
+
+.absence-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.absence-summary div {
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #eef2f7;
+  border-radius: 14px;
+}
+
+.absence-summary span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.absence-summary strong {
+  display: block;
+  margin-top: 6px;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.reason-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.reason-cloud span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pill {
+  flex-shrink: 0;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 12px !important;
+  font-weight: 800;
+  margin: 0 !important;
+}
+
+.pill.success {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.pill.warning {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.pill.danger {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
 /* Timeline Activity Style */
 .recent-activity-section {
   background: var(--glass-bg);
@@ -466,6 +700,22 @@
   .stats-grid {
     grid-template-columns: 1fr 1fr;
     gap: 16px;
+  }
+
+  .operations-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .activity-status-card,
+  .absence-report-card,
+  .recent-activity-section {
+    padding: 20px;
+  }
+
+  .status-metrics,
+  .absence-summary {
+    grid-template-columns: 1fr;
   }
   
   .stat-card {

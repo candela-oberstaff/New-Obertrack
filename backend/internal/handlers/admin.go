@@ -58,6 +58,18 @@ func (h *AdminHandler) GetRecentActivity(c *gin.Context) {
 	c.JSON(http.StatusOK, activities)
 }
 
+func (h *AdminHandler) GetAbsenceReport(c *gin.Context) {
+	month, _ := strconv.Atoi(c.Query("month"))
+	year, _ := strconv.Atoi(c.Query("year"))
+
+	report, err := h.service.GetAbsenceReport(month, year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch absence report"})
+		return
+	}
+	c.JSON(http.StatusOK, report)
+}
+
 func (h *AdminHandler) GetAllUsers(c *gin.Context) {
 	userType := c.Query("user_type")
 	isManager := c.Query("is_manager")

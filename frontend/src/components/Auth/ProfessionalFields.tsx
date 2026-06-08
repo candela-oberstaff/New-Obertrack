@@ -1,13 +1,16 @@
 import React from 'react'
 import { Select } from '../ui/Select'
+import { ALL_COUNTRY_OPTIONS, getStatesForCountry } from './countries'
 
 interface ProfessionalFieldsProps {
   jobTitle: string
   setJobTitle: (val: string) => void
   phoneNumber: string
   setPhoneNumber: (val: string) => void
-  location: string
-  setLocation: (val: string) => void
+  country: string
+  setCountry: (val: string) => void
+  province: string
+  setProvince: (val: string) => void
   selectedCompanyId: number | ''
   setSelectedCompanyId: (val: number | '') => void
   companies: { id: number; name: string }[]
@@ -19,13 +22,16 @@ export const ProfessionalFields: React.FC<ProfessionalFieldsProps> = ({
   setJobTitle,
   phoneNumber,
   setPhoneNumber,
-  location,
-  setLocation,
+  country,
+  setCountry,
+  province,
+  setProvince,
   selectedCompanyId,
   setSelectedCompanyId,
   companies,
   styles,
 }) => {
+  const states = getStatesForCountry(country)
   return (
     <>
       <div className={styles['form-group']}>
@@ -53,16 +59,34 @@ export const ProfessionalFields: React.FC<ProfessionalFieldsProps> = ({
       </div>
 
       <div className={styles['form-group']}>
-        <label htmlFor="location">Ubicación (Ciudad, País)</label>
-        <input
-          id="location"
-          type="text"
-          placeholder="Ej: Madrid, España"
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
+        <label htmlFor="country">País</label>
+        <Select
+          fullWidth
           required
+          id="country"
+          value={country}
+          onChange={(v) => {
+            setCountry(String(v))
+            setProvince('')
+          }}
+          placeholder="Selecciona un país..."
+          options={ALL_COUNTRY_OPTIONS}
         />
       </div>
+
+      {states.length > 0 && (
+        <div className={styles['form-group']}>
+          <label htmlFor="stateProf">Estado / Provincia</label>
+          <Select
+            fullWidth
+            id="stateProf"
+            value={province}
+            onChange={(v) => setProvince(String(v))}
+            placeholder="Selecciona un estado..."
+            options={states}
+          />
+        </div>
+      )}
 
       <div className={styles['form-group']}>
         <label htmlFor="companySelect">Empresa a la que perteneces (Cargadas: {companies.length})</label>

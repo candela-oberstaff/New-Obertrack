@@ -31,6 +31,7 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/companies", d.admin.GetCompanies)
 		admin.GET("/inactive-users", d.admin.GetInactiveUsers)
 		admin.GET("/recent-activity", d.admin.GetRecentActivity)
+		admin.GET("/absence-report", d.admin.GetAbsenceReport)
 		admin.GET("/stats", d.admin.GetStats)
 		admin.GET("/users", d.admin.GetAllUsers)
 		admin.POST("/users", d.admin.CreateUser)

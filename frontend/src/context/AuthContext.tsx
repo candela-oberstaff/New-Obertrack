@@ -18,9 +18,13 @@ interface RegisterData {
   password: string
   user_type?: string
   company_name?: string
+  industry?: string
   empleador_id?: number
   phone_number?: string
+  country?: string
+  state?: string
   location?: string
+  address?: string
   job_title?: string
 }
 
