@@ -20,7 +20,7 @@ type WorkHourService interface {
 	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) error
 	Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) error
 	GetSummary(userID uint, role string, isSuperadmin bool, tenantID uint) (map[string]float64, error)
-	GetPending(tenantID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error)
+	GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool) ([]models.WorkHour, error)
 	SendReportEmail(employerID uint, month int, year int) error
 	GetPDFReportBytes(userID uint, month int, year int) ([]byte, string, error)
 	GetExcelReportBytes(userID uint, month int, year int) ([]byte, string, error)
@@ -309,7 +309,7 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 				canApprove = true
 			}
 		} else if role == "manager" || isManager {
-			if wh.User.ManagerID != nil && *wh.User.ManagerID == userID {
+			if wh.UserID == userID || (wh.User.ManagerID != nil && *wh.User.ManagerID == userID) {
 				canApprove = true
 			}
 		}
@@ -401,7 +401,7 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 				canReject = true
 			}
 		} else if role == "manager" || isManager {
-			if wh.User.ManagerID != nil && *wh.User.ManagerID == userID {
+			if wh.UserID == userID || (wh.User.ManagerID != nil && *wh.User.ManagerID == userID) {
 				canReject = true
 			}
 		}
@@ -463,7 +463,7 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool
 	return s.repo.GetSummary(filters)
 }
 
-func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuperadmin bool) ([]models.WorkHour, error) {
+func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool) ([]models.WorkHour, error) {
 	filters := make(map[string]interface{})
 	filters["approved"] = false
 	filters["rejected"] = false
@@ -475,6 +475,15 @@ func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuper
 	filters["end_date"] = now
 
 	if isSuperadmin {
+		res, _, err := s.repo.FindAll(filters, 0, 1000)
+		return res, err
+	}
+
+	if isManager || role == "manager" {
+		if tenantID > 0 {
+			filters["tenant_id"] = tenantID
+		}
+		filters["manager_or_user_id"] = userID
 		res, _, err := s.repo.FindAll(filters, 0, 1000)
 		return res, err
 	}
