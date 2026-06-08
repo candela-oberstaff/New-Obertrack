@@ -34,7 +34,7 @@ func NewTicketService(repo repository.TicketRepository, wahaSvc *WahaService, br
 }
 
 // canAccess returns true if the caller may view/act on the ticket.
-func (s *ticketService) canAccess(t *models.Ticket, requesterID uint, userType string) bool {
+func (s *ticketService) canAccess(userType string) bool {
 	// Restrict to customer_success only (as per latest instruction)
 	if userType == string(models.UserTypeCustomerSuccess) {
 		return true
@@ -42,7 +42,7 @@ func (s *ticketService) canAccess(t *models.Ticket, requesterID uint, userType s
 	return false
 }
 
-func (s *ticketService) List(requesterID uint, userType string) ([]models.Ticket, error) {
+func (s *ticketService) List(_ uint, userType string) ([]models.Ticket, error) {
 	// Restrict to customer_success only
 	if userType == string(models.UserTypeCustomerSuccess) {
 		return s.repo.List(nil)
@@ -55,7 +55,7 @@ func (s *ticketService) Get(id, requesterID uint, userType string) (*models.Tick
 	if err != nil {
 		return nil, apperrors.ErrNotFound
 	}
-	if !s.canAccess(ticket, requesterID, userType) {
+	if !s.canAccess(userType) {
 		return nil, apperrors.ErrAccessDenied
 	}
 	return ticket, nil
@@ -66,7 +66,7 @@ func (s *ticketService) Update(id, requesterID uint, userType string, stage mode
 	if err != nil {
 		return nil, apperrors.ErrNotFound
 	}
-	if !s.canAccess(ticket, requesterID, userType) {
+	if !s.canAccess(userType) {
 		return nil, apperrors.ErrAccessDenied
 	}
 
@@ -91,7 +91,7 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 	if err != nil {
 		return nil, apperrors.ErrNotFound
 	}
-	if !s.canAccess(ticket, agentID, userType) {
+	if !s.canAccess(userType) {
 		return nil, apperrors.ErrAccessDenied
 	}
 
@@ -238,4 +238,3 @@ func broadcastTicketMessage(ticketID uint, msg *models.TicketMessage) {
 		"message":   msg,
 	})
 }
-

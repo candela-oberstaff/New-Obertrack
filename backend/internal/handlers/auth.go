@@ -14,7 +14,6 @@ import (
 const (
 	accessCookieMaxAge  = 2 * 60 * 60      // 2h, mirrors access token TTL
 	refreshCookieMaxAge = 7 * 24 * 60 * 60 // 7d, mirrors refresh token TTL
-	refreshCookiePath   = "/api/auth/refresh"
 )
 
 // setAuthCookies writes the access and refresh tokens as httpOnly cookies
@@ -183,7 +182,6 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	clearAuthCookies(c)
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out"})
 }
-
 
 func (h *AuthHandler) Me(c *gin.Context) {
 	userID := middleware.GetUserID(c)
