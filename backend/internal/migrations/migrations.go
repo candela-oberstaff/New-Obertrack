@@ -434,6 +434,45 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			ID: "202606081200_add_user_industry",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding industry to users...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.User{}, "industry") {
+					return tx.Migrator().DropColumn(&models.User{}, "industry")
+				}
+				return nil
+			},
+		},
+		{
+			ID: "202606081300_add_user_address",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding address to users...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.User{}, "address") {
+					return tx.Migrator().DropColumn(&models.User{}, "address")
+				}
+				return nil
+			},
+		},
+		{
+			ID: "202606081400_add_user_state",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding state to users...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.User{}, "state") {
+					return tx.Migrator().DropColumn(&models.User{}, "state")
+				}
+				return nil
+			},
+		},
 		// Future migrations go here
 	})
 

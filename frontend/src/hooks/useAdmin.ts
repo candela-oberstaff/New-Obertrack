@@ -7,14 +7,50 @@ interface DashboardStats {
   activeUsers: number
   totalTasks: number
   totalBoards: number
+  totalCompanies: number
+  totalProfessionals: number
+  activeToday: number
+  inactiveWarning: number
+  pendingHours: number
 }
 
 interface ActivityItem {
   id: number
   type: string
   description: string
+  details?: string
   user: string
   created_at: string
+  timestamp?: string
+}
+
+interface AbsenceReportItem {
+  id: number
+  user_id: number
+  user: string
+  company: string
+  work_date: string
+  hours_worked: number
+  absence_hours: number
+  absence_reason: string
+  approved: boolean
+  rejected: boolean
+  created_at: string
+}
+
+interface AbsenceReasonCount {
+  reason: string
+  count: number
+}
+
+interface AbsenceReport {
+  total_absences: number
+  absence_hours: number
+  pending_review: number
+  approved: number
+  rejected: number
+  reasons: AbsenceReasonCount[]
+  items: AbsenceReportItem[]
 }
 
 interface UseAdminReturn {
@@ -24,6 +60,7 @@ interface UseAdminReturn {
   companies: any[]
   inactiveUsers: User[]
   recentActivity: ActivityItem[]
+  absenceReport: AbsenceReport | null
   isLoading: boolean
 
   // Tab state
@@ -36,6 +73,7 @@ interface UseAdminReturn {
   fetchCompanies: () => Promise<void>
   fetchInactiveUsers: () => Promise<void>
   fetchRecentActivity: () => Promise<void>
+  fetchAbsenceReport: () => Promise<void>
 
   // User CRUD
   createUser: (data: any) => Promise<void>
@@ -52,8 +90,18 @@ export function useAdmin(): UseAdminReturn {
   const [companies, setCompanies] = useState<any[]>([])
   const [inactiveUsers, setInactiveUsers] = useState<User[]>([])
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([])
+  const [absenceReport, setAbsenceReport] = useState<AbsenceReport | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('dashboard')
+
+  const normalizeRecentActivity = (items: any[] = []): ActivityItem[] => {
+    return items.map((item, index) => ({
+      ...item,
+      id: item.id ?? index,
+      description: item.description || item.details || 'Sin descripcion',
+      created_at: item.created_at || item.timestamp || '',
+    }))
+  }
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -69,11 +117,16 @@ export function useAdmin(): UseAdminReturn {
           totalUsers: data.total_users || 0,
           activeUsers: data.active_users || 0,
           totalTasks: data.total_tasks || 0,
-          totalBoards: boardsData.status === 'fulfilled' ? (boardsData.value?.length || 0) : 0
+          totalBoards: boardsData.status === 'fulfilled' ? (boardsData.value?.length || 0) : 0,
+          totalCompanies: data.total_companies || 0,
+          totalProfessionals: data.total_professionals || 0,
+          activeToday: data.active_today || 0,
+          inactiveWarning: data.inactive_warning || 0,
+          pendingHours: data.pending_hours || 0,
         })
       }
       if (activityData.status === 'fulfilled') {
-        setRecentActivity(activityData.value || [])
+        setRecentActivity(normalizeRecentActivity(activityData.value))
       }
     } catch (error) {
       console.error('Error fetching dashboard:', error)
@@ -112,9 +165,18 @@ export function useAdmin(): UseAdminReturn {
   const fetchRecentActivity = useCallback(async () => {
     try {
       const data = await adminService.getRecentActivity()
-      setRecentActivity(data || [])
+      setRecentActivity(normalizeRecentActivity(data))
     } catch (error) {
       console.error('Error fetching recent activity:', error)
+    }
+  }, [])
+
+  const fetchAbsenceReport = useCallback(async () => {
+    try {
+      const data = await adminService.getAbsenceReport()
+      setAbsenceReport(data || null)
+    } catch (error) {
+      console.error('Error fetching absence report:', error)
     }
   }, [])
 
@@ -159,11 +221,12 @@ export function useAdmin(): UseAdminReturn {
         fetchUsers(),
         fetchCompanies(),
         fetchInactiveUsers(),
+        fetchAbsenceReport(),
       ])
       setIsLoading(false)
     }
     loadInitialData()
-  }, [fetchDashboard, fetchUsers, fetchCompanies, fetchInactiveUsers])
+  }, [fetchDashboard, fetchUsers, fetchCompanies, fetchInactiveUsers, fetchAbsenceReport])
 
   return {
     stats,
@@ -171,6 +234,7 @@ export function useAdmin(): UseAdminReturn {
     companies,
     inactiveUsers,
     recentActivity,
+    absenceReport,
     isLoading,
     activeTab,
     setActiveTab,
@@ -179,6 +243,7 @@ export function useAdmin(): UseAdminReturn {
     fetchCompanies,
     fetchInactiveUsers,
     fetchRecentActivity,
+    fetchAbsenceReport,
     createUser,
     updateUser,
     deleteUser,

@@ -6,6 +6,10 @@ import {
   Building2,
   Activity,
   BarChart3,
+  AlertTriangle,
+  CalendarX,
+  CheckCircle2,
+  Clock,
   Search,
   X,
   Check,
@@ -22,7 +26,9 @@ export default function Admin() {
   const {
     stats,
     users,
+    inactiveUsers,
     recentActivity,
+    absenceReport,
     isLoading,
     activeTab,
     setActiveTab,
@@ -36,6 +42,8 @@ export default function Admin() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState<any>(null)
+  const absenceItems = absenceReport?.items || []
+  const topInactiveUsers = Array.isArray(inactiveUsers) ? inactiveUsers.slice(0, 5) : []
 
   const filteredUsers = Array.isArray(users) 
     ? users.filter((u: any) =>
@@ -55,6 +63,24 @@ export default function Admin() {
     await deleteUser(userToDelete.id)
     setShowDeleteModal(false)
     setUserToDelete(null)
+  }
+
+  const formatActivityDate = (value?: string) => {
+    if (!value) return 'Fecha no disponible'
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? 'Fecha no disponible' : date.toLocaleString('es-ES')
+  }
+
+  const formatShortDate = (value?: string) => {
+    if (!value) return 'Sin fecha'
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? 'Sin fecha' : date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
+  }
+
+  const getAbsenceStatus = (item: any) => {
+    if (item.rejected) return { label: 'Rechazada', className: 'danger' }
+    if (item.approved) return { label: 'Aprobada', className: 'success' }
+    return { label: 'Pendiente', className: 'warning' }
   }
 
   if (isLoading) {
@@ -139,6 +165,114 @@ export default function Admin() {
               </div>
             </div>
 
+            <div className={styles['operations-grid']}>
+              <section className={styles['activity-status-card']}>
+                <div className={styles['section-heading']}>
+                  <div>
+                    <h3>Actividad del equipo</h3>
+                    <p>Marcas de actividad e inactividad para seguimiento diario.</p>
+                  </div>
+                </div>
+
+                <div className={styles['status-metrics']}>
+                  <div className={`${styles['status-metric']} ${styles['success']}`}>
+                    <div className={styles['status-icon']}><CheckCircle2 size={18} /></div>
+                    <div>
+                      <strong>{stats?.activeToday || 0}</strong>
+                      <span>Activos hoy</span>
+                    </div>
+                  </div>
+                  <div className={`${styles['status-metric']} ${styles['warning']}`}>
+                    <div className={styles['status-icon']}><Clock size={18} /></div>
+                    <div>
+                      <strong>{topInactiveUsers.length || stats?.inactiveWarning || 0}</strong>
+                      <span>Sin actividad +7d</span>
+                    </div>
+                  </div>
+                  <div className={`${styles['status-metric']} ${styles['danger']}`}>
+                    <div className={styles['status-icon']}><CalendarX size={18} /></div>
+                    <div>
+                      <strong>{absenceReport?.total_absences || 0}</strong>
+                      <span>Ausencias del mes</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles['watch-list']}>
+                  <div className={styles['watch-list-header']}>
+                    <span>Profesionales sin actividad reciente</span>
+                  </div>
+                  {topInactiveUsers.length === 0 ? (
+                    <p className={styles['empty-message']}>No hay alertas de inactividad</p>
+                  ) : (
+                    topInactiveUsers.map((user: any) => (
+                      <div key={user.id} className={styles['watch-row']}>
+                        <Avatar src={user.avatar} name={user.name} size="sm" />
+                        <div>
+                          <strong>{user.name}</strong>
+                          <span>{user.company || 'Sin empresa'}</span>
+                        </div>
+                        <span className={styles['days-badge']}>{user.days_inactive || 0}d</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              <section className={styles['absence-report-card']}>
+                <div className={styles['section-heading']}>
+                  <div>
+                    <h3>Reporte de ausencias</h3>
+                    <p>Resumen mensual con horas ausentes y registros pendientes.</p>
+                  </div>
+                  <AlertTriangle size={20} />
+                </div>
+
+                <div className={styles['absence-summary']}>
+                  <div>
+                    <span>Total ausencias</span>
+                    <strong>{absenceReport?.total_absences || 0}</strong>
+                  </div>
+                  <div>
+                    <span>Horas ausentes</span>
+                    <strong>{(absenceReport?.absence_hours || 0).toFixed(1)}h</strong>
+                  </div>
+                  <div>
+                    <span>Pendientes</span>
+                    <strong>{absenceReport?.pending_review || 0}</strong>
+                  </div>
+                </div>
+
+                {absenceReport?.reasons?.length ? (
+                  <div className={styles['reason-cloud']}>
+                    {absenceReport.reasons.map((reason: any) => (
+                      <span key={reason.reason}>{reason.reason} ({reason.count})</span>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className={styles['absence-list']}>
+                  {absenceItems.length === 0 ? (
+                    <p className={styles['empty-message']}>No hay ausencias registradas este mes</p>
+                  ) : (
+                    absenceItems.slice(0, 5).map((item: any) => {
+                      const status = getAbsenceStatus(item)
+                      return (
+                        <div key={item.id} className={styles['absence-row']}>
+                          <div>
+                            <strong>{item.user}</strong>
+                            <span>{item.company} - {formatShortDate(item.work_date)} - {(item.absence_hours || 0).toFixed(1)}h</span>
+                            <small>{item.absence_reason || 'Sin motivo'}</small>
+                          </div>
+                          <span className={`${styles['pill']} ${styles[status.className]}`}>{status.label}</span>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </section>
+            </div>
+
             <div className={styles['recent-activity-section']} data-tour="admin-recent-activity">
               <h3>Actividad Reciente</h3>
               {recentActivity.length === 0 ? (
@@ -153,7 +287,7 @@ export default function Admin() {
                       <div className={styles['activity-content']}>
                         <p>{activity.description}</p>
                         <span className={styles['activity-meta']}>
-                          {activity.user} • {new Date(activity.created_at).toLocaleString('es-ES')}
+                          {activity.user || 'Sistema'} - {formatActivityDate(activity.created_at)}
                         </span>
                       </div>
                     </div>
@@ -275,9 +409,6 @@ export default function Admin() {
             ) : (
               <div className={styles['activity-list-full']} data-tour="admin-activity-list">
                 {recentActivity.map((activity: any, index: number) => {
-                  const date = activity.created_at ? new Date(activity.created_at) : null;
-                  const isValidDate = date && !isNaN(date.getTime());
-                  
                   return (
                     <div key={activity.id || `activity-full-${index}`} className={styles['activity-item-full']}>
                       <div className={styles['activity-icon']}>
@@ -286,7 +417,7 @@ export default function Admin() {
                       <div className={styles['activity-details']}>
                         <p className={styles['activity-desc']}>{activity.description || 'Sin descripción'}</p>
                         <span className={styles['activity-meta']}>
-                          <strong>{activity.user || 'Sistema'}</strong> • {isValidDate ? date.toLocaleString('es-ES') : 'Fecha no disponible'}
+                          <strong>{activity.user || 'Sistema'}</strong> - {formatActivityDate(activity.created_at)}
                         </span>
                       </div>
                     </div>

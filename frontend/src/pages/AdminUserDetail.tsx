@@ -61,7 +61,7 @@ export default function AdminUserDetail() {
     { label: 'Rol', value: rol },
     { label: 'Empresa', value: user.company_name || '—' },
     { label: 'Cargo', value: user.job_title || '—' },
-    { label: 'Empleador ID', value: user.empleador_id || '—' },
+    { label: 'Empresa ID', value: user.empleador_id || '—' },
     { label: 'Manager ID', value: user.manager_id || '—' },
     { label: 'Teléfono', value: user.phone_number || '—' },
     { label: 'País', value: user.country || '—' },

@@ -24,6 +24,7 @@ import { RecoverHoursModal } from '../components/WorkHours/Modals/RecoverHoursMo
 import { WorkHourDetailModal } from '../components/WorkHours/Modals/WorkHourDetailModal'
 import { MissingHoursModal } from '../components/WorkHours/Modals/MissingHoursModal'
 import api from '../services/client'
+import { htmlToText } from '../utils/sanitize'
 
 import styles from './WorkHours.module.css'
 
@@ -359,6 +360,11 @@ export default function WorkHours() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setWorkHourFormError(null)
+    if (!htmlToText(formData.activities)) {
+      setWorkHourFormError('Describe al menos una actividad antes de registrar tu jornada.')
+      return
+    }
+
     setIsSavingWorkHour(true)
     try {
       if (editingId) {
@@ -528,7 +534,7 @@ export default function WorkHours() {
         <div data-tour="work-hours-alert" style={{ backgroundColor: '#fffbeb', border: '1px solid #f59e0b', color: '#b45309', padding: '16px 20px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px', margin: '16px 0', fontSize: '14px', fontWeight: '500', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
           <AlertCircle size={20} style={{ color: '#d97706', flexShrink: 0 }} />
           <div>
-            <strong>Recordatorio de ausencias:</strong> Tienes un total de <strong>{totalAbsenceHoursToRecover.toFixed(1)}h</strong> pendientes de recuperar debido a tus ausencias registradas este mes. Puedes coordinar con tu empleador para recuperarlas en otro momento.
+            <strong>Recordatorio de ausencias:</strong> Tienes un total de <strong>{totalAbsenceHoursToRecover.toFixed(1)}h</strong> pendientes de recuperar debido a tus ausencias registradas este mes. Puedes coordinar con tu empresa para recuperarlas en otro momento.
           </div>
         </div>
       )}

@@ -17,8 +17,11 @@ export interface User {
   job_title?: string
   phone_number?: string
   country?: string
+  state?: string
   city?: string
   location?: string
+  address?: string
+  industry?: string
   created_at: string
   updated_at: string
   password?: string

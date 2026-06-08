@@ -98,7 +98,7 @@ export function UserModal({
           {(mode === 'edit' || form.user_type === 'profesional') && (
             <>
               <div className={styles['form-group']}>
-                <label>Empresa (Empleador)</label>
+                <label>Empresa</label>
                 <Select
                   fullWidth
                   clearable

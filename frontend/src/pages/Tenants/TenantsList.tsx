@@ -223,7 +223,7 @@ export default function TenantsList() {
               <h2>Nueva empresa</h2>
               <button className={styles.closeBtn} onClick={closeCreate}><X size={20} /></button>
             </div>
-            <p className={styles.modalHint}>Selecciona un usuario existente como responsable (empleador) de la empresa.</p>
+            <p className={styles.modalHint}>Selecciona un usuario existente como responsable de la empresa.</p>
             <div className={styles.field}>
               <label>Nombre de la empresa</label>
               <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme S.A." />

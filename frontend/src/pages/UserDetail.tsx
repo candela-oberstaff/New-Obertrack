@@ -106,7 +106,7 @@ export default function UserDetail() {
         <div className={styles.infoItem}><span>Teléfono</span><strong>{user.phone_number || '—'}</strong></div>
         <div className={styles.infoItem}><span>País</span><strong>{user.country || '—'}</strong></div>
         <div className={styles.infoItem}><span>Ciudad</span><strong>{user.city || '—'}</strong></div>
-        <div className={styles.infoItem}><span>Empleador (ID)</span><strong>{user.empleador_id ?? '—'}</strong></div>
+        <div className={styles.infoItem}><span>Empresa (ID)</span><strong>{user.empleador_id ?? '—'}</strong></div>
         <div className={styles.infoItem}><span>Manager (ID)</span><strong>{user.manager_id ?? '—'}</strong></div>
         <div className={styles.infoItem}><span>Registro</span><strong>{user.created_at ? new Date(user.created_at).toLocaleString('es-ES') : '—'}</strong></div>
       </div>

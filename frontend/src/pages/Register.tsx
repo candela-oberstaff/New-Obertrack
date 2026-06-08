@@ -14,9 +14,13 @@ export default function Register() {
   const [password, setPassword] = useState('')
   const [userType, setUserType] = useState('profesional')
   const [companyName, setCompanyName] = useState('')
+  const [industry, setIndustry] = useState('')
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | ''>('')
   const [phoneNumber, setPhoneNumber] = useState('')
+  const [country, setCountry] = useState('')
+  const [province, setProvince] = useState('')
   const [location, setLocation] = useState('')
+  const [address, setAddress] = useState('')
   const [jobTitle, setJobTitle] = useState('')
   const [companies, setCompanies] = useState<{ id: number; name: string }[]>([])
   const [error, setError] = useState('')
@@ -51,8 +55,8 @@ export default function Register() {
         setError('El teléfono es obligatorio')
         return
       }
-      if (!location.trim()) {
-        setError('La ubicación es obligatoria')
+      if (!country.trim()) {
+        setError('El país es obligatorio')
         return
       }
       if (!jobTitle.trim()) {
@@ -74,8 +78,12 @@ export default function Register() {
         setError('El teléfono es obligatorio')
         return
       }
-      if (!location.trim()) {
-        setError('La ubicación es obligatoria')
+      if (!country.trim()) {
+        setError('El país es obligatorio')
+        return
+      }
+      if (!industry.trim()) {
+        setError('El rubro o industria es obligatorio')
         return
       }
     }
@@ -89,9 +97,13 @@ export default function Register() {
         password,
         user_type: userType,
         company_name: userType === 'empleador' ? companyName : undefined,
+        industry: userType === 'empleador' ? industry : undefined,
         empleador_id: userType === 'profesional' ? (selectedCompanyId as number) : undefined,
         phone_number: phoneNumber,
-        location: location,
+        country: country,
+        state: province || undefined,
+        location: userType === 'empleador' ? location : undefined,
+        address: userType === 'empleador' ? address : undefined,
         job_title: userType === 'profesional' ? jobTitle : undefined,
       })
       navigate('/dashboard')
@@ -159,7 +171,7 @@ export default function Register() {
                 onChange={(v) => setUserType(String(v))}
                 options={[
                   { value: 'profesional', label: 'Profesional (Profesional que presta servicios)' },
-                  { value: 'empleador', label: 'Empresa (Dueño o Administrador de empresa)' },
+                  { value: 'empleador', label: 'Empresa' },
                   { value: 'customer_success', label: 'Customer Success (Gestión de soporte)' },
                   { value: 'superadmin', label: 'Super Administrador (Control Total)' },
                 ]}
@@ -172,8 +184,10 @@ export default function Register() {
                 setJobTitle={setJobTitle}
                 phoneNumber={phoneNumber}
                 setPhoneNumber={setPhoneNumber}
-                location={location}
-                setLocation={setLocation}
+                country={country}
+                setCountry={setCountry}
+                province={province}
+                setProvince={setProvince}
                 selectedCompanyId={selectedCompanyId}
                 setSelectedCompanyId={setSelectedCompanyId}
                 companies={companies}
@@ -185,10 +199,18 @@ export default function Register() {
               <EmployerFields
                 companyName={companyName}
                 setCompanyName={setCompanyName}
+                industry={industry}
+                setIndustry={setIndustry}
                 phoneNumber={phoneNumber}
                 setPhoneNumber={setPhoneNumber}
+                country={country}
+                setCountry={setCountry}
+                province={province}
+                setProvince={setProvince}
                 location={location}
                 setLocation={setLocation}
+                address={address}
+                setAddress={setAddress}
                 styles={styles}
               />
             )}

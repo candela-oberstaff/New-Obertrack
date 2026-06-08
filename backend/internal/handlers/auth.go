@@ -51,9 +51,13 @@ type RegisterRequest struct {
 	Password    string `json:"password" binding:"required,min=8"`
 	UserType    string `json:"user_type" binding:"required"`
 	CompanyName string `json:"company_name"`
+	Industry    string `json:"industry"`
 	EmpleadorID *uint  `json:"empleador_id"`
 	PhoneNumber string `json:"phone_number"`
+	Country     string `json:"country"`
+	State       string `json:"state"`
 	Location    string `json:"location"`
+	Address     string `json:"address"`
 	JobTitle    string `json:"job_title"`
 }
 
@@ -80,8 +84,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "El teléfono es obligatorio para profesionales"})
 			return
 		}
-		if req.Location == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "La ubicación es obligatoria para profesionales"})
+		if req.Country == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El país es obligatorio para profesionales"})
 			return
 		}
 		if req.JobTitle == "" {
@@ -101,8 +105,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "El teléfono es obligatorio para empresas"})
 			return
 		}
-		if req.Location == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "La ubicación es obligatoria para empresas"})
+		if req.Country == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El país es obligatorio para empresas"})
+			return
+		}
+		if req.Industry == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El rubro o industria es obligatorio para empresas"})
 			return
 		}
 	case "superadmin", "customer_success":
@@ -112,7 +120,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, access, refresh, err := h.authService.Register(req.Name, req.Email, req.Password, req.UserType, req.CompanyName, req.EmpleadorID, req.PhoneNumber, req.Location, req.JobTitle)
+	user, access, refresh, err := h.authService.Register(req.Name, req.Email, req.Password, req.UserType, req.CompanyName, req.EmpleadorID, req.PhoneNumber, req.Location, req.JobTitle, req.Industry, req.Country, req.Address, req.State)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Email already registered" {

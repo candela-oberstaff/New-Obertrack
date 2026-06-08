@@ -30,6 +30,7 @@ type AdminService interface {
 	GetCompanies() ([]repository.CompanyMetric, error)
 	GetInactiveUsers(days int) ([]repository.InactiveUser, error)
 	GetRecentActivities() ([]repository.Activity, error)
+	GetAbsenceReport(month, year int) (*repository.AbsenceReport, error)
 	GetStats() (map[string]interface{}, error)
 
 	GetAllUsers(userType, isManager, isActive string, offset, limit int) ([]models.User, int64, error)
@@ -99,9 +100,9 @@ func (s *adminService) GetDashboardMetrics() (*DashboardMetrics, error) {
 	_, totalTasks, _ := s.taskRepo.FindAll(nil, 0, 1)
 	m.TotalTasks = int(totalTasks)
 
-	// Since TaskRepo doesn't have a specific FilterByStatus yet, we'll keep using GetDB for specialized counts if necessary, 
+	// Since TaskRepo doesn't have a specific FilterByStatus yet, we'll keep using GetDB for specialized counts if necessary,
 	// or we can add a method to TaskRepo later. For now, we use the existing GetAll with GetDB.
-	
+
 	compCount, _ := s.workHourRepo.CountActiveToday()
 	m.ActiveToday = int(compCount)
 
@@ -123,6 +124,20 @@ func (s *adminService) GetInactiveUsers(days int) ([]repository.InactiveUser, er
 
 func (s *adminService) GetRecentActivities() ([]repository.Activity, error) {
 	return s.repo.GetRecentActivities()
+}
+
+func (s *adminService) GetAbsenceReport(month, year int) (*repository.AbsenceReport, error) {
+	now := time.Now()
+	if month < 1 || month > 12 {
+		month = int(now.Month())
+	}
+	if year < 2000 {
+		year = now.Year()
+	}
+
+	startDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, now.Location())
+	endDate := startDate.AddDate(0, 1, -1)
+	return s.repo.GetAbsenceReport(startDate, endDate)
 }
 
 func (s *adminService) GetStats() (map[string]interface{}, error) {
