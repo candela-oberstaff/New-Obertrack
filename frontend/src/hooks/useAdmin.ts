@@ -134,7 +134,7 @@ export function useAdmin(): UseAdminReturn {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const response = await adminService.getUsers()
+      const response = await adminService.getUsers({ limit: 1000 })
       // The backend returns { data: [...], total: ... } for paginated results
       const usersArray = response?.data || (Array.isArray(response) ? response : [])
       setUsers(usersArray)

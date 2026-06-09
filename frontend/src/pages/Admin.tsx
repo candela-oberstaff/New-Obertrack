@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdmin } from '../hooks'
 import {
@@ -13,12 +13,31 @@ import {
   Search,
   Trash2,
   Pencil,
-  Eye
+  Eye,
+  UserPlus,
+  X
 } from 'lucide-react'
 import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { Select } from '../components/ui/Select'
+import { authService } from '../services/api'
 import styles from '../components/Admin/Admin.module.css'
+
+const EMPTY_CREATE_FORM = {
+  name: '',
+  email: '',
+  password: '',
+  userType: 'profesional',
+  companyName: '',
+  industry: '',
+  selectedCompanyId: '' as number | '',
+  phoneNumber: '',
+  country: '',
+  province: '',
+  location: '',
+  address: '',
+  jobTitle: '',
+}
 
 export default function Admin() {
   const {
@@ -30,6 +49,7 @@ export default function Admin() {
     isLoading,
     activeTab,
     setActiveTab,
+    createUser,
     deleteUser,
     updateUser,
   } = useAdmin()
@@ -41,6 +61,68 @@ export default function Admin() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<any>({})
+
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createForm, setCreateForm] = useState({ ...EMPTY_CREATE_FORM })
+  const [createError, setCreateError] = useState('')
+  const [createLoading, setCreateLoading] = useState(false)
+  const [publicCompanies, setPublicCompanies] = useState<{ id: number; name: string }[]>([])
+
+  useEffect(() => {
+    if (showCreateModal && publicCompanies.length === 0) {
+      authService.getPublicCompanies()
+        .then(data => setPublicCompanies(data))
+        .catch(() => {})
+    }
+  }, [showCreateModal])
+
+  const openCreateModal = () => {
+    setCreateForm({ ...EMPTY_CREATE_FORM })
+    setCreateError('')
+    setShowCreateModal(true)
+  }
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreateError('')
+
+    const { name, email, password, userType, companyName, industry, selectedCompanyId, phoneNumber, country, province, location, address, jobTitle } = createForm
+
+    if (userType === 'profesional') {
+      if (!selectedCompanyId) { setCreateError('Debes seleccionar una empresa'); return }
+      if (!phoneNumber.trim()) { setCreateError('El teléfono es obligatorio'); return }
+      if (!country.trim()) { setCreateError('El país es obligatorio'); return }
+      if (!jobTitle.trim()) { setCreateError('El rol o cargo es obligatorio'); return }
+    }
+    if (userType === 'empleador') {
+      if (!companyName.trim()) { setCreateError('El nombre de la empresa es obligatorio'); return }
+      if (!phoneNumber.trim()) { setCreateError('El teléfono es obligatorio'); return }
+      if (!country.trim()) { setCreateError('El país es obligatorio'); return }
+      if (!industry.trim()) { setCreateError('El rubro o industria es obligatorio'); return }
+    }    setCreateLoading(true)
+    try {
+      await createUser({
+        name,
+        email,
+        password,
+        user_type: userType,
+        company_name: userType === 'empleador' ? companyName : undefined,
+        industry: userType === 'empleador' ? industry : undefined,
+        empleador_id: userType === 'profesional' ? (selectedCompanyId as number) : undefined,
+        phone_number: phoneNumber || undefined,
+        country: country || undefined,
+        state: province || undefined,
+        location: userType === 'empleador' ? location : undefined,
+        address: userType === 'empleador' ? address : undefined,
+        job_title: userType === 'profesional' ? jobTitle : undefined,
+      })
+      setShowCreateModal(false)
+    } catch (err: any) {
+      setCreateError(err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Error al crear el usuario')
+    } finally {
+      setCreateLoading(false)
+    }
+  }
 
   const employers = Array.isArray(users) ? users.filter((u: any) => u.user_type === 'empleador') : []
   const managers = Array.isArray(users) ? users.filter((u: any) => u.is_manager) : []
@@ -355,7 +437,7 @@ export default function Admin() {
 
         {activeTab === 'users' && (
           <div className={styles['users-tab']}>
-            <div className={styles['tab-header']}>
+            <div className={styles['tab-header']} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
               <div className={styles['search-box']} data-tour="admin-search">
                 <Search size={18} />
                 <input
@@ -365,6 +447,30 @@ export default function Admin() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
+              <button
+                onClick={openCreateModal}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  background: 'linear-gradient(135deg, var(--primary), var(--primary-dark, #1d4ed8))',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontWeight: 700,
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(59,130,246,0.3)',
+                  transition: 'all 0.2s',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseOver={e => (e.currentTarget.style.transform = 'translateY(-1px)')}
+                onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0)')}
+              >
+                <UserPlus size={16} />
+                Crear Usuario
+              </button>
             </div>
 
             <div className={styles['users-table']} data-tour="admin-users-table">
@@ -421,8 +527,8 @@ export default function Admin() {
                           <button
                             className={`${styles['btn-icon']} ${styles['danger']}`}
                             onClick={() => {
-                              setUserToDelete(u)
-                              setShowDeleteModal(true)
+                                 setUserToDelete(u)
+                                 setShowDeleteModal(true)
                             }}
                             title="Eliminar"
                           >
@@ -499,6 +605,248 @@ export default function Admin() {
         />
       )}
 
-    </div>
+      {/* ===== MODAL CREAR USUARIO ===== */}
+      {showCreateModal && (
+        <div
+          className={styles['modal-overlay']}
+          onClick={() => setShowCreateModal(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: '20px',
+              padding: '32px',
+              width: '100%',
+              maxWidth: '560px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+              border: '1px solid rgba(0,0,0,0.1)',
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, var(--primary), var(--primary-dark, #1d4ed8))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                  <UserPlus size={20} />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>Crear Usuario</h2>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Completa todos los campos requeridos</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4 }}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {createError && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#dc2626', padding: '11px 14px', borderRadius: '10px', marginBottom: '18px', fontSize: '13px', fontWeight: 500 }}>
+                {createError}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateUser}>
+              {/* Nombre */}
+              <div className={styles['form-group']}>
+                <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>
+                  {createForm.userType === 'empleador' ? 'Nombre del dueño / Administrador' : 'Nombre completo'}
+                </label>
+                <input
+                  type="text"
+                  placeholder={createForm.userType === 'empleador' ? 'Ej: Juan Pérez' : 'Juan Pérez'}
+                  value={createForm.name}
+                  onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))}
+                  required
+                  style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                />
+              </div>
+
+              {/* Email */}
+              <div className={styles['form-group']} style={{ marginTop: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Email</label>
+                <input
+                  type="email"
+                  placeholder="juan@ejemplo.com"
+                  value={createForm.email}
+                  onChange={e => setCreateForm(f => ({ ...f, email: e.target.value }))}
+                  required
+                  style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                />
+              </div>
+
+              {/* Contraseña */}
+              <div className={styles['form-group']} style={{ marginTop: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Contraseña</label>
+                <input
+                  type="password"
+                  placeholder="Min. 8 caracteres con letras y números"
+                  value={createForm.password}
+                  onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))}
+                  required
+                  minLength={8}
+                  style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                />
+              </div>
+
+              {/* Tipo de usuario */}
+              <div className={styles['form-group']} style={{ marginTop: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Tipo de usuario</label>
+                <Select
+                  fullWidth
+                  value={createForm.userType}
+                  onChange={v => setCreateForm(f => ({ ...f, userType: String(v), companyName: '', industry: '', selectedCompanyId: '', phoneNumber: '', country: '', province: '', location: '', address: '', jobTitle: '' }))}
+                  options={[
+                    { value: 'profesional', label: 'Profesional (presta servicios)' },
+                    { value: 'empleador', label: 'Empresa' },
+                    { value: 'customer_success', label: 'Customer Success (Gestión de soporte)' },
+                    { value: 'superadmin', label: 'Super Administrador (Control Total)' },
+                  ]}
+                />
+              </div>
+
+              {/* Campos de Profesional */}
+              {createForm.userType === 'profesional' && (
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Rol / Cargo (Ej: Desarrollador Backend...)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Desarrollador Fullstack"
+                      value={createForm.jobTitle}
+                      onChange={e => setCreateForm(f => ({ ...f, jobTitle: e.target.value }))}
+                      required
+                      style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Teléfono de contacto</label>
+                    <input
+                      type="tel"
+                      placeholder="Ej: +34 600 000 000"
+                      value={createForm.phoneNumber}
+                      onChange={e => setCreateForm(f => ({ ...f, phoneNumber: e.target.value }))}
+                      required
+                      style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>País</label>
+                    <Select
+                      fullWidth
+                      value={createForm.country}
+                      onChange={v => setCreateForm(f => ({ ...f, country: String(v), province: '' }))}
+                      placeholder="Selecciona un país..."
+                      options={[
+                        { value: 'Argentina', label: 'Argentina' },
+                        { value: 'España', label: 'España' },
+                        { value: 'México', label: 'México' },
+                        { value: 'Colombia', label: 'Colombia' },
+                        { value: 'Chile', label: 'Chile' },
+                        { value: 'Uruguay', label: 'Uruguay' },
+                      ]}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Empresa a la que perteneces</label>
+                    <Select
+                      fullWidth
+                      value={createForm.selectedCompanyId}
+                      onChange={v => setCreateForm(f => ({ ...f, selectedCompanyId: Number(v) || '' }))}
+                      placeholder="Selecciona una empresa..."
+                      options={publicCompanies.map(c => ({ value: c.id, label: c.name }))}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Campos de Empleador */}
+              {createForm.userType === 'empleador' && (
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Nombre de tu empresa</label>
+                    <input
+                      type="text"
+                      placeholder="Mi Empresa S.A."
+                      value={createForm.companyName}
+                      onChange={e => setCreateForm(f => ({ ...f, companyName: e.target.value }))}
+                      required
+                      style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Rubro o industria</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Tecnología, Marketing..."
+                      value={createForm.industry}
+                      onChange={e => setCreateForm(f => ({ ...f, industry: e.target.value }))}
+                      required
+                      style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Teléfono de contacto de la empresa</label>
+                    <input
+                      type="tel"
+                      placeholder="Ej: +34 600 000 000"
+                      value={createForm.phoneNumber}
+                      onChange={e => setCreateForm(f => ({ ...f, phoneNumber: e.target.value }))}
+                      required
+                      style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>País</label>
+                    <Select
+                      fullWidth
+                      value={createForm.country}
+                      onChange={v => setCreateForm(f => ({ ...f, country: String(v), province: '' }))}
+                      placeholder="Selecciona un país..."
+                      options={[
+                        { value: 'Argentina', label: 'Argentina' },
+                        { value: 'España', label: 'España' },
+                        { value: 'México', label: 'México' },
+                        { value: 'Colombia', label: 'Colombia' },
+                        { value: 'Chile', label: 'Chile' },
+                        { value: 'Uruguay', label: 'Uruguay' },
+                      ]}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Botones */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc', fontWeight: 600, cursor: 'pointer', color: '#475569' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading}
+                  style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, var(--primary), var(--primary-dark, #1d4ed8))', color: '#fff', fontWeight: 700, cursor: createLoading ? 'not-allowed' : 'pointer', opacity: createLoading ? 0.7 : 1 }}
+                >
+                  {createLoading ? 'Creando...' : 'Crear Usuario'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}    </div>
   )
 }
