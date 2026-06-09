@@ -14,16 +14,16 @@ import (
 )
 
 type WorkHourService interface {
-	GetAll(userID uint, role string, isSuperadmin bool, tenantID uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
+	GetAll(userID uint, role string, isSuperadmin bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
 	Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error)
 	Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error)
 	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) error
 	Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) error
-	GetSummary(userID uint, role string, isSuperadmin bool, tenantID uint) (map[string]float64, error)
-	GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool) ([]models.WorkHour, error)
-	SendReportEmail(employerID uint, month int, year int) error
-	GetPDFReportBytes(userID uint, month int, year int) ([]byte, string, error)
-	GetExcelReportBytes(userID uint, month int, year int) ([]byte, string, error)
+	GetSummary(userID uint, role string, isSuperadmin bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error)
+	GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string) ([]models.WorkHour, error)
+	SendReportEmail(employerID uint, month int, year int, companyFilter uint) error
+	GetPDFReportBytes(userID uint, month int, year int, companyFilter uint) ([]byte, string, error)
+	GetExcelReportBytes(userID uint, month int, year int, companyFilter uint) ([]byte, string, error)
 }
 
 type workHourService struct {
@@ -68,10 +68,17 @@ func (s *workHourService) parseFloatVal(val interface{}) float64 {
 	return 0
 }
 
-func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, tenantID uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
+func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
 	filters := make(map[string]interface{})
 
-	if !isSuperadmin {
+	if isSuperadmin {
+		// Superadmin must scope to a company explicitly. Without it, no records are
+		// returned so we never mix work hours from different tenants in the view.
+		if companyFilter == 0 {
+			return []models.WorkHour{}, 0, nil
+		}
+		filters["tenant_id"] = companyFilter
+	} else {
 		if isEmployerRole(role) || role == "manager" {
 			// Employers and managers see all work hours within their tenant
 			if tenantID > 0 {
@@ -472,7 +479,7 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 	return err
 }
 
-func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool, tenantID uint) (map[string]float64, error) {
+func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error) {
 	filters := make(map[string]interface{})
 
 	// Filter for the current month
@@ -481,7 +488,13 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool
 	filters["start_date"] = startOfMonth
 	filters["end_date"] = now
 
-	if !isSuperadmin {
+	if isSuperadmin {
+		// Superadmin must scope to a company; otherwise return an empty summary.
+		if companyFilter == 0 {
+			return map[string]float64{"total_hours": 0, "approved_hours": 0, "pending_hours": 0, "rejected_hours": 0}, nil
+		}
+		filters["tenant_id"] = companyFilter
+	} else {
 		if (role == string(models.UserTypeEmployer) || role == "empleador" || role == "manager") && tenantID > 0 {
 			filters["tenant_id"] = tenantID
 		} else {
@@ -489,10 +502,17 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool
 		}
 	}
 
+	// Optional per-employee scope (superadmin or employer).
+	if userIDFilter != "" && (isSuperadmin || role == string(models.UserTypeEmployer) || role == "empleador") {
+		if uid, err := strconv.ParseUint(userIDFilter, 10, 32); err == nil {
+			filters["user_id"] = uint(uid)
+		}
+	}
+
 	return s.repo.GetSummary(filters)
 }
 
-func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool) ([]models.WorkHour, error) {
+func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string) ([]models.WorkHour, error) {
 	filters := make(map[string]interface{})
 	filters["approved"] = false
 	filters["rejected"] = false
@@ -504,6 +524,16 @@ func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuper
 	filters["end_date"] = now
 
 	if isSuperadmin {
+		// Superadmin must scope to a company; otherwise return nothing.
+		if companyFilter == 0 {
+			return []models.WorkHour{}, nil
+		}
+		filters["tenant_id"] = companyFilter
+		if userIDFilter != "" {
+			if uid, err := strconv.ParseUint(userIDFilter, 10, 32); err == nil {
+				filters["user_id"] = uint(uid)
+			}
+		}
 		res, _, err := s.repo.FindAll(filters, 0, 1000)
 		return res, err
 	}

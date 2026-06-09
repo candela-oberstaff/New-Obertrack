@@ -23,9 +23,9 @@ func isSuperadminUser(user *models.User) bool {
 }
 
 type ChannelService interface {
-	GetChannels(userID uint) ([]ChannelWithUnread, error)
+	GetChannels(userID uint, isSuperadmin bool, companyFilter uint) ([]ChannelWithUnread, error)
 	GetChannel(id uint) (*models.Channel, error)
-	Create(userID uint, name, description, channelType string, memberIDs []uint) (*models.Channel, error)
+	Create(userID uint, name, description, channelType string, memberIDs []uint, tenantOverride uint) (*models.Channel, error)
 	Update(id, userID uint, name, description string) (*models.Channel, error)
 	Delete(id, userID uint, isSuperadmin bool) error
 	AddMember(channelID, userID, memberToAdd uint) error
@@ -49,12 +49,12 @@ type ChannelService interface {
 	UnstarMessage(messageID, userID uint) error
 	GetStarredMessages(userID uint) ([]models.ChannelMessage, error)
 	SearchMessages(channelID, userID uint, query string) ([]models.ChannelMessage, error)
-	CreateDirectMessage(userID, recipientID uint) (*DirectMessageResponse, error)
+	CreateDirectMessage(userID, recipientID uint, tenantOverride uint) (*DirectMessageResponse, error)
 	UpdateStatus(userID uint, status string) (*models.UserStatus, error)
 	GetStatuses(userIDs []uint) ([]models.UserStatus, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
 	MarkAsRead(channelID, userID uint) error
-	GetAllUsers(tenantID uint, isSuperadmin bool) ([]models.User, error)
+	GetAllUsers(tenantID uint, isSuperadmin bool, companyFilter uint) ([]models.User, error)
 }
 
 type ChannelWithUnread struct {
@@ -106,8 +106,19 @@ func (s *channelService) authorizeChannelTenant(channelID, userID uint, isSupera
 	return channel, nil
 }
 
-func (s *channelService) GetChannels(userID uint) ([]ChannelWithUnread, error) {
-	channels, err := s.repo.GetChannelsByUser(userID)
+func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilter uint) ([]ChannelWithUnread, error) {
+	var channels []models.Channel
+	var err error
+	if isSuperadmin {
+		// Superadmin must scope to a company; without it return nothing so we never
+		// mix channels/DMs from different tenants in the sidebar.
+		if companyFilter == 0 {
+			return []ChannelWithUnread{}, nil
+		}
+		channels, err = s.repo.GetChannelsByCompany(companyFilter)
+	} else {
+		channels, err = s.repo.GetChannelsByUser(userID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +164,7 @@ func (s *channelService) GetChannel(id uint) (*models.Channel, error) {
 	return s.repo.GetChannel(id)
 }
 
-func (s *channelService) Create(userID uint, name, description, channelType string, memberIDs []uint) (*models.Channel, error) {
+func (s *channelService) Create(userID uint, name, description, channelType string, memberIDs []uint, tenantOverride uint) (*models.Channel, error) {
 	cType := models.ChannelTypePublic
 	if channelType == "private" {
 		cType = models.ChannelTypePrivate
@@ -161,6 +172,11 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 
 	creator, _ := s.userRepo.GetByID(userID)
 	tenantID := models.TenantForUser(creator)
+	// Superadmins create channels scoped to the company they have selected, so the
+	// channel is not orphaned (tenant 0) and shows up under that company's filter.
+	if tenantOverride > 0 && isSuperadminUser(creator) {
+		tenantID = tenantOverride
+	}
 
 	// Check if channel already exists within the same tenant
 	if existing, _ := s.repo.GetChannelByNameAndType(name, cType, tenantID); existing != nil {

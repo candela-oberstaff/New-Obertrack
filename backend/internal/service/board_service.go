@@ -15,7 +15,7 @@ type BoardService interface {
 	Create(userID uint, name, description, color string, memberIDs []uint, phases []struct {
 		Name  string
 		Color string
-	}) (*models.Board, error)
+	}, tenantOverride uint) (*models.Board, error)
 	Update(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}, memberIDs []uint) (*models.Board, error)
 	Delete(userID, boardID, tenantID uint, isSuperadmin bool) error
 	AddPhase(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, name, color string) (*models.Board, error)
@@ -66,16 +66,23 @@ func (s *boardService) authorizeBoardTenant(boardID, tenantID, userID uint, role
 }
 
 func (s *boardService) GetAll(userID uint, role string, isSuperadmin bool, companyID uint) ([]models.Board, error) {
+	// Superadmin without an explicit company selection: return nothing so we never
+	// mix boards from different tenants in the same view.
+	if isSuperadmin && companyID == 0 {
+		return []models.Board{}, nil
+	}
+
 	filters := make(map[string]interface{})
 
 	if companyID > 0 {
-		// Employers and managers see all boards within their tenant (no per-user restriction).
-		// Professionals still need the user_id filter so they only see boards they belong to.
+		// Superadmin scoped to a company, plus employers and managers, see all boards
+		// within the tenant (no per-user restriction). Professionals still need the
+		// user_id filter so they only see boards they belong to.
 		filters["tenant_id"] = companyID
-		if !isEmployerRole(role) && role != "manager" {
+		if !isSuperadmin && !isEmployerRole(role) && role != "manager" {
 			filters["user_id"] = userID
 		}
-	} else if !isSuperadmin && role != "superadmin" {
+	} else if role != "superadmin" {
 		// No tenant context available — fall back to user scoping
 		filters["user_id"] = userID
 	}
@@ -187,19 +194,26 @@ func (s *boardService) GetByID(userID uint, role string, isSuperadmin bool, comp
 func (s *boardService) Create(userID uint, name, description, color string, memberIDs []uint, phases []struct {
 	Name  string
 	Color string
-}) (*models.Board, error) {
+}, tenantOverride uint) (*models.Board, error) {
 	if color == "" {
 		color = "#3b82f6"
 	}
 
 	user, _ := s.userRepo.GetByID(userID)
 
+	tenantID := models.TenantForUser(user)
+	// Superadmins create boards scoped to the company they have selected, so the
+	// board is not orphaned (tenant 0) and shows up under that company's filter.
+	if tenantOverride > 0 && isSuperadminUser(user) {
+		tenantID = tenantOverride
+	}
+
 	board := &models.Board{
 		Name:        name,
 		Description: description,
 		Color:       color,
 		CreatedBy:   userID,
-		TenantID:    models.TenantForUser(user),
+		TenantID:    tenantID,
 	}
 
 	if err := s.repo.Create(board); err != nil {

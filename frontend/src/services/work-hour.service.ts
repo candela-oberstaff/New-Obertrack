@@ -2,7 +2,7 @@ import api from './client'
 import type { WorkHour, PaginatedResponse } from '../types'
 
 export const workHourService = {
-  getAll: async (params?: { user_id?: string; start_date?: string; end_date?: string; page?: number; limit?: number }) => {
+  getAll: async (params?: { user_id?: string; start_date?: string; end_date?: string; page?: number; limit?: number; company_id?: number }) => {
     const { data } = await api.get<PaginatedResponse<WorkHour>>('/work-hours', { params })
     return data
   },
@@ -22,12 +22,12 @@ export const workHourService = {
     const { data } = await api.post('/work-hours/reject', { ids, reason })
     return data
   },
-  getSummary: async () => {
-    const { data } = await api.get<{ total_hours: number; approved_hours: number; pending_hours: number; rejected_hours: number }>('/work-hours/summary')
+  getSummary: async (params?: { company_id?: number; user_id?: string }) => {
+    const { data } = await api.get<{ total_hours: number; approved_hours: number; pending_hours: number; rejected_hours: number }>('/work-hours/summary', { params })
     return data
   },
-  getPending: async () => {
-    const { data } = await api.get<WorkHour[]>('/work-hours/pending')
+  getPending: async (params?: { company_id?: number; user_id?: string }) => {
+    const { data } = await api.get<WorkHour[]>('/work-hours/pending', { params })
     return data
   },
 }

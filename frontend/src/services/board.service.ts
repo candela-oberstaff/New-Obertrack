@@ -2,16 +2,18 @@ import api from './client'
 import type { Board, CreateBoardInput } from '../types'
 
 export const boardService = {
-  getAll: async () => {
-    const { data } = await api.get<Board[]>('/boards')
+  getAll: async (companyId?: number | null) => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.get<Board[]>('/boards', { params })
     return data
   },
   getById: async (id: number) => {
     const { data } = await api.get<Board>(`/boards/${id}`)
     return data
   },
-  create: async (boardData: CreateBoardInput) => {
-    const { data } = await api.post<Board>('/boards', boardData)
+  create: async (boardData: CreateBoardInput, companyId?: number | null) => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.post<Board>('/boards', boardData, { params })
     return data
   },
   update: async (id: number, boardData: CreateBoardInput) => {
@@ -33,8 +35,9 @@ export const boardService = {
     const { data } = await api.put<Board>(`/boards/${boardId}/phases/reorder`, { phase_ids: phaseIds })
     return data
   },
-  getPublicBoards: async () => {
-    const { data } = await api.get<Board[]>('/boards/public')
+  getPublicBoards: async (companyId?: number | null) => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.get<Board[]>('/boards/public', { params })
     return data
   },
   join: async (boardId: number) => {

@@ -45,7 +45,13 @@ func (h *BoardHandler) GetAll(c *gin.Context) {
 	isSuperadmin := middleware.IsSuperadmin(c)
 
 	var companyID uint
-	if !isSuperadmin {
+	if isSuperadmin {
+		// Superadmin must scope explicitly to a company via ?company_id=.
+		// Without it, no boards are returned to avoid mixing tenants.
+		if v, err := strconv.ParseUint(c.Query("company_id"), 10, 32); err == nil {
+			companyID = uint(v)
+		}
+	} else {
 		companyID = middleware.GetTenantID(c)
 	}
 
@@ -63,7 +69,11 @@ func (h *BoardHandler) GetPublicBoards(c *gin.Context) {
 	isSuperadmin := middleware.IsSuperadmin(c)
 
 	var companyID uint
-	if !isSuperadmin {
+	if isSuperadmin {
+		if v, err := strconv.ParseUint(c.Query("company_id"), 10, 32); err == nil {
+			companyID = uint(v)
+		}
+	} else {
 		companyID = middleware.GetTenantID(c)
 	}
 
@@ -149,7 +159,8 @@ func (h *BoardHandler) Create(c *gin.Context) {
 		phases = append(phases, struct{ Name, Color string }{p.Name, p.Color})
 	}
 
-	board, err := h.service.Create(userID, req.Name, req.Description, req.Color, req.MemberIDs, phases)
+	companyFilter := superadminCompanyFilter(c, middleware.IsSuperadmin(c))
+	board, err := h.service.Create(userID, req.Name, req.Description, req.Color, req.MemberIDs, phases, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create board"})
 		return

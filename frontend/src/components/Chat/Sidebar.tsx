@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Channel } from '../../types/chat'
 import styles from '../../pages/SlackChat.module.css'
 
@@ -15,6 +16,8 @@ interface SidebarProps {
   fetchAllUsers: () => Promise<void>
   onMouseDownResize: (e: React.MouseEvent) => void
   isResizing: boolean
+  // Optional content rendered under the workspace header (e.g. superadmin company selector)
+  headerExtra?: ReactNode
 }
 
 export function Sidebar({
@@ -30,7 +33,8 @@ export function Sidebar({
   setShowNewDmModal,
   fetchAllUsers,
   onMouseDownResize,
-  isResizing
+  isResizing,
+  headerExtra
 }: SidebarProps) {
   const activeChannels = channels.filter(c => c.type === 'public' || c.type === 'private')
   const directMessages = channels.filter(c => c.type === 'direct')
@@ -51,6 +55,10 @@ export function Sidebar({
                 </svg>
               </button>
             </div>
+
+            {headerExtra && (
+              <div style={{ padding: '8px 12px' }}>{headerExtra}</div>
+            )}
 
             <div className={styles['channel-list-mini']}>
               <div className={styles['channel-group-label']}>

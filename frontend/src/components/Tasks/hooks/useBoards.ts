@@ -28,7 +28,18 @@ const DEFAULT_PHASES = [
   { name: 'Finalizado', color: '#22c55e' },
 ]
 
-export function useBoards(): UseBoardsReturn {
+interface UseBoardsOptions {
+  // For superadmin: the company (tenant) currently selected. Boards are only
+  // fetched once a company is chosen, so tenants never get mixed in the view.
+  companyId?: number | null
+  // When true, the caller must provide a companyId before any board is fetched.
+  requireCompany?: boolean
+  // When false, no board is auto-selected after fetching: the caller lands on a
+  // board picker instead of jumping straight into the first board.
+  autoSelectFirst?: boolean
+}
+
+export function useBoards({ companyId = null, requireCompany = false, autoSelectFirst = true }: UseBoardsOptions = {}): UseBoardsReturn {
   const [boards, setBoards] = useState<Board[]>([])
   const [selectedBoard, setSelectedBoardState] = useState<Board | null>(null)
   const [publicBoards, setPublicBoards] = useState<Board[]>([])
@@ -55,9 +66,16 @@ export function useBoards(): UseBoardsReturn {
   }, [])
 
   const fetchBoards = useCallback(async () => {
+    // Superadmin without a selected company: do not fetch anything to avoid
+    // mixing boards from different tenants.
+    if (requireCompany && !companyId) {
+      setBoards([])
+      setSelectedBoardState(null)
+      return []
+    }
     setIsLoading(true)
     try {
-      const boardsRes = await boardService.getAll()
+      const boardsRes = await boardService.getAll(companyId)
       // Deduplicate by ID to avoid React key warnings and duplicates in rendering
       const unique = (boardsRes || []).filter(
         (b: Board, idx: number, arr: Board[]) => arr.findIndex((x: Board) => x.id === b.id) === idx
@@ -68,6 +86,12 @@ export function useBoards(): UseBoardsReturn {
         if (current) {
           const stillExists = unique.find((b: Board) => b.id === current.id)
           if (stillExists) return stillExists
+        }
+
+        // When auto-select is disabled (e.g. superadmin entering a company), land
+        // on the board picker instead of jumping into a board.
+        if (!autoSelectFirst) {
+          return null
         }
 
         const preferredId = localStorage.getItem('preferred_board_id')
@@ -90,16 +114,16 @@ export function useBoards(): UseBoardsReturn {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [companyId, requireCompany, autoSelectFirst])
 
   const fetchPublicBoards = useCallback(async () => {
     try {
-      const res = await boardService.getPublicBoards()
+      const res = await boardService.getPublicBoards(companyId)
       setPublicBoards(res || [])
     } catch (error) {
       console.error('Error fetching public boards:', error)
     }
-  }, [])
+  }, [companyId])
 
   useEffect(() => {
     fetchBoards()
@@ -109,7 +133,7 @@ export function useBoards(): UseBoardsReturn {
     if (!data.name?.trim()) return null
     setIsCreatingBoard(true)
     try {
-      const newBoard = await boardService.create(data)
+      const newBoard = await boardService.create(data, companyId)
       setNewBoardData({
         name: '',
         description: '',
@@ -127,7 +151,7 @@ export function useBoards(): UseBoardsReturn {
     } finally {
       setIsCreatingBoard(false)
     }
-  }, [fetchBoards])
+  }, [fetchBoards, companyId])
 
   const deleteBoard = useCallback(async (boardId: number) => {
     await boardService.delete(boardId)

@@ -23,8 +23,10 @@ func NewChannelHandler(svc service.ChannelService, hub *websocket.ChannelHub) *C
 
 func (h *ChannelHandler) GetChannels(c *gin.Context) {
 	userID := middleware.GetUserID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	companyFilter := superadminCompanyFilter(c, isSuperadmin)
 
-	channels, err := h.svc.GetChannels(userID)
+	channels, err := h.svc.GetChannels(userID, isSuperadmin, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch channels"})
 		return
@@ -48,7 +50,8 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 		return
 	}
 
-	channel, err := h.svc.Create(userID, req.Name, req.Description, req.Type, req.MemberIDs)
+	companyFilter := superadminCompanyFilter(c, middleware.IsSuperadmin(c))
+	channel, err := h.svc.Create(userID, req.Name, req.Description, req.Type, req.MemberIDs, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -712,7 +715,8 @@ func (h *ChannelHandler) CreateDirectMessage(c *gin.Context) {
 		return
 	}
 
-	dm, err := h.svc.CreateDirectMessage(userID, req.RecipientID)
+	companyFilter := superadminCompanyFilter(c, middleware.IsSuperadmin(c))
+	dm, err := h.svc.CreateDirectMessage(userID, req.RecipientID, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -741,7 +745,8 @@ func (h *ChannelHandler) HandleWebSocket(c *gin.Context) {
 func (h *ChannelHandler) GetAllUsers(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
-	users, err := h.svc.GetAllUsers(tenantID, isSuperadmin)
+	companyFilter := superadminCompanyFilter(c, isSuperadmin)
+	users, err := h.svc.GetAllUsers(tenantID, isSuperadmin, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

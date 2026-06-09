@@ -54,7 +54,14 @@ interface UseWorkHoursReturn {
 
 const JORNADA_COMPLETA = 8
 
-export function useWorkHours(user: any): UseWorkHoursReturn {
+interface UseWorkHoursOptions {
+  // Superadmin scope: the company (tenant) and optional employee currently selected.
+  companyId?: number | null
+  employeeId?: number | null
+}
+
+export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseWorkHoursReturn {
+  const { companyId = null, employeeId = null } = options
   const [workHours, setWorkHours] = useState<WorkHour[]>([])
   const [pendingHours, setPendingHours] = useState<WorkHour[]>([])
   const [summary, setSummary] = useState<WorkHoursSummary>({ total_hours: 0, approved_hours: 0, pending_hours: 0, rejected_hours: 0 })
@@ -77,14 +84,28 @@ export function useWorkHours(user: any): UseWorkHoursReturn {
       const isSuperadmin = user?.is_superadmin
       const isManager = user?.is_manager
 
+      // Superadmin must pick a company first; until then, show nothing so tenants
+      // never get mixed in the view.
+      if (isSuperadmin && !companyId) {
+        setWorkHours([])
+        setPendingHours([])
+        setSummary({ total_hours: 0, approved_hours: 0, pending_hours: 0, rejected_hours: 0 })
+        return
+      }
+
+      const scope = {
+        ...(companyId ? { company_id: companyId } : {}),
+        ...(employeeId ? { user_id: String(employeeId) } : {}),
+      }
+
       const [hoursRes, summaryRes] = await Promise.all([
-        workHourService.getAll({}),
-        workHourService.getSummary(),
+        workHourService.getAll({ ...scope }),
+        workHourService.getSummary({ ...scope }),
       ])
       setSummary(summaryRes)
 
       if (isEmployer || isSuperadmin || isManager) {
-        const pendingRes = await workHourService.getPending()
+        const pendingRes = await workHourService.getPending({ ...scope })
         setPendingHours(pendingRes || [])
         const byID = new Map<number, WorkHour>()
         ;(hoursRes.data || []).forEach((wh) => byID.set(wh.id, wh))
@@ -99,7 +120,7 @@ export function useWorkHours(user: any): UseWorkHoursReturn {
     } finally {
       setIsLoading(false)
     }
-  }, [user])
+  }, [user, companyId, employeeId])
 
   useEffect(() => {
     fetchData()

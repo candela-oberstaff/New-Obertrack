@@ -10,6 +10,7 @@ import (
 type ChannelRepository interface {
 	// Channels
 	GetChannelsByUser(userID uint) ([]models.Channel, error)
+	GetChannelsByCompany(companyID uint) ([]models.Channel, error)
 	GetChannel(id uint) (*models.Channel, error)
 	GetChannelByNameAndType(name string, channelType models.ChannelType, tenantID uint) (*models.Channel, error)
 	IsExplicitMember(channelID, userID uint) (bool, error)
@@ -101,6 +102,19 @@ func (r *channelRepository) GetChannelsByUser(userID uint) ([]models.Channel, er
 			r.db.Where("channel_members.user_id = ?", userID).
 				Or("channels.type = ? AND channels.tenant_id = ?", models.ChannelTypePublic, tenantID),
 		).
+		Order("channels.created_at DESC").
+		Find(&channels).Error
+	return channels, err
+}
+
+// GetChannelsByCompany returns every active channel (public, private and direct
+// messages) that belongs to a given tenant. Used by superadmins to scope the chat
+// to a single company so channels/DMs from different tenants never get mixed.
+func (r *channelRepository) GetChannelsByCompany(companyID uint) ([]models.Channel, error) {
+	var channels []models.Channel
+	err := r.db.Table("channels").
+		Where("channels.is_active = ?", true).
+		Where("channels.tenant_id = ?", companyID).
 		Order("channels.created_at DESC").
 		Find(&channels).Error
 	return channels, err
