@@ -176,7 +176,11 @@ export default function Dashboard() {
               </div>
             ) : (
               pendingTasks.slice(0, 5).map(task => (
-                <div key={task.id} className={styles['task-row']} onClick={() => navigate('/tasks')}>
+                <div
+                  key={task.id}
+                  className={styles['task-row']}
+                  onClick={() => navigate(`/tasks?company=${task.tenant_id ?? ''}&board=${task.board_id}&task=${task.id}`)}
+                >
                   <div
                     className={styles['task-priority-dot']}
                     style={{ backgroundColor: getPriorityColor(task.priority) }}
