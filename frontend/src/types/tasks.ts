@@ -90,6 +90,7 @@ export interface Task {
   completed: boolean
   created_by: number
   board_id: number
+  tenant_id?: number
   created_at: string
   updated_at: string
   creator?: User

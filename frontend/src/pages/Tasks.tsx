@@ -1,3 +1,5 @@
+import { useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useTasksPageState } from '../components/Tasks/hooks/useTasksPageState'
 import type { User } from '../types'
 
@@ -86,6 +88,42 @@ export default function Tasks() {
     fetchPublicBoards,
     updateBoardMembers,
   } = useTasksPageState()
+
+  // Deep-link from other pages (e.g. Dashboard "Próximas tareas"):
+  // /tasks?company=X&board=Y&task=Z → pick the company (superadmin), open the
+  // board and finally the task, instead of landing on the board picker.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const dlCompany = searchParams.get('company')
+  const dlBoard = searchParams.get('board')
+  const dlTask = searchParams.get('task')
+
+  // 1) Superadmin: make sure the task's company is the one in scope.
+  useEffect(() => {
+    if (isSuperadmin && dlCompany) {
+      const cid = Number(dlCompany)
+      if (cid && selectedCompanyId !== cid) setSelectedCompanyId(cid)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dlCompany, isSuperadmin])
+
+  // 2) Select the board once it shows up in the (company-scoped) list.
+  useEffect(() => {
+    if (!dlBoard || boards.length === 0) return
+    const b = boards.find((x) => x.id === Number(dlBoard))
+    if (b && selectedBoard?.id !== b.id) setSelectedBoard(b)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dlBoard, boards])
+
+  // 3) Open the task once its board's tasks are loaded, then clear the params.
+  useEffect(() => {
+    if (!dlTask || tasks.length === 0) return
+    const t = tasks.find((x) => x.id === Number(dlTask))
+    if (t) {
+      setSelectedTask(t)
+      setSearchParams({}, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dlTask, tasks])
 
   // Company selector (superadmin only) — scopes the whole view to one tenant.
   const companySelector = isSuperadmin ? (
