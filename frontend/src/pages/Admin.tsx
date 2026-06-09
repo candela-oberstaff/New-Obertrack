@@ -20,6 +20,7 @@ import {
 import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { Select } from '../components/ui/Select'
+import { Skeleton } from '../components/ui'
 import { authService } from '../services/api'
 import styles from '../components/Admin/Admin.module.css'
 

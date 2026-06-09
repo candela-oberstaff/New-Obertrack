@@ -113,100 +113,41 @@ export function useAdmin(): UseAdminReturn {
     },
   })
 
-  const fetchUsers = useCallback(async () => {
-    try {
+  const usersQ = useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: async () => {
       const response = await adminService.getUsers({ limit: 1000 })
-      // The backend returns { data: [...], total: ... } for paginated results
-      const usersArray = response?.data || (Array.isArray(response) ? response : [])
-      setUsers(usersArray)
-    } catch (error) {
-      console.error('Error fetching users:', error)
-    }
-  }, [])
+      return response?.data || (Array.isArray(response) ? response : [])
+    },
+  })
 
-  const fetchCompanies = useCallback(async () => {
-    try {
-      const data = await adminService.getCompanies()
-      setCompanies(data || [])
-    } catch (error) {
-      console.error('Error fetching companies:', error)
-    }
-  }, [])
+  const companiesQ = useQuery({
+    queryKey: ['admin', 'companies'],
+    queryFn: async () => (await adminService.getCompanies()) || [],
+  })
 
-  const fetchInactiveUsers = useCallback(async () => {
-    try {
-      const data = await adminService.getInactiveUsers()
-      setInactiveUsers(data || [])
-    } catch (error) {
-      console.error('Error fetching inactive users:', error)
-    }
-  }, [])
+  const inactiveQ = useQuery({
+    queryKey: ['admin', 'inactive-users'],
+    queryFn: async () => (await adminService.getInactiveUsers()) || [],
+  })
 
-  const fetchRecentActivity = useCallback(async () => {
-    try {
-      const data = await adminService.getRecentActivity()
-      setRecentActivity(normalizeRecentActivity(data))
-    } catch (error) {
-      console.error('Error fetching recent activity:', error)
-    }
-  }, [])
+  const activityQ = useQuery({
+    queryKey: ['admin', 'recent-activity'],
+    queryFn: async () => normalizeRecentActivity(await adminService.getRecentActivity()),
+  })
 
-  const fetchAbsenceReport = useCallback(async () => {
-    try {
-      const data = await adminService.getAbsenceReport()
-      setAbsenceReport(data || null)
-    } catch (error) {
-      console.error('Error fetching absence report:', error)
-    }
-  }, [])
+  const absenceQ = useQuery({
+    queryKey: ['admin', 'absence-report'],
+    queryFn: async () => (await adminService.getAbsenceReport()) || null,
+  })
 
-  const createUser = useCallback(async (data: any) => {
-    await adminService.createUser(data)
-    fetchUsers()
-  }, [fetchUsers])
+  const invalidateUsers = () => qc.invalidateQueries({ queryKey: ['admin', 'users'] })
 
-  const updateUser = useCallback(async (id: number, data: any) => {
-    await adminService.updateUser(id, data)
-    fetchUsers()
-  }, [fetchUsers])
+  const createMut = useMutation({ mutationFn: (data: any) => adminService.createUser(data), onSuccess: invalidateUsers })
+  const updateMut = useMutation({ mutationFn: ({ id, data }: { id: number; data: any }) => adminService.updateUser(id, data), onSuccess: invalidateUsers })
+  const deleteMut = useMutation({ mutationFn: (id: number) => adminService.deleteUser(id), onSuccess: invalidateUsers })
 
-  const deleteUser = useCallback(async (id: number) => {
-    await adminService.deleteUser(id)
-    fetchUsers()
-  }, [fetchUsers])
-
-  const toggleUserStatus = useCallback(async (id: number) => {
-    // Using updateUser to toggle status
-    const user = users.find(u => u.id === id)
-    if (user) {
-      await adminService.updateUser(id, { is_active: !user.is_active })
-      fetchUsers()
-    }
-  }, [users, fetchUsers])
-
-  const resetUserPassword = useCallback(async (id: number, newPassword: string) => {
-    await adminService.resetPassword(id, newPassword)
-  }, [])
-
-  const promoteToManager = useCallback(async (id: number) => {
-    await adminService.updateUser(id, { is_manager: true })
-    fetchUsers()
-  }, [fetchUsers])
-
-  useEffect(() => {
-    const loadInitialData = async () => {
-      setIsLoading(true)
-      await Promise.all([
-        fetchDashboard(),
-        fetchUsers(),
-        fetchCompanies(),
-        fetchInactiveUsers(),
-        fetchAbsenceReport(),
-      ])
-      setIsLoading(false)
-    }
-    loadInitialData()
-  }, [fetchDashboard, fetchUsers, fetchCompanies, fetchInactiveUsers, fetchAbsenceReport])
+  const users: User[] = usersQ.data ?? []
 
   return {
     stats: statsQ.data ?? null,
