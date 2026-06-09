@@ -37,9 +37,12 @@ type deps struct {
 	whatsapp     *handlers.WhatsAppHandler
 	waha         *handlers.WahaHandler
 	brevoInbound *handlers.BrevoInboundHandler
+	audit        *handlers.AuditHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
+	// auditSvc is attached as a global middleware in RegisterRoutes.
+	auditSvc service.AuditService
 }
 
 // buildDeps constructs the full repository → service → handler graph once.
@@ -58,6 +61,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	adminRepo := repository.NewAdminRepository(db)
 	tutorialRepo := repository.NewTutorialRepository(db)
 	ticketRepo := repository.NewTicketRepository(db)
+	auditRepo := repository.NewAuditRepository(db)
 
 	// Integrations
 	brevoSvc := service.NewBrevoService()
@@ -69,14 +73,15 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	notifSvc := service.NewNotificationService(notifRepo)
 	chatSvc := service.NewChatService(chatRepo)
 	channelSvc := service.NewChannelService(channelRepo, userRepo, notifSvc)
-	ticketSvc := service.NewTicketService(ticketRepo, wahaSvc, brevoSvc)
+	ticketSvc := service.NewTicketService(ticketRepo, userRepo, notifSvc, wahaSvc, brevoSvc)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, brevoSvc)
-	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc)
+	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
 	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo)
 	boardSvc := service.NewBoardService(boardRepo, userRepo)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
+	auditSvc := service.NewAuditService(auditRepo)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})
@@ -100,7 +105,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		// Session-revocation lookup used by the auth middleware (audit A-04).
 		tvGetter: func(userID uint) (int, error) { return authSvc.GetTokenVersion(userID) },
 
-		auth:         handlers.NewAuthHandler(authSvc),
+		auth:         handlers.NewAuthHandler(authSvc, auditSvc),
 		user:         handlers.NewUserHandler(userSvc),
 		admin:        handlers.NewAdminHandler(adminSvc),
 		board:        handlers.NewBoardHandler(boardSvc),
@@ -114,11 +119,13 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		survey:       handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
 		metrics:      handlers.NewMetricsHandler(metricsRepo),
 		tutorial:     handlers.NewTutorialHandler(tutorialSvc),
-		ticket:       handlers.NewTicketHandler(db, zohoSvc),
+		ticket:       handlers.NewTicketHandler(db, zohoSvc, ticketSvc),
 		whatsapp:     handlers.NewWhatsAppHandler(db, zohoSvc),
 		waha:         handlers.NewWahaHandler(ticketSvc),
 		brevoInbound: handlers.NewBrevoInboundHandler(ticketSvc),
+		audit:        handlers.NewAuditHandler(auditSvc),
 
-		wahaSvc: wahaSvc,
+		wahaSvc:  wahaSvc,
+		auditSvc: auditSvc,
 	}
 }

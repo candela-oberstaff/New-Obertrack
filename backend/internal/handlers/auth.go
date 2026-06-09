@@ -36,11 +36,13 @@ func clearAuthCookies(c *gin.Context) {
 
 type AuthHandler struct {
 	authService service.AuthService
+	auditSvc    service.AuditService
 }
 
-func NewAuthHandler(authService service.AuthService) *AuthHandler {
+func NewAuthHandler(authService service.AuthService, auditSvc service.AuditService) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
+		auditSvc:    auditSvc,
 	}
 }
 
@@ -133,6 +135,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	h.auditSvc.RecordAuth("auth.register", &user.ID, user.Email, string(user.UserType), true, c.ClientIP(), c.Request.UserAgent())
 	setAuthCookies(c, access, refresh)
 	c.JSON(http.StatusCreated, AuthResponse{User: *user})
 }
@@ -150,10 +153,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		if err.Error() == "Invalid credentials" {
 			status = http.StatusUnauthorized
 		}
+		h.auditSvc.RecordAuth("auth.login_failed", nil, req.Email, "", false, c.ClientIP(), c.Request.UserAgent())
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
+	h.auditSvc.RecordAuth("auth.login", &user.ID, user.Email, string(user.UserType), true, c.ClientIP(), c.Request.UserAgent())
 	setAuthCookies(c, access, refresh)
 	c.JSON(http.StatusOK, AuthResponse{User: *user})
 }
@@ -179,6 +184,11 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 // Logout clears the auth cookies.
 func (h *AuthHandler) Logout(c *gin.Context) {
+	var actorID *uint
+	if id := middleware.GetUserID(c); id > 0 {
+		actorID = &id
+	}
+	h.auditSvc.RecordAuth("auth.logout", actorID, c.GetString("email"), middleware.GetUserRole(c), true, c.ClientIP(), c.Request.UserAgent())
 	clearAuthCookies(c)
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out"})
 }
@@ -246,5 +256,6 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
+	h.auditSvc.RecordAuth("auth.password_reset", nil, "", "", true, c.ClientIP(), c.Request.UserAgent())
 	c.JSON(http.StatusOK, gin.H{"message": "Contraseña actualizada exitosamente."})
 }

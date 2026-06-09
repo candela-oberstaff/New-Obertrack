@@ -25,6 +25,9 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
           {ticket.stage === 'waiting' && 'Esperando'}
           {ticket.stage === 'closed' && 'Cerrado'}
         </span>
+        <span className={`${styles.badge} ${ticket.origin === 'internal' ? styles['badge-internal'] : styles['badge-zoho']}`}>
+          {ticket.origin === 'internal' ? 'Interno' : 'Zoho'}
+        </span>
         {channel === 'whatsapp' && <MessageSquare size={14} className={styles.waIcon} />}
         {channel === 'email' && <Mail size={14} className={styles.mailIcon} />}
       </div>

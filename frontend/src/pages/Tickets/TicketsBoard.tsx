@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Ticket, ticketService } from '../../services/ticket.service';
 import TicketColumn from './components/TicketColumn';
 import styles from './Tickets.module.css';
-import { RefreshCw, Ticket as TicketIcon, Filter, User as UserIcon } from 'lucide-react';
+import { RefreshCw, Ticket as TicketIcon, Filter, User as UserIcon, FileText } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+
+type OriginFilter = 'all' | 'zoho' | 'internal';
 
 const STAGES = [
   { id: 'new', title: 'Nuevo' },
@@ -47,6 +49,7 @@ export default function TicketsBoard() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filterOwn, setFilterOwn] = useState(false);
+  const [filterOrigin, setFilterOrigin] = useState<OriginFilter>('all');
   const navigate = useNavigate();
 
   const fetchTickets = useCallback(async (silent = false) => {
@@ -58,8 +61,10 @@ export default function TicketsBoard() {
       const data = await ticketService.getTickets();
       setTickets(data ?? []);
       setLastRefresh(new Date());
+      return data ?? [];
     } catch (err: any) {
       setError(err?.response?.data?.error ?? 'No se pudieron cargar los tickets.');
+      return [];
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -105,9 +110,18 @@ export default function TicketsBoard() {
     setDragOverStageIdx(null);
   }, []);
 
-  const openTicket = (zohoId: string) => navigate(`/tickets/${encodeURIComponent(zohoId)}`);
+  const openTicket = (ticket: Ticket) => {
+    if (ticket.origin === 'internal') {
+      navigate(`/tickets/internal/${ticket.id}`);
+      return;
+    }
+    navigate(`/tickets/${encodeURIComponent(ticket.zoho_id)}`);
+  };
 
   const filteredTickets = tickets.filter(t => {
+    if (filterOrigin !== 'all' && (t.origin ?? 'zoho') !== filterOrigin) {
+      return false;
+    }
     if (filterOwn && user?.email) {
       return t.assignee_email?.toLowerCase() === user.email.toLowerCase();
     }
@@ -190,11 +204,52 @@ export default function TicketsBoard() {
             </div>
           )}
 
+          <div style={{
+            display: 'flex',
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            padding: '2px',
+          }}>
+            {([
+              { id: 'all', label: 'Todos' },
+              { id: 'zoho', label: 'Zoho' },
+              { id: 'internal', label: 'Internos' },
+            ] as { id: OriginFilter; label: string }[]).map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setFilterOrigin(opt.id)}
+                style={{
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  background: filterOrigin === opt.id ? 'var(--bg-primary)' : 'transparent',
+                  color: filterOrigin === opt.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  boxShadow: filterOrigin === opt.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
           {lastRefresh && (
             <span style={{ fontSize: '0.75rem', color: 'var(--gray-400)' }}>
               Actualizado {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
+          <button
+            onClick={() => navigate('/tickets/report')}
+            className={styles.channelBtn}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem' }}
+          >
+            <FileText size={14} />
+            Informe de rechazos
+          </button>
           <button
             onClick={() => fetchTickets(true)}
             className={styles.channelBtn}

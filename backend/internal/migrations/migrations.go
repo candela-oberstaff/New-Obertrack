@@ -473,6 +473,103 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			ID: "202606081500_add_ticket_origin",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding origin/description/user_id to tickets and making contact_id nullable...")
+				if err := tx.AutoMigrate(&models.Ticket{}); err != nil {
+					return err
+				}
+				// AutoMigrate does not drop the existing NOT NULL on contact_id.
+				if err := tx.Exec(`ALTER TABLE tickets ALTER COLUMN contact_id DROP NOT NULL`).Error; err != nil {
+					return err
+				}
+				// Backfill origin for pre-existing local tickets so they are not
+				// mistaken for internal Obertrack alerts on the support board.
+				return tx.Exec(`UPDATE tickets SET origin = 'whatsapp' WHERE origin IS NULL OR origin = ''`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, col := range []string{"origin", "description", "user_id"} {
+					if tx.Migrator().HasColumn(&models.Ticket{}, col) {
+						if err := tx.Migrator().DropColumn(&models.Ticket{}, col); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			},
+		},
+		{
+			ID: "202606081600_add_ticket_alert_fields",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding internal-alert fields to tickets (professional_email, company_name, rejected_by_name, reason, work_dates)...")
+				return tx.AutoMigrate(&models.Ticket{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, col := range []string{"professional_email", "company_name", "rejected_by_name", "reason", "work_dates"} {
+					if tx.Migrator().HasColumn(&models.Ticket{}, col) {
+						if err := tx.Migrator().DropColumn(&models.Ticket{}, col); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			},
+		},
+		{
+			ID: "202606081700_add_ticket_professional_phone",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding professional_phone to tickets...")
+				return tx.AutoMigrate(&models.Ticket{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.Ticket{}, "professional_phone") {
+					return tx.Migrator().DropColumn(&models.Ticket{}, "professional_phone")
+				}
+				return nil
+			},
+		},
+		{
+			ID: "202606081800_create_ticket_transfers",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating ticket_transfers audit table...")
+				return tx.AutoMigrate(&models.TicketTransfer{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.TicketTransfer{})
+			},
+		},
+		{
+			ID: "202606081900_create_audit_logs",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating audit_logs table...")
+				return tx.AutoMigrate(&models.AuditLog{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.AuditLog{})
+			},
+		},
+		{
+			ID: "202606082000_audit_logs_data_fields",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding kind/entity_type/entity_id/changes to audit_logs...")
+				if err := tx.AutoMigrate(&models.AuditLog{}); err != nil {
+					return err
+				}
+				// Existing rows are activity events.
+				return tx.Exec(`UPDATE audit_logs SET kind = 'activity' WHERE kind IS NULL OR kind = ''`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, col := range []string{"kind", "entity_type", "entity_id", "changes"} {
+					if tx.Migrator().HasColumn(&models.AuditLog{}, col) {
+						if err := tx.Migrator().DropColumn(&models.AuditLog{}, col); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			},
+		},
 		// Future migrations go here
 	})
 

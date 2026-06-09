@@ -11,14 +11,12 @@ import {
   CheckCircle2,
   Clock,
   Search,
-  X,
-  Check,
   Trash2,
-  RefreshCw,
-  Shield,
+  Pencil,
   Eye
 } from 'lucide-react'
 import Avatar from '../components/Common/Avatar'
+import { UserModal } from '../components/Admin/Modals/UserModal'
 import { Select } from '../components/ui/Select'
 import styles from '../components/Admin/Admin.module.css'
 
@@ -33,15 +31,61 @@ export default function Admin() {
     activeTab,
     setActiveTab,
     deleteUser,
-    toggleUserStatus,
-    resetUserPassword,
-    promoteToManager,
+    updateUser,
   } = useAdmin()
 
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState<any>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<any>({})
+
+  const employers = Array.isArray(users) ? users.filter((u: any) => u.user_type === 'empleador') : []
+  const managers = Array.isArray(users) ? users.filter((u: any) => u.is_manager) : []
+
+  const openEdit = (u: any) => {
+    setEditId(u.id)
+    setEditForm({
+      name: u.name || '',
+      email: u.email || '',
+      user_type: u.user_type || '',
+      job_title: u.job_title || '',
+      phone_number: u.phone_number || '',
+      country: u.country || '',
+      city: u.city || '',
+      location: u.location || '',
+      company_name: u.company_name || '',
+      empleador_id: u.empleador_id || '',
+      manager_id: u.manager_id || '',
+      is_active: u.is_active,
+      is_manager: u.is_manager,
+    })
+    setShowEditModal(true)
+  }
+
+  const [editError, setEditError] = useState<string | null>(null)
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editId == null) return
+    setEditError(null)
+    // Sanitize FK ids: send a positive number or null — never "" (which the
+    // backend's *uint binding rejects with 400, making the whole save fail).
+    const payload = {
+      ...editForm,
+      empleador_id: editForm.empleador_id ? Number(editForm.empleador_id) : null,
+      manager_id: editForm.manager_id ? Number(editForm.manager_id) : null,
+    }
+    try {
+      await updateUser(editId, payload)
+      setShowEditModal(false)
+      setEditId(null)
+    } catch (err: any) {
+      setEditError(err?.response?.data?.error ?? 'No se pudieron guardar los cambios.')
+    }
+  }
   const absenceItems = absenceReport?.items || []
   const topInactiveUsers = Array.isArray(inactiveUsers) ? inactiveUsers.slice(0, 5) : []
 
@@ -58,11 +102,22 @@ export default function Admin() {
     { id: 'activity', label: 'Actividad', icon: Activity },
   ]
 
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
   const handleDeleteUser = async () => {
     if (!userToDelete) return
-    await deleteUser(userToDelete.id)
-    setShowDeleteModal(false)
-    setUserToDelete(null)
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteUser(userToDelete.id)
+      setShowDeleteModal(false)
+      setUserToDelete(null)
+    } catch (err: any) {
+      setDeleteError(err?.response?.data?.error ?? 'No se pudo eliminar el usuario.')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const formatActivityDate = (value?: string) => {
@@ -358,27 +413,11 @@ export default function Admin() {
                           </button>
                           <button
                             className={styles['btn-icon']}
-                            onClick={() => toggleUserStatus(u.id)}
-                            title={u.is_active ? 'Desactivar' : 'Activar'}
+                            onClick={() => openEdit(u)}
+                            title="Editar"
                           >
-                            {u.is_active ? <X size={16} /> : <Check size={16} />}
+                            <Pencil size={16} />
                           </button>
-                          <button
-                            className={styles['btn-icon']}
-                            onClick={() => resetUserPassword(u.id, 'temporary123')}
-                            title="Resetear contraseña"
-                          >
-                            <RefreshCw size={16} />
-                          </button>
-                          {!u.is_manager && !u.is_superadmin && (
-                            <button
-                              className={styles['btn-icon']}
-                              onClick={() => promoteToManager(u.id)}
-                              title="Promover a Manager"
-                            >
-                              <Shield size={16} />
-                            </button>
-                          )}
                           <button
                             className={`${styles['btn-icon']} ${styles['danger']}`}
                             onClick={() => {
@@ -434,13 +473,30 @@ export default function Admin() {
           <div className={styles['modal']} onClick={(e) => e.stopPropagation()}>
             <h2>Confirmar Eliminación</h2>
             <p>¿Estás seguro de eliminar al usuario <strong>{userToDelete.name}</strong>?</p>
-            <p className={styles['warning-text']}>Esta acción no se puede deshacer.</p>
+            <p className={styles['warning-text']}>El usuario dejará de aparecer y no podrá iniciar sesión (sus registros se conservan).</p>
+            {deleteError && (
+              <p style={{ color: '#dc2626', fontWeight: 600, padding: '0 1.5rem', margin: '0 0 0.5rem' }}>{deleteError}</p>
+            )}
             <div className={styles['modal-actions']}>
-              <button onClick={() => setShowDeleteModal(false)}>Cancelar</button>
-              <button className={styles['btn-danger']} onClick={handleDeleteUser}>Eliminar</button>
+              <button className={styles['btn-secondary']} onClick={() => setShowDeleteModal(false)} disabled={deleting}>Cancelar</button>
+              <button className={styles['btn-danger']} onClick={handleDeleteUser} disabled={deleting}>{deleting ? 'Eliminando…' : 'Eliminar'}</button>
             </div>
           </div>
         </div>
+      )}
+
+      {showEditModal && (
+        <UserModal
+          title="Editar usuario"
+          mode="edit"
+          form={editForm}
+          setForm={setEditForm}
+          employers={employers}
+          managers={managers}
+          onClose={() => setShowEditModal(false)}
+          onSubmit={handleEditSubmit}
+          error={editError}
+        />
       )}
 
     </div>

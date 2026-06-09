@@ -1027,6 +1027,63 @@ func (s *ZohoService) GetAgentByEmail(email string) (string, AgentInfo, error) {
 	return ag.ID, info, nil
 }
 
+// ZohoAgent is a Zoho Desk agent (transfer target).
+type ZohoAgent struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// ListAgents returns the Zoho Desk agents of the org (active confirmed agents).
+func (s *ZohoService) ListAgents() ([]ZohoAgent, error) {
+	token, err := s.GetAccessToken()
+	if err != nil {
+		return nil, err
+	}
+	orgID, err := s.getOrgID()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", "https://desk.zoho.com/api/v1/agents?limit=200&status=ACTIVE", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	req.Header.Set("orgId", orgID)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list agents failed status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Data []struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			EmailID string `json:"emailId"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	agents := make([]ZohoAgent, 0, len(result.Data))
+	for _, a := range result.Data {
+		agents = append(agents, ZohoAgent{ID: a.ID, Name: a.Name, Email: a.EmailID})
+		s.mu.Lock()
+		s.agentCache[a.ID] = AgentInfo{Name: a.Name, Email: a.EmailID}
+		s.mu.Unlock()
+	}
+	return agents, nil
+}
+
 // ListWhatsAppTickets returns WhatsApp tickets filtered by assigneeId (use "unassigned" for open queue)
 // and status (e.g. "open"). Results are sorted by most recently modified.
 func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modifiedTimeRange string) ([]ZohoTicket, error) {

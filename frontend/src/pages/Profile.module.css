@@ -1,4 +1,8 @@
 .profile-page {
+  /* flex:1 0 auto makes the white panel fill the scroll area when content is
+     short AND grow with content when it's tall (avoids the min-height:100%
+     gotcha inside a flex/overflow container that left the white "cut off"). */
+  flex: 1 0 auto;
   min-height: 100%;
   background: white;
 }

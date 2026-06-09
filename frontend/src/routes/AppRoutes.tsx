@@ -23,10 +23,13 @@ const TenantDetail = lazy(() => import('../pages/Tenants/TenantDetail'))
 const EmployeeDetail = lazy(() => import('../pages/Tenants/EmployeeDetail'))
 const Tools = lazy(() => import('../components/Admin/Tools'))
 const Metrics = lazy(() => import('../pages/Metrics'))
+const AuditLogs = lazy(() => import('../pages/AuditLogs'))
 const Tutoriales = lazy(() => import('../pages/Tutoriales'))
 const SurveyViewer = lazy(() => import('../pages/SurveyViewer'))
 const TicketsBoard = lazy(() => import('../pages/Tickets/TicketsBoard'))
 const TicketDetail = lazy(() => import('../pages/Tickets/TicketDetail'))
+const RejectionReport = lazy(() => import('../pages/Tickets/RejectionReport'))
+const InternalTicketDetail = lazy(() => import('../pages/Tickets/InternalTicketDetail'))
 
 export function AppRoutes() {
   return (
@@ -58,10 +61,13 @@ export function AppRoutes() {
           <Route path="admin/tenants/:id/employees/:eid" element={<AdminRoute><EmployeeDetail /></AdminRoute>} />
           <Route path="admin/tools" element={<AdminRoute><Tools /></AdminRoute>} />
           <Route path="admin/metrics" element={<AdminRoute><Metrics /></AdminRoute>} />
+          <Route path="admin/audit" element={<AdminRoute><AuditLogs /></AdminRoute>} />
           <Route path="tutoriales" element={<Tutoriales />} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
           <Route path="tickets" element={<CustomerSuccessRoute><TicketsBoard /></CustomerSuccessRoute>} />
+          <Route path="tickets/report" element={<CustomerSuccessRoute><RejectionReport /></CustomerSuccessRoute>} />
+          <Route path="tickets/internal/:id" element={<CustomerSuccessRoute><InternalTicketDetail /></CustomerSuccessRoute>} />
           <Route path="tickets/:id" element={<CustomerSuccessRoute><TicketDetail /></CustomerSuccessRoute>} />
         </Route>
       </Routes>

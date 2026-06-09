@@ -15,6 +15,7 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 		registerPublicRoutes(api, d)
 
 		api.Use(middleware.AuthMiddleware(cfg.JWTSecret, d.tvGetter))
+		api.Use(middleware.AuditMiddleware(d.auditSvc))
 		{
 			registerAccountRoutes(api, d)
 			registerWorkRoutes(api, d)

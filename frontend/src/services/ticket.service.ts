@@ -19,6 +19,32 @@ export interface TicketMessage {
   created_at: string;
 }
 
+export interface SupportAgent {
+  id: number;
+  name: string;
+  email: string;
+  zoho_agent_id: string;
+}
+
+export interface ZohoAgent {
+  zoho_agent_id: string;
+  name: string;
+  email: string;
+  user_id?: number | null;
+}
+
+export interface TicketTransfer {
+  id: number;
+  origin: 'internal' | 'zoho';
+  ticket_ref: string;
+  ticket_title: string;
+  from_name: string;
+  to_name: string;
+  by_name: string;
+  reason?: string;
+  created_at: string;
+}
+
 export interface Ticket {
   id: number;
   /** Real Zoho Desk ticket ID (string) – use this for navigation & API calls */
@@ -34,7 +60,7 @@ export interface Ticket {
   description?: string;
   stage: 'new' | 'in_progress' | 'waiting' | 'closed';
   status: string;
-  assigned_to?: number;
+  assigned_to?: number | null;
   messages?: TicketMessage[];
   created_at: string;
   updated_at: string;
@@ -45,6 +71,16 @@ export interface Ticket {
   assignee_id?: string;
   assignee_name?: string;
   assignee_email?: string;
+  /** 'zoho' for Zoho Desk tickets, 'internal' for Obertrack-generated alerts */
+  origin?: 'zoho' | 'internal';
+  // Internal work-hour-rejection alert fields
+  user_id?: number;
+  professional_email?: string;
+  professional_phone?: string;
+  company_name?: string;
+  rejected_by_name?: string;
+  reason?: string;
+  work_dates?: string;
 }
 
 export interface TicketStatusOption {
@@ -99,6 +135,65 @@ export const ticketService = {
 
   getTicketStatuses: async (): Promise<TicketStatusOption[]> => {
     const response = await api.get('/tickets/statuses')
+    return response.data
+  },
+
+  /** Updates the stage/status of an internal alert ticket (follow-up). */
+  updateInternalTicket: async (id: number, data: { stage?: string; status?: string }): Promise<Ticket> => {
+    const response = await api.put(`/tickets/internal/${id}`, data)
+    return response.data
+  },
+
+  /** Marks an internal Obertrack alert ticket as resolved (closed). */
+  resolveInternalTicket: async (id: number): Promise<Ticket> => {
+    const response = await api.put(`/tickets/internal/${id}`, { stage: 'closed', status: 'closed' })
+    return response.data
+  },
+
+  /** Lists active local support users (customer_success + superadmin) — internal ticket targets. */
+  getSupportAgents: async (): Promise<SupportAgent[]> => {
+    const response = await api.get('/tickets/agents')
+    return response.data
+  },
+
+  /** Lists Zoho Desk agents (Zoho ticket transfer targets), cross-referenced with local users. */
+  getZohoAgents: async (): Promise<ZohoAgent[]> => {
+    const response = await api.get('/tickets/zoho-agents')
+    return response.data
+  },
+
+  /** Transfer history for a ticket. origin = 'zoho' | 'internal', ref = zoho id or internal id. */
+  getTicketTransfers: async (origin: 'zoho' | 'internal', ref: string | number): Promise<TicketTransfer[]> => {
+    const response = await api.get('/tickets/transfers', { params: { origin, ref: String(ref) } })
+    return response.data
+  },
+
+  /** Reassigns a Zoho ticket to another Zoho Desk agent (by Zoho agent id). */
+  transferZohoTicket: async (zohoId: string, toAgentId: string, reason: string): Promise<void> => {
+    await api.post(`/tickets/${zohoId}/transfer`, { to_agent_id: toAgentId, reason })
+  },
+
+  /** Reassigns an internal alert ticket to another support agent. */
+  transferInternalTicket: async (id: number, toUserId: number, reason: string): Promise<Ticket> => {
+    const response = await api.post(`/tickets/internal/${id}/transfer`, { to_user_id: toUserId, reason })
+    return response.data
+  },
+
+  /** Fetches a single internal alert ticket (for its detail page). */
+  getInternalTicket: async (id: number): Promise<Ticket> => {
+    const response = await api.get(`/tickets/internal/${id}`)
+    return response.data
+  },
+
+  /** Appends a follow-up note to an internal alert ticket. */
+  addInternalNote: async (id: number, content: string): Promise<TicketMessage> => {
+    const response = await api.post(`/tickets/internal/${id}/notes`, { content })
+    return response.data
+  },
+
+  /** Fetches the work-hour rejections report for a given month/year. */
+  getRejectionReport: async (month: number, year: number): Promise<{ items: Ticket[]; total: number; month: number; year: number }> => {
+    const response = await api.get('/tickets/internal/report', { params: { month, year } })
     return response.data
   },
 

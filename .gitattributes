@@ -1,0 +1,4 @@
+# Force LF for shell scripts so they run inside Linux containers even when
+# checked out on Windows (avoids "exec: no such file or directory" from CRLF).
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf

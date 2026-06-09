@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserX } from 'lucide-react'
-import { userService } from '../services/api'
+import { ArrowLeft, UserX, Power, KeyRound, Shield } from 'lucide-react'
+import { userService, adminService } from '../services/api'
 import type { User } from '../types'
 import Avatar from '../components/Common/Avatar'
 import styles from './AdminUserDetail.module.css'
@@ -12,22 +12,63 @@ export default function AdminUserDetail() {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [actionMsg, setActionMsg] = useState<string | null>(null)
+  const [empresaName, setEmpresaName] = useState('')
+  const [managerName, setManagerName] = useState('')
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true)
-      try {
-        const data = await userService.getById(Number(id))
-        setUser(data)
-        setError(null)
-      } catch {
-        setError('No se pudo cargar el usuario')
-      } finally {
-        setIsLoading(false)
+  const load = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const data = await userService.getById(Number(id))
+      setUser(data)
+      setError(null)
+      // Resolve related names (employer / manager) for professionals.
+      setEmpresaName(''); setManagerName('')
+      if (data.user_type === 'profesional') {
+        if (data.empleador_id) {
+          userService.getById(data.empleador_id).then(e => setEmpresaName(e?.company_name || e?.name || '')).catch(() => {})
+        }
+        if (data.manager_id) {
+          userService.getById(data.manager_id).then(m => setManagerName(m?.name || '')).catch(() => {})
+        }
       }
+    } catch {
+      setError('No se pudo cargar el usuario')
+    } finally {
+      setIsLoading(false)
     }
-    load()
   }, [id])
+
+  useEffect(() => { load() }, [load])
+
+  const toggleActive = async () => {
+    if (!user) return
+    setBusy(true); setActionMsg(null)
+    try {
+      await adminService.updateUser(user.id, { is_active: !user.is_active })
+      await load()
+    } catch { setActionMsg('No se pudo cambiar el estado.') } finally { setBusy(false) }
+  }
+
+  const promote = async () => {
+    if (!user) return
+    setBusy(true); setActionMsg(null)
+    try {
+      await adminService.updateUser(user.id, { is_manager: true })
+      await load()
+    } catch { setActionMsg('No se pudo promover.') } finally { setBusy(false) }
+  }
+
+  const resetPass = async () => {
+    if (!user) return
+    setBusy(true); setActionMsg(null)
+    try {
+      const temp = 'Temporal' + Math.floor(1000 + (user.id * 7) % 9000)
+      await adminService.resetPassword(user.id, temp)
+      setActionMsg(`Contraseña reseteada. Temporal: ${temp}`)
+    } catch { setActionMsg('No se pudo resetear la contraseña.') } finally { setBusy(false) }
+  }
 
   if (isLoading) {
     return (
@@ -54,15 +95,10 @@ export default function AdminUserDetail() {
     )
   }
 
-  const rol = user.is_superadmin ? 'superadmin' : user.is_manager ? 'manager' : user.user_type
+  const rol = user.is_superadmin ? 'Superadmin' : user.is_manager ? 'Manager' : user.user_type
 
-  const fields: { label: string; value: React.ReactNode }[] = [
-    { label: 'ID', value: user.id },
-    { label: 'Rol', value: rol },
-    { label: 'Empresa', value: user.company_name || '—' },
-    { label: 'Cargo', value: user.job_title || '—' },
-    { label: 'Empresa ID', value: user.empleador_id || '—' },
-    { label: 'Manager ID', value: user.manager_id || '—' },
+  // Fields common to every user type.
+  const common: { label: string; value: React.ReactNode }[] = [
     { label: 'Teléfono', value: user.phone_number || '—' },
     { label: 'País', value: user.country || '—' },
     { label: 'Ciudad', value: user.city || '—' },
@@ -70,6 +106,20 @@ export default function AdminUserDetail() {
     { label: 'Registrado', value: user.created_at ? new Date(user.created_at).toLocaleString('es-ES') : '—' },
     { label: 'Actualizado', value: user.updated_at ? new Date(user.updated_at).toLocaleString('es-ES') : '—' },
   ]
+
+  // Type-specific fields: only show what's relevant for each user type.
+  let specific: { label: string; value: React.ReactNode }[] = []
+  if (user.user_type === 'empleador') {
+    specific = [{ label: 'Empresa', value: user.company_name || '—' }]
+  } else if (user.user_type === 'profesional') {
+    specific = [
+      { label: 'Cargo', value: user.job_title || '—' },
+      { label: 'Empresa', value: empresaName || '—' },
+      { label: 'Manager', value: managerName || 'Sin asignar' },
+    ]
+  }
+
+  const fields = [...specific, ...common]
 
   return (
     <div className={styles.page}>
@@ -88,12 +138,31 @@ export default function AdminUserDetail() {
           </div>
           <p className={styles.email}>{user.email}</p>
           <div className={styles.tags}>
-            <span className={styles.tag}>{user.user_type}</span>
-            {user.is_superadmin && <span className={`${styles.tag} ${styles.tagAdmin}`}>superadmin</span>}
-            {user.is_manager && <span className={`${styles.tag} ${styles.tagManager}`}>manager</span>}
+            <span className={`${styles.tag} ${user.is_superadmin ? styles.tagAdmin : ''}`}>{rol}</span>
+            {user.is_manager && !user.is_superadmin && <span className={`${styles.tag} ${styles.tagManager}`}>Manager</span>}
           </div>
         </div>
       </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', margin: '0 0 1rem' }}>
+        <button onClick={toggleActive} disabled={busy}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+          <Power size={15} /> {user.is_active ? 'Desactivar' : 'Activar'}
+        </button>
+        <button onClick={resetPass} disabled={busy}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+          <KeyRound size={15} /> Resetear contraseña
+        </button>
+        {!user.is_manager && !user.is_superadmin && (
+          <button onClick={promote} disabled={busy}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+            <Shield size={15} /> Promover a manager
+          </button>
+        )}
+      </div>
+      {actionMsg && (
+        <div style={{ margin: '0 0 1rem', padding: '0.6rem 0.9rem', borderRadius: '8px', background: 'rgba(16,185,129,0.1)', color: '#059669', fontSize: '0.85rem', fontWeight: 600 }}>{actionMsg}</div>
+      )}
 
       <div className={styles.card}>
         <h3>Información</h3>

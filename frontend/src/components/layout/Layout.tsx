@@ -23,7 +23,8 @@ import {
   GraduationCap,
   Building2,
   Compass,
-  Map
+  Map,
+  Shield
 } from 'lucide-react'
 import Avatar from '../Common/Avatar'
 import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
@@ -116,6 +117,11 @@ export default function Layout() {
         navItems.splice(chatIndex + 2, 0, { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} /> })
         navItems.splice(chatIndex + 3, 0, { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} /> })
       }
+    }
+    // Auditoría right after Métricas
+    const metricsIndex = navItems.findIndex(item => item.path === '/admin/metrics')
+    if (metricsIndex !== -1) {
+      navItems.splice(metricsIndex + 1, 0, { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} /> })
     }
   }
 

@@ -15,6 +15,7 @@ interface UserModalProps {
   onResetPassword?: () => void
   newPassword?: string
   setNewPassword?: (val: string) => void
+  error?: string | null
 }
 
 export function UserModal({
@@ -28,7 +29,8 @@ export function UserModal({
   onSubmit,
   onResetPassword,
   newPassword,
-  setNewPassword
+  setNewPassword,
+  error
 }: UserModalProps) {
   return (
     <div className={styles['modal-overlay']} onClick={onClose}>
@@ -84,7 +86,7 @@ export function UserModal({
             </div>
           )}
 
-          {(mode === 'edit' || form.user_type === 'empleador') && (
+          {form.user_type === 'empleador' && (
             <div className={styles['form-group']}>
               <label>Nombre de Empresa</label>
               <input
@@ -95,7 +97,7 @@ export function UserModal({
             </div>
           )}
 
-          {(mode === 'edit' || form.user_type === 'profesional') && (
+          {form.user_type === 'profesional' && (
             <>
               <div className={styles['form-group']}>
                 <label>Empresa</label>
@@ -133,6 +135,7 @@ export function UserModal({
 
           {mode === 'edit' && (
             <>
+              <div className={styles['section-label']}>Contacto y ubicación</div>
               <div className={styles['form-group']}>
                 <label>Teléfono</label>
                 <input
@@ -160,26 +163,34 @@ export function UserModal({
                 </div>
               </div>
               <div className={styles['form-group']}>
+                <label>Ubicación</label>
+                <input
+                  type="text"
+                  value={form.location}
+                  onChange={e => setForm({ ...form, location: e.target.value })}
+                />
+              </div>
+
+              <div className={styles['section-label']}>Permisos</div>
+              <div className={styles['permissions-group']}>
                 <label className={styles['checkbox-label']}>
+                  <span>Es Gerente/Manager</span>
                   <input
                     type="checkbox"
                     checked={form.is_manager}
                     onChange={e => setForm({ ...form, is_manager: e.target.checked })}
                   />
-                  Es Gerente/Manager
                 </label>
-              </div>
-              <div className={styles['form-group']}>
                 <label className={styles['checkbox-label']}>
+                  <span>Usuario Activo</span>
                   <input
                     type="checkbox"
                     checked={form.is_active}
                     onChange={e => setForm({ ...form, is_active: e.target.checked })}
                   />
-                  Usuario Activo
                 </label>
               </div>
-              
+
               {onResetPassword && setNewPassword && (
                 <div className={styles['form-group']}>
                   <label>Restablecer Contraseña</label>
@@ -205,6 +216,9 @@ export function UserModal({
             </>
           )}
 
+          {error && (
+            <div style={{ margin: '0 1.5rem', color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>{error}</div>
+          )}
           <div className={styles['modal-actions']}>
             <button type="button" className={styles['btn-secondary']} onClick={onClose}>
               Cancelar
