@@ -1,0 +1,101 @@
+.ui-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(6, 11, 35, 0.45);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: ui-modal-fade 0.15s ease;
+}
+
+.ui-modal__panel {
+  background: var(--white, #fff);
+  border-radius: var(--radius-lg, 20px);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: ui-modal-pop 0.16s ease;
+}
+
+.ui-modal__panel:focus { outline: none; }
+
+.ui-modal__panel--sm { max-width: 420px; }
+.ui-modal__panel--md { max-width: 560px; }
+.ui-modal__panel--lg { max-width: 820px; }
+
+.ui-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--gray-100, #f0eef8);
+}
+
+.ui-modal__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: var(--font-weight-bold, 700);
+  color: var(--black, #060b23);
+}
+
+.ui-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm, 8px);
+  background: transparent;
+  color: var(--gray-400, #8880a8);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.ui-modal__close:hover {
+  background: var(--gray-100, #f0eef8);
+  color: var(--black, #060b23);
+}
+.ui-modal__close:focus-visible {
+  outline: 2px solid var(--primary, #cc33cc);
+  outline-offset: 2px;
+}
+
+.ui-modal__body {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.ui-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--gray-100, #f0eef8);
+}
+
+@keyframes ui-modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ui-modal-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-modal__overlay, .ui-modal__panel { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .ui-modal__overlay { padding: 0; align-items: flex-end; }
+  .ui-modal__panel { max-width: none; border-radius: var(--radius-lg, 20px) var(--radius-lg, 20px) 0 0; max-height: 92vh; }
+}

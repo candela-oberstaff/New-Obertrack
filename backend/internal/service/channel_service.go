@@ -134,12 +134,11 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 				for _, m := range members {
 					if m.ID != userID {
 						recipient = &m
-						log.Printf("[DEBUG] DM Channel %d: found recipient %s (ID %d)", ch.ID, m.Name, m.ID)
 						break
 					}
 				}
 			} else {
-				log.Printf("[DEBUG] DM Channel %d: error getting members: %v", ch.ID, err)
+				log.Printf("[ChannelService] error getting DM members for channel %d: %v", ch.ID, err)
 			}
 		}
 

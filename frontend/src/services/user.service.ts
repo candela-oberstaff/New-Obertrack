@@ -2,7 +2,7 @@ import api from './client'
 import type { User, PaginatedResponse } from '../types'
 
 export const userService = {
-  getAll: async (params?: { role?: string; page?: number; limit?: number }) => {
+  getAll: async (params?: { role?: string; page?: number; limit?: number; q?: string; company_id?: number }) => {
     const { data } = await api.get<PaginatedResponse<User>>('/users', { params })
     return data
   },

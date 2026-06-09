@@ -9,7 +9,7 @@ import (
 )
 
 type UserService interface {
-	GetAll(role, isManager string, companyID uint, offset, limit int) ([]models.User, int64, error)
+	GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	GetByID(id, requesterID, tenantID uint, isSuperadmin bool) (*models.User, error)
 	Create(req map[string]interface{}) (*models.User, error)
 	Update(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}) (*models.User, error)
@@ -53,8 +53,8 @@ func (s *userService) authorizeUserTenant(target *models.User, requesterID, tena
 	return nil
 }
 
-func (s *userService) GetAll(role, isManager string, companyID uint, offset, limit int) ([]models.User, int64, error) {
-	return s.repo.GetAll(role, isManager, companyID, offset, limit)
+func (s *userService) GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error) {
+	return s.repo.GetAll(role, isManager, search, companyID, offset, limit)
 }
 
 func (s *userService) GetByID(id, requesterID, tenantID uint, isSuperadmin bool) (*models.User, error) {

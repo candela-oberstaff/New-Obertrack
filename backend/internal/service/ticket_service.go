@@ -449,11 +449,11 @@ func (s *ticketService) UpdateInternal(id uint, stage models.TicketStage, status
 // ListSupportAgents returns active users who can handle the support inbox
 // (customer_success + superadmin) as valid transfer targets.
 func (s *ticketService) ListSupportAgents() ([]models.User, error) {
-	cs, _, err := s.userRepo.GetAll(string(models.UserTypeCustomerSuccess), "", 0, 0, 1000)
+	cs, _, err := s.userRepo.GetAll(string(models.UserTypeCustomerSuccess), "", "", 0, 0, 1000)
 	if err != nil {
 		return nil, err
 	}
-	sa, _, err := s.userRepo.GetAll(string(models.UserTypeSuperadmin), "", 0, 0, 1000)
+	sa, _, err := s.userRepo.GetAll(string(models.UserTypeSuperadmin), "", "", 0, 0, 1000)
 	if err != nil {
 		return nil, err
 	}

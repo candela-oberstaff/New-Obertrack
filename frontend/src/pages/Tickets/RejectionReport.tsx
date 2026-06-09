@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Download, FileText } from 'lucide-react'
 import { Ticket, ticketService } from '../../services/ticket.service'
@@ -25,24 +26,15 @@ export default function RejectionReport() {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
-  const [items, setItems] = useState<Ticket[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
-  const fetchReport = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
+  const { data: items = [], isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['rejection-report', month, year],
+    queryFn: async (): Promise<Ticket[]> => {
       const data = await ticketService.getRejectionReport(month, year)
-      setItems(data.items ?? [])
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'No se pudo cargar el informe.')
-    } finally {
-      setLoading(false)
-    }
-  }, [month, year])
-
-  useEffect(() => { fetchReport() }, [fetchReport])
+      return data.items ?? []
+    },
+  })
+  const error = queryError ? ((queryError as any)?.response?.data?.error ?? 'No se pudo cargar el informe.') : null
 
   const handleExport = () => {
     const headers = ['Profesional', 'Email', 'Empresa', 'Fechas', 'Motivo', 'Rechazado por', 'Estado', 'Creado']

@@ -7,6 +7,7 @@ import { TutorialCard } from '../components/Tutorials/TutorialCard'
 import { TutorialPlayerModal } from '../components/Tutorials/Modals/TutorialPlayerModal'
 import { TutorialFormModal } from '../components/Tutorials/Modals/TutorialFormModal'
 import { useAuth } from '../context/AuthContext'
+import { Skeleton } from '../components/ui'
 import styles from './Tutoriales.module.css'
 
 export default function Tutoriales() {
@@ -134,7 +135,9 @@ export default function Tutoriales() {
       )}
 
       {isLoading ? (
-        <div className={styles['tutorials-loading']}>Cargando tutoriales...</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={180} radius={16} />)}
+        </div>
       ) : tutorials.length === 0 ? (
         <div className={styles['tutorials-empty']}>
           <BookOpen size={48} />

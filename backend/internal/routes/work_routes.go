@@ -21,6 +21,7 @@ func registerWorkRoutes(api *gin.RouterGroup, d *deps) {
 	tasks := api.Group("/tasks")
 	{
 		tasks.GET("", d.task.GetAll)
+		tasks.GET("/status-counts", d.task.GetBoardStatusCounts)
 		tasks.POST("", d.task.Create)
 		tasks.GET("/:id", d.task.GetByID)
 		tasks.PUT("/:id", d.task.Update)

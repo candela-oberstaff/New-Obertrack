@@ -1,0 +1,27 @@
+.ui-skeleton {
+  display: block;
+  background: linear-gradient(
+    90deg,
+    var(--gray-100, #f0eef8) 25%,
+    var(--gray-200, #ddd9ef) 37%,
+    var(--gray-100, #f0eef8) 63%
+  );
+  background-size: 400% 100%;
+  animation: ui-skeleton-shimmer 1.4s ease infinite;
+}
+
+.ui-skeleton-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+@keyframes ui-skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton { animation: none; }
+}

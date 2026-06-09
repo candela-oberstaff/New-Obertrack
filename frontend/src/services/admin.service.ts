@@ -25,7 +25,7 @@ export const adminService = {
     const { data } = await api.get('/admin/stats')
     return data
   },
-  getUsers: async (params?: { user_type?: string; is_active?: string; is_manager?: string; page?: number; limit?: number }) => {
+  getUsers: async (params?: { user_type?: string; is_active?: string; is_manager?: string; page?: number; limit?: number; q?: string }) => {
     const { data } = await api.get('/admin/users', { params })
     return data
   },

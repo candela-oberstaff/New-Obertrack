@@ -6,7 +6,7 @@ import (
 )
 
 type UserRepository interface {
-	GetAll(role, isManager string, companyID uint, offset, limit int) ([]models.User, int64, error)
+	GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	Count(role, isManager, isActive string, companyID uint) (int64, error)
 	GetByID(id uint) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
@@ -27,7 +27,7 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 	return &userRepository{db: db}
 }
 
-func (r *userRepository) GetAll(role, isManager string, companyID uint, offset, limit int) ([]models.User, int64, error) {
+func (r *userRepository) GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error) {
 	var users []models.User
 	var total int64
 
@@ -48,6 +48,12 @@ func (r *userRepository) GetAll(role, isManager string, companyID uint, offset, 
 	if companyID > 0 {
 		countQuery = countQuery.Where("empleador_id = ? OR id = ?", companyID, companyID)
 		findQuery = findQuery.Where("empleador_id = ? OR id = ?", companyID, companyID)
+	}
+
+	if search != "" {
+		like := "%" + search + "%"
+		countQuery = countQuery.Where("name ILIKE ? OR email ILIKE ?", like, like)
+		findQuery = findQuery.Where("name ILIKE ? OR email ILIKE ?", like, like)
 	}
 
 	if err := countQuery.Count(&total).Error; err != nil {

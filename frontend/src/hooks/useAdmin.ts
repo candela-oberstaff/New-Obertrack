@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminService } from '../services/api'
 import type { User } from '../types'
 
@@ -54,7 +55,6 @@ interface AbsenceReport {
 }
 
 interface UseAdminReturn {
-  // Data
   stats: DashboardStats | null
   users: User[]
   companies: any[]
@@ -63,11 +63,9 @@ interface UseAdminReturn {
   absenceReport: AbsenceReport | null
   isLoading: boolean
 
-  // Tab state
   activeTab: string
   setActiveTab: (tab: string) => void
 
-  // Actions
   fetchDashboard: () => Promise<void>
   fetchUsers: () => Promise<void>
   fetchCompanies: () => Promise<void>
@@ -75,7 +73,6 @@ interface UseAdminReturn {
   fetchRecentActivity: () => Promise<void>
   fetchAbsenceReport: () => Promise<void>
 
-  // User CRUD
   createUser: (data: any) => Promise<void>
   updateUser: (id: number, data: any) => Promise<void>
   deleteUser: (id: number) => Promise<void>
@@ -84,170 +81,102 @@ interface UseAdminReturn {
   promoteToManager: (id: number) => Promise<void>
 }
 
+function normalizeRecentActivity(items: any[] = []): ActivityItem[] {
+  return items.map((item, index) => ({
+    ...item,
+    id: item.id ?? index,
+    description: item.description || item.details || 'Sin descripcion',
+    created_at: item.created_at || item.timestamp || '',
+  }))
+}
+
 export function useAdmin(): UseAdminReturn {
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [users, setUsers] = useState<User[]>([])
-  const [companies, setCompanies] = useState<any[]>([])
-  const [inactiveUsers, setInactiveUsers] = useState<User[]>([])
-  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([])
-  const [absenceReport, setAbsenceReport] = useState<AbsenceReport | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const qc = useQueryClient()
   const [activeTab, setActiveTab] = useState('dashboard')
 
-  const normalizeRecentActivity = (items: any[] = []): ActivityItem[] => {
-    return items.map((item, index) => ({
-      ...item,
-      id: item.id ?? index,
-      description: item.description || item.details || 'Sin descripcion',
-      created_at: item.created_at || item.timestamp || '',
-    }))
-  }
-
-  const fetchDashboard = useCallback(async () => {
-    try {
-      const [statsData, activityData] = await Promise.allSettled([
-        adminService.getDashboard(),
-        adminService.getRecentActivity(),
-      ])
-
-      if (statsData.status === 'fulfilled' && statsData.value) {
-        const data = statsData.value;
-        setStats({
-          totalUsers: data.total_users || 0,
-          activeUsers: data.active_users || 0,
-          totalTasks: data.total_tasks || 0,
-          totalBoards: data.total_boards || 0,
-          totalCompanies: data.total_companies || 0,
-          totalProfessionals: data.total_professionals || 0,
-          activeToday: data.active_today || 0,
-          inactiveWarning: data.inactive_warning || 0,
-          pendingHours: data.pending_hours || 0,
-        })
+  const statsQ = useQuery({
+    queryKey: ['admin', 'dashboard'],
+    queryFn: async (): Promise<DashboardStats | null> => {
+      const data = await adminService.getDashboard()
+      if (!data) return null
+      return {
+        totalUsers: data.total_users || 0,
+        activeUsers: data.active_users || 0,
+        totalTasks: data.total_tasks || 0,
+        totalBoards: data.total_boards || 0,
+        totalCompanies: data.total_companies || 0,
+        totalProfessionals: data.total_professionals || 0,
+        activeToday: data.active_today || 0,
+        inactiveWarning: data.inactive_warning || 0,
+        pendingHours: data.pending_hours || 0,
       }
-      if (activityData.status === 'fulfilled') {
-        setRecentActivity(normalizeRecentActivity(activityData.value))
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard:', error)
-    }
-  }, [])
+    },
+  })
 
-  const fetchUsers = useCallback(async () => {
-    try {
+  const usersQ = useQuery({
+    queryKey: ['admin', 'users'],
+    queryFn: async () => {
       const response = await adminService.getUsers()
-      // The backend returns { data: [...], total: ... } for paginated results
-      const usersArray = response?.data || (Array.isArray(response) ? response : [])
-      setUsers(usersArray)
-    } catch (error) {
-      console.error('Error fetching users:', error)
-    }
-  }, [])
+      return response?.data || (Array.isArray(response) ? response : [])
+    },
+  })
 
-  const fetchCompanies = useCallback(async () => {
-    try {
-      const data = await adminService.getCompanies()
-      setCompanies(data || [])
-    } catch (error) {
-      console.error('Error fetching companies:', error)
-    }
-  }, [])
+  const companiesQ = useQuery({
+    queryKey: ['admin', 'companies'],
+    queryFn: async () => (await adminService.getCompanies()) || [],
+  })
 
-  const fetchInactiveUsers = useCallback(async () => {
-    try {
-      const data = await adminService.getInactiveUsers()
-      setInactiveUsers(data || [])
-    } catch (error) {
-      console.error('Error fetching inactive users:', error)
-    }
-  }, [])
+  const inactiveQ = useQuery({
+    queryKey: ['admin', 'inactive-users'],
+    queryFn: async () => (await adminService.getInactiveUsers()) || [],
+  })
 
-  const fetchRecentActivity = useCallback(async () => {
-    try {
-      const data = await adminService.getRecentActivity()
-      setRecentActivity(normalizeRecentActivity(data))
-    } catch (error) {
-      console.error('Error fetching recent activity:', error)
-    }
-  }, [])
+  const activityQ = useQuery({
+    queryKey: ['admin', 'recent-activity'],
+    queryFn: async () => normalizeRecentActivity(await adminService.getRecentActivity()),
+  })
 
-  const fetchAbsenceReport = useCallback(async () => {
-    try {
-      const data = await adminService.getAbsenceReport()
-      setAbsenceReport(data || null)
-    } catch (error) {
-      console.error('Error fetching absence report:', error)
-    }
-  }, [])
+  const absenceQ = useQuery({
+    queryKey: ['admin', 'absence-report'],
+    queryFn: async () => (await adminService.getAbsenceReport()) || null,
+  })
 
-  const createUser = useCallback(async (data: any) => {
-    await adminService.createUser(data)
-    fetchUsers()
-  }, [fetchUsers])
+  const invalidateUsers = () => qc.invalidateQueries({ queryKey: ['admin', 'users'] })
 
-  const updateUser = useCallback(async (id: number, data: any) => {
-    await adminService.updateUser(id, data)
-    fetchUsers()
-  }, [fetchUsers])
+  const createMut = useMutation({ mutationFn: (data: any) => adminService.createUser(data), onSuccess: invalidateUsers })
+  const updateMut = useMutation({ mutationFn: ({ id, data }: { id: number; data: any }) => adminService.updateUser(id, data), onSuccess: invalidateUsers })
+  const deleteMut = useMutation({ mutationFn: (id: number) => adminService.deleteUser(id), onSuccess: invalidateUsers })
 
-  const deleteUser = useCallback(async (id: number) => {
-    await adminService.deleteUser(id)
-    fetchUsers()
-  }, [fetchUsers])
-
-  const toggleUserStatus = useCallback(async (id: number) => {
-    // Using updateUser to toggle status
-    const user = users.find(u => u.id === id)
-    if (user) {
-      await adminService.updateUser(id, { is_active: !user.is_active })
-      fetchUsers()
-    }
-  }, [users, fetchUsers])
-
-  const resetUserPassword = useCallback(async (id: number, newPassword: string) => {
-    await adminService.resetPassword(id, newPassword)
-  }, [])
-
-  const promoteToManager = useCallback(async (id: number) => {
-    await adminService.updateUser(id, { is_manager: true })
-    fetchUsers()
-  }, [fetchUsers])
-
-  useEffect(() => {
-    const loadInitialData = async () => {
-      setIsLoading(true)
-      await Promise.all([
-        fetchDashboard(),
-        fetchUsers(),
-        fetchCompanies(),
-        fetchInactiveUsers(),
-        fetchAbsenceReport(),
-      ])
-      setIsLoading(false)
-    }
-    loadInitialData()
-  }, [fetchDashboard, fetchUsers, fetchCompanies, fetchInactiveUsers, fetchAbsenceReport])
+  const users: User[] = usersQ.data ?? []
 
   return {
-    stats,
+    stats: statsQ.data ?? null,
     users,
-    companies,
-    inactiveUsers,
-    recentActivity,
-    absenceReport,
-    isLoading,
+    companies: companiesQ.data ?? [],
+    inactiveUsers: inactiveQ.data ?? [],
+    recentActivity: activityQ.data ?? [],
+    absenceReport: absenceQ.data ?? null,
+    // Page-level skeleton waits for the main data sets, mirroring the old behaviour.
+    isLoading: statsQ.isLoading || usersQ.isLoading || companiesQ.isLoading || inactiveQ.isLoading || absenceQ.isLoading,
+
     activeTab,
     setActiveTab,
-    fetchDashboard,
-    fetchUsers,
-    fetchCompanies,
-    fetchInactiveUsers,
-    fetchRecentActivity,
-    fetchAbsenceReport,
-    createUser,
-    updateUser,
-    deleteUser,
-    toggleUserStatus,
-    resetUserPassword,
-    promoteToManager,
+
+    fetchDashboard: useCallback(async () => { await qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] }) }, [qc]),
+    fetchUsers: useCallback(async () => { await invalidateUsers() }, [qc]),
+    fetchCompanies: useCallback(async () => { await qc.invalidateQueries({ queryKey: ['admin', 'companies'] }) }, [qc]),
+    fetchInactiveUsers: useCallback(async () => { await qc.invalidateQueries({ queryKey: ['admin', 'inactive-users'] }) }, [qc]),
+    fetchRecentActivity: useCallback(async () => { await qc.invalidateQueries({ queryKey: ['admin', 'recent-activity'] }) }, [qc]),
+    fetchAbsenceReport: useCallback(async () => { await qc.invalidateQueries({ queryKey: ['admin', 'absence-report'] }) }, [qc]),
+
+    createUser: async (data) => { await createMut.mutateAsync(data) },
+    updateUser: async (id, data) => { await updateMut.mutateAsync({ id, data }) },
+    deleteUser: async (id) => { await deleteMut.mutateAsync(id) },
+    toggleUserStatus: async (id) => {
+      const user = users.find(u => u.id === id)
+      if (user) await updateMut.mutateAsync({ id, data: { is_active: !user.is_active } })
+    },
+    resetUserPassword: async (id, newPassword) => { await adminService.resetPassword(id, newPassword) },
+    promoteToManager: async (id) => { await updateMut.mutateAsync({ id, data: { is_manager: true } }) },
   }
 }

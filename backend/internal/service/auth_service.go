@@ -212,7 +212,7 @@ func (s *authService) GetTokenVersion(id uint) (int, error) {
 }
 
 func (s *authService) GetPublicCompanies() ([]map[string]interface{}, error) {
-	users, _, err := s.userRepo.GetAll("empleador", "", 0, 0, 1000)
+	users, _, err := s.userRepo.GetAll("empleador", "", "", 0, 0, 1000)
 	if err != nil {
 		return nil, err
 	}

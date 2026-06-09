@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { userService } from '../../services/api'
-import type { User } from '../../types'
 import Avatar from '../Common/Avatar'
 import { useConfirm } from '../ui/ConfirmProvider'
 import styles from '../../pages/Profile.module.css'
@@ -15,28 +15,17 @@ interface TeamPanelProps {
 
 export function TeamPanel({ type }: TeamPanelProps) {
   const navigate = useNavigate()
-  const [teamMembers, setTeamMembers] = useState<User[]>([])
+  const qc = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [message, setMessage] = useState('')
   const confirm = useConfirm()
 
-  const fetchTeam = async () => {
-    try {
-      if (type === 'manager') {
-        const data = await userService.getMyTeam()
-        setTeamMembers(data)
-      } else {
-        const data = await userService.getEmployees()
-        setTeamMembers(data)
-      }
-    } catch (error) {
-      console.error('Error fetching team:', error)
-    }
-  }
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['team', type],
+    queryFn: () => (type === 'manager' ? userService.getMyTeam() : userService.getEmployees()),
+  })
 
-  useEffect(() => {
-    fetchTeam()
-  }, [type])
+  const fetchTeam = () => qc.invalidateQueries({ queryKey: ['team', type] })
 
   const handlePromoteToManager = async (targetUserId: number, isAlreadyManager: boolean) => {
     const ok = await confirm({

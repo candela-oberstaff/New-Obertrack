@@ -3,6 +3,7 @@ import type { User } from '../types'
 
 import { TasksBoard } from '../components/Tasks/components/TasksBoard'
 import { Select } from '../components/ui/Select'
+import { Skeleton } from '../components/ui'
 import { TaskDetailPanel } from '../components/Tasks/TaskDetailPanel'
 import { NewTaskModal } from '../components/Tasks/Modals/NewTaskModal'
 import { BoardModal } from '../components/Tasks/Modals/BoardModal'
@@ -106,9 +107,11 @@ export default function Tasks() {
   if (isLoadingBoards && boards.length === 0) {
     return (
       <div className={styles['tasks-page']}>
-        <div className={styles['tasks-loading']}>
-          <div className={styles['spinner']} />
-          <p>Cargando...</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.5rem' }}>
+          <Skeleton height={40} width={260} radius={12} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={520} radius={16} />)}
+          </div>
         </div>
       </div>
     )

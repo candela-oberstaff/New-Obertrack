@@ -20,12 +20,14 @@ import (
 )
 
 // surveyHMACSecret returns the secret key used for signing survey quick-response tokens.
+// Prefers a dedicated SURVEY_TOKEN_SECRET, but falls back to JWT_SECRET (validated
+// to be strong at startup) instead of a public hardcoded default that would make
+// quick-response tokens forgeable.
 func surveyHMACSecret() string {
-	secret := os.Getenv("SURVEY_TOKEN_SECRET")
-	if secret == "" {
-		secret = "obertrack-survey-default-secret"
+	if secret := os.Getenv("SURVEY_TOKEN_SECRET"); secret != "" {
+		return secret
 	}
-	return secret
+	return os.Getenv("JWT_SECRET")
 }
 
 // generateSurveyToken creates an HMAC-SHA256 token for a survey+user combination.

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Save, Send, Plus, Trash2, GripVertical, Settings, Star, X, Search, Check } from 'lucide-react';
 import styles from './SurveyBuilder.module.css';
 import commonStyles from '../Tools.module.css';
 import { Select } from '../../../ui/Select';
 import { SurveyQuestion } from '../../../../services/surveyService';
 import { userService } from '../../../../services/user.service';
-import { User } from '../../../../types';
 
 interface SurveyBuilderProps {
   onBack: () => void;
@@ -30,22 +30,16 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
   const [sendByEmail, setSendByEmail] = useState(initialData?.send_by_email || false);
   const [sendByInApp, setSendByInApp] = useState(initialData?.send_by_inapp ?? true);
   
-  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [isSending, setIsSending] = useState(false);
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const resp = await userService.getAll({ limit: 1000 });
-        setAvailableUsers(resp.data || []);
-      } catch (error) {
-        console.error("Error fetching users for survey:", error);
-      }
-    };
-    fetchUsers();
+  const { data: availableUsers = [] } = useQuery({
+    queryKey: ['survey-recipients'],
+    queryFn: async () => (await userService.getAll({ limit: 1000 })).data || [],
+  });
 
+  useEffect(() => {
     if (initialData?.recipient_list) {
       try {
         const ids = JSON.parse(initialData.recipient_list);

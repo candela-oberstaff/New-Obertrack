@@ -15,6 +15,7 @@ import { useReports } from '../hooks/useReports'
 import { StatCard } from '../components/Common/StatCard'
 import { ReportsCharts } from '../components/Reports/ReportsCharts'
 import { Select } from '../components/ui/Select'
+import { Skeleton } from '../components/ui'
 import styles from './Reports.module.css'
 
 export default function Reports() {
@@ -115,9 +116,11 @@ export default function Reports() {
           </p>
         </div>
       ) : isLoading ? (
-        <div className={styles['reports-loading']}>
-          <div className={styles['spinner']} />
-          <p>Cargando datos...</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={96} radius={16} />)}
+          </div>
+          <Skeleton height={320} radius={16} />
         </div>
       ) : (
         <>

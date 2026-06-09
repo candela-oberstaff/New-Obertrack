@@ -4,6 +4,7 @@ import { ArrowLeft, UserX, Power, KeyRound, Shield } from 'lucide-react'
 import { userService, adminService } from '../services/api'
 import type { User } from '../types'
 import Avatar from '../components/Common/Avatar'
+import { Skeleton } from '../components/ui'
 import styles from './AdminUserDetail.module.css'
 
 export default function AdminUserDetail() {
@@ -73,9 +74,11 @@ export default function AdminUserDetail() {
   if (isLoading) {
     return (
       <div className={styles.page}>
-        <div className={styles.loading}>
-          <div className={styles.spinner} />
-          <p>Cargando usuario...</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.5rem' }}>
+          <Skeleton height={120} radius={16} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={140} radius={16} />)}
+          </div>
         </div>
       </div>
     )
