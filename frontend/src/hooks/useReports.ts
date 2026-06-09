@@ -1,15 +1,32 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { userService, workHourService, taskService } from '../services/api'
+import { userService, workHourService, taskService, adminService } from '../services/api'
 import type { User, WorkHour, Task } from '../types'
 
 export function useReports(user: User | null) {
+  const isSuperadmin = !!user?.is_superadmin
+
   const [employees, setEmployees] = useState<{ id: number; name: string }[]>([])
   const [selectedEmployee, setSelectedEmployee] = useState<number | ''>('')
+  const [companies, setCompanies] = useState<{ id: number; company_name: string }[]>([])
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState<number | null>(() => {
+    const stored = localStorage.getItem('preferred_company_id')
+    return stored ? Number(stored) : null
+  })
   const [workHours, setWorkHours] = useState<WorkHour[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const [isLoading, setIsLoading] = useState(false)
   const [reportType, setReportType] = useState<'hours' | 'tasks'>('hours')
+
+  const setSelectedCompanyId = useCallback((id: number | null) => {
+    setSelectedCompanyIdState(id)
+    setSelectedEmployee('')
+    if (id) {
+      localStorage.setItem('preferred_company_id', String(id))
+    } else {
+      localStorage.removeItem('preferred_company_id')
+    }
+  }, [])
 
   const getMonthRange = useCallback((monthStr: string) => {
     const [year, m] = monthStr.split('-').map(Number)
@@ -19,17 +36,49 @@ export function useReports(user: User | null) {
     return [startDate, endDate]
   }, [])
 
+  // Superadmin: load the company list for the company selector.
+  useEffect(() => {
+    if (!isSuperadmin) return
+    let active = true
+    adminService.getTenants()
+      .then((res: any) => {
+        if (!active) return
+        setCompanies((res || []).map((t: any) => ({
+          id: t.id,
+          company_name: t.company_name || t.owner_name || `Empresa ${t.id}`,
+        })))
+      })
+      .catch((error) => console.error('Error fetching companies:', error))
+    return () => { active = false }
+  }, [isSuperadmin])
+
   const fetchEmployees = useCallback(async () => {
     if (!user?.is_superadmin && !user?.is_manager && user?.user_type !== 'empleador') return
     try {
+      // Superadmin: employees are scoped to the selected company; without one, none.
+      if (isSuperadmin) {
+        if (!selectedCompanyId) {
+          setEmployees([])
+          return
+        }
+        const data = await adminService.getTenantEmployees(selectedCompanyId)
+        setEmployees((data || []).map((e: any) => ({ id: e.id, name: e.name || e.email })))
+        return
+      }
       const data = await userService.getEmployees()
       setEmployees(data || [])
     } catch (error) {
       console.error('Error fetching employees:', error)
     }
-  }, [user])
+  }, [user, isSuperadmin, selectedCompanyId])
 
   const fetchData = useCallback(async () => {
+    // Superadmin must pick a company first; until then show nothing.
+    if (isSuperadmin && !selectedCompanyId) {
+      setWorkHours([])
+      setTasks([])
+      return
+    }
     setIsLoading(true)
     try {
       const [startDate, endDate] = getMonthRange(month)
@@ -37,9 +86,11 @@ export function useReports(user: User | null) {
       if (selectedEmployee) userIdFilter = String(selectedEmployee)
       else if (user?.user_type === 'profesional') userIdFilter = String(user.id)
 
+      const companyId = isSuperadmin && selectedCompanyId ? selectedCompanyId : undefined
+
       const [hoursRes, tasksRes] = await Promise.allSettled([
-        workHourService.getAll({ user_id: userIdFilter, start_date: startDate, end_date: endDate }),
-        taskService.getAll({ assignee_id: userIdFilter, start_date: startDate, end_date: endDate })
+        workHourService.getAll({ user_id: userIdFilter, start_date: startDate, end_date: endDate, company_id: companyId }),
+        taskService.getAll({ assignee_id: userIdFilter, start_date: startDate, end_date: endDate, company_id: companyId })
       ])
 
       if (hoursRes.status === 'fulfilled') setWorkHours(hoursRes.value?.data || [])
@@ -49,7 +100,7 @@ export function useReports(user: User | null) {
     } finally {
       setIsLoading(false)
     }
-  }, [selectedEmployee, month, user, getMonthRange])
+  }, [selectedEmployee, month, user, getMonthRange, isSuperadmin, selectedCompanyId])
 
   useEffect(() => { fetchEmployees() }, [fetchEmployees])
   useEffect(() => {
@@ -91,6 +142,8 @@ export function useReports(user: User | null) {
   }, [tasks])
 
   return {
+    isSuperadmin,
+    companies, selectedCompanyId, setSelectedCompanyId,
     employees, selectedEmployee, setSelectedEmployee,
     workHours, tasks, month, setMonth,
     isLoading, reportType, setReportType,

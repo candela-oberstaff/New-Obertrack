@@ -57,11 +57,19 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 
+	// Superadmin scopes to a company via ?company_id=. Ignored for tenant-scoped users.
+	var companyFilter uint
+	if isSuperadmin {
+		if v, err := strconv.ParseUint(c.Query("company_id"), 10, 32); err == nil {
+			companyFilter = uint(v)
+		}
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	tasks, total, err := h.service.GetAll(userID, role, isManager, isSuperadmin, tenantID, boardIDStr, status, priority, assigneeIDStr, startDate, endDate, offset, limit)
+	tasks, total, err := h.service.GetAll(userID, role, isManager, isSuperadmin, tenantID, companyFilter, boardIDStr, status, priority, assigneeIDStr, startDate, endDate, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tasks", "details": err.Error()})
 		return

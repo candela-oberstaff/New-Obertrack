@@ -314,7 +314,7 @@ func (s *channelService) SearchMessages(channelID, userID uint, query string) ([
 	return s.repo.SearchMessages(channelID, query, 50)
 }
 
-func (s *channelService) CreateDirectMessage(userID, recipientID uint) (*DirectMessageResponse, error) {
+func (s *channelService) CreateDirectMessage(userID, recipientID uint, tenantOverride uint) (*DirectMessageResponse, error) {
 	if userID == recipientID {
 		return nil, fmt.Errorf("cannot create DM with yourself")
 	}
@@ -329,12 +329,19 @@ func (s *channelService) CreateDirectMessage(userID, recipientID uint) (*DirectM
 		return nil, ErrCrossTenant
 	}
 
+	// The DM belongs to the creator's tenant. For superadmins (tenant 0) scope it to
+	// the selected company so the DM is not orphaned and shows under that company.
+	dmTenant := models.TenantForUser(creator)
+	if tenantOverride > 0 && isSuperadminUser(creator) {
+		dmTenant = tenantOverride
+	}
+
 	dmName := fmt.Sprintf("DM-%d-%d", userID, recipientID)
 	if userID > recipientID {
 		dmName = fmt.Sprintf("DM-%d-%d", recipientID, userID)
 	}
 
-	dmChannel, err := s.repo.GetChannelByNameAndType(dmName, models.ChannelTypeDirect, models.TenantForUser(creator))
+	dmChannel, err := s.repo.GetChannelByNameAndType(dmName, models.ChannelTypeDirect, dmTenant)
 	if err == nil && dmChannel != nil {
 		return s.buildDMResponse(dmChannel, recipientID)
 	}
@@ -343,7 +350,7 @@ func (s *channelService) CreateDirectMessage(userID, recipientID uint) (*DirectM
 		Name:      dmName,
 		Type:      models.ChannelTypeDirect,
 		CreatedBy: userID,
-		TenantID:  models.TenantForUser(creator),
+		TenantID:  dmTenant,
 		IsActive:  true,
 	}
 
@@ -406,6 +413,15 @@ func (s *channelService) MarkAsRead(channelID, userID uint) error {
 	return s.repo.MarkAsRead(channelID, userID)
 }
 
-func (s *channelService) GetAllUsers(tenantID uint, isSuperadmin bool) ([]models.User, error) {
+func (s *channelService) GetAllUsers(tenantID uint, isSuperadmin bool, companyFilter uint) ([]models.User, error) {
+	if isSuperadmin {
+		// Superadmin must scope to a company; without it return no users so DMs
+		// can't be started across tenants.
+		if companyFilter == 0 {
+			return []models.User{}, nil
+		}
+		// Scope to the selected company's members (tenant-scoped, not superadmin-wide).
+		return s.repo.GetActiveUsers(companyFilter, false)
+	}
 	return s.repo.GetActiveUsers(tenantID, isSuperadmin)
 }

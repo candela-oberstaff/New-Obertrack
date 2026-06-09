@@ -11,6 +11,7 @@ export const taskService = {
     board_id?: number;
     start_date?: string;
     end_date?: string;
+    company_id?: number;
   }) => {
     const { data } = await api.get<PaginatedResponse<Task>>('/tasks', { params })
     return data

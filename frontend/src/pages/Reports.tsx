@@ -20,6 +20,8 @@ import styles from './Reports.module.css'
 export default function Reports() {
   const { user } = useAuth()
   const {
+    isSuperadmin,
+    companies, selectedCompanyId, setSelectedCompanyId,
     employees, selectedEmployee, setSelectedEmployee,
     workHours, tasks, month, setMonth,
     isLoading, reportType, setReportType,
@@ -57,6 +59,16 @@ export default function Reports() {
       </div>
 
       <div className={styles['reports-filters']} data-tour="reports-filters">
+        {isSuperadmin && (
+          <Select
+            value={selectedCompanyId ?? ''}
+            onChange={(v) => setSelectedCompanyId(v ? Number(v) : null)}
+            clearable
+            placeholder="Seleccione una empresa..."
+            options={companies.map((c) => ({ value: c.id, label: c.company_name }))}
+          />
+        )}
+
         {(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') && employees.length > 0 && (
           <Select
             value={selectedEmployee}
@@ -94,7 +106,15 @@ export default function Reports() {
         </div>
       </div>
 
-      {isLoading ? (
+      {isSuperadmin && !selectedCompanyId ? (
+        <div className={styles['reports-loading']} style={{ textAlign: 'center' }}>
+          <Calendar size={56} style={{ color: 'var(--primary)', opacity: 0.5, marginBottom: '16px' }} />
+          <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--black)', marginBottom: '8px' }}>Selecciona una empresa</h2>
+          <p style={{ maxWidth: '420px', color: '#64748b' }}>
+            Elige una empresa para ver sus reportes de horas y tareas. Luego podés filtrar por un empleado. La información de cada empresa se mantiene aislada.
+          </p>
+        </div>
+      ) : isLoading ? (
         <div className={styles['reports-loading']}>
           <div className={styles['spinner']} />
           <p>Cargando datos...</p>

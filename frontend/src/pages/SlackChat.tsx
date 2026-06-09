@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { channelService, uploadService } from '../services/api'
+import { channelService, uploadService, adminService } from '../services/api'
+import { Select } from '../components/ui/Select'
 import type { User } from '../types'
 import type { Message } from '../types/chat'
 import { Sidebar } from '../components/Chat/Sidebar'
@@ -18,10 +19,41 @@ import { useSlackChat } from '../hooks/useSlackChat'
 import { formatTime, highlightMentions, getUserColor } from '../components/Chat/ChatUtils'
 import styles from './SlackChat.module.css'
 
+interface CompanyOption { id: number; company_name: string }
+
 export default function SlackChat() {
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const userIdParam = searchParams.get('userId')
+
+  const isSuperadmin = !!user?.is_superadmin
+
+  // Superadmin scope: pick a company so channels/DMs from different tenants never mix.
+  const [companies, setCompanies] = useState<CompanyOption[]>([])
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState<number | null>(() => {
+    const stored = localStorage.getItem('preferred_company_id')
+    return stored ? Number(stored) : null
+  })
+  const setSelectedCompanyId = (id: number | null) => {
+    setSelectedCompanyIdState(id)
+    if (id) localStorage.setItem('preferred_company_id', String(id))
+    else localStorage.removeItem('preferred_company_id')
+  }
+
+  useEffect(() => {
+    if (!isSuperadmin) return
+    let active = true
+    adminService.getTenants()
+      .then((res: any) => {
+        if (!active) return
+        setCompanies((res || []).map((t: any) => ({
+          id: t.id,
+          company_name: t.company_name || t.owner_name || `Empresa ${t.id}`,
+        })))
+      })
+      .catch((err) => console.error('Error fetching companies:', err))
+    return () => { active = false }
+  }, [isSuperadmin])
 
   const {
     channels, selectedChannel, setSelectedChannel,
@@ -33,7 +65,7 @@ export default function SlackChat() {
     showThread, setShowThread, threadReplies, setThreadReplies,
     sendMessage, sendTypingIndicator, startRecording, stopRecording,
     editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels, fetchAllUsers
-  } = useSlackChat(user as any)
+  } = useSlackChat(user as any, isSuperadmin ? selectedCompanyId : null)
 
   const [showNewChannelModal, setShowNewChannelModal] = useState(false)
   const [showChannelSettings, setShowChannelSettings] = useState(false)
@@ -74,7 +106,7 @@ export default function SlackChat() {
           // Check if the recipient exists in allUsers
           const recipientExists = allUsers.some(u => u.id === recipientId)
           if (recipientExists) {
-            channelService.createDM(recipientId).then(async (dm) => {
+            channelService.createDM(recipientId, isSuperadmin ? selectedCompanyId : null).then(async (dm) => {
               await fetchChannels()
               setSelectedChannel(dm as any)
               setSearchParams({}, { replace: true })
@@ -205,10 +237,26 @@ export default function SlackChat() {
           fetchAllUsers={fetchAllUsers}
           onMouseDownResize={handleMouseDown}
           isResizing={isResizing}
+          headerExtra={isSuperadmin ? (
+            <Select
+              value={selectedCompanyId ?? ''}
+              onChange={(v) => setSelectedCompanyId(v ? Number(v) : null)}
+              clearable
+              placeholder="Seleccione una empresa..."
+              options={companies.map(c => ({ value: c.id, label: c.company_name }))}
+            />
+          ) : undefined}
         />
 
         <div className={styles['chat-main']}>
-          {selectedChannel ? (
+          {isSuperadmin && !selectedCompanyId ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', color: '#64748b', padding: '24px' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--black)', marginBottom: '8px' }}>Selecciona una empresa</h2>
+              <p style={{ maxWidth: '380px' }}>
+                Elige una empresa para ver sus canales y mensajes directos. La información de cada empresa se mantiene aislada.
+              </p>
+            </div>
+          ) : selectedChannel ? (
             <>
               <MessageList
                 messages={messages}
@@ -291,7 +339,7 @@ export default function SlackChat() {
           onClose={() => setShowNewChannelModal(false)}
           onCreate={async () => {
             if (!newChannel.name.trim()) return
-            try { await channelService.createChannel(newChannel); setShowNewChannelModal(false); setNewChannel({ name: '', description: '', type: 'public' }); fetchChannels() } catch (e) { console.error(e) }
+            try { await channelService.createChannel(newChannel, isSuperadmin ? selectedCompanyId : null); setShowNewChannelModal(false); setNewChannel({ name: '', description: '', type: 'public' }); fetchChannels() } catch (e) { console.error(e) }
           }}
         />
       )}
@@ -301,7 +349,7 @@ export default function SlackChat() {
           allUsers={allUsers}
           onSelectUser={async (recipientId) => {
             try {
-              const dm = await channelService.createDM(recipientId)
+              const dm = await channelService.createDM(recipientId, isSuperadmin ? selectedCompanyId : null)
               await fetchChannels()
               setSelectedChannel(dm as any)
               setShowNewDmModal(false)

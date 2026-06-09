@@ -18,6 +18,18 @@ func NewWorkHourHandler(svc service.WorkHourService) *WorkHourHandler {
 	return &WorkHourHandler{svc: svc}
 }
 
+// superadminCompanyFilter reads the ?company_id= scope from the request. It only
+// applies to superadmins; tenant-scoped users are always bound to their own tenant.
+func superadminCompanyFilter(c *gin.Context, isSuperadmin bool) uint {
+	if !isSuperadmin {
+		return 0
+	}
+	if v, err := strconv.ParseUint(c.Query("company_id"), 10, 32); err == nil {
+		return uint(v)
+	}
+	return 0
+}
+
 func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
@@ -27,11 +39,12 @@ func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	userIDFilter := c.Query("user_id")
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
+	companyFilter := superadminCompanyFilter(c, isSuperadmin)
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	workHours, total, err := h.svc.GetAll(userID, role, isSuperadmin, tenantID, userIDFilter, startDate, endDate, offset, limit)
+	workHours, total, err := h.svc.GetAll(userID, role, isSuperadmin, tenantID, companyFilter, userIDFilter, startDate, endDate, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch work hours"})
 		return
@@ -169,7 +182,10 @@ func (h *WorkHourHandler) GetSummary(c *gin.Context) {
 	isSuperadmin := middleware.IsSuperadmin(c)
 	tenantID := middleware.GetTenantID(c)
 
-	summary, err := h.svc.GetSummary(userID, role, isSuperadmin, tenantID)
+	companyFilter := superadminCompanyFilter(c, isSuperadmin)
+	userIDFilter := c.Query("user_id")
+
+	summary, err := h.svc.GetSummary(userID, role, isSuperadmin, tenantID, companyFilter, userIDFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get summary"})
 		return
@@ -185,7 +201,10 @@ func (h *WorkHourHandler) GetPending(c *gin.Context) {
 	isSuperadmin := middleware.IsSuperadmin(c)
 	isManager := middleware.IsManager(c)
 
-	pending, err := h.svc.GetPending(tenantID, userID, role, isSuperadmin, isManager)
+	companyFilter := superadminCompanyFilter(c, isSuperadmin)
+	userIDFilter := c.Query("user_id")
+
+	pending, err := h.svc.GetPending(tenantID, userID, role, isSuperadmin, isManager, companyFilter, userIDFilter)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Only employers can access this resource" {
@@ -217,7 +236,8 @@ func (h *WorkHourHandler) SendReport(c *gin.Context) {
 		return
 	}
 
-	err := h.svc.SendReportEmail(userID, req.Month, req.Year)
+	companyFilter := superadminCompanyFilter(c, isSuperadmin)
+	err := h.svc.SendReportEmail(userID, req.Month, req.Year, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al enviar el reporte: " + err.Error()})
 		return
@@ -246,7 +266,8 @@ func (h *WorkHourHandler) DownloadPDF(c *gin.Context) {
 		return
 	}
 
-	pdfBytes, monthName, err := h.svc.GetPDFReportBytes(userID, month, year)
+	companyFilter := superadminCompanyFilter(c, isSuperadmin)
+	pdfBytes, monthName, err := h.svc.GetPDFReportBytes(userID, month, year, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al generar PDF: " + err.Error()})
 		return
@@ -276,7 +297,8 @@ func (h *WorkHourHandler) DownloadExcel(c *gin.Context) {
 		return
 	}
 
-	excelBytes, monthName, err := h.svc.GetExcelReportBytes(userID, month, year)
+	companyFilter := superadminCompanyFilter(c, isSuperadmin)
+	excelBytes, monthName, err := h.svc.GetExcelReportBytes(userID, month, year, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al generar Excel: " + err.Error()})
 		return

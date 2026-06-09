@@ -5,6 +5,8 @@ import type { Task, CreateTaskInput } from '../../../types'
 interface UseTasksOptions {
   boardId?: number | null
   showAllTasks?: boolean
+  // For superadmin: scopes the task query to a single company (tenant).
+  companyId?: number | null
 }
 
 interface UseTasksReturn {
@@ -19,7 +21,7 @@ interface UseTasksReturn {
   getTasksByStatus: (status: string) => Task[]
 }
 
-export function useTasks({ boardId, showAllTasks }: UseTasksOptions = {}): UseTasksReturn {
+export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions = {}): UseTasksReturn {
   const [tasks, setTasks] = useState<Task[]>([])
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isLoading] = useState(false)
@@ -30,6 +32,9 @@ export function useTasks({ boardId, showAllTasks }: UseTasksOptions = {}): UseTa
       if (!showAllTasks && boardId) {
         params.board_id = boardId
       }
+      if (companyId) {
+        params.company_id = companyId
+      }
       const tasksRes = await taskService.getAll(params)
       let fetchedTasks = tasksRes.data || []
       if (!showAllTasks && boardId) {
@@ -39,7 +44,7 @@ export function useTasks({ boardId, showAllTasks }: UseTasksOptions = {}): UseTa
     } catch (error) {
       console.error('Error fetching tasks:', error)
     }
-  }, [boardId, showAllTasks])
+  }, [boardId, showAllTasks, companyId])
 
   useEffect(() => {
     fetchTasks()
@@ -47,7 +52,7 @@ export function useTasks({ boardId, showAllTasks }: UseTasksOptions = {}): UseTa
 
   useEffect(() => {
     setTasks([])
-  }, [boardId, showAllTasks])
+  }, [boardId, showAllTasks, companyId])
 
   useEffect(() => {
     const handleTaskAssigned = () => {

@@ -2,11 +2,16 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import { useNotification } from '../../../context/NotificationContext'
 import { useConfirm } from '../../ui/ConfirmProvider'
-import { userService, taskService } from '../../../services/api'
+import { userService, taskService, adminService } from '../../../services/api'
 import type { User, Board, Task, CreateTaskInput, Phase } from '../../../types'
 import { ColumnType } from '../types'
 import { useBoards } from './useBoards'
 import { useTasks } from './useTasks'
+
+export interface CompanyOption {
+  id: number
+  company_name: string
+}
 
 export interface PhaseFormInput {
   name: string
@@ -31,6 +36,24 @@ export function useTasksPageState() {
   const { user } = useAuth()
   const { error: showError } = useNotification()
   const confirm = useConfirm()
+
+  const isSuperadmin = user?.user_type === 'superadmin'
+
+  // Company scope (superadmin only). Persisted so the selection survives reloads.
+  const [companies, setCompanies] = useState<CompanyOption[]>([])
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState<number | null>(() => {
+    const stored = localStorage.getItem('preferred_company_id')
+    return stored ? Number(stored) : null
+  })
+
+  const setSelectedCompanyId = useCallback((id: number | null) => {
+    setSelectedCompanyIdState(id)
+    if (id) {
+      localStorage.setItem('preferred_company_id', String(id))
+    } else {
+      localStorage.removeItem('preferred_company_id')
+    }
+  }, [])
 
   // Users state
   const [users, setUsers] = useState<User[]>([])
@@ -94,7 +117,13 @@ export function useTasksPageState() {
     reorderPhases,
     addPhase,
     removePhase,
-  } = useBoards()
+  } = useBoards({
+    companyId: isSuperadmin ? selectedCompanyId : null,
+    requireCompany: isSuperadmin,
+    // Superadmin lands on a board picker after choosing a company instead of
+    // jumping straight into a board.
+    autoSelectFirst: !isSuperadmin,
+  })
 
   // Tasks hook
   const {
@@ -107,12 +136,55 @@ export function useTasksPageState() {
     fetchTasks,
   } = useTasks({
     boardId: selectedBoard?.id,
+    companyId: isSuperadmin ? selectedCompanyId : null,
   })
 
   // Fetch users on mount
   useEffect(() => {
     fetchUsers()
   }, [])
+
+  // Per-board task counts grouped by status, used to show a breakdown on the
+  // board picker cards (Por hacer / En proceso / Finalizado + custom phases).
+  const [boardTaskCounts, setBoardTaskCounts] = useState<Record<number, Record<string, number>>>({})
+
+  useEffect(() => {
+    // Only needed for the board picker (no board selected yet).
+    if (selectedBoard || boards.length === 0) return
+    if (isSuperadmin && !selectedCompanyId) return
+    let active = true
+    const params: Record<string, unknown> = { limit: 1000 }
+    if (isSuperadmin && selectedCompanyId) params.company_id = selectedCompanyId
+    taskService.getAll(params)
+      .then((res) => {
+        if (!active) return
+        const counts: Record<number, Record<string, number>> = {}
+        ;(res.data || []).forEach((t: any) => {
+          if (!counts[t.board_id]) counts[t.board_id] = {}
+          counts[t.board_id][t.status] = (counts[t.board_id][t.status] || 0) + 1
+        })
+        setBoardTaskCounts(counts)
+      })
+      .catch((e) => console.error('Error fetching task counts:', e))
+    return () => { active = false }
+  }, [selectedBoard, boards, isSuperadmin, selectedCompanyId])
+
+  // Fetch the company list for the superadmin company selector
+  useEffect(() => {
+    if (!isSuperadmin) return
+    let active = true
+    adminService.getTenants()
+      .then((res: any) => {
+        if (!active) return
+        const list: CompanyOption[] = (res || []).map((t: any) => ({
+          id: t.id,
+          company_name: t.company_name || t.owner_name || `Empresa ${t.id}`,
+        }))
+        setCompanies(list)
+      })
+      .catch((err) => console.error('Error fetching companies:', err))
+    return () => { active = false }
+  }, [isSuperadmin])
 
   const fetchUsers = useCallback(async () => {
     const usersRes = await userService.getAll({ limit: 1000 })
@@ -126,17 +198,11 @@ export function useTasksPageState() {
 
     // Identify the company ID
     let companyID = 0
-    if (user?.user_type === 'superadmin') {
-      if (selectedBoard) {
-        const creator = selectedBoard.creator
-        if (creator) {
-          companyID = creator.user_type === 'empleador' ? creator.id : (creator.empleador_id || 0)
-        } else {
-          companyID = selectedBoard.created_by
-        }
-      } else {
-        return true // List all non-superadmins if superadmin has no board selected
-      }
+    if (isSuperadmin) {
+      // Scope strictly to the company the superadmin has selected. Without a
+      // selected company we show no users to avoid mixing tenants.
+      if (!selectedCompanyId) return false
+      companyID = selectedCompanyId
     } else {
       companyID = user?.user_type === 'empleador' ? user.id : (user?.empleador_id || 0)
     }
@@ -423,6 +489,10 @@ export function useTasksPageState() {
 
   return {
     user,
+    isSuperadmin,
+    companies,
+    selectedCompanyId,
+    setSelectedCompanyId,
     users,
     visibleUsers,
     assigneeSearch,
@@ -453,6 +523,7 @@ export function useTasksPageState() {
     newBoardPhaseSearch,
     setNewBoardPhaseSearch,
     boards,
+    boardTaskCounts,
     selectedBoard,
     setSelectedBoard,
     publicBoards,

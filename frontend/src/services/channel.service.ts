@@ -3,16 +3,19 @@ import type { User } from '../types'
 import type { Channel, Message, DMChannel, MessageReaction, UserStatus } from '../types/chat'
 
 export const channelService = {
-  getChannels: async (): Promise<Channel[]> => {
-    const { data } = await api.get<Channel[]>('/channels')
+  getChannels: async (companyId?: number | null): Promise<Channel[]> => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.get<Channel[]>('/channels', { params })
     return data
   },
-  getAllUsers: async (): Promise<User[]> => {
-    const { data } = await api.get<User[]>('/channels/all-users')
+  getAllUsers: async (companyId?: number | null): Promise<User[]> => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.get<User[]>('/channels/all-users', { params })
     return data
   },
-  createChannel: async (channel: { name: string; description?: string; type: string; member_ids?: number[] }) => {
-    const { data } = await api.post<Channel>('/channels', channel)
+  createChannel: async (channel: { name: string; description?: string; type: string; member_ids?: number[] }, companyId?: number | null) => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.post<Channel>('/channels', channel, { params })
     return data
   },
   getChannel: async (id: number) => {
@@ -103,8 +106,9 @@ export const channelService = {
     const { data } = await api.get<Message[]>(`/channels/${channelId}/search`, { params: { q: query } })
     return data
   },
-  createDM: async (recipientId: number): Promise<DMChannel> => {
-    const { data } = await api.post<DMChannel>('/channels/dm', { recipient_id: recipientId })
+  createDM: async (recipientId: number, companyId?: number | null): Promise<DMChannel> => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.post<DMChannel>('/channels/dm', { recipient_id: recipientId }, { params })
     return data
   },
   markAsRead: async (id: number) => {

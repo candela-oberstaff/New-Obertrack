@@ -112,6 +112,7 @@ type AdminRepository interface {
 	GetRecentActivities() ([]Activity, error)
 	GetAbsenceReport(startDate, endDate time.Time) (*AbsenceReport, error)
 	CountInactiveWarning(since time.Time) (int64, error)
+	CountBoards() (int64, error)
 	DeleteSuperadmins() error
 
 	GetTenants() ([]TenantSummary, error)
@@ -137,6 +138,12 @@ func (r *adminRepository) CountInactiveWarning(since time.Time) (int64, error) {
 	err := r.db.Model(&models.User{}).
 		Where("user_type = ? AND id NOT IN (SELECT DISTINCT user_id FROM work_hours WHERE work_date >= ?)", "profesional", since).
 		Count(&count).Error
+	return count, err
+}
+
+func (r *adminRepository) CountBoards() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Board{}).Count(&count).Error
 	return count, err
 }
 

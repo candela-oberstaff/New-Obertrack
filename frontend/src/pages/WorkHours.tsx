@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 import Tooltip from '../components/Common/Tooltip'
 
+import { Select } from '../components/ui/Select'
+import { adminService } from '../services/api'
 import { MONTHS_ES } from '../components/WorkHours/utils'
 import { WorkHourCalendar } from '../components/WorkHours/WorkHourCalendar'
 import { WorkHourStats } from '../components/WorkHours/WorkHourStats'
@@ -28,8 +30,64 @@ import { htmlToText } from '../utils/sanitize'
 
 import styles from './WorkHours.module.css'
 
+interface CompanyOption { id: number; company_name: string }
+interface EmployeeOption { id: number; name: string }
+
 export default function WorkHours() {
   const { user } = useAuth()
+  const isSuperadmin = !!user?.is_superadmin
+
+  // Superadmin scope: company (tenant) + optional employee. Persisted across reloads.
+  const [companies, setCompanies] = useState<CompanyOption[]>([])
+  const [employees, setEmployees] = useState<EmployeeOption[]>([])
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState<number | null>(() => {
+    const stored = localStorage.getItem('preferred_company_id')
+    return stored ? Number(stored) : null
+  })
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null)
+
+  const setSelectedCompanyId = (id: number | null) => {
+    setSelectedCompanyIdState(id)
+    setSelectedEmployeeId(null)
+    if (id) {
+      localStorage.setItem('preferred_company_id', String(id))
+    } else {
+      localStorage.removeItem('preferred_company_id')
+    }
+  }
+
+  // Load company list (superadmin only)
+  useEffect(() => {
+    if (!isSuperadmin) return
+    let active = true
+    adminService.getTenants()
+      .then((res: any) => {
+        if (!active) return
+        setCompanies((res || []).map((t: any) => ({
+          id: t.id,
+          company_name: t.company_name || t.owner_name || `Empresa ${t.id}`,
+        })))
+      })
+      .catch((err) => console.error('Error fetching companies:', err))
+    return () => { active = false }
+  }, [isSuperadmin])
+
+  // Load employees of the selected company (superadmin only)
+  useEffect(() => {
+    if (!isSuperadmin || !selectedCompanyId) {
+      setEmployees([])
+      return
+    }
+    let active = true
+    adminService.getTenantEmployees(selectedCompanyId)
+      .then((res: any) => {
+        if (!active) return
+        setEmployees((res || []).map((e: any) => ({ id: e.id, name: e.name || e.email })))
+      })
+      .catch((err) => console.error('Error fetching employees:', err))
+    return () => { active = false }
+  }, [isSuperadmin, selectedCompanyId])
+
   const {
     workHours,
     summary,
@@ -52,7 +110,10 @@ export default function WorkHours() {
     weekHours,
     todayWork,
     canApprove,
-  } = useWorkHours(user)
+  } = useWorkHours(user, {
+    companyId: isSuperadmin ? selectedCompanyId : null,
+    employeeId: isSuperadmin ? selectedEmployeeId : null,
+  })
 
   const [showModal, setShowModal] = useState(false)
   const [showRecoverModal, setShowRecoverModal] = useState(false)
@@ -343,6 +404,8 @@ export default function WorkHours() {
       await api.post('/work-hours/send-report', {
         month: currentMonth + 1,
         year: currentYear
+      }, {
+        params: isSuperadmin && selectedCompanyId ? { company_id: selectedCompanyId } : undefined
       })
       setMailSuccess('¡Reporte enviado exitosamente a tu correo!')
       setTimeout(() => setMailSuccess(null), 5000)
@@ -440,11 +503,60 @@ export default function WorkHours() {
     }
   }
 
+  // Company + employee scope selectors (superadmin only)
+  const scopeSelectors = isSuperadmin ? (
+    <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+      <Select
+        value={selectedCompanyId ?? ''}
+        onChange={(v) => setSelectedCompanyId(v ? Number(v) : null)}
+        clearable
+        placeholder="Seleccione una empresa..."
+        options={companies.map(c => ({ value: c.id, label: c.company_name }))}
+      />
+      {selectedCompanyId && (
+        <Select
+          value={selectedEmployeeId ?? ''}
+          onChange={(v) => setSelectedEmployeeId(v ? Number(v) : null)}
+          clearable
+          placeholder="Todos los empleados"
+          options={employees.map(e => ({ value: e.id, label: e.name }))}
+        />
+      )}
+    </div>
+  ) : null
+
   if (isLoading) {
     return (
       <div className={styles['work-hours-loading']}>
         <div className={styles['spinner']} />
         <p>Cargando...</p>
+      </div>
+    )
+  }
+
+  // Superadmin must pick a company before any work hours are shown, so tenants
+  // never get mixed in the same view.
+  if (isSuperadmin && !selectedCompanyId) {
+    return (
+      <div className={styles['work-hours-page']}>
+        <div className={styles['wh-page-header']} data-tour="work-hours-header">
+          <div className={styles['header-left']}>
+            <h1>
+              <Clock size={28} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> Registro de Actividades
+            </h1>
+            <p className={styles['header-subtitle']}>
+              Selecciona una empresa para ver y gestionar la jornada de su equipo.
+            </p>
+            {scopeSelectors}
+          </div>
+        </div>
+        <div className={styles['empty-state']} style={{ textAlign: 'center', padding: '48px 24px', color: '#64748b' }}>
+          <Clock size={56} style={{ color: 'var(--primary)', opacity: 0.5, marginBottom: '16px' }} />
+          <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--black)', marginBottom: '8px' }}>Selecciona una empresa</h2>
+          <p style={{ maxWidth: '420px', margin: '0 auto' }}>
+            Elige una empresa para ver sus horas. Luego podés filtrar por un empleado en particular. La información de cada empresa se mantiene aislada.
+          </p>
+        </div>
       </div>
     )
   }
@@ -463,6 +575,7 @@ export default function WorkHours() {
           <p className={styles['header-subtitle']}>
             {isEmployer ? 'Visualiza y gestiona la jornada laboral de tu equipo' : 'Registra tu día laboral'}
           </p>
+          {scopeSelectors}
         </div>
         {isEmployer ? (
           <div className={styles['action-buttons-container']} data-tour="work-hours-actions">

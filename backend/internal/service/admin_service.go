@@ -19,6 +19,7 @@ type DashboardMetrics struct {
 	ApprovedHours      float64 `json:"approved_hours"`
 	PendingHours       float64 `json:"pending_hours"`
 	TotalTasks         int     `json:"total_tasks"`
+	TotalBoards        int     `json:"total_boards"`
 	CompletedTasks     int     `json:"completed_tasks"`
 	PendingTasks       int     `json:"pending_tasks"`
 	ActiveToday        int     `json:"active_today"`
@@ -99,6 +100,9 @@ func (s *adminService) GetDashboardMetrics() (*DashboardMetrics, error) {
 
 	_, totalTasks, _ := s.taskRepo.FindAll(nil, 0, 1)
 	m.TotalTasks = int(totalTasks)
+
+	totalBoards, _ := s.repo.CountBoards()
+	m.TotalBoards = int(totalBoards)
 
 	// Since TaskRepo doesn't have a specific FilterByStatus yet, we'll keep using GetDB for specialized counts if necessary,
 	// or we can add a method to TaskRepo later. For now, we use the existing GetAll with GetDB.

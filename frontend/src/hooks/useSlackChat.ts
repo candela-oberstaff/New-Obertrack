@@ -5,7 +5,7 @@ import type { Channel, Message, ChannelMember } from '../types/chat'
 import { playNotificationSound } from '../components/Chat/ChatUtils'
 import { useConfirm } from '../components/ui/ConfirmProvider'
 
-export function useSlackChat(user: User | null) {
+export function useSlackChat(user: User | null, companyId: number | null = null) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -40,21 +40,21 @@ export function useSlackChat(user: User | null) {
 
   const fetchChannels = useCallback(async () => {
     try {
-      const data = await channelService.getChannels()
+      const data = await channelService.getChannels(companyId)
       setChannels(data || [])
     } catch (error) {
       console.error('Error fetching channels:', error)
     }
-  }, [])
+  }, [companyId])
 
   const fetchAllUsers = useCallback(async () => {
     try {
-      const data = await channelService.getAllUsers()
+      const data = await channelService.getAllUsers(companyId)
       setAllUsers(data || [])
     } catch (error) {
       console.error('Error fetching users:', error)
     }
-  }, [])
+  }, [companyId])
 
   const fetchMessages = useCallback(async (channelId: number) => {
     try {
@@ -160,6 +160,12 @@ export function useSlackChat(user: User | null) {
     ws.onerror = () => setIsConnected(false)
     wsRef.current = ws
   }, [fetchChannels, fetchPinnedMessages, handleTyping])
+
+  // Reset the open conversation when the company scope changes (superadmin).
+  useEffect(() => {
+    setSelectedChannel(null)
+    setMessages([])
+  }, [companyId])
 
   useEffect(() => {
     fetchChannels()

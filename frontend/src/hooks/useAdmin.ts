@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { adminService, boardService } from '../services/api'
+import { adminService } from '../services/api'
 import type { User } from '../types'
 
 interface DashboardStats {
@@ -105,10 +105,9 @@ export function useAdmin(): UseAdminReturn {
 
   const fetchDashboard = useCallback(async () => {
     try {
-      const [statsData, activityData, boardsData] = await Promise.allSettled([
+      const [statsData, activityData] = await Promise.allSettled([
         adminService.getDashboard(),
         adminService.getRecentActivity(),
-        boardService.getAll()
       ])
 
       if (statsData.status === 'fulfilled' && statsData.value) {
@@ -117,7 +116,7 @@ export function useAdmin(): UseAdminReturn {
           totalUsers: data.total_users || 0,
           activeUsers: data.active_users || 0,
           totalTasks: data.total_tasks || 0,
-          totalBoards: boardsData.status === 'fulfilled' ? (boardsData.value?.length || 0) : 0,
+          totalBoards: data.total_boards || 0,
           totalCompanies: data.total_companies || 0,
           totalProfessionals: data.total_professionals || 0,
           activeToday: data.active_today || 0,
