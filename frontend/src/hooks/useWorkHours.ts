@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { workHourService } from '../services/api'
 import type { WorkHour } from '../types'
 
@@ -60,12 +61,10 @@ interface UseWorkHoursOptions {
   employeeId?: number | null
 }
 
+const EMPTY_SUMMARY: WorkHoursSummary = { total_hours: 0, approved_hours: 0, pending_hours: 0, rejected_hours: 0 }
+
 export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseWorkHoursReturn {
   const { companyId = null, employeeId = null } = options
-  const [workHours, setWorkHours] = useState<WorkHour[]>([])
-  const [pendingHours, setPendingHours] = useState<WorkHour[]>([])
-  const [summary, setSummary] = useState<WorkHoursSummary>({ total_hours: 0, approved_hours: 0, pending_hours: 0, rejected_hours: 0 })
-  const [isLoading, setIsLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
@@ -78,53 +77,42 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
     absence_hours: 0,
   })
 
-  const fetchData = useCallback(async () => {
-    try {
-      const isEmployer = user?.user_type === 'empleador'
-      const isSuperadmin = user?.is_superadmin
-      const isManager = user?.is_manager
+  const isEmployer = user?.user_type === 'empleador'
+  const isSuperadmin = user?.is_superadmin
+  const isManager = user?.is_manager
+  const canSeePending = isEmployer || isSuperadmin || isManager
 
-      // Superadmin must pick a company first; until then, show nothing so tenants
-      // never get mixed in the view.
-      if (isSuperadmin && !companyId) {
-        setWorkHours([])
-        setPendingHours([])
-        setSummary({ total_hours: 0, approved_hours: 0, pending_hours: 0, rejected_hours: 0 })
-        return
-      }
+  const queryKey = ['work-hours', companyId, employeeId, user?.id]
 
+  const { data, isLoading, refetch } = useQuery({
+    queryKey,
+    // Superadmin must pick a company first; otherwise nothing is fetched.
+    enabled: !!user && !(isSuperadmin && !companyId),
+    queryFn: async () => {
       const scope = {
         ...(companyId ? { company_id: companyId } : {}),
         ...(employeeId ? { user_id: String(employeeId) } : {}),
       }
-
       const [hoursRes, summaryRes] = await Promise.all([
         workHourService.getAll({ ...scope }),
         workHourService.getSummary({ ...scope }),
       ])
-      setSummary(summaryRes)
-
-      if (isEmployer || isSuperadmin || isManager) {
+      if (canSeePending) {
         const pendingRes = await workHourService.getPending({ ...scope })
-        setPendingHours(pendingRes || [])
         const byID = new Map<number, WorkHour>()
         ;(hoursRes.data || []).forEach((wh) => byID.set(wh.id, wh))
         ;(pendingRes || []).forEach((wh) => byID.set(wh.id, wh))
-        setWorkHours(Array.from(byID.values()))
-      } else {
-        setWorkHours(hoursRes.data || [])
-        setPendingHours([])
+        return { workHours: Array.from(byID.values()), pendingHours: pendingRes || [], summary: summaryRes }
       }
-    } catch (error) {
-      console.error('Error fetching data:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [user, companyId, employeeId])
+      return { workHours: hoursRes.data || [], pendingHours: [] as WorkHour[], summary: summaryRes }
+    },
+  })
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const workHours = data?.workHours ?? []
+  const pendingHours = data?.pendingHours ?? []
+  const summary = data?.summary ?? EMPTY_SUMMARY
+
+  const fetchData = useCallback(async () => { await refetch() }, [refetch])
 
   const createWorkHour = useCallback(async (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours'> & { id?: number; absence_reason?: string; absence_hours?: number }) => {
     const hoursWorked = data.work_type === 'recover'

@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { tutorialService } from '../../../services/api'
 import type { Tutorial, CreateTutorialInput, UpdateTutorialInput } from '../../../types'
 
@@ -15,89 +16,95 @@ interface UseTutorialsReturn {
   recordView: (id: number) => Promise<void>
 }
 
+const TUTORIALS_KEY = ['tutorials']
+const VIEWS_KEY = ['tutorial-views']
+
 export function useTutorials(): UseTutorialsReturn {
-  const [tutorials, setTutorials] = useState<Tutorial[]>([])
-  const [viewedIds, setViewedIds] = useState<Set<number>>(new Set())
-  const [isLoading, setIsLoading] = useState(true)
+  const qc = useQueryClient()
+
+  const { data: tutorials, isLoading } = useQuery({
+    queryKey: TUTORIALS_KEY,
+    queryFn: async () => (await tutorialService.getAll()) || [],
+  })
+
+  const { data: viewed } = useQuery({
+    queryKey: VIEWS_KEY,
+    queryFn: async () => {
+      try { return (await tutorialService.getMyViews()) || [] } catch { return [] }
+    },
+  })
+
+  const viewedIds = new Set<number>(viewed ?? [])
+
+  // Shim: lets callers (drag-reorder, inline edits) mutate the cached list
+  // directly, preserving the previous useState-based API.
+  const setTutorials = useCallback<React.Dispatch<React.SetStateAction<Tutorial[]>>>((value) => {
+    qc.setQueryData<Tutorial[]>(TUTORIALS_KEY, (old) =>
+      typeof value === 'function' ? (value as (p: Tutorial[]) => Tutorial[])(old ?? []) : value,
+    )
+  }, [qc])
 
   const fetchTutorials = useCallback(async () => {
-    try {
-      const [data, viewed] = await Promise.all([
-        tutorialService.getAll(),
-        tutorialService.getMyViews().catch(() => []),
-      ])
-      setTutorials(data || [])
-      setViewedIds(new Set(viewed))
-    } catch (error) {
-      console.error('Error fetching tutorials:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchTutorials()
-  }, [fetchTutorials])
+    await qc.invalidateQueries({ queryKey: TUTORIALS_KEY })
+  }, [qc])
 
   const createTutorial = useCallback(async (data: CreateTutorialInput): Promise<Tutorial> => {
     const created = await tutorialService.create(data)
-    await fetchTutorials()
+    await qc.invalidateQueries({ queryKey: TUTORIALS_KEY })
     return created
-  }, [fetchTutorials])
+  }, [qc])
 
   const updateTutorial = useCallback(async (id: number, data: UpdateTutorialInput) => {
-    const previous = [...tutorials]
+    const previous = qc.getQueryData<Tutorial[]>(TUTORIALS_KEY)
     try {
-      setTutorials(current =>
-        current.map(t => (t.id === id ? { ...t, ...data } : t))
-      )
+      setTutorials(current => current.map(t => (t.id === id ? { ...t, ...data } : t)))
       await tutorialService.update(id, data)
-      await fetchTutorials()
+      await qc.invalidateQueries({ queryKey: TUTORIALS_KEY })
     } catch (error) {
       console.error('Error updating tutorial:', error)
-      setTutorials(previous)
+      if (previous) qc.setQueryData(TUTORIALS_KEY, previous)
       throw error
     }
-  }, [fetchTutorials, tutorials])
+  }, [qc, setTutorials])
 
   const deleteTutorial = useCallback(async (id: number) => {
-    const previous = [...tutorials]
+    const previous = qc.getQueryData<Tutorial[]>(TUTORIALS_KEY)
     try {
       setTutorials(current => current.filter(t => t.id !== id))
       await tutorialService.delete(id)
     } catch (error) {
       console.error('Error deleting tutorial:', error)
-      setTutorials(previous)
+      if (previous) qc.setQueryData(TUTORIALS_KEY, previous)
       throw error
     }
-  }, [tutorials])
+  }, [qc, setTutorials])
 
   const reorderTutorials = useCallback(async (ids: number[]) => {
-    const previous = [...tutorials]
+    const previous = qc.getQueryData<Tutorial[]>(TUTORIALS_KEY)
     try {
-      const map = new Map(previous.map(t => [t.id, t]))
+      const map = new Map((previous ?? []).map(t => [t.id, t]))
       const reordered = ids.map(id => map.get(id)).filter((t): t is Tutorial => !!t)
       setTutorials(reordered)
       await tutorialService.reorder(ids)
     } catch (error) {
       console.error('Error reordering tutorials:', error)
-      setTutorials(previous)
+      if (previous) qc.setQueryData(TUTORIALS_KEY, previous)
       throw error
     }
-  }, [tutorials])
+  }, [qc, setTutorials])
 
   const recordView = useCallback(async (id: number) => {
     if (viewedIds.has(id)) return
-    setViewedIds(current => new Set(current).add(id))
+    qc.setQueryData<number[]>(VIEWS_KEY, (old) => Array.from(new Set([...(old ?? []), id])))
     try {
       await tutorialService.recordView(id)
     } catch (error) {
       console.error('Error recording view:', error)
     }
-  }, [viewedIds])
+  }, [qc, viewedIds])
 
   return {
-    tutorials,
+    tutorials: tutorials ?? [],
     setTutorials,
     viewedIds,
     isLoading,

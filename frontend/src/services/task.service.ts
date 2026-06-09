@@ -20,6 +20,13 @@ export const taskService = {
     const { data } = await api.get<Task>(`/tasks/${id}`)
     return data
   },
+  // Per-board task counts grouped by status: { [boardId]: { [status]: count } }.
+  // Aggregated server-side (no full task list download).
+  getBoardStatusCounts: async (companyId?: number | null) => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.get<Record<number, Record<string, number>>>('/tasks/status-counts', { params })
+    return data
+  },
   create: async (taskData: CreateTaskInput) => {
     const { data } = await api.post<Task>('/tasks', taskData)
     return data

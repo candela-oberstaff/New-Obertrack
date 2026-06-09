@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { taskService, workHourService, userService } from '../services/api'
 import type { Task, WorkHour, User } from '../types'
 
@@ -39,45 +40,39 @@ interface UseDashboardReturn {
 
 const DAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
-export function useDashboard(user: any): UseDashboardReturn {
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [workHours, setWorkHours] = useState<WorkHour[]>([])
-  const [employees, setEmployees] = useState<User[]>([])
-  const [summary, setSummary] = useState<DashboardSummary>({ total_hours: 0, approved_hours: 0, pending_hours: 0 })
-  const [isLoading, setIsLoading] = useState(true)
+const EMPTY_SUMMARY: DashboardSummary = { total_hours: 0, approved_hours: 0, pending_hours: 0 }
 
-  const fetchData = useCallback(async () => {
-    try {
+export function useDashboard(user: any): UseDashboardReturn {
+  const canSeeEmployees = !!(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador')
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['dashboard', user?.id, canSeeEmployees],
+    queryFn: async () => {
       const [tasksData, workHoursData, summaryData] = await Promise.allSettled([
         taskService.getAll({ limit: 10 }),
         workHourService.getAll({ limit: 10 }),
         workHourService.getSummary(),
       ])
+      let employees: User[] = []
+      if (canSeeEmployees) {
+        try { employees = (await userService.getEmployees()) || [] } catch { /* non-fatal */ }
+      }
+      return {
+        tasks: tasksData.status === 'fulfilled' ? (tasksData.value?.data || []) : [],
+        workHours: workHoursData.status === 'fulfilled' ? (workHoursData.value?.data || []) : [],
+        summary: summaryData.status === 'fulfilled' ? (summaryData.value || EMPTY_SUMMARY) : EMPTY_SUMMARY,
+        employees,
+      }
+    },
+    enabled: !!user,
+  })
 
-      if (tasksData.status === 'fulfilled') {
-        setTasks(tasksData.value?.data || [])
-      }
-      if (workHoursData.status === 'fulfilled') {
-        setWorkHours(workHoursData.value?.data || [])
-      }
-      if (summaryData.status === 'fulfilled') {
-        setSummary(summaryData.value || { total_hours: 0, approved_hours: 0, pending_hours: 0 })
-      }
+  const tasks = data?.tasks ?? []
+  const workHours = data?.workHours ?? []
+  const employees = data?.employees ?? []
+  const summary = data?.summary ?? EMPTY_SUMMARY
 
-      if (user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') {
-        const employeesData = await userService.getEmployees()
-        setEmployees(employeesData || [])
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [user])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const fetchData = useCallback(async () => { await refetch() }, [refetch])
 
   const today = useMemo(() => new Date(), [])
 

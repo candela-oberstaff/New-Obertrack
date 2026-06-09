@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Plus } from 'lucide-react';
 import listStyles from './SurveyList.module.css';
 import commonStyles from '../Tools.module.css';
@@ -13,27 +14,17 @@ interface SurveysProps {
 }
 
 const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
-  const [surveys, setSurveys] = useState<Survey[]>([]);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingSurvey, setEditingSurvey] = useState<Survey | null>(null);
   const [viewingResultsFor, setViewingResultsFor] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
   const confirm = useConfirm();
+  const qc = useQueryClient();
 
-  const fetchSurveys = async () => {
-    try {
-      const data = await surveyService.getSurveys();
-      setSurveys(data || []);
-    } catch (error) {
-      console.error('Error fetching surveys:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSurveys();
-  }, []);
+  const { data: surveys = [], isLoading: loading } = useQuery<Survey[]>({
+    queryKey: ['surveys'],
+    queryFn: async () => (await surveyService.getSurveys()) || [],
+  });
+  const fetchSurveys = () => qc.invalidateQueries({ queryKey: ['surveys'] });
 
   useEffect(() => {
     if (!showBuilder && !editingSurvey && viewingResultsFor === null) {

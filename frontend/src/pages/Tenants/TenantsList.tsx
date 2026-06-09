@@ -5,6 +5,7 @@ import { useTenants } from '../../hooks'
 import { adminService } from '../../services/api'
 import type { Tenant, User } from '../../types'
 import Avatar from '../../components/Common/Avatar'
+import { Modal, Button, Skeleton } from '../../components/ui'
 import styles from './Tenants.module.css'
 
 export default function TenantsList() {
@@ -28,25 +29,29 @@ export default function TenantsList() {
   const activeCount = tenants.filter(t => t.is_active).length
   const totalUsers = tenants.reduce((sum, t) => sum + (t.user_count || 0), 0)
 
+  // Server-side search for the "responsable" picker: query as the user types
+  // (debounced) instead of downloading every user upfront.
   useEffect(() => {
-    if (!showCreate) return
+    if (!showCreate) { setUsers([]); return }
+    const term = responsableQuery.trim()
+    if (term.length < 2) { setUsers([]); return }
     let active = true
-    adminService.getUsers({ limit: 1000 })
-      .then(res => {
-        const arr = res?.data || (Array.isArray(res) ? res : [])
-        if (active) setUsers(arr)
-      })
-      .catch(() => {})
-    return () => { active = false }
-  }, [showCreate])
+    const t = setTimeout(() => {
+      adminService.getUsers({ q: term, limit: 10 })
+        .then(res => {
+          const arr = res?.data || (Array.isArray(res) ? res : [])
+          if (active) setUsers(arr)
+        })
+        .catch(() => {})
+    }, 250)
+    return () => { active = false; clearTimeout(t) }
+  }, [showCreate, responsableQuery])
 
-  const suggestions = responsableQuery.trim().length === 0
+  const suggestions = responsableQuery.trim().length < 2
     ? []
     : users.filter(u =>
         !u.is_superadmin &&
-        u.user_type !== 'empleador' &&
-        (u.name?.toLowerCase().includes(responsableQuery.toLowerCase()) ||
-         u.email?.toLowerCase().includes(responsableQuery.toLowerCase()))
+        u.user_type !== 'empleador'
       ).slice(0, 6)
 
   const closeCreate = () => {
@@ -83,9 +88,16 @@ export default function TenantsList() {
   if (isLoading) {
     return (
       <div className={styles.page}>
-        <div className={styles.loading}>
-          <div className={styles.spinner} />
-          <p>Cargando empresas...</p>
+        <div className={styles.header}>
+          <div>
+            <h1>Empresas</h1>
+            <p>Gestiona los clientes de la plataforma Oberstaff</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '1rem' }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} height={56} radius={12} />
+          ))}
         </div>
       </div>
     )
@@ -98,10 +110,9 @@ export default function TenantsList() {
           <h1>Empresas</h1>
           <p>Gestiona los clientes de la plataforma Oberstaff</p>
         </div>
-        <button className={styles.primaryBtn} onClick={() => setShowCreate(true)} data-tour="tenants-create">
-          <Plus size={18} />
+        <Button onClick={() => setShowCreate(true)} leftIcon={<Plus size={18} />} data-tour="tenants-create">
           Nueva empresa
-        </button>
+        </Button>
       </div>
 
       <div className={styles.kpis} data-tour="tenants-kpis">
@@ -216,73 +227,68 @@ export default function TenantsList() {
         </div>
       )}
 
-      {showCreate && (
-        <div className={styles.modalOverlay} onClick={closeCreate}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h2>Nueva empresa</h2>
-              <button className={styles.closeBtn} onClick={closeCreate}><X size={20} /></button>
+      <Modal
+        isOpen={showCreate}
+        onClose={closeCreate}
+        title="Nueva empresa"
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeCreate} disabled={submitting}>Cancelar</Button>
+            <Button onClick={handleCreate} loading={submitting} disabled={!companyName || !selectedUser}>
+              Crear empresa
+            </Button>
+          </>
+        }
+      >
+        <p className={styles.modalHint}>Selecciona un usuario existente como responsable de la empresa.</p>
+        <div className={styles.field}>
+          <label>Nombre de la empresa</label>
+          <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme S.A." />
+        </div>
+        <div className={styles.field}>
+          <label>Responsable</label>
+          {selectedUser ? (
+            <div className={styles.selectedChip}>
+              <Avatar src={selectedUser.avatar} name={selectedUser.name} size="sm" />
+              <div className={styles.ownerCell}>
+                <span>{selectedUser.name}</span>
+                <small>{selectedUser.email}</small>
+              </div>
+              <button className={styles.chipClear} onClick={() => { setSelectedUser(null); setResponsableQuery('') }}><X size={16} /></button>
             </div>
-            <p className={styles.modalHint}>Selecciona un usuario existente como responsable de la empresa.</p>
-            <div className={styles.field}>
-              <label>Nombre de la empresa</label>
-              <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme S.A." />
-            </div>
-            <div className={styles.field}>
-              <label>Responsable</label>
-              {selectedUser ? (
-                <div className={styles.selectedChip}>
-                  <Avatar src={selectedUser.avatar} name={selectedUser.name} size="sm" />
-                  <div className={styles.ownerCell}>
-                    <span>{selectedUser.name}</span>
-                    <small>{selectedUser.email}</small>
-                  </div>
-                  <button className={styles.chipClear} onClick={() => { setSelectedUser(null); setResponsableQuery('') }}><X size={16} /></button>
-                </div>
-              ) : (
-                <div className={styles.suggestWrap}>
-                  <div className={styles.searchBox} style={{ margin: 0, maxWidth: 'none' }}>
-                    <Search size={18} />
-                    <input
-                      type="text"
-                      value={responsableQuery}
-                      onChange={(e) => setResponsableQuery(e.target.value)}
-                      placeholder="Busca por nombre o correo..."
-                    />
-                  </div>
-                  {suggestions.length > 0 && (
-                    <div className={styles.suggestBox}>
-                      {suggestions.map(u => (
-                        <button key={u.id} className={styles.suggestItem} onClick={() => { setSelectedUser(u); setResponsableQuery('') }}>
-                          <Avatar src={u.avatar} name={u.name} size="sm" />
-                          <div className={styles.ownerCell}>
-                            <span>{u.name}</span>
-                            <small>{u.email} · {u.is_manager ? 'manager' : u.user_type}</small>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {responsableQuery.trim().length > 0 && suggestions.length === 0 && (
-                    <p className={styles.suggestEmpty}>Sin usuarios que coincidan (se excluyen superadmins y empresas).</p>
-                  )}
+          ) : (
+            <div className={styles.suggestWrap}>
+              <div className={styles.searchBox} style={{ margin: 0, maxWidth: 'none' }}>
+                <Search size={18} />
+                <input
+                  type="text"
+                  value={responsableQuery}
+                  onChange={(e) => setResponsableQuery(e.target.value)}
+                  placeholder="Busca por nombre o correo..."
+                />
+              </div>
+              {suggestions.length > 0 && (
+                <div className={styles.suggestBox}>
+                  {suggestions.map(u => (
+                    <button key={u.id} className={styles.suggestItem} onClick={() => { setSelectedUser(u); setResponsableQuery('') }}>
+                      <Avatar src={u.avatar} name={u.name} size="sm" />
+                      <div className={styles.ownerCell}>
+                        <span>{u.name}</span>
+                        <small>{u.email} · {u.is_manager ? 'manager' : u.user_type}</small>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
+              {responsableQuery.trim().length >= 2 && suggestions.length === 0 && (
+                <p className={styles.suggestEmpty}>Sin usuarios que coincidan (se excluyen superadmins y empresas).</p>
+              )}
             </div>
-            {formError && <p className={styles.errorMsg}>{formError}</p>}
-            <div className={styles.modalActions}>
-              <button className={styles.secondaryBtn} onClick={closeCreate} disabled={submitting}>Cancelar</button>
-              <button
-                className={styles.primaryBtn}
-                onClick={handleCreate}
-                disabled={submitting || !companyName || !selectedUser}
-              >
-                {submitting ? 'Creando...' : 'Crear empresa'}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+        {formError && <p className={styles.errorMsg}>{formError}</p>}
+      </Modal>
     </div>
   )
 }

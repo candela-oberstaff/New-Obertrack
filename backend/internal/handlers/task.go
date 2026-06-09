@@ -83,6 +83,26 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	})
 }
 
+func (h *TaskHandler) GetBoardStatusCounts(c *gin.Context) {
+	isSuperadmin := middleware.IsSuperadmin(c)
+	tenantID := middleware.GetTenantID(c)
+
+	var companyFilter uint
+	if isSuperadmin {
+		if v, err := strconv.ParseUint(c.Query("company_id"), 10, 32); err == nil {
+			companyFilter = uint(v)
+		}
+	}
+
+	counts, err := h.service.GetBoardStatusCounts(isSuperadmin, tenantID, companyFilter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch task counts"})
+		return
+	}
+
+	c.JSON(http.StatusOK, counts)
+}
+
 func (h *TaskHandler) GetByID(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -113,7 +133,6 @@ func (h *TaskHandler) Create(c *gin.Context) {
 
 	task, _, err := h.service.Create(userID, isSuperadmin, tenantID, req.Title, req.Description, req.Priority, req.EndDate, req.Assignees, req.BoardID)
 	if err != nil {
-		fmt.Printf("[DEBUG] Create Task Error: %v\n", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

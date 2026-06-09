@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { boardService } from '../../../services/api'
 import type { Board, CreateBoardInput } from '../../../types'
 
@@ -40,6 +41,10 @@ interface UseBoardsOptions {
 }
 
 export function useBoards({ companyId = null, requireCompany = false, autoSelectFirst = true }: UseBoardsOptions = {}): UseBoardsReturn {
+  const qc = useQueryClient()
+  // Cache key for the boards list. Only the GET is routed through the cache; all
+  // the selection logic below is unchanged.
+  const boardsQueryKey = ['boards', companyId] as const
   const [boards, setBoards] = useState<Board[]>([])
   const [selectedBoard, setSelectedBoardState] = useState<Board | null>(null)
   const [publicBoards, setPublicBoards] = useState<Board[]>([])
@@ -75,7 +80,13 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
     }
     setIsLoading(true)
     try {
-      const boardsRes = await boardService.getAll(companyId)
+      // Read through the React Query cache: revisiting the page returns the
+      // cached list instantly (within staleTime) while staying fresh after
+      // mutations, which invalidate this key.
+      const boardsRes = await qc.fetchQuery({
+        queryKey: boardsQueryKey,
+        queryFn: () => boardService.getAll(companyId),
+      })
       // Deduplicate by ID to avoid React key warnings and duplicates in rendering
       const unique = (boardsRes || []).filter(
         (b: Board, idx: number, arr: Board[]) => arr.findIndex((x: Board) => x.id === b.id) === idx
@@ -114,7 +125,15 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
     } finally {
       setIsLoading(false)
     }
-  }, [companyId, requireCompany, autoSelectFirst])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, requireCompany, autoSelectFirst, qc])
+
+  // Marks the cached boards list stale so the next fetchBoards() refetches.
+  const invalidateBoards = useCallback(
+    () => qc.invalidateQueries({ queryKey: boardsQueryKey }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [qc, companyId],
+  )
 
   const fetchPublicBoards = useCallback(async () => {
     try {
@@ -141,6 +160,7 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
         member_ids: [],
         phases: DEFAULT_PHASES,
       })
+      await invalidateBoards()
       const boardsRes = await fetchBoards()
       const found = boardsRes.find((b: Board) => b.id === newBoard.id)
       if (found) setSelectedBoard(found)
@@ -151,25 +171,28 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
     } finally {
       setIsCreatingBoard(false)
     }
-  }, [fetchBoards, companyId])
+  }, [fetchBoards, companyId, invalidateBoards])
 
   const deleteBoard = useCallback(async (boardId: number) => {
     await boardService.delete(boardId)
+    await invalidateBoards()
     await fetchBoards()
     if (selectedBoard?.id === boardId) {
       setSelectedBoard(null)
     }
-  }, [fetchBoards, selectedBoard])
+  }, [fetchBoards, selectedBoard, invalidateBoards])
 
   const joinBoard = useCallback(async (boardId: number): Promise<boolean> => {
     try {
       await boardService.join(boardId)
+      await invalidateBoards()
       const boardsRes = await fetchBoards()
       const found = boardsRes.find((b: Board) => b.id === boardId)
       if (found) setSelectedBoard(found)
       return true
     } catch (error: any) {
       if (error?.response?.status === 409) {
+        await invalidateBoards()
         const boardsRes = await fetchBoards()
         const found = boardsRes.find((b: Board) => b.id === boardId)
         if (found) setSelectedBoard(found)
@@ -178,29 +201,33 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
       console.error('Error joining board:', error)
       return false
     }
-  }, [fetchBoards])
+  }, [fetchBoards, invalidateBoards])
 
   const updateBoardMembers = useCallback(async (boardId: number, memberIds: number[]) => {
     await boardService.update(boardId, { member_ids: memberIds })
+    await invalidateBoards()
     await fetchBoards()
-  }, [fetchBoards])
+  }, [fetchBoards, invalidateBoards])
 
   const reorderPhases = useCallback(async (boardId: number, phaseIds: number[]) => {
     await boardService.reorderPhases(boardId, phaseIds)
+    await invalidateBoards()
     await fetchBoards()
-  }, [fetchBoards])
+  }, [fetchBoards, invalidateBoards])
 
   const addPhase = useCallback(async (boardId: number, phase: { name: string; color?: string }) => {
     const updated = await boardService.addPhase(boardId, phase)
     setBoards((prev) => prev.map((b) => (b.id === boardId ? updated : b)))
     setSelectedBoardState((current) => (current?.id === boardId ? updated : current))
-  }, [])
+    invalidateBoards()
+  }, [invalidateBoards])
 
   const removePhase = useCallback(async (boardId: number, phaseId: number) => {
     const updated = await boardService.removePhase(boardId, phaseId)
     setBoards((prev) => prev.map((b) => (b.id === boardId ? updated : b)))
     setSelectedBoardState((current) => (current?.id === boardId ? updated : current))
-  }, [])
+    invalidateBoards()
+  }, [invalidateBoards])
 
   return {
     boards,

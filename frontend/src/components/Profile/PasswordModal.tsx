@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { userService } from '../../services/api'
 import styles from '../../pages/Profile.module.css'
+import { Modal, Button } from '../ui'
 
 interface PasswordModalProps {
   isOpen: boolean
@@ -12,8 +13,6 @@ export function PasswordModal({ isOpen, onClose, userId }: PasswordModalProps) {
   const [passwordData, setPasswordData] = useState({ current: '', new: '', confirm: '' })
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
-
-  if (!isOpen) return null
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -41,58 +40,55 @@ export function PasswordModal({ isOpen, onClose, userId }: PasswordModalProps) {
   }
 
   return (
-    <div className={styles['modal-overlay']} onClick={onClose}>
-      <div className={styles['modal']} onClick={(e) => e.stopPropagation()}>
-        <div className={styles['modal-header']}>
-          <h2>Cambiar Contraseña</h2>
-          <button className={styles['close-btn']} onClick={onClose}>✕</button>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Cambiar Contraseña"
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" form="password-form" loading={isLoading}>Cambiar</Button>
+        </>
+      }
+    >
+      {message.text && (
+        <div className={`${styles['alert']} ${styles[message.type] || message.type}`} style={{ marginBottom: '16px' }}>
+          {message.text}
         </div>
-        
-        {message.text && (
-          <div className={`${styles['alert']} ${styles[message.type] || message.type}`} style={{ marginBottom: '16px' }}>
-            {message.text}
-          </div>
-        )}
+      )}
 
-        <form onSubmit={handlePasswordChange}>
-          <div className={styles['form-group']}>
-            <label>Contraseña actual</label>
-            <input
-              type="password"
-              value={passwordData.current}
-              onChange={(e) => setPasswordData({ ...passwordData, current: e.target.value })}
-              required
-            />
-          </div>
-          <div className={styles['form-group']}>
-            <label>Nueva contraseña</label>
-            <input
-              type="password"
-              value={passwordData.new}
-              onChange={(e) => setPasswordData({ ...passwordData, new: e.target.value })}
-              required
-              minLength={6}
-            />
-          </div>
-          <div className={styles['form-group']}>
-            <label>Confirmar contraseña</label>
-            <input
-              type="password"
-              value={passwordData.confirm}
-              onChange={(e) => setPasswordData({ ...passwordData, confirm: e.target.value })}
-              required
-            />
-          </div>
-          <div className={styles['modal-actions']}>
-            <button type="button" className={styles['btn-cancel']} onClick={onClose}>
-              Cancelar
-            </button>
-            <button type="submit" className={styles['btn-primary']} disabled={isLoading}>
-              {isLoading ? 'Cambiando...' : 'Cambiar'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      <form id="password-form" onSubmit={handlePasswordChange}>
+        <div className={styles['form-group']}>
+          <label>Contraseña actual</label>
+          <input
+            type="password"
+            value={passwordData.current}
+            onChange={(e) => setPasswordData({ ...passwordData, current: e.target.value })}
+            required
+            autoFocus
+          />
+        </div>
+        <div className={styles['form-group']}>
+          <label>Nueva contraseña</label>
+          <input
+            type="password"
+            value={passwordData.new}
+            onChange={(e) => setPasswordData({ ...passwordData, new: e.target.value })}
+            required
+            minLength={6}
+          />
+        </div>
+        <div className={styles['form-group']}>
+          <label>Confirmar contraseña</label>
+          <input
+            type="password"
+            value={passwordData.confirm}
+            onChange={(e) => setPasswordData({ ...passwordData, confirm: e.target.value })}
+            required
+          />
+        </div>
+      </form>
+    </Modal>
   )
 }

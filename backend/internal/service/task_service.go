@@ -14,6 +14,7 @@ import (
 
 type TaskService interface {
 	GetAll(userID uint, role string, isManager, isSuperadmin bool, tenantID, companyFilter uint, boardIDStr, status, priority, assigneeIDStr, startDate, endDate string, offset, limit int) ([]models.Task, int64, error)
+	GetBoardStatusCounts(isSuperadmin bool, tenantID, companyFilter uint) (map[uint]map[string]int, error)
 	GetByID(id uint, tenantID uint, isSuperadmin bool) (*models.Task, error)
 	Create(userID uint, isSuperadmin bool, tenantID uint, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error)
 	Update(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error)
@@ -165,6 +166,33 @@ func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin b
 	}
 
 	return s.repo.FindAll(filters, offset, limit)
+}
+
+func (s *taskService) GetBoardStatusCounts(isSuperadmin bool, tenantID, companyFilter uint) (map[uint]map[string]int, error) {
+	var scope uint
+	if isSuperadmin {
+		// Superadmin must scope to a company; without it return nothing.
+		if companyFilter == 0 {
+			return map[uint]map[string]int{}, nil
+		}
+		scope = companyFilter
+	} else {
+		scope = tenantID
+	}
+
+	rows, err := s.repo.CountByBoardAndStatus(scope)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[uint]map[string]int)
+	for _, r := range rows {
+		if result[r.BoardID] == nil {
+			result[r.BoardID] = make(map[string]int)
+		}
+		result[r.BoardID][r.Status] = int(r.Count)
+	}
+	return result, nil
 }
 
 func (s *taskService) GetByID(id uint, tenantID uint, isSuperadmin bool) (*models.Task, error) {

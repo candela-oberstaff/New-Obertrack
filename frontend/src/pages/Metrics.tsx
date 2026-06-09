@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Mail,
   BarChart3,
@@ -7,7 +8,7 @@ import {
   Activity
 } from 'lucide-react';
 import styles from './Metrics.module.css';
-import { metricsService, MetricsData } from '../services/metrics.service';
+import { metricsService } from '../services/metrics.service';
 import EmailTab from '../components/Admin/Metrics/EmailTab';
 import SurveyTab from '../components/Admin/Metrics/SurveyTab';
 import AdvancedTab from '../components/Admin/Metrics/AdvancedTab';
@@ -15,24 +16,12 @@ import { Select } from '../components/ui/Select';
 
 const MetricsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'emails' | 'surveys' | 'advanced'>('emails');
-  const [data, setData] = useState<MetricsData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const res = await metricsService.getGlobalMetrics(days);
-        setData(res);
-      } catch (error) {
-        console.error("Error fetching metrics:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [days]);
+  const { data = null, isLoading: loading } = useQuery({
+    queryKey: ['metrics', days],
+    queryFn: () => metricsService.getGlobalMetrics(days),
+  });
 
   if (loading && !data) return (
     <div className={styles.loading}>

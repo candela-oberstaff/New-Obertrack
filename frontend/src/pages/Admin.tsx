@@ -20,6 +20,7 @@ import {
 import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { Select } from '../components/ui/Select'
+import { Skeleton } from '../components/ui'
 import { authService } from '../services/api'
 import styles from '../components/Admin/Admin.module.css'
 
@@ -223,9 +224,12 @@ export default function Admin() {
   if (isLoading) {
     return (
       <div className={styles['admin-page']}>
-        <div className={styles['admin-loading']}>
-          <div className={styles['spinner']} />
-          <p>Cargando panel de administración...</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.5rem' }}>
+          <Skeleton height={48} width={280} radius={12} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={96} radius={16} />)}
+          </div>
+          <Skeleton height={420} radius={16} />
         </div>
       </div>
     )

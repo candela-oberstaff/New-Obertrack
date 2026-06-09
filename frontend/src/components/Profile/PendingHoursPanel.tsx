@@ -1,28 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { workHourService } from '../../services/api'
-import type { WorkHour } from '../../types'
 import styles from '../../pages/Profile.module.css'
 
 const MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
 export function PendingHoursPanel() {
-  const [pendingHours, setPendingHours] = useState<WorkHour[]>([])
+  const qc = useQueryClient()
   const [selectedPending, setSelectedPending] = useState<number[]>([])
   const [isLoadingPending, setIsLoadingPending] = useState(false)
   const [message, setMessage] = useState('')
 
-  const fetchPendingHours = async () => {
-    try {
-      const data = await workHourService.getPending()
-      setPendingHours(data)
-    } catch (error) {
-      console.error('Error fetching pending hours:', error)
-    }
-  }
-
-  useEffect(() => {
-    fetchPendingHours()
-  }, [])
+  const { data: pendingHours = [] } = useQuery({
+    queryKey: ['work-hours-pending'],
+    queryFn: () => workHourService.getPending(),
+  })
 
   const handleApproveHours = async () => {
     if (selectedPending.length === 0) return
@@ -31,7 +23,7 @@ export function PendingHoursPanel() {
     try {
       await workHourService.approve(selectedPending)
       setSelectedPending([])
-      fetchPendingHours()
+      await qc.invalidateQueries({ queryKey: ['work-hours-pending'] })
       setMessage('Horas aprobadas!')
       setTimeout(() => setMessage(''), 3000)
     } catch (error) {

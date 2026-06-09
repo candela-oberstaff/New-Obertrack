@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Ticket, ticketService } from '../../services/ticket.service';
 import TicketColumn from './components/TicketColumn';
@@ -40,49 +41,26 @@ function getInitialStageOrder(): TicketStageConfig[] {
 
 export default function TicketsBoard() {
   const { user } = useAuth();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [stages, setStages] = useState<TicketStageConfig[]>(getInitialStageOrder);
   const [draggedStageIdx, setDraggedStageIdx] = useState<number | null>(null);
   const [dragOverStageIdx, setDragOverStageIdx] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [filterOwn, setFilterOwn] = useState(false);
   const [filterOrigin, setFilterOrigin] = useState<OriginFilter>('all');
   const navigate = useNavigate();
 
-  const fetchTickets = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
-    setError(null);
-
-    try {
-      const data = await ticketService.getTickets();
-      setTickets(data ?? []);
-      setLastRefresh(new Date());
-      return data ?? [];
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'No se pudieron cargar los tickets.');
-      return [];
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTickets();
-  }, [fetchTickets]);
+  // Tickets auto-refresh every 60s via React Query's polling.
+  const { data: tickets = [], isLoading: loading, isFetching, error: queryError, refetch, dataUpdatedAt } = useQuery({
+    queryKey: ['tickets'],
+    queryFn: async () => (await ticketService.getTickets()) ?? [],
+    refetchInterval: 60_000,
+  });
+  const refreshing = isFetching && !loading;
+  const lastRefresh = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
+  const error = queryError ? ((queryError as any)?.response?.data?.error ?? 'No se pudieron cargar los tickets.') : null;
 
   useEffect(() => {
     localStorage.setItem(STAGE_ORDER_STORAGE_KEY, JSON.stringify(stages.map(stage => stage.id)));
   }, [stages]);
-
-  useEffect(() => {
-    const interval = setInterval(() => fetchTickets(true), 60_000);
-    return () => clearInterval(interval);
-  }, [fetchTickets]);
 
   const handleStageDragStart = useCallback((idx: number) => {
     setDraggedStageIdx(idx);
@@ -251,7 +229,7 @@ export default function TicketsBoard() {
             Informe de rechazos
           </button>
           <button
-            onClick={() => fetchTickets(true)}
+            onClick={() => refetch()}
             className={styles.channelBtn}
             disabled={refreshing}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem' }}

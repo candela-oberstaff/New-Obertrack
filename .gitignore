@@ -77,3 +77,9 @@ backend/test_db_create.go
 backend/build_err.txt
 backend/test_*.go
 backend/uploads/
+
+# Scratch / debug artifacts (should never be committed)
+backend/all_changes.txt
+backend/matches.txt
+backend/temp_ticket*.json
+frontend/build_output.txt

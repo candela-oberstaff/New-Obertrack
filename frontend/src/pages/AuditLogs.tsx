@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Shield, Download, Search, ChevronLeft, ChevronRight, Filter, X, Cpu, CheckCircle2, XCircle } from 'lucide-react'
 import { AuditLog, AuditLogParams, auditService } from '../services/audit.service'
@@ -46,11 +47,6 @@ function relativeTime(iso: string): string {
 
 export default function AuditLogs() {
   const navigate = useNavigate()
-  const [logs, setLogs] = useState<AuditLog[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const limit = 25
 
   const [q, setQ] = useState('')
@@ -74,21 +70,27 @@ export default function AuditLogs() {
     entity_id: entity?.id || undefined,
   }), [q, module, kind, success, startDate, endDate, entity])
 
-  const fetchLogs = useCallback(async (p: number) => {
-    setLoading(true); setError(null)
-    try {
-      const res = await auditService.getAuditLogs(buildParams(p))
-      setLogs(res.data ?? [])
-      setTotal(res.total ?? 0)
-      setPage(res.page ?? p)
-    } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'No se pudo cargar la auditoría.')
-    } finally {
-      setLoading(false)
-    }
-  }, [buildParams])
+  // Applied params drive the query. Filters apply on demand (Filtrar/Enter),
+  // not on every keystroke — so we snapshot them into `params`.
+  const [params, setParams] = useState<AuditLogParams>(() => ({ page: 1, limit }))
 
-  useEffect(() => { fetchLogs(1) }, [fetchLogs])
+  const { data, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['audit-logs', params],
+    queryFn: () => auditService.getAuditLogs(params),
+    placeholderData: (prev) => prev, // keep previous page visible while loading the next
+  })
+
+  const logs: AuditLog[] = data?.data ?? []
+  const total = data?.total ?? 0
+  const page = data?.page ?? params.page ?? 1
+  const error = queryError ? ((queryError as any)?.response?.data?.error ?? 'No se pudo cargar la auditoría.') : null
+
+  // Apply current filters (resets to page 1) or jump to a specific page.
+  const fetchLogs = useCallback((p: number) => { setParams(buildParams(p)) }, [buildParams])
+
+  // Re-apply (page 1) whenever the entity-trace filter is set or cleared.
+  useEffect(() => { setParams(buildParams(1)) // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity])
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 

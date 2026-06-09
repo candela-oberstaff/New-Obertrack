@@ -37,17 +37,23 @@ type UpdateUserRequest struct {
 func (h *UserHandler) GetAll(c *gin.Context) {
 	role := c.Query("role")
 	isManager := c.Query("is_manager")
+	search := c.Query("q")
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
 	var companyID uint
-	if !middleware.IsSuperadmin(c) {
+	if middleware.IsSuperadmin(c) {
+		// Superadmin may scope the search to a company via ?company_id=.
+		if v, err := strconv.ParseUint(c.Query("company_id"), 10, 32); err == nil {
+			companyID = uint(v)
+		}
+	} else {
 		companyID = middleware.GetTenantID(c)
 	}
 
-	users, total, err := h.service.GetAll(role, isManager, companyID, offset, limit)
+	users, total, err := h.service.GetAll(role, isManager, search, companyID, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
 		return

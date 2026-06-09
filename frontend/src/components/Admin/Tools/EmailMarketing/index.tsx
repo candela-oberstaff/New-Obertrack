@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import EmailBuilder from '../EmailBuilder';
 import { emailService } from '../../../../services/emailService';
@@ -15,15 +16,20 @@ interface EmailMarketingProps {
 const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, setHeaderAction }) => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState<number | null>(null);
-  const [availableRecipients, setAvailableRecipients] = useState<any[]>([]);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const confirm = useConfirm();
+  const qc = useQueryClient();
 
-  useEffect(() => {
-    fetchCampaigns();
-    fetchRecipients();
-  }, []);
+  const { data: campaigns = [], isLoading: loading } = useQuery<any[]>({
+    queryKey: ['email-campaigns'],
+    queryFn: () => emailService.getCampaigns(),
+  });
+
+  const { data: availableRecipients = [] } = useQuery<any[]>({
+    queryKey: ['email-recipients'],
+    queryFn: async () => (await emailService.getAvailableRecipients()).data || [],
+  });
+
+  const fetchCampaigns = () => qc.invalidateQueries({ queryKey: ['email-campaigns'] });
 
   useEffect(() => {
     if (!showBuilder) {
@@ -40,27 +46,6 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     }
     return () => setHeaderAction(null);
   }, [showBuilder]);
-
-  const fetchCampaigns = async () => {
-    try {
-      setLoading(true);
-      const data = await emailService.getCampaigns();
-      setCampaigns(data);
-    } catch (error) {
-      console.error("Error fetching campaigns:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchRecipients = async () => {
-    try {
-      const response = await emailService.getAvailableRecipients();
-      setAvailableRecipients(response.data || []);
-    } catch (error) {
-      console.error("Error fetching recipients:", error);
-    }
-  };
 
   const handleSave = async (data: { title: string, blocks: any }) => {
     try {

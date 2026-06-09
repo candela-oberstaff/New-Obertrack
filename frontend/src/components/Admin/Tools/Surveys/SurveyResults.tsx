@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Users, FileText, CheckCircle } from 'lucide-react';
 import styles from './SurveyResults.module.css';
 import commonStyles from '../Tools.module.css';
-import { surveyService, Survey } from '../../../../services/surveyService';
+import { surveyService } from '../../../../services/surveyService';
 
 interface SurveyResultsProps {
   surveyId: number;
@@ -10,29 +11,17 @@ interface SurveyResultsProps {
 }
 
 const SurveyResults: React.FC<SurveyResultsProps> = ({ surveyId, onBack }) => {
-  const [survey, setSurvey] = useState<Survey | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: survey = null, isLoading: loading } = useQuery<any>({
+    queryKey: ['survey', surveyId],
+    queryFn: () => surveyService.getSurvey(surveyId),
+    enabled: !!surveyId,
+  });
 
   useEffect(() => {
-    const fetchSurvey = async () => {
-      try {
-        const data = await surveyService.getSurvey(surveyId);
-        setSurvey(data);
-      } catch (err) {
-        console.error("Error fetching survey results", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSurvey();
-
     // Scroll the outlet container back to top when results view mounts
     const outletContainer = document.querySelector('[class*="outlet-container"]') as HTMLElement;
-    if (outletContainer) {
-      outletContainer.scrollTop = 0;
-    } else {
-      window.scrollTo(0, 0);
-    }
+    if (outletContainer) outletContainer.scrollTop = 0;
+    else window.scrollTo(0, 0);
   }, [surveyId]);
 
   if (loading) return <div className={styles.builderContainer}><p style={{padding: 40}}>Cargando resultados...</p></div>;
@@ -100,11 +89,11 @@ const SurveyResults: React.FC<SurveyResultsProps> = ({ surveyId, onBack }) => {
                   </div>
                   <div className={styles.responseAnswers}>
                     {resp.answers?.sort((a: any, b: any) => {
-                      const qA = survey.questions?.find(sq => sq.id === a.question_id);
-                      const qB = survey.questions?.find(sq => sq.id === b.question_id);
+                      const qA = survey.questions?.find((sq: any) => sq.id === a.question_id);
+                      const qB = survey.questions?.find((sq: any) => sq.id === b.question_id);
                       return (qA?.order_index || 0) - (qB?.order_index || 0);
                     }).map((ans: any) => {
-                      const q = survey.questions?.find(sq => sq.id === ans.question_id);
+                      const q = survey.questions?.find((sq: any) => sq.id === ans.question_id);
                       return (
                         <div key={ans.id} className={styles.answerItem}>
                           <p className={styles.answerQuestion}>{q?.text}</p>

@@ -74,12 +74,13 @@ func (h *AdminHandler) GetAllUsers(c *gin.Context) {
 	userType := c.Query("user_type")
 	isManager := c.Query("is_manager")
 	isActive := c.Query("is_active")
+	search := c.Query("q")
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset := (page - 1) * limit
 
-	users, total, err := h.service.GetAllUsers(userType, isManager, isActive, offset, limit)
+	users, total, err := h.service.GetAllUsers(userType, isManager, isActive, search, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
 		return

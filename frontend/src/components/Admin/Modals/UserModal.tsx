@@ -1,6 +1,6 @@
 import { User } from '../../../types'
-import { X } from 'lucide-react'
 import { Select } from '../../ui/Select'
+import { Modal, Button } from '../../ui'
 import styles from '../Admin.module.css'
 
 interface UserModalProps {
@@ -33,202 +33,193 @@ export function UserModal({
   error
 }: UserModalProps) {
   return (
-    <div className={styles['modal-overlay']} onClick={onClose}>
-      <div className={styles['modal']} onClick={e => e.stopPropagation()}>
-        <div className={styles['modal-header']}>
-          <h2>{title}</h2>
-          <button className={styles['close-btn']} onClick={onClose}><X size={20} /></button>
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={title}
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" form="user-form">{mode === 'create' ? 'Crear Usuario' : 'Guardar Cambios'}</Button>
+        </>
+      }
+    >
+      <form id="user-form" onSubmit={onSubmit}>
+        <div className={styles['form-group']}>
+          <label>Nombre</label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={e => setForm({ ...form, name: e.target.value })}
+            required
+            autoFocus
+          />
         </div>
-        <form onSubmit={onSubmit}>
+        <div className={styles['form-group']}>
+          <label>Email</label>
+          <input
+            type="email"
+            value={form.email}
+            onChange={e => setForm({ ...form, email: e.target.value })}
+            required
+          />
+        </div>
+
+        {mode === 'create' && (
           <div className={styles['form-group']}>
-            <label>Nombre</label>
+            <label>Contraseña</label>
+            <input
+              type="password"
+              value={form.password}
+              onChange={e => setForm({ ...form, password: e.target.value })}
+              required
+            />
+          </div>
+        )}
+
+        {mode === 'create' && (
+          <div className={styles['form-group']}>
+            <label>Tipo de Usuario</label>
+            <Select
+              fullWidth
+              value={form.user_type}
+              onChange={v => setForm({ ...form, user_type: String(v) })}
+              options={[
+                { value: 'profesional', label: 'Profesional' },
+                { value: 'empleador', label: 'Empresa' },
+              ]}
+            />
+          </div>
+        )}
+
+        {form.user_type === 'empleador' && (
+          <div className={styles['form-group']}>
+            <label>Nombre de Empresa</label>
             <input
               type="text"
-              value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-              required
+              value={form.company_name}
+              onChange={e => setForm({ ...form, company_name: e.target.value })}
             />
           </div>
-          <div className={styles['form-group']}>
-            <label>Email</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={e => setForm({ ...form, email: e.target.value })}
-              required
-            />
-          </div>
-          
-          {mode === 'create' && (
-            <div className={styles['form-group']}>
-              <label>Contraseña</label>
-              <input
-                type="password"
-                value={form.password}
-                onChange={e => setForm({ ...form, password: e.target.value })}
-                required
-              />
-            </div>
-          )}
+        )}
 
-          {mode === 'create' && (
+        {form.user_type === 'profesional' && (
+          <>
             <div className={styles['form-group']}>
-              <label>Tipo de Usuario</label>
+              <label>Empresa</label>
               <Select
                 fullWidth
-                value={form.user_type}
-                onChange={v => setForm({ ...form, user_type: String(v) })}
-                options={[
-                  { value: 'profesional', label: 'Profesional' },
-                  { value: 'empleador', label: 'Empresa' },
-                ]}
+                clearable
+                placeholder="Seleccionar empresa..."
+                value={form.empleador_id || ''}
+                onChange={v => setForm({ ...form, empleador_id: v ? Number(v) : undefined })}
+                options={employers.map(emp => ({ value: emp.id, label: emp.company_name || emp.name }))}
               />
             </div>
-          )}
-
-          {form.user_type === 'empleador' && (
             <div className={styles['form-group']}>
-              <label>Nombre de Empresa</label>
+              <label>Manager Asignado</label>
+              <Select
+                fullWidth
+                clearable
+                placeholder="Sin manager asignado"
+                value={form.manager_id || ''}
+                onChange={v => setForm({ ...form, manager_id: v ? Number(v) : undefined })}
+                options={managers.filter(m => m.id !== form.empleador_id).map(m => ({ value: m.id, label: m.name }))}
+              />
+            </div>
+          </>
+        )}
+
+        <div className={styles['form-group']}>
+          <label>Puesto</label>
+          <input
+            type="text"
+            value={form.job_title}
+            onChange={e => setForm({ ...form, job_title: e.target.value })}
+          />
+        </div>
+
+        {mode === 'edit' && (
+          <>
+            <div className={styles['section-label']}>Contacto y ubicación</div>
+            <div className={styles['form-group']}>
+              <label>Teléfono</label>
               <input
                 type="text"
-                value={form.company_name}
-                onChange={e => setForm({ ...form, company_name: e.target.value })}
+                value={form.phone_number}
+                onChange={e => setForm({ ...form, phone_number: e.target.value })}
               />
             </div>
-          )}
-
-          {form.user_type === 'profesional' && (
-            <>
+            <div className={styles['form-row']}>
               <div className={styles['form-group']}>
-                <label>Empresa</label>
-                <Select
-                  fullWidth
-                  clearable
-                  placeholder="Seleccionar empresa..."
-                  value={form.empleador_id || ''}
-                  onChange={v => setForm({ ...form, empleador_id: v ? Number(v) : undefined })}
-                  options={employers.map(emp => ({ value: emp.id, label: emp.company_name || emp.name }))}
-                />
-              </div>
-              <div className={styles['form-group']}>
-                <label>Manager Asignado</label>
-                <Select
-                  fullWidth
-                  clearable
-                  placeholder="Sin manager asignado"
-                  value={form.manager_id || ''}
-                  onChange={v => setForm({ ...form, manager_id: v ? Number(v) : undefined })}
-                  options={managers.filter(m => m.id !== form.empleador_id).map(m => ({ value: m.id, label: m.name }))}
-                />
-              </div>
-            </>
-          )}
-
-          <div className={styles['form-group']}>
-            <label>Puesto</label>
-            <input
-              type="text"
-              value={form.job_title}
-              onChange={e => setForm({ ...form, job_title: e.target.value })}
-            />
-          </div>
-
-          {mode === 'edit' && (
-            <>
-              <div className={styles['section-label']}>Contacto y ubicación</div>
-              <div className={styles['form-group']}>
-                <label>Teléfono</label>
+                <label>País</label>
                 <input
                   type="text"
-                  value={form.phone_number}
-                  onChange={e => setForm({ ...form, phone_number: e.target.value })}
+                  value={form.country}
+                  onChange={e => setForm({ ...form, country: e.target.value })}
                 />
-              </div>
-              <div className={styles['form-row']}>
-                <div className={styles['form-group']}>
-                  <label>País</label>
-                  <input
-                    type="text"
-                    value={form.country}
-                    onChange={e => setForm({ ...form, country: e.target.value })}
-                  />
-                </div>
-                <div className={styles['form-group']}>
-                  <label>Ciudad</label>
-                  <input
-                    type="text"
-                    value={form.city}
-                    onChange={e => setForm({ ...form, city: e.target.value })}
-                  />
-                </div>
               </div>
               <div className={styles['form-group']}>
-                <label>Ubicación</label>
+                <label>Ciudad</label>
                 <input
                   type="text"
-                  value={form.location}
-                  onChange={e => setForm({ ...form, location: e.target.value })}
+                  value={form.city}
+                  onChange={e => setForm({ ...form, city: e.target.value })}
                 />
               </div>
+            </div>
+            <div className={styles['form-group']}>
+              <label>Ubicación</label>
+              <input
+                type="text"
+                value={form.location}
+                onChange={e => setForm({ ...form, location: e.target.value })}
+              />
+            </div>
 
-              <div className={styles['section-label']}>Permisos</div>
-              <div className={styles['permissions-group']}>
-                <label className={styles['checkbox-label']}>
-                  <span>Es Gerente/Manager</span>
-                  <input
-                    type="checkbox"
-                    checked={form.is_manager}
-                    onChange={e => setForm({ ...form, is_manager: e.target.checked })}
-                  />
-                </label>
-                <label className={styles['checkbox-label']}>
-                  <span>Usuario Activo</span>
-                  <input
-                    type="checkbox"
-                    checked={form.is_active}
-                    onChange={e => setForm({ ...form, is_active: e.target.checked })}
-                  />
-                </label>
-              </div>
+            <div className={styles['section-label']}>Permisos</div>
+            <div className={styles['permissions-group']}>
+              <label className={styles['checkbox-label']}>
+                <span>Es Gerente/Manager</span>
+                <input
+                  type="checkbox"
+                  checked={form.is_manager}
+                  onChange={e => setForm({ ...form, is_manager: e.target.checked })}
+                />
+              </label>
+              <label className={styles['checkbox-label']}>
+                <span>Usuario Activo</span>
+                <input
+                  type="checkbox"
+                  checked={form.is_active}
+                  onChange={e => setForm({ ...form, is_active: e.target.checked })}
+                />
+              </label>
+            </div>
 
-              {onResetPassword && setNewPassword && (
-                <div className={styles['form-group']}>
-                  <label>Restablecer Contraseña</label>
-                  <div className={styles['password-reset-row']}>
-                    <input
-                      type="password"
-                      placeholder="Nueva contraseña"
-                      value={newPassword}
-                      onChange={e => setNewPassword(e.target.value)}
-                      className={styles['password-input']}
-                    />
-                    <button
-                      type="button"
-                      className={styles['btn-primary']}
-                      onClick={onResetPassword}
-                      disabled={!newPassword}
-                    >
-                      Cambiar
-                    </button>
-                  </div>
+            {onResetPassword && setNewPassword && (
+              <div className={styles['form-group']}>
+                <label>Restablecer Contraseña</label>
+                <div className={styles['password-reset-row']}>
+                  <input
+                    type="password"
+                    placeholder="Nueva contraseña"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    className={styles['password-input']}
+                  />
+                  <Button type="button" onClick={onResetPassword} disabled={!newPassword}>Cambiar</Button>
                 </div>
-              )}
-            </>
-          )}
+              </div>
+            )}
+          </>
+        )}
 
-          {error && (
-            <div style={{ margin: '0 1.5rem', color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>{error}</div>
-          )}
-          <div className={styles['modal-actions']}>
-            <button type="button" className={styles['btn-secondary']} onClick={onClose}>
-              Cancelar
-            </button>
-            <button type="submit" className={styles['btn-primary']}>
-              {mode === 'create' ? 'Crear Usuario' : 'Guardar Cambios'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {error && (
+          <div style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>{error}</div>
+        )}
+      </form>
+    </Modal>
   )
 }

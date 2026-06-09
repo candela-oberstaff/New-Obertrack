@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { taskService } from '../../../services/api'
 import type { Task, CreateTaskInput } from '../../../types'
 
@@ -22,86 +23,71 @@ interface UseTasksReturn {
 }
 
 export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions = {}): UseTasksReturn {
-  const [tasks, setTasks] = useState<Task[]>([])
+  const qc = useQueryClient()
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [isLoading] = useState(false)
 
-  const fetchTasks = useCallback(async () => {
-    try {
+  const queryKey = ['tasks', boardId ?? null, !!showAllTasks, companyId ?? null]
+
+  const { data: tasks = [], isLoading, refetch } = useQuery({
+    queryKey,
+    queryFn: async () => {
       const params: Record<string, unknown> = { limit: 1000 }
-      if (!showAllTasks && boardId) {
-        params.board_id = boardId
-      }
-      if (companyId) {
-        params.company_id = companyId
-      }
+      if (!showAllTasks && boardId) params.board_id = boardId
+      if (companyId) params.company_id = companyId
       const tasksRes = await taskService.getAll(params)
-      let fetchedTasks = tasksRes.data || []
-      if (!showAllTasks && boardId) {
-        fetchedTasks = fetchedTasks.filter((t: any) => t.board_id === boardId)
-      }
-      setTasks(fetchedTasks)
-    } catch (error) {
-      console.error('Error fetching tasks:', error)
-    }
-  }, [boardId, showAllTasks, companyId])
+      let fetched = tasksRes.data || []
+      if (!showAllTasks && boardId) fetched = fetched.filter((t: any) => t.board_id === boardId)
+      return fetched as Task[]
+    },
+  })
 
-  useEffect(() => {
-    fetchTasks()
-  }, [fetchTasks])
+  const fetchTasks = useCallback(async () => { await refetch() }, [refetch])
 
+  // External signal (e.g. a task assigned elsewhere) → refresh.
   useEffect(() => {
-    setTasks([])
-  }, [boardId, showAllTasks, companyId])
-
-  useEffect(() => {
-    const handleTaskAssigned = () => {
-      fetchTasks()
-    }
-    window.addEventListener('task-assigned', handleTaskAssigned)
-    return () => window.removeEventListener('task-assigned', handleTaskAssigned)
-  }, [fetchTasks])
+    const handler = () => { refetch() }
+    window.addEventListener('task-assigned', handler)
+    return () => window.removeEventListener('task-assigned', handler)
+  }, [refetch])
 
   const createTask = useCallback(async (data: CreateTaskInput): Promise<Task> => {
     const newTask = await taskService.create(data)
-    fetchTasks()
+    await qc.invalidateQueries({ queryKey })
     return newTask
-  }, [fetchTasks])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc, boardId, showAllTasks, companyId])
 
   const updateTask = useCallback(async (id: number, data: Partial<Task>) => {
-    const previousTasks = [...tasks]
+    const previous = qc.getQueryData<Task[]>(queryKey)
+    // Optimistic update (skip assignees — they come as objects not IDs).
+    qc.setQueryData<Task[]>(queryKey, (old) =>
+      (old ?? []).map((t) => {
+        if (t.id === id) {
+          const { assignees, ...rest } = data
+          return { ...t, ...rest }
+        }
+        return t
+      }),
+    )
     try {
-      // Optimistic update (skip assignees — they come as objects not IDs)
-      setTasks(currentTasks =>
-        currentTasks.map(t => {
-          if (t.id === id) {
-            const { assignees, ...rest } = data
-            return { ...t, ...rest }
-          }
-          return t
-        })
-      )
-
       await taskService.update(id, data)
-      // Await full sync so re-render gets fresh server state
-      await fetchTasks()
-
+      await qc.invalidateQueries({ queryKey })
       if (selectedTask && selectedTask.id === id) {
-        const updated = await taskService.getById(id)
-        setSelectedTask(updated)
+        setSelectedTask(await taskService.getById(id))
       }
     } catch (error) {
       console.error('Error updating task:', error)
-      // Rollback on failure
-      setTasks(previousTasks)
+      if (previous) qc.setQueryData(queryKey, previous)
       throw error
     }
-  }, [fetchTasks, selectedTask, tasks])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc, boardId, showAllTasks, companyId, selectedTask])
 
   const deleteTask = useCallback(async (id: number) => {
     await taskService.delete(id)
-    fetchTasks()
-  }, [fetchTasks])
+    await qc.invalidateQueries({ queryKey })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc, boardId, showAllTasks, companyId])
 
   const getTasksByStatus = useCallback((status: string) => {
     return tasks.filter((task) => task.status === status)

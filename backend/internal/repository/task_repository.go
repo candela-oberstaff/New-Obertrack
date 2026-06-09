@@ -5,8 +5,16 @@ import (
 	"gorm.io/gorm"
 )
 
+// BoardStatusCount is one row of the per-board, per-status task aggregation.
+type BoardStatusCount struct {
+	BoardID uint   `json:"board_id"`
+	Status  string `json:"status"`
+	Count   int64  `json:"count"`
+}
+
 type TaskRepository interface {
 	FindAll(filters map[string]interface{}, offset, limit int) ([]models.Task, int64, error)
+	CountByBoardAndStatus(tenantID uint) ([]BoardStatusCount, error)
 	GetByID(id uint) (*models.Task, error)
 	GetByIDAndTenant(id, tenantID uint) (*models.Task, error)
 	Create(task *models.Task) error
@@ -30,6 +38,20 @@ func NewTaskRepository(db *gorm.DB) TaskRepository {
 
 func (r *taskRepository) GetDB() *gorm.DB {
 	return r.db
+}
+
+// CountByBoardAndStatus returns task counts grouped by board and status, scoped to
+// a tenant. Aggregates in the database instead of loading every task to count
+// client-side (used by the board picker).
+func (r *taskRepository) CountByBoardAndStatus(tenantID uint) ([]BoardStatusCount, error) {
+	var rows []BoardStatusCount
+	query := r.db.Model(&models.Task{}).
+		Select("board_id, status, COUNT(*) as count")
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+	err := query.Group("board_id, status").Scan(&rows).Error
+	return rows, err
 }
 
 func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit int) ([]models.Task, int64, error) {

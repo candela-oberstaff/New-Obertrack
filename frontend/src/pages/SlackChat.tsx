@@ -5,6 +5,8 @@ import { channelService, uploadService, adminService } from '../services/api'
 import { Select } from '../components/ui/Select'
 import type { User } from '../types'
 import type { Message } from '../types/chat'
+import { useConfirm } from '../components/ui/ConfirmProvider'
+import { useNotification } from '../context/NotificationContext'
 import { Sidebar } from '../components/Chat/Sidebar'
 import { ChatHeader } from '../components/Chat/ChatHeader'
 import { MessageList } from '../components/Chat/MessageList'
@@ -23,6 +25,8 @@ interface CompanyOption { id: number; company_name: string }
 
 export default function SlackChat() {
   const { user } = useAuth()
+  const confirm = useConfirm()
+  const { error: showError } = useNotification()
   const [searchParams, setSearchParams] = useSearchParams()
   const userIdParam = searchParams.get('userId')
 
@@ -170,7 +174,23 @@ export default function SlackChat() {
     setEditingMessageId(null); setEditContent('')
   }
 
-  const leaveChannel = async (id: number) => { try { await channelService.leaveChannel(id); if (selectedChannel?.id === id) setSelectedChannel(null); fetchChannels() } catch (e) { console.error(e) } }
+  const leaveChannel = async (id: number) => {
+    const ok = await confirm({
+      title: 'Salir del canal',
+      message: '¿Seguro que quieres salir de este canal? Dejarás de ver sus mensajes.',
+      confirmLabel: 'Salir',
+      variant: 'danger',
+    })
+    if (!ok) return
+    try {
+      await channelService.leaveChannel(id)
+      if (selectedChannel?.id === id) setSelectedChannel(null)
+      fetchChannels()
+    } catch (e) {
+      console.error(e)
+      showError('No se pudo salir del canal. Intenta de nuevo.')
+    }
+  }
   const addMember = async (id: number) => { if (selectedChannel) try { await channelService.addMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
   const removeMember = async (id: number) => { if (selectedChannel) try { await channelService.removeMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
   const handleUpdateChannel = async (id: number, updates: { name: string; description: string }) => {
@@ -339,7 +359,7 @@ export default function SlackChat() {
           onClose={() => setShowNewChannelModal(false)}
           onCreate={async () => {
             if (!newChannel.name.trim()) return
-            try { await channelService.createChannel(newChannel, isSuperadmin ? selectedCompanyId : null); setShowNewChannelModal(false); setNewChannel({ name: '', description: '', type: 'public' }); fetchChannels() } catch (e) { console.error(e) }
+            try { await channelService.createChannel(newChannel, isSuperadmin ? selectedCompanyId : null); setShowNewChannelModal(false); setNewChannel({ name: '', description: '', type: 'public' }); fetchChannels() } catch (e) { console.error(e); showError('No se pudo crear el canal.') }
           }}
         />
       )}
@@ -355,6 +375,7 @@ export default function SlackChat() {
               setShowNewDmModal(false)
             } catch (e) {
               console.error('Error creating DM:', e)
+              showError('No se pudo iniciar la conversación.')
             }
           }}
           onClose={() => setShowNewDmModal(false)}

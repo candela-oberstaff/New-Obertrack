@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminService } from '../services/api'
 import type { EmployeeTracking } from '../types'
 
@@ -12,42 +12,38 @@ interface UseEmployeeTrackingReturn {
 }
 
 export function useEmployeeTracking(id: number): UseEmployeeTrackingReturn {
-  const [tracking, setTracking] = useState<EmployeeTracking | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+  const queryKey = ['employee-tracking', id]
 
-  const refresh = useCallback(async () => {
-    try {
-      const data = await adminService.getEmployeeTracking(id)
-      setTracking({
-        ...data,
-        work_hours: Array.isArray(data?.work_hours) ? data.work_hours : [],
-        tasks: Array.isArray(data?.tasks) ? data.tasks : [],
-      })
-      setError(null)
-    } catch {
-      setError('No se pudo cargar el empleado')
-    }
-  }, [id])
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const res = await adminService.getEmployeeTracking(id)
+      return {
+        ...res,
+        work_hours: Array.isArray(res?.work_hours) ? res.work_hours : [],
+        tasks: Array.isArray(res?.tasks) ? res.tasks : [],
+      } as EmployeeTracking
+    },
+    enabled: !!id,
+  })
 
-  const toggleStatus = useCallback(async () => {
-    if (!tracking) return
-    await adminService.updateUser(id, { is_active: !tracking.user.is_active })
-    await refresh()
-  }, [id, tracking, refresh])
+  const toggleMut = useMutation({
+    mutationFn: (nextActive: boolean) => adminService.updateUser(id, { is_active: nextActive }),
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
+  })
 
-  const resetPassword = useCallback(async (newPassword: string) => {
-    await adminService.resetPassword(id, newPassword)
-  }, [id])
-
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true)
-      await refresh()
-      setIsLoading(false)
-    }
-    load()
-  }, [refresh])
-
-  return { tracking, isLoading, error, refresh, toggleStatus, resetPassword }
+  return {
+    tracking: data ?? null,
+    isLoading,
+    error: error ? 'No se pudo cargar el empleado' : null,
+    refresh: async () => { await refetch() },
+    toggleStatus: async () => {
+      if (!data) return
+      await toggleMut.mutateAsync(!data.user.is_active)
+    },
+    resetPassword: async (newPassword: string) => {
+      await adminService.resetPassword(id, newPassword)
+    },
+  }
 }

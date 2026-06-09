@@ -16,6 +16,7 @@ import {
 import Tooltip from '../components/Common/Tooltip'
 
 import { Select } from '../components/ui/Select'
+import { Skeleton } from '../components/ui'
 import { adminService } from '../services/api'
 import { MONTHS_ES } from '../components/WorkHours/utils'
 import { WorkHourCalendar } from '../components/WorkHours/WorkHourCalendar'
@@ -527,9 +528,17 @@ export default function WorkHours() {
 
   if (isLoading) {
     return (
-      <div className={styles['work-hours-loading']}>
-        <div className={styles['spinner']} />
-        <p>Cargando...</p>
+      <div className={styles['work-hours-page']}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1.5rem' }}>
+          <Skeleton height={56} width={320} radius={12} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={110} radius={16} />)}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '1rem' }}>
+            <Skeleton height={340} radius={16} />
+            <Skeleton height={340} radius={16} />
+          </div>
+        </div>
       </div>
     )
   }

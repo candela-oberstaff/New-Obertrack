@@ -517,8 +517,6 @@ func (s *ZohoService) GetTicketDetail(ticketID string) (*ZohoTicket, error) {
 		return nil, err
 	}
 
-	log.Printf("[ZohoService] GetTicketDetail Raw JSON: %s\n", string(body))
-
 	var ticket ZohoTicket
 	if err := json.Unmarshal(body, &ticket); err != nil {
 		return nil, err

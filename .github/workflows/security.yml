@@ -47,7 +47,9 @@ jobs:
         with:
           node-version: "20"
       - run: npm ci || npm install
-      - name: npm audit (high severity blocks)
-        run: npm audit --audit-level=high
+      - name: npm audit (high severity blocks; production deps only)
+        # Audit only what ships to users. Dev tooling (e.g. the Vitest/Vite test
+        # runner) is not deployed, so its advisories must not block releases.
+        run: npm audit --omit=dev --audit-level=high
       - name: type-check & build
         run: npm run build

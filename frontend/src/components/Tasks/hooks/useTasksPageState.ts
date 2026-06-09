@@ -139,11 +139,6 @@ export function useTasksPageState() {
     companyId: isSuperadmin ? selectedCompanyId : null,
   })
 
-  // Fetch users on mount
-  useEffect(() => {
-    fetchUsers()
-  }, [])
-
   // Per-board task counts grouped by status, used to show a breakdown on the
   // board picker cards (Por hacer / En proceso / Finalizado + custom phases).
   const [boardTaskCounts, setBoardTaskCounts] = useState<Record<number, Record<string, number>>>({})
@@ -153,17 +148,12 @@ export function useTasksPageState() {
     if (selectedBoard || boards.length === 0) return
     if (isSuperadmin && !selectedCompanyId) return
     let active = true
-    const params: Record<string, unknown> = { limit: 1000 }
-    if (isSuperadmin && selectedCompanyId) params.company_id = selectedCompanyId
-    taskService.getAll(params)
-      .then((res) => {
+    // Server-side aggregation: counts come grouped by board+status (no full
+    // task list download, scales past any task count).
+    taskService.getBoardStatusCounts(isSuperadmin ? selectedCompanyId : null)
+      .then((counts) => {
         if (!active) return
-        const counts: Record<number, Record<string, number>> = {}
-        ;(res.data || []).forEach((t: any) => {
-          if (!counts[t.board_id]) counts[t.board_id] = {}
-          counts[t.board_id][t.status] = (counts[t.board_id][t.status] || 0) + 1
-        })
-        setBoardTaskCounts(counts)
+        setBoardTaskCounts(counts || {})
       })
       .catch((e) => console.error('Error fetching task counts:', e))
     return () => { active = false }
@@ -187,9 +177,22 @@ export function useTasksPageState() {
   }, [isSuperadmin])
 
   const fetchUsers = useCallback(async () => {
-    const usersRes = await userService.getAll({ limit: 1000 })
+    // Superadmin: scope the user fetch to the selected company (server-side) instead
+    // of downloading every user across all tenants. Without a company, fetch nothing.
+    if (isSuperadmin && !selectedCompanyId) {
+      setUsers([])
+      return
+    }
+    const params: { limit: number; company_id?: number } = { limit: 1000 }
+    if (isSuperadmin && selectedCompanyId) params.company_id = selectedCompanyId
+    const usersRes = await userService.getAll(params)
     setUsers(usersRes.data || [])
-  }, [])
+  }, [isSuperadmin, selectedCompanyId])
+
+  // Fetch users on mount and whenever the company scope changes (superadmin).
+  useEffect(() => {
+    fetchUsers()
+  }, [fetchUsers])
 
   // 1. All users that the current user is ALLOWED to see/assign (strictly linked to the company)
   const visibleUsers = users.filter((u: User) => {
