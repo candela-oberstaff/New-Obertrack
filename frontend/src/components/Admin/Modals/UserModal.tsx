@@ -104,31 +104,32 @@ export function UserModal({
           </div>
         )}
 
+        {(form.user_type === 'profesional' || form.user_type === 'customer_success') && (
+          <div className={styles['form-group']}>
+            <label>Empresa</label>
+            <Select
+              fullWidth
+              clearable
+              placeholder="Seleccionar empresa..."
+              value={form.empleador_id || ''}
+              onChange={v => setForm({ ...form, empleador_id: v ? Number(v) : undefined })}
+              options={employers.map(emp => ({ value: emp.id, label: emp.company_name || emp.name }))}
+            />
+          </div>
+        )}
+
         {form.user_type === 'profesional' && (
-          <>
-            <div className={styles['form-group']}>
-              <label>Empresa</label>
-              <Select
-                fullWidth
-                clearable
-                placeholder="Seleccionar empresa..."
-                value={form.empleador_id || ''}
-                onChange={v => setForm({ ...form, empleador_id: v ? Number(v) : undefined })}
-                options={employers.map(emp => ({ value: emp.id, label: emp.company_name || emp.name }))}
-              />
-            </div>
-            <div className={styles['form-group']}>
-              <label>Manager Asignado</label>
-              <Select
-                fullWidth
-                clearable
-                placeholder="Sin manager asignado"
-                value={form.manager_id || ''}
-                onChange={v => setForm({ ...form, manager_id: v ? Number(v) : undefined })}
-                options={managers.filter(m => m.id !== form.empleador_id).map(m => ({ value: m.id, label: m.name }))}
-              />
-            </div>
-          </>
+          <div className={styles['form-group']}>
+            <label>Manager Asignado</label>
+            <Select
+              fullWidth
+              clearable
+              placeholder="Sin manager asignado"
+              value={form.manager_id || ''}
+              onChange={v => setForm({ ...form, manager_id: v ? Number(v) : undefined })}
+              options={managers.filter(m => m.id !== form.empleador_id).map(m => ({ value: m.id, label: m.name }))}
+            />
+          </div>
         )}
 
         <div className={styles['form-group']}>

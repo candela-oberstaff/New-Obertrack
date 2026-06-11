@@ -11,6 +11,10 @@ interface ProfessionalFieldsProps {
   setCountry: (val: string) => void
   province: string
   setProvince: (val: string) => void
+  city: string
+  setCity: (val: string) => void
+  location: string
+  setLocation: (val: string) => void
   selectedCompanyId: number | ''
   setSelectedCompanyId: (val: number | '') => void
   companies: { id: number; name: string }[]
@@ -26,6 +30,10 @@ export const ProfessionalFields: React.FC<ProfessionalFieldsProps> = ({
   setCountry,
   province,
   setProvince,
+  city,
+  setCity,
+  location,
+  setLocation,
   selectedCompanyId,
   setSelectedCompanyId,
   companies,
@@ -87,6 +95,28 @@ export const ProfessionalFields: React.FC<ProfessionalFieldsProps> = ({
           />
         </div>
       )}
+
+      <div className={styles['form-group']}>
+        <label htmlFor="cityProf">Ciudad (opcional)</label>
+        <input
+          id="cityProf"
+          type="text"
+          placeholder="Ej: Buenos Aires"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+        />
+      </div>
+
+      <div className={styles['form-group']}>
+        <label htmlFor="locationProf">Ubicación (opcional)</label>
+        <input
+          id="locationProf"
+          type="text"
+          placeholder="Ej: Ciudad, provincia o región"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+        />
+      </div>
 
       <div className={styles['form-group']}>
         <label htmlFor="companySelect">Empresa a la que perteneces (Cargadas: {companies.length})</label>

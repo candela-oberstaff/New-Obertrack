@@ -23,6 +23,7 @@ interface RegisterData {
   phone_number?: string
   country?: string
   state?: string
+  city?: string
   location?: string
   address?: string
   job_title?: string

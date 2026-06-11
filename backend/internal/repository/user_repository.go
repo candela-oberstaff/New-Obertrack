@@ -60,7 +60,7 @@ func (r *userRepository) GetAll(role, isManager, search string, companyID uint, 
 		return nil, 0, err
 	}
 
-	err := findQuery.Offset(offset).Limit(limit).Find(&users).Error
+	err := findQuery.Order("LOWER(name) ASC").Offset(offset).Limit(limit).Find(&users).Error
 	return users, total, err
 }
 

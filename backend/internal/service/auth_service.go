@@ -48,7 +48,7 @@ func ValidatePasswordStrength(pw string) error {
 }
 
 type AuthService interface {
-	Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle, industry, country, address, state string) (*models.User, string, string, error)
+	Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle, industry, country, address, state, city string) (*models.User, string, string, error)
 	Login(email, password string) (*models.User, string, string, error)
 	Refresh(refreshToken string) (*models.User, string, string, error)
 	GetUserDetails(id uint) (*models.User, error)
@@ -79,7 +79,7 @@ func NewAuthService(userRepo repository.UserRepository, jwtSecret string, brevoS
 	}
 }
 
-func (s *authService) Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle, industry, country, address, state string) (*models.User, string, string, error) {
+func (s *authService) Register(name, email, password, userTypeStr, companyName string, empleadorID *uint, phoneNumber, location, jobTitle, industry, country, address, state, city string) (*models.User, string, string, error) {
 	if err := ValidatePasswordStrength(password); err != nil {
 		return nil, "", "", err
 	}
@@ -107,6 +107,20 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 		isSuperadmin = true
 	}
 
+	// Solo profesionales y customer success pueden quedar vinculados a una empresa.
+	if userType != models.UserTypeProfessional && userType != models.UserTypeCustomerSuccess {
+		empleadorID = nil
+	}
+	if empleadorID != nil && *empleadorID == 0 {
+		empleadorID = nil
+	}
+	if empleadorID != nil {
+		employer, err := s.userRepo.GetByID(*empleadorID)
+		if err != nil || employer.UserType != models.UserTypeEmployer {
+			return nil, "", "", errors.New("La empresa seleccionada no es válida")
+		}
+	}
+
 	user := &models.User{
 		Name:         name,
 		Email:        email,
@@ -120,6 +134,7 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 		PhoneNumber:  phoneNumber,
 		Country:      country,
 		State:        state,
+		City:         city,
 		Location:     location,
 		Address:      address,
 		JobTitle:     jobTitle,

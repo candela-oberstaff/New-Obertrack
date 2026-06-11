@@ -19,6 +19,7 @@ export default function Register() {
   const [phoneNumber, setPhoneNumber] = useState('')
   const [country, setCountry] = useState('')
   const [province, setProvince] = useState('')
+  const [city, setCity] = useState('')
   const [location, setLocation] = useState('')
   const [address, setAddress] = useState('')
   const [jobTitle, setJobTitle] = useState('')
@@ -98,11 +99,15 @@ export default function Register() {
         user_type: userType,
         company_name: userType === 'empleador' ? companyName : undefined,
         industry: userType === 'empleador' ? industry : undefined,
-        empleador_id: userType === 'profesional' ? (selectedCompanyId as number) : undefined,
+        empleador_id:
+          userType === 'profesional' || userType === 'customer_success'
+            ? (selectedCompanyId as number) || undefined
+            : undefined,
         phone_number: phoneNumber,
         country: country,
         state: province || undefined,
-        location: userType === 'empleador' ? location : undefined,
+        city: city || undefined,
+        location: location || undefined,
         address: userType === 'empleador' ? address : undefined,
         job_title: userType === 'profesional' ? jobTitle : undefined,
       })
@@ -188,11 +193,33 @@ export default function Register() {
                 setCountry={setCountry}
                 province={province}
                 setProvince={setProvince}
+                city={city}
+                setCity={setCity}
+                location={location}
+                setLocation={setLocation}
                 selectedCompanyId={selectedCompanyId}
                 setSelectedCompanyId={setSelectedCompanyId}
                 companies={companies}
                 styles={styles}
               />
+            )}
+
+            {userType === 'customer_success' && (
+              <div className={styles['form-group']}>
+                <label htmlFor="csCompanySelect">Empresa asignada (opcional)</label>
+                <Select
+                  fullWidth
+                  clearable
+                  id="csCompanySelect"
+                  value={selectedCompanyId}
+                  onChange={(v) => setSelectedCompanyId(Number(v) || '')}
+                  placeholder="Selecciona una empresa..."
+                  options={companies.map((c) => ({ value: c.id, label: c.name }))}
+                />
+                <p className={styles['field-hint']}>
+                  Vincula esta cuenta de soporte a una empresa concreta, o déjala vacía para soporte global.
+                </p>
+              </div>
             )}
 
             {userType === 'empleador' && (
@@ -207,6 +234,8 @@ export default function Register() {
                 setCountry={setCountry}
                 province={province}
                 setProvince={setProvince}
+                city={city}
+                setCity={setCity}
                 location={location}
                 setLocation={setLocation}
                 address={address}
