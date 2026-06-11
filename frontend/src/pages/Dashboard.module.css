@@ -143,6 +143,12 @@
 .stat-label {
   font-size: 13px;
   color: #6b7280;
+  /* Keep the label and its tooltip icon on a single aligned line so longer
+     labels ("Pendiente por aprobar") don't push the value down vs. siblings. */
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .stat-value {

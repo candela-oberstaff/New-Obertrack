@@ -14,6 +14,7 @@ type ChannelWSMessage struct {
 	ChannelID uint        `json:"channel_id,omitempty"`
 	Content   string      `json:"content,omitempty"`
 	UserID    uint        `json:"user_id,omitempty"`
+	UserName  string      `json:"user_name,omitempty"`
 	Timestamp time.Time   `json:"timestamp,omitempty"`
 	Data      interface{} `json:"data,omitempty"`
 }
@@ -21,9 +22,7 @@ type ChannelWSMessage struct {
 var ChannelUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin:     checkWSOrigin,
 }
 
 const (
@@ -118,6 +117,8 @@ func (h *ChannelHub) HandleConnection(w http.ResponseWriter, r *http.Request, us
 
 	h.register <- channelRegistration{conn: conn, userID: userID}
 
+	// Inbound frames are typing indicators only — keep them tiny.
+	conn.SetReadLimit(1024)
 	conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -130,19 +131,42 @@ func (h *ChannelHub) HandleConnection(w http.ResponseWriter, r *http.Request, us
 			conn.Close()
 		}()
 
+		var lastTyping time.Time
 		for {
 			_, msgBytes, err := conn.ReadMessage()
 			if err != nil {
 				break
 			}
 
-			var msg ChannelWSMessage
-			if err := json.Unmarshal(msgBytes, &msg); err != nil {
+			var in ChannelWSMessage
+			if err := json.Unmarshal(msgBytes, &in); err != nil {
 				continue
 			}
 
-			msg.UserID = userID
-			h.broadcast <- msg
+			// Clients may only emit typing indicators. Every other event type
+			// (message, message_edited, message_deleted, reactions, ...) is
+			// server-authored by the HTTP handlers after persisting — relaying
+			// them here would let a client forge UI events for other members.
+			if in.Type != "typing" || in.ChannelID == 0 {
+				continue
+			}
+			// Rate-limit typing to one event per second per connection.
+			if time.Since(lastTyping) < time.Second {
+				continue
+			}
+			// Only members of the channel can signal typing in it.
+			if h.MemberResolver != nil && !h.MemberResolver(in.ChannelID)[userID] {
+				continue
+			}
+			lastTyping = time.Now()
+
+			h.broadcast <- ChannelWSMessage{
+				Type:      "typing",
+				ChannelID: in.ChannelID,
+				UserID:    userID,
+				UserName:  in.UserName,
+				Timestamp: time.Now(),
+			}
 		}
 	}()
 }

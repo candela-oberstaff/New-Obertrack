@@ -62,6 +62,9 @@ export default function Notifications() {
               type: message.type,
               title: message.data?.title || 'Nueva notificación',
               message: message.data?.message || '',
+              // Keep the payload (carries the deep link) so clicking a
+              // just-arrived notification navigates without a reload.
+              data: message.data?.data,
               read_at: undefined,
               created_at: new Date().toISOString(),
             }

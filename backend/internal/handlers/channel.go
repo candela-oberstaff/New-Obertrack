@@ -247,7 +247,10 @@ func (h *ChannelHandler) GetMessages(c *gin.Context) {
 		}
 	}
 
-	messages, err := h.svc.GetMessages(uint(id), userID)
+	// Optional cursor: return messages older than this message ID.
+	beforeID, _ := strconv.ParseUint(c.Query("before"), 10, 32)
+
+	messages, err := h.svc.GetMessages(uint(id), userID, uint(beforeID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -3,7 +3,7 @@ import { Check, AlertCircle, PlayCircle, HardDrive } from 'lucide-react'
 import { TUTORIAL_ICON_NAMES, TutorialIcon } from '../icons'
 import { parseVideoUrl, getProviderLabel } from '../utils'
 import { Modal, Button } from '../../ui'
-import type { CreateTutorialInput } from '../../../types'
+import type { CreateTutorialInput, TutorialAudience } from '../../../types'
 import styles from '../../../pages/Tutoriales.module.css'
 
 interface TutorialFormModalProps {
@@ -123,6 +123,21 @@ export function TutorialFormModal({
               onChange={(e) => setFormData({ ...formData, duration_min: Number(e.target.value) })}
             />
           </div>
+        </div>
+
+        <div className={styles['tutorial-form-field']}>
+          <label>Dirigido a</label>
+          <select
+            value={formData.audience}
+            onChange={(e) => setFormData({ ...formData, audience: e.target.value as TutorialAudience })}
+          >
+            <option value="all">Todos (empresas y profesionales)</option>
+            <option value="empleador">Solo empresas</option>
+            <option value="profesional">Solo profesionales</option>
+          </select>
+          <small className={styles['tutorial-form-hint']}>
+            Define el alcance de visibilidad: las empresas y los profesionales solo verán los tutoriales dirigidos a su tipo de cuenta.
+          </small>
         </div>
 
         <div className={styles['tutorial-form-field']}>

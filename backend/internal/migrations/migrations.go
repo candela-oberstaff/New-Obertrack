@@ -570,6 +570,20 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			ID: "202606111200_add_tutorial_audience",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding audience to tutorials...")
+				if err := tx.AutoMigrate(&models.Tutorial{}); err != nil {
+					return err
+				}
+				// Existing tutorials stay visible for everyone.
+				return tx.Exec(`UPDATE tutorials SET audience = 'all' WHERE audience IS NULL OR audience = ''`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.Tutorial{}, "audience")
+			},
+		},
 		// Future migrations go here
 	})
 

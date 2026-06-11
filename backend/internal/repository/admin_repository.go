@@ -209,21 +209,67 @@ func (r *adminRepository) GetInactiveUsersList(since time.Time) ([]InactiveUser,
 
 func (r *adminRepository) GetRecentActivities() ([]Activity, error) {
 	var activities []Activity
+	// Cross-domain activity feed: work-hour registrations + approvals + task and
+	// board creation, attributed to the acting user with their company. UNION ALL
+	// keeps the actor's display name (vs. reading raw audit rows).
 	err := r.db.Raw(`
-		SELECT 
-			'work_hour' as type,
-			u.name as user,
-			COALESCE(e.company_name, '-') as company,
-			CASE 
-				WHEN wh.work_type = 'complete' THEN 'Registró jornada completa'
-				ELSE 'Registró ausencia'
-			END as details,
-			wh.created_at as timestamp
-		FROM work_hours wh
-		JOIN users u ON u.id = wh.user_id
-		LEFT JOIN users e ON e.id = u.empleador_id
-		ORDER BY wh.created_at DESC
-		LIMIT 20
+		SELECT type, "user", company, details, timestamp FROM (
+			-- Work hours registered
+			SELECT
+				'work_hour' as type,
+				u.name as "user",
+				COALESCE(NULLIF(e.company_name, ''), NULLIF(u.company_name, ''), '-') as company,
+				CASE WHEN wh.work_type = 'complete' THEN 'Registró jornada completa' ELSE 'Registró una ausencia' END as details,
+				wh.created_at as timestamp
+			FROM work_hours wh
+			JOIN users u ON u.id = wh.user_id
+			LEFT JOIN users e ON e.id = u.empleador_id
+			WHERE wh.deleted_at IS NULL
+
+			UNION ALL
+
+			-- Work hours approved (actor = approver)
+			SELECT
+				'approval' as type,
+				ap.name as "user",
+				COALESCE(NULLIF(e.company_name, ''), NULLIF(ap.company_name, ''), '-') as company,
+				'Aprobó un registro de horas' as details,
+				wh.approved_at as timestamp
+			FROM work_hours wh
+			JOIN users ap ON ap.id = wh.approved_by
+			LEFT JOIN users e ON e.id = ap.empleador_id
+			WHERE wh.approved = true AND wh.approved_by IS NOT NULL AND wh.approved_at IS NOT NULL AND wh.deleted_at IS NULL
+
+			UNION ALL
+
+			-- Tasks created
+			SELECT
+				'task' as type,
+				u.name as "user",
+				COALESCE(NULLIF(e.company_name, ''), NULLIF(u.company_name, ''), '-') as company,
+				'Creó la tarea: ' || t.title as details,
+				t.created_at as timestamp
+			FROM tasks t
+			JOIN users u ON u.id = t.created_by
+			LEFT JOIN users e ON e.id = u.empleador_id
+			WHERE t.deleted_at IS NULL
+
+			UNION ALL
+
+			-- Boards created
+			SELECT
+				'board' as type,
+				u.name as "user",
+				COALESCE(NULLIF(e.company_name, ''), NULLIF(u.company_name, ''), '-') as company,
+				'Creó el tablero: ' || b.name as details,
+				b.created_at as timestamp
+			FROM boards b
+			JOIN users u ON u.id = b.created_by
+			LEFT JOIN users e ON e.id = u.empleador_id
+			WHERE b.deleted_at IS NULL
+		) feed
+		ORDER BY timestamp DESC
+		LIMIT 25
 	`).Scan(&activities).Error
 	return activities, err
 }

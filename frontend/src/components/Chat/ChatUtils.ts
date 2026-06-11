@@ -1,5 +1,6 @@
 import React from 'react'
 import type { User } from '../../types'
+import styles from '../../pages/SlackChat.module.css'
 
 // Singleton for AudioContext to avoid multiple instances causing issues
 let globalAudioContext: AudioContext | null = null
@@ -20,8 +21,18 @@ export const formatTime = (dateString: string) => {
   return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
 }
 
-export const highlightMentions = (content: string, allUsers: User[]): React.ReactNode => {
-  const mentionRegex = /@(\w+)/g
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+export const highlightMentions = (content: string, allUsers: User[], currentUserName?: string): React.ReactNode => {
+  // Match against real user names (they contain spaces and accents, so \w+ won't do).
+  // Longest names first so "Laura Méndez Jr" wins over "Laura Méndez".
+  const names = allUsers
+    .map(u => u.name)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  if (names.length === 0) return content
+
+  const mentionRegex = new RegExp(`@(${names.map(escapeRegExp).join('|')})`, 'gi')
   const parts: React.ReactNode[] = []
   let lastIndex = 0
   let match
@@ -30,13 +41,12 @@ export const highlightMentions = (content: string, allUsers: User[]): React.Reac
     if (match.index > lastIndex) {
       parts.push(content.slice(lastIndex, match.index))
     }
-    const mentionedName = match[1].toLowerCase()
-    const mentionedUser = allUsers.find(u => u.name.toLowerCase().replace(/\s+/g, '') === mentionedName)
-    if (mentionedUser) {
-      parts.push(React.createElement('span', { key: match.index, className: 'mention-highlight' }, `@${match[1]}`))
-    } else {
-      parts.push(`@${match[1]}`)
-    }
+    const isMe = !!currentUserName && match[1].toLowerCase() === currentUserName.toLowerCase()
+    parts.push(React.createElement(
+      'span',
+      { key: match.index, className: `${styles['mention-highlight']} ${isMe ? styles['mention-me'] : ''}` },
+      match[0]
+    ))
     lastIndex = mentionRegex.lastIndex
   }
 
@@ -45,6 +55,12 @@ export const highlightMentions = (content: string, allUsers: User[]): React.Reac
   }
 
   return parts.length > 0 ? parts : content
+}
+
+// True when the message text mentions the given user by name.
+export const mentionsUser = (content: string, userName?: string): boolean => {
+  if (!userName) return false
+  return content.toLowerCase().includes(`@${userName.toLowerCase()}`)
 }
 
 export const playNotificationSound = () => {

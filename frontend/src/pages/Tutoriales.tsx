@@ -2,7 +2,7 @@ import { Plus, BookOpen, Search, Compass } from 'lucide-react'
 import { startCurrentPageTour } from '../lib/tour'
 import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { useTutorialsPageState, ALL_CATEGORIES } from '../components/Tutorials/hooks/useTutorialsPageState'
+import { useTutorialsPageState, ALL_CATEGORIES, ALL_AUDIENCES } from '../components/Tutorials/hooks/useTutorialsPageState'
 import { TutorialCard } from '../components/Tutorials/TutorialCard'
 import { TutorialPlayerModal } from '../components/Tutorials/Modals/TutorialPlayerModal'
 import { TutorialFormModal } from '../components/Tutorials/Modals/TutorialFormModal'
@@ -20,6 +20,8 @@ export default function Tutoriales() {
     availableCategories,
     categoryFilter,
     setCategoryFilter,
+    audienceFilter,
+    setAudienceFilter,
     searchQuery,
     setSearchQuery,
     viewedIds,
@@ -44,7 +46,13 @@ export default function Tutoriales() {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   )
 
-  const canReorder = isAdmin && categoryFilter === ALL_CATEGORIES && !searchQuery.trim()
+  const canReorder = isAdmin && categoryFilter === ALL_CATEGORIES && audienceFilter === ALL_AUDIENCES && !searchQuery.trim()
+
+  const audienceTabs = [
+    { value: ALL_AUDIENCES, label: 'Todas las audiencias', count: tutorials.length },
+    { value: 'empleador', label: 'Vista empresas', count: tutorials.filter(t => t.audience === 'all' || t.audience === 'empleador').length },
+    { value: 'profesional', label: 'Vista profesionales', count: tutorials.filter(t => t.audience === 'all' || t.audience === 'profesional').length },
+  ]
 
   const greeting = (() => {
     const hour = new Date().getHours()
@@ -122,6 +130,21 @@ export default function Tutoriales() {
               )
             })}
           </div>
+          {isAdmin && (
+            <div className={styles['tutorials-tabs']} data-tour="tutoriales-audience-tabs">
+              {audienceTabs.map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  className={`${styles['tutorials-tab']} ${audienceFilter === tab.value ? styles['active'] : ''}`}
+                  onClick={() => setAudienceFilter(tab.value)}
+                >
+                  {tab.label}
+                  <span className={styles['tutorials-tab-count']}>{tab.count}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className={styles['tutorials-search']} data-tour="tutoriales-search">
             <Search size={16} />
             <input

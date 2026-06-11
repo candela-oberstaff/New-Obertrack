@@ -11,9 +11,9 @@ import (
 )
 
 type TutorialService interface {
-	GetAll(onlyActive bool) ([]models.Tutorial, error)
+	GetAll(onlyActive bool, audience string) ([]models.Tutorial, error)
 	GetByID(id uint) (*models.Tutorial, error)
-	Create(userID uint, title, description, googleDriveURL, iconName, category string, durationMin, orderIndex int, isActive bool) (*models.Tutorial, error)
+	Create(userID uint, title, description, googleDriveURL, iconName, category, audience string, durationMin, orderIndex int, isActive bool) (*models.Tutorial, error)
 	Update(id uint, updates map[string]interface{}) (*models.Tutorial, error)
 	Delete(id uint) error
 	Reorder(ids []uint) error
@@ -54,15 +54,26 @@ func validateVideoURL(url string) error {
 	return errors.New("Solo se aceptan links de Google Drive o YouTube")
 }
 
-func (s *tutorialService) GetAll(onlyActive bool) ([]models.Tutorial, error) {
-	return s.repo.FindAll(onlyActive)
+func normalizeAudience(audience string) (string, error) {
+	audience = strings.TrimSpace(audience)
+	if audience == "" {
+		return models.TutorialAudienceAll, nil
+	}
+	if !models.IsValidTutorialAudience(audience) {
+		return "", errors.New("Audiencia inválida: usa 'all', 'empleador' o 'profesional'")
+	}
+	return audience, nil
+}
+
+func (s *tutorialService) GetAll(onlyActive bool, audience string) ([]models.Tutorial, error) {
+	return s.repo.FindAll(onlyActive, audience)
 }
 
 func (s *tutorialService) GetByID(id uint) (*models.Tutorial, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *tutorialService) Create(userID uint, title, description, googleDriveURL, iconName, category string, durationMin, orderIndex int, isActive bool) (*models.Tutorial, error) {
+func (s *tutorialService) Create(userID uint, title, description, googleDriveURL, iconName, category, audience string, durationMin, orderIndex int, isActive bool) (*models.Tutorial, error) {
 	if strings.TrimSpace(title) == "" {
 		return nil, errors.New("El título es obligatorio")
 	}
@@ -76,6 +87,10 @@ func (s *tutorialService) Create(userID uint, title, description, googleDriveURL
 	if category == "" {
 		category = "General"
 	}
+	audience, err := normalizeAudience(audience)
+	if err != nil {
+		return nil, err
+	}
 
 	tutorial := &models.Tutorial{
 		Title:          utils.SanitizeHTML(title),
@@ -83,6 +98,7 @@ func (s *tutorialService) Create(userID uint, title, description, googleDriveURL
 		GoogleDriveURL: strings.TrimSpace(googleDriveURL),
 		IconName:       iconName,
 		Category:       utils.SanitizeHTML(category),
+		Audience:       audience,
 		DurationMin:    durationMin,
 		OrderIndex:     orderIndex,
 		IsActive:       isActive,
@@ -123,6 +139,13 @@ func (s *tutorialService) Update(id uint, updates map[string]interface{}) (*mode
 			trimmed = "General"
 		}
 		updates["category"] = utils.SanitizeHTML(trimmed)
+	}
+	if audience, ok := updates["audience"].(string); ok {
+		normalized, err := normalizeAudience(audience)
+		if err != nil {
+			return nil, err
+		}
+		updates["audience"] = normalized
 	}
 
 	if len(updates) == 0 {

@@ -513,7 +513,12 @@ func (s *ticketService) RecordTransfer(in TransferInput) error {
 	}
 
 	if s.notifSvc != nil {
-		data := map[string]interface{}{"ticket": in.TicketTitle, "origin": in.Origin, "ref": in.TicketRef}
+		// Internal tickets have a detail page; external ones land on the board.
+		link := "/tickets"
+		if in.LocalTicketID > 0 && in.Origin == string(models.OriginInternal) {
+			link = fmt.Sprintf("/tickets/internal/%d", in.LocalTicketID)
+		}
+		data := map[string]interface{}{"ticket": in.TicketTitle, "origin": in.Origin, "ref": in.TicketRef, "link": link}
 		if in.ToUserID != nil {
 			_ = s.notifSvc.CreateNotification(*in.ToUserID, "ticket_transfer",
 				"Ticket asignado a ti",

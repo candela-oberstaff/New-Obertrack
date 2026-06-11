@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { Message } from '../../types/chat'
 import { User } from '../../types'
-import { ReplyIcon, EditIcon, TrashIcon, PinIcon } from './Icons'
+import { ReplyIcon, EditIcon, TrashIcon, PinIcon, SmileIcon, StarIcon } from './Icons'
 import styles from '../../pages/SlackChat.module.css'
-import { getUserColor } from './ChatUtils'
+import { getUserColor, mentionsUser } from './ChatUtils'
+
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '🔥', '👀', '✅']
 
 interface MessageItemProps {
   message: Message
@@ -17,6 +20,11 @@ interface MessageItemProps {
   onPin: (id: number) => void
   onUnpin: (id: number) => void
   onReply: (msg: Message) => void
+  onToggleReaction: (msg: Message, emoji: string) => void
+  isHighlighted?: boolean
+  isStarred: boolean
+  onStar: (id: number) => void
+  onUnstar: (id: number) => void
 
   playingAudio: string | null
   togglePlayAudio: (url: string) => void
@@ -37,23 +45,52 @@ export function MessageItem({
   onPin,
   onUnpin,
   onReply,
+  onToggleReaction,
+  isHighlighted,
+  isStarred,
+  onStar,
+  onUnstar,
 
   playingAudio,
   togglePlayAudio,
   formatTime,
   highlightMentions
 }: MessageItemProps) {
-  const isVoiceNote = message.file_type?.startsWith('audio/') || 
-                     message.file_name?.includes('voice') || 
-                     message.attachment?.includes('.webm') || 
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+
+  const isVoiceNote = message.file_type?.startsWith('audio/') ||
+                     message.file_name?.includes('voice') ||
+                     message.attachment?.includes('.webm') ||
                      message.attachment?.includes('.mp3')
 
+  // file_type isn't always persisted (e.g. GIFs from Giphy), so fall back to the URL extension.
+  const isImageAttachment = !isVoiceNote && (
+    message.file_type?.startsWith('image/') ||
+    /\.(gif|png|jpe?g|webp|avif)([?#]|$)/i.test(message.attachment || '')
+  )
+
   const isOwnMessage = message.user_id === currentUser?.id
+  const mentionsMe = !isOwnMessage && !message.is_deleted && mentionsUser(message.content, currentUser?.name)
+
+  // Group reactions by emoji: count, who reacted, and whether the current user did.
+  const reactionGroups = Object.entries(
+    (message.reactions || []).reduce<Record<string, { count: number; mine: boolean; names: string[] }>>((acc, r) => {
+      const group = acc[r.emoji] || { count: 0, mine: false, names: [] }
+      group.count++
+      if (r.user_id === currentUser?.id) group.mine = true
+      if (r.user?.name) group.names.push(r.user.name)
+      acc[r.emoji] = group
+      return acc
+    }, {})
+  )
 
 
 
   return (
-    <div className={`${styles['message-item']} ${isOwnMessage ? styles['own-message'] : ''} ${message.is_pinned ? styles['pinned'] : ''}`}>
+    <div
+      id={`message-${message.id}`}
+      className={`${styles['message-item']} ${isOwnMessage ? styles['own-message'] : ''} ${message.is_pinned ? styles['pinned'] : ''} ${mentionsMe ? styles['mentions-me'] : ''} ${isHighlighted ? styles['highlighted'] : ''}`}
+    >
       <div 
         className={styles['message-avatar']} 
         style={{ backgroundColor: getUserColor(message.user?.name || '') }}
@@ -106,7 +143,7 @@ export function MessageItem({
                   <span className={styles['play-btn'] || 'play-icon'}>{playingAudio === message.attachment ? '⏸' : '▶'}</span>
                   <span className={styles['voice-label'] || 'voice-label'}>Nota de voz</span>
                 </div>
-              ) : message.file_type?.startsWith('image/') ? (
+              ) : isImageAttachment ? (
                 <img src={message.attachment} alt="Adjunto" className={styles['attachment-image']} onClick={() => window.open(message.attachment, '_blank')} />
               ) : (
                 <a href={message.attachment} target="_blank" rel="noopener noreferrer" className={styles['attachment-file'] || 'attachment-file'}>
@@ -116,6 +153,21 @@ export function MessageItem({
             </div>
           )}
         </div>
+
+        {reactionGroups.length > 0 && !message.is_deleted && (
+          <div className={styles['reactions-display']}>
+            {reactionGroups.map(([emoji, group]) => (
+              <button
+                key={emoji}
+                className={`${styles['reaction-badge']} ${group.mine ? styles['mine'] : ''}`}
+                title={group.names.join(', ')}
+                onClick={() => onToggleReaction(message, emoji)}
+              >
+                {emoji}{group.count > 1 && <span className={styles['reaction-count']}>{group.count}</span>}
+              </button>
+            ))}
+          </div>
+        )}
 
         {message.is_pinned && <span className={styles['pinned-badge-bubble']}>📍 Fijado</span>}
 
@@ -131,6 +183,27 @@ export function MessageItem({
         {!message.is_deleted && (
           <div className={styles['message-actions']}>
 
+            <div className={styles['reaction-picker-wrapper']}>
+              <button className={styles['action-btn']} onClick={() => setShowEmojiPicker(v => !v)} title="Añadir reacción">
+                <SmileIcon />
+              </button>
+              {showEmojiPicker && (
+                <div className={styles['emoji-picker']}>
+                  {REACTION_EMOJIS.map(emoji => (
+                    <button key={emoji} onClick={() => { onToggleReaction(message, emoji); setShowEmojiPicker(false) }}>
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              className={`${styles['action-btn']} ${isStarred ? styles['starred-active'] : ''}`}
+              onClick={() => isStarred ? onUnstar(message.id) : onStar(message.id)}
+              title={isStarred ? 'Quitar de destacados' : 'Destacar mensaje'}
+            >
+              <StarIcon />
+            </button>
             <button className={styles['action-btn']} onClick={() => onReply(message)} title="Reply in thread">
               <ReplyIcon />
             </button>

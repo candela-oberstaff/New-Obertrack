@@ -113,7 +113,7 @@ export default function Dashboard() {
           </div>
           <div className={styles['stat-content']}>
             <span className={styles['stat-label']}>
-              Pendientes
+              Pendiente por aprobar
               <Tooltip content={isEmployer ? "Horas registradas por los profesionales que no han sido aprobadas" : "Horas registradas que no han sido aprobadas"} size={14} />
             </span>
             <span className={styles['stat-value']}>{summary.pending_hours.toFixed(1)}h</span>

@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { userService } from '../../services/api'
 import type { User } from '../../types'
 import Tooltip from '../Common/Tooltip'
+import { Select } from '../ui/Select'
+import { COUNTRY_OPTIONS } from '../Auth/countries'
 import styles from '../../pages/Profile.module.css'
 
 interface ProfileFormProps {
@@ -43,6 +45,12 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
 
   const isEmployer = user?.user_type === 'empleador' || user?.is_superadmin || user?.is_manager
 
+  // Profiles saved before this was a dropdown may hold free text — keep that
+  // value selectable instead of silently dropping it.
+  const countryOptions = !formData.country || COUNTRY_OPTIONS.some(o => o.value === formData.country)
+    ? COUNTRY_OPTIONS
+    : [{ value: formData.country, label: formData.country }, ...COUNTRY_OPTIONS]
+
   return (
     <div className={styles['info-card']}>
       <div className={styles['card-header']}>
@@ -83,10 +91,12 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
           <div className={styles['form-row']}>
             <div className={styles['form-group']}>
               <label>País</label>
-              <input
-                type="text"
+              <Select
+                fullWidth
                 value={formData.country}
-                onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                onChange={(v) => setFormData({ ...formData, country: String(v) })}
+                placeholder="Selecciona un país..."
+                options={countryOptions}
               />
             </div>
             <div className={styles['form-group']}>

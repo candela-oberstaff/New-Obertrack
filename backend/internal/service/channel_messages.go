@@ -10,11 +10,26 @@ import (
 
 // Messages
 
-func (s *channelService) GetMessages(channelID, userID uint) ([]models.ChannelMessage, error) {
+// privateHistorySince returns the history cutoff for the user in a channel:
+// in private channels members only see messages from the moment they joined
+// (Slack-like); public channels and DMs expose the full history.
+func (s *channelService) privateHistorySince(channelID, userID uint) *time.Time {
+	channel, err := s.repo.GetChannel(channelID)
+	if err != nil || channel.Type != models.ChannelTypePrivate {
+		return nil
+	}
+	member, err := s.repo.GetMember(channelID, userID)
+	if err != nil || member.JoinedAt.IsZero() {
+		return nil
+	}
+	return &member.JoinedAt
+}
+
+func (s *channelService) GetMessages(channelID, userID, beforeID uint) ([]models.ChannelMessage, error) {
 	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
-	return s.repo.GetMessages(channelID, 100)
+	return s.repo.GetMessages(channelID, 100, s.privateHistorySince(channelID, userID), beforeID)
 }
 
 func (s *channelService) SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64) (*models.ChannelMessage, []uint, error) {
@@ -52,8 +67,9 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 	// Send notifications
 	for _, mentionedUserID := range mentionedUserIDs {
 		s.notifSvc.CreateNotification(mentionedUserID, "mention", "Te mencionaron en un canal", content, map[string]interface{}{
-			"channel_id":  channelID,
+			"channel_id": channelID,
 			"message_id": message.ID,
+			"link":       fmt.Sprintf("/chat?channel=%d&message=%d", channelID, message.ID),
 		})
 	}
 
@@ -197,7 +213,7 @@ func (s *channelService) GetPinnedMessages(channelID, userID uint) ([]models.Cha
 	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
-	return s.repo.GetPinnedMessages(channelID)
+	return s.repo.GetPinnedMessages(channelID, s.privateHistorySince(channelID, userID))
 }
 
 func (s *channelService) GetReactions(messageID, userID uint) ([]models.MessageReaction, error) {
@@ -311,7 +327,7 @@ func (s *channelService) SearchMessages(channelID, userID uint, query string) ([
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 
-	return s.repo.SearchMessages(channelID, query, 50)
+	return s.repo.SearchMessages(channelID, query, 50, s.privateHistorySince(channelID, userID))
 }
 
 func (s *channelService) CreateDirectMessage(userID, recipientID uint, tenantOverride uint) (*DirectMessageResponse, error) {
