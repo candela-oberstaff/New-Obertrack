@@ -170,16 +170,55 @@ func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, err
 		return nil, errors.New("Failed to hash password")
 	}
 
-	userType := req["user_type"].(string)
+	userType := models.UserType(req["user_type"].(string))
 	user := &models.User{
 		Name:         req["name"].(string),
 		Email:        req["email"].(string),
 		Password:     string(hashedPassword),
-		UserType:     models.UserType(userType),
-		IsSuperadmin: userType == "superadmin",
+		UserType:     userType,
+		IsSuperadmin: userType == models.UserTypeSuperadmin,
+		IsActive:     true,
+	}
+	if v, ok := req["company_name"].(string); ok {
+		user.CompanyName = v
+	}
+	if v, ok := req["job_title"].(string); ok {
+		user.JobTitle = v
+	}
+	if v, ok := req["phone_number"].(string); ok {
+		user.PhoneNumber = v
+	}
+	if v, ok := req["country"].(string); ok {
+		user.Country = v
+	}
+	if v, ok := req["city"].(string); ok {
+		user.City = v
+	}
+	if v, ok := req["location"].(string); ok {
+		user.Location = v
+	}
+	if v, ok := req["is_manager"].(bool); ok {
+		user.IsManager = v
 	}
 
-	// Simplified: in a real refactor, this logic would be shared or moved to UserRepo.Create
+	// Solo profesionales y customer success pueden quedar vinculados a una empresa.
+	if userType == models.UserTypeProfessional || userType == models.UserTypeCustomerSuccess {
+		if v, ok := req["empleador_id"].(uint); ok && v > 0 {
+			employer, err := s.userRepo.GetByID(v)
+			if err != nil || employer.UserType != models.UserTypeEmployer {
+				return nil, errors.New("La empresa seleccionada no es válida")
+			}
+			empID := v
+			user.EmpleadorID = &empID
+		}
+	}
+	if userType == models.UserTypeProfessional {
+		if v, ok := req["manager_id"].(uint); ok && v > 0 {
+			managerID := v
+			user.ManagerID = &managerID
+		}
+	}
+
 	if err := s.userRepo.Create(user); err != nil {
 		return nil, err
 	}
@@ -190,6 +229,15 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 	user, err := s.userRepo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("User not found")
+	}
+
+	// Solo profesionales y customer success pueden quedar vinculados a una empresa.
+	targetType := user.UserType
+	if t, ok := updates["user_type"].(string); ok && t != "" {
+		targetType = models.UserType(t)
+	}
+	if targetType != models.UserTypeProfessional && targetType != models.UserTypeCustomerSuccess {
+		delete(updates, "empleador_id")
 	}
 
 	if newEmpIDVal, ok := updates["empleador_id"]; ok {

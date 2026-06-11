@@ -108,6 +108,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		PhoneNumber string `json:"phone_number"`
 		Country     string `json:"country"`
 		City        string `json:"city"`
+		Location    string `json:"location"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -126,8 +127,10 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		"phone_number": req.PhoneNumber,
 		"country":      req.Country,
 		"city":         req.City,
+		"location":     req.Location,
 	}
-	if req.EmpleadorID != nil {
+	// Solo profesionales y customer success pueden quedar vinculados a una empresa.
+	if req.EmpleadorID != nil && (req.UserType == "profesional" || req.UserType == "customer_success") {
 		payload["empleador_id"] = *req.EmpleadorID
 	}
 	if req.ManagerID != nil {
@@ -160,8 +163,11 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		JobTitle    string `json:"job_title"`
 		PhoneNumber string `json:"phone_number"`
 		Country     string `json:"country"`
+		State       string `json:"state"`
 		City        string `json:"city"`
 		Location    string `json:"location"`
+		Address     string `json:"address"`
+		Industry    string `json:"industry"`
 		CompanyName string `json:"company_name"`
 		IsActive    *bool  `json:"is_active"`
 		IsManager   *bool  `json:"is_manager"`
@@ -199,11 +205,20 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	if req.Country != "" {
 		updates["country"] = req.Country
 	}
+	if req.State != "" {
+		updates["state"] = req.State
+	}
 	if req.City != "" {
 		updates["city"] = req.City
 	}
 	if req.Location != "" {
 		updates["location"] = req.Location
+	}
+	if req.Address != "" {
+		updates["address"] = req.Address
+	}
+	if req.Industry != "" {
+		updates["industry"] = req.Industry
 	}
 	if req.CompanyName != "" {
 		updates["company_name"] = req.CompanyName

@@ -15,7 +15,9 @@ import {
   Pencil,
   Eye,
   UserPlus,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
@@ -36,6 +38,7 @@ const EMPTY_CREATE_FORM = {
   phoneNumber: '',
   country: '',
   province: '',
+  city: '',
   location: '',
   address: '',
   jobTitle: '',
@@ -58,6 +61,9 @@ export default function Admin() {
 
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState('')
+  const [companyFilter, setCompanyFilter] = useState<number | ''>('')
+  const [usersPage, setUsersPage] = useState(1)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState<any>(null)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -88,7 +94,7 @@ export default function Admin() {
     e.preventDefault()
     setCreateError('')
 
-    const { name, email, password, userType, companyName, industry, selectedCompanyId, phoneNumber, country, province, location, address, jobTitle } = createForm
+    const { name, email, password, userType, companyName, industry, selectedCompanyId, phoneNumber, country, province, city, location, address, jobTitle } = createForm
 
     if (userType === 'profesional') {
       if (!selectedCompanyId) { setCreateError('Debes seleccionar una empresa'); return }
@@ -110,11 +116,15 @@ export default function Admin() {
         user_type: userType,
         company_name: userType === 'empleador' ? companyName : undefined,
         industry: userType === 'empleador' ? industry : undefined,
-        empleador_id: userType === 'profesional' ? (selectedCompanyId as number) : undefined,
+        empleador_id:
+          userType === 'profesional' || userType === 'customer_success'
+            ? (selectedCompanyId as number) || undefined
+            : undefined,
         phone_number: phoneNumber || undefined,
         country: country || undefined,
         state: province || undefined,
-        location: userType === 'empleador' ? location : undefined,
+        city: city || undefined,
+        location: location || undefined,
         address: userType === 'empleador' ? address : undefined,
         job_title: userType === 'profesional' ? jobTitle : undefined,
       })
@@ -173,12 +183,26 @@ export default function Admin() {
   const absenceItems = absenceReport?.items || []
   const topInactiveUsers = Array.isArray(inactiveUsers) ? inactiveUsers.slice(0, 5) : []
 
-  const filteredUsers = Array.isArray(users) 
-    ? users.filter((u: any) =>
-        u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.email?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : []
+  const USERS_PER_PAGE = 10
+
+  const filteredUsers = (Array.isArray(users) ? users : [])
+    .filter((u: any) => {
+      const q = searchQuery.trim().toLowerCase()
+      if (q && !(u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))) return false
+      if (roleFilter && u.user_type !== roleFilter) return false
+      // Una empresa "incluye" a su propia cuenta empleador y a sus vinculados.
+      if (companyFilter !== '' && u.empleador_id !== companyFilter && u.id !== companyFilter) return false
+      return true
+    })
+    .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }))
+
+  const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE))
+  const currentUsersPage = Math.min(usersPage, totalUserPages)
+  const paginatedUsers = filteredUsers.slice((currentUsersPage - 1) * USERS_PER_PAGE, currentUsersPage * USERS_PER_PAGE)
+
+  useEffect(() => {
+    setUsersPage(1)
+  }, [searchQuery, roleFilter, companyFilter])
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -423,14 +447,41 @@ export default function Admin() {
         {activeTab === 'users' && (
           <div className={styles['users-tab']}>
             <div className={styles['tab-header']} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-              <div className={styles['search-box']} data-tour="admin-search">
-                <Search size={18} />
-                <input
-                  type="text"
-                  placeholder="Buscar usuarios..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flex: 1 }}>
+                <div className={styles['search-box']} data-tour="admin-search">
+                  <Search size={18} />
+                  <input
+                    type="text"
+                    placeholder="Buscar usuarios..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <div style={{ minWidth: 190 }} data-tour="admin-role-filter">
+                  <Select
+                    fullWidth
+                    clearable
+                    placeholder="Todos los roles"
+                    value={roleFilter}
+                    onChange={v => setRoleFilter(v ? String(v) : '')}
+                    options={[
+                      { value: 'profesional', label: 'Profesional' },
+                      { value: 'empleador', label: 'Empresa' },
+                      { value: 'customer_success', label: 'Customer Success' },
+                      { value: 'superadmin', label: 'Superadmin' },
+                    ]}
+                  />
+                </div>
+                <div style={{ minWidth: 210 }} data-tour="admin-company-filter">
+                  <Select
+                    fullWidth
+                    clearable
+                    placeholder="Todas las empresas"
+                    value={companyFilter}
+                    onChange={v => setCompanyFilter(v ? Number(v) : '')}
+                    options={employers.map((emp: any) => ({ value: emp.id, label: emp.company_name || emp.name }))}
+                  />
+                </div>
               </div>
               <button
                 onClick={openCreateModal}
@@ -470,7 +521,14 @@ export default function Admin() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((u: any, index: number) => (
+                  {paginatedUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '32px 16px', color: '#94a3b8' }}>
+                        No se encontraron usuarios con los filtros aplicados.
+                      </td>
+                    </tr>
+                  )}
+                  {paginatedUsers.map((u: any, index: number) => (
                     <tr key={u.id || `user-${index}`}>
                       <td>
                         <div className={styles['user-cell']}>
@@ -526,6 +584,39 @@ export default function Admin() {
                 </tbody>
               </table>
             </div>
+
+            {filteredUsers.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginTop: '14px' }} data-tour="admin-users-pagination">
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  Mostrando {(currentUsersPage - 1) * USERS_PER_PAGE + 1}–{Math.min(currentUsersPage * USERS_PER_PAGE, filteredUsers.length)} de {filteredUsers.length} usuarios
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className={styles['btn-icon']}
+                    onClick={() => setUsersPage(p => Math.max(1, p - 1))}
+                    disabled={currentUsersPage <= 1}
+                    style={{ opacity: currentUsersPage <= 1 ? 0.4 : 1, cursor: currentUsersPage <= 1 ? 'not-allowed' : 'pointer' }}
+                    title="Página anterior"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                    Página {currentUsersPage} de {totalUserPages}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles['btn-icon']}
+                    onClick={() => setUsersPage(p => Math.min(totalUserPages, p + 1))}
+                    disabled={currentUsersPage >= totalUserPages}
+                    style={{ opacity: currentUsersPage >= totalUserPages ? 0.4 : 1, cursor: currentUsersPage >= totalUserPages ? 'not-allowed' : 'pointer' }}
+                    title="Página siguiente"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -669,7 +760,7 @@ export default function Admin() {
                 <Select
                   fullWidth
                   value={createForm.userType}
-                  onChange={v => setCreateForm(f => ({ ...f, userType: String(v), companyName: '', industry: '', selectedCompanyId: '', phoneNumber: '', country: '', province: '', location: '', address: '', jobTitle: '' }))}
+                  onChange={v => setCreateForm(f => ({ ...f, userType: String(v), companyName: '', industry: '', selectedCompanyId: '', phoneNumber: '', country: '', province: '', city: '', location: '', address: '', jobTitle: '' }))}
                   options={[
                     { value: 'profesional', label: 'Profesional (presta servicios)' },
                     { value: 'empleador', label: 'Empresa' },
@@ -793,6 +884,50 @@ export default function Admin() {
                       ]}
                     />
                   </div>
+                </div>
+              )}
+
+              {/* Ciudad y ubicación (opcionales) para profesional y empresa */}
+              {(createForm.userType === 'profesional' || createForm.userType === 'empleador') && (
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Ciudad (opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Buenos Aires"
+                      value={createForm.city}
+                      onChange={e => setCreateForm(f => ({ ...f, city: e.target.value }))}
+                      style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Ubicación (opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Ciudad, provincia o región"
+                      value={createForm.location}
+                      onChange={e => setCreateForm(f => ({ ...f, location: e.target.value }))}
+                      style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Campos de Customer Success */}
+              {createForm.userType === 'customer_success' && (
+                <div className={styles['form-group']} style={{ marginTop: '16px' }}>
+                  <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Empresa asignada (opcional)</label>
+                  <Select
+                    fullWidth
+                    clearable
+                    value={createForm.selectedCompanyId}
+                    onChange={v => setCreateForm(f => ({ ...f, selectedCompanyId: Number(v) || '' }))}
+                    placeholder="Selecciona una empresa..."
+                    options={publicCompanies.map(c => ({ value: c.id, label: c.name }))}
+                  />
+                  <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                    Vincula esta cuenta de soporte a una empresa concreta, o déjala vacía para soporte global.
+                  </p>
                 </div>
               )}
 

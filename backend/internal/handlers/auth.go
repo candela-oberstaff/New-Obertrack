@@ -57,6 +57,7 @@ type RegisterRequest struct {
 	PhoneNumber string `json:"phone_number"`
 	Country     string `json:"country"`
 	State       string `json:"state"`
+	City        string `json:"city"`
 	Location    string `json:"location"`
 	Address     string `json:"address"`
 	JobTitle    string `json:"job_title"`
@@ -121,7 +122,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	user, access, refresh, err := h.authService.Register(req.Name, req.Email, req.Password, req.UserType, req.CompanyName, req.EmpleadorID, req.PhoneNumber, req.Location, req.JobTitle, req.Industry, req.Country, req.Address, req.State)
+	user, access, refresh, err := h.authService.Register(req.Name, req.Email, req.Password, req.UserType, req.CompanyName, req.EmpleadorID, req.PhoneNumber, req.Location, req.JobTitle, req.Industry, req.Country, req.Address, req.State, req.City)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Email already registered" {

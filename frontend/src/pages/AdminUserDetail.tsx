@@ -24,9 +24,9 @@ export default function AdminUserDetail() {
       const data = await userService.getById(Number(id))
       setUser(data)
       setError(null)
-      // Resolve related names (employer / manager) for professionals.
+      // Resolve related names (employer / manager) for professionals and customer success.
       setEmpresaName(''); setManagerName('')
-      if (data.user_type === 'profesional') {
+      if (data.user_type === 'profesional' || data.user_type === 'customer_success') {
         if (data.empleador_id) {
           userService.getById(data.empleador_id).then(e => setEmpresaName(e?.company_name || e?.name || '')).catch(() => {})
         }
@@ -104,6 +104,7 @@ export default function AdminUserDetail() {
   const common: { label: string; value: React.ReactNode }[] = [
     { label: 'Teléfono', value: user.phone_number || '—' },
     { label: 'País', value: user.country || '—' },
+    { label: 'Estado / Provincia', value: user.state || '—' },
     { label: 'Ciudad', value: user.city || '—' },
     { label: 'Ubicación', value: user.location || '—' },
     { label: 'Registrado', value: user.created_at ? new Date(user.created_at).toLocaleString('es-ES') : '—' },
@@ -120,6 +121,8 @@ export default function AdminUserDetail() {
       { label: 'Empresa', value: empresaName || '—' },
       { label: 'Manager', value: managerName || 'Sin asignar' },
     ]
+  } else if (user.user_type === 'customer_success') {
+    specific = [{ label: 'Empresa asignada', value: empresaName || 'Soporte global' }]
   }
 
   const fields = [...specific, ...common]

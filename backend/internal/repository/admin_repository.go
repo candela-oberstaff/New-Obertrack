@@ -63,15 +63,25 @@ type AbsenceReport struct {
 }
 
 type TenantSummary struct {
-	ID          uint      `json:"id"`
-	CompanyName string    `json:"company_name"`
-	OwnerName   string    `json:"owner_name"`
-	OwnerEmail  string    `json:"owner_email"`
-	IsActive    bool      `json:"is_active"`
-	UserCount   int       `json:"user_count"`
-	BoardCount  int       `json:"board_count"`
-	TaskCount   int       `json:"task_count"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID             uint      `json:"id"`
+	CompanyName    string    `json:"company_name"`
+	OwnerName      string    `json:"owner_name"`
+	OwnerEmail     string    `json:"owner_email"`
+	Industry       string    `json:"industry"`
+	Country        string    `json:"country"`
+	State          string    `json:"state"`
+	City           string    `json:"city"`
+	Location       string    `json:"location"`
+	Address        string    `json:"address"`
+	PhoneNumber    string    `json:"phone_number"`
+	IsActive       bool      `json:"is_active"`
+	UserCount      int       `json:"user_count"`
+	BoardCount     int       `json:"board_count"`
+	TaskCount      int       `json:"task_count"`
+	HoursThisMonth float64   `json:"hours_this_month"`
+	PendingHours   float64   `json:"pending_hours"`
+	OpenTickets    int       `json:"open_tickets"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type EmployeeSummary struct {
@@ -351,11 +361,27 @@ const tenantSelect = `
 		COALESCE(NULLIF(u.company_name, ''), u.name) as company_name,
 		u.name as owner_name,
 		u.email as owner_email,
+		u.industry,
+		u.country,
+		u.state,
+		u.city,
+		u.location,
+		u.address,
+		u.phone_number,
 		u.is_active,
 		u.created_at,
 		COUNT(DISTINCT m.id) as user_count,
 		COUNT(DISTINCT b.id) as board_count,
-		COUNT(DISTINCT t.id) as task_count
+		COUNT(DISTINCT t.id) as task_count,
+		COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh
+			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
+			AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
+		COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh
+			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
+			AND wh.approved = false AND wh.rejected = false), 0) as pending_hours,
+		(SELECT COUNT(*) FROM tickets tk
+			WHERE tk.deleted_at IS NULL AND tk.status = 'open'
+			AND tk.user_id IN (SELECT pu.id FROM users pu WHERE pu.empleador_id = u.id AND pu.deleted_at IS NULL)) as open_tickets
 	FROM users u
 	LEFT JOIN users m ON m.empleador_id = u.id AND m.deleted_at IS NULL
 	LEFT JOIN boards b ON b.tenant_id = u.id AND b.deleted_at IS NULL
@@ -367,7 +393,7 @@ func (r *adminRepository) GetTenants() ([]TenantSummary, error) {
 	var tenants []TenantSummary
 	err := r.db.Raw(tenantSelect + `
 		GROUP BY u.id
-		ORDER BY u.created_at DESC
+		ORDER BY LOWER(COALESCE(NULLIF(u.company_name, ''), u.name)) ASC
 	`).Scan(&tenants).Error
 	return tenants, err
 }

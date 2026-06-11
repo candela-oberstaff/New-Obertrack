@@ -33,10 +33,20 @@ export interface Tenant {
   company_name: string
   owner_name: string
   owner_email: string
+  industry: string
+  country: string
+  state: string
+  city: string
+  location: string
+  address: string
+  phone_number: string
   is_active: boolean
   user_count: number
   board_count: number
   task_count: number
+  hours_this_month: number
+  pending_hours: number
+  open_tickets: number
   created_at: string
 }
 

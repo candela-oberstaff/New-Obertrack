@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Users, Search, Plus, Ban, CheckCircle2, ChevronRight, X } from 'lucide-react'
+import { Building2, Users, Search, Plus, Ban, CheckCircle2, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useTenants } from '../../hooks'
 import { adminService } from '../../services/api'
 import type { Tenant, User } from '../../types'
 import Avatar from '../../components/Common/Avatar'
 import { Modal, Button, Skeleton } from '../../components/ui'
+import { Select } from '../../components/ui/Select'
 import styles from './Tenants.module.css'
 
 export default function TenantsList() {
@@ -13,6 +14,9 @@ export default function TenantsList() {
   const { tenants, isLoading, error, createTenant, suspendTenant, activateTenant } = useTenants()
 
   const [search, setSearch] = useState('')
+  const [industryFilter, setIndustryFilter] = useState('')
+  const [countryFilter, setCountryFilter] = useState('')
+  const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
   const [companyName, setCompanyName] = useState('')
   const [responsableQuery, setResponsableQuery] = useState('')
@@ -21,10 +25,28 @@ export default function TenantsList() {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const filtered = tenants.filter(t =>
-    t.company_name?.toLowerCase().includes(search.toLowerCase()) ||
-    t.owner_email?.toLowerCase().includes(search.toLowerCase())
-  )
+  // Opciones de filtro derivadas de los datos cargados (solo valores presentes).
+  const industries = Array.from(new Set(tenants.map(t => t.industry?.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+  const countries = Array.from(new Set(tenants.map(t => t.country?.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+
+  const filtered = tenants
+    .filter(t => {
+      const q = search.trim().toLowerCase()
+      if (q && !(t.company_name?.toLowerCase().includes(q) || t.owner_email?.toLowerCase().includes(q))) return false
+      if (industryFilter && t.industry?.trim() !== industryFilter) return false
+      if (countryFilter && t.country?.trim() !== countryFilter) return false
+      return true
+    })
+    .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || '', 'es', { sensitivity: 'base' }))
+
+  const TENANTS_PER_PAGE = 10
+  const totalPages = Math.max(1, Math.ceil(filtered.length / TENANTS_PER_PAGE))
+  const currentPage = Math.min(page, totalPages)
+  const paginated = filtered.slice((currentPage - 1) * TENANTS_PER_PAGE, currentPage * TENANTS_PER_PAGE)
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, industryFilter, countryFilter])
 
   const activeCount = tenants.filter(t => t.is_active).length
   const totalUsers = tenants.reduce((sum, t) => sum + (t.user_count || 0), 0)
@@ -154,14 +176,36 @@ export default function TenantsList() {
         </div>
       </div>
 
-      <div className={styles.searchBox} data-tour="tenants-search">
-        <Search size={18} />
-        <input
-          type="text"
-          placeholder="Buscar empresa o correo..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div className={styles.searchBox} data-tour="tenants-search">
+          <Search size={18} />
+          <input
+            type="text"
+            placeholder="Buscar empresa o correo..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div style={{ minWidth: 190 }} data-tour="tenants-industry-filter">
+          <Select
+            fullWidth
+            clearable
+            placeholder="Todos los rubros"
+            value={industryFilter}
+            onChange={v => setIndustryFilter(v ? String(v) : '')}
+            options={industries.map(i => ({ value: i, label: i }))}
+          />
+        </div>
+        <div style={{ minWidth: 190 }} data-tour="tenants-country-filter">
+          <Select
+            fullWidth
+            clearable
+            placeholder="Todos los países"
+            value={countryFilter}
+            onChange={v => setCountryFilter(v ? String(v) : '')}
+            options={countries.map(c => ({ value: c, label: c }))}
+          />
+        </div>
       </div>
 
       {error && <p className={styles.errorMsg}>{error}</p>}
@@ -186,7 +230,7 @@ export default function TenantsList() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(t => (
+              {paginated.map(t => (
                 <tr key={t.id} className={styles.row} onClick={() => navigate(`/admin/tenants/${t.id}`)}>
                   <td>
                     <div className={styles.companyCell}>
@@ -224,6 +268,39 @@ export default function TenantsList() {
               ))}
             </tbody>
           </table>
+
+          {filtered.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 16px' }} data-tour="tenants-pagination">
+              <span style={{ fontSize: '13px', color: '#64748b' }}>
+                Mostrando {(currentPage - 1) * TENANTS_PER_PAGE + 1}–{Math.min(currentPage * TENANTS_PER_PAGE, filtered.length)} de {filtered.length} empresas
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  style={{ opacity: currentPage <= 1 ? 0.4 : 1, cursor: currentPage <= 1 ? 'not-allowed' : 'pointer' }}
+                  title="Página anterior"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                  Página {currentPage} de {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  style={{ opacity: currentPage >= totalPages ? 0.4 : 1, cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer' }}
+                  title="Página siguiente"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

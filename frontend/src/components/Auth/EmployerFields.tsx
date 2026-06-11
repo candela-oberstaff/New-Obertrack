@@ -14,6 +14,8 @@ interface EmployerFieldsProps {
   setCountry: (val: string) => void
   province: string
   setProvince: (val: string) => void
+  city: string
+  setCity: (val: string) => void
   location: string
   setLocation: (val: string) => void
   address: string
@@ -32,6 +34,8 @@ export const EmployerFields: React.FC<EmployerFieldsProps> = ({
   setCountry,
   province,
   setProvince,
+  city,
+  setCity,
   location,
   setLocation,
   address,
@@ -107,6 +111,17 @@ export const EmployerFields: React.FC<EmployerFieldsProps> = ({
           />
         </div>
       )}
+
+      <div className={styles['form-group']}>
+        <label htmlFor="cityCompany">Ciudad (opcional)</label>
+        <input
+          id="cityCompany"
+          type="text"
+          placeholder="Ej: Buenos Aires"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+        />
+      </div>
 
       <div className={styles['form-group']}>
         <label htmlFor="locationCompany">Ubicación (opcional)</label>
