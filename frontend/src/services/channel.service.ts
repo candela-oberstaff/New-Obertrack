@@ -29,8 +29,9 @@ export const channelService = {
   deleteChannel: async (id: number) => {
     await api.delete(`/channels/${id}`)
   },
-  getMessages: async (channelId: number): Promise<Message[]> => {
-    const { data } = await api.get<Message[]>(`/channels/${channelId}/messages`)
+  getMessages: async (channelId: number, before?: number): Promise<Message[]> => {
+    const params = before ? { before } : undefined
+    const { data } = await api.get<Message[]>(`/channels/${channelId}/messages`, { params })
     return data
   },
   sendMessage: async (channelId: number, message: { content: string; attachment?: string; file_name?: string }) => {

@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"encoding/json"
-	"net/http"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -26,9 +25,7 @@ type NotificationWSMessage struct {
 var NotificationUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin:     checkWSOrigin,
 }
 
 var GlobalNotifHub = &NotificationHub{
@@ -75,6 +72,9 @@ func (h *NotificationHub) HandleConnection(conn *websocket.Conn, userID uint) {
 	h.userIDs[conn] = userID
 	h.mu.Unlock()
 	h.register <- conn
+
+	// Clients never send meaningful data on this socket.
+	conn.SetReadLimit(512)
 
 	go func() {
 		defer func() {

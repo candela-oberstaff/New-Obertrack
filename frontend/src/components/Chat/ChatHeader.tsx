@@ -1,5 +1,5 @@
 import { Channel } from '../../types/chat'
-import { PinIcon, UserPlusIcon, InfoIcon, LogOutIcon } from './Icons'
+import { PinIcon, UserPlusIcon, InfoIcon, LogOutIcon, SearchIcon, StarIcon } from './Icons'
 import styles from '../../pages/SlackChat.module.css'
 
 interface ChatHeaderProps {
@@ -12,6 +12,9 @@ interface ChatHeaderProps {
   setShowAddMembers: (show: boolean) => void
   setShowChannelSettings: (show: boolean) => void
   leaveChannel: (channelId: number) => void
+  onShowSearch: () => void
+  onShowStarred: () => void
+  recipientStatus?: 'online' | 'away' | 'offline'
 }
 
 export function ChatHeader({
@@ -23,6 +26,9 @@ export function ChatHeader({
   setShowAddMembers,
   setShowChannelSettings,
   leaveChannel,
+  onShowSearch,
+  onShowStarred,
+  recipientStatus,
 }: ChatHeaderProps) {
   return (
     <div className={styles['chat-header-bar']}>
@@ -37,13 +43,25 @@ export function ChatHeader({
           <div className={`${styles['channel-tab']} ${styles['active']}`}>
             <span>{selectedChannel.type === 'direct' ? '○' : selectedChannel.type === 'private' ? '🔒' : '#'}</span>
             {selectedChannel.type === 'direct' ? (selectedChannel.recipient?.name || selectedChannel.name) : selectedChannel.name}
+            {selectedChannel.type === 'direct' && recipientStatus && (
+              <span
+                className={`${styles['status-dot']} ${styles[recipientStatus]}`}
+                title={recipientStatus === 'online' ? 'En línea' : recipientStatus === 'away' ? 'Ausente' : 'Desconectado'}
+              />
+            )}
           </div>
         )}
       </div>
 
       <div className={styles['channel-actions']}>
+        <button onClick={onShowStarred} title="Mensajes destacados">
+          <StarIcon />
+        </button>
         {selectedChannel && (
           <>
+            <button onClick={onShowSearch} title="Buscar en el canal">
+              <SearchIcon />
+            </button>
             <button onClick={() => setShowPinnedMessages(true)} title="Mensajes fijados" className={styles['pin-btn'] || 'pin-btn'}>
               <PinIcon />
               {pinnedMessagesCount > 0 && <span className={styles['pin-count']}>{pinnedMessagesCount}</span>}

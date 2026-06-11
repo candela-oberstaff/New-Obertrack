@@ -12,9 +12,7 @@ import (
 var ChatUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin:     checkWSOrigin,
 }
 
 type ChatWSMessage struct {
@@ -106,6 +104,8 @@ func (h *ChatHub) HandleConnection(w http.ResponseWriter, r *http.Request, userI
 	}
 
 	h.register <- chatRegistration{conn: conn, meta: chatClient{userID: userID, tenantID: tenantID, isSuperadmin: isSuperadmin}}
+
+	conn.SetReadLimit(16 * 1024)
 
 	go func() {
 		defer func() {

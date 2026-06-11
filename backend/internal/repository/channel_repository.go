@@ -26,7 +26,7 @@ type ChannelRepository interface {
 	IsMember(channelID, userID uint) (bool, error)
 
 	// Messages
-	GetMessages(channelID uint, limit int) ([]models.ChannelMessage, error)
+	GetMessages(channelID uint, limit int, since *time.Time, beforeID uint) ([]models.ChannelMessage, error)
 	GetMessage(id uint) (*models.ChannelMessage, error)
 	CreateMessage(message *models.ChannelMessage) error
 	UpdateMessage(message *models.ChannelMessage, updates map[string]interface{}) error
@@ -40,7 +40,7 @@ type ChannelRepository interface {
 	GetReaction(messageID, userID uint, emoji string) (*models.MessageReaction, error)
 
 	// Pins
-	GetPinnedMessages(channelID uint) ([]models.ChannelMessage, error)
+	GetPinnedMessages(channelID uint, since *time.Time) ([]models.ChannelMessage, error)
 	PinMessage(messageID uint) error
 	UnpinMessage(messageID uint) error
 
@@ -67,7 +67,7 @@ type ChannelRepository interface {
 	FindUserByNamePrefix(name string, tenantID uint) (*models.User, error)
 
 	// Custom
-	SearchMessages(channelID uint, query string, limit int) ([]models.ChannelMessage, error)
+	SearchMessages(channelID uint, query string, limit int, since *time.Time) ([]models.ChannelMessage, error)
 	FindManyMessagesByIDs(ids []uint) ([]models.ChannelMessage, error)
 	CreateDMChannel(channel *models.Channel, memberIDs []uint) error
 }
@@ -212,15 +212,30 @@ func (r *channelRepository) IsMember(channelID, userID uint) (bool, error) {
 
 // Messages
 
-func (r *channelRepository) GetMessages(channelID uint, limit int) ([]models.ChannelMessage, error) {
+func (r *channelRepository) GetMessages(channelID uint, limit int, since *time.Time, beforeID uint) ([]models.ChannelMessage, error) {
 	var messages []models.ChannelMessage
-	err := r.db.Where("channel_id = ? AND is_deleted = ? AND parent_id IS NULL", channelID, false).
+	q := r.db.Where("channel_id = ? AND is_deleted = ? AND parent_id IS NULL", channelID, false)
+	// Private channels: members only see history from the moment they joined.
+	if since != nil {
+		q = q.Where("created_at >= ?", *since)
+	}
+	// Cursor for paging into older history.
+	if beforeID > 0 {
+		q = q.Where("id < ?", beforeID)
+	}
+	// Newest page first, then reversed to chronological order for the client.
+	err := q.
 		Preload("User").
-		Order("created_at ASC").
+		Preload("Reactions").
+		Preload("Reactions.User").
+		Order("id DESC").
 		Limit(limit).
 		Find(&messages).Error
 	if err != nil {
 		return nil, err
+	}
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
 	}
 
 	for i := range messages {
@@ -234,7 +249,7 @@ func (r *channelRepository) GetMessages(channelID uint, limit int) ([]models.Cha
 
 func (r *channelRepository) GetMessage(id uint) (*models.ChannelMessage, error) {
 	var message models.ChannelMessage
-	err := r.db.Preload("User").First(&message, id).Error
+	err := r.db.Preload("User").Preload("Reactions").Preload("Reactions.User").First(&message, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -261,6 +276,7 @@ func (r *channelRepository) GetThreadReplies(parentID uint) ([]models.ChannelMes
 	err := r.db.Where("parent_id = ? AND is_deleted = ?", parentID, false).
 		Preload("User").
 		Preload("Reactions").
+		Preload("Reactions.User").
 		Order("created_at ASC").
 		Find(&replies).Error
 	return replies, err
@@ -297,9 +313,13 @@ func (r *channelRepository) GetReaction(messageID, userID uint, emoji string) (*
 
 // Pins
 
-func (r *channelRepository) GetPinnedMessages(channelID uint) ([]models.ChannelMessage, error) {
+func (r *channelRepository) GetPinnedMessages(channelID uint, since *time.Time) ([]models.ChannelMessage, error) {
 	var messages []models.ChannelMessage
-	err := r.db.Where("channel_id = ? AND is_pinned = ? AND is_deleted = ?", channelID, true, false).
+	q := r.db.Where("channel_id = ? AND is_pinned = ? AND is_deleted = ?", channelID, true, false)
+	if since != nil {
+		q = q.Where("created_at >= ?", *since)
+	}
+	err := q.
 		Preload("User").
 		Order("created_at DESC").
 		Find(&messages).Error
@@ -369,8 +389,14 @@ func (r *channelRepository) GetUnreadCount(channelID, userID uint) (int64, error
 	}
 
 	query := r.db.Model(&models.ChannelMessage{}).Where("channel_id = ? AND user_id != ?", channelID, userID)
-	if member.LastReadAt != nil {
-		query = query.Where("created_at > ?", *member.LastReadAt)
+	// Unread starts at whichever is later: last read or the moment the user joined,
+	// so being added to a channel with history doesn't inflate the badge.
+	cutoff := member.JoinedAt
+	if member.LastReadAt != nil && member.LastReadAt.After(cutoff) {
+		cutoff = *member.LastReadAt
+	}
+	if !cutoff.IsZero() {
+		query = query.Where("created_at > ?", cutoff)
 	}
 
 	var count int64
@@ -394,6 +420,7 @@ func (r *channelRepository) GetTotalUnreadCount(userID uint) (int64, error) {
 		Where("channel_messages.is_deleted = ?", false).
 		Where("channel_messages.deleted_at IS NULL").
 		Where("channel_members.last_read_at IS NULL OR channel_messages.created_at > channel_members.last_read_at").
+		Where("channel_messages.created_at > channel_members.joined_at").
 		Count(&count).Error
 	return count, err
 }
@@ -444,9 +471,13 @@ func (r *channelRepository) FindUserByNamePrefix(name string, tenantID uint) (*m
 	return &user, nil
 }
 
-func (r *channelRepository) SearchMessages(channelID uint, query string, limit int) ([]models.ChannelMessage, error) {
+func (r *channelRepository) SearchMessages(channelID uint, query string, limit int, since *time.Time) ([]models.ChannelMessage, error) {
 	var messages []models.ChannelMessage
-	err := r.db.Where("channel_id = ? AND is_deleted = ? AND content ILIKE ?", channelID, false, "%"+query+"%").
+	q := r.db.Where("channel_id = ? AND is_deleted = ? AND content ILIKE ?", channelID, false, "%"+query+"%")
+	if since != nil {
+		q = q.Where("created_at >= ?", *since)
+	}
+	err := q.
 		Preload("User").
 		Preload("Reactions").
 		Order("created_at DESC").

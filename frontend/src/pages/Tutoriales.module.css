@@ -334,6 +334,16 @@
   letter-spacing: 0.5px;
 }
 
+.tutorial-card-badge.audience-empleador {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.tutorial-card-badge.audience-profesional {
+  color: #047857;
+  background: #d1fae5;
+}
+
 .tutorial-modal-overlay {
   position: fixed;
   inset: 0;
@@ -478,6 +488,7 @@
 }
 
 .tutorial-form-field input,
+.tutorial-form-field select,
 .tutorial-form-field textarea {
   padding: 11px 14px;
   font-size: 14px;
@@ -494,7 +505,12 @@
   min-height: 72px;
 }
 
+.tutorial-form-field select {
+  cursor: pointer;
+}
+
 .tutorial-form-field input:focus,
+.tutorial-form-field select:focus,
 .tutorial-form-field textarea:focus {
   outline: none;
   border-color: var(--primary);

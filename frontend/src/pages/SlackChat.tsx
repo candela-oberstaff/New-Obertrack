@@ -17,6 +17,8 @@ import { ChannelSettingsModal } from '../components/Chat/Modals/ChannelSettingsM
 import { AddMembersModal } from '../components/Chat/Modals/AddMembersModal'
 import { NewDmModal } from '../components/Chat/Modals/NewDmModal'
 import { PinnedMessagesModal } from '../components/Chat/Modals/PinnedMessagesModal'
+import { SearchModal } from '../components/Chat/Modals/SearchModal'
+import { StarredMessagesModal } from '../components/Chat/Modals/StarredMessagesModal'
 import { useSlackChat } from '../hooks/useSlackChat'
 import { formatTime, highlightMentions, getUserColor } from '../components/Chat/ChatUtils'
 import styles from './SlackChat.module.css'
@@ -62,13 +64,18 @@ export default function SlackChat() {
   const {
     channels, selectedChannel, setSelectedChannel,
     messages, setMessages, pinnedMessages,
+    hasMoreMessages, loadingOlder, loadOlderMessages,
     newMessage, setNewMessage,
     channelMembers, fetchChannelMembers,
-    allUsers, unreadCount,
-    typingUsers, isRecording, isUploading, setIsUploading,
+    allUsers, connectionLost, unreadCount,
+    typingUsers, isRecording, isPaused, recordingStream, recordedBlob,
+    pauseRecording, resumeRecording, cancelRecording, discardRecording, sendRecording,
+    isUploading, setIsUploading,
     showThread, setShowThread, threadReplies, setThreadReplies,
     sendMessage, sendTypingIndicator, startRecording, stopRecording,
-    editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels, fetchAllUsers
+    editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels, fetchAllUsers,
+    toggleReaction, starMessage, unstarMessage, starredMessages, starredIds, fetchStarredMessages,
+    userStatuses
   } = useSlackChat(user as any, isSuperadmin ? selectedCompanyId : null)
 
   const [showNewChannelModal, setShowNewChannelModal] = useState(false)
@@ -76,6 +83,10 @@ export default function SlackChat() {
   const [showAddMembers, setShowAddMembers] = useState(false)
   const [showNewDmModal, setShowNewDmModal] = useState(false)
   const [showPinnedMessages, setShowPinnedMessages] = useState(false)
+  const [showSearchModal, setShowSearchModal] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Message[]>([])
+  const [showStarredModal, setShowStarredModal] = useState(false)
   const [showMobileChannels, setShowMobileChannels] = useState(false)
   const [chatSidebarCollapsed, setChatSidebarCollapsed] = useState(false)
   const [chatSidebarWidth, setChatSidebarWidth] = useState(220)
@@ -83,17 +94,41 @@ export default function SlackChat() {
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [newChannel, setNewChannel] = useState({ name: '', description: '', type: 'public' as 'public' | 'private' })
+  const [newChannel, setNewChannel] = useState({ name: '', description: '', type: 'public' as 'public' | 'private', member_ids: [] as number[] })
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null)
   const [editContent, setEditContent] = useState('')
   const [showMentionDropdown, setShowMentionDropdown] = useState(false)
   const [mentionFilterUsers, setMentionFilterUsers] = useState<User[]>([])
+  const [mentionDismissedAt, setMentionDismissedAt] = useState<number | null>(null)
   const [originalFavicon, setOriginalFavicon] = useState<string | null>(null)
+  const [highlightMessageId, setHighlightMessageId] = useState<number | null>(null)
 
   useEffect(() => {
     const icon = document.querySelector("link[rel*='icon']") as HTMLLinkElement
     if (icon) setOriginalFavicon(icon.href)
   }, [])
+
+  // Deep link from notifications: /chat?channel=<id>&message=<id> opens the
+  // channel and scrolls to the mentioned message.
+  useEffect(() => {
+    const channelParam = searchParams.get('channel')
+    if (!channelParam || channels.length === 0) return
+    const target = channels.find(c => c.id === parseInt(channelParam))
+    if (!target) return
+    const messageParam = searchParams.get('message')
+    if (messageParam) setHighlightMessageId(parseInt(messageParam))
+    setSelectedChannel(target)
+    setSearchParams({}, { replace: true })
+  }, [searchParams, channels, setSelectedChannel, setSearchParams])
+
+  useEffect(() => {
+    if (!highlightMessageId || messages.length === 0) return
+    const el = document.getElementById(`message-${highlightMessageId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const timeout = setTimeout(() => setHighlightMessageId(null), 3000)
+    return () => clearTimeout(timeout)
+  }, [highlightMessageId, messages])
 
   useEffect(() => {
     if (userIdParam && allUsers.length > 0) {
@@ -121,7 +156,17 @@ export default function SlackChat() {
     }
   }, [userIdParam, allUsers, channels, user?.id, setSearchParams, setSelectedChannel, fetchChannels])
 
-  useEffect(() => { scrollToBottom() }, [messages])
+  // Scroll to bottom only when the newest message changes (sending/receiving),
+  // not when older history is prepended by the pagination.
+  const lastMessageKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    const last = messages[messages.length - 1]
+    const key = last ? `${last.id}-${last.tempId ?? ''}` : null
+    if (key !== lastMessageKeyRef.current) {
+      lastMessageKeyRef.current = key
+      scrollToBottom()
+    }
+  }, [messages])
 
   useEffect(() => {
     const icon = document.querySelector("link[rel*='icon']") as HTMLLinkElement
@@ -135,7 +180,51 @@ export default function SlackChat() {
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
 
+  // Accent/case-insensitive comparison for mention matching ("mend" matches "Méndez").
+  const normalizeText = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+  // Live mention suggestions: filter as the user types after the last "@".
+  useEffect(() => {
+    const lastAt = newMessage.lastIndexOf('@')
+    if (lastAt === -1 || mentionDismissedAt === lastAt) {
+      setShowMentionDropdown(false)
+      return
+    }
+    const query = normalizeText(newMessage.slice(lastAt + 1))
+    if (query.length > 30) {
+      setShowMentionDropdown(false)
+      return
+    }
+    const startsWith: User[] = []
+    const contains: User[] = []
+    for (const u of allUsers) {
+      if (u.id === user?.id) continue
+      const name = normalizeText(u.name || '')
+      if (name.startsWith(query)) startsWith.push(u)
+      else if (query && name.includes(query)) contains.push(u)
+    }
+    const matches = [...startsWith, ...contains]
+    setMentionFilterUsers(matches)
+    setShowMentionDropdown(matches.length > 0)
+  }, [newMessage, allUsers, mentionDismissedAt, user?.id])
+
+  const insertMention = (u: User) => {
+    const lastAt = newMessage.lastIndexOf('@')
+    setNewMessage(newMessage.slice(0, lastAt + 1) + u.name + ' ')
+    setShowMentionDropdown(false)
+  }
+
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
+    if (showMentionDropdown && mentionFilterUsers.length > 0 && (e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+      e.preventDefault()
+      insertMention(mentionFilterUsers[0])
+      return
+    }
+    if (e.key === 'Escape' && showMentionDropdown) {
+      setMentionDismissedAt(newMessage.lastIndexOf('@'))
+      setShowMentionDropdown(false)
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (newMessage.trim()) {
@@ -145,8 +234,6 @@ export default function SlackChat() {
         sendMessage(undefined, tempId)
       }
     }
-    if (e.key === '@') { setMentionFilterUsers(allUsers); setShowMentionDropdown(true) }
-    else if (showMentionDropdown && (e.key === 'Escape' || e.key === ' ')) { setShowMentionDropdown(false) }
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -210,6 +297,42 @@ export default function SlackChat() {
     document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp)
   }
 
+  const handleSearch = async () => {
+    if (!selectedChannel || !searchQuery.trim()) return
+    try {
+      const results = await channelService.searchMessages(selectedChannel.id, searchQuery.trim())
+      setSearchResults(results || [])
+    } catch (e) {
+      console.error('Error searching messages:', e)
+      showError('No se pudo realizar la búsqueda.')
+    }
+  }
+
+  // Public channels are visible without explicit membership, but unread tracking
+  // and the member list need it — offer joining before participating.
+  const isMemberOfSelected = !!user && channelMembers.some(m => m.id === user.id)
+  const needsJoin = selectedChannel?.type === 'public' && channelMembers.length > 0 && !isMemberOfSelected
+
+  const handleJoinChannel = async () => {
+    if (!selectedChannel) return
+    try {
+      await channelService.joinChannel(selectedChannel.id)
+      fetchChannelMembers(selectedChannel.id)
+      fetchChannels()
+    } catch (e) {
+      console.error('Error joining channel:', e)
+      showError('No se pudo unir al canal.')
+    }
+  }
+
+  const handleSendGif = (url: string, title?: string) => {
+    if (!selectedChannel || !user) return
+    const tempId = `temp-${Date.now()}`
+    const optimisticMsg: Message = { id: 0, channel_id: selectedChannel.id, user_id: user.id, content: `[Archivo: ${title || 'GIF'}]`, tempId, attachment: url, file_name: title || 'GIF', file_type: 'image/gif', created_at: new Date().toISOString(), user: user as any }
+    setMessages(prev => [...prev, optimisticMsg])
+    sendMessage({ url, filename: title || 'GIF' }, tempId, '')
+  }
+
   const openThread = async (msg: Message) => {
     if (!selectedChannel) return
     setShowThread(msg)
@@ -230,6 +353,11 @@ export default function SlackChat() {
 
   return (
     <div className={styles['chat-page']}>
+      {connectionLost && (
+        <div className={styles['connection-banner']}>
+          ⚠️ Conexión perdida — reconectando...
+        </div>
+      )}
       <ChatHeader
         selectedChannel={selectedChannel}
         showMobileChannels={showMobileChannels}
@@ -240,6 +368,11 @@ export default function SlackChat() {
         setShowAddMembers={setShowAddMembers}
         setShowChannelSettings={setShowChannelSettings}
         leaveChannel={leaveChannel}
+        onShowSearch={() => { setSearchQuery(''); setSearchResults([]); setShowSearchModal(true) }}
+        onShowStarred={() => { fetchStarredMessages(); setShowStarredModal(true) }}
+        recipientStatus={selectedChannel?.type === 'direct' && selectedChannel.recipient
+          ? (userStatuses.get(selectedChannel.recipient.id) || 'offline')
+          : undefined}
       />
 
       <div className={styles['chat-body']}>
@@ -257,6 +390,7 @@ export default function SlackChat() {
           fetchAllUsers={fetchAllUsers}
           onMouseDownResize={handleMouseDown}
           isResizing={isResizing}
+          userStatuses={userStatuses}
           headerExtra={isSuperadmin ? (
             <Select
               value={selectedCompanyId ?? ''}
@@ -291,44 +425,64 @@ export default function SlackChat() {
                 onPin={pinMessage}
                 onUnpin={unpinMessage}
                 onReply={openThread}
+                onToggleReaction={toggleReaction}
+                starredIds={starredIds}
+                onStar={starMessage}
+                onUnstar={unstarMessage}
                 playingAudio={playingAudio}
                 togglePlayAudio={togglePlayAudio}
                 formatTime={formatTime}
-                highlightMentions={(content) => highlightMentions(content, allUsers)}
+                highlightMentions={(content) => highlightMentions(content, allUsers, user?.name)}
                 messagesEndRef={messagesEndRef}
                 typingArray={Array.from(typingUsers.values())}
+                highlightedMessageId={highlightMessageId}
+                hasMoreMessages={hasMoreMessages}
+                loadingOlder={loadingOlder}
+                onLoadOlder={loadOlderMessages}
               />
 
-              <MessageInput
-                newMessage={newMessage}
-                setNewMessage={setNewMessage}
-                onKeyDown={handleInputKeyDown}
-                onFileUpload={handleFileUpload}
-                isUploading={isUploading}
-                isRecording={isRecording}
-                startRecording={startRecording}
-                stopRecording={stopRecording}
-                sendTypingIndicator={sendTypingIndicator}
-                onSend={() => {
-                  if (newMessage.trim()) {
-                    const content = newMessage.trim()
-                    const tempId = `temp-${Date.now()}`
-                    const optimisticMsg: Message = { id: 0, channel_id: selectedChannel!.id, user_id: user!.id, content, tempId, created_at: new Date().toISOString(), user: user! as any }
-                    setMessages(prev => [...prev, optimisticMsg])
-                    setNewMessage('')
-                    sendMessage(undefined, tempId, content)
-                  }
-                }}
-              />
+              {needsJoin ? (
+                <div className={styles['join-banner']}>
+                  <p>Estás viendo <b>#{selectedChannel.name}</b>. Únete al canal para participar y recibir notificaciones.</p>
+                  <button onClick={handleJoinChannel}>Unirse al canal</button>
+                </div>
+              ) : (
+                <MessageInput
+                  newMessage={newMessage}
+                  setNewMessage={setNewMessage}
+                  onKeyDown={handleInputKeyDown}
+                  onFileUpload={handleFileUpload}
+                  isUploading={isUploading}
+                  isRecording={isRecording}
+                  isPaused={isPaused}
+                  recordingStream={recordingStream}
+                  recordedBlob={recordedBlob}
+                  startRecording={startRecording}
+                  stopRecording={stopRecording}
+                  pauseRecording={pauseRecording}
+                  resumeRecording={resumeRecording}
+                  cancelRecording={cancelRecording}
+                  discardRecording={discardRecording}
+                  sendRecording={sendRecording}
+                  sendTypingIndicator={sendTypingIndicator}
+                  onSendGif={handleSendGif}
+                  onSend={() => {
+                    if (newMessage.trim()) {
+                      const content = newMessage.trim()
+                      const tempId = `temp-${Date.now()}`
+                      const optimisticMsg: Message = { id: 0, channel_id: selectedChannel!.id, user_id: user!.id, content, tempId, created_at: new Date().toISOString(), user: user! as any }
+                      setMessages(prev => [...prev, optimisticMsg])
+                      setNewMessage('')
+                      sendMessage(undefined, tempId, content)
+                    }
+                  }}
+                />
+              )}
 
               {showMentionDropdown && (
                 <div className={styles['mention-dropdown']}>
-                  {mentionFilterUsers.map(u => (
-                    <div key={u.id} className={styles['mention-option']} onClick={() => {
-                      const lastAt = newMessage.lastIndexOf('@')
-                      setNewMessage(newMessage.slice(0, lastAt + 1) + u.name + ' ')
-                      setShowMentionDropdown(false)
-                    }}>
+                  {mentionFilterUsers.map((u, i) => (
+                    <div key={u.id} className={`${styles['mention-option']} ${i === 0 ? styles['active'] : ''}`} onClick={() => insertMention(u)}>
                       <span 
                         className={styles['mention-user-avatar']}
                         style={{ background: getUserColor(u.name) }}
@@ -344,9 +498,18 @@ export default function SlackChat() {
           ) : (
             <div className={styles['no-channel-selected']}>
               <div className={styles['no-channel-icon']}>#</div>
-              <h2>Selecciona un canal</h2>
-              <p>Elige un canal de la lista para empezar a chatear</p>
-              <button onClick={() => setShowNewChannelModal(true)} className={styles['create-first-channel']}>+ Crear tu primer canal</button>
+              {channels.length > 0 ? (
+                <>
+                  <h2>Selecciona un canal</h2>
+                  <p>Elige un canal de la lista para empezar a chatear</p>
+                </>
+              ) : (
+                <>
+                  <h2>Aún no hay canales</h2>
+                  <p>Crea el primer canal de tu empresa para empezar a chatear</p>
+                  <button onClick={() => setShowNewChannelModal(true)} className={styles['create-first-channel']}>+ Crear tu primer canal</button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -356,10 +519,12 @@ export default function SlackChat() {
         <NewChannelModal
           newChannel={newChannel}
           setNewChannel={setNewChannel}
+          allUsers={allUsers}
+          currentUser={user as any}
           onClose={() => setShowNewChannelModal(false)}
           onCreate={async () => {
             if (!newChannel.name.trim()) return
-            try { await channelService.createChannel(newChannel, isSuperadmin ? selectedCompanyId : null); setShowNewChannelModal(false); setNewChannel({ name: '', description: '', type: 'public' }); fetchChannels() } catch (e) { console.error(e); showError('No se pudo crear el canal.') }
+            try { await channelService.createChannel(newChannel, isSuperadmin ? selectedCompanyId : null); setShowNewChannelModal(false); setNewChannel({ name: '', description: '', type: 'public', member_ids: [] }); fetchChannels() } catch (e) { console.error(e); showError('No se pudo crear el canal.') }
           }}
         />
       )}
@@ -403,6 +568,26 @@ export default function SlackChat() {
           onAddMember={addMember}
           onClose={() => setShowAddMembers(false)}
           currentUser={user as any}
+        />
+      )}
+
+      {showSearchModal && selectedChannel && (
+        <SearchModal
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          searchResults={searchResults}
+          onSearch={handleSearch}
+          onClose={() => { setShowSearchModal(false); setSearchQuery(''); setSearchResults([]) }}
+          formatTime={formatTime}
+        />
+      )}
+
+      {showStarredModal && (
+        <StarredMessagesModal
+          starredMessages={starredMessages}
+          onUnstar={unstarMessage}
+          onClose={() => setShowStarredModal(false)}
+          formatTime={formatTime}
         />
       )}
 

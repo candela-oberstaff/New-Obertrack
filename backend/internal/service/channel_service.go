@@ -33,7 +33,7 @@ type ChannelService interface {
 	Join(channelID, userID uint) error
 	Leave(channelID, userID uint) error
 
-	GetMessages(channelID, userID uint) ([]models.ChannelMessage, error)
+	GetMessages(channelID, userID, beforeID uint) ([]models.ChannelMessage, error)
 	SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64) (*models.ChannelMessage, []uint, error)
 	EditMessage(channelID, messageID, userID uint, content string) (*models.ChannelMessage, error)
 	DeleteMessage(channelID, messageID, userID uint, isSuperadmin bool) error
@@ -204,8 +204,25 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 		CreatedAt: time.Now(),
 	})
 
-	// Add other members
-	if len(memberIDs) > 0 {
+	if cType == models.ChannelTypePublic && tenantID > 0 {
+		// Slack-like: public channels automatically include everyone in the company.
+		// Private channels stay invitation-only (explicit member_ids below).
+		users, err := s.repo.GetActiveUsers(tenantID, false)
+		if err == nil {
+			for _, u := range users {
+				if u.ID == userID {
+					continue
+				}
+				s.repo.AddMember(&models.ChannelMember{
+					ChannelID: channel.ID,
+					UserID:    u.ID,
+					Role:      "member",
+					JoinedAt:  time.Now(),
+					CreatedAt: time.Now(),
+				})
+			}
+		}
+	} else if len(memberIDs) > 0 {
 		var filteredIDs []uint
 		for _, id := range memberIDs {
 			if id != userID {

@@ -12,12 +12,14 @@ const EMPTY_FORM: CreateTutorialInput = {
   google_drive_url: '',
   icon_name: 'PlayCircle',
   category: 'General',
+  audience: 'all',
   duration_min: 0,
   order_index: 0,
   is_active: true,
 }
 
 export const ALL_CATEGORIES = '__all__'
+export const ALL_AUDIENCES = '__all__'
 
 export function useTutorialsPageState() {
   const { user } = useAuth()
@@ -44,6 +46,8 @@ export function useTutorialsPageState() {
   const [isSaving, setIsSaving] = useState(false)
 
   const [categoryFilter, setCategoryFilter] = useState<string>(ALL_CATEGORIES)
+  // Solo para superadmin: previsualizar qué ve cada audiencia (empresas / profesionales).
+  const [audienceFilter, setAudienceFilter] = useState<string>(ALL_AUDIENCES)
   const [searchQuery, setSearchQuery] = useState('')
 
   const availableCategories = useMemo(() => {
@@ -58,6 +62,7 @@ export function useTutorialsPageState() {
     const query = searchQuery.trim().toLowerCase()
     return tutorials.filter(t => {
       if (categoryFilter !== ALL_CATEGORIES && t.category !== categoryFilter) return false
+      if (audienceFilter !== ALL_AUDIENCES && t.audience !== 'all' && t.audience !== audienceFilter) return false
       if (!query) return true
       return (
         t.title.toLowerCase().includes(query) ||
@@ -65,7 +70,7 @@ export function useTutorialsPageState() {
         t.category.toLowerCase().includes(query)
       )
     })
-  }, [tutorials, categoryFilter, searchQuery])
+  }, [tutorials, categoryFilter, audienceFilter, searchQuery])
 
   const openCreate = useCallback(() => {
     setEditingTutorial(null)
@@ -81,6 +86,7 @@ export function useTutorialsPageState() {
       google_drive_url: tutorial.google_drive_url,
       icon_name: tutorial.icon_name,
       category: tutorial.category || 'General',
+      audience: tutorial.audience || 'all',
       duration_min: tutorial.duration_min,
       order_index: tutorial.order_index,
       is_active: tutorial.is_active,
@@ -163,6 +169,8 @@ export function useTutorialsPageState() {
     availableCategories,
     categoryFilter,
     setCategoryFilter,
+    audienceFilter,
+    setAudienceFilter,
     searchQuery,
     setSearchQuery,
     viewedIds,

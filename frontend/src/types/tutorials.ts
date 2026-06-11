@@ -1,5 +1,8 @@
 import type { User } from './tasks'
 
+/** Audiencia del tutorial: 'all' (todos), 'empleador' (empresas) o 'profesional'. */
+export type TutorialAudience = 'all' | 'empleador' | 'profesional'
+
 export interface Tutorial {
   id: number
   title: string
@@ -7,6 +10,7 @@ export interface Tutorial {
   google_drive_url: string
   icon_name: string
   category: string
+  audience: TutorialAudience
   duration_min: number
   order_index: number
   is_active: boolean
@@ -22,6 +26,7 @@ export interface CreateTutorialInput {
   google_drive_url: string
   icon_name: string
   category: string
+  audience: TutorialAudience
   duration_min: number
   order_index: number
   is_active: boolean

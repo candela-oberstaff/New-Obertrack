@@ -189,11 +189,11 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 			if user != nil {
 				// Notificar al Manager
 				if user.ManagerID != nil {
-					_ = s.notifSvc.CreateNotification(*user.ManagerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID})
+					_ = s.notifSvc.CreateNotification(*user.ManagerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "link": "/work-hours"})
 				}
 				// Notificar al Empleador
 				if user.EmpleadorID != nil {
-					_ = s.notifSvc.CreateNotification(*user.EmpleadorID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID})
+					_ = s.notifSvc.CreateNotification(*user.EmpleadorID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "link": "/work-hours"})
 				}
 			}
 		}()
@@ -363,7 +363,7 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 						dates += h.WorkDate.Format("02/01")
 					}
 					profMsg := fmt.Sprintf("✅ Tus horas de los días *%s* han sido aprobadas.", dates)
-					_ = s.notifSvc.CreateNotification(professional.ID, "work_hour_approved", "Jornadas aprobadas", profMsg, map[string]interface{}{"dates": dates})
+					_ = s.notifSvc.CreateNotification(professional.ID, "work_hour_approved", "Jornadas aprobadas", profMsg, map[string]interface{}{"dates": dates, "link": "/work-hours"})
 				}
 			}
 
@@ -373,7 +373,7 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 				for _, name := range approvedNames {
 					summary += fmt.Sprintf("• %s\n", name)
 				}
-				_ = s.notifSvc.CreateNotification(approver.ID, "work_hour_approved_summary", "Resumen de aprobación", summary, nil)
+				_ = s.notifSvc.CreateNotification(approver.ID, "work_hour_approved_summary", "Resumen de aprobación", summary, map[string]interface{}{"link": "/work-hours"})
 			}
 		}()
 	}
@@ -452,7 +452,7 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 					dates += h.WorkDate.Format("02/01")
 				}
 				msg := fmt.Sprintf("Tus horas de los dÃ­as %s fueron rechazadas. Motivo: %s", dates, reason)
-				_ = s.notifSvc.CreateNotification(professional.ID, "work_hour_rejected", "Jornadas rechazadas", msg, map[string]interface{}{"dates": dates, "reason": reason})
+				_ = s.notifSvc.CreateNotification(professional.ID, "work_hour_rejected", "Jornadas rechazadas", msg, map[string]interface{}{"dates": dates, "reason": reason, "link": "/work-hours"})
 
 				// Surface the rejection as an internal alert in the support tickets area.
 				if s.ticketSvc != nil {

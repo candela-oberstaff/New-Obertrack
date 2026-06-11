@@ -1,8 +1,9 @@
 package repository
 
 // TutorialRepository manages onboarding tutorials.
-// NOTE: No tenant_id filtering — all endpoints are behind RequireSuperadmin()
-// middleware (see routes/platform_routes.go). Do NOT expose to non-superadmin users.
+// NOTE: No tenant_id filtering — tutorials are platform-wide content managed only
+// by superadmins (writes are behind RequireSuperadmin(), see routes/platform_routes.go).
+// Read visibility is segmented by audience: 'all', 'empleador' or 'profesional'.
 
 import (
 	"time"
@@ -13,7 +14,7 @@ import (
 )
 
 type TutorialRepository interface {
-	FindAll(onlyActive bool) ([]models.Tutorial, error)
+	FindAll(onlyActive bool, audience string) ([]models.Tutorial, error)
 	GetByID(id uint) (*models.Tutorial, error)
 	Create(tutorial *models.Tutorial) error
 	Update(tutorial *models.Tutorial, updates map[string]interface{}) error
@@ -31,11 +32,16 @@ func NewTutorialRepository(db *gorm.DB) TutorialRepository {
 	return &tutorialRepository{db: db}
 }
 
-func (r *tutorialRepository) FindAll(onlyActive bool) ([]models.Tutorial, error) {
+// FindAll lists tutorials. audience == "" means no audience filter (platform staff);
+// otherwise only tutorials targeted at that audience or at everyone are returned.
+func (r *tutorialRepository) FindAll(onlyActive bool, audience string) ([]models.Tutorial, error) {
 	var tutorials []models.Tutorial
 	query := r.db.Model(&models.Tutorial{}).Preload("Creator")
 	if onlyActive {
 		query = query.Where("is_active = ?", true)
+	}
+	if audience != "" {
+		query = query.Where("audience IN ?", []string{models.TutorialAudienceAll, audience})
 	}
 	if err := query.Order("order_index ASC, created_at DESC").Find(&tutorials).Error; err != nil {
 		return nil, err

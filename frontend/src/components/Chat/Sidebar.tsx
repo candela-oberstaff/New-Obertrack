@@ -18,6 +18,7 @@ interface SidebarProps {
   isResizing: boolean
   // Optional content rendered under the workspace header (e.g. superadmin company selector)
   headerExtra?: ReactNode
+  userStatuses: Map<number, 'online' | 'away' | 'offline'>
 }
 
 export function Sidebar({
@@ -34,7 +35,8 @@ export function Sidebar({
   fetchAllUsers,
   onMouseDownResize,
   isResizing,
-  headerExtra
+  headerExtra,
+  userStatuses
 }: SidebarProps) {
   const activeChannels = channels.filter(c => c.type === 'public' || c.type === 'private')
   const directMessages = channels.filter(c => c.type === 'direct')
@@ -98,7 +100,9 @@ export function Sidebar({
                 </button>
               </div>
               
-              {directMessages.map(channel => (
+              {directMessages.map(channel => {
+                const status = channel.recipient ? (userStatuses.get(channel.recipient.id) || 'offline') : 'offline'
+                return (
                 <div
                   key={channel.id}
                   className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
@@ -107,7 +111,10 @@ export function Sidebar({
                     setShowMobileChannels(false)
                   }}
                 >
-                  <span className={styles['channel-mini-icon']}>○</span>
+                  <span
+                    className={`${styles['status-dot']} ${styles[status]}`}
+                    title={status === 'online' ? 'En línea' : status === 'away' ? 'Ausente' : 'Desconectado'}
+                  />
                   <span className={styles['channel-mini-name']}>
                     {channel.type === 'direct' ? (channel.recipient?.name || channel.name) : channel.name}
                   </span>
@@ -115,7 +122,8 @@ export function Sidebar({
                     <span className={styles['unread-badge']}>{channel.unread_count}</span>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </>
         )}

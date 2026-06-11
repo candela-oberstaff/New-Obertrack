@@ -21,6 +21,7 @@ import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
+import { ActivityFeed } from '../components/Admin/ActivityFeed'
 import { authService } from '../services/api'
 import styles from '../components/Admin/Admin.module.css'
 
@@ -201,12 +202,6 @@ export default function Admin() {
     } finally {
       setDeleting(false)
     }
-  }
-
-  const formatActivityDate = (value?: string) => {
-    if (!value) return 'Fecha no disponible'
-    const date = new Date(value)
-    return Number.isNaN(date.getTime()) ? 'Fecha no disponible' : date.toLocaleString('es-ES')
   }
 
   const formatShortDate = (value?: string) => {
@@ -419,21 +414,7 @@ export default function Admin() {
               {recentActivity.length === 0 ? (
                 <p className={styles['empty-message']}>No hay actividad reciente</p>
               ) : (
-                <div className={styles['activity-list']}>
-                  {recentActivity.slice(0, 10).map((activity: any, index: number) => (
-                    <div key={activity.id || `activity-${index}`} className={styles['activity-item']}>
-                      <div className={styles['activity-icon']}>
-                        <Activity size={16} />
-                      </div>
-                      <div className={styles['activity-content']}>
-                        <p>{activity.description}</p>
-                        <span className={styles['activity-meta']}>
-                          {activity.user || 'Sistema'} - {formatActivityDate(activity.created_at)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <ActivityFeed items={recentActivity.slice(0, 10)} />
               )}
             </div>
           </div>
@@ -549,30 +530,14 @@ export default function Admin() {
         )}
 
         {activeTab === 'activity' && (
-          <div className={styles['activity-tab']}>
+          <div className={styles['activity-tab']} data-tour="admin-activity-list">
             {recentActivity.length === 0 ? (
               <div className={styles['empty-state']}>
                 <Activity size={40} />
                 <p>No hay actividad registrada</p>
               </div>
             ) : (
-              <div className={styles['activity-list-full']} data-tour="admin-activity-list">
-                {recentActivity.map((activity: any, index: number) => {
-                  return (
-                    <div key={activity.id || `activity-full-${index}`} className={styles['activity-item-full']}>
-                      <div className={styles['activity-icon']}>
-                        <Activity size={20} />
-                      </div>
-                      <div className={styles['activity-details']}>
-                        <p className={styles['activity-desc']}>{activity.description || 'Sin descripción'}</p>
-                        <span className={styles['activity-meta']}>
-                          <strong>{activity.user || 'Sistema'}</strong> - {formatActivityDate(activity.created_at)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <ActivityFeed items={recentActivity} />
             )}
           </div>
         )}

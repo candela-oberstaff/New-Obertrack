@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/service"
 )
 
@@ -24,6 +25,7 @@ type CreateTutorialRequest struct {
 	GoogleDriveURL string `json:"google_drive_url"`
 	IconName       string `json:"icon_name"`
 	Category       string `json:"category"`
+	Audience       string `json:"audience"`
 	DurationMin    int    `json:"duration_min"`
 	OrderIndex     int    `json:"order_index"`
 	IsActive       *bool  `json:"is_active"`
@@ -35,6 +37,7 @@ type UpdateTutorialRequest struct {
 	GoogleDriveURL *string `json:"google_drive_url"`
 	IconName       *string `json:"icon_name"`
 	Category       *string `json:"category"`
+	Audience       *string `json:"audience"`
 	DurationMin    *int    `json:"duration_min"`
 	OrderIndex     *int    `json:"order_index"`
 	IsActive       *bool   `json:"is_active"`
@@ -44,10 +47,26 @@ type ReorderTutorialsRequest struct {
 	IDs []uint `json:"ids" binding:"required"`
 }
 
+// audienceForRequest maps the authenticated user's type to the tutorial audience
+// they're allowed to see. Empty string means no filter: superadmins and platform
+// staff (customer_success) see tutorials for every audience.
+func audienceForRequest(c *gin.Context) string {
+	if middleware.IsSuperadmin(c) {
+		return ""
+	}
+	switch middleware.GetUserRole(c) {
+	case string(models.UserTypeEmployer):
+		return models.TutorialAudienceEmployer
+	case string(models.UserTypeProfessional):
+		return models.TutorialAudienceProfessional
+	}
+	return ""
+}
+
 func (h *TutorialHandler) GetAll(c *gin.Context) {
 	onlyActive := !middleware.IsSuperadmin(c)
 
-	tutorials, err := h.service.GetAll(onlyActive)
+	tutorials, err := h.service.GetAll(onlyActive, audienceForRequest(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tutorials", "details": err.Error()})
 		return
@@ -69,6 +88,12 @@ func (h *TutorialHandler) GetByID(c *gin.Context) {
 		return
 	}
 
+	if audience := audienceForRequest(c); audience != "" &&
+		tutorial.Audience != models.TutorialAudienceAll && tutorial.Audience != audience {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tutorial no encontrado"})
+		return
+	}
+
 	c.JSON(http.StatusOK, tutorial)
 }
 
@@ -85,7 +110,7 @@ func (h *TutorialHandler) Create(c *gin.Context) {
 		isActive = *req.IsActive
 	}
 
-	tutorial, err := h.service.Create(userID, req.Title, req.Description, req.GoogleDriveURL, req.IconName, req.Category, req.DurationMin, req.OrderIndex, isActive)
+	tutorial, err := h.service.Create(userID, req.Title, req.Description, req.GoogleDriveURL, req.IconName, req.Category, req.Audience, req.DurationMin, req.OrderIndex, isActive)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -122,6 +147,9 @@ func (h *TutorialHandler) Update(c *gin.Context) {
 	}
 	if req.Category != nil {
 		updates["category"] = *req.Category
+	}
+	if req.Audience != nil {
+		updates["audience"] = *req.Audience
 	}
 	if req.DurationMin != nil {
 		updates["duration_min"] = *req.DurationMin

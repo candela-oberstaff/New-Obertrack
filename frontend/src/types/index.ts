@@ -8,4 +8,4 @@ export type { User, Tenant, EmployeeSummary, EmployeeWorkHour, EmployeeTask, Emp
 export type { Message, Channel, DMChannel, MessageReaction, ChannelMember, UserStatus } from './chat'
 
 // Re-export from tutorials types
-export type { Tutorial, CreateTutorialInput, UpdateTutorialInput } from './tutorials'
+export type { Tutorial, TutorialAudience, CreateTutorialInput, UpdateTutorialInput } from './tutorials'
