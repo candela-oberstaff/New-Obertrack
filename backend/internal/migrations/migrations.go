@@ -330,13 +330,18 @@ func Run(db *gorm.DB) error {
 
 				tenantExpr := "(SELECT CASE WHEN u.user_type = 'empleador' THEN u.id ELSE u.empleador_id END FROM users u WHERE u.id = %s)"
 
+				// COALESCE(..., tenant_id): si el creador no produce un tenant (usuario
+				// borrado, profesional sin empleador, superadmin), la fila conserva su
+				// valor actual en vez de violar NOT NULL en bases donde la columna ya
+				// existe con esa restricción. La migración 202605291400 les asigna el
+				// tenant de fallback.
 				statements := []string{
-					fmt.Sprintf("UPDATE boards SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL OR tenant_id = 0", "boards.created_by"),
-					"UPDATE tasks SET tenant_id = (SELECT b.tenant_id FROM boards b WHERE b.id = tasks.board_id) WHERE tenant_id IS NULL OR tenant_id = 0",
-					fmt.Sprintf("UPDATE channels SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL OR tenant_id = 0", "channels.created_by"),
-					"UPDATE channel_messages SET tenant_id = (SELECT c.tenant_id FROM channels c WHERE c.id = channel_messages.channel_id) WHERE tenant_id IS NULL OR tenant_id = 0",
-					fmt.Sprintf("UPDATE work_hours SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL OR tenant_id = 0", "work_hours.user_id"),
-					fmt.Sprintf("UPDATE messages SET tenant_id = "+tenantExpr+" WHERE tenant_id IS NULL", "messages.user_id"),
+					fmt.Sprintf("UPDATE boards SET tenant_id = COALESCE("+tenantExpr+", tenant_id) WHERE tenant_id IS NULL OR tenant_id = 0", "boards.created_by"),
+					"UPDATE tasks SET tenant_id = COALESCE((SELECT b.tenant_id FROM boards b WHERE b.id = tasks.board_id), tenant_id) WHERE tenant_id IS NULL OR tenant_id = 0",
+					fmt.Sprintf("UPDATE channels SET tenant_id = COALESCE("+tenantExpr+", tenant_id) WHERE tenant_id IS NULL OR tenant_id = 0", "channels.created_by"),
+					"UPDATE channel_messages SET tenant_id = COALESCE((SELECT c.tenant_id FROM channels c WHERE c.id = channel_messages.channel_id), tenant_id) WHERE tenant_id IS NULL OR tenant_id = 0",
+					fmt.Sprintf("UPDATE work_hours SET tenant_id = COALESCE("+tenantExpr+", tenant_id) WHERE tenant_id IS NULL OR tenant_id = 0", "work_hours.user_id"),
+					fmt.Sprintf("UPDATE messages SET tenant_id = COALESCE("+tenantExpr+", tenant_id) WHERE tenant_id IS NULL", "messages.user_id"),
 				}
 
 				for _, sql := range statements {
