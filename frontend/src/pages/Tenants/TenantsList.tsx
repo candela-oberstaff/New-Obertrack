@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Building2, Users, Search, Plus, Ban, CheckCircle2, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useTenants } from '../../hooks'
 import { adminService } from '../../services/api'
+import { useAuth } from '../../context/AuthContext'
 import type { Tenant, User } from '../../types'
 import Avatar from '../../components/Common/Avatar'
 import { Modal, Button, Skeleton } from '../../components/ui'
@@ -11,6 +12,9 @@ import styles from './Tenants.module.css'
 
 export default function TenantsList() {
   const navigate = useNavigate()
+  const { user: viewer } = useAuth()
+  // CS entra en modo consulta: sin crear ni suspender empresas.
+  const canManage = !!viewer?.is_superadmin
   const { tenants, isLoading, error, createTenant, suspendTenant, activateTenant } = useTenants()
 
   const [search, setSearch] = useState('')
@@ -47,6 +51,13 @@ export default function TenantsList() {
   useEffect(() => {
     setPage(1)
   }, [search, industryFilter, countryFilter])
+
+  const hasFilters = !!(search.trim() || industryFilter || countryFilter)
+  const clearFilters = () => {
+    setSearch('')
+    setIndustryFilter('')
+    setCountryFilter('')
+  }
 
   const activeCount = tenants.filter(t => t.is_active).length
   const totalUsers = tenants.reduce((sum, t) => sum + (t.user_count || 0), 0)
@@ -132,9 +143,11 @@ export default function TenantsList() {
           <h1>Empresas</h1>
           <p>Gestiona los clientes de la plataforma Oberstaff</p>
         </div>
-        <Button onClick={() => setShowCreate(true)} leftIcon={<Plus size={18} />} data-tour="tenants-create">
-          Nueva empresa
-        </Button>
+        {canManage && (
+          <Button onClick={() => setShowCreate(true)} leftIcon={<Plus size={18} />} data-tour="tenants-create">
+            Nueva empresa
+          </Button>
+        )}
       </div>
 
       <div className={styles.kpis} data-tour="tenants-kpis">
@@ -176,8 +189,8 @@ export default function TenantsList() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-        <div className={styles.searchBox} data-tour="tenants-search">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 20 }}>
+        <div className={styles.searchBox} style={{ margin: 0 }} data-tour="tenants-search">
           <Search size={18} />
           <input
             type="text"
@@ -206,6 +219,16 @@ export default function TenantsList() {
             options={countries.map(c => ({ value: c, label: c }))}
           />
         </div>
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            title="Quitar todos los filtros"
+          >
+            <X size={14} /> Limpiar filtros
+          </button>
+        )}
       </div>
 
       {error && <p className={styles.errorMsg}>{error}</p>}
@@ -254,13 +277,15 @@ export default function TenantsList() {
                   </td>
                   <td>
                     <div className={styles.rowActions}>
-                      <button
-                        className={`${styles.iconBtn} ${t.is_active ? styles.danger : styles.success}`}
-                        onClick={(e) => handleToggle(e, t)}
-                        title={t.is_active ? 'Suspender empresa' : 'Reactivar empresa'}
-                      >
-                        {t.is_active ? <Ban size={16} /> : <CheckCircle2 size={16} />}
-                      </button>
+                      {canManage && (
+                        <button
+                          className={`${styles.iconBtn} ${t.is_active ? styles.danger : styles.success}`}
+                          onClick={(e) => handleToggle(e, t)}
+                          title={t.is_active ? 'Suspender empresa' : 'Reactivar empresa'}
+                        >
+                          {t.is_active ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                        </button>
+                      )}
                       <ChevronRight size={18} className={styles.chevron} />
                     </div>
                   </td>

@@ -145,7 +145,7 @@ export function VoiceRecorderModal({
       <div className={styles['voice-recorder']}>
         {uiState === 'preview' ? (
           <div className={styles['voice-preview']}>
-            {previewUrl && <AudioPlayer src={previewUrl} />}
+            {previewUrl && <AudioPlayer src={previewUrl} durationHint={seconds} />}
           </div>
         ) : (
           <>

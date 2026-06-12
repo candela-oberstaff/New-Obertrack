@@ -9,3 +9,6 @@ export type { Message, Channel, DMChannel, MessageReaction, ChannelMember, UserS
 
 // Re-export from tutorials types
 export type { Tutorial, TutorialAudience, CreateTutorialInput, UpdateTutorialInput } from './tutorials'
+
+// Re-export from rbac types (roles y grupos por empresa)
+export type { PermissionLevel, CompanyRole, CompanyGroup } from './rbac'

@@ -11,6 +11,7 @@ import { Sidebar } from '../components/Chat/Sidebar'
 import { ChatHeader } from '../components/Chat/ChatHeader'
 import { MessageList } from '../components/Chat/MessageList'
 import { MessageInput } from '../components/Chat/MessageInput'
+import { canEditModule } from '../lib/permissions'
 import { ThreadPanel } from '../components/Chat/ThreadPanel'
 import { NewChannelModal } from '../components/Chat/Modals/NewChannelModal'
 import { ChannelSettingsModal } from '../components/Chat/Modals/ChannelSettingsModal'
@@ -33,6 +34,9 @@ export default function SlackChat() {
   const userIdParam = searchParams.get('userId')
 
   const isSuperadmin = !!user?.is_superadmin
+  // Permiso del rol sobre el módulo Chat: con "Ver" el chat queda de solo
+  // lectura (el backend igual bloquea los envíos con 403).
+  const canEditChat = canEditModule(user, 'chat')
 
   // Superadmin scope: pick a company so channels/DMs from different tenants never mix.
   const [companies, setCompanies] = useState<CompanyOption[]>([])
@@ -441,7 +445,11 @@ export default function SlackChat() {
                 onLoadOlder={loadOlderMessages}
               />
 
-              {needsJoin ? (
+              {!canEditChat ? (
+                <div className={styles['join-banner']}>
+                  <p>Tu rol tiene acceso de solo lectura en el Chat.</p>
+                </div>
+              ) : needsJoin ? (
                 <div className={styles['join-banner']}>
                   <p>Estás viendo <b>#{selectedChannel.name}</b>. Únete al canal para participar y recibir notificaciones.</p>
                   <button onClick={handleJoinChannel}>Unirse al canal</button>

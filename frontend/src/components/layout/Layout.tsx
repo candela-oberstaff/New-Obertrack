@@ -24,8 +24,19 @@ import {
   Building2,
   Compass,
   Map,
-  Shield
+  Shield,
+  UserCog
 } from 'lucide-react'
+
+// Módulo de permisos (roles) que gobierna cada entrada del sidebar.
+const MODULE_BY_PATH: Record<string, string> = {
+  '/tasks': 'tasks',
+  '/work-hours': 'hours',
+  '/reports': 'reports',
+  '/chat': 'chat',
+  '/tickets': 'tickets',
+  '/tutoriales': 'tutorials',
+}
 import Avatar from '../Common/Avatar'
 import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
 import styles from './Layout.module.css'
@@ -89,47 +100,45 @@ export default function Layout() {
     navigate('/login')
   }
 
+  // Orden de menú y visibilidad por rol según la especificación del sistema:
+  // el superadmin ve todo; CS (manager y analista) suman Admin/Empresas/
+  // Tickets/Tools; el Analista de IT solo Métricas, Auditoría y Perfil;
+  // Reportes y Roles y Grupos son de empresas (y superadmin).
+  const isSuper = !!user?.is_superadmin
+  const isCS = !isSuper && user?.user_type === 'customer_success'
+  const isIT = !isSuper && user?.user_type === 'analista_it'
+  const isEmployerType = user?.user_type === 'empleador'
+
   const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} /> },
-    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, customerSuccessOnly: true },
-    { path: '/work-hours', label: 'Horas', icon: <Clock size={20} /> },
-    { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, adminOnly: true },
-    { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} /> },
-    { path: '/tutoriales', label: 'Tutoriales', icon: <GraduationCap size={20} /> },
-    { path: '/profile', label: 'Perfil', icon: <User size={20} /> },
+    { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, show: !isIT },
+    { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} />, show: !isIT },
+    { path: '/work-hours', label: 'Horas', icon: <Clock size={20} />, show: !isIT },
+    { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, show: isSuper || isEmployerType },
+    { path: '/roles-grupos', label: 'Roles y Grupos', icon: <UserCog size={20} />, show: isSuper || isEmployerType },
+    { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} />, show: !isIT },
+    { path: '/admin', label: 'Admin', icon: <Settings size={20} />, show: isSuper || isCS },
+    { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} />, show: isSuper || isCS },
+    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: isSuper || isCS },
+    { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} />, show: isSuper || isCS },
+    { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} />, show: isSuper || isIT },
+    { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} />, show: isSuper || isIT },
+    { path: '/tutoriales', label: 'Tutoriales', icon: <GraduationCap size={20} />, show: !isIT },
+    { path: '/profile', label: 'Perfil', icon: <User size={20} />, show: true },
   ].filter(item => {
-    if (item.customerSuccessOnly && !user?.is_superadmin && user?.user_type !== 'customer_success') return false
-    if (item.adminOnly && !user?.is_superadmin && user?.user_type !== 'empleador') return false
+    if (!item.show) return false
+    // Permisos por rol: si el usuario tiene roles asignados y el módulo quedó
+    // en "sin acceso", se oculta del sidebar (el backend igual lo bloquea).
+    const moduleKey = MODULE_BY_PATH[item.path]
+    if (moduleKey && user?.permissions && user.permissions[moduleKey] === 'none') return false
     return true
   })
 
-  if (user?.is_superadmin) {
-    navItems.splice(1, 0, { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} /> })
-    // Add Tools after Chat (which is currently at index 5 or 6 depending on Admin)
-    const toolsIndex = navItems.findIndex(item => item.path === '/admin/tools')
-    if (toolsIndex !== -1) {
-      navItems.splice(toolsIndex + 1, 0, { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} /> })
-    } else {
-      const chatIndex = navItems.findIndex(item => item.path === '/chat')
-      if (chatIndex !== -1) {
-        navItems.splice(chatIndex + 1, 0, { path: '/admin', label: 'Admin', icon: <Settings size={20} /> })
-        navItems.splice(chatIndex + 2, 0, { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} /> })
-        navItems.splice(chatIndex + 3, 0, { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} /> })
-      }
-    }
-    // Auditoría right after Métricas
-    const metricsIndex = navItems.findIndex(item => item.path === '/admin/metrics')
-    if (metricsIndex !== -1) {
-      navItems.splice(metricsIndex + 1, 0, { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} /> })
-    }
-  }
-
   const getRoleLabel = () => {
     if (user?.is_superadmin) return 'Super Admin'
+    if (user?.user_type === 'customer_success') return user?.is_manager ? 'CS Manager' : 'CS Analista'
+    if (user?.user_type === 'analista_it') return 'Analista de IT'
     if (user?.is_manager) return 'Manager'
     if (user?.user_type === 'empleador') return 'Empresa'
-    if (user?.user_type === 'customer_success') return 'Customer Success'
     if (user?.user_type === 'superadmin') return 'Super Admin'
     return 'Profesional'
   }

@@ -589,6 +589,26 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropColumn(&models.Tutorial{}, "audience")
 			},
 		},
+		{
+			ID: "202606121500_add_roles_and_groups",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating roles, user_roles, groups and group_members tables...")
+				return tx.AutoMigrate(
+					&models.Role{},
+					&models.UserRole{},
+					&models.Group{},
+					&models.GroupMember{},
+				)
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					"user_roles",
+					"roles",
+					"group_members",
+					"groups",
+				)
+			},
+		},
 		// Future migrations go here
 	})
 

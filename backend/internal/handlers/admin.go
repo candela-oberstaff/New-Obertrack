@@ -8,15 +8,25 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/service"
 )
 
 type AdminHandler struct {
 	service service.AdminService
+	rbacSvc service.RBACService
 }
 
-func NewAdminHandler(s service.AdminService) *AdminHandler {
-	return &AdminHandler{service: s}
+func NewAdminHandler(s service.AdminService, rbacSvc service.RBACService) *AdminHandler {
+	return &AdminHandler{service: s, rbacSvc: rbacSvc}
+}
+
+// seedTenantRoles siembra los roles preconfigurados de una empresa recién
+// creada (best-effort: un fallo no debe impedir el alta).
+func (h *AdminHandler) seedTenantRoles(c *gin.Context, tenantID uint) {
+	if err := h.rbacSvc.SeedDefaultRoles(tenantID, middleware.GetUserID(c)); err != nil {
+		log.Printf("[admin] no se pudieron sembrar los roles preconfigurados del tenant %d: %v", tenantID, err)
+	}
 }
 
 func (h *AdminHandler) GetDashboard(c *gin.Context) {
@@ -145,6 +155,11 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Toda empresa nueva nace con los roles preconfigurados.
+	if user.UserType == models.UserTypeEmployer {
+		h.seedTenantRoles(c, user.ID)
 	}
 
 	c.JSON(http.StatusCreated, user)
@@ -421,6 +436,7 @@ func (h *AdminHandler) CreateTenant(c *gin.Context) {
 			c.JSON(status, gin.H{"error": err.Error()})
 			return
 		}
+		h.seedTenantRoles(c, tenant.ID)
 		c.JSON(http.StatusCreated, tenant)
 		return
 	}
@@ -439,6 +455,7 @@ func (h *AdminHandler) CreateTenant(c *gin.Context) {
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
+	h.seedTenantRoles(c, tenant.ID)
 	c.JSON(http.StatusCreated, tenant)
 }
 

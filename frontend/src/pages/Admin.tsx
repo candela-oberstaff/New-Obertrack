@@ -25,6 +25,7 @@ import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
 import { ActivityFeed } from '../components/Admin/ActivityFeed'
 import { authService } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 import styles from '../components/Admin/Admin.module.css'
 
 const EMPTY_CREATE_FORM = {
@@ -60,6 +61,9 @@ export default function Admin() {
   } = useAdmin()
 
   const navigate = useNavigate()
+  const { user: viewer } = useAuth()
+  // CS (manager y analista) entran en modo consulta: sin crear/editar/eliminar.
+  const canManage = !!viewer?.is_superadmin
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState<number | ''>('')
@@ -468,6 +472,7 @@ export default function Admin() {
                       { value: 'profesional', label: 'Profesional' },
                       { value: 'empleador', label: 'Empresa' },
                       { value: 'customer_success', label: 'Customer Success' },
+                      { value: 'analista_it', label: 'Analista de IT' },
                       { value: 'superadmin', label: 'Superadmin' },
                     ]}
                   />
@@ -482,7 +487,18 @@ export default function Admin() {
                     options={employers.map((emp: any) => ({ value: emp.id, label: emp.company_name || emp.name }))}
                   />
                 </div>
+                {(searchQuery.trim() || roleFilter || companyFilter !== '') && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearchQuery(''); setRoleFilter(''); setCompanyFilter('') }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    title="Quitar todos los filtros"
+                  >
+                    <X size={14} /> Limpiar filtros
+                  </button>
+                )}
               </div>
+              {canManage && (
               <button
                 onClick={openCreateModal}
                 style={{
@@ -507,6 +523,7 @@ export default function Admin() {
                 <UserPlus size={16} />
                 Crear Usuario
               </button>
+              )}
             </div>
 
             <div className={styles['users-table']} data-tour="admin-users-table">
@@ -560,23 +577,27 @@ export default function Admin() {
                           >
                             <Eye size={16} />
                           </button>
-                          <button
-                            className={styles['btn-icon']}
-                            onClick={() => openEdit(u)}
-                            title="Editar"
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            className={`${styles['btn-icon']} ${styles['danger']}`}
-                            onClick={() => {
-                                 setUserToDelete(u)
-                                 setShowDeleteModal(true)
-                            }}
-                            title="Eliminar"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {canManage && (
+                            <>
+                              <button
+                                className={styles['btn-icon']}
+                                onClick={() => openEdit(u)}
+                                title="Editar"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              <button
+                                className={`${styles['btn-icon']} ${styles['danger']}`}
+                                onClick={() => {
+                                  setUserToDelete(u)
+                                  setShowDeleteModal(true)
+                                }}
+                                title="Eliminar"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -765,6 +786,7 @@ export default function Admin() {
                     { value: 'profesional', label: 'Profesional (presta servicios)' },
                     { value: 'empleador', label: 'Empresa' },
                     { value: 'customer_success', label: 'Customer Success (Gestión de soporte)' },
+                    { value: 'analista_it', label: 'Analista de IT (Soporte técnico)' },
                     { value: 'superadmin', label: 'Super Administrador (Control Total)' },
                   ]}
                 />

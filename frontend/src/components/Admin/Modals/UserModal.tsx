@@ -45,7 +45,7 @@ export function UserModal({
         </>
       }
     >
-      <form id="user-form" onSubmit={onSubmit}>
+      <form id="user-form" onSubmit={onSubmit} className={styles['user-form']}>
         <div className={styles['form-group']}>
           <label>Nombre</label>
           <input
