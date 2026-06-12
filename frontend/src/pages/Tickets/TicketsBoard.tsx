@@ -6,6 +6,7 @@ import TicketColumn from './components/TicketColumn';
 import styles from './Tickets.module.css';
 import { RefreshCw, Ticket as TicketIcon, Filter, User as UserIcon, FileText } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { isSupportManager } from '../../lib/permissions';
 
 type OriginFilter = 'all' | 'zoho' | 'internal';
 
@@ -220,14 +221,16 @@ export default function TicketsBoard() {
               Actualizado {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
-          <button
-            onClick={() => navigate('/tickets/report')}
-            className={styles.channelBtn}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem' }}
-          >
-            <FileText size={14} />
-            Informe de rechazos
-          </button>
+          {isSupportManager(user) && (
+            <button
+              onClick={() => navigate('/tickets/report')}
+              className={styles.channelBtn}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem' }}
+            >
+              <FileText size={14} />
+              Informe de rechazos
+            </button>
+          )}
           <button
             onClick={() => refetch()}
             className={styles.channelBtn}

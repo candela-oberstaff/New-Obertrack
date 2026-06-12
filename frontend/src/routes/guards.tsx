@@ -58,6 +58,25 @@ export function ReportsRoute({ children }: RouteGuardProps) {
   return <>{children}</>
 }
 
+// Soporte técnico de plataforma: superadmins y analistas de IT.
+export function PlatformTechRoute({ children }: RouteGuardProps) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <Navigate to={ROUTES.login} replace />
+  }
+
+  if (!user.is_superadmin && user.user_type !== 'analista_it') {
+    return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
+  }
+
+  return <>{children}</>
+}
+
 export function CustomerSuccessRoute({ children }: RouteGuardProps) {
   const { user, isLoading } = useAuth()
 

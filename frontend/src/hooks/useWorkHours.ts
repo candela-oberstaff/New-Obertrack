@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { workHourService } from '../services/api'
+import { canEditModule } from '../lib/permissions'
 import type { WorkHour } from '../types'
 
 interface WorkHoursSummary {
@@ -51,6 +52,8 @@ interface UseWorkHoursReturn {
   weekHours: number
   todayWork: WorkHour | undefined
   canApprove: boolean
+  /** false cuando el rol del usuario deja Horas en solo lectura. */
+  canEditHours: boolean
 }
 
 const JORNADA_COMPLETA = 8
@@ -192,7 +195,10 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
     return workHours.find(wh => wh.work_date.split('T')[0] === today)
   }, [workHours])
 
-  const canApprove = user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador'
+  // Permiso del rol sobre el módulo Horas: con "Ver" se ocultan las acciones
+  // de escritura (el backend igual las bloquea con 403).
+  const canEditHours = canEditModule(user, 'hours')
+  const canApprove = !!(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') && canEditHours
 
   return {
     workHours,
@@ -218,5 +224,6 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
     weekHours,
     todayWork,
     canApprove,
+    canEditHours,
   }
 }

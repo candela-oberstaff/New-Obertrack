@@ -12,12 +12,15 @@ const formatClock = (s: number) => {
 
 interface AudioPlayerProps {
   src: string
+  /** Duración conocida en segundos (ej: el cronómetro de la grabación).
+   * Respaldo para blobs de MediaRecorder sin metadata de duración. */
+  durationHint?: number
 }
 
 // Custom audio player with a real waveform (decoded from the audio itself).
 // Decoding also gives a reliable duration — MediaRecorder webm blobs often
 // report Infinity through the native <audio> element.
-export function AudioPlayer({ src }: AudioPlayerProps) {
+export function AudioPlayer({ src, durationHint }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const barsRef = useRef<HTMLDivElement>(null)
   const [playing, setPlaying] = useState(false)
@@ -32,8 +35,32 @@ export function AudioPlayer({ src }: AudioPlayerProps) {
 
     const onTime = () => setCurrent(audio.currentTime)
     const onEnded = () => { setPlaying(false); setCurrent(0) }
+    // Los webm de MediaRecorder reportan Infinity: saltar a un tiempo enorme
+    // fuerza al navegador a calcular la duración real (truco estándar).
+    const onDurationChange = () => {
+      if (active && isFinite(audio.duration) && audio.duration > 0) {
+        setDuration(audio.duration)
+      }
+    }
+    const onLoadedMetadata = () => {
+      if (audio.duration === Infinity) {
+        const restore = () => {
+          if (isFinite(audio.duration) && audio.duration > 0) {
+            audio.currentTime = 0
+            if (active) { setCurrent(0); setDuration(audio.duration) }
+            audio.removeEventListener('durationchange', restore)
+          }
+        }
+        audio.addEventListener('durationchange', restore)
+        audio.currentTime = 1e7
+      } else {
+        onDurationChange()
+      }
+    }
     audio.addEventListener('timeupdate', onTime)
     audio.addEventListener('ended', onEnded)
+    audio.addEventListener('loadedmetadata', onLoadedMetadata)
+    audio.addEventListener('durationchange', onDurationChange)
 
     fetch(src)
       .then(r => r.arrayBuffer())
@@ -65,28 +92,40 @@ export function AudioPlayer({ src }: AudioPlayerProps) {
       audio.pause()
       audio.removeEventListener('timeupdate', onTime)
       audio.removeEventListener('ended', onEnded)
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata)
+      audio.removeEventListener('durationchange', onDurationChange)
       audioRef.current = null
     }
   }, [src])
 
+  // Total a mostrar: metadata/decodificación si existen, si no la pista externa.
+  const total = duration || durationHint || 0
+
   const toggle = () => {
     const audio = audioRef.current
     if (!audio) return
-    if (playing) { audio.pause(); setPlaying(false) }
-    else { audio.play(); setPlaying(true) }
+    if (playing) {
+      audio.pause()
+      setPlaying(false)
+    } else {
+      audio.play().then(() => setPlaying(true)).catch(err => {
+        console.error('Error reproduciendo la nota de voz:', err)
+        setPlaying(false)
+      })
+    }
   }
 
   const seek = (e: React.MouseEvent) => {
     const audio = audioRef.current
     const bars = barsRef.current
-    if (!audio || !bars || !duration) return
+    if (!audio || !bars || !total) return
     const rect = bars.getBoundingClientRect()
     const fraction = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
-    audio.currentTime = fraction * duration
+    audio.currentTime = fraction * total
     setCurrent(audio.currentTime)
   }
 
-  const progress = duration ? current / duration : 0
+  const progress = total ? Math.min(1, current / total) : 0
 
   return (
     <div className={styles['audio-player']}>
@@ -103,7 +142,7 @@ export function AudioPlayer({ src }: AudioPlayerProps) {
         ))}
       </div>
       <span className={styles['audio-time']}>
-        {formatClock(current)} / {formatClock(duration)}
+        {formatClock(current)} / {formatClock(total)}
       </span>
     </div>
   )

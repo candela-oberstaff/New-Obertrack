@@ -26,6 +26,9 @@ export interface User {
   updated_at: string
   password?: string
   zoho_agent_id?: string
+  /** Permisos efectivos por módulo derivados de los roles asignados.
+   * Ausente = sin roles = comportamiento histórico del tipo de cuenta. */
+  permissions?: Record<string, 'none' | 'view' | 'edit'>
 }
 
 export interface Tenant {

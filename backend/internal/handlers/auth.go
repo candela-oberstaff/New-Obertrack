@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"os"
 
@@ -37,12 +38,25 @@ func clearAuthCookies(c *gin.Context) {
 type AuthHandler struct {
 	authService service.AuthService
 	auditSvc    service.AuditService
+	rbacSvc     service.RBACService
 }
 
-func NewAuthHandler(authService service.AuthService, auditSvc service.AuditService) *AuthHandler {
+func NewAuthHandler(authService service.AuthService, auditSvc service.AuditService, rbacSvc service.RBACService) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
 		auditSvc:    auditSvc,
+		rbacSvc:     rbacSvc,
+	}
+}
+
+// attachPermissions agrega al usuario sus permisos efectivos por módulo (si
+// tiene roles asignados) para que el frontend ajuste la UI sin otra llamada.
+func (h *AuthHandler) attachPermissions(user *models.User) {
+	if user == nil {
+		return
+	}
+	if perms, hasRoles, err := h.rbacSvc.EffectivePermissions(user.ID); err == nil && hasRoles {
+		user.Permissions = perms
 	}
 }
 
@@ -136,6 +150,14 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	// Toda empresa nueva nace con los roles preconfigurados (best-effort:
+	// un fallo aquí no debe impedir el registro).
+	if user.UserType == models.UserTypeEmployer {
+		if err := h.rbacSvc.SeedDefaultRoles(user.ID, user.ID); err != nil {
+			log.Printf("[auth.register] no se pudieron sembrar los roles preconfigurados del tenant %d: %v", user.ID, err)
+		}
+	}
+
 	h.auditSvc.RecordAuth("auth.register", &user.ID, user.Email, string(user.UserType), true, c.ClientIP(), c.Request.UserAgent())
 	setAuthCookies(c, access, refresh)
 	c.JSON(http.StatusCreated, AuthResponse{User: *user})
@@ -161,6 +183,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	h.auditSvc.RecordAuth("auth.login", &user.ID, user.Email, string(user.UserType), true, c.ClientIP(), c.Request.UserAgent())
 	setAuthCookies(c, access, refresh)
+	h.attachPermissions(user)
 	c.JSON(http.StatusOK, AuthResponse{User: *user})
 }
 
@@ -203,6 +226,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
+	h.attachPermissions(user)
 	c.JSON(http.StatusOK, user)
 }
 

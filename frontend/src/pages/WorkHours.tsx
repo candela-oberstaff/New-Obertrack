@@ -111,6 +111,7 @@ export default function WorkHours() {
     weekHours,
     todayWork,
     canApprove,
+    canEditHours,
   } = useWorkHours(user, {
     companyId: isSuperadmin ? selectedCompanyId : null,
     employeeId: isSuperadmin ? selectedEmployeeId : null,
@@ -622,7 +623,7 @@ export default function WorkHours() {
               </button>
             )}
           </div>
-        ) : (
+        ) : canEditHours ? (
           <div style={{ display: 'flex', gap: '8px' }} data-tour="work-hours-actions">
             {totalAbsenceHoursToRecover > 0 && (
               <button className={styles['btn-secondary']} onClick={() => setShowRecoverModal(true)}>
@@ -638,6 +639,10 @@ export default function WorkHours() {
               + Registrar Día
             </button>
           </div>
+        ) : (
+          <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 600, alignSelf: 'center' }}>
+            Tu rol tiene acceso de solo lectura en Horas
+          </span>
         )}
       </div>
 
@@ -744,10 +749,11 @@ export default function WorkHours() {
         isSubmitting={isSavingWorkHour}
       />
 
-      <WorkHourDetailModal 
+      <WorkHourDetailModal
         workHour={selectedWorkHour}
         onClose={() => setSelectedWorkHour(null)}
         canApprove={canApprove}
+        canEdit={canEditHours}
         onApprove={approveSingle}
         onReject={rejectSingle}
         onEdit={handleEdit}
