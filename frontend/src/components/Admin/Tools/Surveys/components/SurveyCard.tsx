@@ -25,11 +25,9 @@ const SurveyCard: React.FC<SurveyCardProps> = ({ survey, onEdit, onViewResults, 
         </p>
       </div>
       <div className={listStyles.surveyActions}>
-        {survey.status === 'draft' && (
-          <button className={commonStyles['btn-outline']} onClick={() => onEdit(survey)}>
-            <Edit2 size={16} /> Editar
-          </button>
-        )}
+        <button className={commonStyles['btn-outline']} onClick={() => onEdit(survey)}>
+          <Edit2 size={16} /> Editar
+        </button>
         <button className={commonStyles['btn-outline']} onClick={() => onViewResults(survey.id!)}>
           Ver Resultados
         </button>

@@ -86,6 +86,20 @@ const PreviewModal: React.FC<PreviewModalProps> = ({ blocks, onClose }) => {
                   })}
                 </div>
               )}
+              {block.type === 'columns' && (
+                <div style={{ display: 'flex', gap: block.style.gap || '20px', padding: block.style.padding || '16px 0', flexWrap: previewMode === 'mobile' ? 'wrap' : 'nowrap' }}>
+                  <div style={{ flex: 1, minWidth: previewMode === 'mobile' ? '100%' : '0' }}>
+                    <div style={block.content.leftBlock?.style}>
+                      {block.content.leftBlock?.content}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: previewMode === 'mobile' ? '100%' : '0' }}>
+                    <div style={block.content.rightBlock?.style}>
+                      {block.content.rightBlock?.content}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

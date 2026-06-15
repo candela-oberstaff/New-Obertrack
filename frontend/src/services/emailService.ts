@@ -68,4 +68,8 @@ export const emailService = {
     const response = await api.get('/users?limit=1000');
     return response.data;
   },
+  getCampaignEvents: async (id: number) => {
+    const response = await api.get(`/email/campaigns/${id}/events`);
+    return response.data;
+  },
 };

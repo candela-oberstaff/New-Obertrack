@@ -8,9 +8,10 @@ interface CampaignGridProps {
   loading: boolean;
   onEdit: (campaign: any) => void;
   onDelete: (campaignId: number) => void;
+  onViewDetail: (campaign: any) => void;
 }
 
-const CampaignGrid: React.FC<CampaignGridProps> = ({ campaigns, loading, onEdit, onDelete }) => {
+const CampaignGrid: React.FC<CampaignGridProps> = ({ campaigns, loading, onEdit, onDelete, onViewDetail }) => {
   if (loading) {
     return <div className={styles['loading-info']}>Cargando campañas...</div>;
   }
@@ -33,7 +34,8 @@ const CampaignGrid: React.FC<CampaignGridProps> = ({ campaigns, loading, onEdit,
         <CampaignCard 
           key={camp.id} 
           campaign={camp} 
-          onClick={() => onEdit(camp)} 
+          onClick={() => onViewDetail(camp)}
+          onEdit={() => onEdit(camp)}
           onDelete={() => onDelete(camp.id)}
         />
       ))}

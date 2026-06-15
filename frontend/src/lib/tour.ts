@@ -171,7 +171,7 @@ const MODULE_TOURS: ModuleTour[] = [
     steps: [
       { selector: '[data-tour="metrics-header"]', title: 'Métricas globales', description: 'Resumen de engagement basado en eventos registrados.', side: 'bottom', align: 'start' },
       { selector: '[data-tour="metrics-period"]', title: 'Periodo', description: 'Cambia el rango de días para recalcular la información.', side: 'bottom', align: 'end' },
-      { selector: '[data-tour="metrics-tabs"]', title: 'Categorías', description: 'Alterna entre emails, encuestas y análisis avanzado.', side: 'bottom', align: 'start' },
+      { selector: '[data-tour="metrics-tabs"]', title: 'Categorías', description: 'Alterna entre emails y encuestas.', side: 'bottom', align: 'start' },
       { selector: '[data-tour="metrics-content"]', title: 'Contenido', description: 'Aquí se renderiza el análisis de la categoría seleccionada.', side: 'top', align: 'start' },
     ],
   },

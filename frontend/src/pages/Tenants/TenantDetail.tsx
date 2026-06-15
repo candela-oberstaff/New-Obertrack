@@ -172,10 +172,10 @@ export default function TenantDetail() {
   const editStates = getStatesForCountry(editForm.country)
 
   const kpis = [
-    { value: tenant.user_count, label: 'Usuarios', icon: <Users size={24} />, bg: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' },
-    { value: tenant.board_count, label: 'Tableros', icon: <LayoutGrid size={24} />, bg: 'linear-gradient(135deg, #f59e0b, #d97706)' },
+    { value: tenant.user_count, label: 'Usuarios', icon: <Users size={24} />, bg: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' },
+    { value: tenant.board_count, label: 'Tableros', icon: <LayoutGrid size={24} />, bg: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' },
     { value: tenant.task_count, label: 'Tareas', icon: <CheckSquare size={24} />, bg: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' },
-    { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: 'linear-gradient(135deg, #10b981, #059669)' },
+    { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' },
     { value: `${(tenant.pending_hours ?? 0).toFixed(1)} h`, label: 'Horas por aprobar', icon: <Hourglass size={24} />, bg: 'linear-gradient(135deg, #f97316, #ea580c)' },
     { value: tenant.open_tickets ?? 0, label: 'Tickets abiertos', icon: <Inbox size={24} />, bg: 'linear-gradient(135deg, #ef4444, #b91c1c)' },
   ]

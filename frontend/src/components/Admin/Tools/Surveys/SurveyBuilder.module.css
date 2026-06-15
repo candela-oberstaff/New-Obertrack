@@ -325,6 +325,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  max-height: 100%;
 }
 
 .toolbarArea h3 {
@@ -716,3 +718,155 @@
   }
 }
 
+/* ---- Checkbox Mock ---- */
+.choiceCheckMock {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 2px solid #cbd5e1;
+  flex-shrink: 0;
+}
+
+/* ---- Linear Scale Editor ---- */
+.linearScaleEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.scaleRangeRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.scaleField {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.scaleField label {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.scaleField input {
+  width: 56px;
+  padding: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 14px;
+  outline: none;
+}
+
+.scaleMockTrack {
+  flex: 1;
+  display: flex;
+  justify-content: space-around;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.scaleDot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.scaleLabelsRow {
+  display: flex;
+  gap: 12px;
+}
+
+.scaleLabelInput {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.scaleLabelInput:focus {
+  border-color: #8b5cf6;
+}
+
+/* ---- Grid Editor ---- */
+.gridEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gridEditorCols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.gridEditorSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.gridEditorSection strong {
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+.gridPreview {
+  overflow-x: auto;
+}
+
+.gridTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.gridTable th,
+.gridTable td {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  text-align: center;
+  color: #475569;
+}
+
+.gridTable th {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+.gridTable td:first-child {
+  text-align: left;
+  font-weight: 500;
+  background: #fafafa;
+}

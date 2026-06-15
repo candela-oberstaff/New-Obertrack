@@ -8,7 +8,6 @@ import {
   CheckSquare,
   Clock,
   FileText,
-  Activity,
   MessageCircle,
   User,
   Settings,
@@ -106,22 +105,19 @@ export default function Layout() {
 
   if (user?.is_superadmin) {
     navItems.splice(1, 0, { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} /> })
-    // Add Tools after Chat (which is currently at index 5 or 6 depending on Admin)
+    // Add Tools after Chat
     const toolsIndex = navItems.findIndex(item => item.path === '/admin/tools')
-    if (toolsIndex !== -1) {
-      navItems.splice(toolsIndex + 1, 0, { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} /> })
-    } else {
+    if (toolsIndex === -1) {
       const chatIndex = navItems.findIndex(item => item.path === '/chat')
       if (chatIndex !== -1) {
         navItems.splice(chatIndex + 1, 0, { path: '/admin', label: 'Admin', icon: <Settings size={20} /> })
         navItems.splice(chatIndex + 2, 0, { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} /> })
-        navItems.splice(chatIndex + 3, 0, { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} /> })
       }
     }
-    // Auditoría right after Métricas
-    const metricsIndex = navItems.findIndex(item => item.path === '/admin/metrics')
-    if (metricsIndex !== -1) {
-      navItems.splice(metricsIndex + 1, 0, { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} /> })
+    // Keep Auditoría if needed
+    const toolsIdx = navItems.findIndex(item => item.path === '/admin/tools')
+    if (toolsIdx !== -1) {
+      navItems.splice(toolsIdx + 1, 0, { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} /> })
     }
   }
 

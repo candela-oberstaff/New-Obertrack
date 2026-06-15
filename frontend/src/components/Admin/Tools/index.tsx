@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
-import { Mail, ClipboardList } from 'lucide-react';
+import { Mail, ClipboardList, BarChart3, Users } from 'lucide-react';
 import EmailMarketing from './EmailMarketing';
 import Surveys from './Surveys';
+import MetricsPage from '../../../pages/Metrics';
+import GroupManager from './Common/GroupManager';
 import { Select } from '../../ui/Select';
 import styles from './Tools.module.css';
 
-type ToolTab = 'email' | 'surveys';
+type ToolTab = 'email' | 'surveys' | 'metrics';
 
 const Tools: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ToolTab>('email');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [extraAction, setExtraAction] = useState<React.ReactNode>(null);
+  const [showGroupManager, setShowGroupManager] = useState(false);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -18,6 +21,8 @@ const Tools: React.FC = () => {
         return <EmailMarketing onToggleFullScreen={setIsFullScreen} setHeaderAction={setExtraAction} />;
       case 'surveys':
         return <Surveys setHeaderAction={setExtraAction} />;
+      case 'metrics':
+        return <MetricsPage />;
       default:
         return <EmailMarketing onToggleFullScreen={setIsFullScreen} setHeaderAction={setExtraAction} />;
     }
@@ -45,7 +50,21 @@ const Tools: React.FC = () => {
               >
                 <ClipboardList size={14} /> Encuestas
               </button>
+              <button 
+                className={`${styles['tab-btn']} ${activeTab === 'metrics' ? styles.active : ''}`}
+                onClick={() => setActiveTab('metrics')}
+              >
+                <BarChart3 size={14} /> Métricas
+              </button>
             </div>
+
+            <button
+              className={styles['btn-outline']}
+              onClick={() => setShowGroupManager(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Users size={16} /> Gestionar Grupos
+            </button>
             
             <div className={styles['mobile-tabs']}>
               <Select
@@ -55,6 +74,7 @@ const Tools: React.FC = () => {
                 options={[
                   { value: 'email', label: 'Email' },
                   { value: 'surveys', label: 'Encuestas' },
+                  { value: 'metrics', label: 'Métricas' },
                 ]}
               />
             </div>
@@ -66,6 +86,10 @@ const Tools: React.FC = () => {
       <div className={styles['tools-content']} data-tour="tools-content">
         {renderContent()}
       </div>
+
+      {showGroupManager && (
+        <GroupManager onClose={() => setShowGroupManager(false)} />
+      )}
     </div>
   );
 };

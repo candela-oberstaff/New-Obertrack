@@ -38,6 +38,7 @@ type deps struct {
 	waha         *handlers.WahaHandler
 	brevoInbound *handlers.BrevoInboundHandler
 	audit        *handlers.AuditHandler
+	audience     *handlers.AudienceHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -62,6 +63,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	tutorialRepo := repository.NewTutorialRepository(db)
 	ticketRepo := repository.NewTicketRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
+	audienceRepo := repository.NewAudienceRepository(db)
 
 	// Integrations
 	brevoSvc := service.NewBrevoService()
@@ -124,6 +126,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		waha:         handlers.NewWahaHandler(ticketSvc),
 		brevoInbound: handlers.NewBrevoInboundHandler(ticketSvc),
 		audit:        handlers.NewAuditHandler(auditSvc),
+		audience:     handlers.NewAudienceHandler(audienceRepo),
 
 		wahaSvc:  wahaSvc,
 		auditSvc: auditSvc,

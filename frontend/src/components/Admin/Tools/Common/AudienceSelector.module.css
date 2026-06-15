@@ -1,0 +1,235 @@
+.selectorContainer {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.selectorTabs {
+  display: flex;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tabBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.tabBtn:hover {
+  color: #1e293b;
+  background: #f1f5f9;
+}
+
+.tabBtn.active {
+  color: #8b5cf6;
+  border-bottom-color: #8b5cf6;
+  background: white;
+}
+
+.selectorContent {
+  padding: 16px;
+  min-height: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.groupsList, .usersList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.itemLabel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.itemLabel:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.itemLabel.selected {
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.itemLabel input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #8b5cf6;
+}
+
+.itemInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemInfo strong {
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.itemInfo span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.emptyText {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 24px;
+}
+
+.individualsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.searchBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchBar svg {
+  position: absolute;
+  left: 12px;
+  color: #94a3b8;
+}
+
+.searchBar input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  outline: none;
+  font-size: 14px;
+}
+
+.searchBar input:focus {
+  border-color: #8b5cf6;
+}
+
+.expressSection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.expressForm {
+  display: flex;
+  gap: 10px;
+}
+
+.expressForm input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  outline: none;
+  font-size: 14px;
+}
+
+.expressForm input:focus {
+  border-color: #8b5cf6;
+}
+
+.addExpressBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.addExpressBtn:hover {
+  background: #7c3aed;
+}
+
+.expressList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.expressTag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+}
+
+.tagInfo {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.tagInfo strong {
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.tagInfo span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.expressTag button {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.expressTag button:hover {
+  color: #ef4444;
+}
+
+.selectorSummary {
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #475569;
+  display: flex;
+  justify-content: space-between;
+}

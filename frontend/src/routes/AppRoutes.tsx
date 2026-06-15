@@ -22,7 +22,6 @@ const TenantsList = lazy(() => import('../pages/Tenants/TenantsList'))
 const TenantDetail = lazy(() => import('../pages/Tenants/TenantDetail'))
 const EmployeeDetail = lazy(() => import('../pages/Tenants/EmployeeDetail'))
 const Tools = lazy(() => import('../components/Admin/Tools'))
-const Metrics = lazy(() => import('../pages/Metrics'))
 const AuditLogs = lazy(() => import('../pages/AuditLogs'))
 const Tutoriales = lazy(() => import('../pages/Tutoriales'))
 const SurveyViewer = lazy(() => import('../pages/SurveyViewer'))
@@ -60,7 +59,7 @@ export function AppRoutes() {
           <Route path="admin/tenants/:id" element={<AdminRoute><TenantDetail /></AdminRoute>} />
           <Route path="admin/tenants/:id/employees/:eid" element={<AdminRoute><EmployeeDetail /></AdminRoute>} />
           <Route path="admin/tools" element={<AdminRoute><Tools /></AdminRoute>} />
-          <Route path="admin/metrics" element={<AdminRoute><Metrics /></AdminRoute>} />
+          <Route path="admin/metrics" element={<Navigate to="/admin/tools" replace />} />
           <Route path="admin/audit" element={<AdminRoute><AuditLogs /></AdminRoute>} />
           <Route path="tutoriales" element={<Tutoriales />} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />

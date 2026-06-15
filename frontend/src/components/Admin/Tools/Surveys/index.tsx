@@ -54,7 +54,7 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
       let surveyId = data.id;
 
       if (surveyId) {
-        await surveyService.updateSurvey(surveyId, payload);
+        await surveyService.updateSurvey(surveyId, { ...payload, id: surveyId });
       } else {
         const newSurvey = await surveyService.createSurvey(payload);
         surveyId = newSurvey.id;

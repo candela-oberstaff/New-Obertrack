@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import EmailBuilder from '../EmailBuilder';
 import { emailService } from '../../../../services/emailService';
 import CampaignGrid from './components/CampaignGrid';
+import CampaignDetailPanel from './components/CampaignDetailPanel';
 import styles from './EmailMarketing.module.css';
 import commonStyles from '../Tools.module.css';
 import { useConfirm } from '../../../ui/ConfirmProvider';
@@ -16,6 +17,7 @@ interface EmailMarketingProps {
 const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, setHeaderAction }) => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState<number | null>(null);
+  const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
   const confirm = useConfirm();
   const qc = useQueryClient();
 
@@ -84,7 +86,17 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     }
   };
 
-  const handleSend = async (data: { title: string, blocks: any, recipientIds: number[] }) => {
+  const getRecipientsCount = (recipients: any): number => {
+    if (Array.isArray(recipients)) return recipients.length;
+    if (recipients && typeof recipients === 'object') {
+      const uCount = (recipients.userIds || []).length;
+      const eCount = (recipients.expressContacts || []).length;
+      return uCount + eCount;
+    }
+    return 0;
+  };
+
+  const handleSend = async (data: { title: string, blocks: any, recipientIds: any }) => {
     try {
       const { title, blocks, recipientIds } = data;
       let campaignId = editingCampaignId;
@@ -101,7 +113,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
           title: title,
           subject: 'Contenido editado',
           status: 'draft',
-          recipients: recipientIds.length,
+          recipients: getRecipientsCount(recipientIds),
           recipient_list: JSON.stringify(recipientIds)
         });
         campaignId = newCampaign.id;
@@ -114,7 +126,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
           });
           await emailService.updateCampaign(camp.id, { 
             title,
-            recipients: recipientIds.length,
+            recipients: getRecipientsCount(recipientIds),
             recipient_list: JSON.stringify(recipientIds)
           });
         }
@@ -132,7 +144,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     }
   };
 
-  const handleSchedule = async (data: { title: string, blocks: any, date: string, recipientIds: number[] }) => {
+  const handleSchedule = async (data: { title: string, blocks: any, date: string, recipientIds: any }) => {
     try {
       const { title, blocks, date, recipientIds } = data;
       let campaignId = editingCampaignId;
@@ -149,7 +161,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
           title: title,
           subject: 'Contenido editado',
           status: 'draft',
-          recipients: recipientIds.length,
+          recipients: getRecipientsCount(recipientIds),
           recipient_list: JSON.stringify(recipientIds)
         });
         campaignId = newCampaign.id;
@@ -162,7 +174,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
           });
           await emailService.updateCampaign(camp.id, { 
             title,
-            recipients: recipientIds.length,
+            recipients: getRecipientsCount(recipientIds),
             recipient_list: JSON.stringify(recipientIds)
           });
         }
@@ -172,7 +184,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
         await emailService.updateCampaign(campaignId, {
           status: 'scheduled',
           scheduled_at: date,
-          recipients: recipientIds.length,
+          recipients: getRecipientsCount(recipientIds),
           recipient_list: JSON.stringify(recipientIds)
         });
         alert(`¡Campaña programada para el ${new Date(date).toLocaleString()}!`);
@@ -185,7 +197,12 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     }
   };
 
+  const handleViewDetail = (camp: any) => {
+    setSelectedCampaign(camp);
+  };
+
   const handleEdit = (camp: any) => {
+    setSelectedCampaign(null);
     setEditingCampaignId(camp.id);
     setShowBuilder(true);
     onToggleFullScreen(true);
@@ -201,6 +218,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     if (!ok) return;
     try {
       await emailService.deleteCampaign(campaignId);
+      setSelectedCampaign(null);
       fetchCampaigns();
     } catch (error) {
       console.error("Error deleting campaign:", error);
@@ -227,11 +245,16 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
       console.error("Error parsing blocks:", e);
     }
 
-    let initialRecipientIds: number[] = [];
+    let initialRecipientIds: any = { groupIds: [], userIds: [], expressContacts: [] };
     try {
-      initialRecipientIds = currentCampaign?.recipient_list
-        ? JSON.parse(currentCampaign.recipient_list)
-        : [];
+      if (currentCampaign?.recipient_list) {
+        const parsed = JSON.parse(currentCampaign.recipient_list);
+        if (Array.isArray(parsed)) {
+          initialRecipientIds = { groupIds: [], userIds: parsed, expressContacts: [] };
+        } else {
+          initialRecipientIds = parsed;
+        }
+      }
     } catch (e) {
       console.error("Error parsing recipient_list:", e);
     }
@@ -256,7 +279,17 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
         loading={loading} 
         onEdit={handleEdit} 
         onDelete={handleDelete}
+        onViewDetail={handleViewDetail}
       />
+
+      {selectedCampaign && (
+        <CampaignDetailPanel
+          campaign={selectedCampaign}
+          onClose={() => setSelectedCampaign(null)}
+          onEdit={(camp) => handleEdit(camp)}
+          onDelete={async (id) => { await handleDelete(id); }}
+        />
+      )}
     </div>
   );
 };

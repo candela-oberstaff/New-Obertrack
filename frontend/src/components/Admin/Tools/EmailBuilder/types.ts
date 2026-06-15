@@ -1,4 +1,4 @@
-export type BlockType = 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'social';
+export type BlockType = 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'social' | 'columns';
 
 export interface Block {
   id: string;
@@ -10,11 +10,11 @@ export interface Block {
 export interface EmailBuilderProps {
   onBack: () => void;
   onSave?: (data: { title: string, blocks: Block[] }) => void;
-  onSend?: (data: { title: string, blocks: Block[], recipientIds: number[] }) => void;
-  onSchedule?: (data: { title: string, blocks: Block[], date: string, recipientIds: number[] }) => void;
+  onSend?: (data: { title: string, blocks: Block[], recipientIds: any }) => void;
+  onSchedule?: (data: { title: string, blocks: Block[], date: string, recipientIds: any }) => void;
   availableRecipients?: any[];
   initialBlocks?: Block[];
   initialTitle?: string;
   initialScheduledAt?: string;
-  initialRecipientIds?: number[];
+  initialRecipientIds?: any;
 }

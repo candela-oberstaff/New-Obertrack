@@ -53,7 +53,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
 
   const selectedBlock = blocks.find(b => b.id === selectedBlockId);
 
-  const handleScheduleConfirm = async (data: { date: string, recipientIds: number[] }) => {
+  const handleScheduleConfirm = async (data: { date: string, recipientIds: any }) => {
     if (data.date) {
       await onSchedule?.({ 
         title, 

@@ -3,7 +3,7 @@ import api from './client';
 export interface SurveyQuestion {
   id?: number;
   text: string;
-  type: 'text' | 'rating' | 'choice';
+  type: 'text' | 'rating' | 'choice' | 'checkbox' | 'dropdown' | 'linear_scale' | 'grid' | 'checkbox_grid';
   options?: string; // JSON string of choices
   is_required: boolean;
   order_index: number;

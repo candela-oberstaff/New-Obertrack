@@ -18,6 +18,11 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 		return "", fmt.Errorf("invalid blocks JSON: %w", err)
 	}
 
+	bodyHTML := renderBlocks(blocks)
+	return WrapInPremiumTemplate("Notificación", bodyHTML), nil
+}
+
+func renderBlocks(blocks []map[string]interface{}) string {
 	var sb strings.Builder
 
 	for _, block := range blocks {
@@ -53,6 +58,12 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 			btnText, _ := styleMap["color"].(string)
 			btnRadius, _ := styleMap["borderRadius"].(string)
 			linkURL, _ := styleMap["linkUrl"].(string)
+			borderWidth, _ := styleMap["borderWidth"].(string)
+			borderColor, _ := styleMap["borderColor"].(string)
+			borderStyle, _ := styleMap["borderStyle"].(string)
+			align, _ := styleMap["align"].(string)
+			padding, _ := styleMap["padding"].(string)
+
 			if btnColor == "" {
 				btnColor = "#cc33cc" // Vivid Orchid as default
 			}
@@ -65,9 +76,25 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 			if linkURL == "" {
 				linkURL = "#"
 			}
+			if align == "" {
+				align = "center"
+			}
+			if padding == "" {
+				padding = "12px 28px"
+			}
+
+			borderCSS := ""
+			if borderWidth != "" && borderColor != "" {
+				bStyle := borderStyle
+				if bStyle == "" {
+					bStyle = "solid"
+				}
+				borderCSS = fmt.Sprintf("border:%s %s %s;", borderWidth, bStyle, borderColor)
+			}
+
 			sb.WriteString(fmt.Sprintf(
-				`<div style="%stext-align:center;"><a href="%s" style="display:inline-block;padding:12px 28px;background:%s;color:%s;border-radius:%s;text-decoration:none;font-weight:600;font-size:15px;">%s</a></div>`,
-				cellStyle, linkURL, btnColor, btnText, btnRadius, escapeHTML(text),
+				`<div style="%stext-align:%s;"><a href="%s" style="display:inline-block;padding:%s;background:%s;color:%s;border-radius:%s;text-decoration:none;font-weight:600;font-size:15px;%s">%s</a></div>`,
+				cellStyle, align, linkURL, padding, btnColor, btnText, btnRadius, borderCSS, escapeHTML(text),
 			))
 
 		case "image":
@@ -82,10 +109,55 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 			))
 
 		case "divider":
-			sb.WriteString(`<div style="padding:8px 24px;"><hr style="border:none;border-top:1px solid #e2e8f0;margin:0;"/></div>`)
+			borderHeight, _ := styleMap["borderHeight"].(string)
+			if borderHeight == "" {
+				borderHeight = "1px"
+			}
+			borderColor, _ := styleMap["borderColor"].(string)
+			if borderColor == "" {
+				borderColor = "#e2e8f0"
+			}
+			borderStyle, _ := styleMap["borderStyle"].(string)
+			if borderStyle == "" {
+				borderStyle = "solid"
+			}
+			sb.WriteString(fmt.Sprintf(
+				`<div style="padding:8px 24px;"><hr style="border:none;border-top:%s %s %s;margin:0;"/></div>`,
+				borderHeight, borderStyle, borderColor,
+			))
 
 		case "spacer":
-			sb.WriteString(`<div style="height:24px;"></div>`)
+			height, _ := styleMap["height"].(string)
+			if height == "" {
+				height = "24px"
+			}
+			sb.WriteString(fmt.Sprintf(`<div style="height:%s;"></div>`, height))
+
+		case "columns":
+			cols, _ := content.([]interface{})
+			var colsHTML []string
+			for _, cVal := range cols {
+				cMap, _ := cVal.(map[string]interface{})
+				width, _ := cMap["width"].(string)
+				if width == "" {
+					width = "50%"
+				}
+				subBlocksRaw, _ := cMap["blocks"].([]interface{})
+				var subBlocks []map[string]interface{}
+				for _, sbRaw := range subBlocksRaw {
+					if sbMap, ok := sbRaw.(map[string]interface{}); ok {
+						subBlocks = append(subBlocks, sbMap)
+					}
+				}
+				colsHTML = append(colsHTML, fmt.Sprintf(
+					`<td width="%s" valign="top" style="width:%s;vertical-align:top;">%s</td>`,
+					width, width, renderBlocks(subBlocks),
+				))
+			}
+			sb.WriteString(fmt.Sprintf(
+				`<div style="%s"><table width="100%%" cellpadding="0" cellspacing="0" style="width:100%%;border-collapse:collapse;table-layout:fixed;"><tr>%s</tr></table></div>`,
+				cellStyle, strings.Join(colsHTML, ""),
+			))
 
 		case "social":
 			socialData, _ := content.(map[string]interface{})
@@ -96,7 +168,9 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 				"linkedin":  "https://linkedin.com",
 				"youtube":   "https://youtube.com",
 			}
-			sb.WriteString(`<div style="` + cellStyle + `text-align:center;">`)
+			sb.WriteString(`<div style="`)
+			sb.WriteString(cellStyle)
+			sb.WriteString(`text-align:center;">`)
 			for net, data := range socialData {
 				dataMap, _ := data.(map[string]interface{})
 				active, _ := dataMap["active"].(bool)
@@ -116,7 +190,7 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 		}
 	}
 
-	return WrapInPremiumTemplate("Notificación", sb.String()), nil
+	return sb.String()
 }
 
 func escapeHTML(s string) string {
