@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
-import { AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute } from './guards'
+import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
 
 const Login = lazy(() => import('../pages/Login'))
@@ -53,7 +53,7 @@ export function AppRoutes() {
           <Route path="tasks" element={<Tasks />} />
           <Route path="work-hours" element={<WorkHours />} />
           <Route path="chat" element={<SlackChat />} />
-          <Route path="whatsapp" element={<CustomerSuccessRoute><WhatsApp /></CustomerSuccessRoute>} />
+          <Route path="whatsapp" element={<AdminRoute><WhatsApp /></AdminRoute>} />
           <Route path="profile" element={<Profile />} />
           {/* Admin y Empresas: superadmin gestiona; CS consulta (el backend solo les permite GETs). */}
           <Route path="admin" element={<CustomerSuccessRoute><Admin /></CustomerSuccessRoute>} />
@@ -68,10 +68,10 @@ export function AppRoutes() {
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
           <Route path="roles-grupos" element={<ReportsRoute><RolesGroups /></ReportsRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
-          <Route path="tickets" element={<CustomerSuccessRoute><TicketsBoard /></CustomerSuccessRoute>} />
-          <Route path="tickets/report" element={<CustomerSuccessRoute><RejectionReport /></CustomerSuccessRoute>} />
-          <Route path="tickets/internal/:id" element={<CustomerSuccessRoute><InternalTicketDetail /></CustomerSuccessRoute>} />
-          <Route path="tickets/:id" element={<CustomerSuccessRoute><TicketDetail /></CustomerSuccessRoute>} />
+          <Route path="tickets" element={<AdminRoute><TicketsBoard /></AdminRoute>} />
+          <Route path="tickets/report" element={<AdminRoute><RejectionReport /></AdminRoute>} />
+          <Route path="tickets/internal/:id" element={<AdminRoute><InternalTicketDetail /></AdminRoute>} />
+          <Route path="tickets/:id" element={<AdminRoute><TicketDetail /></AdminRoute>} />
         </Route>
       </Routes>
     </Suspense>

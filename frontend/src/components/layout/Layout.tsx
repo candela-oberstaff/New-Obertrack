@@ -118,7 +118,7 @@ export default function Layout() {
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} />, show: !isIT },
     { path: '/admin', label: 'Admin', icon: <Settings size={20} />, show: isSuper || isCS },
     { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} />, show: isSuper || isCS },
-    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: isSuper || isCS },
+    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: isSuper },
     { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} />, show: isSuper || isCS },
     { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} />, show: isSuper || isIT },
     { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} />, show: isSuper || isIT },

@@ -6,6 +6,7 @@ import (
 
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
+	"github.com/obertrack/backend/internal/utils"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -40,6 +41,9 @@ type AdminService interface {
 	DeleteUser(id uint) error
 	ResetPassword(id uint, newPassword string) error
 
+	GetSeniorityRanking() ([]repository.SeniorityItem, error)
+	GetLatestFollowUps(kind string) ([]repository.FollowUpInfo, error)
+	CreateFollowUp(userID, createdBy uint, kind, status, note string) (*models.FollowUp, error)
 	GetTenants() ([]repository.TenantSummary, error)
 	GetTenant(id uint) (*repository.TenantSummary, error)
 	GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error)
@@ -122,8 +126,8 @@ func (s *adminService) GetCompanies() ([]repository.CompanyMetric, error) {
 }
 
 func (s *adminService) GetInactiveUsers(days int) ([]repository.InactiveUser, error) {
-	since := time.Now().AddDate(0, 0, -days)
-	return s.repo.GetInactiveUsersList(since)
+	// days se interpreta como días hábiles completos sin registrar horas.
+	return s.repo.GetInactiveUsersList(days)
 }
 
 func (s *adminService) GetRecentActivities() ([]repository.Activity, error) {
@@ -191,11 +195,17 @@ func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, err
 	if v, ok := req["country"].(string); ok {
 		user.Country = v
 	}
+	if v, ok := req["state"].(string); ok {
+		user.State = v
+	}
 	if v, ok := req["city"].(string); ok {
 		user.City = v
 	}
 	if v, ok := req["location"].(string); ok {
 		user.Location = v
+	}
+	if v, ok := req["industry"].(string); ok {
+		user.Industry = v
 	}
 	if v, ok := req["is_manager"].(bool); ok {
 		user.IsManager = v
@@ -231,13 +241,26 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 		return nil, errors.New("User not found")
 	}
 
-	// Solo profesionales y customer success pueden quedar vinculados a una empresa.
+	// Solo profesionales y customer success pueden quedar vinculados a una
+	// empresa; solo los profesionales tienen manager. Al cambiar a un rol que
+	// no aplica, se limpia activamente el vínculo (no basta con no actualizarlo).
 	targetType := user.UserType
 	if t, ok := updates["user_type"].(string); ok && t != "" {
 		targetType = models.UserType(t)
 	}
 	if targetType != models.UserTypeProfessional && targetType != models.UserTypeCustomerSuccess {
-		delete(updates, "empleador_id")
+		updates["empleador_id"] = nil
+	}
+	if targetType != models.UserTypeProfessional {
+		updates["manager_id"] = nil
+	}
+
+	// Al cambiar el tipo de usuario hay que sincronizar el flag is_superadmin
+	// e invalidar la sesión vigente (el rol viaja en el JWT), para que el
+	// cambio tome efecto en el próximo login/refresh.
+	if targetType != user.UserType {
+		updates["is_superadmin"] = targetType == models.UserTypeSuperadmin
+		updates["token_version"] = user.TokenVersion + 1
 	}
 
 	if newEmpIDVal, ok := updates["empleador_id"]; ok {
@@ -286,6 +309,41 @@ func (s *adminService) ResetPassword(id uint, newPassword string) error {
 	}
 
 	return s.userRepo.Update(user, map[string]interface{}{"password": string(hashedPassword)})
+}
+
+func (s *adminService) GetSeniorityRanking() ([]repository.SeniorityItem, error) {
+	return s.repo.GetSeniorityRanking()
+}
+
+func (s *adminService) GetLatestFollowUps(kind string) ([]repository.FollowUpInfo, error) {
+	if !models.IsValidFollowUpKind(kind) {
+		return nil, errors.New("Tipo de seguimiento inválido: usa 'inactivity' o 'absence'")
+	}
+	return s.repo.GetLatestFollowUps(kind)
+}
+
+func (s *adminService) CreateFollowUp(userID, createdBy uint, kind, status, note string) (*models.FollowUp, error) {
+	if !models.IsValidFollowUpKind(kind) {
+		return nil, errors.New("Tipo de seguimiento inválido: usa 'inactivity' o 'absence'")
+	}
+	if !models.IsValidFollowUpStatus(status) {
+		return nil, errors.New("Estado inválido: usa 'contacted', 'justified' o 'escalated'")
+	}
+	if _, err := s.userRepo.GetByID(userID); err != nil {
+		return nil, errors.New("Usuario no encontrado")
+	}
+
+	followUp := &models.FollowUp{
+		UserID:    userID,
+		Kind:      kind,
+		Status:    status,
+		Note:      utils.SanitizeHTML(note),
+		CreatedBy: createdBy,
+	}
+	if err := s.repo.CreateFollowUp(followUp); err != nil {
+		return nil, err
+	}
+	return followUp, nil
 }
 
 func (s *adminService) GetTenants() ([]repository.TenantSummary, error) {

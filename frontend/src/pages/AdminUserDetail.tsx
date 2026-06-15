@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog } from 'lucide-react'
+import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil } from 'lucide-react'
 import { userService, adminService } from '../services/api'
 import { rbacService } from '../services/rbac.service'
 import { useAuth } from '../context/AuthContext'
 import type { User, CompanyRole, CompanyGroup } from '../types'
 import Avatar from '../components/Common/Avatar'
 import { Skeleton } from '../components/ui'
+import { UserModal } from '../components/Admin/Modals/UserModal'
 import styles from './AdminUserDetail.module.css'
 
 // Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de dictar.
@@ -36,6 +37,12 @@ export default function AdminUserDetail() {
   const [actionMsg, setActionMsg] = useState<string | null>(null)
   const [empresaName, setEmpresaName] = useState('')
   const [managerName, setManagerName] = useState('')
+
+  // Edición del usuario desde el detalle (reutiliza el modal del panel).
+  const [showEdit, setShowEdit] = useState(false)
+  const [editForm, setEditForm] = useState<any>({})
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editPeople, setEditPeople] = useState<{ employers: User[]; managers: User[] }>({ employers: [], managers: [] })
 
   // Roles y grupos del usuario (solo miembros de un tenant: profesional / CS con empresa)
   const [tenantRoles, setTenantRoles] = useState<CompanyRole[]>([])
@@ -112,6 +119,56 @@ export default function AdminUserDetail() {
       await adminService.resetPassword(user.id, temp)
       setActionMsg(`Contraseña reseteada. Temporal: ${temp} — compártela por un canal seguro, no volverá a mostrarse.`)
     } catch { setActionMsg('No se pudo resetear la contraseña.') } finally { setBusy(false) }
+  }
+
+  const openEdit = async () => {
+    if (!user) return
+    setEditForm({
+      name: user.name || '',
+      email: user.email || '',
+      user_type: user.user_type || '',
+      job_title: user.job_title || '',
+      phone_number: user.phone_number || '',
+      country: user.country || '',
+      state: user.state || '',
+      city: user.city || '',
+      location: user.location || '',
+      company_name: user.company_name || '',
+      empleador_id: user.empleador_id || '',
+      manager_id: user.manager_id || '',
+      is_active: user.is_active,
+      is_manager: user.is_manager,
+    })
+    setEditError(null)
+    setShowEdit(true)
+    // Carga diferida de empresas y managers para los selectores del modal.
+    try {
+      const res: any = await adminService.getUsers({ limit: 1000 })
+      const all: User[] = res?.data || (Array.isArray(res) ? res : [])
+      setEditPeople({
+        employers: all.filter(u => u.user_type === 'empleador'),
+        managers: all.filter(u => u.is_manager),
+      })
+    } catch { /* selectores vacíos si falla */ }
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    setEditError(null)
+    // Sanitiza FKs: número positivo o null (nunca "" — el backend lo rechaza).
+    const payload = {
+      ...editForm,
+      empleador_id: editForm.empleador_id ? Number(editForm.empleador_id) : null,
+      manager_id: editForm.manager_id ? Number(editForm.manager_id) : null,
+    }
+    try {
+      await adminService.updateUser(user.id, payload)
+      setShowEdit(false)
+      await load()
+    } catch (err: any) {
+      setEditError(err?.response?.data?.error ?? 'No se pudieron guardar los cambios.')
+    }
   }
 
   if (isLoading) {
@@ -250,6 +307,10 @@ export default function AdminUserDetail() {
 
       {canManage && (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', margin: '0 0 1rem' }}>
+        <button onClick={openEdit} disabled={busy}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: 'none', background: 'var(--primary, #cc33cc)', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+          <Pencil size={15} /> Editar
+        </button>
         <button onClick={toggleActive} disabled={busy}
           style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
           <Power size={15} /> {user.is_active ? 'Desactivar' : 'Activar'}
@@ -331,6 +392,20 @@ export default function AdminUserDetail() {
             )}
           </div>
         </div>
+      )}
+
+      {showEdit && (
+        <UserModal
+          title="Editar usuario"
+          mode="edit"
+          form={editForm}
+          setForm={setEditForm}
+          employers={editPeople.employers}
+          managers={editPeople.managers}
+          onClose={() => setShowEdit(false)}
+          onSubmit={handleEditSubmit}
+          error={editError}
+        />
       )}
     </div>
   )

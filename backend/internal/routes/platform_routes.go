@@ -21,22 +21,6 @@ func requireSupportInboxAccess() gin.HandlerFunc {
 	}
 }
 
-// requireSupportManager limita acciones de gestión del soporte (reporte de
-// rechazos y transferencias de tickets) a superadmins y Customer Success
-// Managers (customer_success con flag de manager); los CS analistas operan
-// sus propios tickets pero no gestionan al equipo.
-func requireSupportManager() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if middleware.IsSuperadmin(c) ||
-			(middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess) && middleware.IsManager(c)) {
-			c.Next()
-			return
-		}
-		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere permisos de Customer Success Manager"})
-		c.Abort()
-	}
-}
-
 // registerPlatformRoutes wires cross-cutting platform features: file uploads,
 // email marketing, surveys, tutorials and the support-ticket inbox.
 func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
@@ -113,13 +97,10 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		rbac.DELETE("/groups/:id/members", d.rbac.RemoveGroupMember)
 	}
 
-	// Módulo "tickets": aplica sobre el acceso de soporte existente (los
-	// customer success con roles pueden quedar en solo lectura).
-	ticketsView := handlers.RequirePermission(d.rbacSvc, "tickets", models.PermissionView)
-	ticketsEdit := handlers.RequirePermission(d.rbacSvc, "tickets", models.PermissionEdit)
-
+	// Módulo de tickets (Zoho + WhatsApp): solo superadmin. Customer success y
+	// profesionales no tienen acceso.
 	tickets := api.Group("/tickets")
-	tickets.Use(requireSupportInboxAccess(), ticketsView)
+	tickets.Use(middleware.RequireSuperadmin())
 	{
 		tickets.GET("/waha/status", func(c *gin.Context) {
 			status, err := d.wahaSvc.GetSessionStatusAndQR("default")
@@ -134,25 +115,25 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		tickets.GET("/zoho-agents", d.ticket.GetZohoAgents)
 		tickets.GET("/transfers", d.ticket.GetTicketTransfers)
 		tickets.GET("", d.ticket.GetTickets)
-		tickets.GET("/internal/report", requireSupportManager(), d.ticket.GetRejectionReport)
+		tickets.GET("/internal/report", d.ticket.GetRejectionReport)
 		tickets.GET("/internal/:id", d.ticket.GetInternalTicket)
-		tickets.PUT("/internal/:id", ticketsEdit, d.ticket.UpdateInternalTicket)
-		tickets.POST("/internal/:id/notes", ticketsEdit, d.ticket.AddInternalNote)
-		tickets.POST("/internal/:id/transfer", ticketsEdit, requireSupportManager(), d.ticket.TransferInternalTicket)
+		tickets.PUT("/internal/:id", d.ticket.UpdateInternalTicket)
+		tickets.POST("/internal/:id/notes", d.ticket.AddInternalNote)
+		tickets.POST("/internal/:id/transfer", d.ticket.TransferInternalTicket)
 		tickets.GET("/:id", d.ticket.GetTicket)
-		tickets.PUT("/:id", ticketsEdit, d.ticket.UpdateTicket)
-		tickets.POST("/:id/messages", ticketsEdit, d.ticket.SendMessage)
-		tickets.POST("/:id/transfer", ticketsEdit, requireSupportManager(), d.ticket.TransferZohoTicket)
+		tickets.PUT("/:id", d.ticket.UpdateTicket)
+		tickets.POST("/:id/messages", d.ticket.SendMessage)
+		tickets.POST("/:id/transfer", d.ticket.TransferZohoTicket)
 	}
 
 	chats := api.Group("/chats")
-	chats.Use(requireSupportInboxAccess(), ticketsView)
+	chats.Use(middleware.RequireSuperadmin())
 	{
 		chats.GET("/me", d.whatsapp.GetMyChats)
 		chats.GET("/unassigned", d.whatsapp.GetUnassignedChats)
 		chats.GET("/:ticketId/messages", d.whatsapp.GetMessages)
-		chats.PATCH("/:ticketId/assign", ticketsEdit, d.whatsapp.AssignToMe)
-		chats.POST("/:ticketId/send", ticketsEdit, d.whatsapp.SendMessage)
-		chats.POST("/sync-agent", ticketsEdit, d.whatsapp.SyncAgentID)
+		chats.PATCH("/:ticketId/assign", d.whatsapp.AssignToMe)
+		chats.POST("/:ticketId/send", d.whatsapp.SendMessage)
+		chats.POST("/sync-agent", d.whatsapp.SyncAgentID)
 	}
 }

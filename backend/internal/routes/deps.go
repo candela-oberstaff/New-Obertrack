@@ -71,6 +71,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	brevoSvc := service.NewBrevoService()
 	wahaSvc := service.NewWahaService()
 	zohoSvc := service.NewZohoService()
+	slackSvc := service.NewSlackService()
 
 	// Services
 	userSvc := service.NewUserService(userRepo)
@@ -104,6 +105,10 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	}
 	go chatHub.Run()
 	go channelHub.Run()
+
+	// Watcher diario: alerta al equipo CS (interno + email + Slack) sobre
+	// profesionales con 2+ días sin registrar horas.
+	service.NewInactivityWatcher(adminRepo, userRepo, notifSvc, brevoSvc, slackSvc).Start()
 
 	return &deps{
 		cfg: cfg,

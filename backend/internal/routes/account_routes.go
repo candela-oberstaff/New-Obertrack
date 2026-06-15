@@ -53,6 +53,7 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/inactive-users", d.admin.GetInactiveUsers)
 		admin.GET("/recent-activity", d.admin.GetRecentActivity)
 		admin.GET("/absence-report", d.admin.GetAbsenceReport)
+		admin.GET("/seniority", d.admin.GetSeniorityRanking)
 		admin.GET("/stats", d.admin.GetStats)
 		admin.GET("/users", d.admin.GetAllUsers)
 		admin.POST("/users", d.admin.CreateUser)
@@ -68,6 +69,15 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.POST("/tenants/:id/suspend", d.admin.SuspendTenant)
 		admin.POST("/tenants/:id/activate", d.admin.ActivateTenant)
 		admin.GET("/employees/:id/tracking", d.admin.GetEmployeeTracking)
+	}
+
+	// Bitácora de gestión CS: fuera del grupo /admin porque los customer
+	// success deben poder ESCRIBIR seguimientos (allí solo tienen GET).
+	followUps := api.Group("/follow-ups")
+	followUps.Use(requireSupportInboxAccess())
+	{
+		followUps.GET("", d.admin.GetFollowUps)
+		followUps.POST("", d.admin.CreateFollowUp)
 	}
 
 	// Diagnóstico técnico de plataforma: superadmins y analistas de IT.

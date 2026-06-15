@@ -53,34 +53,6 @@ func TestRequireAdminPanel(t *testing.T) {
 	}
 }
 
-// Transferencias y reporte de rechazos: solo superadmin y CS Manager.
-func TestRequireSupportManager(t *testing.T) {
-	cs := string(models.UserTypeCustomerSuccess)
-	cases := []struct {
-		name      string
-		role      string
-		isSuper   bool
-		isManager bool
-		wantAllow bool
-	}{
-		{"superadmin", "superadmin", true, false, true},
-		{"CS manager", cs, false, true, true},
-		{"CS analista (sin flag manager)", cs, false, false, false},
-		{"profesional manager NO es soporte", string(models.UserTypeProfessional), false, true, false},
-		{"empresa NO gestiona soporte", string(models.UserTypeEmployer), false, false, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			c, w := accessCtx(http.MethodPost, tc.role, tc.isSuper, tc.isManager)
-			requireSupportManager()(c)
-			allowed := !c.IsAborted()
-			if allowed != tc.wantAllow {
-				t.Fatalf("allowed = %v (status %d), esperaba %v", allowed, w.Code, tc.wantAllow)
-			}
-		})
-	}
-}
-
 // Bandeja de soporte (tickets/tools): superadmin y cualquier customer success.
 func TestRequireSupportInboxAccess(t *testing.T) {
 	cases := []struct {

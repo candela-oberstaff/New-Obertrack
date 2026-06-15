@@ -78,20 +78,21 @@ export function UserModal({
           </div>
         )}
 
-        {mode === 'create' && (
-          <div className={styles['form-group']}>
-            <label>Tipo de Usuario</label>
-            <Select
-              fullWidth
-              value={form.user_type}
-              onChange={v => setForm({ ...form, user_type: String(v) })}
-              options={[
-                { value: 'profesional', label: 'Profesional' },
-                { value: 'empleador', label: 'Empresa' },
-              ]}
-            />
-          </div>
-        )}
+        <div className={styles['form-group']}>
+          <label>Tipo de Usuario (rol)</label>
+          <Select
+            fullWidth
+            value={form.user_type}
+            onChange={v => setForm({ ...form, user_type: String(v) })}
+            options={[
+              { value: 'profesional', label: 'Profesional' },
+              { value: 'empleador', label: 'Empresa' },
+              { value: 'customer_success', label: 'Customer Success' },
+              { value: 'analista_it', label: 'Analista de IT' },
+              { value: 'superadmin', label: 'Super Administrador' },
+            ]}
+          />
+        </div>
 
         {form.user_type === 'empleador' && (
           <div className={styles['form-group']}>
