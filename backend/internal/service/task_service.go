@@ -152,10 +152,14 @@ func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin b
 		}
 		filters["tenant_id"] = companyFilter
 	} else if tenantID > 0 {
-		// All tenant-scoped users (employers, professionals, managers) see
-		// all tasks within their tenant via the tenant_id filter.
-		// No per-user assignee/creator restriction needed.
 		filters["tenant_id"] = tenantID
+		// Empresas y managers supervisan al equipo: ven todas las tareas del
+		// tenant. Un profesional regular solo ve las tareas de los tableros a
+		// los que pertenece (igual que la lista de tableros, que es por
+		// membresía); así no aparecen en su dashboard tareas inaccesibles.
+		if !isManager && role != string(models.UserTypeEmployer) {
+			filters["member_board_user_id"] = userID
+		}
 	}
 
 	if status != "" {

@@ -85,6 +85,15 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 		query = query.Where("tasks.tenant_id = ?", companyID)
 	}
 
+	// Restringe a tareas de tableros donde el usuario es miembro (o creador),
+	// respetando la membresía de tableros (usado para profesionales regulares).
+	if uid, ok := filters["member_board_user_id"].(uint); ok {
+		query = query.Where(
+			"tasks.board_id IN (SELECT id FROM boards WHERE created_by = ? OR id IN (SELECT board_id FROM board_members WHERE user_id = ?))",
+			uid, uid,
+		)
+	}
+
 	if startDate, ok := filters["start_date"].(string); ok && startDate != "" {
 		query = query.Where("tasks.created_at >= ?", startDate)
 	}
