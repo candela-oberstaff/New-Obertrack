@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil } from 'lucide-react'
 import { userService, adminService } from '../services/api'
@@ -27,6 +28,10 @@ const tenantIdForUser = (u: User) =>
 export default function AdminUserDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const qc = useQueryClient()
+  // Invalida las vistas del panel admin (lista de usuarios, dashboard, etc.)
+  // para que reflejen los cambios hechos desde el detalle (no comparten caché).
+  const invalidateAdmin = useCallback(() => qc.invalidateQueries({ queryKey: ['admin'] }), [qc])
   const { user: viewer } = useAuth()
   // CS entra en modo consulta: sin acciones ni gestión de roles/grupos.
   const canManage = !!viewer?.is_superadmin
@@ -99,6 +104,7 @@ export default function AdminUserDetail() {
     try {
       await adminService.updateUser(user.id, { is_active: !user.is_active })
       await load()
+      invalidateAdmin()
     } catch { setActionMsg('No se pudo cambiar el estado.') } finally { setBusy(false) }
   }
 
@@ -108,6 +114,7 @@ export default function AdminUserDetail() {
     try {
       await adminService.updateUser(user.id, { is_manager: true })
       await load()
+      invalidateAdmin()
     } catch { setActionMsg('No se pudo promover.') } finally { setBusy(false) }
   }
 
@@ -166,6 +173,7 @@ export default function AdminUserDetail() {
       await adminService.updateUser(user.id, payload)
       setShowEdit(false)
       await load()
+      invalidateAdmin()
     } catch (err: any) {
       setEditError(err?.response?.data?.error ?? 'No se pudieron guardar los cambios.')
     }
