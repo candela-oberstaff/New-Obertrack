@@ -10,6 +10,8 @@ interface WorkHourDetailModalProps {
   workHour: WorkHour | null
   onClose: () => void
   canApprove: boolean
+  /** false cuando el rol del usuario deja Horas en solo lectura. */
+  canEdit: boolean
   onApprove: (id: number) => Promise<void>
   onReject: (id: number, reason: string) => Promise<void>
   onEdit: (wh: WorkHour) => void
@@ -20,6 +22,7 @@ export function WorkHourDetailModal({
   workHour,
   onClose,
   canApprove,
+  canEdit,
   onApprove,
   onReject,
   onEdit,
@@ -64,7 +67,7 @@ export function WorkHourDetailModal({
   }
 
   const isPending = !workHour.approved && !workHour.rejected
-  const showEdit = !isEmployer && !workHour.approved
+  const showEdit = canEdit && !isEmployer && !workHour.approved
   const showRejectOpen = canApprove && isPending && !showRejectForm
   const showRejectConfirm = canApprove && isPending && showRejectForm
   const showApprove = canApprove && !workHour.approved

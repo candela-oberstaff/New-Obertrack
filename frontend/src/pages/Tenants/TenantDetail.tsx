@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2 } from 'lucide-react'
+import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X } from 'lucide-react'
 import { useTenantDetail } from '../../hooks'
 import { adminService } from '../../services/api'
+import { useAuth } from '../../context/AuthContext'
 import type { EmployeeSummary } from '../../types'
 import Avatar from '../../components/Common/Avatar'
 import { Modal, Button } from '../../components/ui'
@@ -37,6 +38,9 @@ function generatePassword(): string {
 export default function TenantDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user: viewer } = useAuth()
+  // CS entra en modo consulta: sin editar, suspender ni tocar empleados.
+  const canManage = !!viewer?.is_superadmin
   const tenantId = Number(id)
   const { tenant, employees, activity, isLoading, error, refresh, suspendTenant, activateTenant, toggleEmployeeStatus, resetEmployeePassword } = useTenantDetail(tenantId)
 
@@ -63,6 +67,13 @@ export default function TenantDetail() {
   useEffect(() => {
     setEmpPage(1)
   }, [empSearch, empRole, empStatus])
+
+  const empHasFilters = !!(empSearch.trim() || empRole || empStatus)
+  const clearEmpFilters = () => {
+    setEmpSearch('')
+    setEmpRole('')
+    setEmpStatus('')
+  }
 
   const empFiltered = employees
     .filter(emp => {
@@ -212,20 +223,22 @@ export default function TenantDetail() {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <Button variant="secondary" onClick={openEdit} leftIcon={<Pencil size={16} />}>
-            Editar
-          </Button>
-          {tenant.is_active ? (
-            <button className={`${styles.dangerBtn}`} onClick={suspendTenant}>
-              <Ban size={18} /> Suspender acceso
-            </button>
-          ) : (
-            <button className={`${styles.successBtn}`} onClick={activateTenant}>
-              <CheckCircle2 size={18} /> Reactivar acceso
-            </button>
-          )}
-        </div>
+        {canManage && (
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <Button variant="secondary" onClick={openEdit} leftIcon={<Pencil size={16} />}>
+              Editar
+            </Button>
+            {tenant.is_active ? (
+              <button className={`${styles.dangerBtn}`} onClick={suspendTenant}>
+                <Ban size={18} /> Suspender acceso
+              </button>
+            ) : (
+              <button className={`${styles.successBtn}`} onClick={activateTenant}>
+                <CheckCircle2 size={18} /> Reactivar acceso
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className={styles.subTabs}>
@@ -269,8 +282,8 @@ export default function TenantDetail() {
           <div className={styles.empty}><Users size={40} /><p>Esta empresa no tiene empleados</p></div>
         ) : (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <div className={styles.searchBox}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 20 }}>
+              <div className={styles.searchBox} style={{ margin: 0 }}>
                 <Search size={18} />
                 <input
                   type="text"
@@ -279,7 +292,7 @@ export default function TenantDetail() {
                   onChange={(e) => setEmpSearch(e.target.value)}
                 />
               </div>
-              <div style={{ minWidth: 190, marginBottom: 20 }}>
+              <div style={{ minWidth: 190 }}>
                 <Select
                   fullWidth
                   clearable
@@ -293,7 +306,7 @@ export default function TenantDetail() {
                   ]}
                 />
               </div>
-              <div style={{ minWidth: 170, marginBottom: 20 }}>
+              <div style={{ minWidth: 170 }}>
                 <Select
                   fullWidth
                   clearable
@@ -306,6 +319,16 @@ export default function TenantDetail() {
                   ]}
                 />
               </div>
+              {empHasFilters && (
+                <button
+                  type="button"
+                  onClick={clearEmpFilters}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  title="Quitar todos los filtros"
+                >
+                  <X size={14} /> Limpiar filtros
+                </button>
+              )}
             </div>
 
             {empFiltered.length === 0 ? (
@@ -348,20 +371,24 @@ export default function TenantDetail() {
                           </td>
                           <td>
                             <div className={styles.rowActions}>
-                              <button
-                                className={`${styles.iconBtn} ${emp.is_active ? styles.danger : styles.success}`}
-                                onClick={(e) => handleToggleEmployee(e, emp)}
-                                title={emp.is_active ? 'Desactivar empleado' : 'Activar empleado'}
-                              >
-                                {emp.is_active ? <Ban size={16} /> : <CheckCircle2 size={16} />}
-                              </button>
-                              <button
-                                className={styles.iconBtn}
-                                onClick={(e) => openReset(e, emp)}
-                                title="Resetear contraseña"
-                              >
-                                <RefreshCw size={16} />
-                              </button>
+                              {canManage && (
+                                <>
+                                  <button
+                                    className={`${styles.iconBtn} ${emp.is_active ? styles.danger : styles.success}`}
+                                    onClick={(e) => handleToggleEmployee(e, emp)}
+                                    title={emp.is_active ? 'Desactivar empleado' : 'Activar empleado'}
+                                  >
+                                    {emp.is_active ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                                  </button>
+                                  <button
+                                    className={styles.iconBtn}
+                                    onClick={(e) => openReset(e, emp)}
+                                    title="Resetear contraseña"
+                                  >
+                                    <RefreshCw size={16} />
+                                  </button>
+                                </>
+                              )}
                               <ChevronRight size={18} className={styles.chevron} />
                             </div>
                           </td>

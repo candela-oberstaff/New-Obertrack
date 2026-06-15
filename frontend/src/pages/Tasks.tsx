@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTasksPageState } from '../components/Tasks/hooks/useTasksPageState'
+import { canEditModule } from '../lib/permissions'
 import type { User } from '../types'
 
 import { TasksBoard } from '../components/Tasks/components/TasksBoard'
@@ -88,6 +89,10 @@ export default function Tasks() {
     fetchPublicBoards,
     updateBoardMembers,
   } = useTasksPageState()
+
+  // Permiso del rol sobre el módulo Tareas: con "Ver" se ocultan las acciones
+  // de creación/edición (el backend igual las bloquea con 403).
+  const canEditTasks = canEditModule(user, 'tasks')
 
   // Deep-link from other pages (e.g. Dashboard "Próximas tareas"):
   // /tasks?company=X&board=Y&task=Z → pick the company (superadmin), open the
@@ -194,21 +199,23 @@ export default function Tasks() {
         <div className={styles['tasks-loading']} data-tour="tasks-empty">
           <h2>No tienes tableros</h2>
           <p>Crea tu primer tablero para organizar tus tareas</p>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button className={styles['btn-primary']} onClick={openBoardModal} data-tour="tasks-create-board">
-              <Plus size={18} /> Crear Tablero
-            </button>
-            <button 
-              className={styles['btn-secondary'] || 'btn-secondary'} 
-              data-tour="tasks-join-board"
-              onClick={() => {
-                fetchPublicBoards()
-                setShowJoinBoardModal(true)
-              }}
-            >
-              Unirse a Tablero
-            </button>
-          </div>
+          {canEditTasks && (
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className={styles['btn-primary']} onClick={openBoardModal} data-tour="tasks-create-board">
+                <Plus size={18} /> Crear Tablero
+              </button>
+              <button
+                className={styles['btn-secondary'] || 'btn-secondary'}
+                data-tour="tasks-join-board"
+                onClick={() => {
+                  fetchPublicBoards()
+                  setShowJoinBoardModal(true)
+                }}
+              >
+                Unirse a Tablero
+              </button>
+            </div>
+          )}
         </div>
         <BoardModal
           isOpen={showBoardModal}
@@ -243,20 +250,24 @@ export default function Tasks() {
                   placeholder="Seleccione un tablero..."
                   options={boards.map(b => ({ value: b.id, label: b.name, color: b.color || 'var(--primary)' }))}
                 />
-                <button className={styles['btn-icon']} onClick={openBoardModal} title="Crear tablero" data-tour="tasks-create-board">
-                  <Plus size={18} />
-                </button>
-                <button
-                  className={`${styles['btn-secondary'] || 'btn-secondary'} ${styles['btn-sm'] || 'btn-sm'}`}
-                  data-tour="tasks-join-board"
-                  onClick={() => {
-                    fetchPublicBoards()
-                    setShowJoinBoardModal(true)
-                  }}
-                  style={{ marginLeft: '8px', fontSize: '12px', padding: '6px 10px' }}
-                >
-                  Unirse a Tablero
-                </button>
+                {canEditTasks && (
+                  <>
+                    <button className={styles['btn-icon']} onClick={openBoardModal} title="Crear tablero" data-tour="tasks-create-board">
+                      <Plus size={18} />
+                    </button>
+                    <button
+                      className={`${styles['btn-secondary'] || 'btn-secondary'} ${styles['btn-sm'] || 'btn-sm'}`}
+                      data-tour="tasks-join-board"
+                      onClick={() => {
+                        fetchPublicBoards()
+                        setShowJoinBoardModal(true)
+                      }}
+                      style={{ marginLeft: '8px', fontSize: '12px', padding: '6px 10px' }}
+                    >
+                      Unirse a Tablero
+                    </button>
+                  </>
+                )}
                 {selectedBoard && (
                   <>
                     <button
@@ -297,9 +308,15 @@ export default function Tasks() {
             )}
           </div>
         </div>
-        <button className={styles['btn-primary']} onClick={handleOpenNewTaskModal} data-tour="tasks-new-task">
-          + Nueva Tarea
-        </button>
+        {canEditTasks ? (
+          <button className={styles['btn-primary']} onClick={handleOpenNewTaskModal} data-tour="tasks-new-task">
+            + Nueva Tarea
+          </button>
+        ) : (
+          <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 600, alignSelf: 'center' }}>
+            Tu rol tiene acceso de solo lectura en Tareas
+          </span>
+        )}
       </div>
 
       {!selectedBoard ? (

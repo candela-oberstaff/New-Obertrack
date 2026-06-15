@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useDashboard } from '../hooks'
 import {
@@ -22,6 +22,8 @@ const DAYS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
+
+  // El Analista de IT no tiene datos operativos: su home son las Métricas.
   const {
     workHours,
     summary,
@@ -35,6 +37,12 @@ export default function Dashboard() {
   } = useDashboard(user)
 
   const today = useMemo(() => new Date(), [])
+
+  // El Analista de IT no tiene datos operativos: su home son las Métricas.
+  // (Después de todos los hooks para no romper sus reglas de orden.)
+  if (user?.user_type === 'analista_it' && !user.is_superadmin) {
+    return <Navigate to="/admin/metrics" replace />
+  }
   const greeting = today.getHours() < 12 ? 'Buenos días' : today.getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'
 
   const isEmployer = user?.user_type === 'empleador' || user?.is_superadmin || user?.is_manager

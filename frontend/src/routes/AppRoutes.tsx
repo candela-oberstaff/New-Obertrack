@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
-import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute } from './guards'
+import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
 
 const Login = lazy(() => import('../pages/Login'))
@@ -22,8 +22,10 @@ const TenantsList = lazy(() => import('../pages/Tenants/TenantsList'))
 const TenantDetail = lazy(() => import('../pages/Tenants/TenantDetail'))
 const EmployeeDetail = lazy(() => import('../pages/Tenants/EmployeeDetail'))
 const Tools = lazy(() => import('../components/Admin/Tools'))
+const Metrics = lazy(() => import('../pages/Metrics'))
 const AuditLogs = lazy(() => import('../pages/AuditLogs'))
 const Tutoriales = lazy(() => import('../pages/Tutoriales'))
+const RolesGroups = lazy(() => import('../pages/RolesGroups'))
 const SurveyViewer = lazy(() => import('../pages/SurveyViewer'))
 const TicketsBoard = lazy(() => import('../pages/Tickets/TicketsBoard'))
 const TicketDetail = lazy(() => import('../pages/Tickets/TicketDetail'))
@@ -51,23 +53,25 @@ export function AppRoutes() {
           <Route path="tasks" element={<Tasks />} />
           <Route path="work-hours" element={<WorkHours />} />
           <Route path="chat" element={<SlackChat />} />
-          <Route path="whatsapp" element={<CustomerSuccessRoute><WhatsApp /></CustomerSuccessRoute>} />
+          <Route path="whatsapp" element={<AdminRoute><WhatsApp /></AdminRoute>} />
           <Route path="profile" element={<Profile />} />
-          <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
-          <Route path="admin/users/:id" element={<AdminRoute><AdminUserDetail /></AdminRoute>} />
-          <Route path="admin/tenants" element={<AdminRoute><TenantsList /></AdminRoute>} />
-          <Route path="admin/tenants/:id" element={<AdminRoute><TenantDetail /></AdminRoute>} />
-          <Route path="admin/tenants/:id/employees/:eid" element={<AdminRoute><EmployeeDetail /></AdminRoute>} />
-          <Route path="admin/tools" element={<AdminRoute><Tools /></AdminRoute>} />
-          <Route path="admin/metrics" element={<Navigate to="/admin/tools" replace />} />
-          <Route path="admin/audit" element={<AdminRoute><AuditLogs /></AdminRoute>} />
+          {/* Admin y Empresas: superadmin gestiona; CS consulta (el backend solo les permite GETs). */}
+          <Route path="admin" element={<CustomerSuccessRoute><Admin /></CustomerSuccessRoute>} />
+          <Route path="admin/users/:id" element={<CustomerSuccessRoute><AdminUserDetail /></CustomerSuccessRoute>} />
+          <Route path="admin/tenants" element={<CustomerSuccessRoute><TenantsList /></CustomerSuccessRoute>} />
+          <Route path="admin/tenants/:id" element={<CustomerSuccessRoute><TenantDetail /></CustomerSuccessRoute>} />
+          <Route path="admin/tenants/:id/employees/:eid" element={<CustomerSuccessRoute><EmployeeDetail /></CustomerSuccessRoute>} />
+          <Route path="admin/tools" element={<CustomerSuccessRoute><Tools /></CustomerSuccessRoute>} />
+          <Route path="admin/metrics" element={<PlatformTechRoute><Metrics /></PlatformTechRoute>} />
+          <Route path="admin/audit" element={<PlatformTechRoute><AuditLogs /></PlatformTechRoute>} />
           <Route path="tutoriales" element={<Tutoriales />} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
+          <Route path="roles-grupos" element={<ReportsRoute><RolesGroups /></ReportsRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
-          <Route path="tickets" element={<CustomerSuccessRoute><TicketsBoard /></CustomerSuccessRoute>} />
-          <Route path="tickets/report" element={<CustomerSuccessRoute><RejectionReport /></CustomerSuccessRoute>} />
-          <Route path="tickets/internal/:id" element={<CustomerSuccessRoute><InternalTicketDetail /></CustomerSuccessRoute>} />
-          <Route path="tickets/:id" element={<CustomerSuccessRoute><TicketDetail /></CustomerSuccessRoute>} />
+          <Route path="tickets" element={<AdminRoute><TicketsBoard /></AdminRoute>} />
+          <Route path="tickets/report" element={<AdminRoute><RejectionReport /></AdminRoute>} />
+          <Route path="tickets/internal/:id" element={<AdminRoute><InternalTicketDetail /></AdminRoute>} />
+          <Route path="tickets/:id" element={<AdminRoute><TicketDetail /></AdminRoute>} />
         </Route>
       </Routes>
     </Suspense>

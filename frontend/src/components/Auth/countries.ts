@@ -1,13 +1,8 @@
 import { Country, State } from 'country-state-city'
 
-// Opciones reducidas para el registro de empresa.
-export const COUNTRY_OPTIONS = [
-  { value: 'España', label: 'España' },
-  { value: 'Puerto Rico', label: 'Puerto Rico' },
-  { value: 'USA', label: 'USA' },
-]
-
-// Lista completa de países (en español) para profesionales y demás perfiles.
+// Lista completa de países (en español) usada por TODOS los roles que piden
+// país (profesional, empresa, customer success, analista de IT). El superadmin
+// no registra país. Antes la empresa usaba una lista reducida — se unificó.
 // LATAM va primero para facilitar la selección, luego el resto en orden alfabético.
 const LATAM_COUNTRIES = [
   'Argentina',
@@ -216,6 +211,10 @@ export const ALL_COUNTRY_OPTIONS = Array.from(
 )
   .sort((a, b) => a.localeCompare(b, 'es'))
   .map((name) => ({ value: name, label: name }))
+
+// COUNTRY_OPTIONS es alias de la lista completa: empresa, perfil y edición de
+// empresa importan este nombre y ahora reciben el mismo catálogo extenso.
+export const COUNTRY_OPTIONS = ALL_COUNTRY_OPTIONS
 
 // --- Estados / provincias por país (offline, sin API) -------------------
 

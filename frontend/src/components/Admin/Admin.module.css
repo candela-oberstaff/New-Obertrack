@@ -123,8 +123,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.1);
 }
 
 .stat-info {
@@ -852,6 +850,59 @@
   gap: 0.5rem;
 }
 .password-input { flex: 1; }
+
+/* ── Formulario de usuario dentro del Modal compartido (ui/Modal) ──────────
+   Las reglas ".modal .form-group" de arriba solo aplican al modal hecho a
+   mano; el UserModal renderiza dentro de ui/Modal (que ya aporta padding y
+   scroll), así que sus campos se estilan con este scope propio. */
+.user-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 1.25rem;
+}
+
+.user-form .form-group label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #64748b);
+}
+
+.user-form .form-group input[type="text"],
+.user-form .form-group input[type="email"],
+.user-form .form-group input[type="password"] {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  font-size: 0.92rem;
+  background: var(--bg-secondary, #f8fafc);
+  color: var(--text-primary, #0f172a);
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.user-form .form-group input::placeholder { color: var(--gray-400, #94a3b8); }
+
+.user-form .form-group input:focus {
+  outline: none;
+  background: var(--bg-primary, #fff);
+  border-color: var(--primary, #cc33cc);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.14);
+}
+
+/* Dentro de ui/Modal no hacen falta los márgenes laterales del modal viejo. */
+.user-form .section-label {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.user-form .permissions-group {
+  margin-left: 0;
+  margin-right: 0;
+}
 
 .modal-actions {
   display: flex;

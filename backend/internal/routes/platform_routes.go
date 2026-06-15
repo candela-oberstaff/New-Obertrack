@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/obertrack/backend/internal/handlers"
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
 )
@@ -30,8 +31,9 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		uploads.GET("/:filename", d.upload.GetFile)
 	}
 
+	// Tools (email marketing y encuestas): superadmins y customer success.
 	email := api.Group("/email")
-	email.Use(middleware.RequireSuperadmin())
+	email.Use(requireSupportInboxAccess())
 	{
 		email.GET("/templates", d.email.GetTemplates)
 		email.POST("/templates", d.email.CreateTemplate)
@@ -59,29 +61,59 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 
 	surveys := api.Group("/surveys")
 	{
-		surveys.POST("", middleware.RequireSuperadmin(), d.survey.CreateSurvey)
-		surveys.GET("", middleware.RequireSuperadmin(), d.survey.GetSurveys)
-		surveys.PUT("/:id", middleware.RequireSuperadmin(), d.survey.UpdateSurvey)
-		surveys.DELETE("/:id", middleware.RequireSuperadmin(), d.survey.DeleteSurvey)
-		surveys.POST("/:id/send", middleware.RequireSuperadmin(), d.survey.SendSurvey)
+		surveys.POST("", requireSupportInboxAccess(), d.survey.CreateSurvey)
+		surveys.GET("", requireSupportInboxAccess(), d.survey.GetSurveys)
+		surveys.PUT("/:id", requireSupportInboxAccess(), d.survey.UpdateSurvey)
+		surveys.DELETE("/:id", requireSupportInboxAccess(), d.survey.DeleteSurvey)
+		surveys.POST("/:id/send", requireSupportInboxAccess(), d.survey.SendSurvey)
 		surveys.GET("/:id", d.survey.GetSurvey)
 		surveys.POST("/:id/responses", d.survey.SubmitResponse)
 	}
 
+	// Módulo "tutorials": ver requiere al menos "view"; la gestión sigue siendo
+	// solo de superadmins (que no se restringen por roles).
+	tutorialsView := handlers.RequirePermission(d.rbacSvc, "tutorials", models.PermissionView)
+
 	tutorials := api.Group("/tutorials")
 	{
-		tutorials.GET("", d.tutorial.GetAll)
-		tutorials.GET("/views", d.tutorial.GetMyViews)
-		tutorials.GET("/:id", d.tutorial.GetByID)
+		tutorials.GET("", tutorialsView, d.tutorial.GetAll)
+		tutorials.GET("/views", tutorialsView, d.tutorial.GetMyViews)
+		tutorials.GET("/:id", tutorialsView, d.tutorial.GetByID)
 		tutorials.POST("", middleware.RequireSuperadmin(), d.tutorial.Create)
 		tutorials.POST("/reorder", middleware.RequireSuperadmin(), d.tutorial.Reorder)
-		tutorials.POST("/:id/view", d.tutorial.RecordView)
+		tutorials.POST("/:id/view", tutorialsView, d.tutorial.RecordView)
 		tutorials.PUT("/:id", middleware.RequireSuperadmin(), d.tutorial.Update)
 		tutorials.DELETE("/:id", middleware.RequireSuperadmin(), d.tutorial.Delete)
 	}
 
+	// Roles personalizados y grupos (equipos) por empresa. El superadmin opera
+	// con ?company_id=; las cuentas empresa quedan acotadas a su propio tenant.
+	rbac := api.Group("")
+	rbac.Use(handlers.RequireRBACManager())
+	{
+		rbac.GET("/roles", d.rbac.ListRoles)
+		rbac.POST("/roles", d.rbac.CreateRole)
+		rbac.PUT("/roles/:id", d.rbac.UpdateRole)
+		rbac.DELETE("/roles/:id", d.rbac.DeleteRole)
+		rbac.GET("/roles/:id/users", d.rbac.GetRoleUsers)
+		rbac.POST("/roles/:id/users", d.rbac.AssignRole)
+		rbac.DELETE("/roles/:id/users", d.rbac.UnassignRole)
+
+		rbac.GET("/rbac/users/:userId", d.rbac.GetUserRBAC)
+
+		rbac.GET("/groups", d.rbac.ListGroups)
+		rbac.POST("/groups", d.rbac.CreateGroup)
+		rbac.PUT("/groups/:id", d.rbac.UpdateGroup)
+		rbac.DELETE("/groups/:id", d.rbac.DeleteGroup)
+		rbac.GET("/groups/:id/members", d.rbac.GetGroupMembers)
+		rbac.POST("/groups/:id/members", d.rbac.AddGroupMember)
+		rbac.DELETE("/groups/:id/members", d.rbac.RemoveGroupMember)
+	}
+
+	// Módulo de tickets (Zoho + WhatsApp): solo superadmin. Customer success y
+	// profesionales no tienen acceso.
 	tickets := api.Group("/tickets")
-	tickets.Use(requireSupportInboxAccess())
+	tickets.Use(middleware.RequireSuperadmin())
 	{
 		tickets.GET("/waha/status", func(c *gin.Context) {
 			status, err := d.wahaSvc.GetSessionStatusAndQR("default")
@@ -108,7 +140,7 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 	}
 
 	chats := api.Group("/chats")
-	chats.Use(requireSupportInboxAccess())
+	chats.Use(middleware.RequireSuperadmin())
 	{
 		chats.GET("/me", d.whatsapp.GetMyChats)
 		chats.GET("/unassigned", d.whatsapp.GetUnassignedChats)

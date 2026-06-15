@@ -7,6 +7,8 @@ import ChatInputArea from './components/ChatInputArea';
 import TransferTicketModal from './components/TransferTicketModal';
 import styles from './Tickets.module.css';
 import { ArrowLeft, ExternalLink, RefreshCw, ArrowRightLeft, History } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { canEditModule, isSupportManager } from '../../lib/permissions';
 
 const STAGE_LABELS: Record<string, { label: string; color: string }> = {
   new:         { label: 'Nuevo',        color: 'var(--color-azure)' },
@@ -36,6 +38,7 @@ export default function TicketDetail() {
   // The route param is now the real Zoho Desk ticket ID string
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [ticket, setTicket]         = useState<Ticket | null>(null);
   const [linkedUser, setLinkedUser] = useState<LinkedUser | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -206,14 +209,16 @@ export default function TicketDetail() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {/* Transfer */}
-          <button
-            onClick={openTransfer}
-            className={styles.channelBtn}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem' }}
-          >
-            <ArrowRightLeft size={13} /> Traspasar
-          </button>
+          {/* Transfer: solo CS Managers (el backend también lo exige) */}
+          {isSupportManager(user) && (
+            <button
+              onClick={openTransfer}
+              className={styles.channelBtn}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem' }}
+            >
+              <ArrowRightLeft size={13} /> Traspasar
+            </button>
+          )}
           {/* Refresh */}
           <button
             onClick={() => id && fetchTicket(id, true)}
@@ -253,7 +258,7 @@ export default function TicketDetail() {
           onStatusChange={handleStatusChange}
           stageError={stageError}
           updatingStage={updatingStage}
-          onTransfer={openTransfer}
+          onTransfer={isSupportManager(user) ? openTransfer : undefined}
         />
 
         {/* Chat area */}
@@ -275,7 +280,13 @@ export default function TicketDetail() {
             </div>
           )}
           <MessageTimeline ticket={ticket} contact={ticket.contact} />
-          <ChatInputArea onSend={handleSendResponse} />
+          {canEditModule(user, 'tickets') ? (
+            <ChatInputArea onSend={handleSendResponse} />
+          ) : (
+            <div style={{ padding: '0.85rem 1.1rem', borderTop: '1px solid var(--glass-border, #e2e8f0)', fontSize: '0.85rem', color: 'var(--gray-400)', textAlign: 'center' }}>
+              Tu rol tiene acceso de solo lectura en Tickets
+            </div>
+          )}
         </div>
       </div>
 

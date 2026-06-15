@@ -33,6 +33,7 @@ type deps struct {
 	survey       *handlers.SurveyHandler
 	metrics      *handlers.MetricsHandler
 	tutorial     *handlers.TutorialHandler
+	rbac         *handlers.RBACHandler
 	ticket       *handlers.TicketHandler
 	whatsapp     *handlers.WhatsAppHandler
 	waha         *handlers.WahaHandler
@@ -42,6 +43,8 @@ type deps struct {
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
+	// rbacSvc is needed by the per-module RequirePermission route middleware.
+	rbacSvc service.RBACService
 	// auditSvc is attached as a global middleware in RegisterRoutes.
 	auditSvc service.AuditService
 }
@@ -61,6 +64,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	taskRepo := repository.NewTaskRepository(db)
 	adminRepo := repository.NewAdminRepository(db)
 	tutorialRepo := repository.NewTutorialRepository(db)
+	rbacRepo := repository.NewRBACRepository(db)
 	ticketRepo := repository.NewTicketRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 	audienceRepo := repository.NewAudienceRepository(db)
@@ -69,6 +73,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	brevoSvc := service.NewBrevoService()
 	wahaSvc := service.NewWahaService()
 	zohoSvc := service.NewZohoService()
+	slackSvc := service.NewSlackService()
 
 	// Services
 	userSvc := service.NewUserService(userRepo)
@@ -83,6 +88,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo)
 	boardSvc := service.NewBoardService(boardRepo, userRepo)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
+	rbacSvc := service.NewRBACService(rbacRepo, userRepo)
 	auditSvc := service.NewAuditService(auditRepo)
 
 	// WebSocket hubs
@@ -102,14 +108,18 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	go chatHub.Run()
 	go channelHub.Run()
 
+	// Watcher diario: alerta al equipo CS (interno + email + Slack) sobre
+	// profesionales con 2+ días sin registrar horas.
+	service.NewInactivityWatcher(adminRepo, userRepo, notifSvc, brevoSvc, slackSvc).Start()
+
 	return &deps{
 		cfg: cfg,
 		// Session-revocation lookup used by the auth middleware (audit A-04).
 		tvGetter: func(userID uint) (int, error) { return authSvc.GetTokenVersion(userID) },
 
-		auth:         handlers.NewAuthHandler(authSvc, auditSvc),
+		auth:         handlers.NewAuthHandler(authSvc, auditSvc, rbacSvc),
 		user:         handlers.NewUserHandler(userSvc),
-		admin:        handlers.NewAdminHandler(adminSvc),
+		admin:        handlers.NewAdminHandler(adminSvc, rbacSvc),
 		board:        handlers.NewBoardHandler(boardSvc),
 		task:         handlers.NewTaskHandler(taskSvc),
 		workHour:     handlers.NewWorkHourHandler(workHourSvc),
@@ -121,6 +131,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		survey:       handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
 		metrics:      handlers.NewMetricsHandler(metricsRepo),
 		tutorial:     handlers.NewTutorialHandler(tutorialSvc),
+		rbac:         handlers.NewRBACHandler(rbacSvc),
 		ticket:       handlers.NewTicketHandler(db, zohoSvc, ticketSvc),
 		whatsapp:     handlers.NewWhatsAppHandler(db, zohoSvc),
 		waha:         handlers.NewWahaHandler(ticketSvc),
@@ -129,6 +140,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		audience:     handlers.NewAudienceHandler(audienceRepo),
 
 		wahaSvc:  wahaSvc,
+		rbacSvc:  rbacSvc,
 		auditSvc: auditSvc,
 	}
 }

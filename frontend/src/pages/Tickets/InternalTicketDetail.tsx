@@ -4,6 +4,8 @@ import { ArrowLeft, RefreshCw, Mail, Phone, Building2, User as UserIcon, UserX, 
 import { Ticket, TicketTransfer, SupportAgent, ticketService } from '../../services/ticket.service'
 import TransferTicketModal from './components/TransferTicketModal'
 import styles from './Tickets.module.css'
+import { useAuth } from '../../context/AuthContext'
+import { canEditModule, isSupportManager } from '../../lib/permissions'
 
 const STAGE_OPTIONS: { id: string; label: string }[] = [
   { id: 'new', label: 'Nuevo' },
@@ -19,6 +21,8 @@ function professionalName(t: Ticket): string {
 export default function InternalTicketDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const canEditTickets = canEditModule(user, 'tickets')
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -144,7 +148,7 @@ export default function InternalTicketDetail() {
             <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', margin: 0 }}>Estado de seguimiento</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               {STAGE_OPTIONS.map(opt => (
-                <button key={opt.id} onClick={() => changeStage(opt.id)} disabled={busy}
+                <button key={opt.id} onClick={() => changeStage(opt.id)} disabled={busy || !canEditTickets}
                   style={{
                     padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, textAlign: 'left',
                     border: ticket.stage === opt.id ? '2px solid var(--primary)' : '1px solid var(--glass-border, #cbd5e1)',
@@ -160,10 +164,12 @@ export default function InternalTicketDetail() {
           <div className={styles.sidebarSection}>
             <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', margin: 0 }}>Responsable</h3>
             <InfoRow icon={<UserIcon size={15} />} label="Asignado a" value={ticket.assignee_name || 'Sin asignar'} />
-            <button onClick={openTransfer} disabled={busy}
-              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--primary, #cc33cc)', background: 'transparent', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
-              <ArrowRightLeft size={15} /> Traspasar ticket
-            </button>
+            {isSupportManager(user) && (
+              <button onClick={openTransfer} disabled={busy}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--primary, #cc33cc)', background: 'transparent', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                <ArrowRightLeft size={15} /> Traspasar ticket
+              </button>
+            )}
           </div>
         </div>
 
@@ -185,22 +191,28 @@ export default function InternalTicketDetail() {
             )}
           </div>
 
-          <div style={{ borderTop: '1px solid var(--glass-border, #e2e8f0)', padding: '1rem 1.25rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addNote() } }}
-              placeholder="Escribe una nota de seguimiento… (Enter para guardar)"
-              rows={2}
-              style={{ flex: 1, resize: 'vertical', padding: '0.6rem 0.75rem', borderRadius: '10px', border: '1px solid var(--glass-border, #cbd5e1)', fontSize: '0.9rem', fontFamily: 'inherit' }}
-            />
-            <button onClick={addNote} disabled={busy || !note.trim()} className={styles.sendBtn}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', opacity: (busy || !note.trim()) ? 0.6 : 1 }}>
-              <Send size={15} /> Agregar
-            </button>
-          </div>
+          {canEditTickets ? (
+            <div style={{ borderTop: '1px solid var(--glass-border, #e2e8f0)', padding: '1rem 1.25rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addNote() } }}
+                placeholder="Escribe una nota de seguimiento… (Enter para guardar)"
+                rows={2}
+                style={{ flex: 1, resize: 'vertical', padding: '0.6rem 0.75rem', borderRadius: '10px', border: '1px solid var(--glass-border, #cbd5e1)', fontSize: '0.9rem', fontFamily: 'inherit' }}
+              />
+              <button onClick={addNote} disabled={busy || !note.trim()} className={styles.sendBtn}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', opacity: (busy || !note.trim()) ? 0.6 : 1 }}>
+                <Send size={15} /> Agregar
+              </button>
+            </div>
+          ) : (
+            <div style={{ borderTop: '1px solid var(--glass-border, #e2e8f0)', padding: '0.85rem 1.25rem', fontSize: '0.85rem', color: 'var(--gray-400)', textAlign: 'center' }}>
+              Tu rol tiene acceso de solo lectura en Tickets
+            </div>
+          )}
 
-          {ticket.stage !== 'closed' && (
+          {canEditTickets && ticket.stage !== 'closed' && (
             <div style={{ padding: '0 1.25rem 1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
               <button onClick={() => changeStage('closed')} disabled={busy}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: 'none', background: '#10b981', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>

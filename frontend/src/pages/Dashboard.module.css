@@ -115,9 +115,8 @@
 }
 
 .stat-icon.blue {
-  background: #f8fafc;
-  color: var(--black);
-  border: 1px solid #e1e4e8;
+  background: #eff6ff;
+  color: #3b82f6;
 }
 
 .stat-icon.green {

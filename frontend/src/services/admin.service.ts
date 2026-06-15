@@ -48,6 +48,18 @@ export const adminService = {
     const { data } = await api.get('/admin/tenants')
     return data
   },
+  getSeniority: async () => {
+    const { data } = await api.get<{ data: any[] }>('/admin/seniority')
+    return data.data || []
+  },
+  getFollowUps: async (kind: 'inactivity' | 'absence') => {
+    const { data } = await api.get<{ data: any[] }>('/follow-ups', { params: { kind } })
+    return data.data || []
+  },
+  createFollowUp: async (payload: { user_id: number; kind: 'inactivity' | 'absence'; status: string; note?: string }) => {
+    const { data } = await api.post('/follow-ups', payload)
+    return data
+  },
   getTenant: async (id: number) => {
     const { data } = await api.get(`/admin/tenants/${id}`)
     return data

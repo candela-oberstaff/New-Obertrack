@@ -1,10 +1,31 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/models"
 )
+
+// requireAdminPanel: el superadmin gestiona todo; los customer success
+// (manager y analista) tienen acceso de consulta (solo GET) al panel de
+// administración y empresas para dar soporte — nunca mutaciones.
+func requireAdminPanel() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if middleware.IsSuperadmin(c) {
+			c.Next()
+			return
+		}
+		if middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess) && c.Request.Method == http.MethodGet {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin (customer success solo puede consultar)"})
+		c.Abort()
+	}
+}
 
 // registerAccountRoutes wires identity & administration: the current user,
 // user management and the superadmin panel.
@@ -25,14 +46,14 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	}
 
 	admin := api.Group("/admin")
-	admin.Use(middleware.RequireSuperadmin())
+	admin.Use(requireAdminPanel())
 	{
 		admin.GET("/dashboard", d.admin.GetDashboard)
 		admin.GET("/companies", d.admin.GetCompanies)
 		admin.GET("/inactive-users", d.admin.GetInactiveUsers)
 		admin.GET("/recent-activity", d.admin.GetRecentActivity)
-		admin.GET("/audit-logs", d.audit.GetLogs)
 		admin.GET("/absence-report", d.admin.GetAbsenceReport)
+		admin.GET("/seniority", d.admin.GetSeniorityRanking)
 		admin.GET("/stats", d.admin.GetStats)
 		admin.GET("/users", d.admin.GetAllUsers)
 		admin.POST("/users", d.admin.CreateUser)
@@ -50,6 +71,16 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/employees/:id/tracking", d.admin.GetEmployeeTracking)
 	}
 
-	// Global platform metrics (superadmin only).
-	api.GET("/metrics", middleware.RequireSuperadmin(), d.metrics.GetGlobalMetrics)
+	// Bitácora de gestión CS: fuera del grupo /admin porque los customer
+	// success deben poder ESCRIBIR seguimientos (allí solo tienen GET).
+	followUps := api.Group("/follow-ups")
+	followUps.Use(requireSupportInboxAccess())
+	{
+		followUps.GET("", d.admin.GetFollowUps)
+		followUps.POST("", d.admin.CreateFollowUp)
+	}
+
+	// Diagnóstico técnico de plataforma: superadmins y analistas de IT.
+	api.GET("/admin/audit-logs", middleware.RequirePlatformTech(), d.audit.GetLogs)
+	api.GET("/metrics", middleware.RequirePlatformTech(), d.metrics.GetGlobalMetrics)
 }

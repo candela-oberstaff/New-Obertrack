@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdmin } from '../hooks'
 import {
@@ -17,7 +17,9 @@ import {
   UserPlus,
   X,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Mail,
+  MessageCircle
 } from 'lucide-react'
 import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
@@ -25,6 +27,8 @@ import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
 import { ActivityFeed } from '../components/Admin/ActivityFeed'
 import { authService } from '../services/api'
+import { useAuth } from '../context/AuthContext'
+import { COUNTRY_OPTIONS, getStatesForCountry } from '../components/Auth/countries'
 import styles from '../components/Admin/Admin.module.css'
 
 const EMPTY_CREATE_FORM = {
@@ -49,6 +53,12 @@ export default function Admin() {
     stats,
     users,
     inactiveUsers,
+    teamInactivity,
+    teamInactivityLoading,
+    seniority,
+    tenants,
+    followUps,
+    setFollowUp,
     recentActivity,
     absenceReport,
     isLoading,
@@ -60,10 +70,27 @@ export default function Admin() {
   } = useAdmin()
 
   const navigate = useNavigate()
+  const { user: viewer } = useAuth()
+  // CS (manager y analista) entran en modo consulta: sin crear/editar/eliminar.
+  const canManage = !!viewer?.is_superadmin
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState<number | ''>('')
   const [usersPage, setUsersPage] = useState(1)
+
+  // Actividad de equipo (pestaña Actividad): semáforo de inactividad.
+  const [teamSearch, setTeamSearch] = useState('')
+  const [teamTier, setTeamTier] = useState<'' | 'yellow' | 'red'>('')
+  const [teamPage, setTeamPage] = useState(1)
+
+  // Reporte de ausencias (pestaña Actividad): agrupado por usuario.
+  const [absSearch, setAbsSearch] = useState('')
+  const [absPage, setAbsPage] = useState(1)
+  const [absExpandedUserId, setAbsExpandedUserId] = useState<number | null>(null)
+
+  // Métricas CS (pestaña Dashboard): tabla de antigüedad.
+  const [csSearch, setCsSearch] = useState('')
+  const [csPage, setCsPage] = useState(1)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState<any>(null)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -204,6 +231,167 @@ export default function Admin() {
     setUsersPage(1)
   }, [searchQuery, roleFilter, companyFilter])
 
+  // ── Actividad de equipo: filtrado + paginación ──────────────────────────────
+  const TEAM_PER_PAGE = 10
+
+  const teamFiltered = teamInactivity
+    .filter(u => {
+      const q = teamSearch.trim().toLowerCase()
+      if (q && !(u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.company?.toLowerCase().includes(q))) return false
+      if (teamTier === 'yellow' && u.days_inactive !== 1) return false
+      if (teamTier === 'red' && u.days_inactive < 2) return false
+      return true
+    })
+    .sort((a, b) => b.days_inactive - a.days_inactive || (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }))
+
+  const teamYellowCount = teamInactivity.filter(u => u.days_inactive === 1).length
+  const teamRedCount = teamInactivity.filter(u => u.days_inactive >= 2).length
+  const teamTotalPages = Math.max(1, Math.ceil(teamFiltered.length / TEAM_PER_PAGE))
+  const teamCurrentPage = Math.min(teamPage, teamTotalPages)
+  const teamPaginated = teamFiltered.slice((teamCurrentPage - 1) * TEAM_PER_PAGE, teamCurrentPage * TEAM_PER_PAGE)
+
+  useEffect(() => {
+    setTeamPage(1)
+  }, [teamSearch, teamTier])
+
+  // Mensaje de seguimiento prellenado para las acciones rápidas (email / WhatsApp).
+  const followUpMessage = (u: { name: string; days_inactive: number }) =>
+    `Hola ${u.name?.split(' ')[0] || ''}, te escribimos del equipo de Obertrack: notamos que no registras horas desde hace ${u.days_inactive} día${u.days_inactive === 1 ? '' : 's'}. ¿Está todo bien? Si tienes algún inconveniente cuéntanos para ayudarte.`
+
+  const emailHref = (u: { name: string; email: string; days_inactive: number }) =>
+    `mailto:${u.email}?subject=${encodeURIComponent('Seguimiento de actividad en Obertrack')}&body=${encodeURIComponent(followUpMessage(u))}`
+
+  const whatsappHref = (u: { name: string; phone_number?: string; days_inactive: number }) => {
+    const digits = (u.phone_number || '').replace(/\D/g, '')
+    return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(followUpMessage(u as any))}` : null
+  }
+
+  // ── Reporte de ausencias: agrupado por usuario ──────────────────────────────
+  const ABS_PER_PAGE = 10
+
+  const absenceGroups = (() => {
+    const map = new Map<number, {
+      user_id: number; name: string; email: string; phone_number?: string; avatar?: string
+      tenant_id: number; company: string; count: number; totalHours: number; pending: number
+      lastDate: string; lastReason: string; items: typeof absenceItems
+    }>()
+    for (const item of absenceItems) {
+      const g = map.get(item.user_id) || {
+        user_id: item.user_id, name: item.user, email: item.email, phone_number: item.phone_number,
+        avatar: item.avatar, tenant_id: item.tenant_id, company: item.company,
+        count: 0, totalHours: 0, pending: 0, lastDate: '', lastReason: '', items: [] as typeof absenceItems,
+      }
+      g.count++
+      g.totalHours += item.absence_hours || 0
+      if (!item.approved && !item.rejected) g.pending++
+      if (!g.lastDate || item.work_date > g.lastDate) {
+        g.lastDate = item.work_date
+        g.lastReason = item.absence_reason
+      }
+      g.items.push(item)
+      map.set(item.user_id, g)
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count || (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }))
+  })()
+
+  const absFiltered = absenceGroups.filter(g => {
+    const q = absSearch.trim().toLowerCase()
+    return !q || g.name?.toLowerCase().includes(q) || g.email?.toLowerCase().includes(q) || g.company?.toLowerCase().includes(q)
+  })
+  const absTotalPages = Math.max(1, Math.ceil(absFiltered.length / ABS_PER_PAGE))
+  const absCurrentPage = Math.min(absPage, absTotalPages)
+  const absPaginated = absFiltered.slice((absCurrentPage - 1) * ABS_PER_PAGE, absCurrentPage * ABS_PER_PAGE)
+
+  useEffect(() => {
+    setAbsPage(1)
+  }, [absSearch])
+
+  const absenceFollowUp = (g: { name: string; count: number }) =>
+    `Hola ${g.name?.split(' ')[0] || ''}, te escribimos del equipo de Obertrack por el seguimiento de tus ${g.count} ausencia${g.count === 1 ? '' : 's'} registrada${g.count === 1 ? '' : 's'} este mes. ¿Está todo bien? Si necesitas apoyo, cuéntanos.`
+
+  const absEmailHref = (g: { name: string; email: string; count: number }) =>
+    `mailto:${g.email}?subject=${encodeURIComponent('Seguimiento de ausencias en Obertrack')}&body=${encodeURIComponent(absenceFollowUp(g))}`
+
+  const absWhatsappHref = (g: { name: string; phone_number?: string; count: number }) => {
+    const digits = (g.phone_number || '').replace(/\D/g, '')
+    return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(absenceFollowUp(g))}` : null
+  }
+
+  // ── Métricas de Customer Success (dashboard) ───────────────────────────────
+  const CS_PER_PAGE = 10
+
+  const absenceReasons = absenceReport?.reasons || []
+  const reasonMax = Math.max(1, ...absenceReasons.map(r => r.count))
+  const topAbsentees = absenceGroups.slice(0, 5)
+  const tenantsPending = [...tenants]
+    .filter((t: any) => (t.pending_count || 0) > 0)
+    .sort((a: any, b: any) => (b.pending_count || 0) - (a.pending_count || 0))
+    .slice(0, 5)
+  const tenantsRejecting = [...tenants]
+    .filter((t: any) => (t.rejected_count || 0) > 0)
+    .sort((a: any, b: any) => (b.rejected_count || 0) - (a.rejected_count || 0))
+    .slice(0, 5)
+
+  const seniorityFiltered = seniority.filter(s => {
+    const q = csSearch.trim().toLowerCase()
+    return !q || s.name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q) || s.company?.toLowerCase().includes(q)
+  })
+  const csTotalPages = Math.max(1, Math.ceil(seniorityFiltered.length / CS_PER_PAGE))
+  const csCurrentPage = Math.min(csPage, csTotalPages)
+  const seniorityPaginated = seniorityFiltered.slice((csCurrentPage - 1) * CS_PER_PAGE, csCurrentPage * CS_PER_PAGE)
+
+  useEffect(() => {
+    setCsPage(1)
+  }, [csSearch])
+
+  const seniorityLabel = (days: number) => {
+    if (days >= 365) {
+      const years = Math.floor(days / 365)
+      const months = Math.floor((days % 365) / 30)
+      return `${years} año${years === 1 ? '' : 's'}${months > 0 ? ` y ${months} mes${months === 1 ? '' : 'es'}` : ''}`
+    }
+    if (days >= 30) {
+      const months = Math.floor(days / 30)
+      return `${months} mes${months === 1 ? '' : 'es'}`
+    }
+    return `${days} día${days === 1 ? '' : 's'}`
+  }
+
+  const csCardStyle: React.CSSProperties = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '18px' }
+  const csCardTitleStyle: React.CSSProperties = { margin: '0 0 12px', fontSize: '14px', fontWeight: 800, color: '#0f172a' }
+
+  // ── Bitácora de gestión CS: celda compartida (inactividad / ausencias) ─────
+  const FOLLOWUP_STYLES: Record<string, { bg: string; color: string }> = {
+    contacted: { bg: 'rgba(59,130,246,0.12)', color: '#1d4ed8' },
+    justified: { bg: 'rgba(16,185,129,0.12)', color: '#047857' },
+    escalated: { bg: 'rgba(168,85,247,0.14)', color: '#7e22ce' },
+  }
+
+  const renderFollowUpCell = (userId: number, kind: 'inactivity' | 'absence') => {
+    const info = followUps[kind][userId]
+    const palette = info ? FOLLOWUP_STYLES[info.status] : undefined
+    return (
+      <div onClick={(e) => e.stopPropagation()}>
+        <select
+          value={info?.status || ''}
+          onChange={(e) => { if (e.target.value) setFollowUp(userId, kind, e.target.value) }}
+          title="Estado de gestión del seguimiento"
+          style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 700, background: palette?.bg || '#f8fafc', color: palette?.color || '#64748b', cursor: 'pointer' }}
+        >
+          {!info && <option value="">— Gestionar —</option>}
+          <option value="contacted">📞 Contactado</option>
+          <option value="justified">✅ Justificado</option>
+          <option value="escalated">⚠️ Escalado</option>
+        </select>
+        {info && (
+          <small style={{ display: 'block', color: '#94a3b8', marginTop: '3px' }}>
+            por {info.by_name} · {new Date(info.created_at).toLocaleDateString('es-ES')}
+          </small>
+        )}
+      </div>
+    )
+  }
+
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'users', label: 'Usuarios', icon: Users },
@@ -288,7 +476,7 @@ export default function Admin() {
           <div className={styles['dashboard-tab']}>
             <div className={styles['stats-grid']} data-tour="admin-stats">
               <div className={styles['stat-card']}>
-                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}>
+                <div className={styles['stat-icon']} style={{ background: '#faf5ff', color: 'var(--primary)' }}>
                   <Users size={26} />
                 </div>
                 <div className={styles['stat-info']}>
@@ -297,7 +485,7 @@ export default function Admin() {
                 </div>
               </div>
               <div className={styles['stat-card']}>
-                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+                <div className={styles['stat-icon']} style={{ background: '#ecfdf5', color: '#10b981' }}>
                   <Users size={26} />
                 </div>
                 <div className={styles['stat-info']}>
@@ -306,7 +494,7 @@ export default function Admin() {
                 </div>
               </div>
               <div className={styles['stat-card']}>
-                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+                <div className={styles['stat-icon']} style={{ background: '#fffbeb', color: '#f59e0b' }}>
                   <Building2 size={26} />
                 </div>
                 <div className={styles['stat-info']}>
@@ -315,7 +503,7 @@ export default function Admin() {
                 </div>
               </div>
               <div className={styles['stat-card']}>
-                <div className={styles['stat-icon']} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }}>
+                <div className={styles['stat-icon']} style={{ background: '#f5f3ff', color: '#8b5cf6' }}>
                   <Activity size={26} />
                 </div>
                 <div className={styles['stat-info']}>
@@ -433,6 +621,180 @@ export default function Admin() {
               </section>
             </div>
 
+            {/* ── Métricas de Customer Success ── */}
+            <div style={{ margin: '28px 0' }} data-tour="admin-cs-metrics">
+              <h3 style={{ margin: '0 0 4px', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Métricas de Customer Success</h3>
+              <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>Indicadores de la operación en Obertrack: ausencias, antigüedad y salud de aprobación por cliente.</p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                {/* Motivos de ausencia más recurrentes */}
+                <div style={csCardStyle}>
+                  <h4 style={csCardTitleStyle}>📋 Ausencias más recurrentes</h4>
+                  {absenceReasons.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Sin ausencias este mes</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {absenceReasons.map(r => (
+                        <div key={r.reason}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '3px' }}>
+                            <span style={{ color: '#334155', fontWeight: 600 }}>{r.reason}</span>
+                            <span style={{ color: '#64748b' }}>{r.count}</span>
+                          </div>
+                          <div style={{ height: 6, borderRadius: 999, background: '#f1f5f9' }}>
+                            <div style={{ height: 6, borderRadius: 999, width: `${Math.round((r.count / reasonMax) * 100)}%`, background: 'linear-gradient(90deg, #f59e0b, #ef4444)' }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Top ausentistas del mes */}
+                <div style={csCardStyle}>
+                  <h4 style={csCardTitleStyle}>🏆 Top ausencias del mes</h4>
+                  {topAbsentees.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Sin ausencias este mes</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {topAbsentees.map((g, i) => (
+                        <div key={g.user_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }} onClick={() => navigate(`/admin/users/${g.user_id}`)} title="Ver detalle">
+                          <span style={{ width: 18, fontSize: '12px', fontWeight: 800, color: '#94a3b8' }}>{i + 1}</span>
+                          <Avatar src={g.avatar} name={g.name} size="sm" />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</span>
+                            <small style={{ color: '#94a3b8' }}>{g.company}</small>
+                          </div>
+                          <span style={{ padding: '2px 10px', borderRadius: 999, fontSize: '12px', fontWeight: 700, background: 'rgba(239,68,68,0.1)', color: '#b91c1c' }}>{g.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Clientes sin aprobar horas */}
+                <div style={csCardStyle}>
+                  <h4 style={csCardTitleStyle}>⏳ Clientes sin aprobar horas</h4>
+                  {tenantsPending.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Todos los clientes están al día 🎉</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {tenantsPending.map((t: any) => (
+                        <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', cursor: 'pointer' }} onClick={() => navigate(`/admin/tenants/${t.id}`)} title="Ver empresa">
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{t.company_name}</span>
+                          <span style={{ padding: '2px 10px', borderRadius: 999, fontSize: '12px', fontWeight: 700, background: 'rgba(245,158,11,0.14)', color: '#b45309', whiteSpace: 'nowrap' }}>
+                            {t.pending_count} reg. · {(t.pending_hours || 0).toFixed(1)}h
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Clientes que rechazan registros */}
+                <div style={csCardStyle}>
+                  <h4 style={csCardTitleStyle}>🚫 Clientes que rechazan registros</h4>
+                  {tenantsRejecting.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Sin rechazos registrados</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {tenantsRejecting.map((t: any) => (
+                        <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', cursor: 'pointer' }} onClick={() => navigate(`/admin/tenants/${t.id}`)} title="Ver empresa">
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>{t.company_name}</span>
+                          <span style={{ padding: '2px 10px', borderRadius: 999, fontSize: '12px', fontWeight: 700, background: 'rgba(239,68,68,0.12)', color: '#b91c1c', whiteSpace: 'nowrap' }}>
+                            {t.rejected_count} rechazado{t.rejected_count === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Top antigüedad */}
+              <div style={csCardStyle}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                  <h4 style={{ ...csCardTitleStyle, margin: 0 }}>🎖️ Antigüedad de profesionales</h4>
+                  <div className={styles['search-box']} style={{ margin: 0 }}>
+                    <Search size={16} />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre, correo o empresa..."
+                      value={csSearch}
+                      onChange={(e) => setCsSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {seniorityFiltered.length === 0 ? (
+                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+                    {seniority.length === 0 ? 'Sin profesionales registrados' : 'Sin resultados con la búsqueda'}
+                  </p>
+                ) : (
+                  <>
+                    <div className={styles['users-table']}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Profesional</th>
+                            <th>Empresa</th>
+                            <th>Desde</th>
+                            <th>Antigüedad</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {seniorityPaginated.map((s, idx) => (
+                            <tr key={s.user_id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/admin/users/${s.user_id}`)} title="Ver detalle del profesional">
+                              <td style={{ fontWeight: 800, color: '#94a3b8' }}>{(csCurrentPage - 1) * CS_PER_PAGE + idx + 1}</td>
+                              <td>
+                                <div className={styles['user-cell']}>
+                                  <Avatar src={s.avatar} name={s.name} size="sm" />
+                                  <div>
+                                    <span style={{ display: 'block' }}>{s.name}</span>
+                                    <small style={{ color: '#94a3b8' }}>{s.email}{s.job_title ? ` · ${s.job_title}` : ''}</small>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                {s.tenant_id > 0 ? (
+                                  <button type="button" onClick={(e) => { e.stopPropagation(); navigate(`/admin/tenants/${s.tenant_id}`) }} style={{ background: 'none', border: 'none', padding: 0, color: '#5a52e6', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}>
+                                    {s.company}
+                                  </button>
+                                ) : (s.company || '—')}
+                              </td>
+                              <td>{new Date(s.started_at).toLocaleDateString('es-ES')}</td>
+                              <td>
+                                <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: '12px', fontWeight: 700, background: 'rgba(90,82,230,0.1)', color: '#5a52e6' }}>
+                                  {seniorityLabel(s.days_employed)}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', paddingTop: '12px' }}>
+                      <span style={{ fontSize: '13px', color: '#64748b' }}>
+                        Mostrando {(csCurrentPage - 1) * CS_PER_PAGE + 1}–{Math.min(csCurrentPage * CS_PER_PAGE, seniorityFiltered.length)} de {seniorityFiltered.length} profesionales
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button type="button" className={styles['btn-icon']} onClick={() => setCsPage(p => Math.max(1, p - 1))} disabled={csCurrentPage <= 1} style={{ opacity: csCurrentPage <= 1 ? 0.4 : 1 }} title="Página anterior">
+                          <ChevronLeft size={16} />
+                        </button>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                          Página {csCurrentPage} de {csTotalPages}
+                        </span>
+                        <button type="button" className={styles['btn-icon']} onClick={() => setCsPage(p => Math.min(csTotalPages, p + 1))} disabled={csCurrentPage >= csTotalPages} style={{ opacity: csCurrentPage >= csTotalPages ? 0.4 : 1 }} title="Página siguiente">
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
             <div className={styles['recent-activity-section']} data-tour="admin-recent-activity">
               <h3>Actividad Reciente</h3>
               {recentActivity.length === 0 ? (
@@ -468,6 +830,7 @@ export default function Admin() {
                       { value: 'profesional', label: 'Profesional' },
                       { value: 'empleador', label: 'Empresa' },
                       { value: 'customer_success', label: 'Customer Success' },
+                      { value: 'analista_it', label: 'Analista de IT' },
                       { value: 'superadmin', label: 'Superadmin' },
                     ]}
                   />
@@ -482,7 +845,18 @@ export default function Admin() {
                     options={employers.map((emp: any) => ({ value: emp.id, label: emp.company_name || emp.name }))}
                   />
                 </div>
+                {(searchQuery.trim() || roleFilter || companyFilter !== '') && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearchQuery(''); setRoleFilter(''); setCompanyFilter('') }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    title="Quitar todos los filtros"
+                  >
+                    <X size={14} /> Limpiar filtros
+                  </button>
+                )}
               </div>
+              {canManage && (
               <button
                 onClick={openCreateModal}
                 style={{
@@ -507,6 +881,7 @@ export default function Admin() {
                 <UserPlus size={16} />
                 Crear Usuario
               </button>
+              )}
             </div>
 
             <div className={styles['users-table']} data-tour="admin-users-table">
@@ -560,23 +935,27 @@ export default function Admin() {
                           >
                             <Eye size={16} />
                           </button>
-                          <button
-                            className={styles['btn-icon']}
-                            onClick={() => openEdit(u)}
-                            title="Editar"
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            className={`${styles['btn-icon']} ${styles['danger']}`}
-                            onClick={() => {
-                                 setUserToDelete(u)
-                                 setShowDeleteModal(true)
-                            }}
-                            title="Eliminar"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {canManage && (
+                            <>
+                              <button
+                                className={styles['btn-icon']}
+                                onClick={() => openEdit(u)}
+                                title="Editar"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              <button
+                                className={`${styles['btn-icon']} ${styles['danger']}`}
+                                onClick={() => {
+                                  setUserToDelete(u)
+                                  setShowDeleteModal(true)
+                                }}
+                                title="Eliminar"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -622,6 +1001,310 @@ export default function Admin() {
 
         {activeTab === 'activity' && (
           <div className={styles['activity-tab']} data-tour="admin-activity-list">
+            {/* ── Actividad de equipo: semáforo de inactividad ── */}
+            <div style={{ marginBottom: '32px' }} data-tour="admin-team-activity">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Actividad de equipo</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>
+                    Profesionales sin registrar horas. Los de 2+ días disparan alerta automática al equipo de customer success.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setTeamTier(teamTier === 'yellow' ? '' : 'yellow')}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', border: teamTier === 'yellow' ? '1px solid #f59e0b' : '1px solid #e2e8f0', background: 'rgba(245,158,11,0.1)', color: '#b45309', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    🟡 1 día: {teamYellowCount}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTeamTier(teamTier === 'red' ? '' : 'red')}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', border: teamTier === 'red' ? '1px solid #ef4444' : '1px solid #e2e8f0', background: 'rgba(239,68,68,0.1)', color: '#b91c1c', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    🔴 2+ días: {teamRedCount}
+                  </button>
+                  <div className={styles['search-box']}>
+                    <Search size={16} />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre, correo o empresa..."
+                      value={teamSearch}
+                      onChange={(e) => setTeamSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {teamInactivityLoading ? (
+                <Skeleton height={180} radius={12} />
+              ) : teamFiltered.length === 0 ? (
+                <div className={styles['empty-state']} style={{ padding: '28px' }}>
+                  <CheckCircle2 size={34} />
+                  <p>{teamInactivity.length === 0 ? 'Todo el equipo está registrando horas 🎉' : 'Sin resultados con los filtros aplicados'}</p>
+                </div>
+              ) : (
+                <div className={styles['users-table']}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Profesional</th>
+                        <th>Empresa</th>
+                        <th>Últ. actividad</th>
+                        <th>Inactividad</th>
+                        <th>Gestión</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teamPaginated.map(u => {
+                        const isRed = u.days_inactive >= 2
+                        const waLink = whatsappHref(u)
+                        return (
+                          <tr key={u.id} style={{ background: isRed ? 'rgba(239,68,68,0.07)' : 'rgba(245,158,11,0.07)' }}>
+                            <td>
+                              <div className={styles['user-cell']} style={{ cursor: 'pointer' }} onClick={() => navigate(`/admin/users/${u.id}`)} title="Ver detalle del profesional">
+                                <Avatar src={u.avatar} name={u.name} size="sm" />
+                                <div>
+                                  <span style={{ display: 'block' }}>{u.name}</span>
+                                  <small style={{ color: '#94a3b8' }}>{u.email}{u.job_title ? ` · ${u.job_title}` : ''}</small>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              {u.tenant_id > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/admin/tenants/${u.tenant_id}`)}
+                                  style={{ background: 'none', border: 'none', padding: 0, color: '#5a52e6', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}
+                                  title="Ver detalle de la empresa"
+                                >
+                                  {u.company}
+                                </button>
+                              ) : (u.company || '—')}
+                            </td>
+                            <td>{u.last_active ? new Date(u.last_active).toLocaleDateString('es-ES') : '—'}</td>
+                            <td>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, background: isRed ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.14)', color: isRed ? '#b91c1c' : '#b45309' }}>
+                                {isRed ? '🔴' : '🟡'} {u.days_inactive} día{u.days_inactive === 1 ? '' : 's'} háb.
+                              </span>
+                            </td>
+                            <td>{renderFollowUpCell(u.id, 'inactivity')}</td>
+                            <td>
+                              <div className={styles['action-buttons']}>
+                                <a
+                                  href={emailHref(u)}
+                                  className={styles['btn-icon']}
+                                  title={`Enviar email a ${u.email}`}
+                                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  <Mail size={16} />
+                                </a>
+                                {waLink ? (
+                                  <a
+                                    href={waLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={styles['btn-icon']}
+                                    title={`Escribir por WhatsApp (${u.phone_number})`}
+                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}
+                                  >
+                                    <MessageCircle size={16} />
+                                  </a>
+                                ) : (
+                                  <span className={styles['btn-icon']} title="Sin teléfono registrado" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, cursor: 'not-allowed' }}>
+                                    <MessageCircle size={16} />
+                                  </span>
+                                )}
+                                <button
+                                  className={styles['btn-icon']}
+                                  onClick={() => navigate(`/admin/users/${u.id}`)}
+                                  title="Ver detalle"
+                                >
+                                  <Eye size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '12px 16px' }}>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>
+                      Mostrando {(teamCurrentPage - 1) * TEAM_PER_PAGE + 1}–{Math.min(teamCurrentPage * TEAM_PER_PAGE, teamFiltered.length)} de {teamFiltered.length} profesionales
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button type="button" className={styles['btn-icon']} onClick={() => setTeamPage(p => Math.max(1, p - 1))} disabled={teamCurrentPage <= 1} style={{ opacity: teamCurrentPage <= 1 ? 0.4 : 1 }} title="Página anterior">
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                        Página {teamCurrentPage} de {teamTotalPages}
+                      </span>
+                      <button type="button" className={styles['btn-icon']} onClick={() => setTeamPage(p => Math.min(teamTotalPages, p + 1))} disabled={teamCurrentPage >= teamTotalPages} style={{ opacity: teamCurrentPage >= teamTotalPages ? 0.4 : 1 }} title="Página siguiente">
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Reporte de ausencias: agrupado por usuario ── */}
+            <div style={{ marginBottom: '32px' }} data-tour="admin-absence-report">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Reporte de ausencias</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>
+                    Ausencias del mes agrupadas por profesional. Haz clic en una fila para ver el detalle.
+                  </p>
+                </div>
+                <div className={styles['search-box']}>
+                  <Search size={16} />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre, correo o empresa..."
+                    value={absSearch}
+                    onChange={(e) => setAbsSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {absFiltered.length === 0 ? (
+                <div className={styles['empty-state']} style={{ padding: '28px' }}>
+                  <CalendarX size={34} />
+                  <p>{absenceItems.length === 0 ? 'Sin ausencias registradas este mes' : 'Sin resultados con los filtros aplicados'}</p>
+                </div>
+              ) : (
+                <div className={styles['users-table']}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Profesional</th>
+                        <th>Empresa</th>
+                        <th>Ausencias</th>
+                        <th>Horas</th>
+                        <th>Última ausencia</th>
+                        <th>Gestión</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {absPaginated.map(g => {
+                        const expanded = absExpandedUserId === g.user_id
+                        const waLink = absWhatsappHref(g)
+                        return (
+                          <Fragment key={g.user_id}>
+                            <tr
+                              onClick={() => setAbsExpandedUserId(expanded ? null : g.user_id)}
+                              style={{ cursor: 'pointer', background: expanded ? 'rgba(204,51,204,0.05)' : undefined }}
+                              title={expanded ? 'Ocultar detalle' : 'Ver detalle de las ausencias'}
+                            >
+                              <td>
+                                <div className={styles['user-cell']}>
+                                  <Avatar src={g.avatar} name={g.name} size="sm" />
+                                  <div>
+                                    <span style={{ display: 'block' }}>{g.name}</span>
+                                    <small style={{ color: '#94a3b8' }}>{g.email}</small>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                {g.tenant_id > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); navigate(`/admin/tenants/${g.tenant_id}`) }}
+                                    style={{ background: 'none', border: 'none', padding: 0, color: '#5a52e6', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}
+                                  >
+                                    {g.company}
+                                  </button>
+                                ) : (g.company || '—')}
+                              </td>
+                              <td>
+                                <span style={{ fontWeight: 700 }}>{g.count}</span>
+                                {g.pending > 0 && (
+                                  <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 700, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
+                                    {g.pending} pendiente{g.pending === 1 ? '' : 's'}
+                                  </span>
+                                )}
+                              </td>
+                              <td>{g.totalHours.toFixed(1)} h</td>
+                              <td>
+                                {g.lastDate ? new Date(g.lastDate).toLocaleDateString('es-ES') : '—'}
+                                <small style={{ display: 'block', color: '#94a3b8' }}>{g.lastReason}</small>
+                              </td>
+                              <td>{renderFollowUpCell(g.user_id, 'absence')}</td>
+                              <td>
+                                <div className={styles['action-buttons']} onClick={(e) => e.stopPropagation()}>
+                                  <a href={absEmailHref(g)} className={styles['btn-icon']} title={`Enviar email a ${g.email}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Mail size={16} />
+                                  </a>
+                                  {waLink ? (
+                                    <a href={waLink} target="_blank" rel="noopener noreferrer" className={styles['btn-icon']} title={`Escribir por WhatsApp (${g.phone_number})`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
+                                      <MessageCircle size={16} />
+                                    </a>
+                                  ) : (
+                                    <span className={styles['btn-icon']} title="Sin teléfono registrado" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, cursor: 'not-allowed' }}>
+                                      <MessageCircle size={16} />
+                                    </span>
+                                  )}
+                                  <button className={styles['btn-icon']} onClick={() => navigate(`/admin/users/${g.user_id}`)} title="Ver detalle del profesional">
+                                    <Eye size={16} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                            {expanded && (
+                              <tr>
+                                <td colSpan={7} style={{ background: 'rgba(204,51,204,0.03)', padding: '10px 18px' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {g.items.map(item => {
+                                      const status = getAbsenceStatus(item)
+                                      return (
+                                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '13px', color: '#475569' }}>
+                                          <span style={{ minWidth: 90, fontWeight: 600 }}>{new Date(item.work_date).toLocaleDateString('es-ES')}</span>
+                                          <span style={{ flex: 1 }}>{item.absence_reason}</span>
+                                          <span>{(item.absence_hours || 0).toFixed(1)} h</span>
+                                          <span style={{ padding: '2px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 700, background: status.className === 'success' ? 'rgba(16,185,129,0.12)' : status.className === 'danger' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.14)', color: status.className === 'success' ? '#047857' : status.className === 'danger' ? '#b91c1c' : '#b45309' }}>
+                                            {status.label}
+                                          </span>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '12px 16px' }}>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>
+                      Mostrando {(absCurrentPage - 1) * ABS_PER_PAGE + 1}–{Math.min(absCurrentPage * ABS_PER_PAGE, absFiltered.length)} de {absFiltered.length} profesionales con ausencias
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button type="button" className={styles['btn-icon']} onClick={() => setAbsPage(p => Math.max(1, p - 1))} disabled={absCurrentPage <= 1} style={{ opacity: absCurrentPage <= 1 ? 0.4 : 1 }} title="Página anterior">
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                        Página {absCurrentPage} de {absTotalPages}
+                      </span>
+                      <button type="button" className={styles['btn-icon']} onClick={() => setAbsPage(p => Math.min(absTotalPages, p + 1))} disabled={absCurrentPage >= absTotalPages} style={{ opacity: absCurrentPage >= absTotalPages ? 0.4 : 1 }} title="Página siguiente">
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Actividad reciente (feed existente) ── */}
+            <h3 style={{ margin: '0 0 14px', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Actividad reciente</h3>
             {recentActivity.length === 0 ? (
               <div className={styles['empty-state']}>
                 <Activity size={40} />
@@ -765,6 +1448,7 @@ export default function Admin() {
                     { value: 'profesional', label: 'Profesional (presta servicios)' },
                     { value: 'empleador', label: 'Empresa' },
                     { value: 'customer_success', label: 'Customer Success (Gestión de soporte)' },
+                    { value: 'analista_it', label: 'Analista de IT (Soporte técnico)' },
                     { value: 'superadmin', label: 'Super Administrador (Control Total)' },
                   ]}
                 />
@@ -794,24 +1478,6 @@ export default function Admin() {
                       onChange={e => setCreateForm(f => ({ ...f, phoneNumber: e.target.value }))}
                       required
                       style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>País</label>
-                    <Select
-                      fullWidth
-                      value={createForm.country}
-                      onChange={v => setCreateForm(f => ({ ...f, country: String(v), province: '' }))}
-                      placeholder="Selecciona un país..."
-                      options={[
-                        { value: 'Argentina', label: 'Argentina' },
-                        { value: 'España', label: 'España' },
-                        { value: 'México', label: 'México' },
-                        { value: 'Colombia', label: 'Colombia' },
-                        { value: 'Chile', label: 'Chile' },
-                        { value: 'Uruguay', label: 'Uruguay' },
-                      ]}
                     />
                   </div>
 
@@ -866,7 +1532,13 @@ export default function Admin() {
                       style={{ width: '100%', padding: '11px 14px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', color: '#0f172a', background: '#f8fafc' }}
                     />
                   </div>
+                </div>
+              )}
 
+              {/* País, estado, ciudad y ubicación: iguales para todos los roles
+                  menos el superadmin (que no registra ubicación). */}
+              {createForm.userType !== 'superadmin' && (
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>País</label>
                     <Select
@@ -874,22 +1546,21 @@ export default function Admin() {
                       value={createForm.country}
                       onChange={v => setCreateForm(f => ({ ...f, country: String(v), province: '' }))}
                       placeholder="Selecciona un país..."
-                      options={[
-                        { value: 'Argentina', label: 'Argentina' },
-                        { value: 'España', label: 'España' },
-                        { value: 'México', label: 'México' },
-                        { value: 'Colombia', label: 'Colombia' },
-                        { value: 'Chile', label: 'Chile' },
-                        { value: 'Uruguay', label: 'Uruguay' },
-                      ]}
+                      options={COUNTRY_OPTIONS}
                     />
                   </div>
-                </div>
-              )}
-
-              {/* Ciudad y ubicación (opcionales) para profesional y empresa */}
-              {(createForm.userType === 'profesional' || createForm.userType === 'empleador') && (
-                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {getStatesForCountry(createForm.country).length > 0 && (
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Estado / Provincia</label>
+                      <Select
+                        fullWidth
+                        value={createForm.province}
+                        onChange={v => setCreateForm(f => ({ ...f, province: String(v) }))}
+                        placeholder="Selecciona un estado..."
+                        options={getStatesForCountry(createForm.country)}
+                      />
+                    </div>
+                  )}
                   <div>
                     <label style={{ display: 'block', marginBottom: '7px', fontWeight: 600, fontSize: '13px', color: '#334155' }}>Ciudad (opcional)</label>
                     <input

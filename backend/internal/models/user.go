@@ -14,6 +14,9 @@ const (
 	UserTypeEmployer        UserType = "empleador"
 	UserTypeProfessional    UserType = "profesional"
 	UserTypeSuperadmin      UserType = "superadmin"
+	// Analista de IT: soporte técnico de plataforma — acceso a Tools, Métricas
+	// y Auditoría, sin gestión de usuarios/empresas ni datos operativos de clientes.
+	UserTypeITAnalyst       UserType = "analista_it"
 	UserTypeCustomerSuccess UserType = "customer_success"
 
 	TaskStatusTodo      TaskStatus = "por_hacer"
@@ -55,6 +58,10 @@ type User struct {
 	// tokens for this user (logout-all, password change, suspension) — audit A-04.
 	TokenVersion        int            `gorm:"not null;default:0" json:"-"`
 	ZohoAgentID         string         `gorm:"size:255" json:"zoho_agent_id"`
+	// Permissions son los permisos efectivos por módulo derivados de los roles
+	// asignados (campo transitorio: solo viaja en /auth/me y /auth/login).
+	// Ausente = sin roles = comportamiento histórico del tipo de cuenta.
+	Permissions         map[string]string `gorm:"-" json:"permissions,omitempty"`
 	CreatedAt           time.Time      `json:"created_at"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`

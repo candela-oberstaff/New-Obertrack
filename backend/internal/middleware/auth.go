@@ -143,6 +143,19 @@ func RequireSuperadmin() gin.HandlerFunc {
 	}
 }
 
+// RequirePlatformTech permite superadmins y analistas de IT (soporte técnico
+// de plataforma: Tools, Métricas y Auditoría).
+func RequirePlatformTech() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if IsSuperadmin(c) || GetUserRole(c) == "analista_it" {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Acceso de soporte técnico requerido"})
+		c.Abort()
+	}
+}
+
 func GetUserID(c *gin.Context) uint {
 	userID, exists := c.Get("user_id")
 	if !exists {
