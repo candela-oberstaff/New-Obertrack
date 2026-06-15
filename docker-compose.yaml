@@ -39,6 +39,9 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/12}
       SEED_BOOTSTRAP_TOKEN: ${SEED_BOOTSTRAP_TOKEN}
+      # Incoming Webhook del canal de customer success (opcional: sin URL,
+      # las alertas a Slack quedan deshabilitadas).
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       BREVO_WEBHOOK_TOKEN: ${BREVO_WEBHOOK_TOKEN}
       WAHA_WEBHOOK_HMAC: ${WAHA_WEBHOOK_HMAC}
       ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}

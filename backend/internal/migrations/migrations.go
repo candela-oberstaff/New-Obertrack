@@ -609,6 +609,26 @@ func Run(db *gorm.DB) error {
 				)
 			},
 		},
+		{
+			ID: "202606131000_add_inactivity_alerts",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating inactivity_alerts table...")
+				return tx.AutoMigrate(&models.InactivityAlert{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable("inactivity_alerts")
+			},
+		},
+		{
+			ID: "202606131800_add_follow_ups",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating follow_ups table (bitácora de gestión CS)...")
+				return tx.AutoMigrate(&models.FollowUp{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable("follow_ups")
+			},
+		},
 		// Future migrations go here
 	})
 

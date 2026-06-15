@@ -9,6 +9,7 @@ import (
 
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
+	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/service"
 )
 
@@ -117,8 +118,10 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		IsManager   bool   `json:"is_manager"`
 		PhoneNumber string `json:"phone_number"`
 		Country     string `json:"country"`
+		State       string `json:"state"`
 		City        string `json:"city"`
 		Location    string `json:"location"`
+		Industry    string `json:"industry"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -136,8 +139,10 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		"is_manager":   req.IsManager,
 		"phone_number": req.PhoneNumber,
 		"country":      req.Country,
+		"state":        req.State,
 		"city":         req.City,
 		"location":     req.Location,
+		"industry":     req.Industry,
 	}
 	// Solo profesionales y customer success pueden quedar vinculados a una empresa.
 	if req.EmpleadorID != nil && (req.UserType == "profesional" || req.UserType == "customer_success") {
@@ -201,6 +206,14 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	// users), with no way to recover if they are the last active superadmin.
 	if req.IsActive != nil && !*req.IsActive && uint(id) == middleware.GetUserID(c) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No puedes desactivar tu propia cuenta."})
+		return
+	}
+
+	// Guard: evita que un superadmin cambie su propio tipo de usuario y se quede
+	// sin acceso al panel (mismo espíritu que el guard de auto-desactivación).
+	if req.UserType != "" && req.UserType != string(models.UserTypeSuperadmin) &&
+		uint(id) == middleware.GetUserID(c) && middleware.IsSuperadmin(c) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No puedes cambiar tu propio rol de superadmin."})
 		return
 	}
 
@@ -457,6 +470,54 @@ func (h *AdminHandler) CreateTenant(c *gin.Context) {
 	}
 	h.seedTenantRoles(c, tenant.ID)
 	c.JSON(http.StatusCreated, tenant)
+}
+
+// GetFollowUps devuelve el estado vigente de gestión por profesional para un
+// tipo de seguimiento (?kind=inactivity|absence).
+func (h *AdminHandler) GetFollowUps(c *gin.Context) {
+	items, err := h.service.GetLatestFollowUps(c.DefaultQuery("kind", models.FollowUpKindInactivity))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []repository.FollowUpInfo{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": items})
+}
+
+// CreateFollowUp registra una entrada en la bitácora de gestión.
+func (h *AdminHandler) CreateFollowUp(c *gin.Context) {
+	var req struct {
+		UserID uint   `json:"user_id" binding:"required"`
+		Kind   string `json:"kind" binding:"required"`
+		Status string `json:"status" binding:"required"`
+		Note   string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	followUp, err := h.service.CreateFollowUp(req.UserID, middleware.GetUserID(c), req.Kind, req.Status, req.Note)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, followUp)
+}
+
+// GetSeniorityRanking lista los profesionales por antigüedad (métricas CS).
+func (h *AdminHandler) GetSeniorityRanking(c *gin.Context) {
+	items, err := h.service.GetSeniorityRanking()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo cargar el ranking de antigüedad"})
+		return
+	}
+	if items == nil {
+		items = []repository.SeniorityItem{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": items})
 }
 
 func (h *AdminHandler) GetStats(c *gin.Context) {

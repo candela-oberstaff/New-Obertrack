@@ -7,6 +7,7 @@ import AuthLayout from '../components/layout/AuthLayout'
 import { ProfessionalFields } from '../components/Auth/ProfessionalFields'
 import { EmployerFields } from '../components/Auth/EmployerFields'
 import { Select } from '../components/ui/Select'
+import { COUNTRY_OPTIONS, getStatesForCountry } from '../components/Auth/countries'
 
 export default function Register() {
   const [name, setName] = useState('')
@@ -205,21 +206,48 @@ export default function Register() {
             )}
 
             {userType === 'customer_success' && (
-              <div className={styles['form-group']}>
-                <label htmlFor="csCompanySelect">Empresa asignada (opcional)</label>
-                <Select
-                  fullWidth
-                  clearable
-                  id="csCompanySelect"
-                  value={selectedCompanyId}
-                  onChange={(v) => setSelectedCompanyId(Number(v) || '')}
-                  placeholder="Selecciona una empresa..."
-                  options={companies.map((c) => ({ value: c.id, label: c.name }))}
-                />
-                <p className={styles['field-hint']}>
-                  Vincula esta cuenta de soporte a una empresa concreta, o déjala vacía para soporte global.
-                </p>
-              </div>
+              <>
+                <div className={styles['form-group']}>
+                  <label htmlFor="csCompanySelect">Empresa asignada (opcional)</label>
+                  <Select
+                    fullWidth
+                    clearable
+                    id="csCompanySelect"
+                    value={selectedCompanyId}
+                    onChange={(v) => setSelectedCompanyId(Number(v) || '')}
+                    placeholder="Selecciona una empresa..."
+                    options={companies.map((c) => ({ value: c.id, label: c.name }))}
+                  />
+                  <p className={styles['field-hint']}>
+                    Vincula esta cuenta de soporte a una empresa concreta, o déjala vacía para soporte global.
+                  </p>
+                </div>
+
+                <div className={styles['form-group']}>
+                  <label htmlFor="csCountry">País</label>
+                  <Select
+                    fullWidth
+                    id="csCountry"
+                    value={country}
+                    onChange={(v) => { setCountry(String(v)); setProvince('') }}
+                    placeholder="Selecciona un país..."
+                    options={COUNTRY_OPTIONS}
+                  />
+                </div>
+                {getStatesForCountry(country).length > 0 && (
+                  <div className={styles['form-group']}>
+                    <label htmlFor="csState">Estado / Provincia</label>
+                    <Select
+                      fullWidth
+                      id="csState"
+                      value={province}
+                      onChange={(v) => setProvince(String(v))}
+                      placeholder="Selecciona un estado..."
+                      options={getStatesForCountry(country)}
+                    />
+                  </div>
+                )}
+              </>
             )}
 
             {userType === 'empleador' && (

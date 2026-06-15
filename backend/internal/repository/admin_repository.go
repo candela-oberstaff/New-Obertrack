@@ -20,7 +20,11 @@ type InactiveUser struct {
 	ID           uint      `json:"id"`
 	Name         string    `json:"name"`
 	Email        string    `json:"email"`
+	Avatar       string    `json:"avatar"`
+	JobTitle     string    `json:"job_title"`
+	PhoneNumber  string    `json:"phone_number"`
 	Company      string    `json:"company"`
+	TenantID     uint      `json:"tenant_id"`
 	LastActive   time.Time `json:"last_active"`
 	DaysInactive int       `json:"days_inactive"`
 }
@@ -37,6 +41,10 @@ type AbsenceReportItem struct {
 	ID            uint      `json:"id"`
 	UserID        uint      `json:"user_id"`
 	User          string    `json:"user"`
+	Email         string    `json:"email"`
+	PhoneNumber   string    `json:"phone_number"`
+	Avatar        string    `json:"avatar"`
+	TenantID      uint      `json:"tenant_id"`
 	Company       string    `json:"company"`
 	WorkDate      time.Time `json:"work_date"`
 	HoursWorked   float64   `json:"hours_worked"`
@@ -80,8 +88,33 @@ type TenantSummary struct {
 	TaskCount      int       `json:"task_count"`
 	HoursThisMonth float64   `json:"hours_this_month"`
 	PendingHours   float64   `json:"pending_hours"`
+	PendingCount   int64     `json:"pending_count"`
+	RejectedCount  int64     `json:"rejected_count"`
 	OpenTickets    int       `json:"open_tickets"`
 	CreatedAt      time.Time `json:"created_at"`
+}
+
+// FollowUpInfo es el estado vigente de gestión de un profesional (la entrada
+// más reciente de la bitácora para un kind dado).
+type FollowUpInfo struct {
+	UserID    uint      `json:"user_id"`
+	Status    string    `json:"status"`
+	Note      string    `json:"note"`
+	ByName    string    `json:"by_name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// SeniorityItem es una fila del ranking de antigüedad de profesionales.
+type SeniorityItem struct {
+	UserID       uint      `json:"user_id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	Avatar       string    `json:"avatar"`
+	JobTitle     string    `json:"job_title"`
+	Company      string    `json:"company"`
+	TenantID     uint      `json:"tenant_id"`
+	StartedAt    time.Time `json:"started_at"`
+	DaysEmployed int       `json:"days_employed"`
 }
 
 type EmployeeSummary struct {
@@ -118,7 +151,7 @@ type EmployeeTask struct {
 
 type AdminRepository interface {
 	GetCompaniesMetrics() ([]CompanyMetric, error)
-	GetInactiveUsersList(since time.Time) ([]InactiveUser, error)
+	GetInactiveUsersList(minDays int) ([]InactiveUser, error)
 	GetRecentActivities() ([]Activity, error)
 	GetAbsenceReport(startDate, endDate time.Time) (*AbsenceReport, error)
 	CountInactiveWarning(since time.Time) (int64, error)
@@ -133,6 +166,17 @@ type AdminRepository interface {
 	GetEmployeeSummary(userID uint) (*EmployeeSummary, error)
 	GetEmployeeWorkHours(userID uint, limit int) ([]EmployeeWorkHour, error)
 	GetEmployeeTasks(userID uint, limit int) ([]EmployeeTask, error)
+
+	// Dedup de alertas de inactividad (watcher diario).
+	GetRecentlyAlertedUserIDs(since time.Time) ([]uint, error)
+	MarkUsersAlerted(alerts []models.InactivityAlert) error
+
+	// Ranking de antigüedad de profesionales (métricas de customer success).
+	GetSeniorityRanking() ([]SeniorityItem, error)
+
+	// Bitácora de gestión de customer success.
+	GetLatestFollowUps(kind string) ([]FollowUpInfo, error)
+	CreateFollowUp(followUp *models.FollowUp) error
 }
 
 type adminRepository struct {
@@ -195,26 +239,105 @@ func (r *adminRepository) GetCompaniesMetrics() ([]CompanyMetric, error) {
 	return companies, nil
 }
 
-func (r *adminRepository) GetInactiveUsersList(since time.Time) ([]InactiveUser, error) {
-	var users []InactiveUser
+// GetInactiveUsersList lista profesionales con minDays o más DÍAS HÁBILES
+// completos sin registrar horas (los fines de semana no cuentan como
+// inactividad, y el día de hoy tampoco: aún pueden registrar).
+func (r *adminRepository) GetInactiveUsersList(minDays int) ([]InactiveUser, error) {
+	var all []InactiveUser
 	err := r.db.Raw(`
-		SELECT 
+		SELECT
 			u.id,
 			u.name,
 			u.email,
+			COALESCE(u.avatar, '') as avatar,
+			COALESCE(u.job_title, '') as job_title,
+			COALESCE(u.phone_number, '') as phone_number,
 			COALESCE(e.company_name, '-') as company,
+			COALESCE(u.empleador_id, 0) as tenant_id,
 			COALESCE(MAX(wh.work_date), u.created_at) as last_active,
-			EXTRACT(DAY FROM CURRENT_DATE - COALESCE(MAX(wh.work_date), u.created_at)) as days_inactive
+			(SELECT COUNT(*)::int
+			 FROM generate_series(
+				(COALESCE(MAX(wh.work_date), u.created_at))::date + 1,
+				CURRENT_DATE - 1,
+				interval '1 day') AS d
+			 WHERE EXTRACT(ISODOW FROM d) < 6) as days_inactive
 		FROM users u
-		LEFT JOIN work_hours wh ON wh.user_id = u.id
+		LEFT JOIN work_hours wh ON wh.user_id = u.id AND wh.deleted_at IS NULL
 		LEFT JOIN users e ON e.id = u.empleador_id
-		WHERE u.user_type = 'profesional'
-		GROUP BY u.id, u.name, u.email, e.company_name
-		HAVING MAX(wh.work_date) IS NULL OR MAX(wh.work_date) < ?
+		WHERE u.user_type = 'profesional' AND u.deleted_at IS NULL AND u.is_active = true
+		GROUP BY u.id, e.company_name
 		ORDER BY days_inactive DESC
-		LIMIT 50
-	`, since).Scan(&users).Error
-	return users, err
+		LIMIT 1000
+	`).Scan(&all).Error
+	if err != nil {
+		return nil, err
+	}
+
+	users := make([]InactiveUser, 0, len(all))
+	for _, u := range all {
+		if u.DaysInactive >= minDays {
+			users = append(users, u)
+		}
+	}
+	return users, nil
+}
+
+func (r *adminRepository) GetLatestFollowUps(kind string) ([]FollowUpInfo, error) {
+	var items []FollowUpInfo
+	err := r.db.Raw(`
+		SELECT DISTINCT ON (f.user_id)
+			f.user_id,
+			f.status,
+			f.note,
+			COALESCE(u.name, '') as by_name,
+			f.created_at
+		FROM follow_ups f
+		LEFT JOIN users u ON u.id = f.created_by
+		WHERE f.kind = ?
+		ORDER BY f.user_id, f.created_at DESC
+	`, kind).Scan(&items).Error
+	return items, err
+}
+
+func (r *adminRepository) CreateFollowUp(followUp *models.FollowUp) error {
+	return r.db.Create(followUp).Error
+}
+
+func (r *adminRepository) GetSeniorityRanking() ([]SeniorityItem, error) {
+	var items []SeniorityItem
+	err := r.db.Raw(`
+		SELECT
+			u.id as user_id,
+			u.name,
+			u.email,
+			COALESCE(u.avatar, '') as avatar,
+			COALESCE(u.job_title, '') as job_title,
+			COALESCE(e.company_name, '-') as company,
+			COALESCE(u.empleador_id, 0) as tenant_id,
+			u.created_at as started_at,
+			EXTRACT(DAY FROM CURRENT_DATE - u.created_at)::int as days_employed
+		FROM users u
+		LEFT JOIN users e ON e.id = u.empleador_id
+		WHERE u.user_type = 'profesional' AND u.deleted_at IS NULL AND u.is_active = true
+		ORDER BY u.created_at ASC
+		LIMIT 500
+	`).Scan(&items).Error
+	return items, err
+}
+
+func (r *adminRepository) GetRecentlyAlertedUserIDs(since time.Time) ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&models.InactivityAlert{}).
+		Where("last_alerted_at >= ?", since).
+		Pluck("user_id", &ids).Error
+	return ids, err
+}
+
+func (r *adminRepository) MarkUsersAlerted(alerts []models.InactivityAlert) error {
+	if len(alerts) == 0 {
+		return nil
+	}
+	return r.db.Save(&alerts).Error
 }
 
 func (r *adminRepository) GetRecentActivities() ([]Activity, error) {
@@ -327,6 +450,10 @@ func (r *adminRepository) GetAbsenceReport(startDate, endDate time.Time) (*Absen
 			wh.id,
 			wh.user_id,
 			u.name as user,
+			u.email,
+			COALESCE(u.phone_number, '') as phone_number,
+			COALESCE(u.avatar, '') as avatar,
+			COALESCE(u.empleador_id, 0) as tenant_id,
 			COALESCE(e.company_name, '-') as company,
 			wh.work_date,
 			wh.hours_worked,
@@ -379,6 +506,12 @@ const tenantSelect = `
 		COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh
 			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
 			AND wh.approved = false AND wh.rejected = false), 0) as pending_hours,
+		(SELECT COUNT(*) FROM work_hours wh
+			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
+			AND wh.approved = false AND wh.rejected = false) as pending_count,
+		(SELECT COUNT(*) FROM work_hours wh
+			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
+			AND wh.rejected = true) as rejected_count,
 		(SELECT COUNT(*) FROM tickets tk
 			WHERE tk.deleted_at IS NULL AND tk.status = 'open'
 			AND tk.user_id IN (SELECT pu.id FROM users pu WHERE pu.empleador_id = u.id AND pu.deleted_at IS NULL)) as open_tickets

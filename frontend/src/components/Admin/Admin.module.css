@@ -123,8 +123,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.1);
 }
 
 .stat-info {
