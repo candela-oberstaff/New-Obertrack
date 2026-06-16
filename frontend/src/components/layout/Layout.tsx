@@ -140,7 +140,6 @@ export default function Layout() {
     return 'Profesional'
   }
 
-    const isToolsPage = location.pathname.startsWith('/admin/tools');
   return (
     <div className={`${styles['app-layout']} ${sidebarCollapsed && !isMobileSidebarOpen ? styles['sidebar-collapsed'] : ''} ${isMobileSidebarOpen ? styles['mobile-open'] : ''}`}>
       {isMobileSidebarOpen && (

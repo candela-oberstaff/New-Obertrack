@@ -9,6 +9,16 @@ interface GroupManagerProps {
   onClose: () => void;
 }
 
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  is_superadmin?: boolean;
+  is_manager?: boolean;
+  user_type?: 'profesional' | 'empleador' | 'customer_success' | 'superadmin' | 'analista_it';
+}
+
+
 const GroupManager: React.FC<GroupManagerProps> = ({ onClose }) => {
   const qc = useQueryClient();
   const [activeGroupId, setActiveGroupId] = useState<number | null>(null);
@@ -22,7 +32,7 @@ const GroupManager: React.FC<GroupManagerProps> = ({ onClose }) => {
     queryFn: audienceService.getGroups
   });
 
-  const { data: users = [] } = useQuery<any[]>({
+  const { data: users = [] } = useQuery<User[]>({
     queryKey: ['usersList'],
     queryFn: async () => (await emailService.getAvailableRecipients()).data || []
   });
