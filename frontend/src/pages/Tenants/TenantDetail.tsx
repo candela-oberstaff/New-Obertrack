@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X } from 'lucide-react'
+import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, ClipboardList, UserPlus, UserMinus, Sparkles } from 'lucide-react'
+
+// Icono y color por tipo de evento del expediente de la empresa.
+const ACTIVITY_STYLE: Record<string, { icon: typeof Activity; color: string }> = {
+  company_created: { icon: Sparkles, color: '#2563eb' },
+  employee_joined: { icon: UserPlus, color: '#059669' },
+  employee_left: { icon: UserMinus, color: '#b45309' },
+  work_hour: { icon: Clock, color: '#64748b' },
+  follow_up: { icon: ClipboardList, color: '#7c3aed' },
+  company_suspended: { icon: Ban, color: '#dc2626' },
+  company_reactivated: { icon: CheckCircle2, color: '#059669' },
+}
 import { useTenantDetail } from '../../hooks'
 import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -10,6 +21,7 @@ import { Modal, Button } from '../../components/ui'
 import { Select } from '../../components/ui/Select'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../components/Auth/countries'
 import { INDUSTRY_OPTIONS } from '../../components/Auth/industries'
+import { ArchivedList } from '../../components/Admin/ArchivedList'
 import styles from './Tenants.module.css'
 
 const EMP_PER_PAGE = 10
@@ -39,12 +51,19 @@ export default function TenantDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user: viewer } = useAuth()
-  // CS entra en modo consulta: sin editar, suspender ni tocar empleados.
+  // CS entra en modo consulta: sin editar, suspender ni tocar Profesionales.
   const canManage = !!viewer?.is_superadmin
   const tenantId = Number(id)
   const { tenant, employees, activity, isLoading, error, refresh, suspendTenant, activateTenant, toggleEmployeeStatus, resetEmployeePassword } = useTenantDetail(tenantId)
 
-  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'actividad'>('resumen')
+  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'actividad' | 'archivados'>('resumen')
+
+  // Archivados de esta empresa (bajas + cuentas desactivadas).
+  const [archived, setArchived] = useState<any[]>([])
+  const loadArchived = async () => {
+    try { setArchived(await adminService.getTenantArchived(tenantId)) } catch { /* noop */ }
+  }
+  useEffect(() => { if (tab === 'archivados') loadArchived() }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Edición de la empresa
   const [showEdit, setShowEdit] = useState(false)
@@ -58,7 +77,7 @@ export default function TenantDetail() {
   const [resetSaving, setResetSaving] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
 
-  // Búsqueda, filtros y paginación de empleados
+  // Búsqueda, filtros y paginación de Profesionales
   const [empSearch, setEmpSearch] = useState('')
   const [empRole, setEmpRole] = useState('')
   const [empStatus, setEmpStatus] = useState('')
@@ -182,13 +201,15 @@ export default function TenantDetail() {
   const createdLabel = tenant.created_at ? new Date(tenant.created_at).toLocaleDateString('es-ES') : '-'
   const editStates = getStatesForCountry(editForm.country)
 
+  // Iconos en estilo "suave": fondo pastel + icono del mismo tono (igual que las
+  // tarjetas del panel admin), en vez de gradientes saturados.
   const kpis = [
-    { value: tenant.user_count, label: 'Usuarios', icon: <Users size={24} />, bg: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' },
-    { value: tenant.board_count, label: 'Tableros', icon: <LayoutGrid size={24} />, bg: 'linear-gradient(135deg, #f59e0b, #d97706)' },
-    { value: tenant.task_count, label: 'Tareas', icon: <CheckSquare size={24} />, bg: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' },
-    { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: 'linear-gradient(135deg, #10b981, #059669)' },
-    { value: `${(tenant.pending_hours ?? 0).toFixed(1)} h`, label: 'Horas por aprobar', icon: <Hourglass size={24} />, bg: 'linear-gradient(135deg, #f97316, #ea580c)' },
-    { value: tenant.open_tickets ?? 0, label: 'Tickets abiertos', icon: <Inbox size={24} />, bg: 'linear-gradient(135deg, #ef4444, #b91c1c)' },
+    { value: tenant.user_count, label: 'Usuarios', icon: <Users size={24} />, bg: '#faf5ff', color: 'var(--primary)' },
+    { value: tenant.board_count, label: 'Tableros', icon: <LayoutGrid size={24} />, bg: '#fffbeb', color: '#f59e0b' },
+    { value: tenant.task_count, label: 'Tareas', icon: <CheckSquare size={24} />, bg: '#f5f3ff', color: '#8b5cf6' },
+    { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: '#ecfdf5', color: '#10b981' },
+    { value: `${(tenant.pending_hours ?? 0).toFixed(1)} h`, label: 'Horas por aprobar', icon: <Hourglass size={24} />, bg: '#fff7ed', color: '#f97316' },
+    { value: tenant.open_tickets ?? 0, label: 'Tickets abiertos', icon: <Inbox size={24} />, bg: '#fef2f2', color: '#ef4444' },
   ]
 
   const infoFields = [
@@ -243,8 +264,9 @@ export default function TenantDetail() {
 
       <div className={styles.subTabs}>
         <button className={tab === 'resumen' ? styles.subTabActive : styles.subTab} onClick={() => setTab('resumen')}>Resumen</button>
-        <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Empleados ({employees.length})</button>
-        <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Actividad</button>
+        <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Profesionales ({employees.length})</button>
+        <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Expediente</button>
+        <button className={tab === 'archivados' ? styles.subTabActive : styles.subTab} onClick={() => setTab('archivados')}>Archivados</button>
       </div>
 
       {tab === 'resumen' && (
@@ -252,7 +274,7 @@ export default function TenantDetail() {
           <div className={styles.kpis}>
             {kpis.map(kpi => (
               <div key={kpi.label} className={styles.kpiCard}>
-                <div className={styles.kpiIcon} style={{ background: kpi.bg }}>
+                <div className={styles.kpiIcon} style={{ background: kpi.bg, color: kpi.color }}>
                   {kpi.icon}
                 </div>
                 <div>
@@ -279,7 +301,7 @@ export default function TenantDetail() {
 
       {tab === 'usuarios' && (
         employees.length === 0 ? (
-          <div className={styles.empty}><Users size={40} /><p>Esta empresa no tiene empleados</p></div>
+          <div className={styles.empty}><Users size={40} /><p>Esta empresa no tiene Profesionales</p></div>
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 20 }}>
@@ -332,7 +354,7 @@ export default function TenantDetail() {
             </div>
 
             {empFiltered.length === 0 ? (
-              <div className={styles.empty}><Users size={40} /><p>Sin empleados que coincidan</p></div>
+              <div className={styles.empty}><Users size={40} /><p>Sin Profesionales que coincidan</p></div>
             ) : (
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
@@ -400,7 +422,7 @@ export default function TenantDetail() {
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 16px' }}>
                   <span style={{ fontSize: '13px', color: '#64748b' }}>
-                    Mostrando {(empCurrentPage - 1) * EMP_PER_PAGE + 1}–{Math.min(empCurrentPage * EMP_PER_PAGE, empFiltered.length)} de {empFiltered.length} empleados
+                    Mostrando {(empCurrentPage - 1) * EMP_PER_PAGE + 1}–{Math.min(empCurrentPage * EMP_PER_PAGE, empFiltered.length)} de {empFiltered.length} Profesionales
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
@@ -436,15 +458,19 @@ export default function TenantDetail() {
 
       {tab === 'actividad' && (
         activity.length === 0 ? (
-          <div className={styles.empty}><Activity size={40} /><p>Sin actividad registrada</p></div>
+          <div className={styles.empty}><Activity size={40} /><p>Sin movimientos en el expediente</p></div>
         ) : (
           <div className={styles.activityList}>
             {activity.map((a, i) => {
               const date = a.timestamp ? new Date(a.timestamp) : null
               const valid = date && !isNaN(date.getTime())
+              const st = ACTIVITY_STYLE[a.type] || { icon: Activity, color: undefined as unknown as string }
+              const Icon = st.icon
               return (
                 <div key={`act-${i}`} className={styles.activityItem}>
-                  <div className={styles.activityIcon}><Activity size={16} /></div>
+                  <div className={styles.activityIcon} style={st.color ? { color: st.color } : undefined}>
+                    <Icon size={16} />
+                  </div>
                   <div>
                     <p>{a.details}</p>
                     <span className={styles.activityMeta}>
@@ -456,6 +482,10 @@ export default function TenantDetail() {
             })}
           </div>
         )
+      )}
+
+      {tab === 'archivados' && (
+        <ArchivedList entries={archived} showCompany={false} />
       )}
 
       <Modal

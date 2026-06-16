@@ -52,6 +52,83 @@ export const adminService = {
     const { data } = await api.get<{ data: any[] }>('/admin/seniority')
     return data.data || []
   },
+  // ── Archivados (bajas de empleo + cuentas desactivadas) ─────────────────────
+  getArchived: async () => {
+    const { data } = await api.get<{ data: any[] }>('/admin/archived')
+    return data.data || []
+  },
+  getTenantArchived: async (tenantId: number) => {
+    const { data } = await api.get<{ data: any[] }>(`/admin/tenants/${tenantId}/archived`)
+    return data.data || []
+  },
+  reactivateEmployment: async (userId: number, employmentId: number) => {
+    await api.post(`/admin/users/${userId}/employments/${employmentId}/reactivate`)
+  },
+  reactivateUser: async (userId: number) => {
+    await api.put(`/admin/users/${userId}`, { is_active: true })
+  },
+  // ── Membresías (multi-empresa) ──────────────────────────────────────────────
+  getUserEmployments: async (userId: number) => {
+    const { data } = await api.get<{ data: any[] }>(`/admin/users/${userId}/employments`)
+    return data.data || []
+  },
+  addUserEmployment: async (userId: number, payload: { company_id: number; job_title?: string; start_reason?: string; manager_id?: number }) => {
+    const { data } = await api.post(`/admin/users/${userId}/employments`, payload)
+    return data
+  },
+  endUserEmployment: async (userId: number, employmentId: number, endReason: string) => {
+    await api.post(`/admin/users/${userId}/employments/${employmentId}/end`, { end_reason: endReason })
+  },
+  // ── Expediente laboral (resumen + evaluaciones/notas + documentos) ──────────
+  getExpediente: async (userId: number, employmentId: number) => {
+    const { data } = await api.get(`/admin/users/${userId}/employments/${employmentId}/expediente`)
+    return data
+  },
+  addExpedienteNote: async (
+    userId: number,
+    employmentId: number,
+    payload: { kind: 'note' | 'evaluation'; content: string; rating?: number | null; visibility: 'private' | 'shared' },
+  ) => {
+    const { data } = await api.post(`/admin/users/${userId}/employments/${employmentId}/notes`, payload)
+    return data
+  },
+  updateExpedienteNote: async (
+    userId: number,
+    employmentId: number,
+    noteId: number,
+    payload: { kind: 'note' | 'evaluation'; content: string; rating?: number | null; visibility: 'private' | 'shared' },
+  ) => {
+    const { data } = await api.put(`/admin/users/${userId}/employments/${employmentId}/notes/${noteId}`, payload)
+    return data
+  },
+  deleteExpedienteNote: async (userId: number, employmentId: number, noteId: number) => {
+    await api.delete(`/admin/users/${userId}/employments/${employmentId}/notes/${noteId}`)
+  },
+  addExpedienteDocument: async (
+    userId: number,
+    employmentId: number,
+    payload: { title?: string; file_name: string; file_url: string; file_size?: number; mime_type?: string; visibility: 'private' | 'shared'; expires_at?: string },
+  ) => {
+    const { data } = await api.post(`/admin/users/${userId}/employments/${employmentId}/documents`, payload)
+    return data
+  },
+  updateExpedienteDocument: async (
+    userId: number,
+    employmentId: number,
+    docId: number,
+    payload: { title?: string; visibility: 'private' | 'shared'; expires_at?: string },
+  ) => {
+    const { data } = await api.put(`/admin/users/${userId}/employments/${employmentId}/documents/${docId}`, payload)
+    return data
+  },
+  deleteExpedienteDocument: async (userId: number, employmentId: number, docId: number) => {
+    await api.delete(`/admin/users/${userId}/employments/${employmentId}/documents/${docId}`)
+  },
+  // Registra un intento de contacto (email/WhatsApp/chat) al profesional, para
+  // que quede en su expediente. Best-effort: no debe bloquear la acción.
+  logContact: async (userId: number, channel: 'email' | 'whatsapp' | 'chat') => {
+    try { await api.post(`/users/${userId}/contacts`, { channel }) } catch { /* no bloquear */ }
+  },
   getFollowUps: async (kind: 'inactivity' | 'absence') => {
     const { data } = await api.get<{ data: any[] }>('/follow-ups', { params: { kind } })
     return data.data || []

@@ -152,7 +152,7 @@ export default function TenantsList() {
 
       <div className={styles.kpis} data-tour="tenants-kpis">
         <div className={styles.kpiCard}>
-          <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}>
+          <div className={styles.kpiIcon} style={{ background: '#faf5ff', color: 'var(--primary)' }}>
             <Building2 size={24} />
           </div>
           <div>
@@ -161,7 +161,7 @@ export default function TenantsList() {
           </div>
         </div>
         <div className={styles.kpiCard}>
-          <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+          <div className={styles.kpiIcon} style={{ background: '#ecfdf5', color: '#10b981' }}>
             <CheckCircle2 size={24} />
           </div>
           <div>
@@ -170,7 +170,7 @@ export default function TenantsList() {
           </div>
         </div>
         <div className={styles.kpiCard}>
-          <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}>
+          <div className={styles.kpiIcon} style={{ background: '#fef2f2', color: '#ef4444' }}>
             <Ban size={24} />
           </div>
           <div>
@@ -179,7 +179,7 @@ export default function TenantsList() {
           </div>
         </div>
         <div className={styles.kpiCard}>
-          <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }}>
+          <div className={styles.kpiIcon} style={{ background: '#f5f3ff', color: '#8b5cf6' }}>
             <Users size={24} />
           </div>
           <div>

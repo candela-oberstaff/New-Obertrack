@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -36,27 +39,33 @@ func clearAuthCookies(c *gin.Context) {
 }
 
 type AuthHandler struct {
-	authService service.AuthService
-	auditSvc    service.AuditService
-	rbacSvc     service.RBACService
+	authService   service.AuthService
+	auditSvc      service.AuditService
+	rbacSvc       service.RBACService
+	employmentSvc service.EmploymentService
 }
 
-func NewAuthHandler(authService service.AuthService, auditSvc service.AuditService, rbacSvc service.RBACService) *AuthHandler {
+func NewAuthHandler(authService service.AuthService, auditSvc service.AuditService, rbacSvc service.RBACService, employmentSvc service.EmploymentService) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
-		auditSvc:    auditSvc,
-		rbacSvc:     rbacSvc,
+		authService:   authService,
+		auditSvc:      auditSvc,
+		rbacSvc:       rbacSvc,
+		employmentSvc: employmentSvc,
 	}
 }
 
-// attachPermissions agrega al usuario sus permisos efectivos por módulo (si
-// tiene roles asignados) para que el frontend ajuste la UI sin otra llamada.
-func (h *AuthHandler) attachPermissions(user *models.User) {
+// attachContext agrega al usuario sus permisos efectivos (del tenant activo) y
+// sus empresas activas (switcher multi-empresa), para que el frontend ajuste la
+// UI sin llamadas extra.
+func (h *AuthHandler) attachContext(user *models.User) {
 	if user == nil {
 		return
 	}
-	if perms, hasRoles, err := h.rbacSvc.EffectivePermissions(user.ID); err == nil && hasRoles {
+	if perms, hasRoles, err := h.rbacSvc.EffectivePermissions(user.ID, models.TenantForUser(user)); err == nil && hasRoles {
 		user.Permissions = perms
+	}
+	if companies, err := h.employmentSvc.ActiveCompanies(user.ID); err == nil && len(companies) > 0 {
+		user.Companies = companies
 	}
 }
 
@@ -157,6 +166,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 			log.Printf("[auth.register] no se pudieron sembrar los roles preconfigurados del tenant %d: %v", user.ID, err)
 		}
 	}
+	// Dual-write de la membresía (fase 0). Best-effort.
+	if err := h.employmentSvc.SyncActiveForUser(user); err != nil {
+		log.Printf("[auth.register] no se pudo sincronizar la membresía del usuario %d: %v", user.ID, err)
+	}
 
 	h.auditSvc.RecordAuth("auth.register", &user.ID, user.Email, string(user.UserType), true, c.ClientIP(), c.Request.UserAgent())
 	setAuthCookies(c, access, refresh)
@@ -183,7 +196,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	h.auditSvc.RecordAuth("auth.login", &user.ID, user.Email, string(user.UserType), true, c.ClientIP(), c.Request.UserAgent())
 	setAuthCookies(c, access, refresh)
-	h.attachPermissions(user)
+	h.attachContext(user)
 	c.JSON(http.StatusOK, AuthResponse{User: *user})
 }
 
@@ -226,8 +239,113 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	h.attachPermissions(user)
+	h.attachContext(user)
 	c.JSON(http.StatusOK, user)
+}
+
+// SwitchCompany cambia la empresa activa del profesional multi-empresa y
+// re-emite el JWT de esta sesión con el nuevo tenant.
+func (h *AuthHandler) SwitchCompany(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	var req struct {
+		CompanyID uint `json:"company_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.employmentSvc.SwitchActive(userID, req.CompanyID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	access, refresh, err := h.authService.IssueTokens(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo emitir la sesión"})
+		return
+	}
+	setAuthCookies(c, access, refresh)
+
+	if full, err := h.authService.GetUserDetails(user.ID); err == nil {
+		user = full
+	}
+	h.attachContext(user)
+	c.JSON(http.StatusOK, user)
+}
+
+// --- Expediente propio (FASE 3): el profesional ve su CV vivo ---
+
+// MyEmployments lista las membresías (empleos) del propio usuario autenticado.
+func (h *AuthHandler) MyEmployments(c *gin.Context) {
+	views, err := h.employmentSvc.ListForUser(middleware.GetUserID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar tus empleos"})
+		return
+	}
+	if views == nil {
+		views = []service.EmploymentView{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": views})
+}
+
+// MyCV devuelve el CV vivo del propio usuario: su trayectoria unificada en
+// todas las empresas, con lo que cada una compartió.
+func (h *AuthHandler) MyCV(c *gin.Context) {
+	cv, err := h.employmentSvc.GetCV(middleware.GetUserID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo cargar tu CV"})
+		return
+	}
+	c.JSON(http.StatusOK, cv)
+}
+
+// slugify deja solo letras/números/guiones para un nombre de archivo seguro.
+func slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == ' ' || r == '-' || r == '_':
+			b.WriteRune('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "documento"
+	}
+	return out
+}
+
+// MyCVPDF descarga el CV del propio usuario en PDF.
+func (h *AuthHandler) MyCVPDF(c *gin.Context) {
+	bytes, name, err := h.employmentSvc.GetCVPDF(middleware.GetUserID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo generar el PDF"})
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=cv_%s.pdf", slugify(name)))
+	c.Data(http.StatusOK, "application/pdf", bytes)
+}
+
+// MyExpediente devuelve el expediente de uno de los empleos del propio usuario,
+// con visibilidad de profesional (solo ve lo que la empresa compartió).
+func (h *AuthHandler) MyExpediente(c *gin.Context) {
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	exp, err := h.employmentSvc.GetExpediente(uint(empID), service.AudienceProfessional)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	// Solo el dueño del empleo puede ver su propio expediente.
+	if exp.Employment.UserID != middleware.GetUserID(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "No autorizado"})
+		return
+	}
+	c.JSON(http.StatusOK, exp)
 }
 
 func (h *AuthHandler) GetCompanies(c *gin.Context) {

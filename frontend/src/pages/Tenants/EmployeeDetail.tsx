@@ -61,7 +61,7 @@ export default function EmployeeDetail() {
   return (
     <div className={styles.page}>
       <button className={styles.backBtn} onClick={() => navigate(`/admin/tenants/${id}`)}>
-        <ArrowLeft size={18} /> Empleados
+        <ArrowLeft size={18} /> Profesionales
       </button>
 
       <div className={styles.detailHeader}>

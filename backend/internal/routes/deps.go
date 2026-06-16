@@ -46,6 +46,8 @@ type deps struct {
 	rbacSvc service.RBACService
 	// auditSvc is attached as a global middleware in RegisterRoutes.
 	auditSvc service.AuditService
+	// employmentSvc is needed by the expediente-ownership route middleware.
+	employmentSvc service.EmploymentService
 }
 
 // buildDeps constructs the full repository → service → handler graph once.
@@ -64,6 +66,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	adminRepo := repository.NewAdminRepository(db)
 	tutorialRepo := repository.NewTutorialRepository(db)
 	rbacRepo := repository.NewRBACRepository(db)
+	employmentRepo := repository.NewEmploymentRepository(db)
 	ticketRepo := repository.NewTicketRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 
@@ -87,6 +90,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	boardSvc := service.NewBoardService(boardRepo, userRepo)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
 	rbacSvc := service.NewRBACService(rbacRepo, userRepo)
+	employmentSvc := service.NewEmploymentService(employmentRepo, userRepo, workHourRepo, notifSvc)
 	auditSvc := service.NewAuditService(auditRepo)
 
 	// WebSocket hubs
@@ -110,20 +114,24 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// profesionales con 2+ días sin registrar horas.
 	service.NewInactivityWatcher(adminRepo, userRepo, notifSvc, brevoSvc, slackSvc).Start()
 
+	// Watcher diario: alerta a la empresa sobre documentos del expediente que
+	// están por vencer (contratos, certificados...).
+	service.NewDocumentExpiryWatcher(employmentRepo, userRepo, notifSvc).Start()
+
 	return &deps{
 		cfg: cfg,
 		// Session-revocation lookup used by the auth middleware (audit A-04).
 		tvGetter: func(userID uint) (int, error) { return authSvc.GetTokenVersion(userID) },
 
-		auth:         handlers.NewAuthHandler(authSvc, auditSvc, rbacSvc),
+		auth:         handlers.NewAuthHandler(authSvc, auditSvc, rbacSvc, employmentSvc),
 		user:         handlers.NewUserHandler(userSvc),
-		admin:        handlers.NewAdminHandler(adminSvc, rbacSvc),
+		admin:        handlers.NewAdminHandler(adminSvc, rbacSvc, employmentSvc),
 		board:        handlers.NewBoardHandler(boardSvc),
 		task:         handlers.NewTaskHandler(taskSvc),
 		workHour:     handlers.NewWorkHourHandler(workHourSvc),
 		chat:         handlers.NewChatHandler(chatSvc, chatHub),
 		channel:      handlers.NewChannelHandler(channelSvc, channelHub),
-		upload:       handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH")),
+		upload:       handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"), employmentSvc),
 		notification: handlers.NewNotificationHandler(notifSvc),
 		email:        handlers.NewEmailHandler(emailRepo, brevoSvc),
 		survey:       handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
@@ -136,8 +144,9 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		brevoInbound: handlers.NewBrevoInboundHandler(ticketSvc),
 		audit:        handlers.NewAuditHandler(auditSvc),
 
-		wahaSvc:  wahaSvc,
-		rbacSvc:  rbacSvc,
-		auditSvc: auditSvc,
+		wahaSvc:       wahaSvc,
+		rbacSvc:       rbacSvc,
+		auditSvc:      auditSvc,
+		employmentSvc: employmentSvc,
 	}
 }

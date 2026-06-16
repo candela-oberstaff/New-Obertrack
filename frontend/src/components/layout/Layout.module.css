@@ -221,6 +221,41 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
+.company-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.company-switcher-icon {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.company-switcher-select {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+}
+
+.company-switcher-select:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.company-switcher-select option {
+  color: #1a1a1a;
+}
+
 .sidebar-nav {
   flex: 1;
   padding: 16px 8px;

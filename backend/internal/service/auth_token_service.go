@@ -8,6 +8,12 @@ import (
 	"github.com/obertrack/backend/internal/models"
 )
 
+// IssueTokens expone generateTokenPair para re-emitir el JWT de una sesión ya
+// autenticada (p.ej. al cambiar la empresa activa).
+func (s *authService) IssueTokens(user *models.User) (string, string, error) {
+	return s.generateTokenPair(user)
+}
+
 func (s *authService) generateTokenPair(user *models.User) (string, string, error) {
 	tenantID := user.EmpleadorID
 	if tenantID == nil && user.UserType == models.UserTypeEmployer {

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { userService } from '../../services/api'
+import { userService, employerService } from '../../services/api'
 import Avatar from '../Common/Avatar'
 import { useConfirm } from '../ui/ConfirmProvider'
+import { ExpedienteModal } from '../Admin/ExpedienteModal'
 import styles from '../../pages/Profile.module.css'
-import { Search, Building, Shield, Briefcase, ArrowUp, ArrowDown, Users, MessageSquare } from 'lucide-react'
+import { Search, Building, Shield, Briefcase, ArrowUp, ArrowDown, Users, MessageSquare, FileText } from 'lucide-react'
 
 interface TeamPanelProps {
   type: 'manager' | 'employer'
@@ -19,6 +20,17 @@ export function TeamPanel({ type }: TeamPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [message, setMessage] = useState('')
   const confirm = useConfirm()
+  // Expediente abierto (empleo resuelto en la empresa del empleador).
+  const [expedienteEmp, setExpedienteEmp] = useState<any | null>(null)
+
+  const openExpediente = async (memberId: number) => {
+    try {
+      setExpedienteEmp(await employerService.resolveEmployment(memberId))
+    } catch {
+      setMessage('Este profesional no tiene un empleo activo en tu empresa')
+      setTimeout(() => setMessage(''), 3000)
+    }
+  }
 
   const { data: teamMembers = [] } = useQuery({
     queryKey: ['team', type],
@@ -117,7 +129,17 @@ export function TeamPanel({ type }: TeamPanelProps) {
               <MessageSquare size={14} style={{ color: '#4f46e5' }} />
             </button>
             {type === 'employer' && (
-              <button 
+              <button
+                className={styles['btn-message']}
+                onClick={() => openExpediente(member.id)}
+                title="Expediente"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', marginRight: '4px' }}
+              >
+                <FileText size={14} style={{ color: '#7c3aed' }} />
+              </button>
+            )}
+            {type === 'employer' && (
+              <button
                 className={styles['btn-promote']}
                 onClick={() => handlePromoteToManager(member.id, member.is_manager || false)}
                 title={member.is_manager ? "Quitar rol de Manager" : "Promover a Manager"}
@@ -134,6 +156,16 @@ export function TeamPanel({ type }: TeamPanelProps) {
           </p>
         )}
       </div>
+
+      {expedienteEmp && (
+        <ExpedienteModal
+          userId={0}
+          employment={expedienteEmp}
+          canManage
+          employerMode
+          onClose={() => setExpedienteEmp(null)}
+        />
+      )}
     </div>
   )
 }

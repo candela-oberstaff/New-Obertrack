@@ -17,7 +17,6 @@ const MODULES: { key: string; label: string }[] = [
   { key: 'hours', label: 'Horas' },
   { key: 'reports', label: 'Reportes' },
   { key: 'chat', label: 'Chat' },
-  { key: 'tickets', label: 'Tickets' },
   { key: 'tutorials', label: 'Tutoriales' },
 ]
 

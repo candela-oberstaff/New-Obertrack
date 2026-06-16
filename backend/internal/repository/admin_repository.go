@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -53,6 +54,22 @@ type AbsenceReportItem struct {
 	Approved      bool      `json:"approved"`
 	Rejected      bool      `json:"rejected"`
 	CreatedAt     time.Time `json:"created_at"`
+}
+
+// ArchivedEntry es un profesional "archivado": con empleo finalizado (baja) o
+// con la cuenta desactivada. Sirve para listarlos y poder reactivarlos.
+type ArchivedEntry struct {
+	Kind         string    `json:"kind"` // ended_employment | deactivated_user
+	UserID       uint      `json:"user_id"`
+	EmploymentID uint      `json:"employment_id"` // 0 si es solo cuenta desactivada
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	Avatar       string    `json:"avatar"`
+	Company      string    `json:"company"`
+	CompanyID    uint      `json:"company_id"`
+	JobTitle     string    `json:"job_title"`
+	Reason       string    `json:"reason"`
+	ArchivedAt   time.Time `json:"archived_at"`
 }
 
 type AbsenceReasonCount struct {
@@ -177,6 +194,12 @@ type AdminRepository interface {
 	// Bitácora de gestión de customer success.
 	GetLatestFollowUps(kind string) ([]FollowUpInfo, error)
 	CreateFollowUp(followUp *models.FollowUp) error
+
+	// Eventos del ciclo de vida de una empresa (expediente).
+	CreateCompanyEvent(event *models.CompanyEvent) error
+
+	// Archivados: bajas de empleo + cuentas desactivadas. tenantID=0 = global.
+	GetArchived(tenantID uint) ([]ArchivedEntry, error)
 }
 
 type adminRepository struct {
@@ -301,6 +324,45 @@ func (r *adminRepository) GetLatestFollowUps(kind string) ([]FollowUpInfo, error
 
 func (r *adminRepository) CreateFollowUp(followUp *models.FollowUp) error {
 	return r.db.Create(followUp).Error
+}
+
+func (r *adminRepository) CreateCompanyEvent(event *models.CompanyEvent) error {
+	return r.db.Create(event).Error
+}
+
+// GetArchived lista profesionales archivados: empleos finalizados (baja) y
+// cuentas desactivadas. Con tenantID=0 devuelve el global; si no, los de esa
+// empresa. Un mismo usuario puede aparecer en ambas categorías.
+func (r *adminRepository) GetArchived(tenantID uint) ([]ArchivedEntry, error) {
+	var entries []ArchivedEntry
+	err := r.db.Raw(`
+		SELECT 'ended_employment' as kind, emp.id as employment_id, u.id as user_id,
+			u.name, u.email, COALESCE(u.avatar, '') as avatar,
+			COALESCE(owner.company_name, '-') as company, emp.company_id,
+			COALESCE(emp.job_title, '') as job_title,
+			COALESCE(emp.end_reason, '') as reason, emp.ended_at as archived_at
+		FROM employments emp
+		JOIN users u ON u.id = emp.user_id
+		JOIN users owner ON owner.id = emp.company_id
+		WHERE emp.status = 'ended' AND emp.deleted_at IS NULL
+			AND (@tid = 0 OR emp.company_id = @tid)
+
+		UNION ALL
+
+		SELECT 'deactivated_user' as kind, 0 as employment_id, u.id as user_id,
+			u.name, u.email, COALESCE(u.avatar, '') as avatar,
+			COALESCE(owner.company_name, '-') as company, COALESCE(u.empleador_id, 0) as company_id,
+			COALESCE(u.job_title, '') as job_title,
+			'' as reason, u.updated_at as archived_at
+		FROM users u
+		LEFT JOIN users owner ON owner.id = u.empleador_id
+		WHERE u.is_active = false AND u.deleted_at IS NULL
+			AND u.user_type IN ('profesional', 'customer_success')
+			AND (@tid = 0 OR u.empleador_id = @tid)
+
+		ORDER BY archived_at DESC
+	`, sql.Named("tid", tenantID)).Scan(&entries).Error
+	return entries, err
 }
 
 func (r *adminRepository) GetSeniorityRanking() ([]SeniorityItem, error) {
@@ -607,24 +669,91 @@ func (r *adminRepository) GetEmployeeTasks(userID uint, limit int) ([]EmployeeTa
 	return tasks, err
 }
 
+// GetTenantActivities arma el EXPEDIENTE de la empresa: una línea de tiempo del
+// ciclo de vida completo, desde el alta hasta la baja. Une seis fuentes:
+//  1) Alta de la empresa (created_at del empleador).
+//  2) Altas de empleados (employments iniciados).
+//  3) Bajas de empleados (employments finalizados).
+//  4) Registros de horas (work_hours).
+//  5) Gestiones de CS (follow_ups, acotadas vía employments).
+//  6) Suspensiones / reactivaciones de la empresa (company_events).
 func (r *adminRepository) GetTenantActivities(tenantID uint) ([]Activity, error) {
 	var activities []Activity
 	err := r.db.Raw(`
-		SELECT
-			'work_hour' as type,
-			u.name as user,
+		SELECT 'company_created' as type, owner.name as user,
+			COALESCE(owner.company_name, '-') as company,
+			'Empresa registrada en la plataforma' as details,
+			owner.created_at as timestamp
+		FROM users owner WHERE owner.id = @tid
+
+		UNION ALL
+
+		SELECT 'employee_joined' as type, u.name as user,
+			COALESCE(owner.company_name, '-') as company,
+			'Se incorporó' ||
+				(CASE WHEN COALESCE(emp.job_title, '') <> '' THEN ' como ' || emp.job_title ELSE '' END) ||
+				(CASE WHEN COALESCE(emp.start_reason, '') <> '' THEN ' — ' || emp.start_reason ELSE '' END) as details,
+			emp.started_at as timestamp
+		FROM employments emp
+		JOIN users u ON u.id = emp.user_id
+		JOIN users owner ON owner.id = @tid
+		WHERE emp.company_id = @tid AND emp.deleted_at IS NULL
+
+		UNION ALL
+
+		SELECT 'employee_left' as type, u.name as user,
+			COALESCE(owner.company_name, '-') as company,
+			'Finalizó su empleo' ||
+				(CASE WHEN COALESCE(emp.end_reason, '') <> '' THEN ' — ' || emp.end_reason ELSE '' END) as details,
+			emp.ended_at as timestamp
+		FROM employments emp
+		JOIN users u ON u.id = emp.user_id
+		JOIN users owner ON owner.id = @tid
+		WHERE emp.company_id = @tid AND emp.deleted_at IS NULL
+			AND emp.status = 'ended' AND emp.ended_at IS NOT NULL
+
+		UNION ALL
+
+		SELECT 'work_hour' as type, u.name as user,
 			COALESCE(e.company_name, '-') as company,
-			CASE
-				WHEN wh.work_type = 'complete' THEN 'Registró jornada completa'
-				ELSE 'Registró ausencia'
-			END as details,
+			CASE WHEN wh.work_type = 'complete' THEN 'Registró jornada completa' ELSE 'Registró ausencia' END as details,
 			wh.created_at as timestamp
 		FROM work_hours wh
 		JOIN users u ON u.id = wh.user_id
 		LEFT JOIN users e ON e.id = u.empleador_id
-		WHERE wh.tenant_id = ?
-		ORDER BY wh.created_at DESC
-		LIMIT 20
-	`, tenantID).Scan(&activities).Error
+		WHERE wh.tenant_id = @tid
+
+		UNION ALL
+
+		SELECT 'follow_up' as type, u.name as user,
+			COALESCE(c.company_name, '-') as company,
+			'Gestión de ' ||
+				(CASE f.kind WHEN 'inactivity' THEN 'inactividad' WHEN 'absence' THEN 'ausencia' ELSE f.kind END) ||
+				': ' ||
+				(CASE f.status WHEN 'contacted' THEN 'Contactado' WHEN 'justified' THEN 'Justificado' WHEN 'escalated' THEN 'Escalado' ELSE f.status END) ||
+				(CASE WHEN COALESCE(f.note, '') <> '' THEN ' — ' || f.note ELSE '' END) as details,
+			f.created_at as timestamp
+		FROM follow_ups f
+		JOIN users u ON u.id = f.user_id
+		LEFT JOIN users c ON c.id = @tid
+		WHERE EXISTS (
+			SELECT 1 FROM employments emp
+			WHERE emp.user_id = f.user_id AND emp.company_id = @tid AND emp.deleted_at IS NULL
+		)
+
+		UNION ALL
+
+		SELECT 'company_' || ce.type as type, COALESCE(actor.name, '') as user,
+			COALESCE(owner.company_name, '-') as company,
+			(CASE ce.type WHEN 'suspended' THEN 'Acceso suspendido' WHEN 'reactivated' THEN 'Acceso reactivado' ELSE ce.type END) as details,
+			ce.created_at as timestamp
+		FROM company_events ce
+		JOIN users owner ON owner.id = ce.company_id
+		LEFT JOIN users actor ON actor.id = ce.by_user_id
+		WHERE ce.company_id = @tid
+
+		ORDER BY timestamp DESC
+		LIMIT 100
+	`, sql.Named("tid", tenantID)).Scan(&activities).Error
 	return activities, err
 }

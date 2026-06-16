@@ -53,6 +53,9 @@ type AuthService interface {
 	Refresh(refreshToken string) (*models.User, string, string, error)
 	GetUserDetails(id uint) (*models.User, error)
 	GetTokenVersion(id uint) (int, error)
+	// IssueTokens genera un par access/refresh para un usuario ya autenticado
+	// (usado al cambiar de empresa activa: re-emite el JWT con el nuevo tenant).
+	IssueTokens(user *models.User) (string, string, error)
 	GetPublicCompanies() ([]map[string]interface{}, error)
 	ForgotPassword(email string) error
 	ResetPassword(token, newPassword string) error

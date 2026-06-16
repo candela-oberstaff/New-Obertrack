@@ -34,7 +34,7 @@ function getSections(role?: string): TourSection[] {
   return [
     { path: '/dashboard', title: 'Dashboard', description: 'Tu punto de partida: un resumen general de la actividad y los indicadores clave.' },
     { path: '/admin', title: 'Admin', description: 'Panel para gestionar usuarios de la plataforma y ver la actividad.' },
-    { path: '/admin/tenants', title: 'Empresas', description: 'Administra las empresas, sus empleados y el seguimiento de cada una.' },
+    { path: '/admin/tenants', title: 'Empresas', description: 'Administra las empresas, sus Profesionales y el seguimiento de cada una.' },
     { path: '/tasks', title: 'Tareas', description: 'Tableros y tareas para organizar el trabajo del equipo por fases.' },
     { path: '/tickets', title: 'Tickets', description: 'Bandeja de soporte para atender y dar seguimiento a las solicitudes.' },
     { path: '/work-hours', title: 'Horas', description: workHoursDesc },

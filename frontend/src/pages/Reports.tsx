@@ -75,7 +75,7 @@ export default function Reports() {
             value={selectedEmployee}
             onChange={(v) => setSelectedEmployee(v ? Number(v) : '')}
             clearable
-            placeholder="Todos los empleados"
+            placeholder="Todos los Profesionales"
             options={employees.map((emp) => ({ value: emp.id, label: emp.name }))}
           />
         )}

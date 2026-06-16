@@ -137,7 +137,7 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
             <ClipboardList size={32} />
           </div>
           <h3>Aún no tienes encuestas</h3>
-          <p>Crea tu primera encuesta para recopilar feedback de tus empleados.</p>
+          <p>Crea tu primera encuesta para recopilar feedback de tus Profesionales.</p>
         </div>
       ) : (
         <div className={listStyles.surveysList}>

@@ -62,6 +62,10 @@ type User struct {
 	// asignados (campo transitorio: solo viaja en /auth/me y /auth/login).
 	// Ausente = sin roles = comportamiento histórico del tipo de cuenta.
 	Permissions         map[string]string `gorm:"-" json:"permissions,omitempty"`
+	// Companies son las empresas donde el profesional tiene un empleo ACTIVO
+	// (campo transitorio para el switcher multi-empresa). La activa es la que
+	// apunta empleador_id. Vacío/único = sin switcher.
+	Companies           []CompanyRef   `gorm:"-" json:"companies,omitempty"`
 	CreatedAt           time.Time      `json:"created_at"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`
@@ -69,6 +73,12 @@ type User struct {
 
 func (User) TableName() string {
 	return "users"
+}
+
+// CompanyRef es una referencia ligera a una empresa (para el switcher).
+type CompanyRef struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
 }
 
 func TenantForUser(user *User) uint {

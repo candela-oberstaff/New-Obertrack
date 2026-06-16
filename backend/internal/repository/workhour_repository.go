@@ -13,7 +13,7 @@ type WorkHourRepository interface {
 	FindByIDAndTenant(id, tenantID uint) (*models.WorkHour, error)
 	FindManyByIDs(ids []uint) ([]models.WorkHour, error)
 	FindManyByIDsAndTenant(ids []uint, tenantID uint) ([]models.WorkHour, error)
-	FindByUserAndDate(userID uint, date time.Time) (*models.WorkHour, error)
+	FindByUserAndDate(userID uint, date time.Time, tenantID uint) (*models.WorkHour, error)
 	Update(workHour *models.WorkHour) error
 	ApproveMultiple(ids []uint, approvedBy uint, approvedAt time.Time) error
 	ApproveMultipleAndTenant(ids []uint, approvedBy uint, approvedAt time.Time, tenantID uint) error
@@ -21,6 +21,9 @@ type WorkHourRepository interface {
 	RejectMultipleAndTenant(ids []uint, rejectedBy uint, rejectedAt time.Time, reason string, tenantID uint) error
 	FindAll(filters map[string]interface{}, offset, limit int) ([]models.WorkHour, int64, error)
 	GetSummary(filters map[string]interface{}) (map[string]float64, error)
+	// ListAbsences lista las ausencias (work_type='absence') de un usuario en un
+	// tenant dentro de un rango de fechas, más recientes primero.
+	ListAbsences(userID, tenantID uint, start, end time.Time) ([]models.WorkHour, error)
 	CountActiveToday() (int64, error)
 	GetTotalHoursMonth() (float64, error)
 }
@@ -69,9 +72,11 @@ func (r *workHourRepository) FindManyByIDsAndTenant(ids []uint, tenantID uint) (
 	return workHours, err
 }
 
-func (r *workHourRepository) FindByUserAndDate(userID uint, date time.Time) (*models.WorkHour, error) {
+// FindByUserAndDate busca la jornada de un usuario en una fecha dentro de una
+// empresa (tenant): un registro por día POR empresa (multi-empresa).
+func (r *workHourRepository) FindByUserAndDate(userID uint, date time.Time, tenantID uint) (*models.WorkHour, error) {
 	var workHour models.WorkHour
-	err := r.db.Where("user_id = ? AND work_date = ?", userID, date).First(&workHour).Error
+	err := r.db.Where("user_id = ? AND work_date = ? AND tenant_id = ?", userID, date, tenantID).First(&workHour).Error
 	return &workHour, err
 }
 
@@ -246,6 +251,16 @@ func (r *workHourRepository) GetSummary(filters map[string]interface{}) (map[str
 		"rejected_hours": rejectedHours,
 	}, nil
 }
+func (r *workHourRepository) ListAbsences(userID, tenantID uint, start, end time.Time) ([]models.WorkHour, error) {
+	var absences []models.WorkHour
+	err := r.db.
+		Where("user_id = ? AND tenant_id = ? AND work_type = ?", userID, tenantID, models.WorkTypeAbsence).
+		Where("work_date >= ? AND work_date <= ?", start, end).
+		Order("work_date DESC").
+		Find(&absences).Error
+	return absences, err
+}
+
 func (r *workHourRepository) CountActiveToday() (int64, error) {
 	var count int64
 	today := time.Now().Truncate(24 * time.Hour)

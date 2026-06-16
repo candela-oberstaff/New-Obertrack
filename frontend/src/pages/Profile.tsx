@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { userService, uploadService } from '../services/api'
 import { ProfileForm } from '../components/Profile/ProfileForm'
 import { PasswordModal } from '../components/Profile/PasswordModal'
+import { MiCV } from '../components/Profile/MiCV'
 import Avatar from '../components/Common/Avatar'
 import Tooltip from '../components/Common/Tooltip'
 import styles from './Profile.module.css'
@@ -101,12 +102,15 @@ export default function Profile() {
       <div className={styles['profile-content']}>
         <div className={styles['profile-main-info']} data-tour="profile-form">
           {user && (
-            <ProfileForm 
-              user={user} 
-              setUser={setUser} 
-              isEditing={isEditing} 
-              setIsEditing={setIsEditing} 
+            <ProfileForm
+              user={user}
+              setUser={setUser}
+              isEditing={isEditing}
+              setIsEditing={setIsEditing}
             />
+          )}
+          {(user?.user_type === 'profesional' || user?.user_type === 'customer_success') && (
+            <MiCV />
           )}
         </div>
 

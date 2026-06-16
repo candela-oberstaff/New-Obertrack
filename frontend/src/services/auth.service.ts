@@ -29,6 +29,25 @@ export const authService = {
     const { data } = await api.get<User>('/auth/me')
     return data
   },
+  // Cambia la empresa activa (multi-empresa). Devuelve el usuario actualizado.
+  switchCompany: async (companyId: number) => {
+    const { data } = await api.post<User>('/auth/switch-company', { company_id: companyId })
+    return data
+  },
+  // Expediente propio: el profesional ve su CV vivo y el detalle de cada empleo.
+  myEmployments: async () => {
+    const { data } = await api.get<{ data: any[] }>('/me/employments')
+    return data.data || []
+  },
+  // CV vivo: trayectoria unificada del profesional en todas las empresas.
+  myCV: async () => {
+    const { data } = await api.get('/me/cv')
+    return data
+  },
+  myExpediente: async (employmentId: number) => {
+    const { data } = await api.get(`/me/employments/${employmentId}/expediente`)
+    return data
+  },
   logout: async () => {
     await api.post('/auth/logout')
   },

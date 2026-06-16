@@ -48,7 +48,10 @@ type AdminService interface {
 	GetTenant(id uint) (*repository.TenantSummary, error)
 	GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error)
 	GetTenantActivities(id uint) ([]repository.Activity, error)
-	SetTenantStatus(id uint, active bool) (*models.User, error)
+	// GetArchived lista profesionales archivados (bajas + desactivados).
+	// tenantID=0 = global; si no, los de esa empresa.
+	GetArchived(tenantID uint) ([]repository.ArchivedEntry, error)
+	SetTenantStatus(id uint, active bool, byUserID uint) (*models.User, error)
 	CreateTenant(name, companyName, email, password string) (*models.User, error)
 	AssignTenant(userID uint, companyName string) (*models.User, error)
 	GetEmployeeTracking(userID uint) (map[string]interface{}, error)
@@ -315,6 +318,10 @@ func (s *adminService) GetSeniorityRanking() ([]repository.SeniorityItem, error)
 	return s.repo.GetSeniorityRanking()
 }
 
+func (s *adminService) GetArchived(tenantID uint) ([]repository.ArchivedEntry, error) {
+	return s.repo.GetArchived(tenantID)
+}
+
 func (s *adminService) GetLatestFollowUps(kind string) ([]repository.FollowUpInfo, error) {
 	if !models.IsValidFollowUpKind(kind) {
 		return nil, errors.New("Tipo de seguimiento inválido: usa 'inactivity' o 'absence'")
@@ -391,7 +398,7 @@ func (s *adminService) GetTenantActivities(id uint) ([]repository.Activity, erro
 	return s.repo.GetTenantActivities(id)
 }
 
-func (s *adminService) SetTenantStatus(id uint, active bool) (*models.User, error) {
+func (s *adminService) SetTenantStatus(id uint, active bool, byUserID uint) (*models.User, error) {
 	user, err := s.userRepo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("Tenant not found")
@@ -402,6 +409,16 @@ func (s *adminService) SetTenantStatus(id uint, active bool) (*models.User, erro
 	if err := s.userRepo.Update(user, map[string]interface{}{"is_active": active}); err != nil {
 		return nil, err
 	}
+	// Registra el hito en el expediente de la empresa (best-effort).
+	eventType := models.CompanyEventSuspended
+	if active {
+		eventType = models.CompanyEventReactivated
+	}
+	_ = s.repo.CreateCompanyEvent(&models.CompanyEvent{
+		CompanyID: id,
+		Type:      eventType,
+		ByUserID:  byUserID,
+	})
 	return user, nil
 }
 

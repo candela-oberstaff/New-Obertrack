@@ -42,7 +42,7 @@ func RequirePermission(svc service.RBACService, module, level string) gin.Handle
 			c.Next()
 			return
 		}
-		perms, hasRoles, err := svc.EffectivePermissions(middleware.GetUserID(c))
+		perms, hasRoles, err := svc.EffectivePermissions(middleware.GetUserID(c), middleware.GetTenantID(c))
 		if err != nil || !hasRoles {
 			// Sin roles (o error de lectura): no restringir, la app funciona como antes.
 			c.Next()

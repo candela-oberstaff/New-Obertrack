@@ -520,7 +520,7 @@ export default function WorkHours() {
           value={selectedEmployeeId ?? ''}
           onChange={(v) => setSelectedEmployeeId(v ? Number(v) : null)}
           clearable
-          placeholder="Todos los empleados"
+          placeholder="Todos los Profesionales"
           options={employees.map(e => ({ value: e.id, label: e.name }))}
         />
       )}
