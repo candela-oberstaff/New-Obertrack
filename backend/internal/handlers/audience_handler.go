@@ -42,6 +42,12 @@ func (h *AudienceHandler) GetGroupByID(c *gin.Context) {
 }
 
 func (h *AudienceHandler) CreateGroup(c *gin.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server panic occurred while creating group"})
+		}
+	}()
+
 	var group models.AudienceGroup
 	if err := c.ShouldBindJSON(&group); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
