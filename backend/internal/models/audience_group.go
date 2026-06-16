@@ -17,6 +17,15 @@ type AudienceGroup struct {
 	Members     []User         `gorm:"many2many:audience_group_members;" json:"members"`
 }
 
+type AudienceGroupMember struct {
+	AudienceGroupID uint `gorm:"primaryKey"`
+	UserID          uint `gorm:"primaryKey"`
+}
+
 func (AudienceGroup) TableName() string {
 	return "audience_groups"
+}
+
+func (AudienceGroupMember) TableName() string {
+	return "audience_group_members"
 }

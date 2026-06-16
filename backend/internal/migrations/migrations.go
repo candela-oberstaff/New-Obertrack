@@ -629,6 +629,19 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable("follow_ups")
 			},
 		},
+		{
+			ID: "202606131900_create_audience_groups",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating audience_groups and audience_group_members tables...")
+				return tx.AutoMigrate(&models.AudienceGroup{}, &models.AudienceGroupMember{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					"audience_group_members",
+					"audience_groups",
+				)
+			},
+		},
 		// Future migrations go here
 	})
 
