@@ -364,12 +364,22 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
     return compileBlocksToHTML(blocks);
   }, [blocks]);
 
+  // Tailwind CDN is required so that class-based styles render in the preview.
+  // allow-scripts is included in the sandbox so the CDN can execute.
+  // The production nginx.conf CSP allows cdn.tailwindcss.com explicitly.
   const srcDoc = useMemo(() => `<!DOCTYPE html>
 <html><head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>body{margin:0;padding:16px;background:#f1f5f9;min-height:100vh;display:flex;justify-content:center;align-items:flex-start;}</style>
+  <script src="https://cdn.tailwindcss.com"><\/script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: #f1f5f9; min-height: 100vh;
+           display: flex; justify-content: center; align-items: flex-start;
+           font-family: sans-serif; }
+    img { max-width: 100%; }
+    a { color: #7c3aed; }
+  </style>
 </head><body>
   <div style="width:100%;display:flex;justify-content:center;">
     ${previewContent}
@@ -623,7 +633,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 <span>Dispositivo: {previewDevice === 'desktop' ? 'Escritorio (650px)' : 'Móvil (375px)'}</span>
                 <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 8px', borderRadius: 20, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>iframe aislado</span>
               </div>
-              <iframe title="Email Preview" srcDoc={srcDoc} style={{ flex: 1, width: '100%', border: 'none' }} sandbox="allow-popups allow-same-origin allow-scripts" />
+              <iframe title="Email Preview" srcDoc={srcDoc} style={{ flex: 1, width: '100%', border: 'none' }} sandbox="allow-scripts allow-popups" />
             </div>
           </div>
         )}

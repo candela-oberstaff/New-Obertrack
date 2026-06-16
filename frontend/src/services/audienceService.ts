@@ -27,8 +27,13 @@ export const audienceService = {
   },
 
   createGroup: async (group: AudienceGroup): Promise<AudienceGroup> => {
-    const response = await api.post('/audiences/groups', group);
-    return response.data;
+    try {
+      const response = await api.post('/audiences/groups', group);
+      return response.data;
+    } catch (error) {
+      console.error('Error creating audience group:', error);
+      throw error;
+    }
   },
 
   updateGroup: async (id: number, group: Partial<AudienceGroup>): Promise<AudienceGroup> => {

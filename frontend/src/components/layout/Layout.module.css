@@ -148,6 +148,8 @@
   min-height: 0;
   padding: 12px;
   position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .chat-layout {
