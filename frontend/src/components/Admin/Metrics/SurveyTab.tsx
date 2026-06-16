@@ -19,8 +19,8 @@ const SurveyTab: React.FC<SurveyTabProps> = ({ data }) => {
         <div className={styles.statCard}>
           <div className={styles.statIcon} style={{ background: '#f5f3ff', color: '#8b5cf6' }}><Mail size={24} /></div>
           <div className={styles.statInfo}>
-            <label>Campañas</label>
-            <h3>{data?.surveys.total_surveys || '0'}</h3>
+            <label>Enviadas</label>
+            <h3>{data?.surveys.total_sent || '0'}</h3>
           </div>
         </div>
         <div className={styles.statCard}>

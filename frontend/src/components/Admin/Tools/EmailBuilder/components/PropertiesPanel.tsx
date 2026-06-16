@@ -95,6 +95,90 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedBlock, onUpda
           </>
         )}
 
+        {selectedBlock.type === 'columns' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
+              <strong style={{ display: 'block', marginBottom: '8px', fontSize: '13px' }}>Columna Izquierda</strong>
+              <div className={styles['prop-control']}>
+                <label>Texto</label>
+                <input
+                  type="text"
+                  value={selectedBlock.content.leftBlock?.content || ''}
+                  onChange={(e) => onUpdateBlock(selectedBlock.id, {
+                    content: {
+                      ...selectedBlock.content,
+                      leftBlock: { ...selectedBlock.content.leftBlock, content: e.target.value }
+                    }
+                  })}
+                />
+              </div>
+              <div className={styles['prop-control']}>
+                <label>Tamaño Fuente</label>
+                <Select
+                  fullWidth
+                  value={selectedBlock.content.leftBlock?.style?.fontSize || '14px'}
+                  onChange={(v) => onUpdateBlock(selectedBlock.id, {
+                    content: {
+                      ...selectedBlock.content,
+                      leftBlock: {
+                        ...selectedBlock.content.leftBlock,
+                        style: { ...(selectedBlock.content.leftBlock?.style || {}), fontSize: String(v) }
+                      }
+                    }
+                  })}
+                  options={['12px', '14px', '16px', '18px', '20px'].map(s => ({ value: s, label: s }))}
+                />
+              </div>
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
+              <strong style={{ display: 'block', marginBottom: '8px', fontSize: '13px' }}>Columna Derecha</strong>
+              <div className={styles['prop-control']}>
+                <label>Texto</label>
+                <input
+                  type="text"
+                  value={selectedBlock.content.rightBlock?.content || ''}
+                  onChange={(e) => onUpdateBlock(selectedBlock.id, {
+                    content: {
+                      ...selectedBlock.content,
+                      rightBlock: { ...selectedBlock.content.rightBlock, content: e.target.value }
+                    }
+                  })}
+                />
+              </div>
+              <div className={styles['prop-control']}>
+                <label>Tamaño Fuente</label>
+                <Select
+                  fullWidth
+                  value={selectedBlock.content.rightBlock?.style?.fontSize || '14px'}
+                  onChange={(v) => onUpdateBlock(selectedBlock.id, {
+                    content: {
+                      ...selectedBlock.content,
+                      rightBlock: {
+                        ...selectedBlock.content.rightBlock,
+                        style: { ...(selectedBlock.content.rightBlock?.style || {}), fontSize: String(v) }
+                      }
+                    }
+                  })}
+                  options={['12px', '14px', '16px', '18px', '20px'].map(s => ({ value: s, label: s }))}
+                />
+              </div>
+            </div>
+
+            <div className={styles['prop-control']}>
+              <label>Espacio entre Columnas (gap)</label>
+              <input
+                type="text"
+                placeholder="20px"
+                value={selectedBlock.style.gap || ''}
+                onChange={(e) => onUpdateBlock(selectedBlock.id, {
+                  style: { ...selectedBlock.style, gap: e.target.value }
+                })}
+              />
+            </div>
+          </div>
+        )}
+
         {selectedBlock.type === 'social' && (
           <div className={styles['prop-control']}>
             <label>Redes Sociales</label>

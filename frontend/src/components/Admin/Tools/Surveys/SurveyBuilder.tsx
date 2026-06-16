@@ -27,11 +27,12 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
   const [description, setDescription] = useState(initialData?.description || '');
   const [questions, setQuestions] = useState<SurveyQuestion[]>(initialData?.questions || []);
   const [showSettings, setShowSettings] = useState(false);
-  const [sendByEmail, setSendByEmail] = useState(initialData?.send_by_email || false);
+  const [sendByEmail, setSendByEmail] = useState(initialData?.send_by_email ?? true);
   const [sendByInApp, setSendByInApp] = useState(initialData?.send_by_inapp ?? true);
   
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
   const [isSending, setIsSending] = useState(false);
 
   const { data: availableUsers = [] } = useQuery({
@@ -66,18 +67,36 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
     setSelectedRecipients([]);
   };
 
-  const filteredUsers = availableUsers.filter(u => 
-    u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
-    u.email.toLowerCase().includes(userSearch.toLowerCase())
-  );
+  const filteredUsers = availableUsers.filter(u => {
+    const matchesSearch = u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+                          u.email.toLowerCase().includes(userSearch.toLowerCase());
+    if (!matchesSearch) return false;
 
-  const addQuestion = (type: 'text' | 'rating' | 'choice') => {
+    if (roleFilter !== 'all') {
+      if (roleFilter === 'superadmin') return u.is_superadmin || u.user_type === 'superadmin';
+      if (roleFilter === 'manager') return u.is_manager;
+      return u.user_type === roleFilter;
+    }
+
+    return true;
+  });
+
+  const addQuestion = (type: 'text' | 'rating' | 'choice' | 'checkbox' | 'dropdown' | 'linear_scale' | 'grid' | 'checkbox_grid') => {
+    let defaultOptions: string | undefined = undefined;
+    if (type === 'choice' || type === 'checkbox' || type === 'dropdown') {
+      defaultOptions = JSON.stringify(['Opción 1']);
+    } else if (type === 'linear_scale') {
+      defaultOptions = JSON.stringify({ min: 1, max: 5, minLabel: 'Malo', maxLabel: 'Excelente' });
+    } else if (type === 'grid' || type === 'checkbox_grid') {
+      defaultOptions = JSON.stringify({ rows: ['Fila 1'], columns: ['Columna 1'] });
+    }
+
     setQuestions([...questions, {
       text: '',
       type,
       is_required: true,
       order_index: questions.length,
-      options: type === 'choice' ? JSON.stringify(['Opción 1']) : undefined
+      options: defaultOptions
     }]);
   };
 
@@ -162,6 +181,10 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
 
   const handleSend = async () => {
     if (isSending) return;
+    if (selectedRecipients.length === 0) {
+      alert("Por favor, selecciona al menos un destinatario en 'Configuración' antes de enviar la encuesta.");
+      return;
+    }
     setIsSending(true);
     try {
       if (onSend) {
@@ -264,14 +287,37 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                     </div>
                   </div>
 
-                  <div className={styles.searchContainer}>
-                    <Search size={16} />
-                    <input 
-                      type="text" 
-                      placeholder="Buscar usuarios..." 
-                      value={userSearch}
-                      onChange={e => setUserSearch(e.target.value)}
-                    />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                    <div className={styles.searchContainer} style={{ marginBottom: 0 }}>
+                      <Search size={16} />
+                      <input 
+                        type="text" 
+                        placeholder="Buscar usuarios..." 
+                        value={userSearch}
+                        onChange={e => setUserSearch(e.target.value)}
+                      />
+                    </div>
+                    <select
+                      style={{
+                        padding: '8px 12px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        outline: 'none',
+                        background: 'white',
+                        cursor: 'pointer',
+                        width: '100%',
+                      }}
+                      value={roleFilter}
+                      onChange={e => setRoleFilter(e.target.value)}
+                    >
+                      <option value="all">Todos los tipos de usuario</option>
+                      <option value="profesional">Profesionales</option>
+                      <option value="empleador">Empresas (Empleadores)</option>
+                      <option value="customer_success">Customer Success</option>
+                      <option value="manager">Managers</option>
+                      <option value="superadmin">Administradores</option>
+                    </select>
                   </div>
 
                   <div className={styles.userList}>
@@ -285,7 +331,13 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                           {user.name.charAt(0)}
                         </div>
                         <div className={styles.userInfo}>
-                          <span className={styles.userName}>{user.name}</span>
+                          <span className={styles.userName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {user.name}
+                            {user.is_superadmin && <span style={{ fontSize: 9, background: '#fee2e2', color: '#ef4444', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Admin</span>}
+                            {user.user_type === 'empleador' && <span style={{ fontSize: 9, background: '#dbeafe', color: '#2563eb', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Empresa</span>}
+                            {user.user_type === 'profesional' && <span style={{ fontSize: 9, background: '#f0fdf4', color: '#16a34a', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Profesional</span>}
+                            {user.user_type === 'customer_success' && <span style={{ fontSize: 9, background: '#f5f3ff', color: '#7c3aed', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>CS</span>}
+                          </span>
                           <span className={styles.userEmail}>{user.email}</span>
                         </div>
                         <div className={styles.checkboxMock}>
@@ -353,11 +405,12 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                         ))}
                       </div>
                     )}
-                    {q.type === 'choice' && (
+                    {(q.type === 'choice' || q.type === 'checkbox' || q.type === 'dropdown') && (
                       <div className={styles.choiceEditor}>
+                        {q.type === 'dropdown' && <div className={styles.mockInput} style={{marginBottom: 8}}>↓ El usuario verá un menú desplegable</div>}
                         {(JSON.parse(q.options || '[]') as string[]).map((opt, oIndex) => (
                           <div key={oIndex} className={styles.choiceOptionEdit}>
-                            <div className={styles.choiceRadioMock}></div>
+                            <div className={q.type === 'checkbox' ? styles.choiceCheckMock : styles.choiceRadioMock}></div>
                             <input
                               type="text"
                               value={opt}
@@ -375,6 +428,80 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                         </button>
                       </div>
                     )}
+                    {q.type === 'linear_scale' && (() => {
+                      let cfg: any = {};
+                      try { cfg = JSON.parse(q.options || '{}'); } catch {}
+                      return (
+                        <div className={styles.linearScaleEditor}>
+                          <div className={styles.scaleRangeRow}>
+                            <div className={styles.scaleField}>
+                              <label>Mín</label>
+                              <input type="number" value={cfg.min ?? 1} min={0} max={9}
+                                onChange={e => { cfg.min = parseInt(e.target.value); updateQuestion(index, 'options', JSON.stringify(cfg)); }} />
+                            </div>
+                            <div className={styles.scaleMockTrack}>
+                              {Array.from({length: (cfg.max ?? 5) - (cfg.min ?? 1) + 1}, (_, i) => (cfg.min ?? 1) + i).map(n => (
+                                <span key={n} className={styles.scaleDot}>{n}</span>
+                              ))}
+                            </div>
+                            <div className={styles.scaleField}>
+                              <label>Máx</label>
+                              <input type="number" value={cfg.max ?? 5} min={2} max={10}
+                                onChange={e => { cfg.max = parseInt(e.target.value); updateQuestion(index, 'options', JSON.stringify(cfg)); }} />
+                            </div>
+                          </div>
+                          <div className={styles.scaleLabelsRow}>
+                            <input type="text" className={styles.scaleLabelInput} value={cfg.minLabel ?? ''} placeholder="Etiqueta mínimo"
+                              onChange={e => { cfg.minLabel = e.target.value; updateQuestion(index, 'options', JSON.stringify(cfg)); }} />
+                            <input type="text" className={styles.scaleLabelInput} value={cfg.maxLabel ?? ''} placeholder="Etiqueta máximo"
+                              onChange={e => { cfg.maxLabel = e.target.value; updateQuestion(index, 'options', JSON.stringify(cfg)); }} />
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {(q.type === 'grid' || q.type === 'checkbox_grid') && (() => {
+                      let cfg: any = { rows: ['Fila 1'], columns: ['Columna 1'] };
+                      try { cfg = JSON.parse(q.options || '{}'); } catch {}
+                      const updateGridField = (field: 'rows' | 'columns', vals: string[]) => {
+                        updateQuestion(index, 'options', JSON.stringify({ ...cfg, [field]: vals }));
+                      };
+                      return (
+                        <div className={styles.gridEditor}>
+                          <div className={styles.gridEditorCols}>
+                            <div className={styles.gridEditorSection}>
+                              <strong>Filas</strong>
+                              {(cfg.rows || []).map((row: string, ri: number) => (
+                                <div key={ri} className={styles.choiceOptionEdit}>
+                                  <input type="text" className={styles.choiceInputEdit} value={row}
+                                    onChange={e => { const r = [...cfg.rows]; r[ri] = e.target.value; updateGridField('rows', r); }}
+                                    placeholder={`Fila ${ri+1}`} />
+                                  <button className={styles.removeOptionBtn} onClick={() => { const r = cfg.rows.filter((_:any, i:number) => i !== ri); updateGridField('rows', r); }}><X size={14}/></button>
+                                </div>
+                              ))}
+                              <button className={styles.addOptionBtn} onClick={() => updateGridField('rows', [...cfg.rows, `Fila ${cfg.rows.length+1}`])}><Plus size={14}/> Añadir fila</button>
+                            </div>
+                            <div className={styles.gridEditorSection}>
+                              <strong>Columnas</strong>
+                              {(cfg.columns || []).map((col: string, ci: number) => (
+                                <div key={ci} className={styles.choiceOptionEdit}>
+                                  <input type="text" className={styles.choiceInputEdit} value={col}
+                                    onChange={e => { const c = [...cfg.columns]; c[ci] = e.target.value; updateGridField('columns', c); }}
+                                    placeholder={`Col ${ci+1}`} />
+                                  <button className={styles.removeOptionBtn} onClick={() => { const c = cfg.columns.filter((_:any, i:number) => i !== ci); updateGridField('columns', c); }}><X size={14}/></button>
+                                </div>
+                              ))}
+                              <button className={styles.addOptionBtn} onClick={() => updateGridField('columns', [...cfg.columns, `Columna ${cfg.columns.length+1}`])}><Plus size={14}/> Añadir columna</button>
+                            </div>
+                          </div>
+                          <div className={styles.gridPreview}>
+                            <table className={styles.gridTable}>
+                              <thead><tr><th></th>{(cfg.columns||[]).map((c:string, ci:number) => <th key={ci}>{c}</th>)}</tr></thead>
+                              <tbody>{(cfg.rows||[]).map((r:string, ri:number) => (<tr key={ri}><td>{r}</td>{(cfg.columns||[]).map((_:any, ci:number) => <td key={ci}><input type={q.type === 'checkbox_grid' ? 'checkbox' : 'radio'} disabled /></td>)}</tr>))}</tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className={styles.questionFooter}>
@@ -405,10 +532,25 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
             <Plus size={16} /> Texto Libre
           </button>
           <button className={styles.toolBtn} onClick={() => addQuestion('rating')}>
-            <Plus size={16} /> Puntuación (1-5)
+            <Plus size={16} /> Puntuación ★
           </button>
           <button className={styles.toolBtn} onClick={() => addQuestion('choice')}>
             <Plus size={16} /> Opción Múltiple
+          </button>
+          <button className={styles.toolBtn} onClick={() => addQuestion('checkbox')}>
+            <Plus size={16} /> Casillas
+          </button>
+          <button className={styles.toolBtn} onClick={() => addQuestion('dropdown')}>
+            <Plus size={16} /> Desplegable
+          </button>
+          <button className={styles.toolBtn} onClick={() => addQuestion('linear_scale')}>
+            <Plus size={16} /> Escala Lineal
+          </button>
+          <button className={styles.toolBtn} onClick={() => addQuestion('grid')}>
+            <Plus size={16} /> Cuadrícula
+          </button>
+          <button className={styles.toolBtn} onClick={() => addQuestion('checkbox_grid')}>
+            <Plus size={16} /> Cuadrícula (checks)
           </button>
         </div>
       </div>

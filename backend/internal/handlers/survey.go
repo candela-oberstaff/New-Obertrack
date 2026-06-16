@@ -171,10 +171,7 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 		return
 	}
 
-	if survey.Status == models.SurveyStatusActive {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Survey is already sent/active"})
-		return
-	}
+
 
 	// Parse recipient IDs
 	var recipientIDs []int
@@ -292,6 +289,14 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 		if userSuccess {
 			successCount++
 		}
+	}
+
+	if successCount == 0 && len(users) > 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "No se pudo enviar la encuesta a ningún destinatario",
+			"errors": errors,
+		})
+		return
 	}
 
 	survey.Status = models.SurveyStatusActive

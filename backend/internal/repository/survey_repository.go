@@ -45,10 +45,21 @@ func (r *surveyRepository) GetSurveyByID(id uint) (*models.Survey, error) {
 }
 
 func (r *surveyRepository) UpdateSurvey(survey *models.Survey) error {
-	// GORM's Full Save Updates for nested relations can be tricky, 
-	// usually it's better to update the main fields and clear/recreate questions if they changed
-	// For now, we update the top-level fields
-	return r.db.Session(&gorm.Session{FullSaveAssociations: true}).Updates(survey).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Delete existing questions first to prevent duplicates/orphans
+		if err := tx.Where("survey_id = ?", survey.ID).Delete(&models.SurveyQuestion{}).Error; err != nil {
+			return err
+		}
+		
+		// Reset IDs of questions to let GORM create them as new records
+		for i := range survey.Questions {
+			survey.Questions[i].ID = 0
+			survey.Questions[i].SurveyID = survey.ID
+		}
+
+		// Save the top-level survey and its questions
+		return tx.Session(&gorm.Session{FullSaveAssociations: true}).Save(survey).Error
+	})
 }
 
 func (r *surveyRepository) DeleteSurvey(id uint) error {

@@ -31,6 +31,7 @@ const TicketsBoard = lazy(() => import('../pages/Tickets/TicketsBoard'))
 const TicketDetail = lazy(() => import('../pages/Tickets/TicketDetail'))
 const RejectionReport = lazy(() => import('../pages/Tickets/RejectionReport'))
 const InternalTicketDetail = lazy(() => import('../pages/Tickets/InternalTicketDetail'))
+const EmailCampaigns = lazy(() => import('../pages/Email/EmailCampaigns'))
 
 export function AppRoutes() {
   return (
@@ -62,6 +63,7 @@ export function AppRoutes() {
           <Route path="admin/tenants/:id" element={<CustomerSuccessRoute><TenantDetail /></CustomerSuccessRoute>} />
           <Route path="admin/tenants/:id/employees/:eid" element={<CustomerSuccessRoute><EmployeeDetail /></CustomerSuccessRoute>} />
           <Route path="admin/tools" element={<CustomerSuccessRoute><Tools /></CustomerSuccessRoute>} />
+          <Route path="admin/email" element={<CustomerSuccessRoute><EmailCampaigns /></CustomerSuccessRoute>} />
           <Route path="admin/metrics" element={<PlatformTechRoute><Metrics /></PlatformTechRoute>} />
           <Route path="admin/audit" element={<PlatformTechRoute><AuditLogs /></PlatformTechRoute>} />
           <Route path="tutoriales" element={<Tutoriales />} />

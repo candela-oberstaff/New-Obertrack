@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Users, Search, Plus, Ban, CheckCircle2, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Building2, Users, Search, Plus, Ban, CheckCircle2, ChevronLeft, ChevronRight, X, Mail, MessageSquare } from 'lucide-react'
 import { useTenants } from '../../hooks'
 import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -8,6 +8,7 @@ import type { Tenant, User } from '../../types'
 import Avatar from '../../components/Common/Avatar'
 import { Modal, Button, Skeleton } from '../../components/ui'
 import { Select } from '../../components/ui/Select'
+import { emailService } from '../../services/emailService'
 import styles from './Tenants.module.css'
 
 export default function TenantsList() {
@@ -28,6 +29,22 @@ export default function TenantsList() {
   const [users, setUsers] = useState<User[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+
+  // Estados para acciones de comunicación y selección masiva
+  const [selectedTenantIds, setSelectedTenantIds] = useState<number[]>([])
+  const [commModal, setCommModal] = useState<{
+    isOpen: boolean
+    type: 'email' | 'whatsapp'
+    target: Tenant | 'bulk'
+    subject: string
+    message: string
+  }>({
+    isOpen: false,
+    type: 'email',
+    target: 'bulk',
+    subject: '',
+    message: '',
+  })
 
   // Opciones de filtro derivadas de los datos cargados (solo valores presentes).
   const industries = Array.from(new Set(tenants.map(t => t.industry?.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
@@ -118,6 +135,93 @@ export default function TenantsList() {
     }
   }
 
+  // Manejadores para selección masiva
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedTenantIds(paginated.map(t => t.id))
+    } else {
+      setSelectedTenantIds([])
+    }
+  }
+
+  const handleSelectOne = (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
+    e.stopPropagation()
+    if (e.target.checked) {
+      setSelectedTenantIds([...selectedTenantIds, id])
+    } else {
+      setSelectedTenantIds(selectedTenantIds.filter(tid => tid !== id))
+    }
+  }
+
+  const openCommModal = (e: React.MouseEvent, type: 'email' | 'whatsapp', target: Tenant | 'bulk') => {
+    e.stopPropagation()
+    setCommModal({
+      isOpen: true,
+      type,
+      target,
+      subject: type === 'email' ? 'Contacto desde Oberstaff' : '',
+      message: ''
+    })
+  }
+
+  const handleSendComm = async () => {
+    const isBulk = commModal.target === 'bulk'
+    
+    if (commModal.type === 'email') {
+      try {
+        if (isBulk) {
+          const targets = tenants.filter(t => selectedTenantIds.includes(t.id))
+          const recipients = targets
+            .map(t => ({ name: t.owner_name || t.company_name || '', email: t.owner_email || '' }))
+            .filter(r => r.email)
+          
+          if (recipients.length === 0) {
+            alert('Ninguna de las empresas seleccionadas tiene un correo electrónico válido.')
+            return
+          }
+
+          await emailService.sendQuickEmailBulk({
+            recipients,
+            subject: commModal.subject || 'Contacto masivo Oberstaff',
+            html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
+          })
+          alert(`¡Correo masivo enviado con éxito a ${recipients.length} destinatarios!`)
+        } else {
+          const target = commModal.target as Tenant
+          if (!target.owner_email) {
+            alert('Esta empresa no tiene un correo de contacto asociado.')
+            return
+          }
+          await emailService.sendQuickEmail({
+            to_email: target.owner_email,
+            to_name: target.owner_name || target.company_name,
+            subject: commModal.subject || 'Contacto oficial Oberstaff',
+            html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
+          })
+          alert(`¡Correo enviado con éxito a ${target.owner_email}!`)
+        }
+      } catch (err) {
+        console.error(err)
+        alert('Error al enviar el correo. Por favor, intente de nuevo.')
+      }
+    } else {
+      const targetNames = isBulk
+        ? `${selectedTenantIds.length} empresas seleccionadas`
+        : (commModal.target as Tenant).company_name
+
+      console.log(`[SIMULACIÓN] Enviando ${commModal.type.toUpperCase()} a ${targetNames}:`, {
+        asunto: commModal.subject,
+        mensaje: commModal.message
+      })
+      alert(`¡Mensaje (${commModal.type.toUpperCase()}) enviado con éxito a ${targetNames}! (Simulado)`)
+    }
+
+    setCommModal(prev => ({ ...prev, isOpen: false, message: '', subject: '' }))
+    if (isBulk) {
+      setSelectedTenantIds([])
+    }
+  }
+
   if (isLoading) {
     return (
       <div className={styles.page}>
@@ -184,7 +288,7 @@ export default function TenantsList() {
           </div>
           <div>
             <span className={styles.kpiValue}>{totalUsers}</span>
-            <span className={styles.kpiLabel}>Usuarios totales</span>
+            <span className={styles.kpiLabel}>Profesionales totales</span>
           </div>
         </div>
       </div>
@@ -229,6 +333,31 @@ export default function TenantsList() {
             <X size={14} /> Limpiar filtros
           </button>
         )}
+
+        {/* Acciones Masivas cuando hay empresas seleccionadas */}
+        {selectedTenantIds.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', background: 'rgba(204, 51, 204, 0.08)', padding: '6px 12px', borderRadius: '10px', border: '1px dashed var(--primary)' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--primary)' }}>
+              {selectedTenantIds.length} selec.
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              leftIcon={<Mail size={14} />}
+              onClick={(e) => openCommModal(e, 'email', 'bulk')}
+            >
+              Email Masivo
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              leftIcon={<MessageSquare size={14} />}
+              onClick={(e) => openCommModal(e, 'whatsapp', 'bulk')}
+            >
+              WhatsApp Masivo
+            </Button>
+          </div>
+        )}
       </div>
 
       {error && <p className={styles.errorMsg}>{error}</p>}
@@ -243,9 +372,16 @@ export default function TenantsList() {
           <table className={styles.table}>
             <thead>
               <tr>
+                <th style={{ width: '40px', paddingRight: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={paginated.length > 0 && paginated.every(t => selectedTenantIds.includes(t.id))}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                  />
+                </th>
                 <th>Empresa</th>
                 <th>Responsable</th>
-                <th>Usuarios</th>
+                <th>Profesionales</th>
                 <th>Tableros</th>
                 <th>Tareas</th>
                 <th>Estado</th>
@@ -255,6 +391,13 @@ export default function TenantsList() {
             <tbody>
               {paginated.map(t => (
                 <tr key={t.id} className={styles.row} onClick={() => navigate(`/admin/tenants/${t.id}`)}>
+                  <td style={{ paddingRight: 0 }} onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTenantIds.includes(t.id)}
+                      onChange={(e) => handleSelectOne(e, t.id)}
+                    />
+                  </td>
                   <td>
                     <div className={styles.companyCell}>
                       <div className={styles.companyLogo}>{t.company_name?.charAt(0).toUpperCase() || '?'}</div>
@@ -276,7 +419,23 @@ export default function TenantsList() {
                     </span>
                   </td>
                   <td>
-                    <div className={styles.rowActions}>
+                    <div className={styles.rowActions} onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className={styles.iconBtn}
+                        style={{ color: 'var(--primary)' }}
+                        onClick={(e) => openCommModal(e, 'email', t)}
+                        title="Enviar Correo"
+                      >
+                        <Mail size={16} />
+                      </button>
+                      <button
+                        className={styles.iconBtn}
+                        style={{ color: '#25D366' }}
+                        onClick={(e) => openCommModal(e, 'whatsapp', t)}
+                        title="Enviar WhatsApp"
+                      >
+                        <MessageSquare size={16} />
+                      </button>
                       {canManage && (
                         <button
                           className={`${styles.iconBtn} ${t.is_active ? styles.danger : styles.success}`}
@@ -286,7 +445,7 @@ export default function TenantsList() {
                           {t.is_active ? <Ban size={16} /> : <CheckCircle2 size={16} />}
                         </button>
                       )}
-                      <ChevronRight size={18} className={styles.chevron} />
+                      <ChevronRight size={18} className={styles.chevron} onClick={() => navigate(`/admin/tenants/${t.id}`)} />
                     </div>
                   </td>
                 </tr>
@@ -329,6 +488,50 @@ export default function TenantsList() {
         </div>
       )}
 
+      {/* Modal de simulación de comunicación */}
+      <Modal
+        isOpen={commModal.isOpen}
+        onClose={() => setCommModal(prev => ({ ...prev, isOpen: false }))}
+        title={commModal.type === 'email' ? 'Enviar Correo (Simulación)' : 'Enviar WhatsApp (Simulación)'}
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCommModal(prev => ({ ...prev, isOpen: false }))}>Cancelar</Button>
+            <Button onClick={handleSendComm} disabled={!commModal.message}>
+              {commModal.type === 'email' ? 'Enviar Email' : 'Enviar WhatsApp'}
+            </Button>
+          </>
+        }
+      >
+        <p className={styles.modalHint}>
+          {commModal.target === 'bulk'
+            ? `Escribe el mensaje para las ${selectedTenantIds.length} empresas seleccionadas.`
+            : `Escribe el mensaje para ${(commModal.target as Tenant).company_name}.`
+          }
+        </p>
+        {commModal.type === 'email' && (
+          <div className={styles.field}>
+            <label>Asunto</label>
+            <input
+              type="text"
+              value={commModal.subject}
+              onChange={(e) => setCommModal(prev => ({ ...prev, subject: e.target.value }))}
+              placeholder="Asunto del correo"
+            />
+          </div>
+        )}
+        <div className={styles.field}>
+          <label>Mensaje</label>
+          <textarea
+            value={commModal.message}
+            onChange={(e) => setCommModal(prev => ({ ...prev, message: e.target.value }))}
+            placeholder={commModal.type === 'email' ? 'Escribe el cuerpo del correo aquí...' : 'Escribe tu mensaje de WhatsApp...'}
+            rows={5}
+            style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius)', fontSize: '14px', outline: 'none' }}
+          />
+        </div>
+      </Modal>
+
       <Modal
         isOpen={showCreate}
         onClose={closeCreate}
@@ -343,7 +546,7 @@ export default function TenantsList() {
           </>
         }
       >
-        <p className={styles.modalHint}>Selecciona un usuario existente como responsable de la empresa.</p>
+        <p className={styles.modalHint}>Selecciona un usuario de la plataforma como responsable de la empresa.</p>
         <div className={styles.field}>
           <label>Nombre de la empresa</label>
           <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Acme S.A." />
@@ -394,3 +597,4 @@ export default function TenantsList() {
     </div>
   )
 }
+

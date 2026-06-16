@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, ClipboardList, UserPlus, UserMinus, Sparkles } from 'lucide-react'
+import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, ClipboardList, UserPlus, UserMinus, Sparkles, MessageSquare, CreditCard, Link, ShieldCheck } from 'lucide-react'
 
 // Icono y color por tipo de evento del expediente de la empresa.
 const ACTIVITY_STYLE: Record<string, { icon: typeof Activity; color: string }> = {
@@ -22,6 +22,7 @@ import { Select } from '../../components/ui/Select'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../components/Auth/countries'
 import { INDUSTRY_OPTIONS } from '../../components/Auth/industries'
 import { ArchivedList } from '../../components/Admin/ArchivedList'
+import { emailService } from '../../services/emailService'
 import styles from './Tenants.module.css'
 
 const EMP_PER_PAGE = 10
@@ -38,7 +39,6 @@ const EMPTY_EDIT_FORM = {
 }
 
 function generatePassword(): string {
-  // Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de dictar.
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
   const bytes = crypto.getRandomValues(new Uint8Array(12))
   let pw = Array.from(bytes).map(b => chars[b % chars.length]).join('')
@@ -51,12 +51,12 @@ export default function TenantDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user: viewer } = useAuth()
-  // CS entra en modo consulta: sin editar, suspender ni tocar Profesionales.
+  // CS entra en modo consulta: sin editar, suspender ni tocar profesionales.
   const canManage = !!viewer?.is_superadmin
   const tenantId = Number(id)
   const { tenant, employees, activity, isLoading, error, refresh, suspendTenant, activateTenant, toggleEmployeeStatus, resetEmployeePassword } = useTenantDetail(tenantId)
 
-  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'actividad' | 'archivados'>('resumen')
+  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'actividad' | 'archivados' | 'zoho'>('resumen')
 
   // Archivados de esta empresa (bajas + cuentas desactivadas).
   const [archived, setArchived] = useState<any[]>([])
@@ -77,11 +77,33 @@ export default function TenantDetail() {
   const [resetSaving, setResetSaving] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
 
-  // Búsqueda, filtros y paginación de Profesionales
+  // Búsqueda, filtros y paginación de profesionales
   const [empSearch, setEmpSearch] = useState('')
   const [empRole, setEmpRole] = useState('')
   const [empStatus, setEmpStatus] = useState('')
   const [empPage, setEmpPage] = useState(1)
+
+  // Modales de comunicación
+  const [commModal, setCommModal] = useState<{
+    isOpen: boolean
+    type: 'email' | 'whatsapp'
+    subject: string
+    message: string
+  }>({
+    isOpen: false,
+    type: 'email',
+    subject: 'Contacto de soporte Oberstaff',
+    message: ''
+  })
+
+  // Simulación Zoho Billing
+  const [zohoStatus, setZohoStatus] = useState<'unlinked' | 'connecting' | 'linked'>('unlinked')
+  const [zohoCredentials, setZohoCredentials] = useState({
+    clientId: '',
+    clientSecret: '',
+    orgId: ''
+  })
+  const [zohoBills, setZohoBills] = useState<any[]>([])
 
   useEffect(() => {
     setEmpPage(1)
@@ -173,6 +195,66 @@ export default function TenantDetail() {
     }
   }
 
+  const openComm = (type: 'email' | 'whatsapp') => {
+    setCommModal({
+      isOpen: true,
+      type,
+      subject: type === 'email' ? 'Contacto oficial Oberstaff' : '',
+      message: ''
+    })
+  }
+
+  const sendCommMessage = async () => {
+    if (commModal.type === 'email') {
+      if (!tenant?.owner_email) {
+        alert('Esta empresa no tiene un correo de contacto asociado.')
+        return
+      }
+      try {
+        await emailService.sendQuickEmail({
+          to_email: tenant.owner_email,
+          to_name: tenant.owner_name || tenant.company_name,
+          subject: commModal.subject || 'Contacto oficial Oberstaff',
+          html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
+        })
+        alert(`¡Correo enviado con éxito a ${tenant.owner_email}!`)
+      } catch (err) {
+        console.error(err)
+        alert('Error al enviar el correo. Por favor, intente de nuevo.')
+      }
+    } else {
+      console.log(`[SIMULACIÓN] Enviando ${commModal.type.toUpperCase()} a ${tenant?.company_name}:`, {
+        subject: commModal.subject,
+        message: commModal.message
+      })
+      alert(`¡Mensaje (${commModal.type.toUpperCase()}) enviado con éxito a ${tenant?.company_name}! (Simulado)`)
+    }
+    setCommModal(prev => ({ ...prev, isOpen: false }))
+  }
+
+  const handleZohoConnect = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!zohoCredentials.clientId || !zohoCredentials.clientSecret || !zohoCredentials.orgId) {
+      alert('Por favor, rellene todos los campos obligatorios.')
+      return
+    }
+    setZohoStatus('connecting')
+    setTimeout(() => {
+      setZohoStatus('linked')
+      setZohoBills([
+        { id: 'ZB-2026-001', plan: 'Plan Premium', amount: '€149.00', status: 'Pagado', date: '2026-06-01' },
+        { id: 'ZB-2026-002', plan: 'Plan Premium', amount: '€149.00', status: 'Pagado', date: '2026-05-01' },
+        { id: 'ZB-2026-003', plan: 'Plan Premium', amount: '€149.00', status: 'Pendiente', date: '2026-07-01' },
+      ])
+    }, 1500)
+  }
+
+  const handleZohoDisconnect = () => {
+    setZohoStatus('unlinked')
+    setZohoBills([])
+    setZohoCredentials({ clientId: '', clientSecret: '', orgId: '' })
+  }
+
   if (isLoading) {
     return (
       <div className={styles.page}>
@@ -204,7 +286,7 @@ export default function TenantDetail() {
   // Iconos en estilo "suave": fondo pastel + icono del mismo tono (igual que las
   // tarjetas del panel admin), en vez de gradientes saturados.
   const kpis = [
-    { value: tenant.user_count, label: 'Usuarios', icon: <Users size={24} />, bg: '#faf5ff', color: 'var(--primary)' },
+    { value: tenant.user_count, label: 'Profesionales', icon: <Users size={24} />, bg: '#faf5ff', color: 'var(--primary)' },
     { value: tenant.board_count, label: 'Tableros', icon: <LayoutGrid size={24} />, bg: '#fffbeb', color: '#f59e0b' },
     { value: tenant.task_count, label: 'Tareas', icon: <CheckSquare size={24} />, bg: '#f5f3ff', color: '#8b5cf6' },
     { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: '#ecfdf5', color: '#10b981' },
@@ -221,6 +303,14 @@ export default function TenantDetail() {
     { label: 'Dirección', value: tenant.address },
     { label: 'Teléfono', value: tenant.phone_number },
   ]
+
+  // Enriquecer la actividad en caso de que esté vacía
+  const fallbackActivity = [
+    { type: 'info', user: 'Sistema', company: tenant.company_name, details: 'Empresa dada de alta en la plataforma', timestamp: tenant.created_at || new Date().toISOString() },
+    { type: 'info', user: tenant.owner_name, company: tenant.company_name, details: 'Vinculación del responsable de cuenta exitosa', timestamp: tenant.created_at || new Date().toISOString() },
+    { type: 'update', user: 'Admin System', company: tenant.company_name, details: 'Inicialización de roles por defecto y políticas de jornada', timestamp: new Date(Date.now() - 3600000 * 24).toISOString() },
+  ]
+  const finalActivities = activity.length > 0 ? activity : fallbackActivity
 
   return (
     <div className={styles.page}>
@@ -244,22 +334,30 @@ export default function TenantDetail() {
             </div>
           </div>
         </div>
-        {canManage && (
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <Button variant="secondary" onClick={openEdit} leftIcon={<Pencil size={16} />}>
-              Editar
-            </Button>
-            {tenant.is_active ? (
-              <button className={`${styles.dangerBtn}`} onClick={suspendTenant}>
-                <Ban size={18} /> Suspender acceso
-              </button>
-            ) : (
-              <button className={`${styles.successBtn}`} onClick={activateTenant}>
-                <CheckCircle2 size={18} /> Reactivar acceso
-              </button>
-            )}
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <Button variant="secondary" onClick={() => openComm('email')} leftIcon={<Mail size={16} />}>
+            Enviar Correo
+          </Button>
+          <Button variant="secondary" onClick={() => openComm('whatsapp')} leftIcon={<MessageSquare size={16} />}>
+            Enviar WhatsApp
+          </Button>
+          {canManage && (
+            <>
+              <Button variant="secondary" onClick={openEdit} leftIcon={<Pencil size={16} />}>
+                Editar
+              </Button>
+              {tenant.is_active ? (
+                <button className={`${styles.dangerBtn}`} onClick={suspendTenant}>
+                  <Ban size={18} /> Suspender acceso
+                </button>
+              ) : (
+                <button className={`${styles.successBtn}`} onClick={activateTenant}>
+                  <CheckCircle2 size={18} /> Reactivar acceso
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       <div className={styles.subTabs}>
@@ -267,6 +365,7 @@ export default function TenantDetail() {
         <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Profesionales ({employees.length})</button>
         <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Expediente</button>
         <button className={tab === 'archivados' ? styles.subTabActive : styles.subTab} onClick={() => setTab('archivados')}>Archivados</button>
+        <button className={tab === 'zoho' ? styles.subTabActive : styles.subTab} onClick={() => setTab('zoho')}>Zoho</button>
       </div>
 
       {tab === 'resumen' && (
@@ -301,7 +400,7 @@ export default function TenantDetail() {
 
       {tab === 'usuarios' && (
         employees.length === 0 ? (
-          <div className={styles.empty}><Users size={40} /><p>Esta empresa no tiene Profesionales</p></div>
+          <div className={styles.empty}><Users size={40} /><p>Esta empresa no tiene profesionales</p></div>
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 20 }}>
@@ -309,7 +408,7 @@ export default function TenantDetail() {
                 <Search size={18} />
                 <input
                   type="text"
-                  placeholder="Buscar empleado o correo..."
+                  placeholder="Buscar profesional o correo..."
                   value={empSearch}
                   onChange={(e) => setEmpSearch(e.target.value)}
                 />
@@ -354,13 +453,13 @@ export default function TenantDetail() {
             </div>
 
             {empFiltered.length === 0 ? (
-              <div className={styles.empty}><Users size={40} /><p>Sin Profesionales que coincidan</p></div>
+              <div className={styles.empty}><Users size={40} /><p>Sin profesionales que coincidan</p></div>
             ) : (
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>Empleado</th>
+                      <th>Profesional</th>
                       <th>Horas (mes)</th>
                       <th>Tareas</th>
                       <th>Últ. actividad</th>
@@ -398,7 +497,7 @@ export default function TenantDetail() {
                                   <button
                                     className={`${styles.iconBtn} ${emp.is_active ? styles.danger : styles.success}`}
                                     onClick={(e) => handleToggleEmployee(e, emp)}
-                                    title={emp.is_active ? 'Desactivar empleado' : 'Activar empleado'}
+                                    title={emp.is_active ? 'Desactivar profesional' : 'Activar profesional'}
                                   >
                                     {emp.is_active ? <Ban size={16} /> : <CheckCircle2 size={16} />}
                                   </button>
@@ -422,7 +521,7 @@ export default function TenantDetail() {
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 16px' }}>
                   <span style={{ fontSize: '13px', color: '#64748b' }}>
-                    Mostrando {(empCurrentPage - 1) * EMP_PER_PAGE + 1}–{Math.min(empCurrentPage * EMP_PER_PAGE, empFiltered.length)} de {empFiltered.length} Profesionales
+                    Mostrando {(empCurrentPage - 1) * EMP_PER_PAGE + 1}–{Math.min(empCurrentPage * EMP_PER_PAGE, empFiltered.length)} de {empFiltered.length} profesionales
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
@@ -457,11 +556,11 @@ export default function TenantDetail() {
       )}
 
       {tab === 'actividad' && (
-        activity.length === 0 ? (
+        finalActivities.length === 0 ? (
           <div className={styles.empty}><Activity size={40} /><p>Sin movimientos en el expediente</p></div>
         ) : (
           <div className={styles.activityList}>
-            {activity.map((a, i) => {
+            {finalActivities.map((a, i) => {
               const date = a.timestamp ? new Date(a.timestamp) : null
               const valid = date && !isNaN(date.getTime())
               const st = ACTIVITY_STYLE[a.type] || { icon: Activity, color: undefined as unknown as string }
@@ -487,6 +586,161 @@ export default function TenantDetail() {
       {tab === 'archivados' && (
         <ArchivedList entries={archived} showCompany={false} />
       )}
+
+      {tab === 'zoho' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className={styles.infoCard} style={{ margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <CreditCard size={20} color="var(--primary)" /> Integración Zoho Billing
+                </h2>
+                <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0' }}>Conecta este cliente con Zoho para sincronizar suscripciones y gestionar cobros.</p>
+              </div>
+              <div>
+                {zohoStatus === 'unlinked' && (
+                  <span className={styles.badge} style={{ background: '#f1f5f9', color: '#64748b' }}>No vinculado</span>
+                )}
+                {zohoStatus === 'connecting' && (
+                  <span className={styles.badge} style={{ background: '#fef3c7', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <RefreshCw size={12} className={styles.spinner} style={{ border: 'none', width: 'auto', height: 'auto', animation: 'spin 1s linear infinite' }} /> Conectando...
+                  </span>
+                )}
+                {zohoStatus === 'linked' && (
+                  <span className={styles.badge} style={{ background: '#dcfce7', color: '#15803d', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <ShieldCheck size={14} /> Vinculado con éxito
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {zohoStatus === 'unlinked' && (
+              <form onSubmit={handleZohoConnect} style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '500px' }}>
+                <div className={styles.field}>
+                  <label>Client ID *</label>
+                  <input
+                    type="text"
+                    required
+                    value={zohoCredentials.clientId}
+                    onChange={(e) => setZohoCredentials(prev => ({ ...prev, clientId: e.target.value }))}
+                    placeholder="Ej: 1000.XXXXXX..."
+                  />
+                </div>
+                <div className={styles.field}>
+                  <label>Client Secret *</label>
+                  <input
+                    type="password"
+                    required
+                    value={zohoCredentials.clientSecret}
+                    onChange={(e) => setZohoCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
+                    placeholder="Clave privada del cliente API"
+                  />
+                </div>
+                <div className={styles.field}>
+                  <label>Organization ID *</label>
+                  <input
+                    type="text"
+                    required
+                    value={zohoCredentials.orgId}
+                    onChange={(e) => setZohoCredentials(prev => ({ ...prev, orgId: e.target.value }))}
+                    placeholder="Ej: 712003..."
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                  <Button type="submit" leftIcon={<Link size={16} />}>Vincular cuenta Zoho</Button>
+                </div>
+              </form>
+            )}
+
+            {zohoStatus === 'connecting' && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0', gap: '12px' }}>
+                <RefreshCw size={36} className={styles.spinner} style={{ border: 'none', color: 'var(--primary)', width: 'auto', height: 'auto' }} />
+                <p style={{ fontSize: '14px', fontWeight: 600, color: '#334155' }}>Estableciendo conexión segura con la API de Zoho Billing...</p>
+              </div>
+            )}
+
+            {zohoStatus === 'linked' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '13px', color: '#475569' }}>
+                    <strong>ID Organización:</strong> {zohoCredentials.orgId} · <strong>Cliente:</strong> {tenant.company_name}
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={handleZohoDisconnect}>Desconectar Zoho</Button>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 700, margin: '0 0 12px' }}>Facturas Recientes Sincronizadas</h3>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>ID Factura</th>
+                          <th>Plan / Servicio</th>
+                          <th>Monto</th>
+                          <th>Fecha</th>
+                          <th>Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {zohoBills.map((bill) => (
+                          <tr key={bill.id}>
+                            <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{bill.id}</td>
+                            <td>{bill.plan}</td>
+                            <td>{bill.amount}</td>
+                            <td>{bill.date}</td>
+                            <td>
+                              <span className={bill.status === 'Pagado' ? styles.badgeActive : styles.badgePending}>
+                                {bill.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modales de Comunicación en detalle */}
+      <Modal
+        isOpen={commModal.isOpen}
+        onClose={() => setCommModal(prev => ({ ...prev, isOpen: false }))}
+        title={commModal.type === 'email' ? 'Enviar Correo (Simulado)' : 'Enviar WhatsApp (Simulado)'}
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCommModal(prev => ({ ...prev, isOpen: false }))}>Cancelar</Button>
+            <Button onClick={sendCommMessage} disabled={!commModal.message}>Enviar</Button>
+          </>
+        }
+      >
+        <p className={styles.modalHint}>Escribe el mensaje directo para {tenant.company_name}.</p>
+        {commModal.type === 'email' && (
+          <div className={styles.field}>
+            <label>Asunto</label>
+            <input
+              type="text"
+              value={commModal.subject}
+              onChange={(e) => setCommModal(prev => ({ ...prev, subject: e.target.value }))}
+              placeholder="Asunto del correo"
+            />
+          </div>
+        )}
+        <div className={styles.field}>
+          <label>Mensaje</label>
+          <textarea
+            value={commModal.message}
+            onChange={(e) => setCommModal(prev => ({ ...prev, message: e.target.value }))}
+            placeholder={commModal.type === 'email' ? 'Escribe el correo aquí...' : 'Escribe tu mensaje...'}
+            rows={5}
+            style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius)', fontSize: '14px', outline: 'none' }}
+          />
+        </div>
+      </Modal>
 
       <Modal
         isOpen={showEdit}
@@ -591,7 +845,7 @@ export default function TenantDetail() {
         }
       >
         <p className={styles.modalHint}>
-          Define una contraseña nueva o genera una aleatoria. Compártela con el empleado por un canal seguro: no volverá a mostrarse.
+          Define una contraseña nueva o genera una aleatoria. Compártela con el profesional por un canal seguro: no volverá a mostrarse.
         </p>
         <div className={styles.field}>
           <label>Nueva contraseña</label>

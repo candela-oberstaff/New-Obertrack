@@ -44,6 +44,22 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		email.PUT("/campaigns/:id", d.email.UpdateCampaign)
 		email.DELETE("/campaigns/:id", d.email.DeleteCampaign)
 		email.POST("/campaigns/:id/send", d.email.SendCampaign)
+		email.GET("/campaigns/:id/events", d.email.GetCampaignEvents)
+		// One-off transactional sends (from tenant / employee detail views)
+		email.POST("/quick-send", d.email.SendQuickEmail)
+		email.POST("/quick-send-bulk", d.email.SendQuickEmailBulk)
+	}
+
+	audiences := api.Group("/audiences")
+	audiences.Use(middleware.RequireSuperadmin())
+	{
+		audiences.GET("/groups", d.audience.GetGroups)
+		audiences.POST("/groups", d.audience.CreateGroup)
+		audiences.GET("/groups/:id", d.audience.GetGroupByID)
+		audiences.PUT("/groups/:id", d.audience.UpdateGroup)
+		audiences.DELETE("/groups/:id", d.audience.DeleteGroup)
+		audiences.POST("/groups/:id/members", d.audience.AddMember)
+		audiences.DELETE("/groups/:id/members/:userId", d.audience.RemoveMember)
 	}
 
 	surveys := api.Group("/surveys")

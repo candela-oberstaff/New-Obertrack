@@ -1,0 +1,207 @@
+/* ─── Layout ──────────────────────────────────────────────────────────── */
+.builder {
+  display: flex;
+  height: 550px;
+  min-height: 500px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+/* ─── Left panel – block palette ─────────────────────────────────────── */
+.palette {
+  width: 180px;
+  min-width: 180px;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  border-right: 1px solid #1e293b;
+}
+.paletteTitle {
+  padding: 16px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #64748b;
+  border-bottom: 1px solid #1e293b;
+}
+.blockBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  transition: all 0.15s;
+  width: 100%;
+}
+.blockBtn:hover {
+  background: #1e293b;
+  color: #f1f5f9;
+}
+.blockBtnIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #1e293b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.blockBtn:hover .blockBtnIcon { background: #334155; }
+
+/* ─── Center – canvas ─────────────────────────────────────────────────── */
+.canvas {
+  flex: 1;
+  overflow-y: auto;
+  background: #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px;
+  gap: 2px;
+}
+.emailFrame {
+  width: 100%;
+  max-width: 500px;
+  background: #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  border: 1px solid #e2e8f0;
+}
+.emailHeader {
+  background: #f5f2fb;
+  padding: 14px;
+  text-align: center;
+  border-bottom: 1px solid #e2e8f0;
+}
+.emailFooter {
+  background: #f8fafc;
+  padding: 12px;
+  text-align: center;
+  font-size: 10px;
+  color: #94a3b8;
+  border-top: 1px solid #e2e8f0;
+}
+
+.emptyCanvas {
+  padding: 60px 30px;
+  text-align: center;
+  color: #94a3b8;
+}
+.emptyCanvas svg { margin-bottom: 12px; opacity: 0.4; }
+.emptyCanvas p { font-size: 13px; }
+
+/* ─── Block row ───────────────────────────────────────────────────────── */
+.blockRow {
+  position: relative;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+.blockRow:hover { border-color: rgba(124, 58, 237, 0.2); }
+.blockRow.selected { border-color: #7c3aed; }
+.blockActions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  gap: 4px;
+  z-index: 10;
+}
+.blockRow:hover .blockActions,
+.blockRow.selected .blockActions { display: flex; }
+.actionBtn {
+  width: 22px; height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: #7c3aed;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: background 0.15s;
+}
+.actionBtn:hover { background: #6d28d9; }
+.actionBtn.danger { background: #ef4444; }
+.actionBtn.danger:hover { background: #dc2626; }
+
+/* ─── Right panel – inspector ─────────────────────────────────────────── */
+.inspector {
+  width: 220px;
+  min-width: 220px;
+  background: #fff;
+  border-left: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.inspectorTitle {
+  padding: 12px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.inspectorEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #cbd5e1;
+  font-size: 12px;
+  text-align: center;
+  padding: 24px;
+}
+.propGroup { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; }
+.propLabel {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.propInput,
+.propTextarea,
+.propSelect {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #1e293b;
+  background: #f8fafc;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.propInput:focus,
+.propTextarea:focus,
+.propSelect:focus { border-color: #7c3aed; background: #fff; }
+.propTextarea { resize: vertical; min-height: 60px; }
+.propColorRow { display: flex; gap: 8px; align-items: center; }
+.propColorSwatch {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  flex-shrink: 0;
+}

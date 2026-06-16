@@ -2,21 +2,21 @@ import React, { useState } from 'react';
 import { Clock, Send } from 'lucide-react';
 import { Modal, Button } from '../../../../ui';
 import styles from '../Builder.module.css';
+import AudienceSelector, { AudienceSelection } from '../../Common/AudienceSelector';
 
 interface ScheduleModalProps {
   onClose: () => void;
-  onConfirm: (data: { date: string, recipientIds: number[] }) => void;
+  onConfirm: (data: { date: string, recipientIds: AudienceSelection }) => void;
   availableRecipients: any[];
   initialScheduledAt?: string;
-  initialRecipientIds?: number[];
+  initialRecipientIds?: any;
 }
 
 const ScheduleModal: React.FC<ScheduleModalProps> = ({
   onClose,
   onConfirm,
-  availableRecipients,
   initialScheduledAt,
-  initialRecipientIds = []
+  initialRecipientIds
 }) => {
   const existingDate = initialScheduledAt
     ? new Date(initialScheduledAt).toISOString().split('T')[0]
@@ -27,8 +27,9 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
   const [scheduleDate, setScheduleDate] = useState(existingDate);
   const [scheduleTime, setScheduleTime] = useState(existingTime);
-  const [selectedRecipientIds, setSelectedRecipientIds] = useState<number[]>(initialRecipientIds);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAudience, setSelectedAudience] = useState<AudienceSelection>(
+    initialRecipientIds || { groupIds: [], userIds: [], expressContacts: [] }
+  );
   const [isProcessing, setIsProcessing] = useState(false);
 
   const isEditing = !!initialScheduledAt;
@@ -37,25 +38,17 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setIsProcessing(true);
     try {
       const dateString = scheduleDate ? `${scheduleDate}T${scheduleTime}:00Z` : '';
-      await onConfirm({ date: dateString, recipientIds: selectedRecipientIds });
+      await onConfirm({ date: dateString, recipientIds: selectedAudience });
       onClose();
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const toggleRecipient = (id: number) => {
-    setSelectedRecipientIds(prev =>
-      prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
-    );
-  };
-
-  const filteredRecipients = Array.isArray(availableRecipients)
-    ? availableRecipients.filter(u =>
-      (u.full_name || u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    : [];
+  const hasSelection = 
+    selectedAudience.groupIds.length > 0 || 
+    selectedAudience.userIds.length > 0 || 
+    selectedAudience.expressContacts.length > 0;
 
   return (
     <Modal
@@ -74,7 +67,7 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({
           <Button
             onClick={handleConfirm}
             loading={isProcessing}
-            disabled={selectedRecipientIds.length === 0}
+            disabled={!hasSelection}
             leftIcon={scheduleDate ? <Clock size={16} /> : <Send size={16} />}
           >
             {isEditing
@@ -125,73 +118,10 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
       {/* Recipients */}
       <div className={styles['prop-control']}>
-        <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <span>Destinatarios</span>
-          <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 400 }}>
-            {selectedRecipientIds.length} seleccionados
-          </span>
         </label>
-
-        <input
-          type="text"
-          placeholder="Buscar por nombre o email..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ marginBottom: '8px' }}
-        />
-
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', maxHeight: '200px', overflowY: 'auto', background: '#f8fafc' }}>
-          {filteredRecipients.length === 0 ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
-              No se encontraron usuarios.
-            </div>
-          ) : (
-            filteredRecipients.map(user => (
-              <div
-                key={user.id}
-                onClick={() => toggleRecipient(user.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '12px',
-                  padding: '10px 14px', borderBottom: '1px solid #e2e8f0',
-                  cursor: 'pointer',
-                  background: selectedRecipientIds.includes(user.id) ? 'rgba(139, 92, 246, 0.05)' : 'transparent',
-                  transition: 'background 0.15s'
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedRecipientIds.includes(user.id)}
-                  onChange={() => { }}
-                  style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--color-blue-violet-hex)' }}
-                />
-                <div>
-                  <div style={{ fontSize: '14px', fontWeight: 500, color: '#1e293b' }}>
-                    {user.full_name || user.name}
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#64748b' }}>{user.email}</div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {filteredRecipients.length > 0 && (
-          <div style={{ marginTop: '8px', display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => setSelectedRecipientIds(availableRecipients.map(u => u.id))}
-              style={{ fontSize: '12px', color: 'var(--color-blue-violet-hex)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
-            >
-              Seleccionar todos
-            </button>
-            <span style={{ color: '#e2e8f0' }}>|</span>
-            <button
-              onClick={() => setSelectedRecipientIds([])}
-              style={{ fontSize: '12px', color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-            >
-              Desmarcar todos
-            </button>
-          </div>
-        )}
+        <AudienceSelector value={selectedAudience} onChange={setSelectedAudience} />
       </div>
     </Modal>
   );
