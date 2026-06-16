@@ -324,7 +324,9 @@ export default function EmailBuilder({ blocks, onChange }: Props) {
     return compileBlocksToHTML(blocks)
   }, [blocks])
 
-  // No CDN script — inline CSS only, avoids CSP script-src violation.
+  // Tailwind CDN is required so that class-based styles (w-full, flex, etc.) render
+  // correctly in the preview iframe. The sandbox includes allow-scripts for this.
+  // The production nginx.conf CSP allows cdn.tailwindcss.com explicitly.
   const srcDoc = useMemo(() => {
     return `
 <!DOCTYPE html>
@@ -332,6 +334,7 @@ export default function EmailBuilder({ blocks, onChange }: Props) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"><\/script>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body {
@@ -539,7 +542,7 @@ export default function EmailBuilder({ blocks, onChange }: Props) {
                 title="Preview"
                 srcDoc={srcDoc}
                 className="w-full flex-1 border-none bg-slate-100"
-                sandbox="allow-popups"
+                sandbox="allow-scripts allow-popups"
               />
             </div>
           </div>
