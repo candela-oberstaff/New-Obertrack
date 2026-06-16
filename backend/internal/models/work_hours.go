@@ -16,10 +16,10 @@ const (
 
 type WorkHour struct {
 	ID              uint           `gorm:"primaryKey" json:"id"`
-	UserID          uint           `gorm:"not null;uniqueIndex:idx_user_date" json:"user_id"`
-	TenantID        uint           `gorm:"index" json:"tenant_id"`
+	UserID          uint           `gorm:"not null;uniqueIndex:idx_user_tenant_date" json:"user_id"`
+	TenantID        uint           `gorm:"index;uniqueIndex:idx_user_tenant_date" json:"tenant_id"`
 	User            User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	WorkDate        time.Time      `gorm:"type:date;not null;uniqueIndex:idx_user_date" json:"work_date"`
+	WorkDate        time.Time      `gorm:"type:date;not null;uniqueIndex:idx_user_tenant_date" json:"work_date"`
 	WorkType        WorkType       `gorm:"type:varchar(20);not null;default:'complete'" json:"work_type"`
 	HoursWorked     float64        `gorm:"type:decimal(5,2);not null" json:"hours_worked"`
 	Activities      string         `gorm:"type:text" json:"activities"`
@@ -44,8 +44,4 @@ type WorkHour struct {
 
 func (WorkHour) TableName() string {
 	return "work_hours"
-}
-
-func (WorkHour) BeforeCreate(tx *gorm.DB) error {
-	return tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_work_hours_user_date ON work_hours (user_id, work_date)").Error
 }

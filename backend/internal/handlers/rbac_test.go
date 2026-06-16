@@ -19,7 +19,7 @@ type stubRBACService struct {
 	hasRoles bool
 }
 
-func (s *stubRBACService) EffectivePermissions(userID uint) (map[string]string, bool, error) {
+func (s *stubRBACService) EffectivePermissions(userID, tenantID uint) (map[string]string, bool, error) {
 	return s.perms, s.hasRoles, nil
 }
 

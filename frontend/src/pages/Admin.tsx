@@ -19,14 +19,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Mail,
-  MessageCircle
+  MessageCircle,
+  MessageSquare,
+  Archive
 } from 'lucide-react'
 import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
 import { ActivityFeed } from '../components/Admin/ActivityFeed'
-import { authService } from '../services/api'
+import { ArchivedList } from '../components/Admin/ArchivedList'
+import { authService, adminService } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../components/Auth/countries'
 import styles from '../components/Admin/Admin.module.css'
@@ -46,6 +49,16 @@ const EMPTY_CREATE_FORM = {
   location: '',
   address: '',
   jobTitle: '',
+}
+
+// Campo etiqueta/valor para el modal de detalle de ausencia.
+function DetailField({ label, value, full }: { label: string; value: string; full?: boolean }) {
+  return (
+    <div style={full ? { gridColumn: '1 / -1' } : undefined}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#94a3b8', marginBottom: 2 }}>{label}</div>
+      <div style={{ color: '#0f172a' }}>{value}</div>
+    </div>
+  )
 }
 
 export default function Admin() {
@@ -87,6 +100,18 @@ export default function Admin() {
   const [absSearch, setAbsSearch] = useState('')
   const [absPage, setAbsPage] = useState(1)
   const [absExpandedUserId, setAbsExpandedUserId] = useState<number | null>(null)
+  // Tarjeta "Reporte de ausencias" del dashboard: filtro por empresa, paginación
+  // y detalle de cada registro en modal.
+  const [rptCompany, setRptCompany] = useState<string>('')
+  const [rptReason, setRptReason] = useState<string>('')
+  const [rptPage, setRptPage] = useState(1)
+  const [rptDetail, setRptDetail] = useState<any | null>(null)
+  // Archivados global (todas las empresas): bajas + cuentas desactivadas.
+  const [archived, setArchived] = useState<any[]>([])
+  const loadArchived = async () => {
+    try { setArchived(await adminService.getArchived()) } catch { /* noop */ }
+  }
+  useEffect(() => { if (activeTab === 'archived') loadArchived() }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Métricas CS (pestaña Dashboard): tabla de antigüedad.
   const [csSearch, setCsSearch] = useState('')
@@ -214,6 +239,9 @@ export default function Admin() {
 
   const filteredUsers = (Array.isArray(users) ? users : [])
     .filter((u: any) => {
+      // Los profesionales/CS desactivados se gestionan desde "Archivados", no en
+      // la tabla principal.
+      if (u.is_active === false && (u.user_type === 'profesional' || u.user_type === 'customer_success')) return false
       const q = searchQuery.trim().toLowerCase()
       if (q && !(u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))) return false
       if (roleFilter && u.user_type !== roleFilter) return false
@@ -306,6 +334,35 @@ export default function Admin() {
     setAbsPage(1)
   }, [absSearch])
 
+  // ── Tarjeta del dashboard: lista plana con filtro por empresa + paginación ──
+  const RPT_PER_PAGE = 5
+  const rptCompanies = Array.from(new Set(absenceItems.map((i: any) => i.company).filter(Boolean))).sort() as string[]
+  // Conteo de motivos acotado a la empresa seleccionada (los chips reflejan el
+  // filtro, no el total global del mes).
+  const rptReasonCounts = (() => {
+    const map = new Map<string, number>()
+    absenceItems
+      .filter((i: any) => !rptCompany || i.company === rptCompany)
+      .forEach((i: any) => {
+        const r = i.absence_reason || 'Sin motivo'
+        map.set(r, (map.get(r) || 0) + 1)
+      })
+    return Array.from(map.entries())
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason, 'es'))
+  })()
+  const rptFiltered = absenceItems
+    .filter((i: any) => !rptCompany || i.company === rptCompany)
+    .filter((i: any) => !rptReason || (i.absence_reason || 'Sin motivo') === rptReason)
+    .sort((a: any, b: any) => (b.work_date || '').localeCompare(a.work_date || ''))
+  const rptTotalPages = Math.max(1, Math.ceil(rptFiltered.length / RPT_PER_PAGE))
+  const rptCurrentPage = Math.min(rptPage, rptTotalPages)
+  const rptPaginated = rptFiltered.slice((rptCurrentPage - 1) * RPT_PER_PAGE, rptCurrentPage * RPT_PER_PAGE)
+
+  useEffect(() => {
+    setRptPage(1)
+  }, [rptCompany, rptReason])
+
   const absenceFollowUp = (g: { name: string; count: number }) =>
     `Hola ${g.name?.split(' ')[0] || ''}, te escribimos del equipo de Obertrack por el seguimiento de tus ${g.count} ausencia${g.count === 1 ? '' : 's'} registrada${g.count === 1 ? '' : 's'} este mes. ¿Está todo bien? Si necesitas apoyo, cuéntanos.`
 
@@ -322,7 +379,7 @@ export default function Admin() {
 
   const absenceReasons = absenceReport?.reasons || []
   const reasonMax = Math.max(1, ...absenceReasons.map(r => r.count))
-  const topAbsentees = absenceGroups.slice(0, 5)
+  const topAbsentees = absenceGroups.slice(0, 10)
   const tenantsPending = [...tenants]
     .filter((t: any) => (t.pending_count || 0) > 0)
     .sort((a: any, b: any) => (b.pending_count || 0) - (a.pending_count || 0))
@@ -396,6 +453,7 @@ export default function Admin() {
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'users', label: 'Usuarios', icon: Users },
     { id: 'activity', label: 'Actividad', icon: Activity },
+    { id: 'archived', label: 'Archivados', icon: Archive },
   ]
 
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -591,22 +649,53 @@ export default function Admin() {
                   </div>
                 </div>
 
-                {absenceReport?.reasons?.length ? (
+                {rptReasonCounts.length ? (
                   <div className={styles['reason-cloud']}>
-                    {absenceReport.reasons.map((reason: any) => (
-                      <span key={reason.reason}>{reason.reason} ({reason.count})</span>
-                    ))}
+                    {rptReasonCounts.map((reason: any) => {
+                      const active = rptReason === reason.reason
+                      return (
+                        <span
+                          key={reason.reason}
+                          onClick={() => setRptReason(active ? '' : reason.reason)}
+                          title={active ? 'Quitar filtro' : `Filtrar por ${reason.reason}`}
+                          style={{
+                            cursor: 'pointer',
+                            ...(active ? { background: '#ede9fe', borderColor: '#8b5cf6', color: '#6d28d9' } : {}),
+                          }}
+                        >
+                          {reason.reason} ({reason.count})
+                        </span>
+                      )
+                    })}
                   </div>
                 ) : null}
 
+                {rptCompanies.length > 1 && (
+                  <div style={{ margin: '4px 0 12px', maxWidth: 240 }}>
+                    <Select
+                      value={rptCompany}
+                      onChange={(v) => setRptCompany(String(v))}
+                      options={[{ value: '', label: 'Todas las empresas' }, ...rptCompanies.map(c => ({ value: c, label: c }))]}
+                    />
+                  </div>
+                )}
+
                 <div className={styles['absence-list']}>
-                  {absenceItems.length === 0 ? (
-                    <p className={styles['empty-message']}>No hay ausencias registradas este mes</p>
+                  {rptFiltered.length === 0 ? (
+                    <p className={styles['empty-message']}>
+                      {(rptCompany || rptReason) ? 'Sin ausencias con los filtros aplicados' : 'No hay ausencias registradas este mes'}
+                    </p>
                   ) : (
-                    absenceItems.slice(0, 5).map((item: any) => {
+                    rptPaginated.map((item: any) => {
                       const status = getAbsenceStatus(item)
                       return (
-                        <div key={item.id} className={styles['absence-row']}>
+                        <div
+                          key={item.id}
+                          className={styles['absence-row']}
+                          onClick={() => setRptDetail(item)}
+                          style={{ cursor: 'pointer' }}
+                          title="Ver detalle del registro"
+                        >
                           <div>
                             <strong>{item.user}</strong>
                             <span>{item.company} - {formatShortDate(item.work_date)} - {(item.absence_hours || 0).toFixed(1)}h</span>
@@ -618,6 +707,22 @@ export default function Admin() {
                     })
                   )}
                 </div>
+
+                {rptTotalPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                    <span style={{ fontSize: 12, color: '#64748b' }}>
+                      {rptFiltered.length} registro{rptFiltered.length === 1 ? '' : 's'} · página {rptCurrentPage} de {rptTotalPages}
+                    </span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button type="button" className={styles['btn-icon']} onClick={() => setRptPage(p => Math.max(1, p - 1))} disabled={rptCurrentPage <= 1} style={{ opacity: rptCurrentPage <= 1 ? 0.4 : 1 }} title="Página anterior">
+                        <ChevronLeft size={16} />
+                      </button>
+                      <button type="button" className={styles['btn-icon']} onClick={() => setRptPage(p => Math.min(rptTotalPages, p + 1))} disabled={rptCurrentPage >= rptTotalPages} style={{ opacity: rptCurrentPage >= rptTotalPages ? 0.4 : 1 }} title="Página siguiente">
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </section>
             </div>
 
@@ -1095,6 +1200,7 @@ export default function Admin() {
                               <div className={styles['action-buttons']}>
                                 <a
                                   href={emailHref(u)}
+                                  onClick={() => adminService.logContact(u.id, 'email')}
                                   className={styles['btn-icon']}
                                   title={`Enviar email a ${u.email}`}
                                   style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
@@ -1106,6 +1212,7 @@ export default function Admin() {
                                     href={waLink}
                                     target="_blank"
                                     rel="noopener noreferrer"
+                                    onClick={() => adminService.logContact(u.id, 'whatsapp')}
                                     className={styles['btn-icon']}
                                     title={`Escribir por WhatsApp (${u.phone_number})`}
                                     style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}
@@ -1117,6 +1224,14 @@ export default function Admin() {
                                     <MessageCircle size={16} />
                                   </span>
                                 )}
+                                <button
+                                  className={styles['btn-icon']}
+                                  onClick={() => { adminService.logContact(u.id, 'chat'); navigate(`/chat?userId=${u.id}`) }}
+                                  title="Chat interno"
+                                  style={{ color: '#7c3aed' }}
+                                >
+                                  <MessageSquare size={16} />
+                                </button>
                                 <button
                                   className={styles['btn-icon']}
                                   onClick={() => navigate(`/admin/users/${u.id}`)}
@@ -1238,11 +1353,11 @@ export default function Admin() {
                               <td>{renderFollowUpCell(g.user_id, 'absence')}</td>
                               <td>
                                 <div className={styles['action-buttons']} onClick={(e) => e.stopPropagation()}>
-                                  <a href={absEmailHref(g)} className={styles['btn-icon']} title={`Enviar email a ${g.email}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <a href={absEmailHref(g)} onClick={() => adminService.logContact(g.user_id, 'email')} className={styles['btn-icon']} title={`Enviar email a ${g.email}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <Mail size={16} />
                                   </a>
                                   {waLink ? (
-                                    <a href={waLink} target="_blank" rel="noopener noreferrer" className={styles['btn-icon']} title={`Escribir por WhatsApp (${g.phone_number})`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
+                                    <a href={waLink} target="_blank" rel="noopener noreferrer" onClick={() => adminService.logContact(g.user_id, 'whatsapp')} className={styles['btn-icon']} title={`Escribir por WhatsApp (${g.phone_number})`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
                                       <MessageCircle size={16} />
                                     </a>
                                   ) : (
@@ -1250,6 +1365,9 @@ export default function Admin() {
                                       <MessageCircle size={16} />
                                     </span>
                                   )}
+                                  <button className={styles['btn-icon']} onClick={() => { adminService.logContact(g.user_id, 'chat'); navigate(`/chat?userId=${g.user_id}`) }} title="Chat interno" style={{ color: '#7c3aed' }}>
+                                    <MessageSquare size={16} />
+                                  </button>
                                   <button className={styles['btn-icon']} onClick={() => navigate(`/admin/users/${g.user_id}`)} title="Ver detalle del profesional">
                                     <Eye size={16} />
                                   </button>
@@ -1315,7 +1433,60 @@ export default function Admin() {
             )}
           </div>
         )}
+
+        {activeTab === 'archived' && (
+          <div style={{ padding: '4px 0' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Archivados</h3>
+              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>
+                Profesionales con empleo finalizado o cuenta desactivada. Puedes reactivarlos.
+              </p>
+            </div>
+            <ArchivedList entries={archived} showCompany />
+          </div>
+        )}
       </div>
+
+      {rptDetail && (
+        <div className={styles['modal-overlay']} onClick={() => setRptDetail(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className={styles['modal']} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, width: '92%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <h2 style={{ margin: 0 }}>Detalle de ausencia</h2>
+              <button type="button" className={styles['btn-icon']} onClick={() => setRptDetail(null)} title="Cerrar"><X size={18} /></button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #e2e8f0', marginBottom: 14 }}>
+              <Avatar src={rptDetail.avatar} name={rptDetail.user} size="md" />
+              <div>
+                <div style={{ fontWeight: 800, color: '#0f172a' }}>{rptDetail.user}</div>
+                <div style={{ fontSize: 13, color: '#64748b' }}>{rptDetail.company}</div>
+              </div>
+              <span className={`${styles['pill']} ${styles[getAbsenceStatus(rptDetail).className]}`} style={{ marginLeft: 'auto' }}>
+                {getAbsenceStatus(rptDetail).label}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', fontSize: 14 }}>
+              <DetailField label="Fecha" value={new Date(rptDetail.work_date).toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} full />
+              <DetailField label="Horas ausentes" value={`${(rptDetail.absence_hours || 0).toFixed(1)} h`} />
+              <DetailField label="Horas trabajadas" value={`${(rptDetail.hours_worked || 0).toFixed(1)} h`} />
+              <DetailField label="Motivo" value={rptDetail.absence_reason || 'Sin motivo'} full />
+              {rptDetail.email && <DetailField label="Email" value={rptDetail.email} full />}
+              {rptDetail.phone_number && <DetailField label="Teléfono" value={rptDetail.phone_number} />}
+              {rptDetail.created_at && <DetailField label="Registrado" value={new Date(rptDetail.created_at).toLocaleString('es-ES')} full />}
+            </div>
+
+            <div className={styles['modal-actions']} style={{ marginTop: 18 }}>
+              {rptDetail.email && (
+                <a className={styles['btn-secondary']} href={`mailto:${rptDetail.email}?subject=${encodeURIComponent('Seguimiento de ausencia en Obertrack')}`} onClick={() => adminService.logContact(rptDetail.user_id, 'email')} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Mail size={15} /> Contactar
+                </a>
+              )}
+              <button className={styles['btn-secondary']} onClick={() => setRptDetail(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDeleteModal && userToDelete && (
         <div className={styles['modal-overlay']} onClick={() => setShowDeleteModal(false)}>

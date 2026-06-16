@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { useQueryClient } from '@tanstack/react-query'
+import { authService } from '../../services/api'
 import Notifications from '../Notifications'
 import { useState, useEffect } from 'react'
 import { channelService } from '../../services/api'
@@ -45,12 +47,30 @@ import styles from './Layout.module.css'
 let systemTourShownThisSession = false
 
 export default function Layout() {
-  const { user, logout } = useAuth()
+  const { user, setUser, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const qc = useQueryClient()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [totalChatUnread, setTotalChatUnread] = useState(0)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+  const [switchingCompany, setSwitchingCompany] = useState(false)
+
+  // Switcher multi-empresa: cambia la empresa activa, re-emite la sesión y
+  // recarga todos los datos (que se scopean por el tenant del nuevo JWT).
+  const handleSwitchCompany = async (companyId: number) => {
+    if (companyId === user?.empleador_id || switchingCompany) return
+    setSwitchingCompany(true)
+    try {
+      const updated = await authService.switchCompany(companyId)
+      setUser(updated)
+      await qc.invalidateQueries()
+    } catch {
+      /* el backend rechaza si no pertenece a esa empresa */
+    } finally {
+      setSwitchingCompany(false)
+    }
+  }
 
   const isChatPage = location.pathname.startsWith('/chat') || location.pathname.startsWith('/whatsapp')
 
@@ -126,6 +146,9 @@ export default function Layout() {
     if (!item.show) return false
     // Permisos por rol: si el usuario tiene roles asignados y el módulo quedó
     // en "sin acceso", se oculta del sidebar (el backend igual lo bloquea).
+    // El superadmin y la cuenta empresa nunca se restringen (igual que el
+    // backend en RequirePermission): ven todas sus páginas siempre.
+    if (isSuper || isEmployerType) return true
     const moduleKey = MODULE_BY_PATH[item.path]
     if (moduleKey && user?.permissions && user.permissions[moduleKey] === 'none') return false
     return true
@@ -176,6 +199,23 @@ export default function Layout() {
             </div>
           )}
         </div>
+
+        {(!sidebarCollapsed || isMobileSidebarOpen) && (user?.companies?.length ?? 0) > 1 && (
+          <div className={styles['company-switcher']}>
+            <Building2 size={16} className={styles['company-switcher-icon']} />
+            <select
+              className={styles['company-switcher-select']}
+              value={user?.empleador_id ?? ''}
+              disabled={switchingCompany}
+              onChange={(e) => handleSwitchCompany(Number(e.target.value))}
+              title="Cambiar de empresa activa"
+            >
+              {user?.companies?.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <nav className={styles['sidebar-nav']}>
           {navItems.map((item) => (

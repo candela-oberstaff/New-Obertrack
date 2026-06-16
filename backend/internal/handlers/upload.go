@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,11 +16,12 @@ import (
 )
 
 type UploadHandler struct {
-	svc        service.UploadService
-	uploadPath string
+	svc           service.UploadService
+	uploadPath    string
+	employmentSvc service.EmploymentService
 }
 
-func NewUploadHandler(svc service.UploadService, uploadPath string) *UploadHandler {
+func NewUploadHandler(svc service.UploadService, uploadPath string, employmentSvc service.EmploymentService) *UploadHandler {
 	if uploadPath == "" {
 		uploadPath = "./uploads"
 	}
@@ -27,8 +29,9 @@ func NewUploadHandler(svc service.UploadService, uploadPath string) *UploadHandl
 		log.Printf("failed to create upload directory %q: %v", uploadPath, err)
 	}
 	return &UploadHandler{
-		svc:        svc,
-		uploadPath: uploadPath,
+		svc:           svc,
+		uploadPath:    uploadPath,
+		employmentSvc: employmentSvc,
 	}
 }
 
@@ -95,6 +98,44 @@ func (h *UploadHandler) GetFile(c *gin.Context) {
 		return
 	}
 
+	c.File(filePath)
+}
+
+// DownloadExpedienteDoc sirve un documento del expediente para la audiencia
+// empresa (RR.HH. ve todo). La autorización de ruta (superadmin/CS) ya se aplica
+// por el grupo /admin.
+func (h *UploadHandler) DownloadExpedienteDoc(c *gin.Context) {
+	h.downloadDoc(c, service.AudienceCompany)
+}
+
+// DownloadMyExpedienteDoc sirve un documento del propio expediente del
+// profesional: solo los marcados como compartidos y de su propio empleo.
+func (h *UploadHandler) DownloadMyExpedienteDoc(c *gin.Context) {
+	h.downloadDoc(c, service.AudienceProfessional)
+}
+
+func (h *UploadHandler) downloadDoc(c *gin.Context, audience string) {
+	docID, err := strconv.ParseUint(c.Param("docId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Documento inválido"})
+		return
+	}
+	doc, err := h.employmentSvc.DocumentForDownload(uint(docID), audience, middleware.GetUserID(c))
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+	// doc.FileName es el nombre en disco; nunca confiamos en él para la ruta.
+	filename := filepath.Base(doc.FileName)
+	if filename == "" || filename == "." || strings.ContainsAny(filename, "/\\") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Archivo inválido"})
+		return
+	}
+	filePath := filepath.Join(h.uploadPath, filename)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Archivo no encontrado"})
+		return
+	}
 	c.File(filePath)
 }
 

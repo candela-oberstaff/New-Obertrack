@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -14,12 +16,13 @@ import (
 )
 
 type AdminHandler struct {
-	service service.AdminService
-	rbacSvc service.RBACService
+	service       service.AdminService
+	rbacSvc       service.RBACService
+	employmentSvc service.EmploymentService
 }
 
-func NewAdminHandler(s service.AdminService, rbacSvc service.RBACService) *AdminHandler {
-	return &AdminHandler{service: s, rbacSvc: rbacSvc}
+func NewAdminHandler(s service.AdminService, rbacSvc service.RBACService, employmentSvc service.EmploymentService) *AdminHandler {
+	return &AdminHandler{service: s, rbacSvc: rbacSvc, employmentSvc: employmentSvc}
 }
 
 // seedTenantRoles siembra los roles preconfigurados de una empresa recién
@@ -166,6 +169,10 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 	if user.UserType == models.UserTypeEmployer {
 		h.seedTenantRoles(c, user.ID)
 	}
+	// Dual-write de la membresía (fase 0). Best-effort.
+	if err := h.employmentSvc.SyncActiveForUser(user); err != nil {
+		log.Printf("[admin] no se pudo sincronizar la membresía del usuario %d: %v", user.ID, err)
+	}
 
 	c.JSON(http.StatusCreated, user)
 }
@@ -275,6 +282,12 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Dual-write de la membresía (fase 0): mantiene employments al día cuando
+	// cambia la empresa/cargo/manager del usuario. Best-effort.
+	if err := h.employmentSvc.SyncActiveForUser(user); err != nil {
+		log.Printf("[admin] no se pudo sincronizar la membresía del usuario %d: %v", user.ID, err)
 	}
 
 	c.JSON(http.StatusOK, user)
@@ -405,7 +418,7 @@ func (h *AdminHandler) SetTenantStatus(c *gin.Context, active bool) {
 		return
 	}
 
-	tenant, err := h.service.SetTenantStatus(uint(id), active)
+	tenant, err := h.service.SetTenantStatus(uint(id), active, middleware.GetUserID(c))
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Tenant not found" {
@@ -505,6 +518,267 @@ func (h *AdminHandler) CreateFollowUp(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, followUp)
+}
+
+// ── Membresías (employments): multi-empresa + expediente ────────────────────
+
+// ListUserEmployments lista las membresías (activas y terminadas) de un usuario.
+func (h *AdminHandler) ListUserEmployments(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	views, err := h.employmentSvc.ListForUser(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar las membresías"})
+		return
+	}
+	if views == nil {
+		views = []service.EmploymentView{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": views})
+}
+
+// AddUserEmployment vincula al usuario con una empresa adicional.
+func (h *AdminHandler) AddUserEmployment(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	var req struct {
+		CompanyID   uint   `json:"company_id" binding:"required"`
+		JobTitle    string `json:"job_title"`
+		StartReason string `json:"start_reason"`
+		ManagerID   *uint  `json:"manager_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	employment, err := h.employmentSvc.AddEmployment(uint(userID), req.CompanyID, req.JobTitle, req.StartReason, req.ManagerID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, employment)
+}
+
+// EndUserEmployment finaliza una membresía (el profesional deja esa empresa).
+func (h *AdminHandler) EndUserEmployment(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	var req struct {
+		EndReason string `json:"end_reason"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if err := h.employmentSvc.EndEmployment(uint(userID), uint(empID), req.EndReason); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Membresía finalizada"})
+}
+
+// --- Expediente (FASE 3): vista de la empresa (RR.HH.) ---
+
+// GetMyCompanyEmployment resuelve el empleo de un profesional en la empresa del
+// solicitante (para que el empleador abra su expediente por user_id).
+func (h *AdminHandler) GetMyCompanyEmployment(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	view, err := h.employmentSvc.EmploymentForUserInCompany(uint(userID), middleware.GetTenantID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, view)
+}
+
+// GetUserExpediente devuelve el expediente completo de un empleo (resumen,
+// notas y documentos) para la audiencia empresa.
+func (h *AdminHandler) GetUserExpediente(c *gin.Context) {
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	exp, err := h.employmentSvc.GetExpediente(uint(empID), service.AudienceCompany)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, exp)
+}
+
+// AddEmploymentNote registra una evaluación o anotación en el expediente.
+func (h *AdminHandler) AddEmploymentNote(c *gin.Context) {
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	var req struct {
+		Kind       string `json:"kind"`
+		Rating     *int   `json:"rating"`
+		Content    string `json:"content" binding:"required"`
+		Visibility string `json:"visibility"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	note, err := h.employmentSvc.AddNote(uint(empID), middleware.GetUserID(c), req.Kind, req.Rating, req.Content, req.Visibility)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, note)
+}
+
+// DeleteEmploymentNote elimina una nota del expediente.
+func (h *AdminHandler) DeleteEmploymentNote(c *gin.Context) {
+	noteID, _ := strconv.ParseUint(c.Param("noteId"), 10, 32)
+	if err := h.employmentSvc.DeleteNote(uint(noteID)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Nota eliminada"})
+}
+
+// parseDatePtr interpreta una fecha "YYYY-MM-DD"; vacío o inválido => nil.
+func parseDatePtr(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return &t
+	}
+	return nil
+}
+
+// AddEmploymentDocument adjunta un documento (ya subido por /uploads) al
+// expediente del empleo.
+func (h *AdminHandler) AddEmploymentDocument(c *gin.Context) {
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	var req struct {
+		Title      string `json:"title"`
+		FileName   string `json:"file_name" binding:"required"`
+		FileURL    string `json:"file_url" binding:"required"`
+		FileSize   int64  `json:"file_size"`
+		MimeType   string `json:"mime_type"`
+		Visibility string `json:"visibility"`
+		ExpiresAt  string `json:"expires_at"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	doc, err := h.employmentSvc.AddDocument(uint(empID), middleware.GetUserID(c), req.Title, req.FileName, req.FileURL, req.FileSize, req.MimeType, req.Visibility, parseDatePtr(req.ExpiresAt))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, doc)
+}
+
+// UpdateEmploymentNote edita una evaluación/nota del expediente.
+func (h *AdminHandler) UpdateEmploymentNote(c *gin.Context) {
+	noteID, _ := strconv.ParseUint(c.Param("noteId"), 10, 32)
+	var req struct {
+		Kind       string `json:"kind"`
+		Rating     *int   `json:"rating"`
+		Content    string `json:"content" binding:"required"`
+		Visibility string `json:"visibility"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	note, err := h.employmentSvc.UpdateNote(uint(noteID), req.Kind, req.Rating, req.Content, req.Visibility)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, note)
+}
+
+// UpdateEmploymentDocument edita los metadatos de un documento (título,
+// visibilidad, vencimiento); no cambia el archivo.
+func (h *AdminHandler) UpdateEmploymentDocument(c *gin.Context) {
+	docID, _ := strconv.ParseUint(c.Param("docId"), 10, 32)
+	var req struct {
+		Title      string `json:"title"`
+		Visibility string `json:"visibility"`
+		ExpiresAt  string `json:"expires_at"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	doc, err := h.employmentSvc.UpdateDocument(uint(docID), req.Title, req.Visibility, parseDatePtr(req.ExpiresAt))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, doc)
+}
+
+// DeleteEmploymentDocument elimina un documento del expediente.
+func (h *AdminHandler) DeleteEmploymentDocument(c *gin.Context) {
+	docID, _ := strconv.ParseUint(c.Param("docId"), 10, 32)
+	if err := h.employmentSvc.DeleteDocument(uint(docID)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Documento eliminado"})
+}
+
+// DownloadExpedientePDF descarga el expediente completo de un empleo en PDF.
+func (h *AdminHandler) DownloadExpedientePDF(c *gin.Context) {
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	bytes, name, err := h.employmentSvc.GetExpedientePDF(uint(empID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=expediente_%s.pdf", slugify(name)))
+	c.Data(http.StatusOK, "application/pdf", bytes)
+}
+
+// LogUserContact registra un intento de contacto (email/WhatsApp/chat) a un
+// profesional, para que quede en el historial de su expediente.
+func (h *AdminHandler) LogUserContact(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	var req struct {
+		Channel string `json:"channel" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.employmentSvc.LogContact(uint(userID), middleware.GetUserID(c), req.Channel); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "Contacto registrado"})
+}
+
+// GetArchived lista profesionales archivados (bajas + desactivados) a nivel
+// global (todas las empresas).
+func (h *AdminHandler) GetArchived(c *gin.Context) {
+	h.respondArchived(c, 0)
+}
+
+// GetTenantArchived lista los archivados de una empresa específica.
+func (h *AdminHandler) GetTenantArchived(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	h.respondArchived(c, uint(id))
+}
+
+func (h *AdminHandler) respondArchived(c *gin.Context, tenantID uint) {
+	entries, err := h.service.GetArchived(tenantID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar los archivados"})
+		return
+	}
+	if entries == nil {
+		entries = []repository.ArchivedEntry{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": entries})
+}
+
+// ReactivateUserEmployment revierte la baja de un empleo (vuelve a estar activo).
+func (h *AdminHandler) ReactivateUserEmployment(c *gin.Context) {
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	if err := h.employmentSvc.ReactivateEmployment(uint(empID)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Empleo reactivado"})
 }
 
 // GetSeniorityRanking lista los profesionales por antigüedad (métricas CS).

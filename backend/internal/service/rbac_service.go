@@ -25,10 +25,12 @@ type RBACService interface {
 	AssignRole(tenantID, roleID, userID uint) error
 	UnassignRole(tenantID, roleID, userID uint) error
 
-	// EffectivePermissions combina los permisos de todos los roles del usuario
-	// (gana el nivel más permisivo). hasRoles=false significa que el usuario no
-	// tiene roles asignados y conserva el comportamiento histórico de su cuenta.
-	EffectivePermissions(userID uint) (map[string]string, bool, error)
+	// EffectivePermissions combina los permisos de los roles del usuario EN UNA
+	// EMPRESA (gana el nivel más permisivo). Con multi-empresa, los permisos se
+	// scopean al tenant activo. tenantID 0 = todos los tenants (uso histórico).
+	// hasRoles=false significa que el usuario no tiene roles en ese tenant y
+	// conserva el comportamiento histórico de su cuenta.
+	EffectivePermissions(userID, tenantID uint) (map[string]string, bool, error)
 	// UserRBAC devuelve los roles y grupos de un usuario dentro de un tenant.
 	UserRBAC(tenantID, userID uint) ([]models.Role, []models.Group, error)
 	// SeedDefaultRoles crea los roles preconfigurados de una empresa
@@ -267,8 +269,8 @@ func permissionRank(level string) int {
 	}
 }
 
-func (s *rbacService) EffectivePermissions(userID uint) (map[string]string, bool, error) {
-	roles, err := s.repo.GetUserRoles(userID, 0)
+func (s *rbacService) EffectivePermissions(userID, tenantID uint) (map[string]string, bool, error) {
+	roles, err := s.repo.GetUserRoles(userID, tenantID)
 	if err != nil {
 		return nil, false, err
 	}

@@ -630,26 +630,144 @@ func Run(db *gorm.DB) error {
 			},
 		},
 		{
-			ID: "202606131900_create_audience_groups",
+			ID: "202606141200_add_employments",
 			Migrate: func(tx *gorm.DB) error {
-				log.Println("Creating audience_groups and audience_group_members tables...")
-				return tx.AutoMigrate(&models.AudienceGroup{}, &models.AudienceGroupMember{})
+				log.Println("Creating employments table (membresías + expediente)...")
+				if err := tx.AutoMigrate(&models.Employment{}); err != nil {
+					return err
+				}
+				// Una sola membresía ACTIVA por (profesional, empresa). Permite
+				// re-contrataciones (una activa nueva tras una 'ended' previa).
+				if err := tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_employment_active_unique
+					ON employments (user_id, company_id)
+					WHERE deleted_at IS NULL AND status = 'active'
+				`).Error; err != nil {
+					return err
+				}
+				// Backfill: cada profesional/CS con empleador_id → una membresía
+				// activa. Idempotente (NOT EXISTS) por si se re-corre.
+				return tx.Exec(`
+					INSERT INTO employments (user_id, company_id, job_title, manager_id, status, started_at, created_at, updated_at)
+					SELECT u.id, u.empleador_id, COALESCE(u.job_title, ''), u.manager_id, 'active', u.created_at, NOW(), NOW()
+					FROM users u
+					WHERE u.empleador_id IS NOT NULL
+						AND u.deleted_at IS NULL
+						AND u.user_type IN ('profesional', 'customer_success')
+						AND NOT EXISTS (
+							SELECT 1 FROM employments e
+							WHERE e.user_id = u.id AND e.company_id = u.empleador_id AND e.deleted_at IS NULL
+						)
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable("employments")
+			},
+		},
+		{
+			ID: "202606141600_work_hours_tenant_unique",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Reemplazando índice único de work_hours por (user_id, tenant_id, work_date)...")
+				// Quita el viejo único (user_id, work_date) que impediría a un
+				// profesional registrar horas en dos empresas el mismo día.
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_user_date`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_user_tenant_date
+					ON work_hours (user_id, tenant_id, work_date)
+					WHERE deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_user_tenant_date`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_date ON work_hours (user_id, work_date)`).Error
+			},
+		},
+		{
+			// FASE 3: expediente laboral. Tablas para evaluaciones/notas y
+			// documentos adjuntos a un empleo. El resumen congelado al salir vive
+			// en employments.end_summary (ya existente, se llena al terminar).
+			ID: "202606151000_add_expediente",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creando tablas del expediente (employment_notes, employment_documents)...")
+				return tx.AutoMigrate(
+					&models.EmploymentNote{},
+					&models.EmploymentDocument{},
+				)
 			},
 			Rollback: func(tx *gorm.DB) error {
 				return tx.Migrator().DropTable(
-					"audience_group_members",
-					"audience_groups",
+					&models.EmploymentNote{},
+					&models.EmploymentDocument{},
 				)
 			},
 		},
-		// Future migrations go here
-	})
+		{
+			// FASE 3: historial de contactos (email/WhatsApp/chat) en el expediente.
+			ID: "202606160900_add_contact_logs",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creando tabla de contactos del expediente (contact_logs)...")
+				return tx.AutoMigrate(&models.ContactLog{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.ContactLog{})
+			},
+		},
+		{
+			// Expediente de la empresa: eventos de ciclo de vida (suspensión/reactivación).
+			ID: "202606161100_add_company_events",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creando tabla de eventos de empresa (company_events)...")
+				return tx.AutoMigrate(&models.CompanyEvent{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.CompanyEvent{})
+			},
+		},
+		{
+			// Documentos del expediente: fecha de vencimiento (contratos/certificados).
+			ID: "202606161300_doc_expires_at",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.EmploymentDocument{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.EmploymentDocument{}, "expires_at")
+			},
+		},
+		{
+            // Dedup de la alerta de vencimiento de documentos.
+            ID: "202606161500_doc_expiry_alerted_at",
+            Migrate: func(tx *gorm.DB) error {
+                return tx.AutoMigrate(&models.EmploymentDocument{})
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return tx.Migrator().DropColumn(&models.EmploymentDocument{}, "expiry_alerted_at")
+            },
+        },
+        {
+            ID: "202606131900_create_audience_groups",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Creating audience_groups and audience_group_members tables...")
+                return tx.AutoMigrate(&models.AudienceGroup{}, &models.AudienceGroupMember{})
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return tx.Migrator().DropTable(
+                    "audience_group_members",
+                    "audience_groups",
+                )
+            },
+        },
+        // Future migrations go here
+    })
 
-	if err := m.Migrate(); err != nil {
-		log.Printf("Could not migrate: %v", err)
-		return err
-	}
+    if err := m.Migrate(); err != nil {
+        log.Printf("Could not migrate: %v", err)
+        return err
+    }
 
-	log.Println("Migration successful")
-	return nil
+    log.Println("Migration successful")
+    return nil
 }

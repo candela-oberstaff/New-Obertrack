@@ -63,7 +63,7 @@ func TestEffectivePermissionsMergeMasPermisivo(t *testing.T) {
 	}}
 	svc := NewRBACService(repo, nil)
 
-	perms, hasRoles, err := svc.EffectivePermissions(1)
+	perms, hasRoles, err := svc.EffectivePermissions(1, 0)
 	if err != nil {
 		t.Fatalf("error inesperado: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestEffectivePermissionsMergeMasPermisivo(t *testing.T) {
 
 func TestEffectivePermissionsSinRoles(t *testing.T) {
 	svc := NewRBACService(&stubRBACRepo{}, nil)
-	_, hasRoles, err := svc.EffectivePermissions(1)
+	_, hasRoles, err := svc.EffectivePermissions(1, 0)
 	if err != nil {
 		t.Fatalf("error inesperado: %v", err)
 	}

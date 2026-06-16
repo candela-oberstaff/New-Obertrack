@@ -122,8 +122,13 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 		return nil, errors.New("No puedes registrar horas en fechas futuras")
 	}
 
-	if _, err := s.repo.FindByUserAndDate(userID, workDate); err == nil {
-		return nil, errors.New("Ya existe un registro para esta fecha. Solo puedes registrar un máximo de una jornada por día.")
+	creator, _ := s.userRepo.GetByID(userID)
+	tenantID := models.TenantForUser(creator)
+
+	// El límite de una jornada por día es POR empresa activa: un profesional
+	// multi-empresa puede registrar el mismo día en cada una.
+	if _, err := s.repo.FindByUserAndDate(userID, workDate, tenantID); err == nil {
+		return nil, errors.New("Ya existe un registro para esta fecha en esta empresa. Solo puedes registrar un máximo de una jornada por día.")
 	}
 
 	hoursWorked := s.parseFloatVal(reqData["hours_worked"])
@@ -145,11 +150,9 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 		hoursWorked = 8
 	}
 
-	creator, _ := s.userRepo.GetByID(userID)
-
 	workHour := &models.WorkHour{
 		UserID:        userID,
-		TenantID:      models.TenantForUser(creator),
+		TenantID:      tenantID,
 		WorkDate:      workDate,
 		WorkType:      workType,
 		HoursWorked:   hoursWorked,

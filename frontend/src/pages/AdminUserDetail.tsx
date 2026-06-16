@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil } from 'lucide-react'
-import { userService, adminService } from '../services/api'
+import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, Plus, LogOut, FileText, RotateCcw } from 'lucide-react'
+import { userService, adminService, authService } from '../services/api'
 import { rbacService } from '../services/rbac.service'
 import { useAuth } from '../context/AuthContext'
+import { Modal, Button } from '../components/ui'
+import { Select } from '../components/ui/Select'
 import type { User, CompanyRole, CompanyGroup } from '../types'
 import Avatar from '../components/Common/Avatar'
 import { Skeleton } from '../components/ui'
 import { UserModal } from '../components/Admin/Modals/UserModal'
+import { ExpedienteModal } from '../components/Admin/ExpedienteModal'
 import styles from './AdminUserDetail.module.css'
 
 // Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de dictar.
@@ -43,6 +46,20 @@ export default function AdminUserDetail() {
   const [empresaName, setEmpresaName] = useState('')
   const [managerName, setManagerName] = useState('')
 
+  // Membresías (empleos) del usuario: multi-empresa + expediente.
+  const [employments, setEmployments] = useState<any[]>([])
+  const [showAddEmp, setShowAddEmp] = useState(false)
+  const [companies, setCompanies] = useState<{ id: number; name: string }[]>([])
+  const [addCompanyId, setAddCompanyId] = useState<number | ''>('')
+  const [addJobTitle, setAddJobTitle] = useState('')
+  const [addStartReason, setAddStartReason] = useState('')
+  const [empBusy, setEmpBusy] = useState(false)
+  const [empError, setEmpError] = useState<string | null>(null)
+  const [endingEmp, setEndingEmp] = useState<any | null>(null)
+  const [endReason, setEndReason] = useState('')
+  // Empleo cuyo expediente (resumen + notas + documentos) se está viendo.
+  const [expedienteEmp, setExpedienteEmp] = useState<any | null>(null)
+
   // Edición del usuario desde el detalle (reutiliza el modal del panel).
   const [showEdit, setShowEdit] = useState(false)
   const [editForm, setEditForm] = useState<any>({})
@@ -72,6 +89,16 @@ export default function AdminUserDetail() {
     } catch { /* sección opcional: si falla, simplemente no se muestra */ }
   }, [])
 
+  const loadEmployments = useCallback(async (u: User) => {
+    if (u.user_type !== 'profesional' && u.user_type !== 'customer_success') {
+      setEmployments([])
+      return
+    }
+    try {
+      setEmployments(await adminService.getUserEmployments(u.id))
+    } catch { /* sección opcional */ }
+  }, [])
+
   const load = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -79,6 +106,7 @@ export default function AdminUserDetail() {
       setUser(data)
       setError(null)
       loadRBAC(data)
+      loadEmployments(data)
       // Resolve related names (employer / manager) for professionals and customer success.
       setEmpresaName(''); setManagerName('')
       if (data.user_type === 'profesional' || data.user_type === 'customer_success') {
@@ -94,7 +122,7 @@ export default function AdminUserDetail() {
     } finally {
       setIsLoading(false)
     }
-  }, [id, loadRBAC])
+  }, [id, loadRBAC, loadEmployments])
 
   useEffect(() => { load() }, [load])
 
@@ -126,6 +154,58 @@ export default function AdminUserDetail() {
       await adminService.resetPassword(user.id, temp)
       setActionMsg(`Contraseña reseteada. Temporal: ${temp} — compártela por un canal seguro, no volverá a mostrarse.`)
     } catch { setActionMsg('No se pudo resetear la contraseña.') } finally { setBusy(false) }
+  }
+
+  const openAddEmp = async () => {
+    setAddCompanyId(''); setAddJobTitle(''); setAddStartReason(''); setEmpError(null)
+    setShowAddEmp(true)
+    if (companies.length === 0) {
+      try { setCompanies(await authService.getPublicCompanies()) } catch { /* picker vacío si falla */ }
+    }
+  }
+
+  const handleAddEmp = async () => {
+    if (!user || !addCompanyId) return
+    setEmpBusy(true); setEmpError(null)
+    try {
+      await adminService.addUserEmployment(user.id, {
+        company_id: Number(addCompanyId),
+        job_title: addJobTitle || undefined,
+        start_reason: addStartReason || undefined,
+      })
+      setShowAddEmp(false)
+      await loadEmployments(user)
+      invalidateAdmin()
+    } catch (err: any) {
+      setEmpError(err?.response?.data?.error ?? 'No se pudo agregar la empresa')
+    } finally { setEmpBusy(false) }
+  }
+
+  const submitEndEmp = async () => {
+    if (!user || !endingEmp) return
+    setEmpBusy(true); setEmpError(null)
+    try {
+      await adminService.endUserEmployment(user.id, endingEmp.id, endReason)
+      setEndingEmp(null)
+      await loadEmployments(user)
+      await load()
+      invalidateAdmin()
+    } catch (err: any) {
+      setEmpError(err?.response?.data?.error ?? 'No se pudo finalizar el empleo.')
+    } finally { setEmpBusy(false) }
+  }
+
+  const reactivateEmp = async (emp: any) => {
+    if (!user) return
+    setEmpBusy(true); setEmpError(null)
+    try {
+      await adminService.reactivateEmployment(user.id, emp.id)
+      await loadEmployments(user)
+      await load()
+      invalidateAdmin()
+    } catch (err: any) {
+      setEmpError(err?.response?.data?.error ?? 'No se pudo reactivar el empleo.')
+    } finally { setEmpBusy(false) }
   }
 
   const openEdit = async () => {
@@ -351,6 +431,68 @@ export default function AdminUserDetail() {
         </div>
       </div>
 
+      {(user.user_type === 'profesional' || user.user_type === 'customer_success') && (
+        <div className={styles.card} style={{ marginTop: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+              <Building2 size={18} /> Empresas / Empleos
+            </h3>
+            {canManage && (
+              <Button onClick={openAddEmp} leftIcon={<Plus size={16} />} variant="secondary">Agregar empresa</Button>
+            )}
+          </div>
+          <p style={{ margin: '6px 0 14px', fontSize: '0.83rem', color: '#94a3b8' }}>
+            Empresas donde trabaja o trabajó. La activa (en negrita) es donde opera ahora; el resto forma su expediente multi-empresa.
+          </p>
+
+          {employments.length === 0 ? (
+            <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Sin membresías registradas.</span>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {employments.map(emp => {
+                const isActiveCompany = user.empleador_id === emp.company_id && emp.status === 'active'
+                const ended = emp.status === 'ended'
+                return (
+                  <div key={emp.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 14px', border: '1px solid var(--border, #e2e8f0)', borderRadius: '10px', opacity: ended ? 0.65 : 1 }}>
+                    <div>
+                      <span style={{ fontWeight: isActiveCompany ? 800 : 600, color: '#0f172a' }}>
+                        {emp.company_name}{isActiveCompany && ' · activa'}
+                      </span>
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                        {emp.job_title || 'Sin cargo'} · desde {new Date(emp.started_at).toLocaleDateString('es-ES')}
+                        {ended && emp.ended_at && ` · hasta ${new Date(emp.ended_at).toLocaleDateString('es-ES')}`}
+                        {ended && emp.end_reason ? ` · ${emp.end_reason}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 700, background: ended ? 'rgba(100,116,139,0.12)' : 'rgba(16,185,129,0.12)', color: ended ? '#64748b' : '#047857' }}>
+                        {ended ? 'Finalizado' : 'Activo'}
+                      </span>
+                      <button onClick={() => setExpedienteEmp(emp)} title="Ver expediente"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)', background: '#fff', color: '#334155', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem' }}>
+                        <FileText size={14} /> Expediente
+                      </button>
+                      {canManage && !ended && (
+                        <button onClick={() => { setEndingEmp(emp); setEndReason(''); setEmpError(null) }} title="Finalizar empleo"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)', background: '#fff', color: '#b91c1c', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem' }}>
+                          <LogOut size={14} /> Finalizar
+                        </button>
+                      )}
+                      {canManage && ended && (
+                        <button onClick={() => reactivateEmp(emp)} disabled={empBusy} title="Reactivar empleo"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)', background: '#fff', color: '#047857', fontWeight: 600, cursor: empBusy ? 'progress' : 'pointer', fontSize: '0.8rem' }}>
+                          <RotateCcw size={14} /> Reactivar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {rbacApplicable && (
         <div className={styles.card} style={{ marginTop: '1rem' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -413,6 +555,76 @@ export default function AdminUserDetail() {
           onClose={() => setShowEdit(false)}
           onSubmit={handleEditSubmit}
           error={editError}
+        />
+      )}
+
+      <Modal
+        isOpen={showAddEmp}
+        onClose={() => setShowAddEmp(false)}
+        title="Agregar empresa"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowAddEmp(false)} disabled={empBusy}>Cancelar</Button>
+            <Button onClick={handleAddEmp} loading={empBusy} disabled={!addCompanyId}>Agregar</Button>
+          </>
+        }
+      >
+        <p className={styles.modalHint || ''} style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 0 }}>
+          Vincula a {user.name} con otra empresa. Quedará como empleo activo en su expediente.
+        </p>
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Empresa</label>
+          <Select
+            fullWidth
+            value={addCompanyId}
+            onChange={v => setAddCompanyId(v ? Number(v) : '')}
+            placeholder="Selecciona una empresa..."
+            options={companies
+              .filter(c => !employments.some(e => e.company_id === c.id && e.status === 'active'))
+              .map(c => ({ value: c.id, label: c.name }))}
+          />
+        </div>
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Cargo en esa empresa</label>
+          <input type="text" value={addJobTitle} onChange={e => setAddJobTitle(e.target.value)} placeholder="Ej: Desarrollador Backend"
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px' }} />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Motivo de ingreso (opcional)</label>
+          <input type="text" value={addStartReason} onChange={e => setAddStartReason(e.target.value)} placeholder="Ej: nuevo proyecto, contrato..."
+            style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px' }} />
+        </div>
+        {empError && <p style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem', marginTop: '10px' }}>{empError}</p>}
+      </Modal>
+
+      <Modal
+        isOpen={!!endingEmp}
+        onClose={() => setEndingEmp(null)}
+        title="Finalizar empleo"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEndingEmp(null)} disabled={empBusy}>Cancelar</Button>
+            <Button variant="danger" onClick={submitEndEmp} loading={empBusy}>Finalizar empleo</Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 0 }}>
+          {endingEmp && `Vas a finalizar el empleo de ${user.name} en ${endingEmp.company_name}. Quedará en su expediente como finalizado (los datos históricos se conservan).`}
+        </p>
+        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Motivo de salida (opcional)</label>
+        <input type="text" value={endReason} onChange={e => setEndReason(e.target.value)} placeholder="Ej: fin de contrato, renuncia..."
+          style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px' }} />
+        {empError && <p style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem', marginTop: '10px' }}>{empError}</p>}
+      </Modal>
+
+      {expedienteEmp && (
+        <ExpedienteModal
+          userId={user.id}
+          employment={expedienteEmp}
+          canManage={canManage}
+          onClose={() => setExpedienteEmp(null)}
         />
       )}
     </div>

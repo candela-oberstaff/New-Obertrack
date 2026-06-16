@@ -29,6 +29,9 @@ export interface User {
   /** Permisos efectivos por módulo derivados de los roles asignados.
    * Ausente = sin roles = comportamiento histórico del tipo de cuenta. */
   permissions?: Record<string, 'none' | 'view' | 'edit'>
+  /** Empresas donde el profesional tiene empleo activo (switcher multi-empresa).
+   * La activa es la que apunta empleador_id. */
+  companies?: { id: number; name: string }[]
 }
 
 export interface Tenant {
