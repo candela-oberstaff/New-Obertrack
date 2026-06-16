@@ -359,3 +359,60 @@ func (h *EmailHandler) GetCampaignEvents(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, events)
 }
+
+// SendQuickEmail sends a one-off transactional email directly via Brevo
+// without requiring a persisted template or campaign. Useful for ad-hoc
+// communications from the tenant/employee detail views.
+func (h *EmailHandler) SendQuickEmail(c *gin.Context) {
+	var req struct {
+		ToEmail     string `json:"to_email" binding:"required,email"`
+		ToName      string `json:"to_name"`
+		Subject     string `json:"subject" binding:"required"`
+		HTMLContent string `json:"html_content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.brevoSvc.SendEmail(req.ToEmail, req.ToName, req.Subject, req.HTMLContent); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al enviar el email: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email enviado correctamente", "to": req.ToEmail})
+}
+
+// SendQuickEmailBulk sends the same email to multiple recipients at once.
+// The body accepts an array of contacts in {to_email, to_name, subject, html_content} form.
+func (h *EmailHandler) SendQuickEmailBulk(c *gin.Context) {
+	var req struct {
+		Recipients  []service.BrevoContact `json:"recipients" binding:"required,min=1"`
+		Subject     string                 `json:"subject" binding:"required"`
+		HTMLContent string                 `json:"html_content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	errs := h.brevoSvc.SendBulk(req.Recipients, req.Subject, req.HTMLContent)
+
+	sent := len(req.Recipients) - len(errs)
+	resp := gin.H{
+		"message": fmt.Sprintf("Enviado a %d de %d destinatarios", sent, len(req.Recipients)),
+		"sent":    sent,
+		"total":   len(req.Recipients),
+	}
+	if len(errs) > 0 {
+		errStrs := make([]string, len(errs))
+		for i, e := range errs {
+			errStrs[i] = e.Error()
+		}
+		resp["errors"] = errStrs
+	}
+
+	c.JSON(http.StatusOK, resp)
+}

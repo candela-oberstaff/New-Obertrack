@@ -9,12 +9,14 @@ export interface Block {
 
 export interface EmailBuilderProps {
   onBack: () => void;
-  onSave?: (data: { title: string, blocks: Block[] }) => void;
-  onSend?: (data: { title: string, blocks: Block[], recipientIds: any }) => void;
-  onSchedule?: (data: { title: string, blocks: Block[], date: string, recipientIds: any }) => void;
+  onSave?: (data: { title: string, subject: string, blocks: Block[] }) => void;
+  onSend?: (data: { title: string, subject: string, blocks: Block[], recipientIds: any }) => void;
+  onSchedule?: (data: { title: string, subject: string, blocks: Block[], date: string, recipientIds: any }) => void;
   availableRecipients?: any[];
   initialBlocks?: Block[];
   initialTitle?: string;
+  initialSubject?: string;
   initialScheduledAt?: string;
   initialRecipientIds?: any;
 }
+

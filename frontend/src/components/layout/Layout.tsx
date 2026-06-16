@@ -25,7 +25,6 @@ import {
   Map,
   Shield,
   UserCog,
-  Activity
 } from 'lucide-react'
 
 // Módulo de permisos (roles) que gobierna cada entrada del sidebar.
@@ -120,7 +119,6 @@ export default function Layout() {
     { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} />, show: isSuper || isCS },
     { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: isSuper },
     { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} />, show: isSuper || isCS },
-    { path: '/admin/metrics', label: 'Métricas', icon: <Activity size={20} />, show: isSuper || isIT },
     { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} />, show: isSuper || isIT },
     { path: '/tutoriales', label: 'Tutoriales', icon: <GraduationCap size={20} />, show: !isIT },
     { path: '/profile', label: 'Perfil', icon: <User size={20} />, show: true },
@@ -142,6 +140,7 @@ export default function Layout() {
     return 'Profesional'
   }
 
+    const isToolsPage = location.pathname.startsWith('/admin/tools');
   return (
     <div className={`${styles['app-layout']} ${sidebarCollapsed && !isMobileSidebarOpen ? styles['sidebar-collapsed'] : ''} ${isMobileSidebarOpen ? styles['mobile-open'] : ''}`}>
       {isMobileSidebarOpen && (

@@ -45,6 +45,9 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		email.DELETE("/campaigns/:id", d.email.DeleteCampaign)
 		email.POST("/campaigns/:id/send", d.email.SendCampaign)
 		email.GET("/campaigns/:id/events", d.email.GetCampaignEvents)
+		// One-off transactional sends (from tenant / employee detail views)
+		email.POST("/quick-send", d.email.SendQuickEmail)
+		email.POST("/quick-send-bulk", d.email.SendQuickEmailBulk)
 	}
 
 	audiences := api.Group("/audiences")

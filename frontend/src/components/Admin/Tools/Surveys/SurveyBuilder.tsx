@@ -32,6 +32,7 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
   
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
   const [isSending, setIsSending] = useState(false);
 
   const { data: availableUsers = [] } = useQuery({
@@ -66,10 +67,19 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
     setSelectedRecipients([]);
   };
 
-  const filteredUsers = availableUsers.filter(u => 
-    u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
-    u.email.toLowerCase().includes(userSearch.toLowerCase())
-  );
+  const filteredUsers = availableUsers.filter(u => {
+    const matchesSearch = u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
+                          u.email.toLowerCase().includes(userSearch.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (roleFilter !== 'all') {
+      if (roleFilter === 'superadmin') return u.is_superadmin || u.user_type === 'superadmin';
+      if (roleFilter === 'manager') return u.is_manager;
+      return u.user_type === roleFilter;
+    }
+
+    return true;
+  });
 
   const addQuestion = (type: 'text' | 'rating' | 'choice' | 'checkbox' | 'dropdown' | 'linear_scale' | 'grid' | 'checkbox_grid') => {
     let defaultOptions: string | undefined = undefined;
@@ -277,14 +287,37 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                     </div>
                   </div>
 
-                  <div className={styles.searchContainer}>
-                    <Search size={16} />
-                    <input 
-                      type="text" 
-                      placeholder="Buscar usuarios..." 
-                      value={userSearch}
-                      onChange={e => setUserSearch(e.target.value)}
-                    />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                    <div className={styles.searchContainer} style={{ marginBottom: 0 }}>
+                      <Search size={16} />
+                      <input 
+                        type="text" 
+                        placeholder="Buscar usuarios..." 
+                        value={userSearch}
+                        onChange={e => setUserSearch(e.target.value)}
+                      />
+                    </div>
+                    <select
+                      style={{
+                        padding: '8px 12px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        outline: 'none',
+                        background: 'white',
+                        cursor: 'pointer',
+                        width: '100%',
+                      }}
+                      value={roleFilter}
+                      onChange={e => setRoleFilter(e.target.value)}
+                    >
+                      <option value="all">Todos los tipos de usuario</option>
+                      <option value="profesional">Profesionales</option>
+                      <option value="empleador">Empresas (Empleadores)</option>
+                      <option value="customer_success">Customer Success</option>
+                      <option value="manager">Managers</option>
+                      <option value="superadmin">Administradores</option>
+                    </select>
                   </div>
 
                   <div className={styles.userList}>
@@ -298,7 +331,13 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                           {user.name.charAt(0)}
                         </div>
                         <div className={styles.userInfo}>
-                          <span className={styles.userName}>{user.name}</span>
+                          <span className={styles.userName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {user.name}
+                            {user.is_superadmin && <span style={{ fontSize: 9, background: '#fee2e2', color: '#ef4444', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Admin</span>}
+                            {user.user_type === 'empleador' && <span style={{ fontSize: 9, background: '#dbeafe', color: '#2563eb', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Empresa</span>}
+                            {user.user_type === 'profesional' && <span style={{ fontSize: 9, background: '#f0fdf4', color: '#16a34a', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Profesional</span>}
+                            {user.user_type === 'customer_success' && <span style={{ fontSize: 9, background: '#f5f3ff', color: '#7c3aed', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>CS</span>}
+                          </span>
                           <span className={styles.userEmail}>{user.email}</span>
                         </div>
                         <div className={styles.checkboxMock}>

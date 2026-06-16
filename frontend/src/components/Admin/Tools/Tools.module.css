@@ -6,6 +6,21 @@
 
 .tools-page.fullscreen-mode {
   padding: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.tools-page.fullscreen-mode .tools-content {
+  height: 100%;
+  max-height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .tools-top-bar {
@@ -75,6 +90,10 @@
 /* Content Area */
 .tools-content {
   width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   animation: fadeIn 0.2s ease-out;
 }
 

@@ -15,6 +15,7 @@ const GroupManager: React.FC<GroupManagerProps> = ({ onClose }) => {
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [userTypeFilter, setUserTypeFilter] = useState('all');
 
   const { data: groups = [] } = useQuery<AudienceGroup[]>({
     queryKey: ['audienceGroups'],
@@ -76,9 +77,19 @@ const GroupManager: React.FC<GroupManagerProps> = ({ onClose }) => {
   const filteredUsers = users.filter(u => {
     // Exclude users already in activeGroup
     const isMember = activeGroup?.members?.some(m => m.id === u.id);
+    if (isMember) return false;
+
     const matchesSearch = u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
                           u.email.toLowerCase().includes(userSearch.toLowerCase());
-    return !isMember && matchesSearch;
+    if (!matchesSearch) return false;
+
+    if (userTypeFilter !== 'all') {
+      if (userTypeFilter === 'superadmin') return u.is_superadmin || u.user_type === 'superadmin';
+      if (userTypeFilter === 'manager') return u.is_manager;
+      return u.user_type === userTypeFilter;
+    }
+
+    return true;
   });
 
   return (
@@ -159,7 +170,13 @@ const GroupManager: React.FC<GroupManagerProps> = ({ onClose }) => {
                         activeGroup.members.map(member => (
                           <div key={member.id} className={styles.memberRow}>
                             <div>
-                              <strong>{member.name}</strong>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <strong>{member.name}</strong>
+                                {member.is_superadmin && <span style={{ fontSize: 9, background: '#fee2e2', color: '#ef4444', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Admin</span>}
+                                {member.user_type === 'empleador' && <span style={{ fontSize: 9, background: '#dbeafe', color: '#2563eb', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Empresa</span>}
+                                {member.user_type === 'profesional' && <span style={{ fontSize: 9, background: '#f0fdf4', color: '#16a34a', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Profesional</span>}
+                                {member.user_type === 'customer_success' && <span style={{ fontSize: 9, background: '#f5f3ff', color: '#7c3aed', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>CS</span>}
+                              </div>
                               <span>{member.email}</span>
                             </div>
                             <button
@@ -178,14 +195,36 @@ const GroupManager: React.FC<GroupManagerProps> = ({ onClose }) => {
                   {/* Add Members */}
                   <div className={styles.columnSection}>
                     <h5>Añadir Miembros</h5>
-                    <div className={styles.searchBar}>
-                      <Search size={14} />
-                      <input
-                        type="text"
-                        placeholder="Buscar usuarios..."
-                        value={userSearch}
-                        onChange={e => setUserSearch(e.target.value)}
-                      />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                      <div className={styles.searchBar} style={{ marginBottom: 0 }}>
+                        <Search size={14} />
+                        <input
+                          type="text"
+                          placeholder="Buscar usuarios..."
+                          value={userSearch}
+                          onChange={e => setUserSearch(e.target.value)}
+                        />
+                      </div>
+                      <select
+                        style={{
+                          padding: '6px 10px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          outline: 'none',
+                          background: 'white',
+                          cursor: 'pointer',
+                        }}
+                        value={userTypeFilter}
+                        onChange={e => setUserTypeFilter(e.target.value)}
+                      >
+                        <option value="all">Todos los tipos de usuario</option>
+                        <option value="profesional">Profesionales</option>
+                        <option value="empleador">Empresas (Empleadores)</option>
+                        <option value="customer_success">Customer Success</option>
+                        <option value="manager">Managers</option>
+                        <option value="superadmin">Administradores</option>
+                      </select>
                     </div>
                     <div className={styles.columnList}>
                       {filteredUsers.length === 0 ? (
@@ -194,7 +233,13 @@ const GroupManager: React.FC<GroupManagerProps> = ({ onClose }) => {
                         filteredUsers.map(user => (
                           <div key={user.id} className={styles.memberRow}>
                             <div>
-                              <strong>{user.name}</strong>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <strong>{user.name}</strong>
+                                {user.is_superadmin && <span style={{ fontSize: 9, background: '#fee2e2', color: '#ef4444', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Admin</span>}
+                                {user.user_type === 'empleador' && <span style={{ fontSize: 9, background: '#dbeafe', color: '#2563eb', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Empresa</span>}
+                                {user.user_type === 'profesional' && <span style={{ fontSize: 9, background: '#f0fdf4', color: '#16a34a', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Profesional</span>}
+                                {user.user_type === 'customer_success' && <span style={{ fontSize: 9, background: '#f5f3ff', color: '#7c3aed', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>CS</span>}
+                              </div>
                               <span>{user.email}</span>
                             </div>
                             <button

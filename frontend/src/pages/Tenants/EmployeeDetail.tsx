@@ -36,7 +36,7 @@ export default function EmployeeDetail() {
       <div className={styles.page}>
         <div className={styles.loading}>
           <div className={styles.spinner} />
-          <p>Cargando empleado...</p>
+          <p>Cargando profesional...</p>
         </div>
       </div>
     )
@@ -50,7 +50,7 @@ export default function EmployeeDetail() {
         </button>
         <div className={styles.empty}>
           <UserIcon size={40} />
-          <p>{error || 'Empleado no encontrado'}</p>
+          <p>{error || 'Profesional no encontrado'}</p>
         </div>
       </div>
     )
@@ -61,7 +61,7 @@ export default function EmployeeDetail() {
   return (
     <div className={styles.page}>
       <button className={styles.backBtn} onClick={() => navigate(`/admin/tenants/${id}`)}>
-        <ArrowLeft size={18} /> Empleados
+        <ArrowLeft size={18} /> Profesionales
       </button>
 
       <div className={styles.detailHeader}>
