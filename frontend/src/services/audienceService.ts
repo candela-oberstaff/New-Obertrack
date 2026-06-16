@@ -4,7 +4,14 @@ export interface AudienceGroup {
   id?: number;
   name: string;
   description: string;
-  members?: Array<{ id: number; name: string; email: string }>;
+  members?: Array<{
+    id: number;
+    name: string;
+    email: string;
+    is_superadmin?: boolean;
+    is_manager?: boolean;
+    user_type?: 'profesional' | 'empleador' | 'customer_success' | 'superadmin' | 'analista_it';
+  }>;
   created_at?: string;
 }
 
