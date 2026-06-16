@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"encoding/json"
+
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
 )
@@ -19,24 +21,37 @@ func NewMetricsRepository(db *gorm.DB) MetricsRepository {
 }
 
 func (r *metricsRepository) GetEmailMetrics(days int) (map[string]interface{}, error) {
-	var campaigns []models.EmailCampaign
-	// Filter campaigns sent in the last X days
-	if err := r.db.Where("sent_at >= NOW() - (? * INTERVAL '1 day')", days).Find(&campaigns).Error; err != nil {
+	// Total emails sent = sum of all recipients across every "sent" campaign (all time).
+	// We count individual dispatches, NOT unique recipients, so sending to the same
+	// person in two different campaigns counts as 2.
+	var totalSent int64
+	if err := r.db.Raw(`
+		SELECT COALESCE(SUM(recipients), 0)
+		FROM email_campaigns
+		WHERE status = 'sent'
+		  AND deleted_at IS NULL
+		  AND COALESCE(sent_at, created_at) >= NOW() - (? * INTERVAL '1 day')
+	`, days).Scan(&totalSent).Error; err != nil {
 		return nil, err
 	}
+
+	// Count campaigns sent in the requested period (for the campaign_count card)
+	var campaignCount int64
+	r.db.Raw(`
+		SELECT COUNT(*)
+		FROM email_campaigns
+		WHERE status = 'sent'
+		  AND deleted_at IS NULL
+		  AND COALESCE(sent_at, created_at) >= NOW() - (? * INTERVAL '1 day')
+	`, days).Scan(&campaignCount)
 
 	var totalOpened int64
 	var totalClicked int64
 	var totalBounced int64
-	
+
 	r.db.Model(&models.EmailEvent{}).Where("event = ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", "opened", days).Count(&totalOpened)
 	r.db.Model(&models.EmailEvent{}).Where("event = ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", "click", days).Count(&totalClicked)
 	r.db.Model(&models.EmailEvent{}).Where("event LIKE ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", "%bounce%", days).Count(&totalBounced)
-
-	totalSent := 0
-	for _, c := range campaigns {
-		totalSent += c.Recipients
-	}
 
 	openRate := 0.0
 	clickRate := 0.0
@@ -62,10 +77,11 @@ func (r *metricsRepository) GetEmailMetrics(days int) (map[string]interface{}, e
 		"total_opened":   totalOpened,
 		"total_clicked":  totalClicked,
 		"total_bounced":  totalBounced,
-		"campaign_count": len(campaigns),
+		"campaign_count": campaignCount,
 		"evolution":      evolution,
 	}, nil
 }
+
 
 func (r *metricsRepository) GetSurveyMetrics(days int) (map[string]interface{}, error) {
 	var surveys []models.Survey
@@ -95,9 +111,21 @@ func (r *metricsRepository) GetSurveyMetrics(days int) (map[string]interface{}, 
 		avgSat = totalSatisfaction / float64(ratingCount)
 	}
 
+	totalSent := 0
+	for _, s := range surveys {
+		if s.Status == models.SurveyStatusActive || s.Status == models.SurveyStatusClosed {
+			var ids []int
+			if s.RecipientList != "" {
+				if err := json.Unmarshal([]byte(s.RecipientList), &ids); err == nil {
+					totalSent += len(ids)
+				}
+			}
+		}
+	}
+
 	return map[string]interface{}{
-		"total_surveys": len(surveys),
-		"total_responses": totalResponses,
+		"total_sent":       totalSent,
+		"total_responses":  totalResponses,
 		"avg_satisfaction": avgSat,
 	}, nil
 }

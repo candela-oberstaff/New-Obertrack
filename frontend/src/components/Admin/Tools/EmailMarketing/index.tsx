@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import EmailBuilder from '../EmailBuilder';
 import { emailService } from '../../../../services/emailService';
 import CampaignGrid from './components/CampaignGrid';
+import CampaignDetailPanel from './components/CampaignDetailPanel';
 import styles from './EmailMarketing.module.css';
 import commonStyles from '../Tools.module.css';
 import { useConfirm } from '../../../ui/ConfirmProvider';
@@ -16,6 +17,7 @@ interface EmailMarketingProps {
 const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, setHeaderAction }) => {
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState<number | null>(null);
+  const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
   const confirm = useConfirm();
   const qc = useQueryClient();
 
@@ -47,32 +49,33 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     return () => setHeaderAction(null);
   }, [showBuilder]);
 
-  const handleSave = async (data: { title: string, blocks: any }) => {
+  const handleSave = async (data: { title: string, subject: string, blocks: any }) => {
     try {
-      const { title, blocks } = data;
+      const { title, subject, blocks } = data;
       if (editingCampaignId) {
         const camp = campaigns.find(c => c.id === editingCampaignId);
         if (camp) {
           if (camp.template_id) {
             await emailService.updateTemplate(camp.template_id, {
               title: title,
+              subject: subject,
               content: JSON.stringify(blocks)
             });
           }
-          await emailService.updateCampaign(camp.id, { title: title });
+          await emailService.updateCampaign(camp.id, { title: title, subject: subject });
           await fetchCampaigns();
         }
       } else {
         const template = await emailService.createTemplate({
           title: title,
-          subject: 'Asunto de la campaña',
+          subject: subject || 'Asunto de la campaña',
           content: JSON.stringify(blocks),
           type: 'campaign'
         });
         await emailService.createCampaign({
           template_id: template.id,
           title: title,
-          subject: 'Contenido editado',
+          subject: subject || 'Asunto de la campaña',
           status: 'draft'
         });
         await fetchCampaigns();
@@ -84,24 +87,34 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     }
   };
 
-  const handleSend = async (data: { title: string, blocks: any, recipientIds: number[] }) => {
+  const getRecipientsCount = (recipients: any): number => {
+    if (Array.isArray(recipients)) return recipients.length;
+    if (recipients && typeof recipients === 'object') {
+      const uCount = (recipients.userIds || []).length;
+      const eCount = (recipients.expressContacts || []).length;
+      return uCount + eCount;
+    }
+    return 0;
+  };
+
+  const handleSend = async (data: { title: string, subject: string, blocks: any, recipientIds: any }) => {
     try {
-      const { title, blocks, recipientIds } = data;
+      const { title, subject, blocks, recipientIds } = data;
       let campaignId = editingCampaignId;
 
       if (!campaignId) {
         const template = await emailService.createTemplate({
           title: title,
-          subject: 'Asunto de la campaña',
+          subject: subject || 'Asunto de la campaña',
           content: JSON.stringify(blocks),
           type: 'campaign'
         });
         const newCampaign = await emailService.createCampaign({
           template_id: template.id,
           title: title,
-          subject: 'Contenido editado',
+          subject: subject || 'Asunto de la campaña',
           status: 'draft',
-          recipients: recipientIds.length,
+          recipients: getRecipientsCount(recipientIds),
           recipient_list: JSON.stringify(recipientIds)
         });
         campaignId = newCampaign.id;
@@ -110,11 +123,13 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
         if (camp && camp.template_id) {
           await emailService.updateTemplate(camp.template_id, {
             title: title,
+            subject: subject,
             content: JSON.stringify(blocks)
           });
           await emailService.updateCampaign(camp.id, { 
             title,
-            recipients: recipientIds.length,
+            subject,
+            recipients: getRecipientsCount(recipientIds),
             recipient_list: JSON.stringify(recipientIds)
           });
         }
@@ -132,24 +147,24 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     }
   };
 
-  const handleSchedule = async (data: { title: string, blocks: any, date: string, recipientIds: number[] }) => {
+  const handleSchedule = async (data: { title: string, subject: string, blocks: any, date: string, recipientIds: any }) => {
     try {
-      const { title, blocks, date, recipientIds } = data;
+      const { title, subject, blocks, date, recipientIds } = data;
       let campaignId = editingCampaignId;
 
       if (!campaignId) {
         const template = await emailService.createTemplate({
           title: title,
-          subject: 'Asunto de la campaña',
+          subject: subject || 'Asunto de la campaña',
           content: JSON.stringify(blocks),
           type: 'campaign'
         });
         const newCampaign = await emailService.createCampaign({
           template_id: template.id,
           title: title,
-          subject: 'Contenido editado',
+          subject: subject || 'Asunto de la campaña',
           status: 'draft',
-          recipients: recipientIds.length,
+          recipients: getRecipientsCount(recipientIds),
           recipient_list: JSON.stringify(recipientIds)
         });
         campaignId = newCampaign.id;
@@ -158,11 +173,13 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
         if (camp && camp.template_id) {
           await emailService.updateTemplate(camp.template_id, {
             title: title,
+            subject: subject,
             content: JSON.stringify(blocks)
           });
           await emailService.updateCampaign(camp.id, { 
             title,
-            recipients: recipientIds.length,
+            subject,
+            recipients: getRecipientsCount(recipientIds),
             recipient_list: JSON.stringify(recipientIds)
           });
         }
@@ -172,7 +189,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
         await emailService.updateCampaign(campaignId, {
           status: 'scheduled',
           scheduled_at: date,
-          recipients: recipientIds.length,
+          recipients: getRecipientsCount(recipientIds),
           recipient_list: JSON.stringify(recipientIds)
         });
         alert(`¡Campaña programada para el ${new Date(date).toLocaleString()}!`);
@@ -185,7 +202,12 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     }
   };
 
+  const handleViewDetail = (camp: any) => {
+    setSelectedCampaign(camp);
+  };
+
   const handleEdit = (camp: any) => {
+    setSelectedCampaign(null);
     setEditingCampaignId(camp.id);
     setShowBuilder(true);
     onToggleFullScreen(true);
@@ -201,6 +223,7 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
     if (!ok) return;
     try {
       await emailService.deleteCampaign(campaignId);
+      setSelectedCampaign(null);
       fetchCampaigns();
     } catch (error) {
       console.error("Error deleting campaign:", error);
@@ -227,26 +250,36 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
       console.error("Error parsing blocks:", e);
     }
 
-    let initialRecipientIds: number[] = [];
+    let initialRecipientIds: any = { groupIds: [], userIds: [], expressContacts: [] };
     try {
-      initialRecipientIds = currentCampaign?.recipient_list
-        ? JSON.parse(currentCampaign.recipient_list)
-        : [];
+      if (currentCampaign?.recipient_list) {
+        const parsed = JSON.parse(currentCampaign.recipient_list);
+        if (Array.isArray(parsed)) {
+          initialRecipientIds = { groupIds: [], userIds: parsed, expressContacts: [] };
+        } else {
+          initialRecipientIds = parsed;
+        }
+      }
     } catch (e) {
       console.error("Error parsing recipient_list:", e);
     }
 
-    return <EmailBuilder 
-      onBack={closeBuilder} 
-      onSave={handleSave}
-      onSend={handleSend}
-      onSchedule={handleSchedule}
-      availableRecipients={availableRecipients}
-      initialBlocks={initialBlocks}
-      initialTitle={currentCampaign?.title || 'Nueva Campaña'}
-      initialScheduledAt={currentCampaign?.scheduled_at || undefined}
-      initialRecipientIds={initialRecipientIds}
-    />;
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        <EmailBuilder 
+          onBack={closeBuilder} 
+          onSave={handleSave}
+          onSend={handleSend}
+          onSchedule={handleSchedule}
+          availableRecipients={availableRecipients}
+          initialBlocks={initialBlocks}
+          initialTitle={currentCampaign?.title || 'Nueva Campaña'}
+          initialSubject={currentCampaign?.subject || ''}
+          initialScheduledAt={currentCampaign?.scheduled_at || undefined}
+          initialRecipientIds={initialRecipientIds}
+        />
+      </div>
+    );
   }
 
   return (
@@ -256,7 +289,17 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
         loading={loading} 
         onEdit={handleEdit} 
         onDelete={handleDelete}
+        onViewDetail={handleViewDetail}
       />
+
+      {selectedCampaign && (
+        <CampaignDetailPanel
+          campaign={selectedCampaign}
+          onClose={() => setSelectedCampaign(null)}
+          onEdit={(camp) => handleEdit(camp)}
+          onDelete={async (id) => { await handleDelete(id); }}
+        />
+      )}
     </div>
   );
 };

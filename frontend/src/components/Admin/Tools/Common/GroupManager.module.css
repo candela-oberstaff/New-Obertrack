@@ -1,0 +1,333 @@
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.modalContainer {
+  background: white;
+  width: 90%;
+  max-width: 900px;
+  height: 85vh;
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modalHeader {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #1e293b;
+}
+
+.closeBtn {
+  background: #f1f5f9;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.closeBtn:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.modalBody {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.groupsPanel {
+  width: 300px;
+  border-right: 1px solid #e2e8f0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  background: #f8fafc;
+  overflow-y: auto;
+}
+
+.createForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.createForm h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #475569;
+}
+
+.createForm input {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  outline: none;
+  font-size: 13px;
+  background: white;
+}
+
+.createForm input:focus {
+  border-color: #8b5cf6;
+}
+
+.submitBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.submitBtn:hover {
+  background: #7c3aed;
+}
+
+.groupsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.groupsList h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #475569;
+}
+
+.groupRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.groupRow:hover {
+  border-color: #cbd5e1;
+}
+
+.groupRow.active {
+  border-color: #8b5cf6;
+  background: #f5f3ff;
+}
+
+.groupInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groupInfo strong {
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.groupInfo span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.deleteGroupBtn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.deleteGroupBtn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.membersPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.membersHeader {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.membersHeader h4 {
+  margin: 0;
+  font-size: 16px;
+  color: #1e293b;
+}
+
+.membersHeader p {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.membersColumns {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.columnSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.columnSection:first-child {
+  border-right: 1px solid #e2e8f0;
+}
+
+.columnSection h5 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.searchBar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.searchBar svg {
+  position: absolute;
+  left: 10px;
+  color: #94a3b8;
+}
+
+.searchBar input {
+  width: 100%;
+  padding: 6px 10px 6px 30px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  outline: none;
+  font-size: 13px;
+}
+
+.columnList {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memberRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #f1f5f9;
+  border-radius: 6px;
+}
+
+.memberRow strong {
+  font-size: 13px;
+  color: #1e293b;
+  display: block;
+}
+
+.memberRow span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.addMemberBtn, .removeMemberBtn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.addMemberBtn {
+  color: #10b981;
+}
+
+.addMemberBtn:hover {
+  background: #d1fae5;
+}
+
+.removeMemberBtn {
+  color: #ef4444;
+}
+
+.removeMemberBtn:hover {
+  background: #fee2e2;
+}
+
+.noGroupSelected {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  gap: 12px;
+}
+
+.noGroupSelected p {
+  font-size: 14px;
+  max-width: 300px;
+  text-align: center;
+}
+
+.emptyText {
+  text-align: center;
+  font-size: 12px;
+  color: #94a3b8;
+  padding: 16px;
+}

@@ -169,37 +169,102 @@ func (h *EmailHandler) SendCampaign(c *gin.Context) {
 		return
 	}
 
-	// Parse recipient IDs
-	var recipientIDs []int
-	if campaign.RecipientList != "" {
-		if err := json.Unmarshal([]byte(campaign.RecipientList), &recipientIDs); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse recipient list"})
-			return
-		}
-	}
-
-	// Fetch recipients from user repo (injected via gin context or simple DB query)
-	// For now we send to each ID's email using the recipient list.
-	// The actual user lookup is handled by the repository layer.
-	// We collect recipients from the DB using a raw approach here.
-	type UserEmail struct {
-		ID    int    `json:"id"`
+	type ExpressContact struct {
 		Name  string `json:"name"`
 		Email string `json:"email"`
 	}
+	type HybridRecipients struct {
+		GroupIDs        []int            `json:"groupIds"`
+		UserIDs         []int            `json:"userIds"`
+		ExpressContacts []ExpressContact `json:"expressContacts"`
+	}
 
-	var users []UserEmail
-	if len(recipientIDs) > 0 {
-		// Build placeholder string for SQL IN clause
-		placeholders := make([]string, len(recipientIDs))
-		args := make([]interface{}, len(recipientIDs))
-		for i, rid := range recipientIDs {
-			placeholders[i] = "?"
-			args[i] = rid
+	type Recipient struct {
+		Name  string
+		Email string
+	}
+
+	uniqueRecipients := make(map[string]string) // email -> name
+
+	if campaign.RecipientList != "" {
+		var legacyIDs []int
+		if err := json.Unmarshal([]byte(campaign.RecipientList), &legacyIDs); err == nil {
+			// Resolve legacy IDs
+			if len(legacyIDs) > 0 {
+				type UserEmail struct {
+					Name  string `json:"name"`
+					Email string `json:"email"`
+				}
+				var users []UserEmail
+				placeholders := make([]string, len(legacyIDs))
+				args := make([]interface{}, len(legacyIDs))
+				for i, rid := range legacyIDs {
+					placeholders[i] = "?"
+					args[i] = rid
+				}
+				query := fmt.Sprintf("SELECT name, email FROM users WHERE id IN (%s) AND deleted_at IS NULL", strings.Join(placeholders, ","))
+				h.repo.RawQuery(query, args, &users)
+				for _, u := range users {
+					if u.Email != "" {
+						uniqueRecipients[strings.ToLower(u.Email)] = u.Name
+					}
+				}
+			}
+		} else {
+			var hybrid HybridRecipients
+			if err := json.Unmarshal([]byte(campaign.RecipientList), &hybrid); err == nil {
+				// 1. Resolve individual UserIDs
+				if len(hybrid.UserIDs) > 0 {
+					type UserEmail struct {
+						Name  string `json:"name"`
+						Email string `json:"email"`
+					}
+					var users []UserEmail
+					placeholders := make([]string, len(hybrid.UserIDs))
+					args := make([]interface{}, len(hybrid.UserIDs))
+					for i, rid := range hybrid.UserIDs {
+						placeholders[i] = "?"
+						args[i] = rid
+					}
+					query := fmt.Sprintf("SELECT name, email FROM users WHERE id IN (%s) AND deleted_at IS NULL", strings.Join(placeholders, ","))
+					h.repo.RawQuery(query, args, &users)
+					for _, u := range users {
+						if u.Email != "" {
+							uniqueRecipients[strings.ToLower(u.Email)] = u.Name
+						}
+					}
+				}
+
+				// 2. Resolve GroupIDs members
+				if len(hybrid.GroupIDs) > 0 {
+					type UserEmail struct {
+						Name  string `json:"name"`
+						Email string `json:"email"`
+					}
+					var users []UserEmail
+					placeholders := make([]string, len(hybrid.GroupIDs))
+					args := make([]interface{}, len(hybrid.GroupIDs))
+					for i, gid := range hybrid.GroupIDs {
+						placeholders[i] = "?"
+						args[i] = gid
+					}
+					query := fmt.Sprintf("SELECT DISTINCT u.name, u.email FROM users u JOIN audience_group_members agm ON u.id = agm.user_id WHERE agm.audience_group_id IN (%s) AND u.deleted_at IS NULL", strings.Join(placeholders, ","))
+					h.repo.RawQuery(query, args, &users)
+					for _, u := range users {
+						if u.Email != "" {
+							uniqueRecipients[strings.ToLower(u.Email)] = u.Name
+						}
+					}
+				}
+
+				// 3. Resolve Express Contacts
+				for _, ec := range hybrid.ExpressContacts {
+					if ec.Email != "" {
+						uniqueRecipients[strings.ToLower(ec.Email)] = ec.Name
+					}
+				}
+			}
 		}
-		query := fmt.Sprintf("SELECT id, name, email FROM users WHERE id IN (%s) AND deleted_at IS NULL", strings.Join(placeholders, ","))
-		h.repo.RawQuery(query, args, &users)
-
 	}
 
 	subject := campaign.Subject
@@ -210,9 +275,9 @@ func (h *EmailHandler) SendCampaign(c *gin.Context) {
 	var sendErrors []string
 	successCount := 0
 
-	for _, user := range users {
-		if err := h.brevoSvc.SendEmail(user.Email, user.Name, subject, htmlContent); err != nil {
-			sendErrors = append(sendErrors, fmt.Sprintf("%s: %s", user.Email, err.Error()))
+	for email, name := range uniqueRecipients {
+		if err := h.brevoSvc.SendEmail(email, name, subject, htmlContent); err != nil {
+			sendErrors = append(sendErrors, fmt.Sprintf("%s: %s", email, err.Error()))
 		} else {
 			successCount++
 		}
@@ -230,10 +295,10 @@ func (h *EmailHandler) SendCampaign(c *gin.Context) {
 	}
 
 	response := gin.H{
-		"message":       "Campaign dispatched",
-		"sent":          successCount,
-		"total":         len(users),
-		"campaign":      campaign,
+		"message":  "Campaign dispatched",
+		"sent":     successCount,
+		"total":    len(uniqueRecipients),
+		"campaign": campaign,
 	}
 	if len(sendErrors) > 0 {
 		response["errors"] = sendErrors
@@ -285,3 +350,69 @@ func (h *EmailHandler) HandleBrevoWebhook(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (h *EmailHandler) GetCampaignEvents(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	events, err := h.repo.GetEventsByCampaign(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, events)
+}
+
+// SendQuickEmail sends a one-off transactional email directly via Brevo
+// without requiring a persisted template or campaign. Useful for ad-hoc
+// communications from the tenant/employee detail views.
+func (h *EmailHandler) SendQuickEmail(c *gin.Context) {
+	var req struct {
+		ToEmail     string `json:"to_email" binding:"required,email"`
+		ToName      string `json:"to_name"`
+		Subject     string `json:"subject" binding:"required"`
+		HTMLContent string `json:"html_content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.brevoSvc.SendEmail(req.ToEmail, req.ToName, req.Subject, req.HTMLContent); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al enviar el email: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email enviado correctamente", "to": req.ToEmail})
+}
+
+// SendQuickEmailBulk sends the same email to multiple recipients at once.
+// The body accepts an array of contacts in {to_email, to_name, subject, html_content} form.
+func (h *EmailHandler) SendQuickEmailBulk(c *gin.Context) {
+	var req struct {
+		Recipients  []service.BrevoContact `json:"recipients" binding:"required,min=1"`
+		Subject     string                 `json:"subject" binding:"required"`
+		HTMLContent string                 `json:"html_content" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	errs := h.brevoSvc.SendBulk(req.Recipients, req.Subject, req.HTMLContent)
+
+	sent := len(req.Recipients) - len(errs)
+	resp := gin.H{
+		"message": fmt.Sprintf("Enviado a %d de %d destinatarios", sent, len(req.Recipients)),
+		"sent":    sent,
+		"total":   len(req.Recipients),
+	}
+	if len(errs) > 0 {
+		errStrs := make([]string, len(errs))
+		for i, e := range errs {
+			errStrs[i] = e.Error()
+		}
+		resp["errors"] = errStrs
+	}
+
+	c.JSON(http.StatusOK, resp)
+}

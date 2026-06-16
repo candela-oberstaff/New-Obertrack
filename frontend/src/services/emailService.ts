@@ -6,6 +6,8 @@ export interface EmailTemplate {
   subject: string;
   content: string; // JSON string of blocks
   type: string;
+  is_active?: boolean;
+  created_at?: string;
 }
 
 export interface EmailCampaign {
@@ -24,11 +26,24 @@ export interface EmailCampaign {
   template?: EmailTemplate;
 }
 
+export interface QuickEmailPayload {
+  to_email: string;
+  to_name?: string;
+  subject: string;
+  html_content: string;
+}
+
+export interface BulkEmailPayload {
+  recipients: Array<{ name: string; email: string }>;
+  subject: string;
+  html_content: string;
+}
+
 export const emailService = {
   // Templates
-  getTemplates: async () => {
+  getTemplates: async (): Promise<EmailTemplate[]> => {
     const response = await api.get('/email/templates');
-    return response.data;
+    return response.data || [];
   },
   createTemplate: async (template: Partial<EmailTemplate>) => {
     const response = await api.post('/email/templates', template);
@@ -44,9 +59,9 @@ export const emailService = {
   },
 
   // Campaigns
-  getCampaigns: async () => {
+  getCampaigns: async (): Promise<EmailCampaign[]> => {
     const response = await api.get('/email/campaigns');
-    return response.data;
+    return response.data || [];
   },
   createCampaign: async (campaign: Partial<EmailCampaign>) => {
     const response = await api.post('/email/campaigns', campaign);
@@ -66,6 +81,20 @@ export const emailService = {
   },
   getAvailableRecipients: async () => {
     const response = await api.get('/users?limit=1000');
+    return response.data;
+  },
+  getCampaignEvents: async (id: number) => {
+    const response = await api.get(`/email/campaigns/${id}/events`);
+    return response.data;
+  },
+
+  // Quick send (ad-hoc, no campaign needed)
+  sendQuickEmail: async (payload: QuickEmailPayload) => {
+    const response = await api.post('/email/quick-send', payload);
+    return response.data;
+  },
+  sendQuickEmailBulk: async (payload: BulkEmailPayload) => {
+    const response = await api.post('/email/quick-send-bulk', payload);
     return response.data;
   },
 };

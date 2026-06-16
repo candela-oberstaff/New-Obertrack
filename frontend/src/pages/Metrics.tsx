@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Mail,
-  BarChart3,
   CheckCircle2,
   Calendar,
   Activity
@@ -11,11 +10,10 @@ import styles from './Metrics.module.css';
 import { metricsService } from '../services/metrics.service';
 import EmailTab from '../components/Admin/Metrics/EmailTab';
 import SurveyTab from '../components/Admin/Metrics/SurveyTab';
-import AdvancedTab from '../components/Admin/Metrics/AdvancedTab';
 import { Select } from '../components/ui/Select';
 
 const MetricsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'emails' | 'surveys' | 'advanced'>('emails');
+  const [activeTab, setActiveTab] = useState<'emails' | 'surveys'>('emails');
   const [days, setDays] = useState(30);
 
   const { data = null, isLoading: loading } = useQuery({
@@ -65,12 +63,6 @@ const MetricsPage: React.FC = () => {
         >
           <CheckCircle2 size={18} /> Encuestas
         </button>
-        <button
-          className={activeTab === 'advanced' ? styles.active : ''}
-          onClick={() => setActiveTab('advanced')}
-        >
-          <BarChart3 size={18} /> Avanzado
-        </button>
       </nav>
 
       <div className={styles.mobileTabs}>
@@ -81,7 +73,6 @@ const MetricsPage: React.FC = () => {
           options={[
             { value: 'emails', label: 'Emails' },
             { value: 'surveys', label: 'Encuestas' },
-            { value: 'advanced', label: 'Avanzado' },
           ]}
         />
       </div>
@@ -89,7 +80,6 @@ const MetricsPage: React.FC = () => {
       <div className={styles.tabContent} data-tour="metrics-content">
         {activeTab === 'emails' && <EmailTab data={data} />}
         {activeTab === 'surveys' && <SurveyTab data={data} />}
-        {activeTab === 'advanced' && <AdvancedTab data={data} />}
       </div>
     </div>
   );

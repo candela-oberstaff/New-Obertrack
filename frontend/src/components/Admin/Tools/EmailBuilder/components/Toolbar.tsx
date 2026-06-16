@@ -1,5 +1,5 @@
 import React from 'react';
-import { Type, Image as ImageIcon, Square, Minus, Share2, Plus } from 'lucide-react';
+import { Type, Image as ImageIcon, Square, Minus, Share2, Plus, Columns } from 'lucide-react';
 import { BlockType } from '../types';
 import styles from '../Builder.module.css';
 
@@ -15,6 +15,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ onAddBlock }) => {
     { type: 'divider', icon: Minus, label: 'Divisor' },
     { type: 'social', icon: Share2, label: 'Social' },
     { type: 'spacer', icon: Plus, label: 'Espacio' },
+    { type: 'columns', icon: Columns, label: 'Columnas' },
   ];
 
   return (

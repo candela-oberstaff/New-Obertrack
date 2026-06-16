@@ -98,11 +98,50 @@ const SurveyResults: React.FC<SurveyResultsProps> = ({ surveyId, onBack }) => {
                         <div key={ans.id} className={styles.answerItem}>
                           <p className={styles.answerQuestion}>{q?.text}</p>
                           <div className={styles.answerValue}>
-                            {q?.type === 'rating' ? (
-                              <span className={styles.ratingBadge}>⭐ {ans.number_value} / 5</span>
-                            ) : (
-                              ans.text_value
-                            )}
+                            {(() => {
+                              if (q?.type === 'rating') {
+                                return <span className={styles.ratingBadge}>⭐ {ans.number_value} / 5</span>;
+                              }
+                              if (q?.type === 'linear_scale') {
+                                return <span className={styles.ratingBadge}>📊 Escala: {ans.number_value}</span>;
+                              }
+                              // Parse checkbox arrays
+                              if (q?.type === 'checkbox') {
+                                try {
+                                  const arr = JSON.parse(ans.text_value || '[]');
+                                  if (Array.isArray(arr)) {
+                                    return (
+                                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                        {arr.map((val: string, vi: number) => (
+                                          <span key={vi} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#7c3aed', padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>
+                                            {val}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    );
+                                  }
+                                } catch {}
+                              }
+                              // Parse grid / checkbox_grid objects
+                              if (q?.type === 'grid' || q?.type === 'checkbox_grid') {
+                                try {
+                                  const obj = JSON.parse(ans.text_value || '{}');
+                                  return (
+                                    <div style={{ marginTop: '8px', background: '#fafafa', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '8px' }}>
+                                      {Object.entries(obj).map(([row, val]: [string, any], oi: number) => (
+                                        <div key={oi} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', padding: '4px 0', borderBottom: oi < Object.keys(obj).length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                          <span style={{ fontWeight: 500, color: '#475569' }}>{row}</span>
+                                          <span style={{ color: '#1e293b' }}>
+                                            {Array.isArray(val) ? val.join(', ') : String(val)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                } catch {}
+                              }
+                              return ans.text_value;
+                            })()}
                           </div>
                         </div>
                       );
