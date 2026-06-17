@@ -738,35 +738,36 @@ func Run(db *gorm.DB) error {
 			},
 		},
 		{
-			// Dedup de la alerta de vencimiento de documentos.
-			ID: "202606161500_doc_expiry_alerted_at",
-			Migrate: func(tx *gorm.DB) error {
-				return tx.AutoMigrate(&models.EmploymentDocument{})
-			},
-			Rollback: func(tx *gorm.DB) error {
-				return tx.Migrator().DropColumn(&models.EmploymentDocument{}, "expiry_alerted_at")
-			},
-		},
-			ID: "202606131900_create_audience_groups",
-			Migrate: func(tx *gorm.DB) error {
-				log.Println("Creating audience_groups and audience_group_members tables...")
-				return tx.AutoMigrate(&models.AudienceGroup{}, &models.AudienceGroupMember{})
-			},
-			Rollback: func(tx *gorm.DB) error {
-				return tx.Migrator().DropTable(
-					"audience_group_members",
-					"audience_groups",
-				)
-			},
-		},
-		// Future migrations go here
-	})
+            // Dedup de la alerta de vencimiento de documentos.
+            ID: "202606161500_doc_expiry_alerted_at",
+            Migrate: func(tx *gorm.DB) error {
+                return tx.AutoMigrate(&models.EmploymentDocument{})
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return tx.Migrator().DropColumn(&models.EmploymentDocument{}, "expiry_alerted_at")
+            },
+        },
+        {
+            ID: "202606131900_create_audience_groups",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Creating audience_groups and audience_group_members tables...")
+                return tx.AutoMigrate(&models.AudienceGroup{}, &models.AudienceGroupMember{})
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return tx.Migrator().DropTable(
+                    "audience_group_members",
+                    "audience_groups",
+                )
+            },
+        },
+        // Future migrations go here
+    })
 
-	if err := m.Migrate(); err != nil {
-		log.Printf("Could not migrate: %v", err)
-		return err
-	}
+    if err := m.Migrate(); err != nil {
+        log.Printf("Could not migrate: %v", err)
+        return err
+    }
 
-	log.Println("Migration successful")
-	return nil
+    log.Println("Migration successful")
+    return nil
 }
