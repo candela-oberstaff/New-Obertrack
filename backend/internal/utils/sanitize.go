@@ -12,6 +12,7 @@ func SanitizeHTML(input string) string {
 
 	input = strings.TrimSpace(input)
 
+	// Eliminar etiquetas de script y ejecutables peligrosos
 	input = strings.ReplaceAll(input, "<script>", "")
 	input = strings.ReplaceAll(input, "</script>", "")
 	input = strings.ReplaceAll(input, "<script", "")
@@ -33,8 +34,12 @@ func SanitizeHTML(input string) string {
 	input = strings.ReplaceAll(input, "<style>", "")
 	input = strings.ReplaceAll(input, "</style>", "")
 
+	// CORRECCIÓN: Usamos backticks para evitar el "unknown escape" en Windows/Go
 	input = regexp.MustCompile(`\s+on\w+\s*=`).ReplaceAllString(input, " ")
-	input = regexp.MustCompile(`\s+style\s*=`).ReplaceAllString(input, " ")
+	
+	// Conservamos los estilos inline pero neutralizamos inyecciones arcaicas de IE
+	input = strings.ReplaceAll(input, "expression(", "")
+	input = strings.ReplaceAll(input, "behavior:", "")
 
 	return input
 }

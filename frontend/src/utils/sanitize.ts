@@ -1,40 +1,95 @@
 import DOMPurify from 'dompurify'
 
-// Allow-list of formatting tags produced by the RichTextEditor. Anything else
-// (script, iframe, event handlers, etc.) is stripped to prevent stored XSS
-// (audit finding C-05).
+// 1. Configuración Estándar (Para inputs y textos normales de la app)
 const ALLOWED_TAGS = [
   'b', 'strong', 'i', 'em', 'u', 's', 'p', 'br', 'ul', 'ol', 'li',
   'h1', 'h2', 'h3', 'h4', 'blockquote', 'a', 'span', 'div',
 ]
 const ALLOWED_ATTR = ['href', 'target', 'rel']
 
+// 2. Configuración Especial para Emails (Permite estructura y diseño, bloquea JS)
+const EMAIL_ALLOWED_TAGS = [
+  ...ALLOWED_TAGS,
+  'html', 'head', 'body', 'style', 'meta', 'title', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img'
+]
+const EMAIL_ALLOWED_ATTR = [
+  ...ALLOWED_ATTR,
+  'class', 'style', 'id', 'width', 'height', 'align', 'valign', 'bgcolor', 'border', 'cellspacing', 'cellpadding'
+]
+
 /**
- * sanitizeHtml returns a safe HTML string ready to be injected via
- * dangerouslySetInnerHTML. Never render untrusted HTML without passing it
- * through this function first.
+ * sanitizeHtml devuelve un string HTML seguro para renderizado estándar en la app.
  */
 export function sanitizeHtml(dirty: string | null | undefined): string {
   if (!dirty) return ''
   return DOMPurify.sanitize(dirty, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
-    // Force external links to be safe.
     ADD_ATTR: ['target'],
   })
 }
 
 /**
- * htmlToText returns a plain-text representation (all markup removed), safe to
- * render as a normal React text node. Use this for previews/snippets.
+ * compileAndSanitizeEmail toma el HTML con el CDN de Tailwind, genera el CSS real
+ * en un entorno aislado, remueve los scripts y sanitiza el resultado final de forma segura.
+ */
+export const compileAndSanitizeEmail = (rawHTML: string): Promise<string> => {
+  return new Promise((resolve) => {
+    // A. Creamos el iframe oculto para que el CDN de Tailwind procese las clases
+    const iframe = document.createElement('iframe')
+    iframe.style.display = 'none'
+    document.body.appendChild(iframe)
+
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+    if (!iframeDoc) {
+      document.body.removeChild(iframe)
+      resolve(DOMPurify.sanitize(rawHTML, { ALLOWED_TAGS: EMAIL_ALLOWED_TAGS, ALLOWED_ATTR: EMAIL_ALLOWED_ATTR }))
+      return
+    }
+
+    iframeDoc.open()
+    iframeDoc.write(rawHTML)
+    iframeDoc.close()
+
+    // B. Esperamos 100ms a que Tailwind genere el árbol de estilos
+    setTimeout(() => {
+      const styleTags = iframeDoc.querySelectorAll('style')
+      let compiledCSS = ''
+      styleTags.forEach((style) => {
+        compiledCSS += style.innerHTML
+      })
+
+      // C. Clonamos el resultado y removemos los scripts pesados/peligrosos
+      const clone = iframeDoc.documentElement.cloneNode(true) as HTMLElement
+      clone.querySelectorAll('script').forEach((s) => s.remove())
+
+      // D. Inyectamos el bloque <style> real con el CSS compilado
+      const finalStyleTag = iframeDoc.createElement('style')
+      finalStyleTag.innerHTML = compiledCSS
+      clone.querySelector('head')?.appendChild(finalStyleTag)
+
+      const rawResult = '<!DOCTYPE html>\n' + clone.outerHTML
+      document.body.removeChild(iframe)
+
+      // E. PASO DE SEGURIDAD CRÍTICO: Sanitizamos el HTML final permitiendo estilos corporativos
+      const cleanEmailHTML = DOMPurify.sanitize(rawResult, {
+        ALLOWED_TAGS: EMAIL_ALLOWED_TAGS,
+        ALLOWED_ATTR: EMAIL_ALLOWED_ATTR,
+        FORCE_BODY: false, // Evita que tire el <head> a la basura
+      })
+
+      resolve(cleanEmailHTML)
+    }, 100)
+  })
+}
+
+/**
+ * htmlToText elimina todo el markup para generar texto plano.
  */
 export function htmlToText(html: string | null | undefined): string {
   if (!html) return ''
-  // DOMPurify strips tags but returns HTML-encoded text (e.g. "&amp;" instead of "&").
-  // Use a textarea to decode all HTML entities back to their plain-text equivalents.
   const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
   
-  // Decode HTML entities (like &nbsp;, &amp;, etc.) using standard DOMParser
   const parser = new DOMParser()
   const doc = parser.parseFromString(clean, 'text/html')
   const decoded = doc.body.textContent || ''
@@ -42,8 +97,7 @@ export function htmlToText(html: string | null | undefined): string {
   return decoded.replace(/\s+/g, ' ').trim()
 }
 
-// Harden anchor links: open in new tab without leaking the opener and block
-// javascript: URLs (DOMPurify already drops those, this is defense in depth).
+// Hook de defensa en profundidad para enlaces externos
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
     node.setAttribute('target', '_blank')
