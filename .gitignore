@@ -83,3 +83,4 @@ backend/all_changes.txt
 backend/matches.txt
 backend/temp_ticket*.json
 frontend/build_output.txt
+**/vendor/
