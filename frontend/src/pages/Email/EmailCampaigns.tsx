@@ -8,7 +8,7 @@ import EmailBuilder, { EmailBlock, blocksToJSON } from './EmailBuilder'
 import RecipientSelector, { RecipientValue } from './RecipientSelector'
 import styles from './EmailCampaigns.module.css'
 
-// ─── Toast ─────────────────────────────────────────────────────────────────
+// ─── Toast ───────────────────────────────────────────────────────────[...]
 type ToastType = 'success' | 'error'
 function Toast({ msg, type, onClose }: { msg: string; type: ToastType; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 4000); return () => clearTimeout(t) }, [onClose])
@@ -199,7 +199,7 @@ function CampaignModal({ initial, templates, onSave, onSend, onClose, saving }: 
 
           {step === 'confirm' && (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, #7c3aed, #9333ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, #7c3aed, #9333ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', m[...]
                 <Send size={28} color="#fff" />
               </div>
               <h3 style={{ fontSize: 18, fontWeight: 800, color: '#1e293b', margin: '0 0 8px' }}>¿Listo para enviar?</h3>
@@ -256,7 +256,7 @@ function CampaignModal({ initial, templates, onSave, onSend, onClose, saving }: 
   )
 }
 
-// ─── Main page ─────────────────────────────────────────────────────────────
+// ─── Main page ─────────────────────────────────────────────────────────�[...]
 type PageTab = 'campaigns' | 'templates'
 
 export default function EmailCampaigns() {
@@ -457,7 +457,7 @@ export default function EmailCampaigns() {
                 <div key={t.id} className={styles.templateCard}>
                   <div className={styles.templatePreview}>
                     <Mail size={36} color="#a78bfa" />
-                    <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, background: '#7c3aed', color: '#fff', padding: '2px 8px', borderRadius: 20, fontWeight: 700, textTransform: 'uppercase' }}>
+                    <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, background: '#7c3aed', color: '#fff', padding: '2px 8px', borderRadius: 20, fontWeight: 700, textTransform:[...] }
                       {t.type}
                     </div>
                   </div>
