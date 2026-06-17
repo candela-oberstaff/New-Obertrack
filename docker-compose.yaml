@@ -42,6 +42,11 @@ services:
       # Incoming Webhook del canal de customer success (opcional: sin URL,
       # las alertas a Slack quedan deshabilitadas).
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # Brevo (envío transaccional): sin BREVO_API_KEY el backend devuelve
+      # "BREVO_API_KEY is not configured" en cualquier envío de correo.
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Obertrack}
+      BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-noreply@obertrack.com}
       BREVO_WEBHOOK_TOKEN: ${BREVO_WEBHOOK_TOKEN}
       WAHA_WEBHOOK_HMAC: ${WAHA_WEBHOOK_HMAC}
       ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}

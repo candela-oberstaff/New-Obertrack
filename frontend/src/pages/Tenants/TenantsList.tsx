@@ -9,6 +9,7 @@ import Avatar from '../../components/Common/Avatar'
 import { Modal, Button, Skeleton } from '../../components/ui'
 import { Select } from '../../components/ui/Select'
 import { emailService } from '../../services/emailService'
+import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
 import styles from './Tenants.module.css'
 
 export default function TenantsList() {
@@ -32,6 +33,8 @@ export default function TenantsList() {
 
   // Estados para acciones de comunicación y selección masiva
   const [selectedTenantIds, setSelectedTenantIds] = useState<number[]>([])
+  // Modal de redacción de correo (plantillas de Tools / redacción nueva) para una empresa.
+  const [composer, setComposer] = useState<ComposerRecipient | null>(null)
   const [commModal, setCommModal] = useState<{
     isOpen: boolean
     type: 'email' | 'whatsapp'
@@ -423,7 +426,14 @@ export default function TenantsList() {
                       <button
                         className={styles.iconBtn}
                         style={{ color: 'var(--primary)' }}
-                        onClick={(e) => openCommModal(e, 'email', t)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!t.owner_email) {
+                            alert('Esta empresa no tiene un correo de contacto asociado.')
+                            return
+                          }
+                          setComposer({ id: t.id, name: t.owner_name || t.company_name, email: t.owner_email })
+                        }}
                         title="Enviar Correo"
                       >
                         <Mail size={16} />
@@ -531,6 +541,14 @@ export default function TenantsList() {
           />
         </div>
       </Modal>
+
+      <EmailComposerModal
+        isOpen={composer !== null}
+        onClose={() => setComposer(null)}
+        recipient={composer}
+        defaultSubject="Contacto oficial Oberstaff"
+        logContact={false}
+      />
 
       <Modal
         isOpen={showCreate}
