@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
+import { EmailComposerModal, type ComposerRecipient } from '../components/Admin/EmailComposerModal'
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
 import { ActivityFeed } from '../components/Admin/ActivityFeed'
@@ -286,8 +287,8 @@ export default function Admin() {
   const followUpMessage = (u: { name: string; days_inactive: number }) =>
     `Hola ${u.name?.split(' ')[0] || ''}, te escribimos del equipo de Obertrack: notamos que no registras horas desde hace ${u.days_inactive} día${u.days_inactive === 1 ? '' : 's'}. ¿Está todo bien? Si tienes algún inconveniente cuéntanos para ayudarte.`
 
-  const emailHref = (u: { name: string; email: string; days_inactive: number }) =>
-    `mailto:${u.email}?subject=${encodeURIComponent('Seguimiento de actividad en Obertrack')}&body=${encodeURIComponent(followUpMessage(u))}`
+  // Modal de redacción de correo (plantillas de Tools / redacción nueva).
+  const [composer, setComposer] = useState<{ recipient: ComposerRecipient; body: string } | null>(null)
 
   const whatsappHref = (u: { name: string; phone_number?: string; days_inactive: number }) => {
     const digits = (u.phone_number || '').replace(/\D/g, '')
@@ -1198,15 +1199,15 @@ export default function Admin() {
                             <td>{renderFollowUpCell(u.id, 'inactivity')}</td>
                             <td>
                               <div className={styles['action-buttons']}>
-                                <a
-                                  href={emailHref(u)}
-                                  onClick={() => adminService.logContact(u.id, 'email')}
+                                <button
+                                  type="button"
+                                  onClick={() => setComposer({ recipient: { id: u.id, name: u.name, email: u.email }, body: followUpMessage(u) })}
                                   className={styles['btn-icon']}
                                   title={`Enviar email a ${u.email}`}
                                   style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                                 >
                                   <Mail size={16} />
-                                </a>
+                                </button>
                                 {waLink ? (
                                   <a
                                     href={waLink}
@@ -1518,6 +1519,13 @@ export default function Admin() {
           error={editError}
         />
       )}
+
+      <EmailComposerModal
+        isOpen={composer !== null}
+        onClose={() => setComposer(null)}
+        recipient={composer?.recipient ?? null}
+        defaultBody={composer?.body ?? ''}
+      />
 
       {/* ===== MODAL CREAR USUARIO ===== */}
       {showCreateModal && (
