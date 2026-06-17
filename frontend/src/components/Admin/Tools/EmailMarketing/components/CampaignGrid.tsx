@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mail } from 'lucide-react';
+import { Mail, Search } from 'lucide-react';
 import CampaignCard from './CampaignCard';
 import styles from '../EmailMarketing.module.css';
 
@@ -9,9 +9,10 @@ interface CampaignGridProps {
   onEdit: (campaign: any) => void;
   onDelete: (campaignId: number) => void;
   onViewDetail: (campaign: any) => void;
+  emptyMessage?: string;
 }
 
-const CampaignGrid: React.FC<CampaignGridProps> = ({ campaigns, loading, onEdit, onDelete, onViewDetail }) => {
+const CampaignGrid: React.FC<CampaignGridProps> = ({ campaigns, loading, onEdit, onDelete, onViewDetail, emptyMessage }) => {
   if (loading) {
     return <div className={styles['loading-info']}>Cargando campañas...</div>;
   }
@@ -20,17 +21,17 @@ const CampaignGrid: React.FC<CampaignGridProps> = ({ campaigns, loading, onEdit,
     return (
       <div className={styles['empty-state']}>
         <div className={styles['empty-icon']}>
-          <Mail size={32} />
+          {emptyMessage ? <Search size={32} /> : <Mail size={32} />}
         </div>
-        <h3>No hay campañas aún</h3>
-        <p>Crea tu primera campaña de email marketing para conectar con tus usuarios.</p>
+        <h3>{emptyMessage ? 'Sin resultados' : 'No hay campañas aún'}</h3>
+        <p>{emptyMessage || 'Crea tu primera campaña de email marketing para conectar con tus usuarios.'}</p>
       </div>
     );
   }
 
   return (
     <div className={styles['list-grid']}>
-      {campaigns.map(camp => (
+      {campaigns.map((camp: any) => (
         <CampaignCard 
           key={camp.id} 
           campaign={camp} 

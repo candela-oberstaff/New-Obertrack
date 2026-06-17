@@ -6,6 +6,7 @@ import {
 import { emailService, EmailCampaign, EmailTemplate } from '../../services/emailService'
 import EmailBuilder, { EmailBlock, blocksToJSON } from './EmailBuilder'
 import RecipientSelector, { RecipientValue } from './RecipientSelector'
+import GestorPlantillas from '../../tools/GestorPlantillas/GestorPlantillas'
 import styles from './EmailCampaigns.module.css'
 
 // ─── Toast ─────────────────────────────────────────────────────────────────
