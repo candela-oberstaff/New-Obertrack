@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { Mail, ClipboardList, BarChart3, Users } from 'lucide-react';
+import { Mail, ClipboardList, BarChart3, Users, LayoutTemplate } from 'lucide-react';
 import EmailMarketing from './EmailMarketing';
 import Surveys from './Surveys';
 import MetricsPage from '../../../pages/Metrics';
 import GroupManager from './Common/GroupManager';
+import GestorPlantillas from './GestorPlantillas';
 import { Select } from '../../ui/Select';
 import styles from './Tools.module.css';
 
-type ToolTab = 'email' | 'surveys' | 'metrics';
+type ToolTab = 'templates' | 'email' | 'surveys' | 'metrics';
 
 const Tools: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ToolTab>('email');
@@ -17,6 +18,8 @@ const Tools: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'templates':
+        return <GestorPlantillas />;
       case 'email':
         return <EmailMarketing onToggleFullScreen={setIsFullScreen} setHeaderAction={setExtraAction} />;
       case 'surveys':
@@ -39,10 +42,16 @@ const Tools: React.FC = () => {
           <div className={styles['tools-nav-group']}>
             <div className={styles['tools-tabs']} data-tour="tools-tabs">
               <button 
+                className={`${styles['tab-btn']} ${activeTab === 'templates' ? styles.active : ''}`}
+                onClick={() => setActiveTab('templates')}
+              >
+                <LayoutTemplate size={14} /> Plantillas de email
+              </button>
+              <button 
                 className={`${styles['tab-btn']} ${activeTab === 'email' ? styles.active : ''}`}
                 onClick={() => setActiveTab('email')}
               >
-                <Mail size={14} /> Email
+                <Mail size={14} /> Campañas de marketing
               </button>
               <button 
                 className={`${styles['tab-btn']} ${activeTab === 'surveys' ? styles.active : ''}`}
@@ -72,6 +81,7 @@ const Tools: React.FC = () => {
                 value={activeTab}
                 onChange={(v) => setActiveTab(v as ToolTab)}
                 options={[
+                  { value: 'templates', label: 'Plantillas' },
                   { value: 'email', label: 'Email' },
                   { value: 'surveys', label: 'Encuestas' },
                   { value: 'metrics', label: 'Métricas' },
