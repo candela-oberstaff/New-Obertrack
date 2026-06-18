@@ -51,7 +51,7 @@ export function ThreadPanel({
             <p className={styles['no-replies'] || 'no-replies'}>No hay respuestas aún</p>
           ) : (
             threadReplies.map(reply => (
-              <div key={reply.id} className={styles['thread-reply']}>
+              <div key={reply.tempId ?? reply.id} className={styles['thread-reply']}>
                 <div className={styles['message-header']}>
                   <span className={styles['message-author']}>{reply.user?.name}</span>
                   <span className={styles['message-time']}>{formatTime(reply.created_at)}</span>

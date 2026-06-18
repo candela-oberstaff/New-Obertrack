@@ -34,7 +34,7 @@ export const channelService = {
     const { data } = await api.get<Message[]>(`/channels/${channelId}/messages`, { params })
     return data
   },
-  sendMessage: async (channelId: number, message: { content: string; attachment?: string; file_name?: string }) => {
+  sendMessage: async (channelId: number, message: { content: string; attachment?: string; file_name?: string; file_type?: string; temp_id?: string }) => {
     const { data } = await api.post<Message>(`/channels/${channelId}/messages`, message)
     return data
   },
@@ -82,8 +82,8 @@ export const channelService = {
     const { data } = await api.get<Message[]>(`/channels/${channelId}/messages/${messageId}/replies`)
     return data
   },
-  sendThreadReply: async (channelId: number, messageId: number, content: string) => {
-    const { data } = await api.post<Message>(`/channels/${channelId}/messages/${messageId}/replies`, { content })
+  sendThreadReply: async (channelId: number, messageId: number, content: string, temp_id?: string) => {
+    const { data } = await api.post<Message>(`/channels/${channelId}/messages/${messageId}/replies`, { content, temp_id })
     return data
   },
   starMessage: async (messageId: number) => {
@@ -123,8 +123,9 @@ export const channelService = {
     return data
   },
   // Cola de solicitudes de soporte sin asignar (invitaciones a aceptar).
-  getPendingSupport: async (): Promise<SupportTicket[]> => {
-    const { data } = await api.get<SupportTicket[]>('/channels/support/pending')
+  getPendingSupport: async (companyId?: number | null): Promise<SupportTicket[]> => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.get<SupportTicket[]>('/channels/support/pending', { params })
     return data
   },
   claimSupport: async (channelId: number): Promise<SupportTicket> => {

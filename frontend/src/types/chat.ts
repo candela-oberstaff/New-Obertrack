@@ -23,6 +23,9 @@ export interface Channel {
   unread_count: number
   created_at: string
   recipient?: User
+  // Solo en DMs vistos por un no-participante (supervisión de superadmin):
+  // ambos miembros, para mostrar "A ↔ B" en vez de un nombre arbitrario.
+  participants?: User[]
   support?: SupportInfo
 }
 

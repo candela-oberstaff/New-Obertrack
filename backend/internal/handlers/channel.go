@@ -41,8 +41,8 @@ func (h *ChannelHandler) channelAccessAllowed(c *gin.Context, channel *models.Ch
 	if channel.Type != models.ChannelTypePublic || channel.TenantID == 0 || channel.TenantID != middleware.GetTenantID(c) {
 		return false
 	}
-	// Join revalida tipo de canal y tenant; "already a member" cubre carreras.
-	if err := h.svc.Join(channel.ID, userID); err != nil && err.Error() != "already a member" {
+	// Join revalida tipo de canal y tenant y es idempotente (no-op si ya es miembro).
+	if err := h.svc.Join(channel.ID, userID); err != nil {
 		return false
 	}
 	return true
@@ -209,10 +209,10 @@ func (h *ChannelHandler) JoinChannel(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	userID := middleware.GetUserID(c)
 
-	// "already a member" no es un fallo: channelAccessAllowed auto-une al usuario
-	// al ver un canal público, así que para cuando pulsa "Unirse al canal" puede
-	// que ya tenga la fila de membresía. Tratarlo como éxito (idempotente).
-	if err := h.svc.Join(uint(id), userID); err != nil && err.Error() != "already a member" {
+	// Join es idempotente: si ya tiene la fila de membresía es un no-op exitoso
+	// (channelAccessAllowed auto-une al ver un canal público), así que pulsar
+	// "Unirse al canal" cuando ya es miembro no es un error.
+	if err := h.svc.Join(uint(id), userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -268,6 +268,7 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		FileName   string `json:"file_name"`
 		FileSize   int64  `json:"file_size"`
 		FileType   string `json:"file_type"`
+		TempID     string `json:"temp_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -286,7 +287,7 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	message, mentioned, err := h.svc.SendMessage(uint(id), userID, req.Content, req.Attachment, req.FileName, req.FileSize)
+	message, mentioned, err := h.svc.SendMessage(uint(id), userID, req.Content, req.Attachment, req.FileName, req.FileSize, req.FileType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -297,6 +298,7 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		ChannelID: uint(id),
 		Content:   req.Content,
 		UserID:    userID,
+		TempID:    req.TempID,
 		Data:      message,
 	})
 
@@ -543,6 +545,7 @@ func (h *ChannelHandler) SendThreadReply(c *gin.Context) {
 
 	var req struct {
 		Content string `json:"content" binding:"required"`
+		TempID  string `json:"temp_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -556,9 +559,12 @@ func (h *ChannelHandler) SendThreadReply(c *gin.Context) {
 		return
 	}
 
+	// Echo temp_id back like the normal-message handler so the sender's other tabs
+	// reconcile the optimistic thread reply by temp_id (not only by server id).
 	h.hub.Broadcast(websocket.ChannelWSMessage{
 		Type:      "thread_reply",
 		ChannelID: uint(id),
+		TempID:    req.TempID,
 		Data:      message,
 	})
 
@@ -636,7 +642,7 @@ func (h *ChannelHandler) GetStatuses(c *gin.Context) {
 		}
 	}
 
-	statuses, err := h.svc.GetStatuses(userIDs)
+	statuses, err := h.svc.GetStatuses(userIDs, middleware.GetTenantID(c), middleware.IsSuperadmin(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -714,7 +720,8 @@ func (h *ChannelHandler) ListSupportAgents(c *gin.Context) {
 func (h *ChannelHandler) ListPendingSupport(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
-	tickets, err := h.svc.ListPendingSupport(userID)
+	companyFilter := superadminCompanyFilter(c, middleware.IsSuperadmin(c))
+	tickets, err := h.svc.ListPendingSupport(userID, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

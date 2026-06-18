@@ -32,7 +32,8 @@ export function SupportTicketControls({
       ? 'Resuelto'
       : support.assigned_to
         ? `Atendido por ${assignedToMe ? 'ti' : support.assignee_name || 'un agente'}`
-        : 'Sin asignar'
+        // El solicitante (cliente) ve un estado amigable; el agente ve "Sin asignar".
+        : (isSupportAgent ? 'Sin asignar' : 'En cola')
 
   const pill = (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, color: meta.color, background: meta.bg, whiteSpace: 'nowrap' }}>

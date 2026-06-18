@@ -34,7 +34,7 @@ type ChannelService interface {
 	Leave(channelID, userID uint) error
 
 	GetMessages(channelID, userID, beforeID uint) ([]models.ChannelMessage, error)
-	SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64) (*models.ChannelMessage, []uint, error)
+	SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64, fileType string) (*models.ChannelMessage, []uint, error)
 	EditMessage(channelID, messageID, userID uint, content string) (*models.ChannelMessage, error)
 	DeleteMessage(channelID, messageID, userID uint, isSuperadmin bool) error
 	AddReaction(channelID, messageID, userID uint, emoji string) (*models.MessageReaction, error)
@@ -52,17 +52,25 @@ type ChannelService interface {
 	CreateDirectMessage(userID, recipientID uint, tenantOverride uint) (*DirectMessageResponse, error)
 	ContactSupport(userID uint) (*ChannelWithUnread, error)
 	ListSupportAgents() ([]models.User, error)
-	ListPendingSupport(userID uint) ([]models.SupportTicket, error)
+	ListPendingSupport(userID uint, companyFilter uint) ([]models.SupportTicket, error)
 	ListSupportTicketsForBoard() ([]models.SupportTicket, error)
 	NotifySupportReply(channelID, senderID uint, content string, alreadyNotified []uint)
 	ClaimSupportTicket(channelID, userID uint) (*models.SupportTicket, error)
 	AssignSupportTicket(channelID, actorID, assigneeID uint) (*models.SupportTicket, error)
 	ResolveSupportTicket(channelID, actorID uint) (*models.SupportTicket, error)
 	UpdateStatus(userID uint, status string) (*models.UserStatus, error)
-	GetStatuses(userIDs []uint) ([]models.UserStatus, error)
+	GetStatuses(userIDs []uint, tenantID uint, isSuperadmin bool) ([]models.UserStatus, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
 	MarkAsRead(channelID, userID uint) error
 	GetAllUsers(tenantID uint, isSuperadmin bool, companyFilter uint) ([]models.User, error)
+
+	// SetBroadcaster cablea el difusor WebSocket de mensajes de sistema (soporte).
+	SetBroadcaster(fn func(channelID uint, msg *models.ChannelMessage))
+
+	// SetMembershipChangeHandler cablea el invalidador del caché de miembros, que
+	// se invoca tras CADA mutación de membresía para que el hub WS refleje los
+	// cambios al instante (sin esperar el TTL del caché).
+	SetMembershipChangeHandler(fn func(channelID uint))
 }
 
 type ChannelWithUnread struct {
@@ -75,7 +83,11 @@ type ChannelWithUnread struct {
 	CreatedAt   time.Time          `json:"created_at"`
 	UnreadCount int64              `json:"unread_count"`
 	Recipient   *models.User       `json:"recipient,omitempty"`
-	Support     *SupportInfo       `json:"support,omitempty"`
+	// Participants se llena SOLO para DMs vistos por alguien que no participa
+	// (supervisión de superadmin): no existe un "otro" único, así que se exponen
+	// ambos miembros para que la UI muestre "A ↔ B" en vez de un nombre arbitrario.
+	Participants []models.User `json:"participants,omitempty"`
+	Support      *SupportInfo  `json:"support,omitempty"`
 }
 
 // SupportInfo es el estado del ticket asociado a un canal de soporte, embebido en
@@ -104,10 +116,46 @@ type channelService struct {
 	repo     repository.ChannelRepository
 	userRepo repository.UserRepository
 	notifSvc NotificationService
+	// broadcast difunde por WebSocket un mensaje recién persistido a los miembros
+	// del canal. Es un callback con tipos del dominio (sin acoplar el paquete
+	// service al paquete websocket, evitando un ciclo de imports). Lo cablea
+	// routes/deps.go apuntando al hub. Hoy solo lo usan los mensajes de SISTEMA
+	// de soporte (tomó/asignó/resolvió), que no pasan por el handler HTTP que ya
+	// difunde los mensajes normales de usuario. Puede ser nil (no-op) en tests.
+	broadcast func(channelID uint, msg *models.ChannelMessage)
+	// onMembershipChange invalida el caché de miembros (que vive en el paquete
+	// routes y alimenta al MemberResolver del hub WS) tras CADA mutación de
+	// membresía exitosa, para que un miembro recién añadido reciba broadcasts en
+	// vivo de inmediato y uno removido deje de recibirlos al instante (sin esperar
+	// el TTL de 30s). Mismo patrón de callback inyectado que broadcast, para no
+	// acoplar service→routes. Lo cablea routes/deps.go. Puede ser nil (no-op) en
+	// tests. NUNCA se llama en el path de envío de mensajes (no degradar el caché).
+	onMembershipChange func(channelID uint)
 }
 
 func NewChannelService(repo repository.ChannelRepository, userRepo repository.UserRepository, notifSvc NotificationService) ChannelService {
 	return &channelService{repo: repo, userRepo: userRepo, notifSvc: notifSvc}
+}
+
+// SetBroadcaster inyecta el difusor WebSocket usado por los mensajes de sistema
+// de soporte. Se cablea en routes/deps.go tras construir el hub.
+func (s *channelService) SetBroadcaster(fn func(channelID uint, msg *models.ChannelMessage)) {
+	s.broadcast = fn
+}
+
+// SetMembershipChangeHandler inyecta el invalidador del caché de miembros usado
+// tras cada mutación de membresía. Se cablea en routes/deps.go apuntando a
+// memberCache.Invalidate.
+func (s *channelService) SetMembershipChangeHandler(fn func(channelID uint)) {
+	s.onMembershipChange = fn
+}
+
+// invalidateMembers notifica un cambio de membresía (nil-check). Llamar SOLO
+// tras una mutación de membresía exitosa, nunca en el envío de mensajes.
+func (s *channelService) invalidateMembers(channelID uint) {
+	if s.onMembershipChange != nil {
+		s.onMembershipChange(channelID)
+	}
 }
 
 // authorizeChannelTenant loads the channel and verifies the user belongs to
@@ -147,19 +195,46 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 		return nil, err
 	}
 
+	// Unread counts for all of the user's channels in a single grouped query
+	// (instead of one GetUnreadCount per channel). Same predicate, so badges match.
+	unreadByChannel := make(map[uint]int64)
+	if counts, err := s.repo.GetUnreadCounts(userID); err == nil {
+		for _, c := range counts {
+			unreadByChannel[c.ChannelID] = c.Count
+		}
+	} else {
+		log.Printf("[ChannelService] error getting unread counts for user %d: %v", userID, err)
+	}
+
 	var result []ChannelWithUnread
 	for _, ch := range channels {
-		unreadCount, _ := s.repo.GetUnreadCount(ch.ID, userID)
+		unreadCount := unreadByChannel[ch.ID]
 
 		var recipient *models.User
+		var participants []models.User
 		if ch.Type == models.ChannelTypeDirect {
 			members, err := s.repo.GetMembers(ch.ID)
 			if err == nil {
-				for _, m := range members {
-					if m.ID != userID {
-						recipient = &m
+				isMember := false
+				for i := range members {
+					if members[i].ID == userID {
+						isMember = true
 						break
 					}
+				}
+				if isMember {
+					// El viewer participa: muestra al OTRO miembro.
+					for i := range members {
+						if members[i].ID != userID {
+							recipient = &members[i]
+							break
+						}
+					}
+				} else {
+					// El viewer NO participa (supervisión de superadmin): no hay un
+					// "otro" único, así que se exponen ambos participantes en vez de
+					// elegir uno arbitrario (antes el bucle tomaba el primero).
+					participants = members
 				}
 			} else {
 				log.Printf("[ChannelService] error getting DM members for channel %d: %v", ch.ID, err)
@@ -174,8 +249,9 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 			CreatedBy:   ch.CreatedBy,
 			IsActive:    ch.IsActive,
 			CreatedAt:   ch.CreatedAt,
-			UnreadCount: unreadCount,
-			Recipient:   recipient,
+			UnreadCount:  unreadCount,
+			Recipient:    recipient,
+			Participants: participants,
 		})
 	}
 
@@ -234,9 +310,16 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 		tenantID = tenantOverride
 	}
 
-	// Check if channel already exists within the same tenant
+	// Check if channel already exists within the same tenant. If it was soft-deleted
+	// (is_active=false), reactivate it in place (B-7) instead of returning a "ghost"
+	// inactive channel or trying to insert a duplicate (which would violate the
+	// uniqueIndex idx_channel_name_type_tenant). Recreating == reopening.
 	if existing, _ := s.repo.GetChannelByNameAndType(name, cType, tenantID); existing != nil {
-		return existing, nil
+		reactivated, err := s.reactivateChannel(existing, userID)
+		if err != nil {
+			return nil, err
+		}
+		return reactivated, nil
 	}
 
 	channel := &models.Channel{
@@ -248,18 +331,14 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 		IsActive:    true,
 	}
 
-	if err := s.repo.CreateChannel(channel); err != nil {
-		return nil, err
-	}
-
-	// Add creator as explicit member
-	s.repo.AddMember(&models.ChannelMember{
-		ChannelID: channel.ID,
+	now := time.Now()
+	// Creator is always an explicit member.
+	members := []models.ChannelMember{{
 		UserID:    userID,
 		Role:      "member",
-		JoinedAt:  time.Now(),
-		CreatedAt: time.Now(),
-	})
+		JoinedAt:  now,
+		CreatedAt: now,
+	}}
 
 	if cType == models.ChannelTypePublic && tenantID > 0 {
 		// Slack-like: public channels automatically include everyone in the company.
@@ -270,23 +349,19 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 				if u.ID == userID {
 					continue
 				}
-				s.repo.AddMember(&models.ChannelMember{
-					ChannelID: channel.ID,
+				members = append(members, models.ChannelMember{
 					UserID:    u.ID,
 					Role:      "member",
-					JoinedAt:  time.Now(),
-					CreatedAt: time.Now(),
+					JoinedAt:  now,
+					CreatedAt: now,
 				})
 			}
 		}
 	} else if len(memberIDs) > 0 {
-		var filteredIDs []uint
 		for _, id := range memberIDs {
-			if id != userID {
-				filteredIDs = append(filteredIDs, id)
+			if id == userID {
+				continue
 			}
-		}
-		for _, id := range filteredIDs {
 			// Only add members that belong to the same tenant as the channel
 			// (audit finding M-01). Superadmins are allowed cross-tenant.
 			member, err := s.userRepo.GetByID(id)
@@ -296,16 +371,61 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 			if !isSuperadminUser(member) && models.TenantForUser(member) != channel.TenantID {
 				continue
 			}
-			s.repo.AddMember(&models.ChannelMember{
-				ChannelID: channel.ID,
+			members = append(members, models.ChannelMember{
 				UserID:    id,
 				Role:      "member",
-				JoinedAt:  time.Now(),
-				CreatedAt: time.Now(),
+				JoinedAt:  now,
+				CreatedAt: now,
 			})
 		}
 	}
 
+	// Channel + all members in one transaction with a single batch insert; if any
+	// member insert fails the whole creation rolls back (no orphaned channel).
+	if err := s.repo.CreateWithMembers(channel, members); err != nil {
+		return nil, err
+	}
+	s.invalidateMembers(channel.ID)
+
+	return s.repo.GetChannel(channel.ID)
+}
+
+// reactivateChannel implements B-7: a find-or-create lookup may return a channel
+// that was soft-deleted (is_active=false). Recreating it must REOPEN the existing
+// row rather than hand back a "ghost" inactive channel (invisible in the sidebar,
+// which filters is_active=true) or insert a duplicate (which would collide with the
+// uniqueIndex idx_channel_name_type_tenant). If the channel is already active it is
+// returned untouched. On reactivation we flip is_active=true, ensure the caller is
+// still an explicit member (re-adding only if missing — existing memberships are
+// reused), and invalidate the member cache so the WS hub sees it live. No migration
+// is needed: this only mutates is_active on an existing row.
+func (s *channelService) reactivateChannel(channel *models.Channel, userID uint) (*models.Channel, error) {
+	if channel.IsActive {
+		return channel, nil
+	}
+
+	if err := s.repo.UpdateChannel(channel, map[string]interface{}{"is_active": true}); err != nil {
+		return nil, err
+	}
+
+	// Ensure the reactivating user is still a member. Reuse the existing membership
+	// if present; otherwise re-add them (e.g. they had left before deletion).
+	if isMember, _ := s.repo.IsExplicitMember(channel.ID, userID); !isMember {
+		now := time.Now()
+		if err := s.repo.AddMember(&models.ChannelMember{
+			ChannelID: channel.ID,
+			UserID:    userID,
+			Role:      "member",
+			JoinedAt:  now,
+			CreatedAt: now,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	s.invalidateMembers(channel.ID)
+
+	// Reload so the returned channel reflects is_active=true and fresh members.
 	return s.repo.GetChannel(channel.ID)
 }
 
@@ -376,13 +496,17 @@ func (s *channelService) AddMember(channelID, userID, memberToAdd uint) error {
 		return ErrAlreadyMember
 	}
 
-	return s.repo.AddMember(&models.ChannelMember{
+	if err := s.repo.AddMember(&models.ChannelMember{
 		ChannelID: channelID,
 		UserID:    memberToAdd,
 		Role:      "member",
 		JoinedAt:  time.Now(),
 		CreatedAt: time.Now(),
-	})
+	}); err != nil {
+		return err
+	}
+	s.invalidateMembers(channelID)
+	return nil
 }
 
 func (s *channelService) RemoveMember(channelID, userID, memberToRemove uint) error {
@@ -399,7 +523,11 @@ func (s *channelService) RemoveMember(channelID, userID, memberToRemove uint) er
 		return fmt.Errorf("cannot remove channel creator")
 	}
 
-	return s.repo.RemoveMember(channelID, memberToRemove)
+	if err := s.repo.RemoveMember(channelID, memberToRemove); err != nil {
+		return err
+	}
+	s.invalidateMembers(channelID)
+	return nil
 }
 
 func (s *channelService) Join(channelID, userID uint) error {
@@ -412,8 +540,12 @@ func (s *channelService) Join(channelID, userID uint) error {
 		return fmt.Errorf("cannot join private channel directly")
 	}
 
-	if isMember, _ := s.repo.IsMember(channelID, userID); isMember {
-		return fmt.Errorf("already a member")
+	// Idempotente: si YA existe la fila de membresía es un no-op exitoso. Usamos
+	// IsExplicitMember (no IsMember) a propósito: en canales públicos IsMember
+	// devuelve true para cualquiera del tenant aunque no tenga fila, lo que haría
+	// que un usuario nuevo nunca creara su membresía (ni se invalidara el cache).
+	if isMember, _ := s.repo.IsExplicitMember(channelID, userID); isMember {
+		return nil
 	}
 
 	// Tenant isolation: user must belong to the same tenant as the channel.
@@ -425,13 +557,17 @@ func (s *channelService) Join(channelID, userID uint) error {
 		return ErrCrossTenant
 	}
 
-	return s.repo.AddMember(&models.ChannelMember{
+	if err := s.repo.AddMember(&models.ChannelMember{
 		ChannelID: channelID,
 		UserID:    userID,
 		Role:      "member",
 		JoinedAt:  time.Now(),
 		CreatedAt: time.Now(),
-	})
+	}); err != nil {
+		return err
+	}
+	s.invalidateMembers(channelID)
+	return nil
 }
 
 func (s *channelService) Leave(channelID, userID uint) error {
@@ -444,5 +580,9 @@ func (s *channelService) Leave(channelID, userID uint) error {
 		return fmt.Errorf("channel creator cannot leave")
 	}
 
-	return s.repo.RemoveMember(channelID, userID)
+	if err := s.repo.RemoveMember(channelID, userID); err != nil {
+		return err
+	}
+	s.invalidateMembers(channelID)
+	return nil
 }

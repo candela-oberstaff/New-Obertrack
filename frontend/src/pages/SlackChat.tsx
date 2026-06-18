@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { channelService, uploadService, adminService } from '../services/api'
@@ -22,7 +22,7 @@ import { PinnedMessagesModal } from '../components/Chat/Modals/PinnedMessagesMod
 import { SearchModal } from '../components/Chat/Modals/SearchModal'
 import { StarredMessagesModal } from '../components/Chat/Modals/StarredMessagesModal'
 import { useSlackChat } from '../hooks/useSlackChat'
-import { formatTime, highlightMentions, getUserColor, isSupportChannel } from '../components/Chat/ChatUtils'
+import { formatTime, buildMentionRegex, highlightMentionsWithRegex, getUserColor, isSupportChannel, newTempId } from '../components/Chat/ChatUtils'
 import styles from './SlackChat.module.css'
 
 interface CompanyOption { id: number; company_name: string }
@@ -51,17 +51,6 @@ export default function SlackChat() {
   const [supportBusy, setSupportBusy] = useState(false)
   const [showSupportPanel, setShowSupportPanel] = useState(true)
 
-  const refreshPendingSupport = useCallback(() => {
-    if (!isSupportAgent) return
-    channelService.getPendingSupport().then(setPendingSupport).catch(() => {})
-  }, [isSupportAgent])
-
-  useEffect(() => {
-    if (!isSupportAgent) return
-    channelService.getSupportAgents().then(setSupportAgents).catch(() => {})
-    refreshPendingSupport()
-  }, [isSupportAgent, refreshPendingSupport])
-
   // Superadmin scope: pick a company so channels/DMs from different tenants never mix.
   const [companies, setCompanies] = useState<CompanyOption[]>([])
   const [selectedCompanyId, setSelectedCompanyIdState] = useState<number | null>(() => {
@@ -73,6 +62,31 @@ export default function SlackChat() {
     if (id) localStorage.setItem('preferred_company_id', String(id))
     else localStorage.removeItem('preferred_company_id')
   }
+
+  const refreshPendingSupport = useCallback(() => {
+    if (!isSupportAgent) return
+    channelService.getPendingSupport(isSuperadmin ? selectedCompanyId : null).then(setPendingSupport).catch(() => {})
+  }, [isSupportAgent, isSuperadmin, selectedCompanyId])
+
+  useEffect(() => {
+    if (!isSupportAgent) return
+    channelService.getSupportAgents().then(setSupportAgents).catch(() => {})
+    refreshPendingSupport()
+  }, [isSupportAgent, refreshPendingSupport])
+
+  // Mantén la cola de soporte viva sin recargar: refresca periódicamente y al
+  // volver el foco a la ventana, para que un agente con la pantalla abierta vea
+  // las solicitudes nuevas. Solo para agentes; limpia timer y listener al salir.
+  useEffect(() => {
+    if (!isSupportAgent) return
+    const interval = setInterval(refreshPendingSupport, 25000)
+    const onFocus = () => refreshPendingSupport()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [isSupportAgent, refreshPendingSupport])
 
   useEffect(() => {
     if (!isSuperadmin) return
@@ -197,16 +211,41 @@ export default function SlackChat() {
   }, [messages])
 
   useEffect(() => {
-    const icon = document.querySelector("link[rel*='icon']") as HTMLLinkElement
-    if (!icon) return
+    let icon = document.querySelector("link[rel*='icon']") as HTMLLinkElement | null
+    if (!icon) {
+      icon = document.createElement('link')
+      icon.rel = 'icon'
+      document.head.appendChild(icon)
+    }
     if (unreadCount > 0) {
       icon.href = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔴</text></svg>`
-    } else if (originalFavicon) {
-      icon.href = originalFavicon
+    } else {
+      icon.href = originalFavicon ?? '/logos/Isotipo_Color.png'
     }
   }, [unreadCount, originalFavicon])
 
+  // Stop and release any playing audio when the channel changes or the page
+  // unmounts. Keyed only on the channel id (not playingAudio) so it never
+  // pauses an audio element created later in the same render cycle.
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause()
+      audioRef.current = null
+      setPlayingAudio(null)
+    }
+  }, [selectedChannel?.id])
+
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+
+  // Mention highlighting is O(messages x users) per render: precompute the regex
+  // once per allUsers change and pass a stable highlight callback so memoized
+  // MessageItem rows don't re-render when unrelated state updates.
+  const mentionRegex = useMemo(() => buildMentionRegex(allUsers), [allUsers])
+  const currentUserName = user?.name
+  const highlightMentions = useCallback(
+    (content: string) => highlightMentionsWithRegex(content, mentionRegex, currentUserName),
+    [mentionRegex, currentUserName],
+  )
 
   // Accent/case-insensitive comparison for mention matching ("mend" matches "Méndez").
   const normalizeText = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -242,6 +281,20 @@ export default function SlackChat() {
     setShowMentionDropdown(false)
   }
 
+  // Single send path shared by Enter and the send button. Capturing content and
+  // clearing the input synchronously (before the async send resolves) prevents a
+  // second Enter from queueing a duplicate optimistic message / re-send.
+  const submitMessage = () => {
+    if (!selectedChannel || !user) return
+    const content = newMessage.trim()
+    if (!content) return
+    const tempId = newTempId()
+    const optimisticMsg: Message = { id: 0, channel_id: selectedChannel.id, user_id: user.id, content, tempId, created_at: new Date().toISOString(), user: user as any }
+    setMessages(prev => [...prev, optimisticMsg])
+    setNewMessage('')
+    sendMessage(undefined, tempId, content)
+  }
+
   const handleInputKeyDown = (e: React.KeyboardEvent) => {
     if (showMentionDropdown && mentionFilterUsers.length > 0 && (e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
       e.preventDefault()
@@ -255,12 +308,7 @@ export default function SlackChat() {
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (newMessage.trim()) {
-        const tempId = `temp-${Date.now()}`
-        const optimisticMsg: Message = { id: 0, channel_id: selectedChannel!.id, user_id: user!.id, content: newMessage, tempId, created_at: new Date().toISOString(), user: user! as any }
-        setMessages(prev => [...prev, optimisticMsg])
-        sendMessage(undefined, tempId)
-      }
+      submitMessage()
     }
   }
 
@@ -270,11 +318,14 @@ export default function SlackChat() {
     setIsUploading(true)
     try {
       const result = await uploadService.upload(file)
-      const tempId = `temp-${Date.now()}`
-      const optimisticMsg: Message = { id: 0, channel_id: selectedChannel!.id, user_id: user!.id, content: `[Archivo: ${file.name}]`, tempId, created_at: new Date().toISOString(), user: user! as any }
+      const tempId = newTempId()
+      const optimisticMsg: Message = { id: 0, channel_id: selectedChannel!.id, user_id: user!.id, content: `[Archivo: ${file.name}]`, tempId, attachment: result.url, file_name: file.name, file_type: file.type || undefined, created_at: new Date().toISOString(), user: user! as any }
       setMessages(prev => [...prev, optimisticMsg])
-      sendMessage({ url: result.url, filename: file.name }, tempId)
-    } catch (error) { console.error('Error uploading file:', error) }
+      sendMessage({ url: result.url, filename: file.name }, tempId, undefined, file.type || undefined)
+    } catch (error) {
+      console.error('Error uploading file:', error)
+      showError('No se pudo subir el archivo. Intenta de nuevo.')
+    }
     finally { setIsUploading(false); e.target.value = '' }
   }
 
@@ -353,12 +404,20 @@ export default function SlackChat() {
     }
   }
 
+  // Canal público: un no-miembro que lo abre se une automáticamente (sin fricción),
+  // así puede escribir de inmediato y recibir mensajes/notificaciones en tiempo real.
+  // El backend también auto-une al acceder; esto sincroniza el estado del frontend.
+  useEffect(() => {
+    if (needsJoin) handleJoinChannel()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsJoin, selectedChannel?.id])
+
   const handleSendGif = (url: string, title?: string) => {
     if (!selectedChannel || !user) return
-    const tempId = `temp-${Date.now()}`
+    const tempId = newTempId()
     const optimisticMsg: Message = { id: 0, channel_id: selectedChannel.id, user_id: user.id, content: `[Archivo: ${title || 'GIF'}]`, tempId, attachment: url, file_name: title || 'GIF', file_type: 'image/gif', created_at: new Date().toISOString(), user: user as any }
     setMessages(prev => [...prev, optimisticMsg])
-    sendMessage({ url, filename: title || 'GIF' }, tempId, '')
+    sendMessage({ url, filename: title || 'GIF' }, tempId, '', 'image/gif')
   }
 
   const openThread = async (msg: Message) => {
@@ -371,11 +430,34 @@ export default function SlackChat() {
   }
 
   const sendThreadReply = async (content: string) => {
-    if (selectedChannel && showThread && content.trim()) {
-      try {
-        // Don't add optimistically - WS delivers it to all clients including sender
-        await channelService.sendThreadReply(selectedChannel.id, showThread.id, content)
-      } catch (e) { console.error(e) }
+    if (!selectedChannel || !showThread || !content.trim()) return
+    // Optimistic reply (mirror of sendMessage): show it immediately so the sender
+    // sees their reply even if the WS is down. id:0 + tempId let us reconcile later.
+    const tempId = newTempId()
+    const parentId = showThread.id
+    const optimisticReply: Message = {
+      id: 0,
+      channel_id: selectedChannel.id,
+      user_id: user!.id,
+      content,
+      tempId,
+      parent_id: parentId,
+      created_at: new Date().toISOString(),
+      user: user! as any,
+    }
+    setThreadReplies(prev => [...prev, optimisticReply])
+    try {
+      const reply = await channelService.sendThreadReply(selectedChannel.id, parentId, content, tempId)
+      // Reconcile deduping by tempId (our optimistic placeholder) AND by id (the
+      // WS 'thread_reply' handler may have already appended the real reply).
+      // M-3: carry the optimistic tempId onto the reconciled real reply (mirror of
+      // sendMessage) so the React key (tempId ?? id) stays stable and the reply
+      // row isn't remounted in the optimistic->real transition.
+      setThreadReplies(prev => prev.filter(r => r.tempId !== tempId && r.id !== reply.id).concat([{ ...reply, tempId }]))
+    } catch (e) {
+      console.error(e)
+      setThreadReplies(prev => prev.filter(r => r.tempId !== tempId))
+      showError('No se pudo enviar la respuesta. Intenta de nuevo.')
     }
   }
 
@@ -553,7 +635,7 @@ export default function SlackChat() {
                 playingAudio={playingAudio}
                 togglePlayAudio={togglePlayAudio}
                 formatTime={formatTime}
-                highlightMentions={(content) => highlightMentions(content, allUsers, user?.name)}
+                highlightMentions={highlightMentions}
                 messagesEndRef={messagesEndRef}
                 typingArray={Array.from(typingUsers.values())}
                 highlightedMessageId={highlightMessageId}
@@ -565,11 +647,6 @@ export default function SlackChat() {
               {!canEditChat ? (
                 <div className={styles['join-banner']}>
                   <p>Tu rol tiene acceso de solo lectura en el Chat.</p>
-                </div>
-              ) : needsJoin ? (
-                <div className={styles['join-banner']}>
-                  <p>Estás viendo <b>#{selectedChannel.name}</b>. Únete al canal para participar y recibir notificaciones.</p>
-                  <button onClick={handleJoinChannel}>Unirse al canal</button>
                 </div>
               ) : (
                 <MessageInput
@@ -591,16 +668,7 @@ export default function SlackChat() {
                   sendRecording={sendRecording}
                   sendTypingIndicator={sendTypingIndicator}
                   onSendGif={handleSendGif}
-                  onSend={() => {
-                    if (newMessage.trim()) {
-                      const content = newMessage.trim()
-                      const tempId = `temp-${Date.now()}`
-                      const optimisticMsg: Message = { id: 0, channel_id: selectedChannel!.id, user_id: user!.id, content, tempId, created_at: new Date().toISOString(), user: user! as any }
-                      setMessages(prev => [...prev, optimisticMsg])
-                      setNewMessage('')
-                      sendMessage(undefined, tempId, content)
-                    }
-                  }}
+                  onSend={submitMessage}
                 />
               )}
 
@@ -639,7 +707,7 @@ export default function SlackChat() {
           )}
         </div>
 
-        {selectedChannel && isSupportChannel(selectedChannel) && selectedChannel.support && showSupportPanel && (
+        {isSupportAgent && selectedChannel && isSupportChannel(selectedChannel) && selectedChannel.support && showSupportPanel && (
           <SupportContextPanel channel={selectedChannel} onClose={() => setShowSupportPanel(false)} />
         )}
       </div>

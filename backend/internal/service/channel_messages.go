@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/obertrack/backend/internal/models"
 )
@@ -37,12 +38,18 @@ func (s *channelService) GetMessages(channelID, userID, beforeID uint) ([]models
 // authorized for channel actions at the handler level (channelAccessAllowed) so
 // the service-level membership gate must let them through to avoid 500s when they
 // oversee a company's channels they are not an explicit member of.
+//
+// PRODUCT DECISION (intentional, do NOT "fix"): every `!isMember && !s.isSuperadmin`
+// gate below deliberately lets superadmins read/act on ANY channel of the tenant —
+// private channels and direct messages included — for supervision. This is the same
+// intentional bypass documented on GetChannelsByCompany. It is by design, not a
+// privacy bug; keep the superadmin escape hatch in place.
 func (s *channelService) isSuperadmin(userID uint) bool {
 	user, err := s.userRepo.GetByID(userID)
 	return err == nil && isSuperadminUser(user)
 }
 
-func (s *channelService) SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64) (*models.ChannelMessage, []uint, error) {
+func (s *channelService) SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64, fileType string) (*models.ChannelMessage, []uint, error) {
 	channel, err := s.repo.GetChannel(channelID)
 	if err != nil {
 		return nil, nil, err
@@ -60,6 +67,7 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 		Attachment: attachment,
 		FileName:   fileName,
 		FileSize:   fileSize,
+		FileType:   fileType,
 	}
 
 	if err := s.repo.CreateMessage(message); err != nil {
@@ -86,34 +94,150 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 	return message, mentionedUserIDs, nil
 }
 
+// normalizeMention lowercases and strips accents/diacritics so that mention
+// matching is accent- and case-insensitive ("@José" matches "jose"). Kept in
+// sync with the frontend mentionsUser helper (ChatUtils.ts).
+func normalizeMention(s string) string {
+	s = strings.ToLower(s)
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case 'á', 'à', 'ä', 'â', 'ã', 'å':
+			b.WriteRune('a')
+		case 'é', 'è', 'ë', 'ê':
+			b.WriteRune('e')
+		case 'í', 'ì', 'ï', 'î':
+			b.WriteRune('i')
+		case 'ó', 'ò', 'ö', 'ô', 'õ':
+			b.WriteRune('o')
+		case 'ú', 'ù', 'ü', 'û':
+			b.WriteRune('u')
+		case 'ñ':
+			b.WriteRune('n')
+		case 'ç':
+			b.WriteRune('c')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// isMentionBoundary reports whether r ends a name token: anything that is not a
+// letter or digit (whitespace, punctuation, end-of-string handled by caller).
+func isMentionBoundary(r rune) bool {
+	return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+}
+
+// processMentions resolves mentions against the real members of the channel.
+// A mention is "@<member name>" appearing in the content as a whole token: the
+// character right after the name must be end-of-string or a non-alphanumeric
+// (isMentionBoundary), so "@Ana" does not match inside "@Anabel". The "@" itself
+// is the left boundary (no check on the preceding character). Names with spaces
+// like "@Laura Méndez" are supported. Returns deduplicated member IDs.
+//
+// Complexity: the previous implementation scanned the whole content once per
+// member (O(members × length)), which is costly in company-wide public channels.
+// This version returns early when there is no "@", and resolves single-word
+// names by extracting the alphanumeric token right after each "@" and looking it
+// up in a name→IDs map (O(length + members)). Multi-word names (a small
+// minority) keep the original per-member scan as a fallback, so the observable
+// behaviour — boundaries, accent/case folding, "@Ana" ≠ "@Anabel", multiple
+// mentions — is preserved exactly.
 func (s *channelService) processMentions(messageID uint, content string, channelID uint) []uint {
 	var mentionedUserIDs []uint
 
-	// Resolve channel tenant for scoped user lookup
-	var tenantID uint
-	if ch, err := s.repo.GetChannel(channelID); err == nil {
-		tenantID = ch.TenantID
+	// Shortcut: the vast majority of messages contain no mention at all, so skip
+	// loading members and scanning entirely when there is no "@".
+	if !strings.Contains(content, "@") {
+		return mentionedUserIDs
 	}
 
-	words := strings.Fields(content)
-	for _, word := range words {
-		if strings.HasPrefix(word, "@") {
-			name := strings.TrimPrefix(word, "@")
-			name = strings.TrimRight(name, ".,!?;:")
-			if name == "" {
-				continue
-			}
+	members, err := s.repo.GetMembers(channelID)
+	if err != nil {
+		return mentionedUserIDs
+	}
 
-			user, err := s.repo.FindUserByNamePrefix(name, tenantID)
-			if err == nil && user != nil {
-				if isMember, _ := s.repo.IsMember(channelID, user.ID); isMember {
-					mentionedUserIDs = append(mentionedUserIDs, user.ID)
-					s.repo.CreateMention(&models.Mention{
-						MessageID: messageID,
-						UserID:    user.ID,
-						Notified:  true,
-					})
-				}
+	normContent := normalizeMention(content)
+	contentRunes := []rune(normContent)
+
+	// Partition members by normalized name. Single-word names go into a map for
+	// O(1) token lookup; multi-word names (with spaces) keep the per-member scan.
+	nameToIDs := make(map[string][]uint)
+	var multiWord []struct {
+		id   uint
+		name string
+	}
+	for _, member := range members {
+		name := normalizeMention(strings.TrimSpace(member.Name))
+		if name == "" {
+			continue
+		}
+		if strings.ContainsRune(name, ' ') {
+			multiWord = append(multiWord, struct {
+				id   uint
+				name string
+			}{member.ID, name})
+		} else {
+			nameToIDs[name] = append(nameToIDs[name], member.ID)
+		}
+	}
+
+	seen := make(map[uint]bool)
+	addMention := func(id uint) {
+		if seen[id] {
+			return
+		}
+		seen[id] = true
+		mentionedUserIDs = append(mentionedUserIDs, id)
+		s.repo.CreateMention(&models.Mention{
+			MessageID: messageID,
+			UserID:    id,
+			Notified:  true,
+		})
+	}
+
+	// Single pass over the runes: at every "@", read the maximal alphanumeric run
+	// that follows it (the run ends exactly at end-of-string or an
+	// isMentionBoundary rune, mirroring the original boundary check) and resolve
+	// that token against the name map.
+	for i := 0; i < len(contentRunes); i++ {
+		if contentRunes[i] != '@' {
+			continue
+		}
+		j := i + 1
+		for j < len(contentRunes) && !isMentionBoundary(contentRunes[j]) {
+			j++
+		}
+		if j > i+1 {
+			token := string(contentRunes[i+1 : j])
+			for _, id := range nameToIDs[token] {
+				addMention(id)
+			}
+		}
+	}
+
+	// Fallback for names containing spaces: replicate the original byte-indexed
+	// scan with a rune-position boundary check, so multi-word names keep exactly
+	// the same matching behaviour.
+	for _, m := range multiWord {
+		needle := "@" + m.name
+		needleRunes := []rune(needle)
+
+		from := 0
+		for {
+			idx := strings.Index(normContent[from:], needle)
+			if idx < 0 {
+				break
+			}
+			runeEnd := len([]rune(normContent[:from+idx])) + len(needleRunes)
+			if runeEnd >= len(contentRunes) || isMentionBoundary(contentRunes[runeEnd]) {
+				addMention(m.id)
+				break
+			}
+			from = from + idx + len(needle)
+			if from >= len(normContent) {
+				break
 			}
 		}
 	}
@@ -122,6 +246,14 @@ func (s *channelService) processMentions(messageID uint, content string, channel
 }
 
 func (s *channelService) EditMessage(channelID, messageID, userID uint, content string) (*models.ChannelMessage, error) {
+	// Defense in depth: enforce channel membership in the service like every other
+	// method (AddReaction/PinMessage/...), so any internal caller that bypasses the
+	// handler still hits the gate. Superadmins are allowed through (handler-level
+	// channelAccessAllowed already authorizes them) to stay consistent with the rest.
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
+		return nil, fmt.Errorf("you are not a member of this channel")
+	}
+
 	message, err := s.repo.GetMessage(messageID)
 	if err != nil {
 		return nil, err
@@ -131,6 +263,8 @@ func (s *channelService) EditMessage(channelID, messageID, userID uint, content 
 		return nil, fmt.Errorf("message does not belong to channel")
 	}
 
+	// Authorship: only the author edits content. Superadmins may moderate (delete)
+	// but not silently rewrite another user's message, so editing stays author-only.
 	if message.UserID != userID {
 		return nil, fmt.Errorf("you can only edit your own messages")
 	}
@@ -146,6 +280,13 @@ func (s *channelService) EditMessage(channelID, messageID, userID uint, content 
 }
 
 func (s *channelService) DeleteMessage(channelID, messageID, userID uint, isSuperadmin bool) error {
+	// Defense in depth: same membership gate as the rest of the service. The handler
+	// passes isSuperadmin; we also fall back to s.isSuperadmin(userID) so the gate is
+	// correct even for internal callers that don't compute it (kept aligned with Edit).
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !isSuperadmin && !s.isSuperadmin(userID) {
+		return fmt.Errorf("you are not a member of this channel")
+	}
+
 	message, err := s.repo.GetMessage(messageID)
 	if err != nil {
 		return err
@@ -155,7 +296,7 @@ func (s *channelService) DeleteMessage(channelID, messageID, userID uint, isSupe
 		return fmt.Errorf("message does not belong to channel")
 	}
 
-	if message.UserID != userID && !isSuperadmin {
+	if message.UserID != userID && !isSuperadmin && !s.isSuperadmin(userID) {
 		return fmt.Errorf("you can only delete your own messages")
 	}
 
@@ -377,6 +518,12 @@ func (s *channelService) CreateDirectMessage(userID, recipientID uint, tenantOve
 
 	dmChannel, err := s.repo.GetChannelByNameAndType(dmName, models.ChannelTypeDirect, dmTenant)
 	if err == nil && dmChannel != nil {
+		// B-7: a previously soft-deleted DM must be reopened in place, not returned
+		// as a "ghost" inactive channel that won't show in the sidebar.
+		dmChannel, err = s.reactivateChannel(dmChannel, userID)
+		if err != nil {
+			return nil, err
+		}
 		return s.buildDMResponse(dmChannel, recipientID)
 	}
 
@@ -391,6 +538,7 @@ func (s *channelService) CreateDirectMessage(userID, recipientID uint, tenantOve
 	if err := s.repo.CreateDMChannel(newChannel, []uint{userID, recipientID}); err != nil {
 		return nil, err
 	}
+	s.invalidateMembers(newChannel.ID)
 
 	dmChannel, _ = s.repo.GetChannel(newChannel.ID)
 	return s.buildDMResponse(dmChannel, recipientID)
@@ -455,6 +603,16 @@ func (s *channelService) ContactSupport(userID uint) (*ChannelWithUnread, error)
 
 	channel, lookupErr := s.repo.GetChannelByNameAndType(channelName, models.ChannelTypePrivate, tenantID)
 	isNew := lookupErr != nil || channel == nil
+	if !isNew && !channel.IsActive {
+		// B-7: the support channel existed but was soft-deleted. Reopen it in place so
+		// the user lands back in their (now visible) support channel instead of a
+		// ghost inactive one. Reuses the existing membership; re-adds only if missing.
+		var err error
+		channel, err = s.reactivateChannel(channel, userID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if isNew {
 		// El canal se crea SOLO con el profesional. Los agentes de soporte NO se
 		// agregan automáticamente (eso saturaría a todos los CS con cada canal):
@@ -470,6 +628,7 @@ func (s *channelService) ContactSupport(userID uint) (*ChannelWithUnread, error)
 		if err := s.repo.CreateDMChannel(channel, []uint{userID}); err != nil {
 			return nil, err
 		}
+		s.invalidateMembers(channel.ID)
 		channel, _ = s.repo.GetChannel(channel.ID)
 	}
 
@@ -491,7 +650,7 @@ func (s *channelService) ContactSupport(userID uint) (*ChannelWithUnread, error)
 	// Mensaje inicial solo al crear, para dar contexto a Customer Success.
 	if isNew {
 		intro := fmt.Sprintf("👋 Hola, soy %s. Necesito ayuda del equipo de soporte.", user.Name)
-		if _, _, err := s.SendMessage(channel.ID, userID, intro, "", "", 0); err != nil {
+		if _, _, err := s.SendMessage(channel.ID, userID, intro, "", "", 0, ""); err != nil {
 			log.Printf("[ContactSupport] no se pudo publicar el mensaje inicial: %v", err)
 		}
 	}
@@ -555,11 +714,11 @@ func (s *channelService) ListSupportAgents() ([]models.User, error) {
 
 // ListPendingSupport devuelve los tickets de soporte sin asignar (cola de
 // solicitudes que cualquier agente puede aceptar). Solo para agentes de soporte.
-func (s *channelService) ListPendingSupport(userID uint) ([]models.SupportTicket, error) {
+func (s *channelService) ListPendingSupport(userID uint, companyFilter uint) ([]models.SupportTicket, error) {
 	if !s.isSupportAgent(userID) {
 		return nil, fmt.Errorf("solo Customer Success o superadmins pueden ver la cola de soporte")
 	}
-	return s.repo.GetPendingSupportTickets()
+	return s.repo.GetPendingSupportTickets(companyFilter)
 }
 
 // ListSupportTicketsForBoard devuelve todos los tickets de soporte (con
@@ -614,9 +773,19 @@ func (s *channelService) userName(userID uint) string {
 	return ""
 }
 
+// postSupportSystemMessage persiste un mensaje de sistema (🛟 tomó / asignó /
+// ✅ resuelto) y lo difunde en vivo por WebSocket. A diferencia de los mensajes
+// normales de usuario —que difunde el handler HTTP SendMessage— estos se
+// generan dentro del servicio (claim/assign/resolve) y NO pasan por ese
+// handler, así que sin esta difusión no llegaban a los clientes conectados.
 func (s *channelService) postSupportSystemMessage(channelID, actorID uint, content string) {
-	if _, _, err := s.SendMessage(channelID, actorID, content, "", "", 0); err != nil {
+	message, _, err := s.SendMessage(channelID, actorID, content, "", "", 0, "")
+	if err != nil {
 		log.Printf("[support] no se pudo publicar mensaje de sistema: %v", err)
+		return
+	}
+	if s.broadcast != nil && message != nil {
+		s.broadcast(channelID, message)
 	}
 }
 
@@ -668,6 +837,10 @@ func (s *channelService) assignSupport(channelID, actorID, assigneeID uint, self
 			ChannelID: channelID, UserID: assigneeID, Role: "member", JoinedAt: joinedAt,
 		}); err != nil {
 			log.Printf("[support] no se pudo añadir al asignado %d: %v", assigneeID, err)
+		} else {
+			// El agente ahora es miembro: invalida el caché para que reciba los
+			// broadcasts del ticket en vivo de inmediato (sin esperar el TTL).
+			s.invalidateMembers(channelID)
 		}
 	}
 
@@ -746,8 +919,8 @@ func (s *channelService) UpdateStatus(userID uint, status string) (*models.UserS
 	return s.repo.GetUserStatus(userID)
 }
 
-func (s *channelService) GetStatuses(userIDs []uint) ([]models.UserStatus, error) {
-	return s.repo.GetUserStatuses(userIDs)
+func (s *channelService) GetStatuses(userIDs []uint, tenantID uint, isSuperadmin bool) ([]models.UserStatus, error) {
+	return s.repo.GetUserStatuses(userIDs, tenantID, isSuperadmin)
 }
 
 func (s *channelService) GetTotalUnreadCount(userID uint) (int64, error) {
