@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import EmailBuilder from '../EmailBuilder';
 import { emailService } from '../../../../services/emailService';
 import CampaignGrid from './components/CampaignGrid';
 import CampaignDetailPanel from './components/CampaignDetailPanel';
+import Pagination from '../Common/Pagination';
 import styles from './EmailMarketing.module.css';
 import commonStyles from '../Tools.module.css';
 import { useConfirm } from '../../../ui/ConfirmProvider';
@@ -18,6 +19,11 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState<number | null>(null);
   const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
+  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [page, setPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
   const confirm = useConfirm();
   const qc = useQueryClient();
 
@@ -32,6 +38,29 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
   });
 
   const fetchCampaigns = () => qc.invalidateQueries({ queryKey: ['email-campaigns'] });
+
+  useEffect(() => { setPage(1); }, [search, dateFrom, dateTo]);
+
+  const filtered = useMemo(() => {
+    return (campaigns || []).filter((c: any) => {
+      const q = search.toLowerCase();
+      if (q && !(c.title || '').toLowerCase().includes(q) && !(c.subject || '').toLowerCase().includes(q)) return false;
+      if (c.created_at) {
+        const d = new Date(c.created_at);
+        if (dateFrom && d < new Date(dateFrom)) return false;
+        if (dateTo) {
+          const end = new Date(dateTo);
+          end.setHours(23, 59, 59, 999);
+          if (d > end) return false;
+        }
+      }
+      return true;
+    });
+  }, [campaigns, search, dateFrom, dateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const paginatedCampaigns = filtered.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
 
   useEffect(() => {
     if (!showBuilder) {
@@ -284,13 +313,46 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
 
   return (
     <div className={styles['email-section']}>
+      {/* Search & Filter Bar */}
+      {!showBuilder && campaigns.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+            <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none' }} />
+            <input
+              type="text"
+              placeholder="Buscar por nombre o asunto..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px 8px 34px', fontSize: 13, outline: 'none', color: '#1e293b', background: '#fff', boxSizing: 'border-box' }}
+            />
+          </div>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', color: '#1e293b', background: '#fff' }}
+            title="Desde" />
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', color: '#1e293b', background: '#fff' }}
+            title="Hasta" />
+          {(dateFrom || dateTo) && (
+            <button onClick={() => { setDateFrom(''); setDateTo(''); }}
+              style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              title="Limpiar filtros de fecha">✕ Limpiar</button>
+          )}
+          <span style={{ fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{filtered.length} de {campaigns.length}</span>
+        </div>
+      )}
+
       <CampaignGrid 
-        campaigns={campaigns} 
+        campaigns={paginatedCampaigns} 
         loading={loading} 
         onEdit={handleEdit} 
         onDelete={handleDelete}
         onViewDetail={handleViewDetail}
+        emptyMessage={campaigns.length > 0 ? 'No se encontraron campañas con los filtros aplicados.' : undefined}
       />
+
+      {!showBuilder && campaigns.length > 0 && filtered.length > 0 && (
+        <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
+      )}
 
       {selectedCampaign && (
         <CampaignDetailPanel
