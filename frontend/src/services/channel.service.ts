@@ -1,6 +1,6 @@
 import api from './client'
 import type { User } from '../types'
-import type { Channel, Message, DMChannel, MessageReaction, UserStatus } from '../types/chat'
+import type { Channel, Message, DMChannel, MessageReaction, UserStatus, SupportTicket } from '../types/chat'
 
 export const channelService = {
   getChannels: async (companyId?: number | null): Promise<Channel[]> => {
@@ -110,6 +110,33 @@ export const channelService = {
   createDM: async (recipientId: number, companyId?: number | null): Promise<DMChannel> => {
     const params = companyId ? { company_id: companyId } : undefined
     const { data } = await api.post<DMChannel>('/channels/dm', { recipient_id: recipientId }, { params })
+    return data
+  },
+  // Abre (o reutiliza) el canal de soporte con Customer Success y los alerta.
+  contactSupport: async (): Promise<Channel> => {
+    const { data } = await api.post<Channel>('/channels/support', {})
+    return data
+  },
+  // Gestión de tickets de soporte (Customer Success / superadmin).
+  getSupportAgents: async (): Promise<User[]> => {
+    const { data } = await api.get<User[]>('/channels/support/agents')
+    return data
+  },
+  // Cola de solicitudes de soporte sin asignar (invitaciones a aceptar).
+  getPendingSupport: async (): Promise<SupportTicket[]> => {
+    const { data } = await api.get<SupportTicket[]>('/channels/support/pending')
+    return data
+  },
+  claimSupport: async (channelId: number): Promise<SupportTicket> => {
+    const { data } = await api.post<SupportTicket>(`/channels/${channelId}/support/claim`, {})
+    return data
+  },
+  assignSupport: async (channelId: number, assigneeId: number): Promise<SupportTicket> => {
+    const { data } = await api.post<SupportTicket>(`/channels/${channelId}/support/assign`, { assignee_id: assigneeId })
+    return data
+  },
+  resolveSupport: async (channelId: number): Promise<SupportTicket> => {
+    const { data } = await api.post<SupportTicket>(`/channels/${channelId}/support/resolve`, {})
     return data
   },
   markAsRead: async (id: number) => {

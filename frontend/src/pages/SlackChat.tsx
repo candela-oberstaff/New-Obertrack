@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { channelService, uploadService, adminService } from '../services/api'
 import { Select } from '../components/ui/Select'
 import type { User } from '../types'
-import type { Message } from '../types/chat'
+import type { Message, SupportTicket } from '../types/chat'
 import { useConfirm } from '../components/ui/ConfirmProvider'
 import { useNotification } from '../context/NotificationContext'
 import { Sidebar } from '../components/Chat/Sidebar'
@@ -13,6 +13,7 @@ import { MessageList } from '../components/Chat/MessageList'
 import { MessageInput } from '../components/Chat/MessageInput'
 import { canEditModule } from '../lib/permissions'
 import { ThreadPanel } from '../components/Chat/ThreadPanel'
+import { SupportContextPanel } from '../components/Chat/SupportContextPanel'
 import { NewChannelModal } from '../components/Chat/Modals/NewChannelModal'
 import { ChannelSettingsModal } from '../components/Chat/Modals/ChannelSettingsModal'
 import { AddMembersModal } from '../components/Chat/Modals/AddMembersModal'
@@ -21,7 +22,7 @@ import { PinnedMessagesModal } from '../components/Chat/Modals/PinnedMessagesMod
 import { SearchModal } from '../components/Chat/Modals/SearchModal'
 import { StarredMessagesModal } from '../components/Chat/Modals/StarredMessagesModal'
 import { useSlackChat } from '../hooks/useSlackChat'
-import { formatTime, highlightMentions, getUserColor } from '../components/Chat/ChatUtils'
+import { formatTime, highlightMentions, getUserColor, isSupportChannel } from '../components/Chat/ChatUtils'
 import styles from './SlackChat.module.css'
 
 interface CompanyOption { id: number; company_name: string }
@@ -29,7 +30,7 @@ interface CompanyOption { id: number; company_name: string }
 export default function SlackChat() {
   const { user } = useAuth()
   const confirm = useConfirm()
-  const { error: showError } = useNotification()
+  const { error: showError, success: showSuccess } = useNotification()
   const [searchParams, setSearchParams] = useSearchParams()
   const userIdParam = searchParams.get('userId')
 
@@ -37,6 +38,29 @@ export default function SlackChat() {
   // Permiso del rol sobre el módulo Chat: con "Ver" el chat queda de solo
   // lectura (el backend igual bloquea los envíos con 403).
   const canEditChat = canEditModule(user, 'chat')
+
+  // Botón de Soporte: lo ven los usuarios cliente (profesional/empleador) para
+  // abrir un chat con Customer Success. CS/superadmin/IT no lo necesitan.
+  const canRequestSupport = !!user && !isSuperadmin && (user.user_type === 'profesional' || user.user_type === 'empleador')
+  const [contactingSupport, setContactingSupport] = useState(false)
+
+  // Gestión de tickets de soporte: la pueden hacer CS y superadmins.
+  const isSupportAgent = !!user && (isSuperadmin || user.user_type === 'customer_success')
+  const [supportAgents, setSupportAgents] = useState<User[]>([])
+  const [pendingSupport, setPendingSupport] = useState<SupportTicket[]>([])
+  const [supportBusy, setSupportBusy] = useState(false)
+  const [showSupportPanel, setShowSupportPanel] = useState(true)
+
+  const refreshPendingSupport = useCallback(() => {
+    if (!isSupportAgent) return
+    channelService.getPendingSupport().then(setPendingSupport).catch(() => {})
+  }, [isSupportAgent])
+
+  useEffect(() => {
+    if (!isSupportAgent) return
+    channelService.getSupportAgents().then(setSupportAgents).catch(() => {})
+    refreshPendingSupport()
+  }, [isSupportAgent, refreshPendingSupport])
 
   // Superadmin scope: pick a company so channels/DMs from different tenants never mix.
   const [companies, setCompanies] = useState<CompanyOption[]>([])
@@ -355,6 +379,85 @@ export default function SlackChat() {
     }
   }
 
+  const handleContactSupport = async () => {
+    if (contactingSupport) return
+    setContactingSupport(true)
+    try {
+      const ch = await channelService.contactSupport()
+      await fetchChannels()
+      setSelectedChannel(ch as any)
+      showSuccess('Chat de soporte abierto. Customer Success fue notificado.')
+    } catch (e) {
+      console.error('Error contacting support:', e)
+      showError('No se pudo abrir el chat de soporte. Inténtalo de nuevo.')
+    } finally {
+      setContactingSupport(false)
+    }
+  }
+
+  const applySupportTicket = (ticket: any) => {
+    if (!selectedChannel) return
+    setSelectedChannel({
+      ...selectedChannel,
+      support: {
+        status: ticket.status,
+        assigned_to: ticket.assigned_to,
+        assignee_name: ticket.assignee?.name,
+        requester_id: ticket.requester_id,
+      },
+    } as any)
+    fetchChannels()
+    // Recarga el transcript para mostrar el mensaje de sistema (tomó/asignó/resolvió).
+    channelService.getMessages(selectedChannel.id).then(setMessages).catch(() => {})
+  }
+
+  const runSupportAction = async (fn: () => Promise<any>, okMsg: string) => {
+    if (!selectedChannel || supportBusy) return
+    setSupportBusy(true)
+    try {
+      const ticket = await fn()
+      applySupportTicket(ticket)
+      refreshPendingSupport()
+      showSuccess(okMsg)
+    } catch (e: any) {
+      console.error('support action error:', e)
+      showError(e?.response?.data?.error || 'No se pudo completar la acción.')
+    } finally {
+      setSupportBusy(false)
+    }
+  }
+
+  // Reabre el panel de contexto al cambiar de canal (tras haberlo ocultado).
+  useEffect(() => {
+    setShowSupportPanel(true)
+  }, [selectedChannel?.id])
+
+  const handleClaimSupport = () => runSupportAction(() => channelService.claimSupport(selectedChannel!.id), 'Tomaste el ticket.')
+  const handleAssignSupport = (assigneeId: number) => runSupportAction(() => channelService.assignSupport(selectedChannel!.id, assigneeId), 'Ticket reasignado.')
+  const handleResolveSupport = () => runSupportAction(() => channelService.resolveSupport(selectedChannel!.id), 'Ticket marcado como resuelto.')
+
+  // Aceptar una solicitud pendiente desde la cola: la toma y abre el canal.
+  const handleAcceptSupport = async (channelId: number) => {
+    if (supportBusy) return
+    setSupportBusy(true)
+    try {
+      await channelService.claimSupport(channelId)
+      await fetchChannels()
+      refreshPendingSupport()
+      try {
+        const fresh = await channelService.getChannels(isSuperadmin ? selectedCompanyId : null)
+        const ch = fresh.find(c => c.id === channelId)
+        if (ch) setSelectedChannel(ch as any)
+      } catch { /* la lista ya se refrescó */ }
+      showSuccess('Aceptaste la solicitud de soporte.')
+    } catch (e: any) {
+      console.error('accept support error:', e)
+      showError(e?.response?.data?.error || 'No se pudo aceptar la solicitud.')
+    } finally {
+      setSupportBusy(false)
+    }
+  }
+
   return (
     <div className={styles['chat-page']}>
       {connectionLost && (
@@ -377,6 +480,16 @@ export default function SlackChat() {
         recipientStatus={selectedChannel?.type === 'direct' && selectedChannel.recipient
           ? (userStatuses.get(selectedChannel.recipient.id) || 'offline')
           : undefined}
+        showSupportButton={canRequestSupport}
+        onContactSupport={handleContactSupport}
+        contactingSupport={contactingSupport}
+        currentUserId={user?.id}
+        isSupportAgent={isSupportAgent}
+        supportAgents={supportAgents}
+        onClaimSupport={handleClaimSupport}
+        onAssignSupport={handleAssignSupport}
+        onResolveSupport={handleResolveSupport}
+        supportBusy={supportBusy}
       />
 
       <div className={styles['chat-body']}>
@@ -395,6 +508,10 @@ export default function SlackChat() {
           onMouseDownResize={handleMouseDown}
           isResizing={isResizing}
           userStatuses={userStatuses}
+          isSupportAgent={isSupportAgent}
+          pendingSupport={pendingSupport}
+          onAcceptSupport={handleAcceptSupport}
+          supportBusy={supportBusy}
           headerExtra={isSuperadmin ? (
             <Select
               value={selectedCompanyId ?? ''}
@@ -521,6 +638,10 @@ export default function SlackChat() {
             </div>
           )}
         </div>
+
+        {selectedChannel && isSupportChannel(selectedChannel) && selectedChannel.support && showSupportPanel && (
+          <SupportContextPanel channel={selectedChannel} onClose={() => setShowSupportPanel(false)} />
+        )}
       </div>
 
       {showNewChannelModal && (

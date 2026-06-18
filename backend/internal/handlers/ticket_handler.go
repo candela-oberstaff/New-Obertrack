@@ -17,13 +17,14 @@ import (
 )
 
 type TicketHandler struct {
-	db        *gorm.DB
-	zohoSvc   *service.ZohoService
-	ticketSvc service.TicketService
+	db         *gorm.DB
+	zohoSvc    *service.ZohoService
+	ticketSvc  service.TicketService
+	channelSvc service.ChannelService
 }
 
-func NewTicketHandler(db *gorm.DB, zohoSvc *service.ZohoService, ticketSvc service.TicketService) *TicketHandler {
-	return &TicketHandler{db: db, zohoSvc: zohoSvc, ticketSvc: ticketSvc}
+func NewTicketHandler(db *gorm.DB, zohoSvc *service.ZohoService, ticketSvc service.TicketService, channelSvc service.ChannelService) *TicketHandler {
+	return &TicketHandler{db: db, zohoSvc: zohoSvc, ticketSvc: ticketSvc, channelSvc: channelSvc}
 }
 
 func canUseSupportInbox(c *gin.Context) bool {
@@ -276,6 +277,19 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 		}
 	}
 
+	// Solicitudes de soporte por chat (origen "support"): se muestran junto a las
+	// demás en el tablero. Un fallo aquí no debe ocultar las otras.
+	if h.channelSvc != nil {
+		support, serr := h.channelSvc.ListSupportTicketsForBoard()
+		if serr != nil {
+			log.Printf("[Tickets] failed to list support tickets: %v", serr)
+		} else {
+			for _, st := range support {
+				tickets = append(tickets, ticketDTOFromSupport(st))
+			}
+		}
+	}
+
 	zohoTickets, err := h.zohoSvc.ListTickets(assigneeID)
 	if err != nil {
 		// Degrade gracefully: still return internal alerts if Zoho is unavailable.
@@ -287,6 +301,58 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, tickets)
+}
+
+// ticketDTOFromSupport mapea un ticket de soporte por chat al DTO del tablero.
+// Estado → columna: open→Nuevo, assigned→En Progreso, resolved→Cerrado.
+func ticketDTOFromSupport(t models.SupportTicket) gin.H {
+	stage := models.StageNew
+	status := "open"
+	switch t.Status {
+	case models.SupportStatusAssigned:
+		stage = models.StageInProgress
+	case models.SupportStatusResolved:
+		stage = models.StageClosed
+		status = "closed"
+	}
+
+	requesterName, requesterEmail, companyName := "", "", ""
+	if t.Requester != nil {
+		requesterName = t.Requester.Name
+		requesterEmail = t.Requester.Email
+		companyName = t.Requester.CompanyName
+	}
+	assigneeName, assigneeEmail := "", ""
+	if t.Assignee != nil {
+		assigneeName = t.Assignee.Name
+		assigneeEmail = t.Assignee.Email
+	}
+	title := "Soporte"
+	if requesterName != "" {
+		title = "Soporte · " + requesterName
+	}
+
+	return gin.H{
+		"id":                 t.ID,
+		"zoho_id":            "",
+		"channel_id":         t.ChannelID,
+		"assigned_to":        t.AssignedTo,
+		"assignee_name":      assigneeName,
+		"assignee_email":     assigneeEmail,
+		"title":              title,
+		"description":        "Solicitud de soporte por chat",
+		"stage":              stage,
+		"status":             status,
+		"origin":             "support",
+		"user_id":            t.RequesterID,
+		"professional_email": requesterEmail,
+		"professional_phone": "",
+		"company_name":       companyName,
+		"created_at":         t.CreatedAt,
+		"updated_at":         t.UpdatedAt,
+		"contact":            nil,
+		"messages":           []models.TicketMessage{},
+	}
 }
 
 // UpdateInternalTicket changes the stage/status of an internal alert ticket

@@ -70,6 +70,14 @@ type ChannelRepository interface {
 	SearchMessages(channelID uint, query string, limit int, since *time.Time) ([]models.ChannelMessage, error)
 	FindManyMessagesByIDs(ids []uint) ([]models.ChannelMessage, error)
 	CreateDMChannel(channel *models.Channel, memberIDs []uint) error
+
+	// Support tickets
+	CreateSupportTicket(ticket *models.SupportTicket) error
+	GetSupportTicketByChannel(channelID uint) (*models.SupportTicket, error)
+	GetSupportTicketsByChannelIDs(channelIDs []uint) ([]models.SupportTicket, error)
+	GetPendingSupportTickets() ([]models.SupportTicket, error)
+	GetAllSupportTickets() ([]models.SupportTicket, error)
+	UpdateSupportTicket(ticket *models.SupportTicket, updates map[string]interface{}) error
 }
 
 type channelRepository struct {
@@ -238,10 +246,31 @@ func (r *channelRepository) GetMessages(channelID uint, limit int, since *time.T
 		messages[i], messages[j] = messages[j], messages[i]
 	}
 
-	for i := range messages {
-		var count int64
-		r.db.Model(&models.ChannelMessage{}).Where("parent_id = ? AND is_deleted = ?", messages[i].ID, false).Count(&count)
-		messages[i].ReplyCount = int(count)
+	// Reply counts in a single grouped query instead of one COUNT per message.
+	if len(messages) > 0 {
+		ids := make([]uint, len(messages))
+		for i := range messages {
+			ids[i] = messages[i].ID
+		}
+
+		type replyCountRow struct {
+			ParentID uint
+			Count    int64
+		}
+		var rows []replyCountRow
+		r.db.Model(&models.ChannelMessage{}).
+			Select("parent_id, COUNT(*) AS count").
+			Where("parent_id IN ? AND is_deleted = ?", ids, false).
+			Group("parent_id").
+			Scan(&rows)
+
+		counts := make(map[uint]int64, len(rows))
+		for _, row := range rows {
+			counts[row.ParentID] = row.Count
+		}
+		for i := range messages {
+			messages[i].ReplyCount = int(counts[messages[i].ID])
+		}
 	}
 
 	return messages, nil
@@ -405,10 +434,11 @@ func (r *channelRepository) GetUnreadCount(channelID, userID uint) (int64, error
 }
 
 func (r *channelRepository) MarkAsRead(channelID, userID uint) error {
-	// Add a small 1s buffer to ensure precision doesn't keep messages at the same second unread
+	// Use the exact current time. A previous +1s buffer caused messages that
+	// arrived within that second to never count as unread.
 	return r.db.Model(&models.ChannelMember{}).
 		Where("channel_id = ? AND user_id = ?", channelID, userID).
-		Update("last_read_at", time.Now().Add(time.Second)).Error
+		Update("last_read_at", time.Now()).Error
 }
 
 func (r *channelRepository) GetTotalUnreadCount(userID uint) (int64, error) {
@@ -494,6 +524,50 @@ func (r *channelRepository) FindManyMessagesByIDs(ids []uint) ([]models.ChannelM
 		Order("created_at DESC").
 		Find(&messages).Error
 	return messages, err
+}
+
+// Support tickets
+
+func (r *channelRepository) CreateSupportTicket(ticket *models.SupportTicket) error {
+	return r.db.Create(ticket).Error
+}
+
+func (r *channelRepository) GetSupportTicketByChannel(channelID uint) (*models.SupportTicket, error) {
+	var ticket models.SupportTicket
+	err := r.db.Preload("Assignee").Preload("Requester").
+		Where("channel_id = ?", channelID).First(&ticket).Error
+	if err != nil {
+		return nil, err
+	}
+	return &ticket, nil
+}
+
+func (r *channelRepository) GetPendingSupportTickets() ([]models.SupportTicket, error) {
+	var tickets []models.SupportTicket
+	err := r.db.Preload("Requester").
+		Where("status = ? AND assigned_to IS NULL", models.SupportStatusOpen).
+		Order("created_at ASC").Find(&tickets).Error
+	return tickets, err
+}
+
+func (r *channelRepository) GetAllSupportTickets() ([]models.SupportTicket, error) {
+	var tickets []models.SupportTicket
+	err := r.db.Preload("Requester").Preload("Assignee").
+		Order("updated_at DESC").Find(&tickets).Error
+	return tickets, err
+}
+
+func (r *channelRepository) GetSupportTicketsByChannelIDs(channelIDs []uint) ([]models.SupportTicket, error) {
+	var tickets []models.SupportTicket
+	if len(channelIDs) == 0 {
+		return tickets, nil
+	}
+	err := r.db.Preload("Assignee").Preload("Requester").Where("channel_id IN ?", channelIDs).Find(&tickets).Error
+	return tickets, err
+}
+
+func (r *channelRepository) UpdateSupportTicket(ticket *models.SupportTicket, updates map[string]interface{}) error {
+	return r.db.Model(ticket).Updates(updates).Error
 }
 
 func (r *channelRepository) CreateDMChannel(channel *models.Channel, memberIDs []uint) error {

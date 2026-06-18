@@ -12,12 +12,40 @@ export const getAudioContext = () => {
   return globalAudioContext
 }
 
+// Los canales de soporte se crean como privados con el nombre "Soporte · <nombre> #<id>".
+export const isSupportChannel = (c: { type?: string; name?: string }) =>
+  c?.type === 'private' && !!c.name && /^Soporte · /.test(c.name)
+
+// Etiqueta limpia para mostrar el canal de soporte: quita el prefijo y el sufijo "#id".
+export const supportLabel = (name: string) => name.replace(/^Soporte · /, '').replace(/ #\d+$/, '')
+
+// Etiqueta + color del estado de un ticket de soporte.
+export const supportStatusMeta = (status?: string): { label: string; color: string; bg: string } => {
+  switch (status) {
+    case 'assigned': return { label: 'Asignado', color: '#6d28d9', bg: 'rgba(124,58,237,0.12)' }
+    case 'resolved': return { label: 'Resuelto', color: '#15803d', bg: 'rgba(22,163,74,0.12)' }
+    default: return { label: 'Sin asignar', color: '#b45309', bg: 'rgba(245,158,11,0.14)' }
+  }
+}
+
 export const formatTime = (dateString: string) => {
   const date = new Date(dateString)
   const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  if (diff < 3600000) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  if (diff < 86400000) return `Hoy ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+  // Compare by calendar date (year/month/day) so the label doesn't flip just
+  // because two timestamps fall within different 24h windows across midnight.
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+
+  if (isSameDay(date, now)) return `Hoy ${time}`
+
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  if (isSameDay(date, yesterday)) return `Ayer ${time}`
+
   return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
 }
 

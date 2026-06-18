@@ -1,5 +1,19 @@
 import { User } from './index'
 
+export type SupportStatus = 'open' | 'assigned' | 'resolved'
+
+export interface SupportInfo {
+  status: SupportStatus
+  assigned_to?: number
+  assignee_name?: string
+  requester_id: number
+  requester_name?: string
+  requester_email?: string
+  requester_phone?: string
+  company_name?: string
+  created_at?: string
+}
+
 export interface Channel {
   id: number
   name: string
@@ -9,6 +23,18 @@ export interface Channel {
   unread_count: number
   created_at: string
   recipient?: User
+  support?: SupportInfo
+}
+
+export interface SupportTicket {
+  id: number
+  channel_id: number
+  requester_id: number
+  status: SupportStatus
+  assigned_to?: number
+  assignee?: User
+  requester?: User
+  created_at?: string
 }
 
 export interface DMChannel extends Channel {

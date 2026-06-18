@@ -760,6 +760,37 @@ func Run(db *gorm.DB) error {
                 )
             },
         },
+        {
+            // Tickets de soporte: gestión (tomar/reasignar/resolver) sobre los canales de soporte.
+            ID: "202606171000_add_support_tickets",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Creating support_tickets table...")
+                return tx.AutoMigrate(&models.SupportTicket{})
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return tx.Migrator().DropTable("support_tickets")
+            },
+        },
+        {
+            // Backfill: crea un ticket 'open' para los canales de soporte existentes
+            // (creados antes de esta funcionalidad) que aún no tienen uno.
+            ID: "202606171010_backfill_support_tickets",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Backfilling support_tickets for existing support channels...")
+                return tx.Exec(`
+                    INSERT INTO support_tickets (channel_id, tenant_id, requester_id, status, created_at, updated_at)
+                    SELECT c.id, c.tenant_id, c.created_by, 'open', NOW(), NOW()
+                    FROM channels c
+                    WHERE c.type = 'private'
+                      AND c.name LIKE 'Soporte · %'
+                      AND c.deleted_at IS NULL
+                      AND NOT EXISTS (SELECT 1 FROM support_tickets st WHERE st.channel_id = c.id)
+                `).Error
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return nil
+            },
+        },
         // Future migrations go here
     })
 
