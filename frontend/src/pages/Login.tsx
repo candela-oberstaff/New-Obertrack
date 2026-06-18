@@ -68,9 +68,7 @@ export default function Login() {
         <a href="/forgot-password">¿Olvidaste tu contraseña?</a>
       </p>
 
-      <p className={styles['auth-link']}>
-        ¿No tienes cuenta? <a href="/register">Regístrate</a>
-      </p>
+
     </AuthLayout>
   )
 }

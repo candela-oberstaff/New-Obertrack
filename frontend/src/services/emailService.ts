@@ -75,6 +75,10 @@ export const emailService = {
     const response = await api.post(`/email/campaigns/${id}/send`, {});
     return response.data;
   },
+  sendCampaignToRecipients: async (id: number, recipientList: string) => {
+    const response = await api.post(`/email/campaigns/${id}/send`, { recipient_list: recipientList });
+    return response.data;
+  },
   deleteCampaign: async (id: number) => {
     const response = await api.delete(`/email/campaigns/${id}`);
     return response.data;
@@ -95,6 +99,10 @@ export const emailService = {
   },
   sendQuickEmailBulk: async (payload: BulkEmailPayload) => {
     const response = await api.post('/email/quick-send-bulk', payload);
+    return response.data;
+  },
+  sendTemplate: async (id: number, recipientList: string) => {
+    const response = await api.post(`/email/templates/${id}/send`, { recipient_list: recipientList });
     return response.data;
   },
 };

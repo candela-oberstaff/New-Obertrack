@@ -233,42 +233,11 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 
 		// 2. Send Email
 		if survey.SendByEmail {
-			var actionHtml string
-
-			// Check for rating question to create quick-response buttons
-			var ratingQuestion *models.SurveyQuestion
-			for _, q := range survey.Questions {
-				if q.Type == models.QuestionTypeRating {
-					ratingQuestion = &q
-					break
-				}
-			}
-
-			if ratingQuestion != nil {
-				actionHtml = fmt.Sprintf(`
-					<h3 style="text-align: center; margin-top: 30px; color: #1e293b;">%s</h3>
-					<div class="rating-container">
-				`, ratingQuestion.Text)
-
-				for i := 1; i <= 5; i++ {
-					token := generateSurveyToken(survey.ID, user.ID)
-					quickLink := fmt.Sprintf("%s/api/surveys/%d/quick-response?user_id=%d&q_id=%d&score=%d&t=%s", frontendURL, survey.ID, user.ID, ratingQuestion.ID, i, token)
-					actionHtml += fmt.Sprintf(`<a href="%s" class="rating-btn" style="text-align:center; text-decoration:none; display:inline-block; width:45px; height:45px; line-height:45px; background-color:#f1f5f9; color:#cc33cc; border-radius:50%%; margin:0 5px; font-weight:bold; font-size:18px;">%d</a>`, quickLink, i)
-				}
-				
-				actionHtml += `
-					</div>
-					<div style="text-align: center; margin-top: 20px;">
-						<a href="`+surveyURL+`" style="color: #cc33cc; text-decoration: underline; font-size: 14px;">Ir a la encuesta completa</a>
-					</div>
-				`
-			} else {
-				actionHtml = fmt.Sprintf(`
-					<div style="text-align: center; margin-top: 30px;">
-						<a href="%s" class="btn-primary" style="display:inline-block; padding:12px 24px; background-color:#cc33cc; color:#ffffff; text-decoration:none; border-radius:8px; font-weight:600;">Responder Encuesta</a>
-					</div>
-				`, surveyURL)
-			}
+			actionHtml := fmt.Sprintf(`
+				<div style="text-align: center; margin-top: 30px;">
+					<a href="%s" class="btn-primary" style="display:inline-block; padding:12px 24px; background-color:#cc33cc; color:#ffffff; text-decoration:none; border-radius:8px; font-weight:600;">Responder Encuesta</a>
+				</div>
+			`, surveyURL)
 
 			rawContent := fmt.Sprintf(`
 				<h2 style="margin-top: 0; color: #1e293b;">Hola %s,</h2>

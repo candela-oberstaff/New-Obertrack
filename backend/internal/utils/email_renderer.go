@@ -10,11 +10,8 @@ import (
 
 // RenderBlocksToHTML converts the JSON blocks array stored in the template
 // into a complete, inline-styled HTML email body ready for sending.
-// RenderBlocksToHTML converts the JSON blocks array stored in the template
-// into a complete, inline-styled HTML email body ready for sending.
-// RenderBlocksToHTML converts the JSON blocks array stored in the template
-// into a complete, inline-styled HTML email body ready for sending.
-func RenderBlocksToHTML(blocksJSON string) (string, error) {
+// backendURL is used to make relative image upload URLs absolute (e.g. /api/uploads/... → https://api.example.com/api/uploads/...).
+func RenderBlocksToHTML(blocksJSON string, backendURL string) (string, error) {
 	if blocksJSON == "" || blocksJSON == "[]" {
 		return "<p>Sin contenido</p>", nil
 	}
@@ -24,7 +21,7 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 		return "", fmt.Errorf("invalid blocks JSON: %w", err)
 	}
 
-	bodyHTML := renderBlocks(blocks)
+	bodyHTML := renderBlocks(blocks, backendURL)
 	
 	// 1. Envolvemos el contenido en tu plantilla base
 	htmlCompleto := WrapInPremiumTemplate("Notificación", bodyHTML)
@@ -84,7 +81,7 @@ func RenderBlocksToHTML(blocksJSON string) (string, error) {
 	return htmlFinal, nil
 }
 
-func renderBlocks(blocks []map[string]interface{}) string {
+func renderBlocks(blocks []map[string]interface{}, backendURL string) string {
 	var sb strings.Builder
 
 	for _, block := range blocks {
@@ -155,6 +152,9 @@ func renderBlocks(blocks []map[string]interface{}) string {
 			src, _ := content.(string)
 			width, _ := styleMap["width"].(string)
 			if width == "" { width = "100%" }
+			if backendURL != "" && strings.HasPrefix(src, "/api/uploads/") {
+				src = strings.TrimRight(backendURL, "/") + strings.Replace(src, "/api/uploads/", "/api/public/uploads/", 1)
+			}
 			
 			sb.WriteString(fmt.Sprintf(
 				`<table width="100%%" cellpadding="0" cellspacing="0" style="width:100%%; border-collapse:collapse;">
@@ -212,7 +212,7 @@ func renderBlocks(blocks []map[string]interface{}) string {
 				}
 				colsHTML = append(colsHTML, fmt.Sprintf(
 					`<td width="%s" valign="top" style="width:%s; vertical-align:top;">%s</td>`,
-					width, width, renderBlocks(subBlocks),
+					width, width, renderBlocks(subBlocks, backendURL),
 				))
 			}
 			sb.WriteString(fmt.Sprintf(

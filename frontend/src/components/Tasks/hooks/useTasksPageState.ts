@@ -264,18 +264,22 @@ export function useTasksPageState() {
   // Handle board form submission - transform BoardFormData to CreateBoardInput
   const handleBoardSubmit = useCallback(async (data: BoardFormData) => {
     try {
-      await createBoard({
+      const board = await createBoard({
         name: data.name,
         description: data.description,
         color: data.color,
         member_ids: data.member_ids,
         phases: data.phases,
       })
+      if (!board) {
+        showError('No se pudo crear el tablero. Revisa los datos e inténtalo de nuevo.')
+        return
+      }
       setShowBoardModal(false)
-    } catch (error) {
-      console.error('Error creating board:', error)
+    } catch (error: any) {
+      showError(error?.response?.data?.error || 'Error al crear el tablero')
     }
-  }, [createBoard])
+  }, [createBoard, showError])
 
   // Phase drag handlers
   const handlePhaseDragStart = useCallback((phaseId: number) => {

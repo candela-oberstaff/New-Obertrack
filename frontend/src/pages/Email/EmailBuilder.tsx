@@ -4,6 +4,7 @@ import {
   Trash2, ChevronUp, ChevronDown, MousePointerClick, Code, Eye, Laptop, Smartphone
 } from 'lucide-react'
 import styles from './EmailBuilder.module.css'
+import { uploadService } from '../../services/upload.service'
 
 // ─── Block types & defaults ─────────────────────────────────────────────────
 export type BlockType = 'text' | 'button' | 'image' | 'divider' | 'spacer' | 'social'
@@ -208,7 +209,13 @@ function Inspector({ block, onChange }: { block: EmailBlock; onChange: (b: Email
         <>
           <div className={styles.propGroup}>
             <label className={styles.propLabel}>URL de imagen</label>
-            <input className={styles.propInput} placeholder="https://..." value={block.content} onChange={e => set('content', e.target.value)} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input className={styles.propInput} style={{ flex: 1 }} placeholder="https://..." value={block.content} onChange={e => set('content', e.target.value)} />
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: '#7c3aed', color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; try { const r = await uploadService.upload(f); set('content', r.url) } catch { alert('Error al subir la imagen') } }} />
+                Subir
+              </label>
+            </div>
           </div>
           <div className={styles.propGroup}>
             <label className={styles.propLabel}>Ancho</label>
@@ -353,7 +360,7 @@ export default function EmailBuilder({ blocks, onChange }: Props) {
 </head>
 <body>
   <div class="w-full flex justify-center">
-    ${previewContent}
+    ${previewContent.replace(/\/api\/uploads\//g, '/api/public/uploads/')}
   </div>
 </body>
 </html>`

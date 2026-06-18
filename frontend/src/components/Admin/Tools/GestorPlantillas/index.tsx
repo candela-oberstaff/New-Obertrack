@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Plus, Edit3, Trash2, LayoutTemplate, Mail, Search } from 'lucide-react';
+import { Plus, Edit3, Trash2, LayoutTemplate, Mail, Search, Send } from 'lucide-react';
 import { emailService, EmailTemplate } from '../../../../services/emailService';
 import TemplateEditor from './components/TemplateEditor';
 import Pagination from '../Common/Pagination';
+import RecipientSelector from '../../../../pages/Email/RecipientSelector';
 import styles from './GestorPlantillas.module.css';
 
 type ToastType = 'success' | 'error';
@@ -30,6 +31,10 @@ const GestorPlantillas: React.FC = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendTemplateId, setSendTemplateId] = useState<number | ''>('');
+  const [sendRecipients, setSendRecipients] = useState<{ userIds: number[]; groupIds: number[]; expressContacts: Array<{ name: string; email: string }> }>({ userIds: [], groupIds: [], expressContacts: [] });
 
   const ITEMS_PER_PAGE = 12;
 
@@ -122,6 +127,27 @@ const GestorPlantillas: React.FC = () => {
     setEditingTemplate(undefined);
   };
 
+  const handleSendTemplate = async () => {
+    if (!sendTemplateId) return;
+    setSending(true);
+    try {
+      const recipientList = JSON.stringify({
+        userIds: sendRecipients.userIds,
+        groupIds: sendRecipients.groupIds,
+        expressContacts: sendRecipients.expressContacts,
+      });
+      const result = await emailService.sendTemplate(sendTemplateId, recipientList);
+      notify(`Plantilla enviada a ${result.sent ?? 0} destinatario${result.sent !== 1 ? 's' : ''}`);
+      setShowSendModal(false);
+      setSendTemplateId('');
+      setSendRecipients({ userIds: [], groupIds: [], expressContacts: [] });
+    } catch {
+      notify('Error al enviar la plantilla', 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (showEditor) {
     return (
       <TemplateEditor
@@ -147,10 +173,16 @@ const GestorPlantillas: React.FC = () => {
             </p>
           </div>
         </div>
-        <button className={styles.btnPrimary} onClick={handleCreate}>
-          <Plus size={16} />
-          Nueva plantilla
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className={styles.btnPrimary} style={{ background: '#0ea5e9' }} onClick={() => { setSendTemplateId(''); setSendRecipients({ userIds: [], groupIds: [], expressContacts: [] }); setShowSendModal(true); }}>
+            <Send size={16} />
+            Enviar plantilla
+          </button>
+          <button className={styles.btnPrimary} onClick={handleCreate}>
+            <Plus size={16} />
+            Nueva plantilla
+          </button>
+        </div>
       </div>
 
       {/* Search & Filter Bar */}
@@ -234,6 +266,37 @@ const GestorPlantillas: React.FC = () => {
           </div>
           <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
         </>
+      )}
+
+      {/* Send Modal */}
+      {showSendModal && (
+        <div className={styles.modalBackdrop} onClick={() => !sending && setShowSendModal(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <h2>Enviar plantilla</h2>
+
+            <label className={styles.modalLabel}>Plantilla</label>
+            <select className={styles.modalSelect} value={sendTemplateId} onChange={e => setSendTemplateId(e.target.value ? Number(e.target.value) : '')}>
+              <option value="">Seleccionar plantilla...</option>
+              {gestorTemplates.map(t => (
+                <option key={t.id} value={t.id}>{t.title}</option>
+              ))}
+            </select>
+            {!sendTemplateId && <p style={{ margin: '-16px 0 16px', fontSize: 12, color: '#ef4444' }}>Seleccioná una plantilla para poder enviar</p>}
+
+            <label className={styles.modalLabel}>Destinatarios</label>
+            <RecipientSelector
+              value={sendRecipients}
+              onChange={setSendRecipients}
+            />
+
+            <div className={styles.modalActions}>
+              <button className={styles.btnCancel} onClick={() => setShowSendModal(false)} disabled={sending}>Cancelar</button>
+              <button className={styles.btnPrimary} onClick={handleSendTemplate} disabled={!sendTemplateId || sending}>
+                {sending ? 'Enviando...' : 'Enviar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Toast */}

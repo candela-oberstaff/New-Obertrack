@@ -56,13 +56,14 @@ export function TaskDetailEditForm({
   }, [task])
 
   const handleSave = async () => {
+    const toISO = (d: string | undefined) => d ? new Date(d + 'T12:00:00').toISOString() : undefined
     await onSave({
       title: formData.title,
       description: formData.description,
       priority: formData.priority,
       status: formData.status,
-      start_date: formData.start_date || undefined,
-      end_date: formData.end_date || undefined,
+      start_date: toISO(formData.start_date),
+      end_date: toISO(formData.end_date),
       assignees: formData.assignees,
     })
   }

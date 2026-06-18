@@ -53,4 +53,7 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 
 	// Public survey quick response.
 	api.GET("/surveys/:id/quick-response", d.survey.QuickResponse)
+
+	// Public file serving (no auth required) — used for email client image loading.
+	api.GET("/public/uploads/:filename", d.upload.GetPublicFile)
 }

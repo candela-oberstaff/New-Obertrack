@@ -7,6 +7,7 @@ import {
 import { EmailBuilderProps } from './types';
 import RecipientSelector from '../../../../pages/Email/RecipientSelector';
 import { emailService, EmailTemplate } from '../../../../services/emailService';
+import { uploadService } from '../../../../services/upload.service';
 
 // ─── Local block types ────────────────────────────────────────────────────────
 type BlockType = 'text' | 'button' | 'image' | 'divider' | 'spacer' | 'social';
@@ -176,7 +177,16 @@ function Inspector({ block, onChange }: { block: EmailBlock; onChange: (b: Email
       )}
       {block.type === 'image' && (
         <>
-          <div style={fieldStyle}><label style={labelStyle}>URL de imagen</label><input style={inputStyle} placeholder="https://..." value={block.content} onChange={e => set('content', e.target.value)} /></div>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>URL de imagen</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={{ ...inputStyle, flex: 1 }} placeholder="https://..." value={block.content} onChange={e => set('content', e.target.value)} />
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: '#7c3aed', color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; try { const r = await uploadService.upload(f); set('content', r.url) } catch { alert('Error al subir la imagen') } }} />
+                Subir
+              </label>
+            </div>
+          </div>
           <div style={fieldStyle}><label style={labelStyle}>Ancho</label><input style={inputStyle} placeholder="100%" value={block.style.width || '100%'} onChange={e => set('width', e.target.value)} /></div>
         </>
       )}
@@ -382,7 +392,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
   </style>
 </head><body>
   <div style="width:100%;display:flex;justify-content:center;">
-    ${previewContent}
+    ${previewContent.replace(/\/api\/uploads\//g, '/api/public/uploads/')}
   </div>
 </body></html>`, [previewContent]);
 
