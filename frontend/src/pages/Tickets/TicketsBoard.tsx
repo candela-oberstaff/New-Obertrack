@@ -8,7 +8,7 @@ import { RefreshCw, Ticket as TicketIcon, Filter, User as UserIcon, FileText } f
 import { useAuth } from '../../context/AuthContext';
 import { isSupportManager } from '../../lib/permissions';
 
-type OriginFilter = 'all' | 'zoho' | 'internal';
+type OriginFilter = 'all' | 'zoho' | 'internal' | 'support';
 
 const STAGES = [
   { id: 'new', title: 'Nuevo' },
@@ -90,6 +90,11 @@ export default function TicketsBoard() {
   }, []);
 
   const openTicket = (ticket: Ticket) => {
+    if (ticket.origin === 'support') {
+      // Las solicitudes de soporte por chat se atienden en el chat.
+      navigate(`/chat?channel=${ticket.channel_id}`);
+      return;
+    }
     if (ticket.origin === 'internal') {
       navigate(`/tickets/internal/${ticket.id}`);
       return;
@@ -194,6 +199,7 @@ export default function TicketsBoard() {
               { id: 'all', label: 'Todos' },
               { id: 'zoho', label: 'Zoho' },
               { id: 'internal', label: 'Internos' },
+              { id: 'support', label: 'Soporte' },
             ] as { id: OriginFilter; label: string }[]).map(opt => (
               <button
                 key={opt.id}

@@ -209,7 +209,10 @@ func (h *ChannelHandler) JoinChannel(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	userID := middleware.GetUserID(c)
 
-	if err := h.svc.Join(uint(id), userID); err != nil {
+	// "already a member" no es un fallo: channelAccessAllowed auto-une al usuario
+	// al ver un canal público, así que para cuando pulsa "Unirse al canal" puede
+	// que ya tenga la fila de membresía. Tratarlo como éxito (idempotente).
+	if err := h.svc.Join(uint(id), userID); err != nil && err.Error() != "already a member" {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -283,7 +286,7 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	message, _, err := h.svc.SendMessage(uint(id), userID, req.Content, req.Attachment, req.FileName, req.FileSize)
+	message, mentioned, err := h.svc.SendMessage(uint(id), userID, req.Content, req.Attachment, req.FileName, req.FileSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -296,6 +299,10 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		UserID:    userID,
 		Data:      message,
 	})
+
+	// Continuidad del soporte: avisa al otro lado (responsable/solicitante) si
+	// este canal es un ticket de soporte asignado. No aplica a otros canales.
+	h.svc.NotifySupportReply(uint(id), userID, req.Content, mentioned)
 
 	c.JSON(http.StatusCreated, message)
 }
@@ -677,6 +684,89 @@ func (h *ChannelHandler) CreateDirectMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, dm)
+}
+
+// ContactSupport abre (o reutiliza) el canal de soporte del usuario con
+// Customer Success y alerta a los agentes. Pensado para usuarios cliente.
+func (h *ChannelHandler) ContactSupport(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	channel, err := h.svc.ContactSupport(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, channel)
+}
+
+// ListSupportAgents devuelve los agentes (CS + superadmin) para el selector de reasignación.
+func (h *ChannelHandler) ListSupportAgents(c *gin.Context) {
+	agents, err := h.svc.ListSupportAgents()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, agents)
+}
+
+// ListPendingSupport: cola de solicitudes de soporte sin asignar (invitaciones).
+func (h *ChannelHandler) ListPendingSupport(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	tickets, err := h.svc.ListPendingSupport(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, tickets)
+}
+
+// ClaimSupport: el agente toma el ticket (se autoasigna).
+func (h *ChannelHandler) ClaimSupport(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	userID := middleware.GetUserID(c)
+
+	ticket, err := h.svc.ClaimSupportTicket(uint(id), userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ticket)
+}
+
+// AssignSupport: reasigna el ticket a otro agente.
+func (h *ChannelHandler) AssignSupport(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	userID := middleware.GetUserID(c)
+
+	var req struct {
+		AssigneeID uint `json:"assignee_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ticket, err := h.svc.AssignSupportTicket(uint(id), userID, req.AssigneeID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ticket)
+}
+
+// ResolveSupport: marca el ticket como resuelto.
+func (h *ChannelHandler) ResolveSupport(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	userID := middleware.GetUserID(c)
+
+	ticket, err := h.svc.ResolveSupportTicket(uint(id), userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ticket)
 }
 
 func (h *ChannelHandler) MarkAsRead(c *gin.Context) {

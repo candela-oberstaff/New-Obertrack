@@ -4,6 +4,7 @@ import type { User } from '../types'
 import type { Channel, Message, ChannelMember, MessageReaction, UserStatus } from '../types/chat'
 import { playNotificationSound } from '../components/Chat/ChatUtils'
 import { useConfirm } from '../components/ui/ConfirmProvider'
+import { useNotification } from '../context/NotificationContext'
 
 export function useSlackChat(user: User | null, companyId: number | null = null) {
   const [channels, setChannels] = useState<Channel[]>([])
@@ -30,6 +31,7 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
   const [userStatuses, setUserStatuses] = useState<Map<number, UserStatus['status']>>(new Map())
   
   const confirm = useConfirm()
+  const { error: showError } = useNotification()
 
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectAttemptsRef = useRef(0)
@@ -43,10 +45,15 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
   const selectedChannelIdRef = useRef<number | null>(null)
   const userIdRef = useRef<number | null>(null)
   const messagesRef = useRef<Message[]>([])
+  const threadRepliesRef = useRef<Message[]>([])
 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    threadRepliesRef.current = threadReplies
+  }, [threadReplies])
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannel?.id ?? null
@@ -203,9 +210,10 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
               return [...filtered, msg.data]
             })
             playNotificationSound()
+            // Don't refetch the whole channel list per incoming message; the
+            // local setChannels below already zeroes the active channel's badge.
             channelService.markAsRead(selectedChannelId).then(() => {
               window.dispatchEvent(new CustomEvent('chat-unread-updated'))
-              fetchChannels()
             })
             setChannels(prev => prev.map(c => c.id === selectedChannelId ? { ...c, unread_count: 0 } : c))
           } else if (msg.type === 'typing') {
@@ -411,8 +419,20 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
 
   const editMessage = async (id: number, content: string) => {
     if (!selectedChannel) return
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, content, is_edited: true } : m))
-    try { await channelService.editMessage(selectedChannel.id, id, content) } catch (e) { console.error(e) }
+    // Snapshot for rollback if the request fails.
+    const prevMessages = messagesRef.current
+    const prevThreadReplies = threadRepliesRef.current
+    const apply = (list: Message[]) => list.map(m => m.id === id ? { ...m, content, is_edited: true } : m)
+    setMessages(apply)
+    setThreadReplies(apply)
+    try {
+      await channelService.editMessage(selectedChannel.id, id, content)
+    } catch (e) {
+      console.error(e)
+      setMessages(prevMessages)
+      setThreadReplies(prevThreadReplies)
+      showError('No se pudo editar el mensaje. Intenta de nuevo.')
+    }
   }
 
   const deleteMessage = async (id: number) => {
@@ -424,8 +444,20 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
       variant: 'danger',
     })
     if (!ok) return
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, is_deleted: true, content: '[Mensaje eliminado]' } : m))
-    try { await channelService.deleteMessage(selectedChannel.id, id) } catch (e) { console.error(e) }
+    // Snapshot for rollback if the request fails.
+    const prevMessages = messagesRef.current
+    const prevThreadReplies = threadRepliesRef.current
+    const apply = (list: Message[]) => list.map(m => m.id === id ? { ...m, is_deleted: true, content: '[Mensaje eliminado]' } : m)
+    setMessages(apply)
+    setThreadReplies(apply)
+    try {
+      await channelService.deleteMessage(selectedChannel.id, id)
+    } catch (e) {
+      console.error(e)
+      setMessages(prevMessages)
+      setThreadReplies(prevThreadReplies)
+      showError('No se pudo eliminar el mensaje. Intenta de nuevo.')
+    }
   }
 
   const toggleReaction = async (message: Message, emoji: string) => {

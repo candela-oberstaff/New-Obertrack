@@ -65,5 +65,11 @@ func registerMessagingRoutes(api *gin.RouterGroup, d *deps) {
 		channels.POST("/status", d.channel.UpdateStatus)
 		channels.GET("/statuses", d.channel.GetStatuses)
 		channels.POST("/dm", chatEdit, d.channel.CreateDirectMessage)
+		channels.POST("/support", chatEdit, d.channel.ContactSupport)
+		channels.GET("/support/agents", d.channel.ListSupportAgents)
+		channels.GET("/support/pending", d.channel.ListPendingSupport)
+		channels.POST("/:id/support/claim", chatEdit, d.channel.ClaimSupport)
+		channels.POST("/:id/support/assign", chatEdit, d.channel.AssignSupport)
+		channels.POST("/:id/support/resolve", chatEdit, d.channel.ResolveSupport)
 	}
 }

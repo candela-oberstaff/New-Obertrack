@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -26,10 +27,19 @@ func (s *channelService) privateHistorySince(channelID, userID uint) *time.Time 
 }
 
 func (s *channelService) GetMessages(channelID, userID, beforeID uint) ([]models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 	return s.repo.GetMessages(channelID, 100, s.privateHistorySince(channelID, userID), beforeID)
+}
+
+// isSuperadmin reports whether the user is a platform superadmin. Superadmins are
+// authorized for channel actions at the handler level (channelAccessAllowed) so
+// the service-level membership gate must let them through to avoid 500s when they
+// oversee a company's channels they are not an explicit member of.
+func (s *channelService) isSuperadmin(userID uint) bool {
+	user, err := s.userRepo.GetByID(userID)
+	return err == nil && isSuperadminUser(user)
 }
 
 func (s *channelService) SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64) (*models.ChannelMessage, []uint, error) {
@@ -38,7 +48,7 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 		return nil, nil, err
 	}
 
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, nil, fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -117,6 +127,10 @@ func (s *channelService) EditMessage(channelID, messageID, userID uint, content 
 		return nil, err
 	}
 
+	if message.ChannelID != channelID {
+		return nil, fmt.Errorf("message does not belong to channel")
+	}
+
 	if message.UserID != userID {
 		return nil, fmt.Errorf("you can only edit your own messages")
 	}
@@ -137,6 +151,10 @@ func (s *channelService) DeleteMessage(channelID, messageID, userID uint, isSupe
 		return err
 	}
 
+	if message.ChannelID != channelID {
+		return fmt.Errorf("message does not belong to channel")
+	}
+
 	if message.UserID != userID && !isSuperadmin {
 		return fmt.Errorf("you can only delete your own messages")
 	}
@@ -145,7 +163,7 @@ func (s *channelService) DeleteMessage(channelID, messageID, userID uint, isSupe
 }
 
 func (s *channelService) AddReaction(channelID, messageID, userID uint, emoji string) (*models.MessageReaction, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -171,14 +189,14 @@ func (s *channelService) AddReaction(channelID, messageID, userID uint, emoji st
 }
 
 func (s *channelService) RemoveReaction(channelID, messageID, userID uint, emoji string) error {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return fmt.Errorf("you are not a member of this channel")
 	}
 	return s.repo.RemoveReaction(messageID, userID, emoji)
 }
 
 func (s *channelService) PinMessage(channelID, messageID, userID uint) (*models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -194,7 +212,7 @@ func (s *channelService) PinMessage(channelID, messageID, userID uint) (*models.
 }
 
 func (s *channelService) UnpinMessage(channelID, messageID, userID uint) (*models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -210,7 +228,7 @@ func (s *channelService) UnpinMessage(channelID, messageID, userID uint) (*model
 }
 
 func (s *channelService) GetPinnedMessages(channelID, userID uint) ([]models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 	return s.repo.GetPinnedMessages(channelID, s.privateHistorySince(channelID, userID))
@@ -222,7 +240,7 @@ func (s *channelService) GetReactions(messageID, userID uint) ([]models.MessageR
 		return nil, err
 	}
 
-	if isMember, _ := s.repo.IsMember(message.ChannelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(message.ChannelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -230,14 +248,14 @@ func (s *channelService) GetReactions(messageID, userID uint) ([]models.MessageR
 }
 
 func (s *channelService) GetThreadReplies(channelID, messageID, userID uint) ([]models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 	return s.repo.GetThreadReplies(messageID)
 }
 
 func (s *channelService) SendThreadReply(channelID, messageID, userID uint, content string) (*models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -272,7 +290,7 @@ func (s *channelService) StarMessage(messageID, userID uint) error {
 	}
 
 	// Verify membership: user must belong to the message's channel
-	if isMember, _ := s.repo.IsMember(message.ChannelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(message.ChannelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -323,7 +341,7 @@ func (s *channelService) GetStarredMessages(userID uint) ([]models.ChannelMessag
 }
 
 func (s *channelService) SearchMessages(channelID, userID uint, query string) ([]models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -396,6 +414,320 @@ func (s *channelService) buildDMResponse(channel *models.Channel, recipientID ui
 	}, nil
 }
 
+// ContactSupport finds-or-creates a private support channel between the calling
+// client user (profesional/empleador) and every active customer_success agent,
+// posts an intro message on first contact and alerts all CS agents. Returns the
+// channel so the frontend can open it right away.
+//
+// The channel lives in the client's tenant but CS agents (tenant 0) are added as
+// explicit members, so they see it and can read/reply via membership checks —
+// tenant isolation is bypassed deliberately, only for this support channel.
+func (s *channelService) ContactSupport(userID uint) (*ChannelWithUnread, error) {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil || user == nil {
+		return nil, ErrUserNotFound
+	}
+	// El soporte es para usuarios cliente; CS y superadmins no lo necesitan.
+	if isSuperadminUser(user) || user.UserType == models.UserTypeCustomerSuccess {
+		return nil, fmt.Errorf("el soporte está disponible solo para usuarios cliente")
+	}
+
+	tenantID := models.TenantForUser(user)
+	if tenantID == 0 && user.UserType == models.UserTypeEmployer {
+		tenantID = user.ID
+	}
+
+	// Agentes de Customer Success activos: miembros del canal y destinatarios de la alerta.
+	csUsers, _, err := s.userRepo.GetAll(string(models.UserTypeCustomerSuccess), "", "", 0, 0, 1000)
+	if err != nil {
+		return nil, err
+	}
+	activeCS := make([]models.User, 0, len(csUsers))
+	for _, cs := range csUsers {
+		if cs.IsActive {
+			activeCS = append(activeCS, cs)
+		}
+	}
+
+	// Nombre único por profesional (incluye el id para evitar colisiones de
+	// nombres dentro del mismo tenant, que enrutarían a otro a su canal).
+	channelName := fmt.Sprintf("Soporte · %s #%d", user.Name, user.ID)
+
+	channel, lookupErr := s.repo.GetChannelByNameAndType(channelName, models.ChannelTypePrivate, tenantID)
+	isNew := lookupErr != nil || channel == nil
+	if isNew {
+		// El canal se crea SOLO con el profesional. Los agentes de soporte NO se
+		// agregan automáticamente (eso saturaría a todos los CS con cada canal):
+		// reciben una invitación y se unen al aceptar el ticket (claim/assign).
+		channel = &models.Channel{
+			Name:        channelName,
+			Description: "Canal de soporte con Customer Success",
+			Type:        models.ChannelTypePrivate,
+			CreatedBy:   userID,
+			TenantID:    tenantID,
+			IsActive:    true,
+		}
+		if err := s.repo.CreateDMChannel(channel, []uint{userID}); err != nil {
+			return nil, err
+		}
+		channel, _ = s.repo.GetChannel(channel.ID)
+	}
+
+	// Asegura el ticket de gestión asociado al canal (crea si falta — también
+	// hace backfill de canales de soporte creados antes de esta funcionalidad).
+	ticket, terr := s.repo.GetSupportTicketByChannel(channel.ID)
+	if terr != nil || ticket == nil {
+		ticket = &models.SupportTicket{
+			ChannelID:   channel.ID,
+			TenantID:    tenantID,
+			RequesterID: userID,
+			Status:      models.SupportStatusOpen,
+		}
+		if err := s.repo.CreateSupportTicket(ticket); err != nil {
+			log.Printf("[ContactSupport] no se pudo crear el ticket: %v", err)
+		}
+	}
+
+	// Mensaje inicial solo al crear, para dar contexto a Customer Success.
+	if isNew {
+		intro := fmt.Sprintf("👋 Hola, soy %s. Necesito ayuda del equipo de soporte.", user.Name)
+		if _, _, err := s.SendMessage(channel.ID, userID, intro, "", "", 0); err != nil {
+			log.Printf("[ContactSupport] no se pudo publicar el mensaje inicial: %v", err)
+		}
+	}
+
+	// Invitación: si el ticket está sin asignar, se avisa a TODOS los agentes para
+	// que alguno lo acepte (entra a la cola de pendientes). Si ya tiene responsable,
+	// se avisa solo a ese agente para no saturar al resto del equipo.
+	who := user.Name
+	if user.CompanyName != "" {
+		who = fmt.Sprintf("%s (%s)", user.Name, user.CompanyName)
+	}
+	if ticket.AssignedTo != nil {
+		s.notifySupport(*ticket.AssignedTo, channel.ID, "Soporte: nueva actividad", fmt.Sprintf("%s volvió a escribir en su solicitud de soporte.", who))
+	} else {
+		for _, cs := range activeCS {
+			s.notifySupport(cs.ID, channel.ID, "Nueva solicitud de soporte", fmt.Sprintf("%s solicita soporte. Acéptala para atenderla.", who))
+		}
+	}
+
+	unread, _ := s.repo.GetUnreadCount(channel.ID, userID)
+	return &ChannelWithUnread{
+		ID:          channel.ID,
+		Name:        channel.Name,
+		Description: channel.Description,
+		Type:        channel.Type,
+		CreatedBy:   channel.CreatedBy,
+		IsActive:    channel.IsActive,
+		CreatedAt:   channel.CreatedAt,
+		UnreadCount: unread,
+	}, nil
+}
+
+// isSupportAgent reports whether the user can manage support tickets (CS o superadmin).
+func (s *channelService) isSupportAgent(userID uint) bool {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil || user == nil {
+		return false
+	}
+	return isSuperadminUser(user) || user.UserType == models.UserTypeCustomerSuccess
+}
+
+// ListSupportAgents devuelve los agentes activos (customer_success + superadmin),
+// usados para el selector de "reasignar".
+func (s *channelService) ListSupportAgents() ([]models.User, error) {
+	cs, _, err := s.userRepo.GetAll(string(models.UserTypeCustomerSuccess), "", "", 0, 0, 1000)
+	if err != nil {
+		return nil, err
+	}
+	sa, _, err := s.userRepo.GetAll(string(models.UserTypeSuperadmin), "", "", 0, 0, 1000)
+	if err != nil {
+		return nil, err
+	}
+	agents := make([]models.User, 0, len(cs)+len(sa))
+	for _, u := range append(cs, sa...) {
+		if u.IsActive {
+			agents = append(agents, u)
+		}
+	}
+	return agents, nil
+}
+
+// ListPendingSupport devuelve los tickets de soporte sin asignar (cola de
+// solicitudes que cualquier agente puede aceptar). Solo para agentes de soporte.
+func (s *channelService) ListPendingSupport(userID uint) ([]models.SupportTicket, error) {
+	if !s.isSupportAgent(userID) {
+		return nil, fmt.Errorf("solo Customer Success o superadmins pueden ver la cola de soporte")
+	}
+	return s.repo.GetPendingSupportTickets()
+}
+
+// ListSupportTicketsForBoard devuelve todos los tickets de soporte (con
+// solicitante y responsable) para mostrarlos en el tablero de Tickets de Soporte.
+func (s *channelService) ListSupportTicketsForBoard() ([]models.SupportTicket, error) {
+	return s.repo.GetAllSupportTickets()
+}
+
+// NotifySupportReply avisa por campana cuando hay una respuesta en un ticket de
+// soporte YA ASIGNADO: si responde el solicitante, avisa al responsable; si
+// responde un agente, avisa al solicitante. Best-effort, no bloquea el envío.
+// Se invoca desde el handler (solo mensajes reales de usuario), no para los
+// mensajes de sistema internos (tomó/asignó/resolvió).
+func (s *channelService) NotifySupportReply(channelID, senderID uint, content string, alreadyNotified []uint) {
+	ticket, err := s.repo.GetSupportTicketByChannel(channelID)
+	if err != nil || ticket == nil || ticket.AssignedTo == nil {
+		return // no es un canal de soporte, o aún no tiene responsable
+	}
+
+	// No repetir a quien ya recibió notificación por mención, ni al propio emisor.
+	skip := map[uint]bool{senderID: true}
+	for _, id := range alreadyNotified {
+		skip[id] = true
+	}
+
+	preview := strings.TrimSpace(content)
+	if preview == "" {
+		preview = "📎 Adjunto"
+	}
+	if r := []rune(preview); len(r) > 80 {
+		preview = string(r[:80]) + "…"
+	}
+
+	senderName := s.userName(senderID)
+	if senderID == ticket.RequesterID {
+		// El solicitante respondió → avisar al responsable.
+		if !skip[*ticket.AssignedTo] {
+			s.notifySupport(*ticket.AssignedTo, channelID, "Soporte: nueva respuesta", fmt.Sprintf("%s: %s", senderName, preview))
+		}
+	} else {
+		// Un agente respondió → avisar al solicitante.
+		if !skip[ticket.RequesterID] {
+			s.notifySupport(ticket.RequesterID, channelID, "Soporte respondió", fmt.Sprintf("%s: %s", senderName, preview))
+		}
+	}
+}
+
+func (s *channelService) userName(userID uint) string {
+	if u, err := s.userRepo.GetByID(userID); err == nil && u != nil {
+		return u.Name
+	}
+	return ""
+}
+
+func (s *channelService) postSupportSystemMessage(channelID, actorID uint, content string) {
+	if _, _, err := s.SendMessage(channelID, actorID, content, "", "", 0); err != nil {
+		log.Printf("[support] no se pudo publicar mensaje de sistema: %v", err)
+	}
+}
+
+func (s *channelService) notifySupport(userID uint, channelID uint, title, message string) {
+	if err := s.notifSvc.CreateNotification(userID, "support", title, message, map[string]interface{}{
+		"channel_id": channelID,
+		"link":       fmt.Sprintf("/chat?channel=%d", channelID),
+	}); err != nil {
+		log.Printf("[support] no se pudo notificar a %d: %v", userID, err)
+	}
+}
+
+// ClaimSupportTicket asigna el ticket al agente que lo toma (estado → asignado).
+func (s *channelService) ClaimSupportTicket(channelID, userID uint) (*models.SupportTicket, error) {
+	if !s.isSupportAgent(userID) {
+		return nil, fmt.Errorf("solo Customer Success o superadmins pueden gestionar tickets de soporte")
+	}
+	return s.assignSupport(channelID, userID, userID, true)
+}
+
+// AssignSupportTicket reasigna el ticket a otro agente de soporte.
+func (s *channelService) AssignSupportTicket(channelID, actorID, assigneeID uint) (*models.SupportTicket, error) {
+	if !s.isSupportAgent(actorID) {
+		return nil, fmt.Errorf("solo Customer Success o superadmins pueden gestionar tickets de soporte")
+	}
+	if !s.isSupportAgent(assigneeID) {
+		return nil, fmt.Errorf("solo puedes asignar el ticket a un agente de soporte")
+	}
+	return s.assignSupport(channelID, actorID, assigneeID, false)
+}
+
+// assignSupport es la lógica común de tomar/reasignar.
+func (s *channelService) assignSupport(channelID, actorID, assigneeID uint, selfClaim bool) (*models.SupportTicket, error) {
+	ticket, err := s.repo.GetSupportTicketByChannel(channelID)
+	if err != nil || ticket == nil {
+		return nil, fmt.Errorf("ticket de soporte no encontrado")
+	}
+
+	// El asignado debe ser miembro del canal para verlo y responder.
+	if member, _ := s.repo.GetMember(channelID, assigneeID); member == nil {
+		// Los canales de soporte son privados: privateHistorySince oculta el
+		// historial previo a JoinedAt. El agente de soporte debe ver TODO el
+		// ticket, así que lo unimos desde la fecha de creación del canal.
+		joinedAt := time.Now()
+		if channel, err := s.repo.GetChannel(channelID); err == nil && channel != nil && !channel.CreatedAt.IsZero() {
+			joinedAt = channel.CreatedAt
+		}
+		if err := s.repo.AddMember(&models.ChannelMember{
+			ChannelID: channelID, UserID: assigneeID, Role: "member", JoinedAt: joinedAt,
+		}); err != nil {
+			log.Printf("[support] no se pudo añadir al asignado %d: %v", assigneeID, err)
+		}
+	}
+
+	now := time.Now()
+	if err := s.repo.UpdateSupportTicket(ticket, map[string]interface{}{
+		"assigned_to": assigneeID,
+		"assigned_at": now,
+		"status":      models.SupportStatusAssigned,
+		// Reabre si estaba resuelto.
+		"resolved_by": nil,
+		"resolved_at": nil,
+	}); err != nil {
+		return nil, err
+	}
+
+	actorName := s.userName(actorID)
+	assigneeName := s.userName(assigneeID)
+	if selfClaim {
+		s.postSupportSystemMessage(channelID, actorID, fmt.Sprintf("🛟 %s tomó el ticket.", actorName))
+	} else {
+		s.postSupportSystemMessage(channelID, actorID, fmt.Sprintf("🛟 %s asignó el ticket a %s.", actorName, assigneeName))
+		if assigneeID != actorID {
+			s.notifySupport(assigneeID, channelID, "Ticket de soporte asignado", fmt.Sprintf("%s te asignó un ticket de soporte.", actorName))
+		}
+	}
+	if ticket.RequesterID != actorID {
+		s.notifySupport(ticket.RequesterID, channelID, "Soporte en camino", fmt.Sprintf("%s está atendiendo tu solicitud.", assigneeName))
+	}
+
+	return s.repo.GetSupportTicketByChannel(channelID)
+}
+
+// ResolveSupportTicket marca el ticket como resuelto.
+func (s *channelService) ResolveSupportTicket(channelID, actorID uint) (*models.SupportTicket, error) {
+	if !s.isSupportAgent(actorID) {
+		return nil, fmt.Errorf("solo Customer Success o superadmins pueden gestionar tickets de soporte")
+	}
+	ticket, err := s.repo.GetSupportTicketByChannel(channelID)
+	if err != nil || ticket == nil {
+		return nil, fmt.Errorf("ticket de soporte no encontrado")
+	}
+
+	now := time.Now()
+	if err := s.repo.UpdateSupportTicket(ticket, map[string]interface{}{
+		"status":      models.SupportStatusResolved,
+		"resolved_by": actorID,
+		"resolved_at": now,
+	}); err != nil {
+		return nil, err
+	}
+
+	actorName := s.userName(actorID)
+	s.postSupportSystemMessage(channelID, actorID, fmt.Sprintf("✅ %s marcó el ticket como resuelto.", actorName))
+	if ticket.RequesterID != actorID {
+		s.notifySupport(ticket.RequesterID, channelID, "Ticket de soporte resuelto", fmt.Sprintf("%s marcó tu solicitud como resuelta.", actorName))
+	}
+
+	return s.repo.GetSupportTicketByChannel(channelID)
+}
+
 func (s *channelService) UpdateStatus(userID uint, status string) (*models.UserStatus, error) {
 	if status != "online" && status != "away" && status != "offline" {
 		return nil, fmt.Errorf("invalid status")
@@ -423,7 +755,7 @@ func (s *channelService) GetTotalUnreadCount(userID uint) (int64, error) {
 }
 
 func (s *channelService) MarkAsRead(channelID, userID uint) error {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember {
+	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
 		return fmt.Errorf("you are not a member of this channel")
 	}
 	return s.repo.MarkAsRead(channelID, userID)

@@ -71,8 +71,10 @@ export interface Ticket {
   assignee_id?: string;
   assignee_name?: string;
   assignee_email?: string;
-  /** 'zoho' for Zoho Desk tickets, 'internal' for Obertrack-generated alerts */
-  origin?: 'zoho' | 'internal';
+  /** 'zoho' Zoho Desk, 'internal' alertas Obertrack, 'support' solicitudes de soporte por chat */
+  origin?: 'zoho' | 'internal' | 'support';
+  /** Canal de chat asociado (solo origin 'support'): para navegar al chat */
+  channel_id?: number;
   // Internal work-hour-rejection alert fields
   user_id?: number;
   professional_email?: string;

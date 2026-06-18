@@ -140,7 +140,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		metrics:      handlers.NewMetricsHandler(metricsRepo),
 		tutorial:     handlers.NewTutorialHandler(tutorialSvc),
 		rbac:         handlers.NewRBACHandler(rbacSvc),
-		ticket:       handlers.NewTicketHandler(db, zohoSvc, ticketSvc),
+		ticket:       handlers.NewTicketHandler(db, zohoSvc, ticketSvc, channelSvc),
 		whatsapp:     handlers.NewWhatsAppHandler(db, zohoSvc),
 		waha:         handlers.NewWahaHandler(ticketSvc),
 		brevoInbound: handlers.NewBrevoInboundHandler(ticketSvc),

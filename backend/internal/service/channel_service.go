@@ -50,6 +50,14 @@ type ChannelService interface {
 	GetStarredMessages(userID uint) ([]models.ChannelMessage, error)
 	SearchMessages(channelID, userID uint, query string) ([]models.ChannelMessage, error)
 	CreateDirectMessage(userID, recipientID uint, tenantOverride uint) (*DirectMessageResponse, error)
+	ContactSupport(userID uint) (*ChannelWithUnread, error)
+	ListSupportAgents() ([]models.User, error)
+	ListPendingSupport(userID uint) ([]models.SupportTicket, error)
+	ListSupportTicketsForBoard() ([]models.SupportTicket, error)
+	NotifySupportReply(channelID, senderID uint, content string, alreadyNotified []uint)
+	ClaimSupportTicket(channelID, userID uint) (*models.SupportTicket, error)
+	AssignSupportTicket(channelID, actorID, assigneeID uint) (*models.SupportTicket, error)
+	ResolveSupportTicket(channelID, actorID uint) (*models.SupportTicket, error)
 	UpdateStatus(userID uint, status string) (*models.UserStatus, error)
 	GetStatuses(userIDs []uint) ([]models.UserStatus, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
@@ -67,6 +75,22 @@ type ChannelWithUnread struct {
 	CreatedAt   time.Time          `json:"created_at"`
 	UnreadCount int64              `json:"unread_count"`
 	Recipient   *models.User       `json:"recipient,omitempty"`
+	Support     *SupportInfo       `json:"support,omitempty"`
+}
+
+// SupportInfo es el estado del ticket asociado a un canal de soporte, embebido en
+// la lista de canales para que el frontend muestre responsable/estado y el panel
+// de contexto (datos del solicitante) sin pedir nada más.
+type SupportInfo struct {
+	Status         string    `json:"status"`
+	AssignedTo     *uint     `json:"assigned_to,omitempty"`
+	AssigneeName   string    `json:"assignee_name,omitempty"`
+	RequesterID    uint      `json:"requester_id"`
+	RequesterName  string    `json:"requester_name,omitempty"`
+	RequesterEmail string    `json:"requester_email,omitempty"`
+	RequesterPhone string    `json:"requester_phone,omitempty"`
+	CompanyName    string    `json:"company_name,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type DirectMessageResponse struct {
@@ -154,6 +178,39 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 			Recipient:   recipient,
 		})
 	}
+
+	// Adjunta el estado del ticket a los canales de soporte (una sola consulta).
+	ids := make([]uint, len(result))
+	for i, r := range result {
+		ids[i] = r.ID
+	}
+	if tickets, err := s.repo.GetSupportTicketsByChannelIDs(ids); err == nil {
+		byChannel := make(map[uint]models.SupportTicket, len(tickets))
+		for _, t := range tickets {
+			byChannel[t.ChannelID] = t
+		}
+		for i := range result {
+			if t, ok := byChannel[result[i].ID]; ok {
+				info := &SupportInfo{
+					Status:      t.Status,
+					AssignedTo:  t.AssignedTo,
+					RequesterID: t.RequesterID,
+					CreatedAt:   t.CreatedAt,
+				}
+				if t.Assignee != nil {
+					info.AssigneeName = t.Assignee.Name
+				}
+				if t.Requester != nil {
+					info.RequesterName = t.Requester.Name
+					info.RequesterEmail = t.Requester.Email
+					info.RequesterPhone = t.Requester.PhoneNumber
+					info.CompanyName = t.Requester.CompanyName
+				}
+				result[i].Support = info
+			}
+		}
+	}
+
 	return result, nil
 }
 

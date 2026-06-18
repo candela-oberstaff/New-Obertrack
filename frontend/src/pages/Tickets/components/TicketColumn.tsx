@@ -75,7 +75,7 @@ export default function TicketColumn({
         ) : (
           tickets.map(ticket => (
             <TicketCard
-              key={ticket.zoho_id || ticket.id}
+              key={`${ticket.origin || 'zoho'}-${ticket.zoho_id || ticket.id}`}
               ticket={ticket}
               onClick={() => onTicketClick(ticket)}
             />
