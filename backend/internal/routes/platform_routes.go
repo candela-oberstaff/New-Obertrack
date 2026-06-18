@@ -48,6 +48,7 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		// One-off transactional sends (from tenant / employee detail views)
 		email.POST("/quick-send", d.email.SendQuickEmail)
 		email.POST("/quick-send-bulk", d.email.SendQuickEmailBulk)
+		email.POST("/templates/:id/send", d.email.SendTemplate)
 	}
 
 	audiences := api.Group("/audiences")

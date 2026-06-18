@@ -6,7 +6,6 @@ import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRou
 import { LoadingScreen } from './LoadingScreen'
 
 const Login = lazy(() => import('../pages/Login'))
-const Register = lazy(() => import('../pages/Register'))
 const ForgotPassword = lazy(() => import('../pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('../pages/ResetPassword'))
 const Dashboard = lazy(() => import('../pages/Dashboard'))
@@ -38,7 +37,6 @@ export function AppRoutes() {
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
         <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
-        <Route path="/register" element={<AuthRoute><Register /></AuthRoute>} />
         <Route path="/forgot-password" element={<AuthRoute><ForgotPassword /></AuthRoute>} />
         <Route path="/reset-password" element={<AuthRoute><ResetPassword /></AuthRoute>} />
         <Route

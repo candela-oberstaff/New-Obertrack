@@ -428,6 +428,125 @@ func (h *EmailHandler) SendQuickEmailBulk(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// SendTemplate renders a gestor template's blocks to HTML and dispatches
+// via Brevo to a resolved recipient list (hybrid: userIds / groupIds / expressContacts).
+func (h *EmailHandler) SendTemplate(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid template ID"})
+		return
+	}
+
+	template, err := h.repo.GetTemplateByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Template not found"})
+		return
+	}
+
+	var body struct {
+		RecipientList string `json:"recipient_list" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "recipient_list is required"})
+		return
+	}
+
+	backendURL := resolveBackendURL(c)
+
+	htmlContent, err := utils.RenderBlocksToHTML(template.Content, backendURL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to render template: " + err.Error()})
+		return
+	}
+
+	// Resolve recipients — same hybrid logic as SendCampaign
+	uniqueRecipients := make(map[string]string)
+
+	var hybrid HybridRecipients
+	if err := json.Unmarshal([]byte(body.RecipientList), &hybrid); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid recipient_list format"})
+		return
+	}
+
+	if len(hybrid.UserIDs) > 0 {
+		type UserEmail struct {
+			Name  string `json:"name"`
+			Email string `json:"email"`
+		}
+		var users []UserEmail
+		placeholders := make([]string, len(hybrid.UserIDs))
+		args := make([]interface{}, len(hybrid.UserIDs))
+		for i, rid := range hybrid.UserIDs {
+			placeholders[i] = "?"
+			args[i] = rid
+		}
+		query := fmt.Sprintf("SELECT name, email FROM users WHERE id IN (%s) AND deleted_at IS NULL", strings.Join(placeholders, ","))
+		h.repo.RawQuery(query, args, &users)
+		for _, u := range users {
+			if u.Email != "" {
+				uniqueRecipients[strings.ToLower(u.Email)] = u.Name
+			}
+		}
+	}
+
+	if len(hybrid.GroupIDs) > 0 {
+		type UserEmail struct {
+			Name  string `json:"name"`
+			Email string `json:"email"`
+		}
+		var users []UserEmail
+		placeholders := make([]string, len(hybrid.GroupIDs))
+		args := make([]interface{}, len(hybrid.GroupIDs))
+		for i, gid := range hybrid.GroupIDs {
+			placeholders[i] = "?"
+			args[i] = gid
+		}
+		query := fmt.Sprintf("SELECT DISTINCT u.name, u.email FROM users u JOIN audience_group_members agm ON u.id = agm.user_id WHERE agm.audience_group_id IN (%s) AND u.deleted_at IS NULL", strings.Join(placeholders, ","))
+		h.repo.RawQuery(query, args, &users)
+		for _, u := range users {
+			if u.Email != "" {
+				uniqueRecipients[strings.ToLower(u.Email)] = u.Name
+			}
+		}
+	}
+
+	for _, ec := range hybrid.ExpressContacts {
+		if ec.Email != "" {
+			uniqueRecipients[strings.ToLower(ec.Email)] = ec.Name
+		}
+	}
+
+	if len(uniqueRecipients) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No recipients resolved"})
+		return
+	}
+
+	subject := template.Subject
+	if subject == "" {
+		subject = template.Title
+	}
+
+	var sendErrors []string
+	successCount := 0
+	for email, name := range uniqueRecipients {
+		if err := h.brevoSvc.SendEmail(email, name, subject, htmlContent); err != nil {
+			sendErrors = append(sendErrors, fmt.Sprintf("%s: %s", email, err.Error()))
+		} else {
+			successCount++
+		}
+	}
+
+	resp := gin.H{
+		"message": "Template dispatched",
+		"sent":    successCount,
+		"total":   len(uniqueRecipients),
+	}
+	if len(sendErrors) > 0 {
+		resp["errors"] = sendErrors
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // resolveBackendURL returns the backend's public URL for building absolute
 // links in sent emails. It first checks the SERVICE_URL_BACKEND env var; if
 // unset it derives the URL from the incoming request.
