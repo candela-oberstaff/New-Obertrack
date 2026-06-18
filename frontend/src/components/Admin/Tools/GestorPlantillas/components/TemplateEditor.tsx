@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { X, Save, ChevronLeft } from 'lucide-react';
 import { EmailTemplate } from '../../../../../services/emailService';
 import { blocksFromJSON, blocksToJSON, EmailBlock } from '../../Common/emailTypes';
+import { uploadService } from '../../../../../services/upload.service';
 import styles from './TemplateEditor.module.css';
 
 type TemplateStep = 'meta' | 'builder';
@@ -204,7 +205,7 @@ function TemplateBlockEditor({ blocks, onChange }: { blocks: EmailBlock[]; onCha
     a { color: #7c3aed; }
   </style>
 </head><body>
-  <div style="width:100%;display:flex;justify-content:center;">${previewContent}</div>
+  <div style="width:100%;display:flex;justify-content:center;">${previewContent.replace(/\/api\/uploads\//g, '/api/public/uploads/')}</div>
 </body></html>`, [previewContent]);
 
   const s = {
@@ -422,7 +423,16 @@ function InspectorPanel({ block, onChange }: { block: EmailBlock; onChange: (b: 
       )}
       {block.type === 'image' && (
         <>
-          <div style={fieldStyle}><label style={labelStyle}>URL de imagen</label><input style={inputStyle} placeholder="https://..." value={block.content} onChange={e => set('content', e.target.value)} /></div>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>URL de imagen</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input style={{ ...inputStyle, flex: 1 }} placeholder="https://..." value={block.content} onChange={e => set('content', e.target.value)} />
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: '#7c3aed', color: '#fff', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => { const f = e.target.files?.[0]; if (!f) return; try { const r = await uploadService.upload(f); set('content', r.url) } catch { alert('Error al subir la imagen') } }} />
+                Subir
+              </label>
+            </div>
+          </div>
           <div style={fieldStyle}><label style={labelStyle}>Ancho</label><input style={inputStyle} placeholder="100%" value={block.style.width || '100%'} onChange={e => set('width', e.target.value)} /></div>
         </>
       )}

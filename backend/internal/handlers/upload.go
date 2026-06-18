@@ -101,6 +101,27 @@ func (h *UploadHandler) GetFile(c *gin.Context) {
 	c.File(filePath)
 }
 
+// GetPublicFile serves an uploaded file without authentication.
+// Used for email client image loading where JWT cannot be provided.
+func (h *UploadHandler) GetPublicFile(c *gin.Context) {
+	filename := c.Param("filename")
+	if filename == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Filename required"})
+		return
+	}
+	if strings.ContainsAny(filename, "/\\") || strings.Contains(filename, "..") ||
+		filename != filepath.Base(filename) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid filename"})
+		return
+	}
+	filePath := filepath.Join(h.uploadPath, filename)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+	c.File(filePath)
+}
+
 // DownloadExpedienteDoc sirve un documento del expediente para la audiencia
 // empresa (RR.HH. ve todo). La autorización de ruta (superadmin/CS) ya se aplica
 // por el grupo /admin.

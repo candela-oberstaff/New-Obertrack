@@ -270,6 +270,9 @@ export default function EmailCampaigns() {
   const [editingCampaign, setEditingCampaign] = useState<EmailCampaign | undefined>()
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | undefined>()
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null)
+  const [showSendModal, setShowSendModal] = useState(false)
+  const [sendTarget, setSendTarget] = useState<EmailCampaign | null>(null)
+  const [sendRecipients, setSendRecipients] = useState<RecipientValue>({ userIds: [], groupIds: [], expressContacts: [] })
 
   const notify = (msg: string, type: ToastType = 'success') => setToast({ msg, type })
 
@@ -333,6 +336,24 @@ export default function EmailCampaigns() {
     try {
       const result = await emailService.sendCampaign(id)
       await load()
+      notify(`✓ Campaña enviada a ${result.sent ?? 0} destinatarios`)
+    } catch { notify('Error al enviar la campaña', 'error') }
+    finally { setSaving(false) }
+  }
+
+  const handleSendToRecipients = async () => {
+    if (!sendTarget?.id) return
+    setSaving(true)
+    try {
+      const list = JSON.stringify({
+        userIds: sendRecipients.userIds,
+        groupIds: sendRecipients.groupIds,
+        expressContacts: sendRecipients.expressContacts,
+      })
+      const result = await emailService.sendCampaignToRecipients(sendTarget.id, list)
+      await load()
+      setShowSendModal(false)
+      setSendTarget(null)
       notify(`✓ Campaña enviada a ${result.sent ?? 0} destinatarios`)
     } catch { notify('Error al enviar la campaña', 'error') }
     finally { setSaving(false) }
@@ -424,7 +445,20 @@ export default function EmailCampaigns() {
                   )}
                   <div className={styles.cardActions}>
                     {c.status !== 'sent' && (
-                      <button className={styles.btnPrimary} style={{ fontSize: 12, padding: '7px 14px' }} onClick={() => handleSendCampaign(c.id!)} disabled={saving}>
+                      <button className={styles.btnPrimary} style={{ fontSize: 12, padding: '7px 14px' }} onClick={() => {
+                        let initialRecipients: RecipientValue = { userIds: [], groupIds: [], expressContacts: [] }
+                        try {
+                          const parsed = JSON.parse(c.recipient_list || '[]')
+                          if (Array.isArray(parsed)) {
+                            initialRecipients.userIds = parsed as number[]
+                          } else {
+                            initialRecipients = parsed as RecipientValue
+                          }
+                        } catch {}
+                        setSendRecipients(initialRecipients)
+                        setSendTarget(c)
+                        setShowSendModal(true)
+                      }} disabled={saving}>
                         <Send size={13} /> Enviar
                       </button>
                     )}
@@ -497,6 +531,29 @@ export default function EmailCampaigns() {
           onClose={() => { setShowCampaignModal(false); setEditingCampaign(undefined) }}
           saving={saving}
         />
+      )}
+
+      {/* Send modal */}
+      {showSendModal && sendTarget && (
+        <div className={styles.overlay}>
+          <div className={styles.modal} style={{ maxWidth: 620 }}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>Enviar: {sendTarget.title}</h2>
+              <button className={styles.modalClose} onClick={() => { setShowSendModal(false); setSendTarget(null) }}><X size={16} /></button>
+            </div>
+            <div className={styles.modalBody}>
+              <RecipientSelector value={sendRecipients} onChange={setSendRecipients} />
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.btnSecondary} onClick={() => { setShowSendModal(false); setSendTarget(null) }}>
+                Cancelar
+              </button>
+              <button className={styles.btnPrimary} disabled={saving} onClick={handleSendToRecipients}>
+                <Send size={14} /> {saving ? 'Enviando...' : 'Enviar ahora'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Toast */}

@@ -35,11 +35,18 @@ export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
         </p>
       )}
       <div className={styles['card-meta']}>
-        {task.start_date && (
-          <span className={styles['card-date']}>
-            {new Date(task.start_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
-          </span>
-        )}
+        <div className={styles['card-dates']}>
+          {task.start_date && (
+            <span className={styles['card-date']}>
+              {new Date(task.start_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+            </span>
+          )}
+          {task.end_date && (
+            <span className={`${styles['card-date']} ${new Date(task.end_date) < new Date() && task.status !== 'finalizado' ? styles['card-date-overdue'] : ''}`}>
+              {new Date(task.end_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+        </div>
         {task.attachments && task.attachments.length > 0 && (
           <div className={styles['card-attachments'] || 'card-attachments'} title={`${task.attachments.length} archivos adjuntos`}>
             <Paperclip size={14} />

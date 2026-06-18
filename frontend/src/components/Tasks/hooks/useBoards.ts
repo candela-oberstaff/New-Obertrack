@@ -167,7 +167,7 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
       return newBoard
     } catch (error) {
       console.error('Error creating board:', error)
-      return null
+      throw error
     } finally {
       setIsCreatingBoard(false)
     }
