@@ -92,7 +92,13 @@ export function MessageList({
       ) : (
         messages.map((msg) => (
           <MessageItem
-            key={msg.id || msg.tempId}
+            // M-3: prioritize tempId so the key stays stable across the
+            // optimistic->real reconciliation (the real message preserves the
+            // optimistic tempId), avoiding a remount that would drop local UI
+            // state (emoji picker, edit focus). Messages that were never
+            // optimistic (WS messages from others, system messages) have no
+            // tempId and fall back to their real id.
+            key={msg.tempId ?? msg.id}
             message={msg}
             currentUser={currentUser}
             editingMessageId={editingMessageId}

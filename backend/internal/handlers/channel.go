@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,8 +42,8 @@ func (h *ChannelHandler) channelAccessAllowed(c *gin.Context, channel *models.Ch
 	if channel.Type != models.ChannelTypePublic || channel.TenantID == 0 || channel.TenantID != middleware.GetTenantID(c) {
 		return false
 	}
-	// Join revalida tipo de canal y tenant; "already a member" cubre carreras.
-	if err := h.svc.Join(channel.ID, userID); err != nil && err.Error() != "already a member" {
+	// Join revalida tipo de canal y tenant y es idempotente (no-op si ya es miembro).
+	if err := h.svc.Join(channel.ID, userID); err != nil {
 		return false
 	}
 	return true
@@ -117,11 +118,28 @@ func (h *ChannelHandler) UpdateChannel(c *gin.Context) {
 		return
 	}
 
-	channel, err := h.svc.Update(uint(id), userID, req.Name, req.Description)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	channel, err := h.svc.Update(uint(id), userID, req.Name, req.Description, isSuperadmin)
 	if err != nil {
+		// Nombre duplicado → 400 (evita el 500 del índice único).
+		if errors.Is(err, service.ErrDuplicateChannelName) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, service.ErrUnauthorized) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Difunde el canal actualizado SOLO tras éxito (contrato WS con el frontend).
+	h.hub.Broadcast(websocket.ChannelWSMessage{
+		Type:      "channel_updated",
+		ChannelID: uint(id),
+		Data:      channel,
+	})
 
 	c.JSON(http.StatusOK, channel)
 }
@@ -132,9 +150,24 @@ func (h *ChannelHandler) DeleteChannel(c *gin.Context) {
 	isSuperadmin := middleware.IsSuperadmin(c)
 
 	if err := h.svc.Delete(uint(id), userID, isSuperadmin); err != nil {
+		// DMs / canales de soporte no se eliminan → 400 (no es un error del servidor).
+		if errors.Is(err, service.ErrChannelNotDeletable) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, service.ErrUnauthorized) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Difunde la eliminación SOLO tras éxito (contrato WS con el frontend).
+	h.hub.Broadcast(websocket.ChannelWSMessage{
+		Type:      "channel_deleted",
+		ChannelID: uint(id),
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Channel deleted"})
 }
@@ -152,7 +185,14 @@ func (h *ChannelHandler) GetMembers(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, channel.Members)
+	// Contrato con el frontend: [{id,name,email,role}] (role = admin|member).
+	members, err := h.svc.GetMembersWithRole(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, members)
 }
 
 func (h *ChannelHandler) AddMember(c *gin.Context) {
@@ -168,7 +208,8 @@ func (h *ChannelHandler) AddMember(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.AddMember(uint(id), userID, req.UserID); err != nil {
+	isSuperadmin := middleware.IsSuperadmin(c)
+	if err := h.svc.AddMember(uint(id), userID, req.UserID, isSuperadmin); err != nil {
 		if err.Error() == "unauthorized" || err.Error() == "professionals cannot add superadmins" {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		} else if err.Error() == "user is already a member" {
@@ -197,7 +238,12 @@ func (h *ChannelHandler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.RemoveMember(uint(id), userID, req.UserID); err != nil {
+	isSuperadmin := middleware.IsSuperadmin(c)
+	if err := h.svc.RemoveMember(uint(id), userID, req.UserID, isSuperadmin); err != nil {
+		if errors.Is(err, service.ErrUnauthorized) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -205,14 +251,55 @@ func (h *ChannelHandler) RemoveMember(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Member removed"})
 }
 
+// UpdateMemberRole promueve/degrada a un miembro del canal (admin|member). Solo
+// el creador del canal o un superadmin pueden hacerlo. Contrato con el frontend:
+// PATCH /channels/:id/members/:userId/role con body {"role":"admin"|"member"}.
+func (h *ChannelHandler) UpdateMemberRole(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	targetID, _ := strconv.ParseUint(c.Param("userId"), 10, 32)
+	userID := middleware.GetUserID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+
+	var req struct {
+		Role string `json:"role" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.SetMemberRole(uint(id), userID, uint(targetID), req.Role, isSuperadmin); err != nil {
+		switch {
+		case errors.Is(err, service.ErrUnauthorized):
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		case errors.Is(err, service.ErrChannelNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case err.Error() == "invalid role" || err.Error() == "cannot change channel creator role" || err.Error() == "target is not a channel member":
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	// Difunde el cambio de membresía para que la UI refresque roles en vivo.
+	h.hub.Broadcast(websocket.ChannelWSMessage{
+		Type:      "members_updated",
+		ChannelID: uint(id),
+	})
+
+	c.JSON(http.StatusOK, gin.H{"message": "Member role updated"})
+}
+
 func (h *ChannelHandler) JoinChannel(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	userID := middleware.GetUserID(c)
 
-	// "already a member" no es un fallo: channelAccessAllowed auto-une al usuario
-	// al ver un canal público, así que para cuando pulsa "Unirse al canal" puede
-	// que ya tenga la fila de membresía. Tratarlo como éxito (idempotente).
-	if err := h.svc.Join(uint(id), userID); err != nil && err.Error() != "already a member" {
+	// Join es idempotente: si ya tiene la fila de membresía es un no-op exitoso
+	// (channelAccessAllowed auto-une al ver un canal público), así que pulsar
+	// "Unirse al canal" cuando ya es miembro no es un error.
+	if err := h.svc.Join(uint(id), userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -268,6 +355,7 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		FileName   string `json:"file_name"`
 		FileSize   int64  `json:"file_size"`
 		FileType   string `json:"file_type"`
+		TempID     string `json:"temp_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -286,7 +374,7 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	message, mentioned, err := h.svc.SendMessage(uint(id), userID, req.Content, req.Attachment, req.FileName, req.FileSize)
+	message, mentioned, err := h.svc.SendMessage(uint(id), userID, req.Content, req.Attachment, req.FileName, req.FileSize, req.FileType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -297,6 +385,7 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		ChannelID: uint(id),
 		Content:   req.Content,
 		UserID:    userID,
+		TempID:    req.TempID,
 		Data:      message,
 	})
 
@@ -543,6 +632,7 @@ func (h *ChannelHandler) SendThreadReply(c *gin.Context) {
 
 	var req struct {
 		Content string `json:"content" binding:"required"`
+		TempID  string `json:"temp_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -556,9 +646,12 @@ func (h *ChannelHandler) SendThreadReply(c *gin.Context) {
 		return
 	}
 
+	// Echo temp_id back like the normal-message handler so the sender's other tabs
+	// reconcile the optimistic thread reply by temp_id (not only by server id).
 	h.hub.Broadcast(websocket.ChannelWSMessage{
 		Type:      "thread_reply",
 		ChannelID: uint(id),
+		TempID:    req.TempID,
 		Data:      message,
 	})
 
@@ -636,7 +729,7 @@ func (h *ChannelHandler) GetStatuses(c *gin.Context) {
 		}
 	}
 
-	statuses, err := h.svc.GetStatuses(userIDs)
+	statuses, err := h.svc.GetStatuses(userIDs, middleware.GetTenantID(c), middleware.IsSuperadmin(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -714,7 +807,8 @@ func (h *ChannelHandler) ListSupportAgents(c *gin.Context) {
 func (h *ChannelHandler) ListPendingSupport(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
-	tickets, err := h.svc.ListPendingSupport(userID)
+	companyFilter := superadminCompanyFilter(c, middleware.IsSuperadmin(c))
+	tickets, err := h.svc.ListPendingSupport(userID, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

@@ -23,7 +23,13 @@ export interface Channel {
   unread_count: number
   created_at: string
   recipient?: User
+  // Solo en DMs vistos por un no-participante (supervisión de superadmin):
+  // ambos miembros, para mostrar "A ↔ B" en vez de un nombre arbitrario.
+  participants?: User[]
   support?: SupportInfo
+  // True cuando un superadmin audita un canal en el que NO participa
+  // (DM o privado ajeno). Públicos y canales propios → false.
+  supervised?: boolean
 }
 
 export interface SupportTicket {
@@ -74,6 +80,7 @@ export interface ChannelMember {
   id: number
   name: string
   email: string
+  role?: 'admin' | 'member'
 }
 
 export interface UserStatus {

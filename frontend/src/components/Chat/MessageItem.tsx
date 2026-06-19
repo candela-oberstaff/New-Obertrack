@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { Message } from '../../types/chat'
 import { User } from '../../types'
 import { ReplyIcon, EditIcon, TrashIcon, PinIcon, SmileIcon, StarIcon } from './Icons'
@@ -32,7 +32,7 @@ interface MessageItemProps {
   highlightMentions: (content: string) => React.ReactNode
 }
 
-export function MessageItem({
+function MessageItemInner({
   message,
   currentUser,
   editingMessageId,
@@ -58,10 +58,18 @@ export function MessageItem({
 }: MessageItemProps) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
 
+  // M-7: trust the real `file_type` persisted by the backend (Sprint 4 / M-8).
+  // Voice notes are recorded and sent as 'audio/webm' (see useSlackChat.sendRecording),
+  // so `file_type` starting with 'audio/' is the authoritative signal.
+  // - Removed the `file_name?.includes('voice')` branch: voice notes are named
+  //   'Nota de voz', so it never matched.
+  // - Removed the `.mp3` extension branch: a legitimately-attached .mp3 is NOT a
+  //   voice note and must not get the voice-note UI (it can still render as audio
+  //   via file_type 'audio/...').
+  // - Kept only a `.webm` extension fallback for legacy messages whose file_type
+  //   wasn't persisted, since .webm is the actual recording format we produce.
   const isVoiceNote = message.file_type?.startsWith('audio/') ||
-                     message.file_name?.includes('voice') ||
-                     message.attachment?.includes('.webm') ||
-                     message.attachment?.includes('.mp3')
+                     (!message.file_type && message.attachment?.includes('.webm'))
 
   // file_type isn't always persisted (e.g. GIFs from Giphy), so fall back to the URL extension.
   const isImageAttachment = !isVoiceNote && (
@@ -144,7 +152,7 @@ export function MessageItem({
                   <span className={styles['voice-label'] || 'voice-label'}>Nota de voz</span>
                 </div>
               ) : isImageAttachment ? (
-                <img src={message.attachment} alt="Adjunto" className={styles['attachment-image']} onClick={() => window.open(message.attachment, '_blank')} />
+                <img src={message.attachment} alt="Adjunto" className={styles['attachment-image']} onClick={() => window.open(message.attachment, '_blank', 'noopener,noreferrer')} />
               ) : (
                 <a href={message.attachment} target="_blank" rel="noopener noreferrer" className={styles['attachment-file'] || 'attachment-file'}>
                   📁 {message.file_name || 'Archivo'}
@@ -226,3 +234,9 @@ export function MessageItem({
     </div>
   )
 }
+
+// Memoized so a message doesn't re-render unless its own props change. This
+// avoids the O(messages x users) cost of highlightMentions running for every
+// message on every parent render; relies on the parent passing stable props
+// (notably a useCallback'd highlightMentions).
+export const MessageItem = memo(MessageItemInner)

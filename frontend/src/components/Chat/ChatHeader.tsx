@@ -2,13 +2,13 @@ import { LifeBuoy } from 'lucide-react'
 import { Channel } from '../../types/chat'
 import type { User } from '../../types'
 import { PinIcon, UserPlusIcon, InfoIcon, LogOutIcon, SearchIcon, StarIcon } from './Icons'
-import { isSupportChannel, supportLabel } from './ChatUtils'
+import { isSupportChannel, supportLabel, dmContactName } from './ChatUtils'
 import { SupportTicketControls } from './SupportTicketControls'
 import styles from '../../pages/SlackChat.module.css'
 
 // Nombre a mostrar de un canal en el encabezado (limpia los de soporte).
 const channelDisplayName = (c: Channel) =>
-  c.type === 'direct' ? (c.recipient?.name || c.name) : isSupportChannel(c) ? supportLabel(c.name) : c.name
+  c.type === 'direct' ? dmContactName(c) : isSupportChannel(c) ? supportLabel(c.name) : c.name
 
 interface ChatHeaderProps {
   selectedChannel: Channel | null
