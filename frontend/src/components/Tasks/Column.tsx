@@ -6,6 +6,7 @@ import { GripVertical } from 'lucide-react'
 import { SortableTaskCard } from './TaskCard'
 import { TaskFilters, DEFAULT_FILTERS, type TaskFiltersState } from './components/TaskFilters'
 import type { Task } from '../../types'
+import { parseDateOnly } from '../../utils/date'
 import { ColumnType } from './types'
 import styles from '../../pages/Tasks.module.css'
 
@@ -27,7 +28,7 @@ function sortByEndDate(a: Task, b: Task) {
   if (!a.end_date && !b.end_date) return 0
   if (!a.end_date) return 1
   if (!b.end_date) return -1
-  return new Date(a.end_date).getTime() - new Date(b.end_date).getTime()
+  return parseDateOnly(a.end_date).getTime() - parseDateOnly(b.end_date).getTime()
 }
 
 function filterByPriority(task: Task, priority: string) {
@@ -38,8 +39,8 @@ function filterByPriority(task: Task, priority: string) {
 function filterByDateRange(task: Task, dateFrom: string, dateTo: string) {
   if (!dateFrom && !dateTo) return true
   if (!task.end_date) return !dateFrom && !dateTo
-  const d = new Date(task.end_date).getTime()
-  if (dateFrom && d < new Date(dateFrom).getTime()) return false
+  const d = parseDateOnly(task.end_date).getTime()
+  if (dateFrom && d < parseDateOnly(dateFrom).getTime()) return false
   if (dateTo && d > new Date(dateTo + 'T23:59:59').getTime()) return false
   return true
 }
@@ -49,7 +50,7 @@ function filterByDateStatus(task: Task, dateStatus: string) {
   if (!task.end_date) return false
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const due = new Date(task.end_date).getTime()
+  const due = parseDateOnly(task.end_date).getTime()
   if (dateStatus === 'overdue') return due < today && task.status !== 'finalizado'
   if (dateStatus === 'today') return due >= today && due < today + 86400000
   if (dateStatus === 'week') return due >= today && due < today + 7 * 86400000

@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Task } from '../../types'
 import { htmlToText } from '../../utils/sanitize'
+import { parseDateOnly, formatDateOnly, todayMidnight } from '../../utils/date'
 import styles from '../../pages/Tasks.module.css'
 
 interface TaskCardProps {
@@ -42,8 +43,8 @@ export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
             </span>
           )}
           {task.end_date && (
-            <span className={`${styles['card-date']} ${new Date(task.end_date) < new Date() && task.status !== 'finalizado' ? styles['card-date-overdue'] : ''}`}>
-              {new Date(task.end_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+            <span className={`${styles['card-date']} ${task.status !== 'finalizado' && parseDateOnly(task.end_date).getTime() < todayMidnight().getTime() ? styles['card-date-overdue'] : ''}`}>
+              {formatDateOnly(task.end_date, { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
           )}
         </div>

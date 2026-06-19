@@ -68,7 +68,9 @@ export default function Login() {
         <a href="/forgot-password">¿Olvidaste tu contraseña?</a>
       </p>
 
-
+      <p className={styles['auth-powered']}>
+        Powered by <img src="/logos/logo-oberstaff.png" alt="Oberstaff" style={{ height: 18, width: 'auto', opacity: 0.6, verticalAlign: 'middle', marginLeft: 4 }} />
+      </p>
     </AuthLayout>
   )
 }

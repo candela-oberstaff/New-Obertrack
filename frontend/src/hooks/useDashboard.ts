@@ -49,7 +49,7 @@ export function useDashboard(user: any): UseDashboardReturn {
     queryKey: ['dashboard', user?.id, canSeeEmployees],
     queryFn: async () => {
       const [tasksData, workHoursData, summaryData] = await Promise.allSettled([
-        taskService.getAll({ limit: 10 }),
+        taskService.getAll({ limit: 10, assignee_id: String(user.id) }),
         workHourService.getAll({ limit: 10 }),
         workHourService.getSummary(),
       ])

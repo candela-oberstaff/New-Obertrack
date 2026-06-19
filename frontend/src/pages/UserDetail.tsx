@@ -5,6 +5,7 @@ import { useEmployeeTracking } from '../hooks'
 import { useAuth } from '../context/AuthContext'
 import Avatar from '../components/Common/Avatar'
 import { useConfirm } from '../components/ui/ConfirmProvider'
+import { formatDateOnly } from '../utils/date'
 import styles from './Tenants/Tenants.module.css'
 
 export default function UserDetail() {
@@ -194,7 +195,7 @@ export default function UserDetail() {
                         {t.completed ? 'Finalizada' : t.status}
                       </span>
                     </td>
-                    <td>{t.end_date ? new Date(t.end_date).toLocaleDateString('es-ES') : '—'}</td>
+                    <td>{t.end_date ? formatDateOnly(t.end_date) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
