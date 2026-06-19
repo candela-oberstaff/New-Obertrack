@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { LifeBuoy, Inbox } from 'lucide-react'
 import { Channel, SupportTicket } from '../../types/chat'
-import { isSupportChannel, supportLabel, supportStatusMeta } from './ChatUtils'
+import { isSupportChannel, supportLabel, supportStatusMeta, dmContactName } from './ChatUtils'
 import styles from '../../pages/SlackChat.module.css'
 
 interface SidebarProps {
@@ -149,7 +149,7 @@ export function Sidebar({
                               ? '✓ Resuelto'
                               : channel.support.assignee_name
                                 ? `Atendido por ${channel.support.assignee_name}`
-                                : 'Sin asignar'}
+                                : (isSupportAgent ? 'Sin asignar' : 'En cola')}
                           </span>
                         )}
                       </span>
@@ -214,7 +214,7 @@ export function Sidebar({
                     title={status === 'online' ? 'En línea' : status === 'away' ? 'Ausente' : 'Desconectado'}
                   />
                   <span className={styles['channel-mini-name']}>
-                    {channel.type === 'direct' ? (channel.recipient?.name || channel.name) : channel.name}
+                    {channel.type === 'direct' ? dmContactName(channel) : channel.name}
                   </span>
                   {channel.unread_count > 0 && (
                     <span className={styles['unread-badge']}>{channel.unread_count}</span>

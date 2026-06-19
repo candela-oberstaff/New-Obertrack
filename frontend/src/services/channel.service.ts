@@ -1,6 +1,6 @@
 import api from './client'
 import type { User } from '../types'
-import type { Channel, Message, DMChannel, MessageReaction, UserStatus, SupportTicket } from '../types/chat'
+import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket } from '../types/chat'
 
 export const channelService = {
   getChannels: async (companyId?: number | null): Promise<Channel[]> => {
@@ -34,7 +34,7 @@ export const channelService = {
     const { data } = await api.get<Message[]>(`/channels/${channelId}/messages`, { params })
     return data
   },
-  sendMessage: async (channelId: number, message: { content: string; attachment?: string; file_name?: string }) => {
+  sendMessage: async (channelId: number, message: { content: string; attachment?: string; file_name?: string; file_type?: string; temp_id?: string }) => {
     const { data } = await api.post<Message>(`/channels/${channelId}/messages`, message)
     return data
   },
@@ -45,8 +45,8 @@ export const channelService = {
   deleteMessage: async (channelId: number, messageId: number) => {
     await api.delete(`/channels/${channelId}/messages/${messageId}`)
   },
-  getMembers: async (channelId: number) => {
-    const { data } = await api.get<User[]>(`/channels/${channelId}/members`)
+  getMembers: async (channelId: number): Promise<ChannelMember[]> => {
+    const { data } = await api.get<ChannelMember[]>(`/channels/${channelId}/members`)
     return data
   },
   addMember: async (channelId: number, userId: number) => {
@@ -54,6 +54,11 @@ export const channelService = {
   },
   removeMember: async (channelId: number, userId: number) => {
     await api.delete(`/channels/${channelId}/members`, { data: { user_id: userId } })
+  },
+  // Promueve/degrada el rol de un miembro del canal. Solo creador+superadmin
+  // lo consiguen (el backend revalida y rechaza al resto).
+  setMemberRole: async (channelId: number, userId: number, role: 'admin' | 'member') => {
+    await api.patch(`/channels/${channelId}/members/${userId}/role`, { role })
   },
   joinChannel: async (channelId: number) => {
     await api.post(`/channels/${channelId}/join`)
@@ -82,8 +87,8 @@ export const channelService = {
     const { data } = await api.get<Message[]>(`/channels/${channelId}/messages/${messageId}/replies`)
     return data
   },
-  sendThreadReply: async (channelId: number, messageId: number, content: string) => {
-    const { data } = await api.post<Message>(`/channels/${channelId}/messages/${messageId}/replies`, { content })
+  sendThreadReply: async (channelId: number, messageId: number, content: string, temp_id?: string) => {
+    const { data } = await api.post<Message>(`/channels/${channelId}/messages/${messageId}/replies`, { content, temp_id })
     return data
   },
   starMessage: async (messageId: number) => {
@@ -123,8 +128,9 @@ export const channelService = {
     return data
   },
   // Cola de solicitudes de soporte sin asignar (invitaciones a aceptar).
-  getPendingSupport: async (): Promise<SupportTicket[]> => {
-    const { data } = await api.get<SupportTicket[]>('/channels/support/pending')
+  getPendingSupport: async (companyId?: number | null): Promise<SupportTicket[]> => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.get<SupportTicket[]>('/channels/support/pending', { params })
     return data
   },
   claimSupport: async (channelId: number): Promise<SupportTicket> => {

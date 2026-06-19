@@ -6,6 +6,7 @@ import (
 	"github.com/obertrack/backend/internal/config"
 	"github.com/obertrack/backend/internal/handlers"
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/service"
 	"github.com/obertrack/backend/internal/websocket"
@@ -97,20 +98,37 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})
-	channelHub := websocket.NewChannelHub(func(msg websocket.ChannelWSMessage) {})
-	channelHub.MemberResolver = func(channelID uint) map[uint]bool {
-		members, err := channelRepo.GetMembers(channelID)
-		if err != nil {
-			return map[uint]bool{}
-		}
-		result := make(map[uint]bool, len(members))
-		for _, m := range members {
-			result[m.ID] = true
-		}
-		return result
-	}
+	channelHub := websocket.NewChannelHub()
+	// Membership is resolved on every broadcast and every typing frame, so cache
+	// it with a short TTL instead of hitting the DB (JOIN users) each time.
+	channelMembers := newMemberCache(channelRepo)
+	channelHub.MemberResolver = channelMembers.Members
 	go chatHub.Run()
 	go channelHub.Run()
+
+	// Difusor de mensajes de SISTEMA de soporte: los mensajes de soporte
+	// (🛟 tomó / asignó / ✅ resuelto) se generan dentro del servicio y no pasan
+	// por el handler HTTP SendMessage (que es quien difunde los mensajes normales
+	// de usuario), por lo que sin esto no llegaban en vivo. El callback vive en
+	// routes (no en service) para no acoplar service→websocket y evitar el ciclo
+	// de imports: construye aquí el ChannelWSMessage con el MISMO formato que usa
+	// el handler ("message" + Data: *models.ChannelMessage) para que el cliente
+	// los parsee igual que cualquier otro mensaje.
+	channelSvc.SetBroadcaster(func(channelID uint, msg *models.ChannelMessage) {
+		channelHub.Broadcast(websocket.ChannelWSMessage{
+			Type:      "message",
+			ChannelID: channelID,
+			Data:      msg,
+		})
+	})
+
+	// Invalidación del caché de miembros tras cada mutación de membresía. El
+	// caché vive en routes (newMemberCache) y alimenta al MemberResolver del hub;
+	// el channelService lo invalida mediante este callback inyectado (mismo patrón
+	// que SetBroadcaster) para no acoplar service→routes. Sin esto, un miembro
+	// recién añadido no recibía broadcasts en vivo —y uno removido seguía
+	// recibiéndolos— hasta agotarse el TTL de 30s.
+	channelSvc.SetMembershipChangeHandler(channelMembers.Invalidate)
 
 	// Watcher diario: alerta al equipo CS (interno + email + Slack) sobre
 	// profesionales con 2+ días sin registrar horas.

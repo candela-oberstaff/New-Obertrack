@@ -22,6 +22,13 @@ type Channel struct {
 	CreatedBy     uint           `gorm:"not null;index" json:"created_by"`
 	TenantID      uint           `gorm:"uniqueIndex:idx_channel_name_type_tenant" json:"tenant_id"`
 	CreatedByUser User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	// IsActive is the canonical source of truth for whether a channel is "deleted".
+	// Soft-delete (DeleteChannel) flips this to false; recreating a channel with the
+	// same name/type/tenant reactivates the existing row (B-7) instead of inserting a
+	// new one (which would violate idx_channel_name_type_tenant). All sidebar filters
+	// (GetChannelsByUser/ByCompany) gate on is_active = true. The gorm.DeletedAt below
+	// is NEVER set by our delete path — it exists only so GORM's hard-delete tooling
+	// has somewhere to write; if it ever diverges from IsActive, IsActive wins.
 	IsActive      bool           `gorm:"default:true" json:"is_active"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
@@ -66,15 +73,18 @@ type ChannelMessage struct {
 	Reactions  []MessageReaction `gorm:"foreignKey:MessageID" json:"reactions,omitempty"`
 	CreatedAt  time.Time         `json:"created_at"`
 	UpdatedAt  time.Time         `json:"updated_at"`
-	DeletedAt  gorm.DeletedAt    `gorm:"index:idx_channel_msg_channel_deleted" json:"-"`
+	// NOTE: no gorm.DeletedAt here on purpose. Deletion is tracked solely via the
+	// is_deleted flag (the row is kept so the UI can show "[Mensaje eliminado]").
+	// Keeping a gorm.DeletedAt would inject an automatic "deleted_at IS NULL" into
+	// every query and create a second, never-set source of truth.
 }
 
 type MessageReaction struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
-	MessageID uint      `gorm:"not null;index" json:"message_id"`
-	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	MessageID uint      `gorm:"not null;index;uniqueIndex:idx_reaction_unique" json:"message_id"`
+	UserID    uint      `gorm:"not null;index;uniqueIndex:idx_reaction_unique" json:"user_id"`
 	User      User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Emoji     string    `gorm:"size:50;not null" json:"emoji"`
+	Emoji     string    `gorm:"size:50;not null;uniqueIndex:idx_reaction_unique" json:"emoji"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -84,8 +94,8 @@ func (MessageReaction) TableName() string {
 
 type StarredMessage struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    uint      `gorm:"not null;index" json:"user_id"`
-	MessageID uint      `gorm:"not null;index" json:"message_id"`
+	UserID    uint      `gorm:"not null;index;uniqueIndex:idx_star_unique" json:"user_id"`
+	MessageID uint      `gorm:"not null;index;uniqueIndex:idx_star_unique" json:"message_id"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

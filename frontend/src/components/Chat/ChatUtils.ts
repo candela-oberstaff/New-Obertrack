@@ -12,6 +12,28 @@ export const getAudioContext = () => {
   return globalAudioContext
 }
 
+// Unique id for optimistic messages. Date.now() alone collides when two sends
+// land in the same millisecond, which breaks tempId-based dedupe and React keys.
+// Prefer crypto.randomUUID (available over https/wss); fall back just in case.
+export const newTempId = (): string => {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `temp-${crypto.randomUUID()}`
+    }
+  } catch { /* fall through */ }
+  return `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+// Nombre a mostrar de un DM: el destinatario; o ambos participantes ("A ↔ B")
+// cuando el viewer no participa (supervisión de superadmin); o el nombre crudo.
+export const dmContactName = (c: {
+  recipient?: { name?: string }
+  participants?: { name?: string }[]
+  name?: string
+}) =>
+  c.recipient?.name ||
+  (c.participants?.length ? c.participants.map(p => p.name).filter(Boolean).join(' ↔ ') : c.name || '')
+
 // Los canales de soporte se crean como privados con el nombre "Soporte · <nombre> #<id>".
 export const isSupportChannel = (c: { type?: string; name?: string }) =>
   c?.type === 'private' && !!c.name && /^Soporte · /.test(c.name)
@@ -46,21 +68,39 @@ export const formatTime = (dateString: string) => {
   yesterday.setDate(now.getDate() - 1)
   if (isSameDay(date, yesterday)) return `Ayer ${time}`
 
-  return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+  // Older dates: include the year only when it differs from the current year, so
+  // "5 mar" (this year) stays compact while "5 mar 2024" disambiguates old dates.
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
+  if (date.getFullYear() !== now.getFullYear()) opts.year = 'numeric'
+  return date.toLocaleDateString('es-ES', opts)
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-export const highlightMentions = (content: string, allUsers: User[], currentUserName?: string): React.ReactNode => {
+// Build the mention RegExp once per user list, so callers can memoize it and
+// avoid rebuilding it on every render of every message. Returns null when there
+// are no names (callers should then render the raw content).
+export const buildMentionRegex = (allUsers: User[]): RegExp | null => {
   // Match against real user names (they contain spaces and accents, so \w+ won't do).
   // Longest names first so "Laura Méndez Jr" wins over "Laura Méndez".
   const names = allUsers
     .map(u => u.name)
     .filter(Boolean)
     .sort((a, b) => b.length - a.length)
-  if (names.length === 0) return content
+  if (names.length === 0) return null
+  return new RegExp(`@(${names.map(escapeRegExp).join('|')})`, 'gi')
+}
 
-  const mentionRegex = new RegExp(`@(${names.map(escapeRegExp).join('|')})`, 'gi')
+// Highlight mentions using a precomputed RegExp (see buildMentionRegex), so the
+// regex is built once per user list rather than on every render of every message.
+export const highlightMentionsWithRegex = (
+  content: string,
+  mentionRegex: RegExp | null,
+  currentUserName?: string,
+): React.ReactNode => {
+  if (!mentionRegex) return content
+  // Shared regexes are stateful with the /g flag; reset before each scan.
+  mentionRegex.lastIndex = 0
   const parts: React.ReactNode[] = []
   let lastIndex = 0
   let match
@@ -85,10 +125,28 @@ export const highlightMentions = (content: string, allUsers: User[], currentUser
   return parts.length > 0 ? parts : content
 }
 
-// True when the message text mentions the given user by name.
+// Lowercase + strip accents so mention matching is accent/case-insensitive.
+// Kept in sync with the backend normalizeMention (channel_messages.go).
+const foldMention = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+// True when the message text mentions the given user by name as a whole token,
+// i.e. "@name" followed by end-of-string or a non-alphanumeric character, so
+// "@Ana" does NOT match inside "@Anabel". Mirrors the backend predicate.
 export const mentionsUser = (content: string, userName?: string): boolean => {
   if (!userName) return false
-  return content.toLowerCase().includes(`@${userName.toLowerCase()}`)
+  const haystack = foldMention(content)
+  const name = foldMention(userName.trim())
+  if (!name) return false
+  const needle = `@${name}`
+  let from = 0
+  for (;;) {
+    const idx = haystack.indexOf(needle, from)
+    if (idx < 0) return false
+    const after = haystack[idx + needle.length]
+    // End-of-string or a non-alphanumeric character is a valid token boundary.
+    if (after === undefined || !/[a-z0-9]/i.test(after)) return true
+    from = idx + needle.length
+  }
 }
 
 export const playNotificationSound = () => {

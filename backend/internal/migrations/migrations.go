@@ -791,6 +791,108 @@ func Run(db *gorm.DB) error {
                 return nil
             },
         },
+        {
+            // Reacciones/stars idempotentes: dedupe de filas existentes + índice
+            // único. En BD nueva el tag uniqueIndex ya crea el índice; este paso
+            // cubre BDs existentes (dedupea primero y luego crea el índice).
+            ID: "202606171100_dedupe_reactions_stars_unique",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Deduping message_reactions/starred_messages and creating unique indexes...")
+                // 1) Borra duplicados dejando el de menor id en cada grupo.
+                if err := tx.Exec(`
+                    DELETE FROM message_reactions a
+                    USING message_reactions b
+                    WHERE a.message_id = b.message_id
+                      AND a.user_id = b.user_id
+                      AND a.emoji = b.emoji
+                      AND a.id > b.id
+                `).Error; err != nil {
+                    return err
+                }
+                if err := tx.Exec(`
+                    DELETE FROM starred_messages a
+                    USING starred_messages b
+                    WHERE a.user_id = b.user_id
+                      AND a.message_id = b.message_id
+                      AND a.id > b.id
+                `).Error; err != nil {
+                    return err
+                }
+                // 2) Crea los índices únicos (idempotente con IF NOT EXISTS).
+                if err := tx.Exec(`
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_reaction_unique
+                    ON message_reactions (message_id, user_id, emoji)
+                `).Error; err != nil {
+                    return err
+                }
+                return tx.Exec(`
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_star_unique
+                    ON starred_messages (user_id, message_id)
+                `).Error
+            },
+            Rollback: func(tx *gorm.DB) error {
+                if err := tx.Exec(`DROP INDEX IF EXISTS idx_reaction_unique`).Error; err != nil {
+                    return err
+                }
+                return tx.Exec(`DROP INDEX IF EXISTS idx_star_unique`).Error
+            },
+        },
+        {
+            // Backfill (M-5): agrega a todos los usuarios activos de cada empresa
+            // como miembros de los canales PÚBLICOS existentes de su empresa. Los
+            // públicos se crean con todos los usuarios del momento, pero quienes
+            // llegaron después no quedaban como miembros (no podían escribir bien,
+            // ni tenían no-leídos/tiempo real). joined_at = NOW() para que NO vean
+            // el historial viejo como no-leído (el conteo usa joined_at). Idempotente
+            // (NOT EXISTS); la PK compuesta (channel_id, user_id) evita duplicados.
+            ID: "202606181200_backfill_public_channel_members",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Backfilling public channel members for existing company users...")
+                return tx.Exec(`
+                    INSERT INTO channel_members (channel_id, user_id, role, joined_at, created_at)
+                    SELECT c.id, u.id, 'member', NOW(), NOW()
+                    FROM channels c
+                    JOIN users u ON (u.id = c.tenant_id OR u.empleador_id = c.tenant_id)
+                    WHERE c.type = 'public'
+                      AND c.is_active = true
+                      AND c.deleted_at IS NULL
+                      AND c.tenant_id > 0
+                      AND u.is_active = true
+                      AND u.deleted_at IS NULL
+                      AND u.user_type NOT IN ('superadmin', 'customer_success')
+                      AND NOT EXISTS (
+                          SELECT 1 FROM channel_members cm
+                          WHERE cm.channel_id = c.id AND cm.user_id = u.id
+                      )
+                `).Error
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return nil
+            },
+        },
+        {
+            // Sprint B: el CREADOR de cada canal pasa a ser ADMIN del canal (poderes
+            // de gestión: editar/eliminar/añadir-quitar miembros). Los canales se
+            // crearon con el creador como 'member'; aquí se hace backfill de su fila
+            // de membresía a 'admin'. SOLO toca filas que hoy son 'member' (no pisa
+            // otros roles raros) y es idempotente: re-correrla no cambia nada porque
+            // el WHERE excluye las que ya son 'admin'.
+            ID: "202606191200_backfill_channel_creator_admin",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Backfilling channel creators as channel admins...")
+                return tx.Exec(`
+                    UPDATE channel_members cm
+                    SET role = 'admin'
+                    FROM channels c
+                    WHERE cm.channel_id = c.id
+                      AND cm.user_id = c.created_by
+                      AND cm.role <> 'admin'
+                `).Error
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return nil
+            },
+        },
         // Future migrations go here
     })
 
