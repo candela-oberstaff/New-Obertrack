@@ -199,7 +199,11 @@ func (r *channelRepository) GetMember(channelID, userID uint) (*models.ChannelMe
 }
 
 func (r *channelRepository) AddMember(member *models.ChannelMember) error {
-	return r.db.Create(member).Error
+	// Idempotente ante carrera: el auto-join del cliente y el de channelAccessAllowed
+	// pueden insertar el mismo (channel_id, user_id) casi a la vez; ON CONFLICT DO
+	// NOTHING evita la violación de la PK compuesta (que se traducía en un HTTP 500
+	// y, en el cliente, en "No se pudo unir al canal").
+	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(member).Error
 }
 
 func (r *channelRepository) RemoveMember(channelID, userID uint) error {
