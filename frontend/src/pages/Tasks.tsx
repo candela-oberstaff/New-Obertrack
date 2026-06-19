@@ -230,6 +230,13 @@ export default function Tasks() {
           onSubmit={handleBoardSubmit}
           isCreatingBoard={isCreatingBoard}
         />
+        <JoinBoardModal
+          isOpen={showJoinBoardModal}
+          onClose={() => setShowJoinBoardModal(false)}
+          publicBoards={publicBoards}
+          handleJoinBoard={handleJoinBoard}
+          isJoiningBoard={isJoiningBoard}
+        />
       </div>
     )
   }
