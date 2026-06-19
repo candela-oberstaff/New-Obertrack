@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -16,20 +17,74 @@ var (
 	ErrChannelNotFound   = fmt.Errorf("channel not found")
 	ErrUserNotFound      = fmt.Errorf("user not found")
 	ErrCrossTenant       = fmt.Errorf("user belongs to a different tenant")
+	// ErrChannelNotDeletable se devuelve al intentar eliminar un canal que no es
+	// "normal": los DMs (type=direct) y los canales de soporte (type=private cuyo
+	// nombre empieza por "Soporte · ") no se borran (decisión de producto A-1).
+	ErrChannelNotDeletable = fmt.Errorf("channel cannot be deleted")
+	// ErrDuplicateChannelName se devuelve al renombrar un canal a un nombre que ya
+	// usa OTRO canal con el mismo (name, type, tenant), evitando el 500 que daría
+	// el índice único idx_channel_name_type_tenant (A-2).
+	ErrDuplicateChannelName = fmt.Errorf("channel name already in use")
 )
 
 func isSuperadminUser(user *models.User) bool {
 	return user != nil && (user.IsSuperadmin || user.UserType == models.UserTypeSuperadmin)
 }
 
+// supportChannelPrefix es el prefijo de nombre que distingue a un canal de
+// soporte. Debe mantenerse en sincronía con la construcción del nombre en
+// channel_messages.go ("Soporte · %s #%d").
+const supportChannelPrefix = "Soporte · "
+
+// isSupportChannel indica si el canal es un canal de soporte (private cuyo
+// nombre empieza por el prefijo de soporte). Único punto de verdad para esta
+// detección en el paquete service.
+func isSupportChannel(channel *models.Channel) bool {
+	return channel != nil &&
+		channel.Type == models.ChannelTypePrivate &&
+		strings.HasPrefix(channel.Name, supportChannelPrefix)
+}
+
+// canManageChannel decide si userID puede GESTIONAR el canal (editar, eliminar,
+// añadir/quitar miembros). Tienen poderes de gestión (decisión de producto B):
+//   - el superadmin (supervisión global),
+//   - el CREADOR del canal,
+//   - cualquier MIEMBRO de ESE canal con Role=="admin".
+//
+// CRÍTICO: el chequeo de admin es POR CANAL (GetMember(channel.ID, userID)), no
+// global: un admin del canal X no debe poder gestionar el canal Y. Si no hay fila
+// de miembro (o falla la consulta) el usuario no es admin de este canal.
+func (s *channelService) canManageChannel(channel *models.Channel, userID uint, isSuperadmin bool) bool {
+	if channel == nil {
+		return false
+	}
+	if isSuperadmin {
+		return true
+	}
+	if channel.CreatedBy == userID {
+		return true
+	}
+	member, err := s.repo.GetMember(channel.ID, userID)
+	if err != nil || member == nil {
+		return false
+	}
+	return member.Role == "admin"
+}
+
 type ChannelService interface {
 	GetChannels(userID uint, isSuperadmin bool, companyFilter uint) ([]ChannelWithUnread, error)
 	GetChannel(id uint) (*models.Channel, error)
+	// GetMembersWithRole devuelve los miembros del canal con su rol (admin|member),
+	// uniendo User + ChannelMember.Role para el contrato del frontend.
+	GetMembersWithRole(channelID uint) ([]ChannelMemberDTO, error)
 	Create(userID uint, name, description, channelType string, memberIDs []uint, tenantOverride uint) (*models.Channel, error)
-	Update(id, userID uint, name, description string) (*models.Channel, error)
+	Update(id, userID uint, name, description string, isSuperadmin bool) (*models.Channel, error)
 	Delete(id, userID uint, isSuperadmin bool) error
-	AddMember(channelID, userID, memberToAdd uint) error
-	RemoveMember(channelID, userID, memberToRemove uint) error
+	AddMember(channelID, userID, memberToAdd uint, isSuperadmin bool) error
+	RemoveMember(channelID, userID, memberToRemove uint, isSuperadmin bool) error
+	// SetMemberRole promueve/degrada a un miembro (admin|member). Solo el CREADOR
+	// del canal o un superadmin pueden hacerlo (un admin normal NO).
+	SetMemberRole(channelID, actorID, targetID uint, role string, isSuperadmin bool) error
 	Join(channelID, userID uint) error
 	Leave(channelID, userID uint) error
 
@@ -103,6 +158,16 @@ type SupportInfo struct {
 	RequesterPhone string    `json:"requester_phone,omitempty"`
 	CompanyName    string    `json:"company_name,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
+}
+
+// ChannelMemberDTO es la forma que consume el frontend para la lista de miembros
+// de un canal: datos del usuario + su rol en ESE canal (admin|member). Contrato
+// compartido con el frontend: GET /channels/:id/members → [{id,name,email,role}].
+type ChannelMemberDTO struct {
+	ID    uint   `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
 }
 
 type DirectMessageResponse struct {
@@ -332,10 +397,11 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 	}
 
 	now := time.Now()
-	// Creator is always an explicit member.
+	// Creator is always an explicit member, and is the channel admin (Sprint B):
+	// the creator gets management powers (edit/delete/add-remove members) by default.
 	members := []models.ChannelMember{{
 		UserID:    userID,
-		Role:      "member",
+		Role:      "admin",
 		JoinedAt:  now,
 		CreatedAt: now,
 	}}
@@ -429,18 +495,25 @@ func (s *channelService) reactivateChannel(channel *models.Channel, userID uint)
 	return s.repo.GetChannel(channel.ID)
 }
 
-func (s *channelService) Update(id, userID uint, name, description string) (*models.Channel, error) {
-	channel, err := s.authorizeChannelTenant(id, userID, false)
+func (s *channelService) Update(id, userID uint, name, description string, isSuperadmin bool) (*models.Channel, error) {
+	channel, err := s.authorizeChannelTenant(id, userID, isSuperadmin)
 	if err != nil {
 		return nil, err
 	}
 
-	if channel.CreatedBy != userID {
-		return nil, fmt.Errorf("only channel creator can update")
+	// Sprint B: pueden editar el creador, un admin del canal o un superadmin.
+	if !s.canManageChannel(channel, userID, isSuperadmin) {
+		return nil, ErrUnauthorized
 	}
 
 	updates := map[string]any{}
-	if name != "" {
+	if name != "" && name != channel.Name {
+		// Validar nombre duplicado ANTES de escribir: si OTRO canal (id distinto)
+		// ya usa ese (name, type, tenant) devolvemos un error claro en vez de dejar
+		// que reviente el índice único idx_channel_name_type_tenant con un 500.
+		if existing, _ := s.repo.GetChannelByNameAndType(name, channel.Type, channel.TenantID); existing != nil && existing.ID != channel.ID {
+			return nil, ErrDuplicateChannelName
+		}
 		updates["name"] = name
 	}
 	if description != "" {
@@ -460,20 +533,29 @@ func (s *channelService) Delete(id, userID uint, isSuperadmin bool) error {
 		return err
 	}
 
-	if channel.CreatedBy != userID && !isSuperadmin {
-		return fmt.Errorf("not authorized")
+	// Decisión de producto (A-1): solo se borran canales normales. Los DMs y los
+	// canales de soporte no son eliminables ni siquiera por el creador/superadmin.
+	if channel.Type == models.ChannelTypeDirect || isSupportChannel(channel) {
+		return ErrChannelNotDeletable
+	}
+
+	// Sprint B: pueden eliminar el creador, un admin del canal o un superadmin.
+	if !s.canManageChannel(channel, userID, isSuperadmin) {
+		return ErrUnauthorized
 	}
 
 	return s.repo.DeleteChannel(id)
 }
 
-func (s *channelService) AddMember(channelID, userID, memberToAdd uint) error {
+func (s *channelService) AddMember(channelID, userID, memberToAdd uint, isSuperadmin bool) error {
 	channel, err := s.repo.GetChannel(channelID)
 	if err != nil {
 		return ErrChannelNotFound
 	}
 
-	if channel.Type == models.ChannelTypePrivate && channel.CreatedBy != userID {
+	// Sprint B: añadir miembros lo puede hacer quien gestione el canal (creador,
+	// admin del canal o superadmin). Antes era "solo el creador" en privados.
+	if !s.canManageChannel(channel, userID, isSuperadmin) {
 		return ErrUnauthorized
 	}
 
@@ -509,16 +591,20 @@ func (s *channelService) AddMember(channelID, userID, memberToAdd uint) error {
 	return nil
 }
 
-func (s *channelService) RemoveMember(channelID, userID, memberToRemove uint) error {
-	channel, err := s.authorizeChannelTenant(channelID, userID, false)
+func (s *channelService) RemoveMember(channelID, userID, memberToRemove uint, isSuperadmin bool) error {
+	channel, err := s.authorizeChannelTenant(channelID, userID, isSuperadmin)
 	if err != nil {
 		return err
 	}
 
-	if channel.CreatedBy != userID && memberToRemove != userID {
-		return fmt.Errorf("not authorized")
+	// Sprint B: cualquiera puede quitarse a SÍ MISMO; para quitar a OTRO hace falta
+	// gestionar el canal (creador, admin del canal o superadmin).
+	if memberToRemove != userID && !s.canManageChannel(channel, userID, isSuperadmin) {
+		return ErrUnauthorized
 	}
 
+	// El creador nunca se puede quitar (ni él mismo, ni un admin, ni superadmin):
+	// dejaría al canal sin su dueño/último admin garantizado.
 	if memberToRemove == channel.CreatedBy {
 		return fmt.Errorf("cannot remove channel creator")
 	}
@@ -528,6 +614,84 @@ func (s *channelService) RemoveMember(channelID, userID, memberToRemove uint) er
 	}
 	s.invalidateMembers(channelID)
 	return nil
+}
+
+// SetMemberRole promueve/degrada a un miembro del canal (admin|member).
+// Reglas (decisión de producto B):
+//   - SOLO el CREADOR del canal o un superadmin pueden cambiar roles (un admin
+//     normal NO puede promover/degradar a otros).
+//   - role debe ser "admin" o "member".
+//   - el target debe ser miembro del canal.
+//   - NO se puede degradar al CREADOR (queda siempre como admin del canal).
+func (s *channelService) SetMemberRole(channelID, actorID, targetID uint, role string, isSuperadmin bool) error {
+	if role != "admin" && role != "member" {
+		return fmt.Errorf("invalid role")
+	}
+
+	channel, err := s.authorizeChannelTenant(channelID, actorID, isSuperadmin)
+	if err != nil {
+		return err
+	}
+
+	// Solo creador + superadmin. Un admin del canal NO puede gestionar roles.
+	if !isSuperadmin && channel.CreatedBy != actorID {
+		return ErrUnauthorized
+	}
+
+	// El creador es admin permanente: no se puede degradar (ni a member).
+	if targetID == channel.CreatedBy && role != "admin" {
+		return fmt.Errorf("cannot change channel creator role")
+	}
+
+	// El target debe ser miembro del canal.
+	member, err := s.repo.GetMember(channelID, targetID)
+	if err != nil || member == nil {
+		return fmt.Errorf("target is not a channel member")
+	}
+
+	if member.Role == role {
+		// No-op idempotente: el rol ya es el deseado.
+		return nil
+	}
+
+	if err := s.repo.UpdateMemberRole(channelID, targetID, role); err != nil {
+		return err
+	}
+	// Invalida el caché de miembros: el rol cambia poderes/lo que muestra la UI.
+	s.invalidateMembers(channelID)
+	return nil
+}
+
+// GetMembersWithRole une los usuarios miembros del canal con su Role para el
+// contrato del frontend ([{id,name,email,role}]). No rompe a otros consumidores
+// de GetMembers ([]User), que sigue intacto.
+func (s *channelService) GetMembersWithRole(channelID uint) ([]ChannelMemberDTO, error) {
+	users, err := s.repo.GetMembers(channelID)
+	if err != nil {
+		return nil, err
+	}
+	members, err := s.repo.GetMemberRoles(channelID)
+	if err != nil {
+		return nil, err
+	}
+	roleByUser := make(map[uint]string, len(members))
+	for _, m := range members {
+		roleByUser[m.UserID] = m.Role
+	}
+	result := make([]ChannelMemberDTO, 0, len(users))
+	for _, u := range users {
+		role := roleByUser[u.ID]
+		if role == "" {
+			role = "member"
+		}
+		result = append(result, ChannelMemberDTO{
+			ID:    u.ID,
+			Name:  u.Name,
+			Email: u.Email,
+			Role:  role,
+		})
+	}
+	return result, nil
 }
 
 func (s *channelService) Join(channelID, userID uint) error {

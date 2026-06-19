@@ -277,6 +277,39 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
         const selectedChannelId = selectedChannelIdRef.current
         const currentUserId = userIdRef.current
 
+        // Eventos de ciclo de vida del canal: aplican aunque el canal no esté
+        // abierto, por eso van ANTES del guard que filtra por canal seleccionado.
+        if (msg.type === 'channel_updated') {
+          // Solo aplicamos los campos editables (name/description). El backend
+          // difunde un models.Channel "crudo" que no trae unread_count/recipient/
+          // support; hacer spread completo inyectaría campos fuera de contrato
+          // (tenant_id/is_active/members) y arriesgaría pisar el badge a futuro.
+          const patch = { name: msg.data?.name, description: msg.data?.description }
+          setChannels(prev => prev.map(c => c.id === msg.channel_id ? { ...c, ...patch } : c))
+          // Si es el canal abierto, reflejar los cambios en vivo (nombre/descripción).
+          if (selectedChannelId === msg.channel_id) {
+            setSelectedChannel(prev => prev && prev.id === msg.channel_id ? { ...prev, ...patch } : prev)
+          }
+          return
+        }
+        if (msg.type === 'channel_deleted') {
+          setChannels(prev => prev.filter(c => c.id !== msg.channel_id))
+          // Si era el canal abierto, deseleccionar para no quedar en un canal muerto.
+          if (selectedChannelId === msg.channel_id) {
+            setSelectedChannel(null)
+          }
+          return
+        }
+        if (msg.type === 'members_updated') {
+          // Cambió un rol/membresía: refresca la lista de miembros del canal abierto
+          // para que el badge Admin/Creador y los permisos se reflejen en vivo en
+          // el modal de gestión (no solo para quien hizo el cambio).
+          if (selectedChannelId === msg.channel_id) {
+            fetchChannelMembers(msg.channel_id)
+          }
+          return
+        }
+
         if (selectedChannelId !== null && msg.channel_id === selectedChannelId) {
           if (msg.type === 'message') {
             // Always add the message (fixes multi-tab: a second tab of the sender

@@ -1,6 +1,6 @@
 import api from './client'
 import type { User } from '../types'
-import type { Channel, Message, DMChannel, MessageReaction, UserStatus, SupportTicket } from '../types/chat'
+import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket } from '../types/chat'
 
 export const channelService = {
   getChannels: async (companyId?: number | null): Promise<Channel[]> => {
@@ -45,8 +45,8 @@ export const channelService = {
   deleteMessage: async (channelId: number, messageId: number) => {
     await api.delete(`/channels/${channelId}/messages/${messageId}`)
   },
-  getMembers: async (channelId: number) => {
-    const { data } = await api.get<User[]>(`/channels/${channelId}/members`)
+  getMembers: async (channelId: number): Promise<ChannelMember[]> => {
+    const { data } = await api.get<ChannelMember[]>(`/channels/${channelId}/members`)
     return data
   },
   addMember: async (channelId: number, userId: number) => {
@@ -54,6 +54,11 @@ export const channelService = {
   },
   removeMember: async (channelId: number, userId: number) => {
     await api.delete(`/channels/${channelId}/members`, { data: { user_id: userId } })
+  },
+  // Promueve/degrada el rol de un miembro del canal. Solo creador+superadmin
+  // lo consiguen (el backend revalida y rechaza al resto).
+  setMemberRole: async (channelId: number, userId: number, role: 'admin' | 'member') => {
+    await api.patch(`/channels/${channelId}/members/${userId}/role`, { role })
   },
   joinChannel: async (channelId: number) => {
     await api.post(`/channels/${channelId}/join`)

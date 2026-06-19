@@ -364,8 +364,32 @@ export default function SlackChat() {
       const updated = await channelService.updateChannel(id, updates)
       setSelectedChannel(updated as any)
       fetchChannels()
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error updating channel:', e)
+      // Surface the backend reason (p.ej. nombre duplicado 400, o 403) en vez de
+      // fallar en silencio; re-lanzar para que el modal mantenga el form abierto.
+      showError(e?.response?.data?.error || 'No se pudo actualizar el canal.')
+      throw e
+    }
+  }
+
+  const handleDeleteChannel = async (id: number) => {
+    const ok = await confirm({
+      title: 'Eliminar canal',
+      message: '¿Seguro que quieres eliminar este canal? Esta acción no se puede deshacer y se perderán todos sus mensajes.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!ok) return
+    try {
+      await channelService.deleteChannel(id)
+      setShowChannelSettings(false)
+      if (selectedChannel?.id === id) setSelectedChannel(null)
+      fetchChannels()
+    } catch (e: any) {
+      console.error('Error deleting channel:', e)
+      // El backend rechaza con 400 los canales no eliminables (DM/soporte).
+      showError(e?.response?.data?.error || 'No se pudo eliminar el canal. Intenta de nuevo.')
     }
   }
 
@@ -750,11 +774,14 @@ export default function SlackChat() {
           selectedChannel={selectedChannel}
           channelMembers={channelMembers}
           currentUser={user as any}
+          isSuperadmin={isSuperadmin}
           onClose={() => setShowChannelSettings(false)}
           onRemoveMember={removeMember}
           onLeaveChannel={leaveChannel}
           onShowAddMembers={() => setShowAddMembers(true)}
           onUpdateChannel={handleUpdateChannel}
+          onDeleteChannel={handleDeleteChannel}
+          onRefreshMembers={fetchChannelMembers}
         />
       )}
 

@@ -77,6 +77,7 @@ export interface ChannelMember {
   id: number
   name: string
   email: string
+  role?: 'admin' | 'member'
 }
 
 export interface UserStatus {

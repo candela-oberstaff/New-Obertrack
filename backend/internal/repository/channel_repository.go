@@ -22,8 +22,10 @@ type ChannelRepository interface {
 	// Members
 	GetMembers(channelID uint) ([]models.User, error)
 	GetMember(channelID, userID uint) (*models.ChannelMember, error)
+	GetMemberRoles(channelID uint) ([]models.ChannelMember, error)
 	AddMember(member *models.ChannelMember) error
 	RemoveMember(channelID, userID uint) error
+	UpdateMemberRole(channelID, userID uint, role string) error
 	IsMember(channelID, userID uint) (bool, error)
 
 	// Messages
@@ -196,6 +198,21 @@ func (r *channelRepository) GetMember(channelID, userID uint) (*models.ChannelMe
 		return nil, err
 	}
 	return &member, nil
+}
+
+// GetMemberRoles devuelve las filas de membresía (con su Role) de un canal. Se
+// usa para anexar el rol a la lista de usuarios en GetMembersWithRole.
+func (r *channelRepository) GetMemberRoles(channelID uint) ([]models.ChannelMember, error) {
+	var members []models.ChannelMember
+	err := r.db.Where("channel_id = ?", channelID).Find(&members).Error
+	return members, err
+}
+
+// UpdateMemberRole cambia el rol (admin|member) de un miembro de un canal.
+func (r *channelRepository) UpdateMemberRole(channelID, userID uint, role string) error {
+	return r.db.Model(&models.ChannelMember{}).
+		Where("channel_id = ? AND user_id = ?", channelID, userID).
+		Update("role", role).Error
 }
 
 func (r *channelRepository) AddMember(member *models.ChannelMember) error {

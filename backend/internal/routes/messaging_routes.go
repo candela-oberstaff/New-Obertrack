@@ -52,6 +52,7 @@ func registerMessagingRoutes(api *gin.RouterGroup, d *deps) {
 		channels.GET("/:id/members", d.channel.GetMembers)
 		channels.POST("/:id/members", chatEdit, d.channel.AddMember)
 		channels.DELETE("/:id/members", chatEdit, d.channel.RemoveMember)
+		channels.PATCH("/:id/members/:userId/role", chatEdit, d.channel.UpdateMemberRole)
 		channels.POST("/:id/join", d.channel.JoinChannel)
 		channels.POST("/:id/leave", d.channel.LeaveChannel)
 		channels.POST("/:id/read", d.channel.MarkAsRead)

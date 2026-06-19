@@ -870,6 +870,29 @@ func Run(db *gorm.DB) error {
                 return nil
             },
         },
+        {
+            // Sprint B: el CREADOR de cada canal pasa a ser ADMIN del canal (poderes
+            // de gestión: editar/eliminar/añadir-quitar miembros). Los canales se
+            // crearon con el creador como 'member'; aquí se hace backfill de su fila
+            // de membresía a 'admin'. SOLO toca filas que hoy son 'member' (no pisa
+            // otros roles raros) y es idempotente: re-correrla no cambia nada porque
+            // el WHERE excluye las que ya son 'admin'.
+            ID: "202606191200_backfill_channel_creator_admin",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Backfilling channel creators as channel admins...")
+                return tx.Exec(`
+                    UPDATE channel_members cm
+                    SET role = 'admin'
+                    FROM channels c
+                    WHERE cm.channel_id = c.id
+                      AND cm.user_id = c.created_by
+                      AND cm.role <> 'admin'
+                `).Error
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return nil
+            },
+        },
         // Future migrations go here
     })
 

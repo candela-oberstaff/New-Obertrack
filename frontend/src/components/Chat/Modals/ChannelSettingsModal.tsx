@@ -4,34 +4,67 @@ import { User } from '../../../types'
 import styles from '../../../pages/SlackChat.module.css'
 import { getUserColor } from '../ChatUtils'
 import { Modal, Button } from '../../ui'
+import { channelService } from '../../../services/channel.service'
+import { useNotification } from '../../../context/NotificationContext'
 
 interface ChannelSettingsModalProps {
   selectedChannel: Channel
   channelMembers: ChannelMember[]
   currentUser: User | null
+  isSuperadmin?: boolean
   onClose: () => void
   onRemoveMember: (id: number) => void
   onLeaveChannel: (id: number) => void
   onShowAddMembers: () => void
   onUpdateChannel: (id: number, updates: { name: string; description: string }) => Promise<void>
+  onDeleteChannel?: (id: number) => void
+  onRefreshMembers?: (channelId: number) => void
 }
 
 export function ChannelSettingsModal({
   selectedChannel,
   channelMembers,
   currentUser,
+  isSuperadmin = false,
   onClose,
   onRemoveMember,
   onLeaveChannel,
   onShowAddMembers,
-  onUpdateChannel
+  onUpdateChannel,
+  onDeleteChannel,
+  onRefreshMembers
 }: ChannelSettingsModalProps) {
+  const { error: notifyError } = useNotification()
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(selectedChannel.name)
   const [editDescription, setEditDescription] = useState(selectedChannel.description || '')
   const [isSaving, setIsSaving] = useState(false)
+  const [updatingRoleId, setUpdatingRoleId] = useState<number | null>(null)
 
   const isOwner = currentUser?.id === selectedChannel.created_by
+  // Rol del usuario actual dentro de este canal (si role no llega, se trata como 'member').
+  const myRole = channelMembers.find(m => m.id === currentUser?.id)?.role ?? 'member'
+  // Gestionar (editar info, eliminar canal, añadir/quitar miembros):
+  // creador, admin del canal o superadmin.
+  const canManage = isOwner || myRole === 'admin' || isSuperadmin
+  // Promover/degradar admins: solo creador o superadmin (no los admins normales).
+  const canAssignAdmins = isOwner || isSuperadmin
+  // Eliminar canal: solo el creador o un superadmin. El backend igual valida y
+  // rechaza (400) los no eliminables (DM/soporte).
+  const canDelete = !!onDeleteChannel && (isOwner || isSuperadmin)
+
+  const handleSetRole = async (userId: number, role: 'admin' | 'member') => {
+    setUpdatingRoleId(userId)
+    try {
+      await channelService.setMemberRole(selectedChannel.id, userId, role)
+      onRefreshMembers?.(selectedChannel.id)
+    } catch (e) {
+      console.error(e)
+      notifyError('No se pudo actualizar el rol del miembro')
+    } finally {
+      setUpdatingRoleId(null)
+    }
+  }
 
   const handleSave = async () => {
     if (!editName.trim()) return
@@ -95,7 +128,7 @@ export function ChannelSettingsModal({
                 <p className={styles['channel-desc']} style={{ margin: 0, fontStyle: 'italic', color: '#94a3b8' }}>Sin descripción</p>
               )}
             </div>
-            {isOwner && (
+            {canManage && (
               <button
                 onClick={() => setIsEditing(true)}
                 style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', flexShrink: 0 }}
@@ -108,7 +141,11 @@ export function ChannelSettingsModal({
           <div className={styles['members-section']}>
             <h3>Miembros ({channelMembers.length})</h3>
             <div className={styles['members-list']}>
-              {channelMembers.map(member => (
+              {channelMembers.map(member => {
+                const isCreator = member.id === selectedChannel.created_by
+                // El creador siempre cuenta como admin y no se puede degradar.
+                const isAdmin = isCreator || member.role === 'admin'
+                return (
                 <div key={member.id} className={styles['member-item']}>
                   <div
                     className={styles['member-avatar']}
@@ -117,20 +154,44 @@ export function ChannelSettingsModal({
                     {member.name?.charAt(0).toUpperCase()}
                   </div>
                   <span className={styles['member-name']}>{member.name}</span>
-                  {member.id === selectedChannel.created_by && (
+                  {isCreator && (
                     <span className={styles['owner-badge']}>Creador</span>
                   )}
-                  {member.id !== selectedChannel.created_by && member.id !== currentUser?.id && (
+                  {!isCreator && member.role === 'admin' && (
+                    <span className={styles['owner-badge']}>Admin</span>
+                  )}
+                  {canAssignAdmins && !isCreator && (
+                    <button
+                      onClick={() => handleSetRole(member.id, isAdmin ? 'member' : 'admin')}
+                      disabled={updatingRoleId === member.id}
+                      title={isAdmin ? 'Quitar admin' : 'Hacer admin'}
+                      style={{ fontSize: '11px', whiteSpace: 'nowrap' }}
+                    >
+                      {isAdmin ? 'Quitar admin' : 'Hacer admin'}
+                    </button>
+                  )}
+                  {canManage && !isCreator && member.id !== currentUser?.id && (
                     <button className={styles['remove-btn']} onClick={() => onRemoveMember(member.id)} title="Eliminar del canal">×</button>
                   )}
-                  {member.id === currentUser?.id && member.id !== selectedChannel.created_by && (
+                  {member.id === currentUser?.id && !isCreator && (
                     <button className={styles['leave-btn-small']} onClick={() => onLeaveChannel(selectedChannel.id)}>Salir</button>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
-            <button className={styles['btn-add-member']} onClick={onShowAddMembers}>+ Añadir personas</button>
+            {canManage && (
+              <button className={styles['btn-add-member']} onClick={onShowAddMembers}>+ Añadir personas</button>
+            )}
           </div>
+
+          {canDelete && (
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+              <Button variant="danger" onClick={() => onDeleteChannel?.(selectedChannel.id)}>
+                Eliminar canal
+              </Button>
+            </div>
+          )}
         </>
       )}
     </Modal>
