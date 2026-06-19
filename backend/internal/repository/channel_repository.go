@@ -15,6 +15,11 @@ type ChannelRepository interface {
 	GetChannel(id uint) (*models.Channel, error)
 	GetChannelByNameAndType(name string, channelType models.ChannelType, tenantID uint) (*models.Channel, error)
 	IsExplicitMember(channelID, userID uint) (bool, error)
+	// GetMemberChannelIDs devuelve, en UNA sola consulta, el conjunto de channel_ids
+	// donde userID tiene una fila de membresía explícita (channel_members). Se usa
+	// para resolver de golpe la membresía del usuario sobre una lista de canales
+	// (supervisión de superadmin) sin disparar N consultas por canal.
+	GetMemberChannelIDs(userID uint) ([]uint, error)
 	CreateChannel(channel *models.Channel) error
 	UpdateChannel(channel *models.Channel, updates map[string]interface{}) error
 	DeleteChannel(id uint) error
@@ -167,6 +172,18 @@ func (r *channelRepository) IsExplicitMember(channelID, userID uint) (bool, erro
 	var count int64
 	err := r.db.Model(&models.ChannelMember{}).Where("channel_id = ? AND user_id = ?", channelID, userID).Count(&count).Error
 	return count > 0, err
+}
+
+// GetMemberChannelIDs lista, en UNA sola consulta, los channel_ids donde userID es
+// miembro explícito (fila en channel_members). Selecciona solo la columna channel_id
+// para no traer filas completas. El llamador construye un map[uint]bool a partir del
+// resultado para resolver membresía O(1) por canal.
+func (r *channelRepository) GetMemberChannelIDs(userID uint) ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&models.ChannelMember{}).
+		Where("user_id = ?", userID).
+		Pluck("channel_id", &ids).Error
+	return ids, err
 }
 
 func (r *channelRepository) CreateChannel(channel *models.Channel) error {

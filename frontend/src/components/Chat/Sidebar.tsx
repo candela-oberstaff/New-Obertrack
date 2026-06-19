@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { LifeBuoy, Inbox } from 'lucide-react'
+import { LifeBuoy, Inbox, Eye, Hash, AtSign } from 'lucide-react'
 import { Channel, SupportTicket } from '../../types/chat'
-import { isSupportChannel, supportLabel, supportStatusMeta, dmContactName } from './ChatUtils'
+import { isSupportChannel, supportLabel, supportStatusMeta, dmContactName, getUserColor } from './ChatUtils'
 import styles from '../../pages/SlackChat.module.css'
 
 interface SidebarProps {
@@ -52,8 +52,21 @@ export function Sidebar({
   // Los canales pendientes (sin asignar) se muestran en "Pendientes", no en la lista.
   const pendingIds = new Set((pendingSupport || []).map(t => t.channel_id))
   const supportChannels = channels.filter(c => isSupportChannel(c) && !pendingIds.has(c.id))
-  const activeChannels = channels.filter(c => (c.type === 'public' || c.type === 'private') && !isSupportChannel(c))
-  const directMessages = channels.filter(c => c.type === 'direct')
+  // Canales/DMs que un superadmin audita sin participar. Excluye soporte (que
+  // ya tiene su propia sección) para no duplicarlos.
+  const supervisedChannels = channels.filter(c => c.supervised && !isSupportChannel(c))
+  const activeChannels = channels.filter(c => (c.type === 'public' || c.type === 'private') && !isSupportChannel(c) && !c.supervised)
+  const directMessages = channels.filter(c => c.type === 'direct' && !c.supervised)
+
+  // Avatar redondo (inicial + color) para personas/DMs; con punto de estado opcional.
+  const avatar = (name: string, status?: 'online' | 'away' | 'offline') => (
+    <span className={styles['channel-mini-avatar-wrap']}>
+      <span className={styles['channel-mini-avatar']} style={{ background: getUserColor(name || '') }}>
+        {(name || '?').charAt(0).toUpperCase()}
+      </span>
+      {status && <span className={`${styles['channel-mini-status']} ${styles[status]}`} />}
+    </span>
+  )
 
   return (
     <>
@@ -80,25 +93,18 @@ export function Sidebar({
               {isSupportAgent && pendingSupport && pendingSupport.length > 0 && (
                 <>
                   <div className={styles['channel-group-label']}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#b45309' }}>
-                      <Inbox size={13} /> Pendientes
-                    </span>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#b45309', background: 'rgba(245,158,11,0.14)', borderRadius: 999, padding: '1px 7px' }}>
-                      {pendingSupport.length}
-                    </span>
+                    <span className={styles['channel-group-label-text']}><Inbox size={13} /> Pendientes</span>
+                    <span className={styles['channel-group-count']}>{pendingSupport.length}</span>
                   </div>
 
                   {pendingSupport.map(ticket => (
-                    <div
-                      key={ticket.channel_id}
-                      className={styles['channel-mini-item']}
-                      style={{ borderLeft: '3px solid #f59e0b', background: 'rgba(245,158,11,0.06)', alignItems: 'center' }}
-                    >
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+                    <div key={ticket.channel_id} className={styles['channel-mini-item']}>
+                      {avatar(ticket.requester?.name || `#${ticket.channel_id}`)}
+                      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
                         <span className={styles['channel-mini-name']}>
                           {ticket.requester?.name || `Solicitud #${ticket.channel_id}`}
                         </span>
-                        <span style={{ fontSize: 11, color: '#b45309' }}>Solicita soporte</span>
+                        <span className={styles['channel-mini-sub']} style={{ color: '#b45309' }}>Solicita soporte</span>
                       </span>
                       <button
                         disabled={supportBusy}
@@ -106,8 +112,8 @@ export function Sidebar({
                         title="Aceptar y atender"
                         style={{
                           border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 7,
-                          padding: '5px 12px', fontSize: 12, fontWeight: 700,
-                          cursor: supportBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap', width: 'auto',
+                          padding: '5px 10px', fontSize: 12, fontWeight: 700,
+                          cursor: supportBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap', width: 'auto', flexShrink: 0,
                         }}
                       >
                         Aceptar
@@ -120,31 +126,22 @@ export function Sidebar({
               {supportChannels.length > 0 && (
                 <>
                   <div className={styles['channel-group-label']}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#7c3aed' }}>
-                      <LifeBuoy size={13} /> Soporte
-                    </span>
+                    <span className={styles['channel-group-label-text']}><LifeBuoy size={13} /> Soporte</span>
                   </div>
 
                   {supportChannels.map(channel => (
                     <div
                       key={channel.id}
                       className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
-                      onClick={() => {
-                        setSelectedChannel(channel)
-                        setShowMobileChannels(false)
-                      }}
-                      style={{
-                        borderLeft: '3px solid #7c3aed',
-                        background: selectedChannel?.id === channel.id ? undefined : 'rgba(124,58,237,0.06)',
-                      }}
+                      onClick={() => { setSelectedChannel(channel); setShowMobileChannels(false) }}
                     >
-                      <span className={styles['channel-mini-icon']} style={{ color: '#7c3aed', alignSelf: 'flex-start', marginTop: 2 }}>
-                        <LifeBuoy size={14} />
+                      <span className={styles['channel-mini-icon']} style={{ color: '#7c3aed', alignSelf: 'flex-start' }}>
+                        <LifeBuoy size={16} />
                       </span>
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
-                        <span className={styles['channel-mini-name']}>{supportLabel(channel.name)}</span>
+                      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                        <span className={styles['channel-mini-name']} title={supportLabel(channel.name)}>{supportLabel(channel.name)}</span>
                         {channel.support && (
-                          <span style={{ fontSize: 11, color: supportStatusMeta(channel.support.status).color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span className={styles['channel-mini-sub']} style={{ color: supportStatusMeta(channel.support.status).color }}>
                             {channel.support.status === 'resolved'
                               ? '✓ Resuelto'
                               : channel.support.assignee_name
@@ -161,26 +158,46 @@ export function Sidebar({
                 </>
               )}
 
+              {supervisedChannels.length > 0 && (
+                <>
+                  <div className={styles['channel-group-label']}>
+                    <span className={styles['channel-group-label-text']}><Eye size={13} /> Supervisión</span>
+                  </div>
+
+                  {supervisedChannels.map(channel => {
+                    const name = channel.type === 'direct' ? dmContactName(channel) : channel.name
+                    return (
+                    <div
+                      key={channel.id}
+                      className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
+                      onClick={() => { setSelectedChannel(channel); setShowMobileChannels(false) }}
+                    >
+                      {channel.type === 'direct'
+                        ? avatar(channel.participants?.[0]?.name || name)
+                        : <span className={styles['channel-mini-icon']}>🔒</span>}
+                      <span className={styles['channel-mini-name']} title={name}>{name}</span>
+                      {channel.unread_count > 0 && (
+                        <span className={styles['unread-badge']}>{channel.unread_count}</span>
+                      )}
+                    </div>
+                    )
+                  })}
+                </>
+              )}
+
               <div className={styles['channel-group-label']}>
-                <span>Canales</span>
-                <button className={styles['add-btn-mini']} onClick={() => setShowNewChannelModal(true)} title="Crear canal">
-                  +
-                </button>
+                <span className={styles['channel-group-label-text']}><Hash size={13} /> Canales</span>
+                <button className={styles['add-btn-mini']} onClick={() => setShowNewChannelModal(true)} title="Crear canal">+</button>
               </div>
-              
+
               {activeChannels.map(channel => (
                 <div
                   key={channel.id}
                   className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
-                  onClick={() => {
-                    setSelectedChannel(channel)
-                    setShowMobileChannels(false)
-                  }}
+                  onClick={() => { setSelectedChannel(channel); setShowMobileChannels(false) }}
                 >
-                  <span className={styles['channel-mini-icon']}>
-                    {channel.type === 'private' ? '🔒' : '#'}
-                  </span>
-                  <span className={styles['channel-mini-name']}>{channel.name}</span>
+                  <span className={styles['channel-mini-icon']}>{channel.type === 'private' ? '🔒' : '#'}</span>
+                  <span className={styles['channel-mini-name']} title={channel.name}>{channel.name}</span>
                   {channel.unread_count > 0 && (
                     <span className={styles['unread-badge']}>{channel.unread_count}</span>
                   )}
@@ -188,34 +205,25 @@ export function Sidebar({
               ))}
 
               <div className={styles['channel-group-label']}>
-                <span>Mensajes directos</span>
-                <button 
+                <span className={styles['channel-group-label-text']}><AtSign size={13} /> Mensajes directos</span>
+                <button
                   className={styles['add-btn-mini']}
                   onClick={() => { fetchAllUsers(); setShowNewDmModal(true) }}
                   title="Nuevo mensaje directo"
-                >
-                  +
-                </button>
+                >+</button>
               </div>
-              
+
               {directMessages.map(channel => {
                 const status = channel.recipient ? (userStatuses.get(channel.recipient.id) || 'offline') : 'offline'
+                const name = channel.type === 'direct' ? dmContactName(channel) : channel.name
                 return (
                 <div
                   key={channel.id}
                   className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
-                  onClick={() => {
-                    setSelectedChannel(channel)
-                    setShowMobileChannels(false)
-                  }}
+                  onClick={() => { setSelectedChannel(channel); setShowMobileChannels(false) }}
                 >
-                  <span
-                    className={`${styles['status-dot']} ${styles[status]}`}
-                    title={status === 'online' ? 'En línea' : status === 'away' ? 'Ausente' : 'Desconectado'}
-                  />
-                  <span className={styles['channel-mini-name']}>
-                    {channel.type === 'direct' ? dmContactName(channel) : channel.name}
-                  </span>
+                  {avatar(channel.recipient?.name || name, status)}
+                  <span className={styles['channel-mini-name']} title={name}>{name}</span>
                   {channel.unread_count > 0 && (
                     <span className={styles['unread-badge']}>{channel.unread_count}</span>
                   )}

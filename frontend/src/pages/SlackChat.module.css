@@ -218,13 +218,30 @@
 }
 
 .channel-group-label {
-  font-size: 13px;
-  font-weight: 400;
-  color: #616061;
-  padding: 16px 16px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8b8a8e;
+  padding: 14px 14px 4px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.channel-group-label-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.channel-group-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8b8a8e;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 999px;
+  padding: 1px 7px;
 }
 
 .add-btn-mini {
@@ -250,17 +267,18 @@
 .channel-mini-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  margin: 1px 0;
+  gap: 9px;
+  padding: 6px 9px;
+  margin: 1px 6px;
+  border-radius: 7px;
   cursor: pointer;
   color: #1d1c1d;
   font-size: 14px;
-  transition: background 0.1s;
+  transition: background 0.12s;
 }
 
 .channel-mini-item:hover {
-  background: #f8f8f8;
+  background: #f1f1f3;
 }
 
 .channel-mini-item.active {
@@ -270,14 +288,61 @@
 }
 
 .channel-mini-icon {
-  font-size: 14px;
-  width: 18px;
-  text-align: center;
+  font-size: 15px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #616061;
   flex-shrink: 0;
 }
 
 .channel-mini-name {
   flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Round avatar (initial + color) for people/DMs, aligned with channel icons. */
+.channel-mini-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+}
+
+.channel-mini-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.channel-mini-status {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #9ca3af;
+}
+.channel-mini-status.online { background: #22c55e; }
+.channel-mini-status.away { background: #f59e0b; }
+.channel-mini-status.offline { background: #9ca3af; }
+
+/* Secondary line under an item name (e.g. support status). */
+.channel-mini-sub {
+  font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -290,6 +355,7 @@
   padding: 1px 5px;
   border-radius: 8px;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .chat-main {

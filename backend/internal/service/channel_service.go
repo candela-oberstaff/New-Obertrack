@@ -143,6 +143,12 @@ type ChannelWithUnread struct {
 	// ambos miembros para que la UI muestre "A ↔ B" en vez de un nombre arbitrario.
 	Participants []models.User `json:"participants,omitempty"`
 	Support      *SupportInfo  `json:"support,omitempty"`
+	// Supervised marca los canales que el solicitante está AUDITANDO sin ser
+	// miembro: true cuando NO tiene fila de membresía explícita Y el canal es
+	// direct o private (DMs y privados ajenos que un superadmin supervisa). Es
+	// false para canales public y para cualquier canal donde el usuario SÍ es
+	// miembro. El frontend lo usa para agrupar las conversaciones supervisadas.
+	Supervised bool `json:"supervised,omitempty"`
 }
 
 // SupportInfo es el estado del ticket asociado a un canal de soporte, embebido en
@@ -271,9 +277,31 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 		log.Printf("[ChannelService] error getting unread counts for user %d: %v", userID, err)
 	}
 
+	// Conjunto de canales donde el usuario es miembro explícito, resuelto en UNA
+	// sola consulta (no N): así sabemos por canal si está supervisando (auditando
+	// sin ser miembro) o participando, sin un IsExplicitMember por canal. Para un
+	// usuario normal GetChannelsByUser solo devuelve sus canales, así que estará en
+	// memberSet para todos → Supervised siempre false (no le afecta).
+	memberSet := make(map[uint]bool)
+	if memberIDs, err := s.repo.GetMemberChannelIDs(userID); err == nil {
+		for _, id := range memberIDs {
+			memberSet[id] = true
+		}
+	} else {
+		log.Printf("[ChannelService] error getting member channel ids for user %d: %v", userID, err)
+	}
+
 	var result []ChannelWithUnread
 	for _, ch := range channels {
 		unreadCount := unreadByChannel[ch.ID]
+
+		// Supervised: el usuario NO es miembro explícito y el canal es direct o
+		// private. Coherente con el bloque DM de abajo (cuando no es miembro se
+		// llena Participants, y aquí Supervised será true; cuando sí es miembro se
+		// llena Recipient y Supervised será false). Para public siempre false.
+		isMemberOfChannel := memberSet[ch.ID]
+		supervised := !isMemberOfChannel &&
+			(ch.Type == models.ChannelTypeDirect || ch.Type == models.ChannelTypePrivate)
 
 		var recipient *models.User
 		var participants []models.User
@@ -317,6 +345,7 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 			UnreadCount:  unreadCount,
 			Recipient:    recipient,
 			Participants: participants,
+			Supervised:   supervised,
 		})
 	}
 

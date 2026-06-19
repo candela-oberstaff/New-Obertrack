@@ -415,6 +415,13 @@ export default function SlackChat() {
   // and the member list need it — offer joining before participating.
   const isMemberOfSelected = !!user && channelMembers.some(m => m.id === user.id)
   const needsJoin = selectedChannel?.type === 'public' && channelMembers.length > 0 && !isMemberOfSelected
+  // Modo supervisión (auditoría): un superadmin que ve un DM o un canal PRIVADO
+  // del que NO es participante. No debe poder escribir (se vería como si fuera
+  // parte de la conversación ajena); solo observa. Usamos el flag `supervised`
+  // que calcula el backend (= no-miembro y DM/privado) como ÚNICA fuente de
+  // verdad — la misma que agrupa la sección "Supervisión" del sidebar, así no
+  // pueden divergir. Los canales públicos NO entran (uso normal).
+  const isSupervising = !!selectedChannel?.supervised
 
   const handleJoinChannel = async () => {
     if (!selectedChannel) return
@@ -671,6 +678,15 @@ export default function SlackChat() {
               {!canEditChat ? (
                 <div className={styles['join-banner']}>
                   <p>Tu rol tiene acceso de solo lectura en el Chat.</p>
+                </div>
+              ) : isSupervising ? (
+                <div className={styles['join-banner']} style={{ background: 'rgba(124,58,237,0.08)', borderTop: '1px solid rgba(124,58,237,0.25)' }}>
+                  <p style={{ margin: 0, color: '#6d28d9', fontWeight: 600 }}>
+                    🔍 Modo supervisión — estás auditando esta conversación.
+                  </p>
+                  <p style={{ margin: '4px 0 0', color: '#7c3aed', fontSize: 13 }}>
+                    No eres participante, por eso no puedes escribir aquí.
+                  </p>
                 </div>
               ) : (
                 <MessageInput
