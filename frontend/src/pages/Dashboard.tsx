@@ -12,6 +12,7 @@ import {
   User as UserIcon
 } from 'lucide-react'
 import Tooltip from '../components/Common/Tooltip'
+import { formatDateOnly } from '../utils/date'
 import { TeamPanel } from '../components/Profile/TeamPanel'
 import { Skeleton } from '../components/ui'
 import styles from './Dashboard.module.css'
@@ -197,7 +198,7 @@ export default function Dashboard() {
                     <span className={styles['task-title']}>{task.title}</span>
                     <span className={styles['task-meta']}>
                       {getStatusLabel(task.status)}
-                      {task.end_date && ` • ${new Date(task.end_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`}
+                      {task.end_date && ` • ${formatDateOnly(task.end_date, { day: 'numeric', month: 'short' })}`}
                     </span>
                   </div>
                 </div>

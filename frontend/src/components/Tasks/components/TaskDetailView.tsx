@@ -6,6 +6,7 @@ import { Select } from '../../ui/Select'
 import { useConfirm } from '../../ui/ConfirmProvider'
 import { Pencil, Trash2 } from 'lucide-react'
 import { sanitizeHtml } from '../../../utils/sanitize'
+import { formatDateOnly } from '../../../utils/date'
 
 type TaskComment = NonNullable<Task['comments']>[number]
 
@@ -106,7 +107,7 @@ export function TaskDetailView({
           <div className={styles['date-item']}>
             <span className={styles['date-label']}>Fin</span>
             <span>
-              {new Date(task.end_date).toLocaleDateString('es-ES', {
+              {formatDateOnly(task.end_date, {
                 weekday: 'short',
                 day: 'numeric',
                 month: 'short'

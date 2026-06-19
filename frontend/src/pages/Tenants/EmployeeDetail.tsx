@@ -4,6 +4,7 @@ import { ArrowLeft, Clock, CheckSquare, CalendarClock, Ban, CheckCircle2, Refres
 import { useEmployeeTracking } from '../../hooks'
 import Avatar from '../../components/Common/Avatar'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
+import { formatDateOnly } from '../../utils/date'
 import styles from './Tenants.module.css'
 
 export default function EmployeeDetail() {
@@ -179,7 +180,7 @@ export default function EmployeeDetail() {
                         {t.completed ? 'Finalizada' : t.status}
                       </span>
                     </td>
-                    <td>{t.end_date ? new Date(t.end_date).toLocaleDateString('es-ES') : '—'}</td>
+                    <td>{t.end_date ? formatDateOnly(t.end_date) : '—'}</td>
                   </tr>
                 ))}
               </tbody>
