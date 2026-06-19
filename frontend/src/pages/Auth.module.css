@@ -224,6 +224,20 @@
   font-size: 13px;
 }
 
+/* ── "Powered by" footer ── */
+/* ── "Powered by" footer ── */
+.auth-powered {
+  display: flex;
+  align-items: center;
+  justify-content: center; /* Mantiene el bloque centrado en la tarjeta */
+  gap: 4px;                /* Controla el espacio exacto entre el texto y el logo */
+  margin-top: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.25);
+}
+
 /* ── Footer link ── */
 .auth-link {
   text-align: center;
