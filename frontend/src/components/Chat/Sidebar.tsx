@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { LifeBuoy, Inbox, Eye, Hash, AtSign } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { LifeBuoy, Inbox, Eye, EyeOff, Hash, AtSign, ChevronDown, ChevronRight } from 'lucide-react'
 import { Channel, SupportTicket } from '../../types/chat'
 import { isSupportChannel, supportLabel, supportStatusMeta, dmContactName, getUserColor } from './ChatUtils'
 import styles from '../../pages/SlackChat.module.css'
@@ -58,6 +58,11 @@ export function Sidebar({
   const activeChannels = channels.filter(c => (c.type === 'public' || c.type === 'private') && !isSupportChannel(c) && !c.supervised)
   const directMessages = channels.filter(c => c.type === 'direct' && !c.supervised)
 
+  // Secciones colapsables: clic en el encabezado oculta/expande su lista.
+  const [hideSupervision, setHideSupervision] = useState(false)
+  const [hidePending, setHidePending] = useState(false)
+  const [hideSupport, setHideSupport] = useState(false)
+
   // Avatar redondo (inicial + color) para personas/DMs; con punto de estado opcional.
   const avatar = (name: string, status?: 'online' | 'away' | 'offline') => (
     <span className={styles['channel-mini-avatar-wrap']}>
@@ -92,12 +97,20 @@ export function Sidebar({
             <div className={styles['channel-list-mini']}>
               {isSupportAgent && pendingSupport && pendingSupport.length > 0 && (
                 <>
-                  <div className={styles['channel-group-label']}>
+                  <div
+                    className={styles['channel-group-label']}
+                    onClick={() => setHidePending(v => !v)}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title={hidePending ? 'Mostrar pendientes' : 'Ocultar pendientes'}
+                  >
                     <span className={styles['channel-group-label-text']}><Inbox size={13} /> Pendientes</span>
-                    <span className={styles['channel-group-count']}>{pendingSupport.length}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span className={styles['channel-group-count']}>{pendingSupport.length}</span>
+                      {hidePending ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                    </span>
                   </div>
 
-                  {pendingSupport.map(ticket => (
+                  {!hidePending && pendingSupport.map(ticket => (
                     <div key={ticket.channel_id} className={styles['channel-mini-item']}>
                       {avatar(ticket.requester?.name || `#${ticket.channel_id}`)}
                       <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
@@ -125,11 +138,17 @@ export function Sidebar({
 
               {supportChannels.length > 0 && (
                 <>
-                  <div className={styles['channel-group-label']}>
+                  <div
+                    className={styles['channel-group-label']}
+                    onClick={() => setHideSupport(v => !v)}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title={hideSupport ? 'Mostrar soporte' : 'Ocultar soporte'}
+                  >
                     <span className={styles['channel-group-label-text']}><LifeBuoy size={13} /> Soporte</span>
+                    {hideSupport ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                   </div>
 
-                  {supportChannels.map(channel => (
+                  {!hideSupport && supportChannels.map(channel => (
                     <div
                       key={channel.id}
                       className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
@@ -160,11 +179,19 @@ export function Sidebar({
 
               {supervisedChannels.length > 0 && (
                 <>
-                  <div className={styles['channel-group-label']}>
-                    <span className={styles['channel-group-label-text']}><Eye size={13} /> Supervisión</span>
+                  <div
+                    className={styles['channel-group-label']}
+                    onClick={() => setHideSupervision(v => !v)}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title={hideSupervision ? 'Mostrar supervisión' : 'Ocultar supervisión'}
+                  >
+                    <span className={styles['channel-group-label-text']}>
+                      {hideSupervision ? <EyeOff size={13} /> : <Eye size={13} />} Supervisión
+                    </span>
+                    <span className={styles['channel-group-count']}>{supervisedChannels.length}</span>
                   </div>
 
-                  {supervisedChannels.map(channel => {
+                  {!hideSupervision && supervisedChannels.map(channel => {
                     const name = channel.type === 'direct' ? dmContactName(channel) : channel.name
                     return (
                     <div
