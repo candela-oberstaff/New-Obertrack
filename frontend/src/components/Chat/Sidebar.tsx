@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useCallback, type ReactNode } from 'react'
 import { LifeBuoy, Inbox, Eye, EyeOff, Hash, AtSign, ChevronDown, ChevronRight } from 'lucide-react'
 import { Channel, SupportTicket } from '../../types/chat'
 import { isSupportChannel, supportLabel, supportStatusMeta, dmContactName, getUserColor } from './ChatUtils'
@@ -26,6 +26,21 @@ interface SidebarProps {
   pendingSupport?: SupportTicket[]
   onAcceptSupport?: (channelId: number) => void
   supportBusy?: boolean
+}
+
+// Toggle booleano persistido en localStorage, para recordar entre recargas
+// qué secciones del sidebar quedaron colapsadas (igual que el ancho del sidebar
+// o preferred_company_id). Devuelve [value, toggle].
+function usePersistentToggle(key: string): [boolean, () => void] {
+  const [value, setValue] = useState(() => localStorage.getItem(key) === '1')
+  const toggle = useCallback(() => {
+    setValue(prev => {
+      const next = !prev
+      localStorage.setItem(key, next ? '1' : '0')
+      return next
+    })
+  }, [key])
+  return [value, toggle]
 }
 
 export function Sidebar({
@@ -59,9 +74,10 @@ export function Sidebar({
   const directMessages = channels.filter(c => c.type === 'direct' && !c.supervised)
 
   // Secciones colapsables: clic en el encabezado oculta/expande su lista.
-  const [hideSupervision, setHideSupervision] = useState(false)
-  const [hidePending, setHidePending] = useState(false)
-  const [hideSupport, setHideSupport] = useState(false)
+  // Persistente en localStorage para recordar el estado entre recargas.
+  const [hideSupervision, toggleSupervision] = usePersistentToggle('chat_hide_supervision')
+  const [hidePending, togglePending] = usePersistentToggle('chat_hide_pending')
+  const [hideSupport, toggleSupport] = usePersistentToggle('chat_hide_support')
 
   // Avatar redondo (inicial + color) para personas/DMs; con punto de estado opcional.
   const avatar = (name: string, status?: 'online' | 'away' | 'offline') => (
@@ -99,7 +115,7 @@ export function Sidebar({
                 <>
                   <div
                     className={styles['channel-group-label']}
-                    onClick={() => setHidePending(v => !v)}
+                    onClick={togglePending}
                     style={{ cursor: 'pointer', userSelect: 'none' }}
                     title={hidePending ? 'Mostrar pendientes' : 'Ocultar pendientes'}
                   >
@@ -140,7 +156,7 @@ export function Sidebar({
                 <>
                   <div
                     className={styles['channel-group-label']}
-                    onClick={() => setHideSupport(v => !v)}
+                    onClick={toggleSupport}
                     style={{ cursor: 'pointer', userSelect: 'none' }}
                     title={hideSupport ? 'Mostrar soporte' : 'Ocultar soporte'}
                   >
@@ -181,7 +197,7 @@ export function Sidebar({
                 <>
                   <div
                     className={styles['channel-group-label']}
-                    onClick={() => setHideSupervision(v => !v)}
+                    onClick={toggleSupervision}
                     style={{ cursor: 'pointer', userSelect: 'none' }}
                     title={hideSupervision ? 'Mostrar supervisión' : 'Ocultar supervisión'}
                   >

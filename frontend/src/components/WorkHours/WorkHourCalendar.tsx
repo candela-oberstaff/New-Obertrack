@@ -23,13 +23,23 @@ export function WorkHourCalendar({
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
 
   const dayInfo = useMemo(() => {
-    const map: Record<string, { hours: number; type: 'complete' | 'absence' | null }> = {}
+    // Se agrega por día (puede haber varios registros el mismo día en vista de
+    // equipo). Prioridad determinista: una ausencia prevalece sobre una jornada
+    // completa, así un día con ausencias no queda oculto por otro registro;
+    // antes "ganaba" el último del arreglo, lo que pintaba el día de forma
+    // engañosa.
+    const map: Record<string, { type: 'complete' | 'absence' | null }> = {}
     workHours.forEach(wh => {
       const date = wh.work_date.split('T')[0]
-      if (wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA) {
-        map[date] = { hours: wh.hours_worked, type: 'complete' }
-      } else if (wh.work_type === 'absence' || wh.hours_worked === 0) {
-        map[date] = { hours: 0, type: 'absence' }
+      if (map[date]?.type === 'absence') return
+      const isAbsence = wh.work_type === 'absence' || wh.hours_worked === 0
+      const isComplete = wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA
+      if (isAbsence) {
+        map[date] = { type: 'absence' }
+      } else if (isComplete) {
+        map[date] = { type: 'complete' }
+      } else if (!map[date]) {
+        map[date] = { type: null }
       }
     })
     return map

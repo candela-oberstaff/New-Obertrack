@@ -1,5 +1,6 @@
 import { Clock, AlertCircle } from 'lucide-react'
 import { Modal, Button } from '../../ui'
+import { parseLocalDate } from '../utils'
 
 interface WorkHour {
   id: number
@@ -22,16 +23,25 @@ interface MissingHoursModalProps {
   onClose: () => void
   workHours: WorkHour[]
   currentMonthName: string
+  currentMonth: number
+  currentYear: number
 }
 
 export function MissingHoursModal({
   isOpen,
   onClose,
   workHours,
-  currentMonthName
+  currentMonthName,
+  currentMonth,
+  currentYear
 }: MissingHoursModalProps) {
-  // Filter only absence entries in the current selected month
-  const absences = workHours.filter(wh => wh.work_type === 'absence')
+  // Solo las ausencias del mes/año que se está viendo (antes mostraba TODAS las
+  // ausencias del dataset, contradiciendo el encabezado "mes de ...").
+  const absences = workHours.filter(wh => {
+    if (wh.work_type !== 'absence') return false
+    const d = parseLocalDate(wh.work_date)
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+  })
 
   return (
     <Modal
@@ -99,7 +109,7 @@ export function MissingHoursModal({
                     <span>{wh.user?.name || 'Profesional'}</span>
                   </td>
                   <td style={{ padding: '14px 8px' }}>
-                    {new Date(wh.work_date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    {parseLocalDate(wh.work_date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                   </td>
                   <td style={{ padding: '14px 8px' }}>
                     <span

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -34,6 +35,7 @@ func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	isManager := middleware.IsManager(c)
 	tenantID := middleware.GetTenantID(c)
 
 	userIDFilter := c.Query("user_id")
@@ -42,9 +44,20 @@ func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	companyFilter := superadminCompanyFilter(c, isSuperadmin)
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if page < 1 {
+		page = 1
+	}
+	// El frontend pide el mes completo (limit alto) para que sus cálculos de
+	// semana/recuperación/calendario no se trunquen; acotamos a 1000 para evitar
+	// que un cliente pida una página ilimitada.
+	if limit <= 0 {
+		limit = 10
+	} else if limit > 1000 {
+		limit = 1000
+	}
 	offset := (page - 1) * limit
 
-	workHours, total, err := h.svc.GetAll(userID, role, isSuperadmin, tenantID, companyFilter, userIDFilter, startDate, endDate, offset, limit)
+	workHours, total, err := h.svc.GetAll(userID, role, isSuperadmin, isManager, tenantID, companyFilter, userIDFilter, startDate, endDate, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch work hours"})
 		return
@@ -69,9 +82,10 @@ func (h *WorkHourHandler) Create(c *gin.Context) {
 	workHour, err := h.svc.Create(userID, req)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if err.Error() == "Invalid date format" || err.Error() == "No puedes registrar horas en fechas futuras" {
+		switch {
+		case errors.Is(err, service.ErrInvalidDateFormat), errors.Is(err, service.ErrFutureWorkDate):
 			status = http.StatusBadRequest
-		} else if err.Error() == "Ya existe un registro para esta fecha. Solo puedes registrar un máximo de una jornada por día." {
+		case errors.Is(err, service.ErrDuplicateWorkDay):
 			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
@@ -135,7 +149,7 @@ func (h *WorkHourHandler) Approve(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if err.Error() == "No work hours found" {
 			status = http.StatusBadRequest
-		} else if err.Error() == "Not authorized to approve work hours for user" {
+		} else if err.Error() == "No tienes permiso para aprobar estas horas." {
 			status = http.StatusForbidden
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
@@ -166,7 +180,7 @@ func (h *WorkHourHandler) Reject(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if err.Error() == "No work hours found" || err.Error() == "Rejection reason is required" {
 			status = http.StatusBadRequest
-		} else if err.Error() == "Not authorized to reject work hours for user" {
+		} else if err.Error() == "No tienes permiso para rechazar estas horas." {
 			status = http.StatusForbidden
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
@@ -180,12 +194,13 @@ func (h *WorkHourHandler) GetSummary(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	isManager := middleware.IsManager(c)
 	tenantID := middleware.GetTenantID(c)
 
 	companyFilter := superadminCompanyFilter(c, isSuperadmin)
 	userIDFilter := c.Query("user_id")
 
-	summary, err := h.svc.GetSummary(userID, role, isSuperadmin, tenantID, companyFilter, userIDFilter)
+	summary, err := h.svc.GetSummary(userID, role, isSuperadmin, isManager, tenantID, companyFilter, userIDFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get summary"})
 		return

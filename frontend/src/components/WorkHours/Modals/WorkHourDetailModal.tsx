@@ -16,6 +16,8 @@ interface WorkHourDetailModalProps {
   onReject: (id: number, reason: string) => Promise<void>
   onEdit: (wh: WorkHour) => void
   isEmployer?: boolean
+  /** true cuando el registro es del propio usuario: no puede auto-aprobarse. */
+  isOwnRecord?: boolean
 }
 
 export function WorkHourDetailModal({
@@ -26,7 +28,8 @@ export function WorkHourDetailModal({
   onApprove,
   onReject,
   onEdit,
-  isEmployer = false
+  isEmployer = false,
+  isOwnRecord = false
 }: WorkHourDetailModalProps) {
   const [showRejectForm, setShowRejectForm] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
@@ -49,6 +52,9 @@ export function WorkHourDetailModal({
     try {
       await onApprove(workHour.id)
       onClose()
+    } catch {
+      // El feedback de error lo muestra la página (toast); el modal se mantiene
+      // abierto para que el usuario vea el estado sin cambios.
     } finally {
       setIsSubmitting(false)
     }
@@ -61,16 +67,21 @@ export function WorkHourDetailModal({
     try {
       await onReject(workHour.id, reason)
       onClose()
+    } catch {
+      // El feedback de error lo muestra la página (toast); el modal se mantiene abierto.
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const isPending = !workHour.approved && !workHour.rejected
+  // Nadie aprueba/rechaza sus propias horas (separación de funciones): se ocultan
+  // esas acciones en registros propios, pero se conserva "Editar".
+  const canReview = canApprove && !isOwnRecord
   const showEdit = canEdit && !isEmployer && !workHour.approved
-  const showRejectOpen = canApprove && isPending && !showRejectForm
-  const showRejectConfirm = canApprove && isPending && showRejectForm
-  const showApprove = canApprove && !workHour.approved
+  const showRejectOpen = canReview && isPending && !showRejectForm
+  const showRejectConfirm = canReview && isPending && showRejectForm
+  const showApprove = canReview && !workHour.approved
   const hasActions = showEdit || showRejectOpen || showRejectConfirm || showApprove
 
   return (

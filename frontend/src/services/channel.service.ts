@@ -22,7 +22,7 @@ export const channelService = {
     const { data } = await api.get<Channel>(`/channels/${id}`)
     return data
   },
-  updateChannel: async (id: number, channel: { name?: string; description?: string }) => {
+  updateChannel: async (id: number, channel: { name?: string; description?: string; type?: 'public' | 'private' }) => {
     const { data } = await api.put<Channel>(`/channels/${id}`, channel)
     return data
   },

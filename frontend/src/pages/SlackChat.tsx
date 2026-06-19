@@ -359,7 +359,7 @@ export default function SlackChat() {
   }
   const addMember = async (id: number) => { if (selectedChannel) try { await channelService.addMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
   const removeMember = async (id: number) => { if (selectedChannel) try { await channelService.removeMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
-  const handleUpdateChannel = async (id: number, updates: { name: string; description: string }) => {
+  const handleUpdateChannel = async (id: number, updates: { name: string; description: string; type?: 'public' | 'private' }) => {
     try {
       const updated = await channelService.updateChannel(id, updates)
       setSelectedChannel(updated as any)

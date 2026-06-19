@@ -25,6 +25,11 @@ var (
 	// usa OTRO canal con el mismo (name, type, tenant), evitando el 500 que daría
 	// el índice único idx_channel_name_type_tenant (A-2).
 	ErrDuplicateChannelName = fmt.Errorf("channel name already in use")
+	// ErrInvalidChannelType se devuelve al intentar cambiar el tipo de un canal a un
+	// valor no permitido: solo se admite "public"<->"private". Cambiar a/desde
+	// "direct" (los DMs no cambian de tipo) o el tipo de un canal de soporte está
+	// prohibido, igual que cualquier valor desconocido (→ 400 en el handler).
+	ErrInvalidChannelType = fmt.Errorf("invalid channel type change")
 )
 
 func isSuperadminUser(user *models.User) bool {
@@ -78,7 +83,9 @@ type ChannelService interface {
 	// uniendo User + ChannelMember.Role para el contrato del frontend.
 	GetMembersWithRole(channelID uint) ([]ChannelMemberDTO, error)
 	Create(userID uint, name, description, channelType string, memberIDs []uint, tenantOverride uint) (*models.Channel, error)
-	Update(id, userID uint, name, description string, isSuperadmin bool) (*models.Channel, error)
+	// Update edita nombre/descripcion y, opcionalmente, el tipo de canal
+	// (publico<->privado). channelType vacio = sin cambio de tipo.
+	Update(id, userID uint, name, description, channelType string, isSuperadmin bool) (*models.Channel, error)
 	Delete(id, userID uint, isSuperadmin bool) error
 	AddMember(channelID, userID, memberToAdd uint, isSuperadmin bool) error
 	RemoveMember(channelID, userID, memberToRemove uint, isSuperadmin bool) error
@@ -87,6 +94,11 @@ type ChannelService interface {
 	SetMemberRole(channelID, actorID, targetID uint, role string, isSuperadmin bool) error
 	Join(channelID, userID uint) error
 	Leave(channelID, userID uint) error
+	// IsExplicitMember indica si el usuario tiene una fila de membresía explícita en
+	// el canal (channel_members), sin el auto-join de canales públicos. Lo usa el
+	// handler para impedir que un NO-miembro (incluido un superadmin que solo
+	// supervisa) escriba en DMs o canales privados ajenos.
+	IsExplicitMember(channelID, userID uint) (bool, error)
 
 	GetMessages(channelID, userID, beforeID uint) ([]models.ChannelMessage, error)
 	SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64, fileType string) (*models.ChannelMessage, []uint, error)
@@ -384,6 +396,14 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 	return result, nil
 }
 
+// IsExplicitMember reporta si el usuario tiene fila de membresía explícita en el
+// canal (delegando en el repo). No aplica el auto-join de públicos: un usuario sin
+// fila devuelve false aunque vea el canal público. El handler lo usa para bloquear
+// el envío de contenido por parte de no-miembros en DMs/privados (supervisión).
+func (s *channelService) IsExplicitMember(channelID, userID uint) (bool, error) {
+	return s.repo.IsExplicitMember(channelID, userID)
+}
+
 func (s *channelService) GetChannel(id uint) (*models.Channel, error) {
 	// Tenant/membership is enforced at the handler level.
 	// For direct tenant-scoped access use authorizeChannelTenant instead.
@@ -524,7 +544,7 @@ func (s *channelService) reactivateChannel(channel *models.Channel, userID uint)
 	return s.repo.GetChannel(channel.ID)
 }
 
-func (s *channelService) Update(id, userID uint, name, description string, isSuperadmin bool) (*models.Channel, error) {
+func (s *channelService) Update(id, userID uint, name, description, channelType string, isSuperadmin bool) (*models.Channel, error) {
 	channel, err := s.authorizeChannelTenant(id, userID, isSuperadmin)
 	if err != nil {
 		return nil, err
@@ -535,15 +555,53 @@ func (s *channelService) Update(id, userID uint, name, description string, isSup
 		return nil, ErrUnauthorized
 	}
 
+	// targetType determina el (name,type,tenant) usado para validar duplicados:
+	// si se va a cambiar el tipo, el nombre debe ser único bajo el NUEVO tipo.
+	targetType := channel.Type
+
 	updates := map[string]any{}
+
+	// Cambio de privacidad (publico<->privado), opcional. channelType vacio = sin
+	// cambio. Solo se permiten "public"/"private": cambiar a/desde "direct" no es
+	// valido (los DMs no cambian de tipo) y cualquier otro valor se rechaza.
+	if channelType != "" {
+		ct := models.ChannelType(channelType)
+		if ct != models.ChannelTypePublic && ct != models.ChannelTypePrivate {
+			return nil, ErrInvalidChannelType
+		}
+		// Un DM nunca cambia de tipo (ni a public ni a private).
+		if channel.Type == models.ChannelTypeDirect {
+			return nil, ErrInvalidChannelType
+		}
+		// Los canales de soporte (private + prefijo "Soporte · ") no cambian de tipo.
+		if isSupportChannel(channel) {
+			return nil, ErrInvalidChannelType
+		}
+		if ct != channel.Type {
+			// NOTA: cambiar publico->privado (o viceversa) NO toca la membresia: los
+			// miembros actuales se conservan. Es la decision de producto aceptada; un
+			// canal que pasa a privado deja dentro a quienes ya estaban (se gestionan
+			// despues con add/remove member si hace falta).
+			updates["type"] = string(ct)
+			targetType = ct
+		}
+	}
+
 	if name != "" && name != channel.Name {
 		// Validar nombre duplicado ANTES de escribir: si OTRO canal (id distinto)
 		// ya usa ese (name, type, tenant) devolvemos un error claro en vez de dejar
 		// que reviente el índice único idx_channel_name_type_tenant con un 500.
-		if existing, _ := s.repo.GetChannelByNameAndType(name, channel.Type, channel.TenantID); existing != nil && existing.ID != channel.ID {
+		// Usa targetType para que la validación contemple un posible cambio de tipo.
+		if existing, _ := s.repo.GetChannelByNameAndType(name, targetType, channel.TenantID); existing != nil && existing.ID != channel.ID {
 			return nil, ErrDuplicateChannelName
 		}
 		updates["name"] = name
+	} else if _, changingType := updates["type"]; changingType {
+		// Si solo cambia el tipo (no el nombre), revalida que el nombre actual no
+		// colisione con otro canal del NUEVO tipo (mismo índice único).
+		if existing, _ := s.repo.GetChannelByNameAndType(channel.Name, targetType, channel.TenantID); existing != nil && existing.ID != channel.ID {
+			return nil, ErrDuplicateChannelName
+		}
 	}
 	if description != "" {
 		updates["description"] = description

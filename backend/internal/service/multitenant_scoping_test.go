@@ -227,7 +227,7 @@ func TestWorkHoursGetAll_SuperadminWithoutCompany_EmptyWithoutQuery(t *testing.T
 	repo := &fakeWHRepo{}
 	s := &workHourService{repo: repo}
 
-	res, total, err := s.GetAll(1, "superadmin", true, 0, 0, "", "", "", 0, 50)
+	res, total, err := s.GetAll(1, "superadmin", true, false, 0, 0, "", "", "", 0, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestWorkHoursGetAll_SuperadminWithCompany_FiltersByTenant(t *testing.T) {
 	repo := &fakeWHRepo{}
 	s := &workHourService{repo: repo}
 
-	if _, _, err := s.GetAll(1, "superadmin", true, 0, 5, "", "", "", 0, 50); err != nil {
+	if _, _, err := s.GetAll(1, "superadmin", true, false, 0, 5, "", "", "", 0, 50); err != nil {
 		t.Fatal(err)
 	}
 	if got := uintFilter(t, repo.findFilters, "tenant_id"); got != 5 {
@@ -255,7 +255,7 @@ func TestWorkHoursSummary_SuperadminWithoutCompany_ZeroWithoutQuery(t *testing.T
 	repo := &fakeWHRepo{}
 	s := &workHourService{repo: repo}
 
-	sum, err := s.GetSummary(1, "superadmin", true, 0, 0, "")
+	sum, err := s.GetSummary(1, "superadmin", true, false, 0, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,6 +313,24 @@ func (f *fakeChannelRepo) GetActiveUsers(tenantID uint, isSuperadmin bool) ([]mo
 	f.activeTenant = tenantID
 	f.activeSuper = isSuperadmin
 	f.activeCalled = true
+	return nil, nil
+}
+
+// GetChannels también consulta no-leídos y membresía antes de armar la respuesta;
+// el fake los implementa como vacíos para no caer en la interfaz embebida (nil).
+func (f *fakeChannelRepo) GetUnreadCounts(userID uint) ([]repository.UnreadCount, error) {
+	return nil, nil
+}
+
+func (f *fakeChannelRepo) GetMemberChannelIDs(userID uint) ([]uint, error) {
+	return nil, nil
+}
+
+func (f *fakeChannelRepo) GetSupportTicketsByChannelIDs(channelIDs []uint) ([]models.SupportTicket, error) {
+	return nil, nil
+}
+
+func (f *fakeChannelRepo) GetMembers(channelID uint) ([]models.User, error) {
 	return nil, nil
 }
 

@@ -68,11 +68,17 @@ function MessageItemInner({
   //   via file_type 'audio/...').
   // - Kept only a `.webm` extension fallback for legacy messages whose file_type
   //   wasn't persisted, since .webm is the actual recording format we produce.
-  const isVoiceNote = message.file_type?.startsWith('audio/') ||
-                     (!message.file_type && message.attachment?.includes('.webm'))
+  // Una nota de voz es un audio grabado en la app (file_name 'Nota de voz', enviado
+  // como 'audio/webm'). Distinguimos las notas de voz (UI propia) de otros audios
+  // subidos como archivo (mp3/wav/ogg/m4a/...), que ahora también se reproducen inline.
+  const isAudioAttachment = message.file_type?.startsWith('audio/') ||
+                     /\.(mp3|wav|ogg|m4a|webm|aac|flac)([?#]|$)/i.test(message.file_name || '') ||
+                     /\.(mp3|wav|ogg|m4a|webm|aac|flac)([?#]|$)/i.test(message.attachment || '')
+  // Solo las grabaciones de la app llevan la UI específica de "Nota de voz".
+  const isVoiceNote = isAudioAttachment && message.file_name === 'Nota de voz'
 
   // file_type isn't always persisted (e.g. GIFs from Giphy), so fall back to the URL extension.
-  const isImageAttachment = !isVoiceNote && (
+  const isImageAttachment = !isAudioAttachment && (
     message.file_type?.startsWith('image/') ||
     /\.(gif|png|jpe?g|webp|avif)([?#]|$)/i.test(message.attachment || '')
   )
@@ -150,6 +156,13 @@ function MessageItemInner({
                 <div className={styles['voice-note']} onClick={() => togglePlayAudio(message.attachment!)}>
                   <span className={styles['play-btn'] || 'play-icon'}>{playingAudio === message.attachment ? '⏸' : '▶'}</span>
                   <span className={styles['voice-label'] || 'voice-label'}>Nota de voz</span>
+                </div>
+              ) : isAudioAttachment ? (
+                <div className={styles['audio-attachment']} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <audio controls src={message.attachment} style={{ maxWidth: '100%' }} />
+                  <a href={message.attachment} target="_blank" rel="noopener noreferrer" className={styles['attachment-file'] || 'attachment-file'} download>
+                    📁 {message.file_name || 'Audio'}
+                  </a>
                 </div>
               ) : isImageAttachment ? (
                 <img src={message.attachment} alt="Adjunto" className={styles['attachment-image']} onClick={() => window.open(message.attachment, '_blank', 'noopener,noreferrer')} />

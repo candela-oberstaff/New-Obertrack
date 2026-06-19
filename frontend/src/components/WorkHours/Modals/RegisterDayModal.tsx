@@ -18,7 +18,6 @@ interface RegisterDayModalProps {
   setFormData: (data: any) => void
   onSubmit: (e: React.FormEvent) => void
   today: string
-  error?: string | null
   isSubmitting?: boolean
 }
 
@@ -29,7 +28,6 @@ export function RegisterDayModal({
   setFormData,
   onSubmit,
   today,
-  error,
   isSubmitting = false
 }: RegisterDayModalProps) {
   const hasActivities = htmlToText(formData.activities).length > 0
@@ -149,13 +147,6 @@ export function RegisterDayModal({
             placeholder="Describe las actividades realizadas durante tu jornada...&#10;• Tarea 1&#10;• Tarea 2"
           />
         </div>
-
-        {error && (
-          <div className={styles['form-error']} role="alert">
-            <AlertCircle size={18} />
-            <span>{error}</span>
-          </div>
-        )}
       </form>
     </Modal>
   )

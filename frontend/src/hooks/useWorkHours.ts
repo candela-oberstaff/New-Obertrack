@@ -85,7 +85,9 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
   const isManager = user?.is_manager
   const canSeePending = isEmployer || isSuperadmin || isManager
 
-  const queryKey = ['work-hours', companyId, employeeId, user?.id]
+  // Refetch al navegar de mes: los cálculos de calendario/recuperación/ausencias
+  // del mes visible necesitan los registros de ESE mes, no solo la primera página.
+  const queryKey = ['work-hours', companyId, employeeId, user?.id, currentMonth, currentYear]
 
   const { data, isLoading, refetch } = useQuery({
     queryKey,
@@ -96,8 +98,23 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
         ...(companyId ? { company_id: companyId } : {}),
         ...(employeeId ? { user_id: String(employeeId) } : {}),
       }
+      // Ventana de datos = unión del mes visible y la semana actual, así tanto
+      // el calendario/lista del mes como las tarjetas "Hoy"/"Esta semana" tienen
+      // todos sus registros (antes el límite de 10 truncaba silenciosamente).
+      const fmt = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      const monthStart = new Date(currentYear, currentMonth, 1)
+      const monthEnd = new Date(currentYear, currentMonth + 1, 0)
+      const now = new Date()
+      const weekStart = new Date(now)
+      weekStart.setDate(now.getDate() - now.getDay())
+      weekStart.setHours(0, 0, 0, 0)
+      const rangeStart = monthStart < weekStart ? monthStart : weekStart
+      const rangeEnd = monthEnd > now ? monthEnd : now
+      const dateScope = { start_date: fmt(rangeStart), end_date: fmt(rangeEnd), limit: 1000 }
+
       const [hoursRes, summaryRes] = await Promise.all([
-        workHourService.getAll({ ...scope }),
+        workHourService.getAll({ ...scope, ...dateScope }),
         workHourService.getSummary({ ...scope }),
       ])
       if (canSeePending) {
@@ -166,10 +183,17 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
     })
   }, [])
 
+  // Registros del mes visible (la ventana traída puede incluir la semana actual
+  // de otro mes; la lista "Mis registros" se acota al mes que se está viendo).
+  const monthHours = useMemo(() => {
+    const ym = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`
+    return workHours.filter(wh => wh.work_date.split('T')[0].startsWith(ym))
+  }, [workHours, currentMonth, currentYear])
+
   const filteredHours = useMemo(() => {
-    if (!selectedDate) return workHours
+    if (!selectedDate) return monthHours
     return workHours.filter(wh => wh.work_date.split('T')[0] === selectedDate)
-  }, [workHours, selectedDate])
+  }, [workHours, monthHours, selectedDate])
 
   const pendingForSelectedDate = useMemo(() => {
     if (selectedDate) {
@@ -179,14 +203,24 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
   }, [filteredHours, selectedDate, workHours])
 
   const weekHours = useMemo(() => {
+    // Inicio/fin de la semana actual en hora LOCAL (evita el corrimiento de día
+    // de toISOString/UTC) y acotada a [inicio, fin] para no sumar otras semanas.
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const now = new Date()
     const startOfWeek = new Date(now)
     startOfWeek.setDate(now.getDate() - now.getDay())
     startOfWeek.setHours(0, 0, 0, 0)
-    const startStr = startOfWeek.toISOString().split('T')[0]
+    const endOfWeek = new Date(startOfWeek)
+    endOfWeek.setDate(startOfWeek.getDate() + 6)
+    const startStr = fmt(startOfWeek)
+    const endStr = fmt(endOfWeek)
 
     return workHours
-      .filter(wh => wh.work_date.split('T')[0] >= startStr)
+      .filter(wh => {
+        const ds = wh.work_date.split('T')[0]
+        return ds >= startStr && ds <= endStr
+      })
       .reduce((sum, wh) => sum + wh.hours_worked, 0)
   }, [workHours])
 

@@ -7,6 +7,8 @@ import (
 	"time"
 	"unicode"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/obertrack/backend/internal/models"
 )
 
@@ -94,31 +96,27 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 	return message, mentionedUserIDs, nil
 }
 
-// normalizeMention lowercases and strips accents/diacritics so that mention
-// matching is accent- and case-insensitive ("@José" matches "jose"). Kept in
-// sync with the frontend mentionsUser helper (ChatUtils.ts).
+// normalizeMention lowercases and strips ALL diacritics so that mention matching
+// is accent- and case-insensitive ("@José" matches "jose"). Mantiene EXACTAMENTE
+// la misma semántica que el frontend foldMention (ChatUtils.ts):
+//
+//	s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+//
+// es decir, descompone en NFD y elimina toda marca combinante (categoría Unicode
+// Mn), no un puñado de acentos hardcodeados. Así caracteres como ý, ě, ā, etc. se
+// normalizan igual en backend y frontend (antes el switch fijo no los cubría y las
+// menciones divergían). Solo cambia la normalización de acentos; los límites de
+// token (@Ana ≠ @Anabel) los sigue aplicando processMentions.
 func normalizeMention(s string) string {
 	s = strings.ToLower(s)
 	var b strings.Builder
-	for _, r := range s {
-		switch r {
-		case 'á', 'à', 'ä', 'â', 'ã', 'å':
-			b.WriteRune('a')
-		case 'é', 'è', 'ë', 'ê':
-			b.WriteRune('e')
-		case 'í', 'ì', 'ï', 'î':
-			b.WriteRune('i')
-		case 'ó', 'ò', 'ö', 'ô', 'õ':
-			b.WriteRune('o')
-		case 'ú', 'ù', 'ü', 'û':
-			b.WriteRune('u')
-		case 'ñ':
-			b.WriteRune('n')
-		case 'ç':
-			b.WriteRune('c')
-		default:
-			b.WriteRune(r)
+	b.Grow(len(s))
+	for _, r := range norm.NFD.String(s) {
+		if unicode.Is(unicode.Mn, r) {
+			// Mn = Mark, Nonspacing → marcas combinantes (acentos descompuestos).
+			continue
 		}
+		b.WriteRune(r)
 	}
 	return b.String()
 }

@@ -893,6 +893,33 @@ func Run(db *gorm.DB) error {
                 return nil
             },
         },
+        {
+            // Garantiza a nivel de DB que una jornada no pueda estar aprobada Y
+            // rechazada a la vez (estado imposible). El código ya mantiene la
+            // exclusividad; esto la blinda contra inconsistencias.
+            ID: "202606191500_workhours_status_exclusive",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Enforcing mutually-exclusive approved/rejected on work_hours...")
+                // Backfill defensivo: si alguna jornada histórica quedó con ambos
+                // flags, la aprobación (estado terminal positivo) gana y se limpia
+                // el rechazo.
+                if err := tx.Exec(`
+                    UPDATE work_hours
+                    SET rejected = false, rejected_by = NULL, rejected_at = NULL, rejection_reason = ''
+                    WHERE approved = true AND rejected = true
+                `).Error; err != nil {
+                    return err
+                }
+                // Idempotente: se elimina antes de (re)crear la constraint.
+                if err := tx.Exec(`ALTER TABLE work_hours DROP CONSTRAINT IF EXISTS chk_work_hours_status_exclusive`).Error; err != nil {
+                    return err
+                }
+                return tx.Exec(`ALTER TABLE work_hours ADD CONSTRAINT chk_work_hours_status_exclusive CHECK (NOT (approved AND rejected))`).Error
+            },
+            Rollback: func(tx *gorm.DB) error {
+                return tx.Exec(`ALTER TABLE work_hours DROP CONSTRAINT IF EXISTS chk_work_hours_status_exclusive`).Error
+            },
+        },
         // Future migrations go here
     })
 

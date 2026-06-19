@@ -43,8 +43,16 @@ func RequirePermission(svc service.RBACService, module, level string) gin.Handle
 			return
 		}
 		perms, hasRoles, err := svc.EffectivePermissions(middleware.GetUserID(c), middleware.GetTenantID(c))
-		if err != nil || !hasRoles {
-			// Sin roles (o error de lectura): no restringir, la app funciona como antes.
+		if err != nil {
+			// Fail-closed: si no podemos verificar los permisos, no abrimos el
+			// endpoint (un fallo transitorio no debe conceder acceso de escritura).
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron verificar los permisos"})
+			c.Abort()
+			return
+		}
+		if !hasRoles {
+			// Sin roles asignados: comportamiento histórico de su tipo de cuenta,
+			// no se restringe.
 			c.Next()
 			return
 		}

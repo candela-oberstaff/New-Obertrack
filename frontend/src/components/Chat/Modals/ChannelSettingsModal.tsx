@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Channel, ChannelMember } from '../../../types/chat'
 import { User } from '../../../types'
 import styles from '../../../pages/SlackChat.module.css'
-import { getUserColor } from '../ChatUtils'
+import { getUserColor, isSupportChannel } from '../ChatUtils'
 import { Modal, Button } from '../../ui'
 import { channelService } from '../../../services/channel.service'
 import { useNotification } from '../../../context/NotificationContext'
@@ -16,7 +16,7 @@ interface ChannelSettingsModalProps {
   onRemoveMember: (id: number) => void
   onLeaveChannel: (id: number) => void
   onShowAddMembers: () => void
-  onUpdateChannel: (id: number, updates: { name: string; description: string }) => Promise<void>
+  onUpdateChannel: (id: number, updates: { name: string; description: string; type?: 'public' | 'private' }) => Promise<void>
   onDeleteChannel?: (id: number) => void
   onRefreshMembers?: (channelId: number) => void
 }
@@ -38,6 +38,12 @@ export function ChannelSettingsModal({
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(selectedChannel.name)
   const [editDescription, setEditDescription] = useState(selectedChannel.description || '')
+  // Privacidad editable solo para canales normales (no DM, no soporte). El
+  // backend rechaza (400) cambiar el type de direct/soporte de todos modos.
+  const [editType, setEditType] = useState<'public' | 'private'>(
+    selectedChannel.type === 'private' ? 'private' : 'public'
+  )
+  const canEditPrivacy = selectedChannel.type !== 'direct' && !isSupportChannel(selectedChannel)
   const [isSaving, setIsSaving] = useState(false)
   const [updatingRoleId, setUpdatingRoleId] = useState<number | null>(null)
 
@@ -70,7 +76,11 @@ export function ChannelSettingsModal({
     if (!editName.trim()) return
     setIsSaving(true)
     try {
-      await onUpdateChannel(selectedChannel.id, { name: editName, description: editDescription })
+      await onUpdateChannel(selectedChannel.id, {
+        name: editName,
+        description: editDescription,
+        ...(canEditPrivacy ? { type: editType } : {}),
+      })
       setIsEditing(false)
     } catch (e) {
       console.error(e)
@@ -117,6 +127,33 @@ export function ChannelSettingsModal({
               style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontFamily: 'inherit' }}
             />
           </div>
+          {canEditPrivacy && (
+            <div className={styles['form-group']}>
+              <label style={{ fontWeight: '500', fontSize: '14px', display: 'block', marginBottom: '6px' }}>Privacidad</label>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px' }}>
+                  <input
+                    type="radio"
+                    name="channel-privacy"
+                    value="public"
+                    checked={editType === 'public'}
+                    onChange={() => setEditType('public')}
+                  />
+                  # Público
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px' }}>
+                  <input
+                    type="radio"
+                    name="channel-privacy"
+                    value="private"
+                    checked={editType === 'private'}
+                    onChange={() => setEditType('private')}
+                  />
+                  🔒 Privado
+                </label>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <>

@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useNotification } from '../context/NotificationContext'
 import type { WorkHour } from '../types'
 import { useWorkHours } from '../hooks'
 import {
@@ -18,7 +19,7 @@ import Tooltip from '../components/Common/Tooltip'
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
 import { adminService } from '../services/api'
-import { MONTHS_ES } from '../components/WorkHours/utils'
+import { MONTHS_ES, parseLocalDate } from '../components/WorkHours/utils'
 import { WorkHourCalendar } from '../components/WorkHours/WorkHourCalendar'
 import { WorkHourStats } from '../components/WorkHours/WorkHourStats'
 import { WorkHourList } from '../components/WorkHours/WorkHourList'
@@ -36,6 +37,7 @@ interface EmployeeOption { id: number; name: string }
 
 export default function WorkHours() {
   const { user } = useAuth()
+  const notify = useNotification()
   const isSuperadmin = !!user?.is_superadmin
 
   // Superadmin scope: company (tenant) + optional employee. Persisted across reloads.
@@ -125,7 +127,6 @@ export default function WorkHours() {
   const [isMailing, setIsMailing] = useState(false)
   const [mailSuccess, setMailSuccess] = useState<string | null>(null)
   const [mailError, setMailError] = useState<string | null>(null)
-  const [workHourFormError, setWorkHourFormError] = useState<string | null>(null)
   const [isSavingWorkHour, setIsSavingWorkHour] = useState(false)
 
   const isEmployer = user?.user_type === 'empleador' || user?.is_superadmin
@@ -173,7 +174,7 @@ export default function WorkHours() {
 
   const absencesCount = useMemo(() => {
     return workHours.filter(wh => {
-      const d = new Date(wh.work_date)
+      const d = parseLocalDate(wh.work_date)
       return wh.work_type === 'absence' && d.getMonth() === currentMonth && d.getFullYear() === currentYear
     }).length
   }, [workHours, currentMonth, currentYear])
@@ -181,7 +182,7 @@ export default function WorkHours() {
   const totalAbsenceHoursToRecover = useMemo(() => {
     // Filter only current month entries
     const monthHours = workHours.filter(wh => {
-      const d = new Date(wh.work_date)
+      const d = parseLocalDate(wh.work_date)
       return d.getMonth() === currentMonth && d.getFullYear() === currentYear
     })
 
@@ -194,6 +195,16 @@ export default function WorkHours() {
       .reduce((sum, wh) => sum + (wh.hours_worked || 0), 0)
       
     return Math.max(0, absences - recovered)
+  }, [workHours, currentMonth, currentYear])
+
+  // Filas para los reportes: solo el mes/año visible (la ventana traída puede
+  // incluir la semana actual de otro mes). Así el documento coincide con su
+  // título "Período: <mes> <año>".
+  const exportRows = useMemo(() => {
+    return workHours.filter(wh => {
+      const d = parseLocalDate(wh.work_date)
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+    })
   }, [workHours, currentMonth, currentYear])
 
   const handleDownloadPDF = () => {
@@ -348,9 +359,9 @@ export default function WorkHours() {
               </tr>
             </thead>
             <tbody>
-              ${workHours.map(wh => `
+              ${exportRows.map(wh => `
                 <tr>
-                  <td style="white-space: nowrap;">${new Date(wh.work_date).toLocaleDateString('es-ES')}</td>
+                  <td style="white-space: nowrap;">${parseLocalDate(wh.work_date).toLocaleDateString('es-ES')}</td>
                   <td><strong>${wh.user?.name || ''}</strong></td>
                   <td><span class="badge ${wh.work_type}">${wh.work_type === 'complete' ? 'Completo' : wh.work_type === 'absence' ? 'Ausencia' : 'Recuperación'}</span></td>
                   <td><strong>${wh.hours_worked}h</strong></td>
@@ -376,11 +387,11 @@ export default function WorkHours() {
 
   const handleDownloadExcel = () => {
     const headers = ['Fecha', 'Profesional', 'Email', 'Tipo de Registro', 'Horas Trabajadas', 'Horas Faltantes/Ausencia', 'Motivo de Ausencia', 'Actividades', 'Aprobado']
-    const rows = workHours.map(wh => [
-      new Date(wh.work_date).toLocaleDateString('es-ES'),
+    const rows = exportRows.map(wh => [
+      parseLocalDate(wh.work_date).toLocaleDateString('es-ES'),
       wh.user?.name || '',
       wh.user?.email || '',
-      wh.work_type === 'complete' ? 'Completo' : 'Ausencia',
+      wh.work_type === 'complete' ? 'Completo' : wh.work_type === 'recover' ? 'Recuperación' : 'Ausencia',
       wh.hours_worked,
       wh.work_type === 'absence' ? wh.absence_hours : 0,
       wh.absence_reason || '',
@@ -424,9 +435,8 @@ export default function WorkHours() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setWorkHourFormError(null)
     if (!htmlToText(formData.activities)) {
-      setWorkHourFormError('Describe al menos una actividad antes de registrar tu jornada.')
+      notify.error('Describe al menos una actividad antes de registrar tu jornada.')
       return
     }
 
@@ -449,14 +459,15 @@ export default function WorkHours() {
       setShowModal(false)
       setEditingId(null)
       resetForm()
+      notify.success(editingId ? 'Jornada actualizada.' : 'Jornada registrada.')
     } catch (error: any) {
       console.error('Error saving work hour:', error)
-      setWorkHourFormError(
+      const message =
         error?.response?.data?.error ||
         error?.response?.data?.message ||
         error?.message ||
         'No se pudo guardar el registro. Intenta nuevamente.'
-      )
+      notify.error(message)
     } finally {
       setIsSavingWorkHour(false)
     }
@@ -473,17 +484,43 @@ export default function WorkHours() {
       absence_hours: wh.absence_hours || 0,
     })
     setEditingId(wh.id)
-    setWorkHourFormError(null)
     setShowModal(true)
     setSelectedWorkHour(null)
+  }
+
+  const errorMessage = (error: any, fallback: string) =>
+    error?.response?.data?.error || error?.response?.data?.message || error?.message || fallback
+
+  // Aprobar/rechazar individuales: el toast da el feedback (incl. el 403 cuando
+  // un manager intenta aprobar sus propias horas). Se re-lanza para que el modal
+  // permanezca abierto en caso de error.
+  const handleApproveSingle = async (id: number) => {
+    try {
+      await approveSingle(id)
+      notify.success('Jornada aprobada.')
+    } catch (error: any) {
+      notify.error(errorMessage(error, 'No se pudo aprobar la jornada.'))
+      throw error
+    }
+  }
+
+  const handleRejectSingle = async (id: number, reason: string) => {
+    try {
+      await rejectSingle(id, reason)
+      notify.success('Jornada rechazada.')
+    } catch (error: any) {
+      notify.error(errorMessage(error, 'No se pudo rechazar la jornada.'))
+      throw error
+    }
   }
 
   const handleBulkApprove = async () => {
     if (pendingForSelectedDate.length === 0) return
     try {
       await approveWorkHours(pendingForSelectedDate.map(wh => wh.id))
-    } catch (error) {
-      console.error('Error approving work hours:', error)
+      notify.success('Jornadas aprobadas.')
+    } catch (error: any) {
+      notify.error(errorMessage(error, 'No se pudieron aprobar las jornadas.'))
     }
   }
 
@@ -632,7 +669,6 @@ export default function WorkHours() {
             )}
             <button className={styles['btn-primary']} onClick={() => {
               setEditingId(null)
-              setWorkHourFormError(null)
               resetForm()
               setShowModal(true)
             }}>
@@ -739,13 +775,11 @@ export default function WorkHours() {
         onClose={() => {
           setShowModal(false)
           setEditingId(null)
-          setWorkHourFormError(null)
         }}
         formData={formData}
         setFormData={setFormData}
         onSubmit={handleSubmit}
         today={today}
-        error={workHourFormError}
         isSubmitting={isSavingWorkHour}
       />
 
@@ -754,10 +788,11 @@ export default function WorkHours() {
         onClose={() => setSelectedWorkHour(null)}
         canApprove={canApprove}
         canEdit={canEditHours}
-        onApprove={approveSingle}
-        onReject={rejectSingle}
+        onApprove={handleApproveSingle}
+        onReject={handleRejectSingle}
         onEdit={handleEdit}
         isEmployer={isEmployer}
+        isOwnRecord={!isSuperadmin && selectedWorkHour?.user_id === user?.id}
       />
 
       <RecoverHoursModal
@@ -780,6 +815,8 @@ export default function WorkHours() {
         onClose={() => setShowMissingModal(false)}
         workHours={workHours}
         currentMonthName={MONTHS_ES[currentMonth]}
+        currentMonth={currentMonth}
+        currentYear={currentYear}
       />
     </div>
   )

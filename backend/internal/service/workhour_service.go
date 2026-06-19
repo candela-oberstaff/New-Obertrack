@@ -14,12 +14,12 @@ import (
 )
 
 type WorkHourService interface {
-	GetAll(userID uint, role string, isSuperadmin bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
+	GetAll(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
 	Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error)
 	Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error)
 	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) error
 	Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) error
-	GetSummary(userID uint, role string, isSuperadmin bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error)
+	GetSummary(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error)
 	GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string) ([]models.WorkHour, error)
 	SendReportEmail(employerID uint, month int, year int, companyFilter uint) error
 	GetPDFReportBytes(userID uint, month int, year int, companyFilter uint) ([]byte, string, error)
@@ -68,7 +68,7 @@ func (s *workHourService) parseFloatVal(val interface{}) float64 {
 	return 0
 }
 
-func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
+func (s *workHourService) GetAll(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
 	filters := make(map[string]interface{})
 
 	if isSuperadmin {
@@ -78,16 +78,22 @@ func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, te
 			return []models.WorkHour{}, 0, nil
 		}
 		filters["tenant_id"] = companyFilter
-	} else {
-		if isEmployerRole(role) || role == "manager" {
-			// Employers and managers see all work hours within their tenant
-			if tenantID > 0 {
-				filters["tenant_id"] = tenantID
-			}
-		} else {
-			// Professionals only ever see their own work hours
-			filters["user_id"] = userID
+	} else if isManager || role == "manager" {
+		// Un manager ve solo su equipo (él + subordinados directos), igual que su
+		// lista de pendientes y su resumen; no todas las horas del tenant. Así
+		// "lo que ve" coincide con "lo que puede aprobar".
+		if tenantID > 0 {
+			filters["tenant_id"] = tenantID
 		}
+		filters["manager_or_user_id"] = userID
+	} else if isEmployerRole(role) {
+		// Los empleadores ven todas las horas de su tenant.
+		if tenantID > 0 {
+			filters["tenant_id"] = tenantID
+		}
+	} else {
+		// Los profesionales solo ven sus propias horas.
+		filters["user_id"] = userID
 	}
 
 	if userIDFilter != "" && (isSuperadmin || role == string(models.UserTypeEmployer) || role == "empleador") {
@@ -110,16 +116,50 @@ func (s *workHourService) GetAll(userID uint, role string, isSuperadmin bool, te
 	return s.repo.FindAll(filters, offset, limit)
 }
 
+// Errores tipados de la creación/edición de jornadas. El handler los mapea a
+// códigos HTTP con errors.Is en vez de comparar el texto del mensaje (frágil).
+var (
+	ErrInvalidDateFormat = errors.New("Invalid date format")
+	ErrFutureWorkDate    = errors.New("No puedes registrar horas en fechas futuras")
+	ErrDuplicateWorkDay  = errors.New("Ya existe un registro para esta fecha en esta empresa. Solo puedes registrar un máximo de una jornada por día.")
+)
+
+const standardWorkDay = 8.0
+
+// clampHours acota las horas a un rango válido [0,24]. Evita valores negativos
+// o desbordes de la columna decimal(5,2) y stats infladas por payloads del
+// cliente sin validar.
+func clampHours(h float64) float64 {
+	if h < 0 {
+		return 0
+	}
+	if h > 24 {
+		return 24
+	}
+	return h
+}
+
+// clampAbsenceHours acota las horas de ausencia a una jornada laboral [0,8].
+func clampAbsenceHours(h float64) float64 {
+	if h < 0 {
+		return 0
+	}
+	if h > standardWorkDay {
+		return standardWorkDay
+	}
+	return h
+}
+
 func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error) {
 	workDateStr := s.parseStringVal(reqData["work_date"])
 	workDate, err := time.Parse("2006-01-02", workDateStr)
 	if err != nil {
-		return nil, errors.New("Invalid date format")
+		return nil, ErrInvalidDateFormat
 	}
 
 	today := time.Now().Truncate(24 * time.Hour)
 	if workDate.After(today) {
-		return nil, errors.New("No puedes registrar horas en fechas futuras")
+		return nil, ErrFutureWorkDate
 	}
 
 	creator, _ := s.userRepo.GetByID(userID)
@@ -128,26 +168,28 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 	// El límite de una jornada por día es POR empresa activa: un profesional
 	// multi-empresa puede registrar el mismo día en cada una.
 	if _, err := s.repo.FindByUserAndDate(userID, workDate, tenantID); err == nil {
-		return nil, errors.New("Ya existe un registro para esta fecha en esta empresa. Solo puedes registrar un máximo de una jornada por día.")
+		return nil, ErrDuplicateWorkDay
 	}
 
-	hoursWorked := s.parseFloatVal(reqData["hours_worked"])
+	// Las horas son autoritativas en el servidor: no se confía en lo que mande
+	// el cliente para complete/absence; recover se acota a [0,24].
 	workTypeStr := s.parseStringVal(reqData["work_type"])
 	workType := models.WorkTypeComplete
-	absenceHours := s.parseFloatVal(reqData["absence_hours"])
+	absenceHours := clampAbsenceHours(s.parseFloatVal(reqData["absence_hours"]))
+	var hoursWorked float64
 
-	if workTypeStr == "absence" {
+	switch workTypeStr {
+	case "absence":
 		workType = models.WorkTypeAbsence
-		if hoursWorked == 0 {
-			hoursWorked = 8 - absenceHours
-			if hoursWorked < 0 {
-				hoursWorked = 0
-			}
-		}
-	} else if workTypeStr == "recover" {
+		hoursWorked = standardWorkDay - absenceHours
+	case "recover":
 		workType = models.WorkTypeRecover
-	} else if hoursWorked == 0 {
-		hoursWorked = 8
+		absenceHours = 0
+		hoursWorked = clampHours(s.parseFloatVal(reqData["hours_worked"]))
+	default:
+		workType = models.WorkTypeComplete
+		absenceHours = 0
+		hoursWorked = standardWorkDay
 	}
 
 	workHour := &models.WorkHour{
@@ -178,7 +220,7 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 
 	if err := s.repo.Create(workHour); err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
-			return nil, errors.New("Ya existe un registro para esta fecha. Solo puedes registrar un máximo de una jornada por día.")
+			return nil, ErrDuplicateWorkDay
 		}
 		return nil, errors.New("Failed to create work hour")
 	}
@@ -248,27 +290,25 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 		workHour.AbsenceReason = s.parseStringVal(val)
 	}
 	if val, ok := reqData["absence_hours"]; ok {
-		workHour.AbsenceHours = s.parseFloatVal(val)
+		workHour.AbsenceHours = clampAbsenceHours(s.parseFloatVal(val))
 	}
 
+	// Las horas se derivan del tipo de jornada en el servidor; solo recover
+	// toma las horas del cliente (acotadas). No se confía en hours_worked para
+	// complete/absence.
 	switch workHour.WorkType {
 	case models.WorkTypeAbsence:
-		hoursWorked := 8.0 - workHour.AbsenceHours
-		if hoursWorked < 0 {
-			hoursWorked = 0
-		}
-		workHour.HoursWorked = hoursWorked
+		workHour.HoursWorked = standardWorkDay - workHour.AbsenceHours
 	case models.WorkTypeRecover:
 		workHour.AbsenceReason = ""
 		workHour.AbsenceHours = 0
+		if val, ok := reqData["hours_worked"]; ok {
+			workHour.HoursWorked = clampHours(s.parseFloatVal(val))
+		}
 	default:
-		workHour.HoursWorked = 8.0
+		workHour.HoursWorked = standardWorkDay
 		workHour.AbsenceReason = ""
 		workHour.AbsenceHours = 0
-	}
-
-	if val, ok := reqData["hours_worked"]; ok {
-		workHour.HoursWorked = s.parseFloatVal(val)
 	}
 
 	if act, ok := reqData["activities"]; ok {
@@ -278,14 +318,20 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 		workHour.Comments = utils.SanitizeHTML(s.parseStringVal(com))
 	}
 
-	if workHour.UserID == userID && !isEmployerRole(role) && !isManager && !isSuperadmin {
+	// Integridad de nómina: cualquier edición por un no-superadmin (incluidos
+	// empleador y manager) devuelve la jornada a "pendiente" para forzar una
+	// re-aprobación. Así nadie altera horas ya aprobadas sin re-revisión; el
+	// superadmin queda exento para correcciones puntuales.
+	//
+	// Se CONSERVA el historial del rechazo previo (RejectedBy/RejectedAt/
+	// RejectionReason) para auditoría: al re-someter sabemos por qué se había
+	// rechazado. Una nueva aprobación lo limpia (ver repo.ApproveMultiple) y un
+	// nuevo rechazo lo sobrescribe.
+	if !isSuperadmin {
 		workHour.Approved = false
 		workHour.ApprovedBy = nil
 		workHour.ApprovedAt = nil
 		workHour.Rejected = false
-		workHour.RejectedBy = nil
-		workHour.RejectedAt = nil
-		workHour.RejectionReason = ""
 	}
 
 	if err := s.repo.Update(workHour); err != nil {
@@ -322,13 +368,15 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 				canApprove = true
 			}
 		} else if role == "manager" || isManager {
-			if wh.UserID == userID || (wh.User.ManagerID != nil && *wh.User.ManagerID == userID) {
+			// Separación de funciones: un manager NO puede aprobar sus propias
+			// jornadas, solo las de sus subordinados directos.
+			if wh.UserID != userID && wh.User.ManagerID != nil && *wh.User.ManagerID == userID {
 				canApprove = true
 			}
 		}
 
 		if !canApprove {
-			return errors.New("Not authorized to approve work hours for user")
+			return errors.New("No tienes permiso para aprobar estas horas.")
 		}
 	}
 
@@ -414,13 +462,15 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 				canReject = true
 			}
 		} else if role == "manager" || isManager {
-			if wh.UserID == userID || (wh.User.ManagerID != nil && *wh.User.ManagerID == userID) {
+			// Separación de funciones: un manager NO puede rechazar sus propias
+			// jornadas, solo las de sus subordinados directos.
+			if wh.UserID != userID && wh.User.ManagerID != nil && *wh.User.ManagerID == userID {
 				canReject = true
 			}
 		}
 
 		if !canReject {
-			return errors.New("Not authorized to reject work hours for user")
+			return errors.New("No tienes permiso para rechazar estas horas.")
 		}
 	}
 
@@ -482,7 +532,7 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 	return err
 }
 
-func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error) {
+func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error) {
 	filters := make(map[string]interface{})
 
 	// Filter for the current month
@@ -497,12 +547,17 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin bool
 			return map[string]float64{"total_hours": 0, "approved_hours": 0, "pending_hours": 0, "rejected_hours": 0}, nil
 		}
 		filters["tenant_id"] = companyFilter
-	} else {
-		if (role == string(models.UserTypeEmployer) || role == "empleador" || role == "manager") && tenantID > 0 {
+	} else if isManager || role == "manager" {
+		// Un manager solo ve el resumen de su equipo (él + subordinados), igual
+		// que su lista de pendientes; no el total de toda la empresa.
+		if tenantID > 0 {
 			filters["tenant_id"] = tenantID
-		} else {
-			filters["user_id"] = userID
 		}
+		filters["manager_or_user_id"] = userID
+	} else if (role == string(models.UserTypeEmployer) || role == "empleador") && tenantID > 0 {
+		filters["tenant_id"] = tenantID
+	} else {
+		filters["user_id"] = userID
 	}
 
 	// Optional per-employee scope (superadmin or employer).

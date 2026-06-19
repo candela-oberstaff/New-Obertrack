@@ -209,6 +209,11 @@ func (r *workHourRepository) GetSummary(filters map[string]interface{}) (map[str
 			query = query.Where("work_hours.tenant_id = ?", employerID)
 		}
 
+		if managerOrUserID, ok := filters["manager_or_user_id"].(uint); ok {
+			query = query.Joins("JOIN users manager_scope ON manager_scope.id = work_hours.user_id").
+				Where("work_hours.user_id = ? OR manager_scope.manager_id = ?", managerOrUserID, managerOrUserID)
+		}
+
 		if userID, ok := filters["user_id"].(uint); ok {
 			query = query.Where("work_hours.user_id = ?", userID)
 		}

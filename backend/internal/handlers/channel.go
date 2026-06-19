@@ -49,6 +49,40 @@ func (h *ChannelHandler) channelAccessAllowed(c *gin.Context, channel *models.Ch
 	return true
 }
 
+// supervisionWriteBlocked refuerza la supervisión en modo solo-lectura: un NO
+// miembro EXPLÍCITO no puede ESCRIBIR (mensajes, hilos, reacciones) en un DM o en
+// un canal PRIVADO que solo está supervisando. Esto cierra la puerta a que un
+// superadmin —que channelAccessAllowed deja pasar para auditar— termine posteando
+// en una conversación ajena.
+//
+// Solo aplica a 'direct' y 'private': en 'public' el auto-join convierte a todos en
+// miembros, así que ahí no se bloquea a nadie. Los flujos legítimos no se rompen:
+//   - El solicitante y el agente de soporte SON miembros explícitos del canal de
+//     soporte (private), así que escriben con normalidad.
+//   - Los mensajes de SISTEMA de soporte (claim/assign/resolve) se generan dentro
+//     del servicio y NO pasan por este handler HTTP, así que no tocan este gate.
+//   - Un miembro normal de un privado, o un superadmin que SÍ es miembro, siguen
+//     posteando: solo se bloquea al no-miembro.
+//
+// Devuelve true (bloqueado) si ya respondió con 403; el caller debe abortar.
+func (h *ChannelHandler) supervisionWriteBlocked(c *gin.Context, channel *models.Channel, userID uint) bool {
+	if channel.Type != models.ChannelTypeDirect && channel.Type != models.ChannelTypePrivate {
+		return false
+	}
+	isMember, err := h.svc.IsExplicitMember(channel.ID, userID)
+	if err != nil {
+		// Ante un fallo al resolver la membresía, fallar cerrado en estos canales
+		// sensibles (mejor un 403 que permitir escribir por error).
+		c.JSON(http.StatusForbidden, gin.H{"error": "No se pudo verificar tu membresía en esta conversación"})
+		return true
+	}
+	if !isMember {
+		c.JSON(http.StatusForbidden, gin.H{"error": "No puedes escribir en una conversación que solo supervisas"})
+		return true
+	}
+	return false
+}
+
 func (h *ChannelHandler) GetChannels(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
@@ -111,6 +145,9 @@ func (h *ChannelHandler) UpdateChannel(c *gin.Context) {
 	var req struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
+		// Type es opcional: si viene "public"/"private" cambia la privacidad del
+		// canal. Vacío = no se toca el tipo (compatibilidad con clientes existentes).
+		Type string `json:"type"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -119,10 +156,10 @@ func (h *ChannelHandler) UpdateChannel(c *gin.Context) {
 	}
 
 	isSuperadmin := middleware.IsSuperadmin(c)
-	channel, err := h.svc.Update(uint(id), userID, req.Name, req.Description, isSuperadmin)
+	channel, err := h.svc.Update(uint(id), userID, req.Name, req.Description, req.Type, isSuperadmin)
 	if err != nil {
-		// Nombre duplicado → 400 (evita el 500 del índice único).
-		if errors.Is(err, service.ErrDuplicateChannelName) {
+		// Nombre duplicado / tipo inválido → 400 (no es un error del servidor).
+		if errors.Is(err, service.ErrDuplicateChannelName) || errors.Is(err, service.ErrInvalidChannelType) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -373,6 +410,10 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
+	// Supervisión read-only: un no-miembro (incl. superadmin) no escribe en DMs/privados.
+	if h.supervisionWriteBlocked(c, channel, userID) {
+		return
+	}
 
 	message, mentioned, err := h.svc.SendMessage(uint(id), userID, req.Content, req.Attachment, req.FileName, req.FileSize, req.FileType)
 	if err != nil {
@@ -488,6 +529,10 @@ func (h *ChannelHandler) AddReaction(c *gin.Context) {
 	}
 	if !h.channelAccessAllowed(c, channel) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+	// Supervisión read-only: un supervisor no-miembro no reacciona en chats ajenos.
+	if h.supervisionWriteBlocked(c, channel, userID) {
 		return
 	}
 
@@ -637,6 +682,21 @@ func (h *ChannelHandler) SendThreadReply(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	channel, err := h.svc.GetChannel(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
+		return
+	}
+	// Acceso (auto-une a públicos del tenant, igual que SendMessage) y luego
+	// supervisión read-only: un no-miembro de un DM/privado no responde en hilos.
+	if !h.channelAccessAllowed(c, channel) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+		return
+	}
+	if h.supervisionWriteBlocked(c, channel, userID) {
 		return
 	}
 
