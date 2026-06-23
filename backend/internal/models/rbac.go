@@ -29,7 +29,7 @@ type Role struct {
 	CreatedBy   uint           `gorm:"not null" json:"created_by"`
 	// Columna calculada (COUNT de user_roles): read-only y fuera de migración,
 	// para que GORM la escanee del SELECT sin crear una columna real.
-	UserCount int64 `gorm:"->;-:migration" json:"user_count"`
+	UserCount int64 `gorm:"-" json:"user_count"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
@@ -58,7 +58,7 @@ type Group struct {
 	Description string         `gorm:"type:text" json:"description"`
 	CreatedBy   uint           `gorm:"not null" json:"created_by"`
 	// Columna calculada (COUNT de group_members): read-only y fuera de migración.
-	MemberCount int64 `gorm:"->;-:migration" json:"member_count"`
+	MemberCount int64 `gorm:"-" json:"member_count"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`

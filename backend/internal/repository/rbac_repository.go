@@ -48,13 +48,25 @@ func NewRBACRepository(db *gorm.DB) RBACRepository {
 // ── Roles ────────────────────────────────────────────────────────────────────
 
 func (r *rbacRepository) ListRoles(tenantID uint) ([]models.Role, error) {
-	var roles []models.Role
+	type roleWithCount struct {
+		models.Role
+		UserCountScanned int64 `gorm:"column:user_count"`
+	}
+	var rolesWithCount []roleWithCount
 	err := r.db.Model(&models.Role{}).
 		Select("roles.*, (SELECT COUNT(*) FROM user_roles ur WHERE ur.role_id = roles.id) as user_count").
 		Where("roles.tenant_id = ?", tenantID).
 		Order("LOWER(roles.name) ASC").
-		Find(&roles).Error
-	return roles, err
+		Scan(&rolesWithCount).Error
+	if err != nil {
+		return nil, err
+	}
+	roles := make([]models.Role, len(rolesWithCount))
+	for i, rc := range rolesWithCount {
+		rc.Role.UserCount = rc.UserCountScanned
+		roles[i] = rc.Role
+	}
+	return roles, nil
 }
 
 func (r *rbacRepository) GetRole(id uint) (*models.Role, error) {
@@ -133,13 +145,25 @@ func (r *rbacRepository) GetUserGroups(userID, tenantID uint) ([]models.Group, e
 // ── Groups ───────────────────────────────────────────────────────────────────
 
 func (r *rbacRepository) ListGroups(tenantID uint) ([]models.Group, error) {
-	var groups []models.Group
+	type groupWithCount struct {
+		models.Group
+		MemberCountScanned int64 `gorm:"column:member_count"`
+	}
+	var groupsWithCount []groupWithCount
 	err := r.db.Model(&models.Group{}).
 		Select("groups.*, (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = groups.id) as member_count").
 		Where("groups.tenant_id = ?", tenantID).
 		Order("LOWER(groups.name) ASC").
-		Find(&groups).Error
-	return groups, err
+		Scan(&groupsWithCount).Error
+	if err != nil {
+		return nil, err
+	}
+	groups := make([]models.Group, len(groupsWithCount))
+	for i, gc := range groupsWithCount {
+		gc.Group.MemberCount = gc.MemberCountScanned
+		groups[i] = gc.Group
+	}
+	return groups, nil
 }
 
 func (r *rbacRepository) GetGroup(id uint) (*models.Group, error) {
