@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +17,25 @@ import (
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/service"
 )
+
+// tempPasswordAlphabet excluye caracteres ambiguos (0/O, 1/l/I) para que la
+// contraseña temporal sea fácil de dictar/transcribir.
+const tempPasswordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+// generateTempPassword genera una contraseña temporal alfanumérica de n
+// caracteres usando crypto/rand (sin caracteres ambiguos).
+func generateTempPassword(n int) (string, error) {
+	b := make([]byte, n)
+	max := big.NewInt(int64(len(tempPasswordAlphabet)))
+	for i := range b {
+		idx, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		b[i] = tempPasswordAlphabet[idx.Int64()]
+	}
+	return string(b), nil
+}
 
 type AdminHandler struct {
 	service       service.AdminService
@@ -158,7 +180,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 	user, err := h.service.CreateUser(payload)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if err.Error() == "Invalid user type" {
+		if err.Error() == "Invalid user type" || strings.Contains(err.Error(), "Manager inválido") {
 			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
@@ -279,6 +301,10 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if err.Error() == "User not found" {
 			status = http.StatusNotFound
+		} else if strings.Contains(err.Error(), "a su cargo") {
+			status = http.StatusConflict
+		} else if strings.Contains(err.Error(), "Manager inválido") {
+			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
@@ -293,6 +319,48 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// GetManagerReports lista los profesionales a cargo de un manager (para mostrar
+// el equipo que hay que reasignar antes de degradar/eliminar al manager).
+func (h *AdminHandler) GetManagerReports(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	reports, err := h.service.GetManagerReports(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, reports)
+}
+
+// BulkAssignManager asigna un manager a varios profesionales a la vez.
+func (h *AdminHandler) BulkAssignManager(c *gin.Context) {
+	var req struct {
+		ProfessionalIDs []uint `json:"professional_ids"`
+		ManagerID       *uint  `json:"manager_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.ProfessionalIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No hay profesionales seleccionados"})
+		return
+	}
+	assigned, skipped, err := h.service.BulkAssignManager(req.ProfessionalIDs, req.ManagerID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "Manager inválido") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"assigned": assigned, "skipped": skipped})
+}
+
 func (h *AdminHandler) DeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -301,11 +369,112 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteUser(uint(id)); err != nil {
+		if strings.Contains(err.Error(), "a su cargo") {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user: " + err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+}
+
+// CreateEmployee da de alta un profesional en la empresa del EMPLEADOR
+// solicitante. Genera una contraseña temporal (que se muestra una sola vez) y
+// sincroniza la membresía. El profesional queda vinculado al tenant del
+// solicitante (no se acepta empresa por el body).
+func (h *AdminHandler) CreateEmployee(c *gin.Context) {
+	var req struct {
+		Name     string `json:"name" binding:"required"`
+		Email    string `json:"email" binding:"required,email"`
+		JobTitle string `json:"job_title"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tenantID := middleware.GetTenantID(c)
+	if tenantID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tu cuenta no está asociada a una empresa"})
+		return
+	}
+
+	temp, err := generateTempPassword(12)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo generar la contraseña temporal"})
+		return
+	}
+
+	payload := map[string]interface{}{
+		"name":         req.Name,
+		"email":        req.Email,
+		"password":     temp,
+		"user_type":    "profesional",
+		"empleador_id": uint(tenantID),
+		"job_title":    req.JobTitle,
+	}
+
+	user, err := h.service.CreateUser(payload)
+	if err != nil {
+		status := http.StatusInternalServerError
+		msg := err.Error()
+		switch {
+		case strings.Contains(strings.ToLower(msg), "unique") ||
+			strings.Contains(strings.ToLower(msg), "duplicate") ||
+			strings.Contains(msg, "already registered"):
+			status = http.StatusConflict
+			msg = "Ya existe un usuario con ese correo"
+		case msg == "Invalid user type" ||
+			strings.Contains(msg, "Manager inválido") ||
+			strings.Contains(msg, "no es válida"):
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	// Dual-write de la membresía (best-effort, igual que en CreateUser admin).
+	if err := h.employmentSvc.SyncActiveForUser(user); err != nil {
+		log.Printf("[employer] no se pudo sincronizar la membresía del profesional %d: %v", user.ID, err)
+	}
+
+	// La contraseña temporal en claro se devuelve UNA sola vez.
+	c.JSON(http.StatusCreated, gin.H{"user": user, "temp_password": temp})
+}
+
+// DeleteEmployee elimina (soft delete) un profesional. El superadmin borra sin
+// restricción de tenant; el empleador solo puede borrar usuarios de SU empresa.
+// Reusa el guard de orphans (manager con equipo -> 409).
+func (h *AdminHandler) DeleteEmployee(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	if middleware.IsSuperadmin(c) {
+		err = h.service.DeleteUser(uint(id))
+	} else {
+		err = h.service.DeleteUserScoped(uint(id), middleware.GetTenantID(c))
+	}
+	if err != nil {
+		status := http.StatusInternalServerError
+		msg := err.Error()
+		switch {
+		case msg == "User not found":
+			status = http.StatusNotFound
+		case msg == "Access denied":
+			status = http.StatusForbidden
+		case strings.Contains(msg, "a su cargo"):
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Profesional eliminado"})
 }
 
 func (h *AdminHandler) ResetPassword(c *gin.Context) {
@@ -570,6 +739,98 @@ func (h *AdminHandler) EndUserEmployment(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Membresía finalizada"})
+}
+
+// UpdateEmploymentManager fija el manager de un empleo concreto del usuario
+// (o lo desasigna si manager_id es null).
+func (h *AdminHandler) UpdateEmploymentManager(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	var req struct {
+		ManagerID *uint `json:"manager_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.employmentSvc.UpdateEmploymentManager(uint(userID), uint(empID), req.ManagerID); err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "Manager inválido") {
+			status = http.StatusBadRequest
+		} else if err.Error() == "Membresía no encontrada" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Manager actualizado"})
+}
+
+// employmentManagerError mapea errores del conjunto de managers a HTTP:
+// "Manager inválido" -> 400, "Membresía no encontrada" -> 404, else 500.
+func employmentManagerStatus(err error) int {
+	if strings.Contains(err.Error(), "Manager inválido") {
+		return http.StatusBadRequest
+	}
+	if err.Error() == "Membresía no encontrada" {
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
+}
+
+// GetEmploymentManagers devuelve el CONJUNTO de managers de un empleo (principal
+// primero, luego por nombre).
+func (h *AdminHandler) GetEmploymentManagers(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	views, err := h.employmentSvc.ListEmploymentManagers(uint(userID), uint(empID))
+	if err != nil {
+		c.JSON(employmentManagerStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, views)
+}
+
+// AddEmploymentManager agrega un manager ADICIONAL (no principal) al empleo.
+func (h *AdminHandler) AddEmploymentManager(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	var req struct {
+		ManagerID uint `json:"manager_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.employmentSvc.AddEmploymentManager(uint(userID), uint(empID), req.ManagerID); err != nil {
+		c.JSON(employmentManagerStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Manager agregado"})
+}
+
+// RemoveEmploymentManager quita un manager del conjunto del empleo.
+func (h *AdminHandler) RemoveEmploymentManager(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	managerID, _ := strconv.ParseUint(c.Param("managerId"), 10, 32)
+	if err := h.employmentSvc.RemoveEmploymentManager(uint(userID), uint(empID), uint(managerID)); err != nil {
+		c.JSON(employmentManagerStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Manager quitado"})
+}
+
+// SetPrimaryEmploymentManager marca un manager ya asignado como principal.
+func (h *AdminHandler) SetPrimaryEmploymentManager(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	managerID, _ := strconv.ParseUint(c.Param("managerId"), 10, 32)
+	if err := h.employmentSvc.SetPrimaryEmploymentManager(uint(userID), uint(empID), uint(managerID)); err != nil {
+		c.JSON(employmentManagerStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Manager principal actualizado"})
 }
 
 // --- Expediente (FASE 3): vista de la empresa (RR.HH.) ---

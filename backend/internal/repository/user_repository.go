@@ -16,7 +16,32 @@ type UserRepository interface {
 	Delete(id uint) error
 	GetEmployees(employerID uint) ([]models.User, error)
 	GetTeam(managerID uint) ([]models.User, error)
+	// CountReportsByManager cuenta los usuarios activos que tienen a managerID
+	// como manager (relación canónica users.manager_id, que escribe toda
+	// asignación). Es la fuente principal para impedir degradar/eliminar a un
+	// manager con equipo a su cargo, independiente de la sincronización de
+	// employments (que depende del login del subordinado).
+	CountReportsByManager(managerID uint) (int64, error)
+	// GetReportsByManager lista los usuarios activos a cargo de managerID
+	// (users.manager_id), para mostrar el equipo que hay que reasignar.
+	GetReportsByManager(managerID uint) ([]models.User, error)
+
+	// --- Lecturas via-links (FASE 2, semántica "cualquier manager") ---
+	// GetTeamViaLinks lista los usuarios activos cuyo empleo ACTIVO en la empresa
+	// activa del manager tiene un vínculo vivo a managerID en employment_managers.
+	// Equivalente via-links de GetTeam.
+	GetTeamViaLinks(managerID uint) ([]models.User, error)
+	// CountReportsByManagerViaLinks cuenta los usuarios activos con un vínculo
+	// vivo a managerID (cualquier empresa). Equivalente via-links de
+	// CountReportsByManager.
+	CountReportsByManagerViaLinks(managerID uint) (int64, error)
+	// GetReportsByManagerViaLinks lista esos usuarios (orden por nombre).
+	GetReportsByManagerViaLinks(managerID uint) ([]models.User, error)
 	Save(user *models.User) error
+	// ReassignManager mueve todos los usuarios que tienen a oldManagerID como
+	// manager hacia newManagerID, o los desasigna si newManagerID es nil.
+	// Devuelve cuántas filas se afectaron.
+	ReassignManager(oldManagerID uint, newManagerID *uint, companyID uint) (int64, error)
 }
 
 type userRepository struct {
@@ -137,10 +162,79 @@ func (r *userRepository) GetEmployees(employerID uint) ([]models.User, error) {
 
 func (r *userRepository) GetTeam(managerID uint) ([]models.User, error) {
 	var team []models.User
-	err := r.db.Where("manager_id = ?", managerID).Find(&team).Error
+	err := r.db.
+		Joins("JOIN employments ON employments.user_id = users.id AND employments.status = ?", models.EmploymentActive).
+		Where("employments.manager_id = ?", managerID).
+		Where("employments.company_id = (SELECT empleador_id FROM users WHERE id = ?)", managerID).
+		Where("users.is_active = ?", true).
+		Find(&team).Error
 	return team, err
+}
+
+// --- Lecturas via-links (FASE 2) ---
+
+func (r *userRepository) GetTeamViaLinks(managerID uint) ([]models.User, error) {
+	var team []models.User
+	err := r.db.
+		Joins("JOIN employments ON employments.user_id = users.id AND employments.status = ?", models.EmploymentActive).
+		Joins("JOIN employment_managers ON employment_managers.employment_id = employments.id AND employment_managers.deleted_at IS NULL").
+		Where("employment_managers.manager_id = ?", managerID).
+		Where("employments.company_id = (SELECT empleador_id FROM users WHERE id = ?)", managerID).
+		Where("users.is_active = ?", true).
+		Distinct().
+		Find(&team).Error
+	return team, err
+}
+
+func (r *userRepository) CountReportsByManagerViaLinks(managerID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.User{}).
+		Joins("JOIN employments ON employments.user_id = users.id AND employments.status = ?", models.EmploymentActive).
+		Joins("JOIN employment_managers ON employment_managers.employment_id = employments.id AND employment_managers.deleted_at IS NULL").
+		Where("employment_managers.manager_id = ?", managerID).
+		Where("users.is_active = ?", true).
+		Distinct("users.id").
+		Count(&count).Error
+	return count, err
+}
+
+func (r *userRepository) GetReportsByManagerViaLinks(managerID uint) ([]models.User, error) {
+	var reports []models.User
+	err := r.db.
+		Joins("JOIN employments ON employments.user_id = users.id AND employments.status = ?", models.EmploymentActive).
+		Joins("JOIN employment_managers ON employment_managers.employment_id = employments.id AND employment_managers.deleted_at IS NULL").
+		Where("employment_managers.manager_id = ?", managerID).
+		Where("users.is_active = ?", true).
+		Distinct().
+		Order("users.name ASC").
+		Find(&reports).Error
+	return reports, err
 }
 
 func (r *userRepository) Save(user *models.User) error {
 	return r.db.Save(user).Error
+}
+
+func (r *userRepository) ReassignManager(oldManagerID uint, newManagerID *uint, companyID uint) (int64, error) {
+	result := r.db.Model(&models.User{}).
+		Where("manager_id = ? AND empleador_id = ?", oldManagerID, companyID).
+		Update("manager_id", newManagerID)
+	return result.RowsAffected, result.Error
+}
+
+func (r *userRepository) CountReportsByManager(managerID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.User{}).
+		Where("manager_id = ? AND is_active = ?", managerID, true).
+		Count(&count).Error
+	return count, err
+}
+
+func (r *userRepository) GetReportsByManager(managerID uint) ([]models.User, error) {
+	var reports []models.User
+	err := r.db.
+		Where("manager_id = ? AND is_active = ?", managerID, true).
+		Order("name ASC").
+		Find(&reports).Error
+	return reports, err
 }

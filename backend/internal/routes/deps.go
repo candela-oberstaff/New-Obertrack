@@ -54,6 +54,10 @@ type deps struct {
 
 // buildDeps constructs the full repository → service → handler graph once.
 func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
+	// Feature flag Fase 2: conmuta las lecturas de manager a la tabla N-a-N
+	// (employment_managers). Se fija una sola vez antes de construir services.
+	service.SetMultiManagerReads(cfg.MultiManagerReads)
+
 	// Repositories
 	userRepo := repository.NewUserRepository(db)
 	chatRepo := repository.NewChatRepository(db)
@@ -80,16 +84,16 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	slackSvc := service.NewSlackService()
 
 	// Services
-	userSvc := service.NewUserService(userRepo)
+	userSvc := service.NewUserService(userRepo, employmentRepo)
 	notifSvc := service.NewNotificationService(notifRepo)
 	chatSvc := service.NewChatService(chatRepo)
 	channelSvc := service.NewChannelService(channelRepo, userRepo, notifSvc)
 	ticketSvc := service.NewTicketService(ticketRepo, userRepo, notifSvc, wahaSvc, brevoSvc)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, brevoSvc)
-	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc)
+	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc, employmentRepo)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
 	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
-	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo)
+	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo)
 	boardSvc := service.NewBoardService(boardRepo, userRepo)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
 	rbacSvc := service.NewRBACService(rbacRepo, userRepo)

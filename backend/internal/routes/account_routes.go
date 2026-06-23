@@ -29,6 +29,22 @@ func requireAdminPanel() gin.HandlerFunc {
 	}
 }
 
+// requireManageUsers: las acciones de gestión de usuarios (activar/desactivar,
+// promover/quitar manager, asignar/reasignar equipo) solo las hace el dueño de
+// la empresa (empleador) o un superadmin. Defensa en profundidad a nivel de
+// ruta sobre la validación del servicio (authorizeAdminAction). El perfil propio
+// (PUT /users/:id) y el cambio de contraseña quedan fuera (son self-service).
+func requireManageUsers() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if middleware.IsSuperadmin(c) || middleware.GetUserRole(c) == string(models.UserTypeEmployer) {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere empresa o superadmin"})
+		c.Abort()
+	}
+}
+
 // requireExpedienteOwnership acota la gestión del expediente al empleador: el
 // superadmin pasa libre; el empleador solo puede tocar empleos/notas/documentos
 // de SU empresa (resuelve la empresa dueña del recurso más específico del path).
@@ -77,6 +93,13 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	api.GET("/auth/me", d.auth.Me)
 	api.POST("/auth/switch-company", d.auth.SwitchCompany)
 
+	// Feature flags para el front (p.ej. mostrar el modo multi-manager).
+	api.GET("/features", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"multi_manager_reads": service.MultiManagerReadsEnabled(),
+		})
+	})
+
 	// Expediente propio (FASE 3): el profesional consulta su CV vivo y el
 	// detalle de cada empleo (solo ve lo que cada empresa decidió compartir).
 	api.GET("/me/cv", d.auth.MyCV)
@@ -92,15 +115,18 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		users.GET("/my-team", d.user.GetMyTeam)
 		users.GET("/:id", d.user.GetByID)
 		users.PUT("/:id", d.user.Update)
-		users.POST("/:id/toggle-status", d.user.ToggleStatus)
-		users.POST("/:id/promote-manager", d.user.PromoteToManager)
-		users.POST("/:id/assign-manager", d.user.AssignToManager)
+		users.POST("/:id/toggle-status", requireManageUsers(), d.user.ToggleStatus)
+		users.POST("/:id/promote-manager", requireManageUsers(), d.user.PromoteToManager)
+		users.POST("/:id/assign-manager", requireManageUsers(), d.user.AssignToManager)
+		users.POST("/:id/reassign-team", requireManageUsers(), d.user.ReassignTeam)
 		users.POST("/:id/change-password", d.user.ChangePassword)
 	}
 
 	admin := api.Group("/admin")
 	admin.Use(requireAdminPanel())
 	{
+		admin.GET("/users/:id/reports", d.admin.GetManagerReports)
+		admin.POST("/bulk-assign-manager", d.admin.BulkAssignManager)
 		admin.GET("/dashboard", d.admin.GetDashboard)
 		admin.GET("/companies", d.admin.GetCompanies)
 		admin.GET("/inactive-users", d.admin.GetInactiveUsers)
@@ -123,6 +149,15 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/users/:id/employments", d.admin.ListUserEmployments)
 		admin.POST("/users/:id/employments", d.admin.AddUserEmployment)
 		admin.POST("/users/:id/employments/:empId/end", d.admin.EndUserEmployment)
+		admin.PUT("/users/:id/employments/:empId/manager", d.admin.UpdateEmploymentManager)
+
+		// Conjunto de managers por empleo (multi-manager). El single de arriba
+		// gestiona el principal; estos gestionan el CONJUNTO (adicionales +
+		// promover principal).
+		admin.GET("/users/:id/employments/:empId/managers", d.admin.GetEmploymentManagers)
+		admin.POST("/users/:id/employments/:empId/managers", d.admin.AddEmploymentManager)
+		admin.DELETE("/users/:id/employments/:empId/managers/:managerId", d.admin.RemoveEmploymentManager)
+		admin.PUT("/users/:id/employments/:empId/managers/:managerId/primary", d.admin.SetPrimaryEmploymentManager)
 
 		// Expediente laboral (FASE 3): resumen + evaluaciones/notas + documentos.
 		admin.GET("/users/:id/employments/:empId/expediente", d.admin.GetUserExpediente)
@@ -151,7 +186,24 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	employer := api.Group("/employer")
 	employer.Use(requireExpedienteOwnership(d.employmentSvc))
 	{
+		// Alta/baja de profesionales por el EMPLEADOR (auto-acotado a su empresa).
+		// /employees es estático nuevo; DELETE /users/:id es nuevo a esa profundidad.
+		employer.POST("/employees", d.admin.CreateEmployee)
+		employer.DELETE("/users/:id", d.admin.DeleteEmployee)
+
 		employer.GET("/users/:id/employment", d.admin.GetMyCompanyEmployment)
+		// Equipo a cargo de un manager (para el bloqueo "reasigna primero" al
+		// degradar). Solo :id -> el gate hace c.Next() (auto-acotado por el handler).
+		employer.GET("/users/:id/reports", d.admin.GetManagerReports)
+
+		// Conjunto de managers por empleo (multi-manager) para el EMPLEADOR.
+		// Reusa los MISMOS handlers admin (parsean :id + :empId); el acceso lo
+		// acota requireExpedienteOwnership por :empId -> empresa dueña.
+		employer.GET("/users/:id/employments/:empId/managers", d.admin.GetEmploymentManagers)
+		employer.POST("/users/:id/employments/:empId/managers", d.admin.AddEmploymentManager)
+		employer.DELETE("/users/:id/employments/:empId/managers/:managerId", d.admin.RemoveEmploymentManager)
+		employer.PUT("/users/:id/employments/:empId/managers/:managerId/primary", d.admin.SetPrimaryEmploymentManager)
+
 		employer.GET("/employments/:empId/expediente", d.admin.GetUserExpediente)
 		employer.GET("/employments/:empId/expediente/pdf", d.admin.DownloadExpedientePDF)
 		employer.POST("/employments/:empId/notes", d.admin.AddEmploymentNote)

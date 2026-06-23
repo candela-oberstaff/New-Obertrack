@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -172,6 +173,31 @@ type EmploymentService interface {
 	// EmploymentForUserInCompany resuelve el empleo de un profesional en una
 	// empresa (para que el empleador abra su expediente por user_id).
 	EmploymentForUserInCompany(userID, companyID uint) (*EmploymentView, error)
+	// UpdateEmploymentManager fija el manager de un empleo concreto del usuario
+	// (o lo desasigna si managerID es nil). Si ese empleo es la empresa activa
+	// del usuario, espeja el cambio en users.manager_id.
+	UpdateEmploymentManager(userID, employmentID uint, managerID *uint) error
+
+	// --- Conjunto de managers por empleo (FASE 3 multi-manager) ---
+	// ListEmploymentManagers devuelve el CONJUNTO de managers del empleo
+	// (principal primero, luego por nombre), con el nombre resuelto.
+	ListEmploymentManagers(userID, employmentID uint) ([]ManagerView, error)
+	// AddEmploymentManager agrega un manager ADICIONAL (no principal) al empleo.
+	AddEmploymentManager(userID, employmentID, managerID uint) error
+	// RemoveEmploymentManager quita un manager del empleo; si era el principal,
+	// auto-promueve el siguiente y actualiza el espejo (o lo limpia si no queda).
+	RemoveEmploymentManager(userID, employmentID, managerID uint) error
+	// SetPrimaryEmploymentManager marca un manager ya asignado como principal y
+	// actualiza el espejo employments.manager_id (+ users.manager_id si aplica).
+	SetPrimaryEmploymentManager(userID, employmentID, managerID uint) error
+}
+
+// ManagerView es un manager del conjunto de un empleo, con el nombre resuelto y
+// si es el principal.
+type ManagerView struct {
+	ManagerID uint   `json:"manager_id"`
+	Name      string `json:"name"`
+	IsPrimary bool   `json:"is_primary"`
 }
 
 type employmentService struct {
@@ -200,24 +226,33 @@ func (s *employmentService) SyncActiveForUser(user *models.User) error {
 
 	existing, err := s.repo.GetActive(user.ID, companyID)
 	if err == nil && existing != nil {
-		return s.repo.Update(existing, map[string]interface{}{
+		if err := s.repo.Update(existing, map[string]interface{}{
 			"job_title":  user.JobTitle,
 			"manager_id": user.ManagerID,
-		})
+		}); err != nil {
+			return err
+		}
+		syncPrimaryManager(s.repo, existing.ID, user.ManagerID)
+		return nil
 	}
 
 	started := user.CreatedAt
 	if started.IsZero() {
 		started = time.Now()
 	}
-	return s.repo.Create(&models.Employment{
+	emp := &models.Employment{
 		UserID:    user.ID,
 		CompanyID: companyID,
 		JobTitle:  user.JobTitle,
 		ManagerID: user.ManagerID,
 		Status:    models.EmploymentActive,
 		StartedAt: started,
-	})
+	}
+	if err := s.repo.Create(emp); err != nil {
+		return err
+	}
+	syncPrimaryManager(s.repo, emp.ID, user.ManagerID)
+	return nil
 }
 
 func (s *employmentService) ActiveCompanies(userID uint) ([]models.CompanyRef, error) {
@@ -319,6 +354,9 @@ func (s *employmentService) AddEmployment(userID, companyID uint, jobTitle, star
 	if err := s.repo.Create(employment); err != nil {
 		return nil, err
 	}
+	if managerID != nil {
+		syncPrimaryManager(s.repo, employment.ID, managerID)
+	}
 
 	// Si el usuario no tenía empresa activa, esta pasa a serlo (e invalida su
 	// sesión para que el nuevo tenant entre en el JWT).
@@ -348,6 +386,23 @@ func (s *employmentService) EndEmployment(userID, employmentID uint, endReason s
 	}
 	if target.Status != models.EmploymentActive {
 		return errors.New("Esta membresía ya está finalizada")
+	}
+
+	// Si este usuario es manager de otros profesionales en esta empresa, no se
+	// puede finalizar su empleo: dejaría a su equipo sin aprobador. Hay que
+	// reasignarlos primero.
+	var count int64
+	var cerr error
+	if MultiManagerReadsEnabled() {
+		count, cerr = s.repo.CountActiveByManagerInCompanyViaLinks(target.UserID, target.CompanyID)
+	} else {
+		count, cerr = s.repo.CountActiveByManagerInCompany(target.UserID, target.CompanyID)
+	}
+	if cerr != nil {
+		return cerr // fail-closed: ante error de DB no permitimos dejar huérfanos
+	}
+	if count > 0 {
+		return errors.New("No puedes finalizar este empleo: el usuario aún tiene profesionales a su cargo en esta empresa. Reasigna su equipo primero")
 	}
 
 	now := time.Now()
@@ -896,6 +951,189 @@ func (s *employmentService) DocCompanyID(docID uint) (uint, error) {
 		return 0, err
 	}
 	return s.EmploymentCompanyID(doc.EmploymentID)
+}
+
+func (s *employmentService) UpdateEmploymentManager(userID, employmentID uint, managerID *uint) error {
+	employments, err := s.repo.ListByUser(userID)
+	if err != nil {
+		return err
+	}
+	var target *models.Employment
+	for i := range employments {
+		if employments[i].ID == employmentID {
+			target = &employments[i]
+			break
+		}
+	}
+	if target == nil {
+		return errors.New("Membresía no encontrada")
+	}
+	if target.Status != models.EmploymentActive {
+		return errors.New("No se puede asignar manager a un empleo finalizado")
+	}
+	if managerID != nil && *managerID == userID {
+		return errors.New("Manager inválido: un profesional no puede ser su propio manager")
+	}
+
+	if managerID != nil {
+		manager, err := s.userRepo.GetByID(*managerID)
+		if err != nil {
+			return errors.New("Manager inválido: manager no encontrado")
+		}
+		if err := ensureValidManager(s.repo, manager, target.CompanyID); err != nil {
+			return err
+		}
+	}
+
+	if err := s.repo.Update(target, map[string]interface{}{"manager_id": managerID}); err != nil {
+		return err
+	}
+	syncPrimaryManager(s.repo, target.ID, managerID)
+
+	// Si este empleo es la empresa activa del usuario, espeja users.manager_id.
+	if user, err := s.userRepo.GetByID(userID); err == nil {
+		if user.EmpleadorID != nil && *user.EmpleadorID == target.CompanyID {
+			_ = s.userRepo.Update(user, map[string]interface{}{"manager_id": managerID})
+		}
+	}
+	return nil
+}
+
+// findUserEmployment localiza el empleo employmentID dentro de las membresías
+// de userID; devuelve "Membresía no encontrada" si no existe.
+func (s *employmentService) findUserEmployment(userID, employmentID uint) (*models.Employment, error) {
+	employments, err := s.repo.ListByUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range employments {
+		if employments[i].ID == employmentID {
+			return &employments[i], nil
+		}
+	}
+	return nil, errors.New("Membresía no encontrada")
+}
+
+func (s *employmentService) ListEmploymentManagers(userID, employmentID uint) ([]ManagerView, error) {
+	if _, err := s.findUserEmployment(userID, employmentID); err != nil {
+		return nil, err
+	}
+	links, err := s.repo.ListEmploymentManagers(employmentID)
+	if err != nil {
+		return nil, err
+	}
+	views := make([]ManagerView, 0, len(links))
+	for _, l := range links {
+		mv := ManagerView{ManagerID: l.ManagerID, IsPrimary: l.IsPrimary}
+		if mgr, err := s.userRepo.GetByID(l.ManagerID); err == nil {
+			mv.Name = mgr.Name
+		}
+		views = append(views, mv)
+	}
+	// El repo ya ordena principal primero; dentro de cada bloque, por nombre.
+	sort.SliceStable(views, func(i, j int) bool {
+		if views[i].IsPrimary != views[j].IsPrimary {
+			return views[i].IsPrimary
+		}
+		return views[i].Name < views[j].Name
+	})
+	return views, nil
+}
+
+func (s *employmentService) AddEmploymentManager(userID, employmentID, managerID uint) error {
+	target, err := s.findUserEmployment(userID, employmentID)
+	if err != nil {
+		return err
+	}
+	if managerID == userID {
+		return errors.New("Manager inválido: un profesional no puede ser su propio manager")
+	}
+	manager, err := s.userRepo.GetByID(managerID)
+	if err != nil {
+		return errors.New("Manager inválido: manager no encontrado")
+	}
+	if err := ensureValidManager(s.repo, manager, target.CompanyID); err != nil {
+		return err
+	}
+	// Manager ADICIONAL: no toca el principal ni el espejo employments.manager_id.
+	return s.repo.AddManager(employmentID, managerID, false)
+}
+
+func (s *employmentService) RemoveEmploymentManager(userID, employmentID, managerID uint) error {
+	target, err := s.findUserEmployment(userID, employmentID)
+	if err != nil {
+		return err
+	}
+	wasPrimary := target.ManagerID != nil && *target.ManagerID == managerID
+
+	if err := s.repo.RemoveManager(employmentID, managerID); err != nil {
+		return err
+	}
+
+	if !wasPrimary {
+		// No tocaba el principal: el espejo no cambia.
+		return nil
+	}
+
+	// Era el principal: auto-promueve el siguiente (más reciente) y espeja.
+	remaining, err := s.repo.ListEmploymentManagers(employmentID)
+	if err != nil {
+		return err
+	}
+	var newPrimary *uint
+	if len(remaining) > 0 {
+		next := remaining[0].ManagerID
+		if err := s.repo.SetPrimaryManager(employmentID, next); err != nil {
+			return err
+		}
+		newPrimary = &next
+	}
+	if err := s.repo.Update(target, map[string]interface{}{"manager_id": newPrimary}); err != nil {
+		return err
+	}
+	s.mirrorActiveManager(userID, target.CompanyID, newPrimary)
+	return nil
+}
+
+func (s *employmentService) SetPrimaryEmploymentManager(userID, employmentID, managerID uint) error {
+	target, err := s.findUserEmployment(userID, employmentID)
+	if err != nil {
+		return err
+	}
+	// El vínculo debe existir ya (el conjunto se gestiona con Add/Remove).
+	links, err := s.repo.ListEmploymentManagers(employmentID)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, l := range links {
+		if l.ManagerID == managerID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errors.New("Manager inválido: el manager no está asignado a este empleo")
+	}
+	if err := s.repo.SetPrimaryManager(employmentID, managerID); err != nil {
+		return err
+	}
+	mid := managerID
+	if err := s.repo.Update(target, map[string]interface{}{"manager_id": &mid}); err != nil {
+		return err
+	}
+	s.mirrorActiveManager(userID, target.CompanyID, &mid)
+	return nil
+}
+
+// mirrorActiveManager espeja el manager en users.manager_id solo si companyID es
+// la empresa activa del usuario (igual que UpdateEmploymentManager).
+func (s *employmentService) mirrorActiveManager(userID, companyID uint, managerID *uint) {
+	if user, err := s.userRepo.GetByID(userID); err == nil {
+		if user.EmpleadorID != nil && *user.EmpleadorID == companyID {
+			_ = s.userRepo.Update(user, map[string]interface{}{"manager_id": managerID})
+		}
+	}
 }
 
 func (s *employmentService) EmploymentForUserInCompany(userID, companyID uint) (*EmploymentView, error) {

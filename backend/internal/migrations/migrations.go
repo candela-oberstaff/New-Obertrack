@@ -920,6 +920,55 @@ func Run(db *gorm.DB) error {
                 return tx.Exec(`ALTER TABLE work_hours DROP CONSTRAINT IF EXISTS chk_work_hours_status_exclusive`).Error
             },
         },
+        {
+            // FASE 0-1 multi-manager: tabla N-a-N employment_managers. Guarda
+            // TODOS los managers de un empleo; el principal (is_primary=true) se
+            // mantiene en espejo con employments.manager_id (dual-write). Las
+            // lecturas no cambian todavía: siguen usando el puntero.
+            ID: "202606231200_add_employment_managers",
+            Migrate: func(tx *gorm.DB) error {
+                log.Println("Creating employment_managers table (multi-manager N-a-N)...")
+                if err := tx.AutoMigrate(&models.EmploymentManager{}); err != nil {
+                    return err
+                }
+                // Un solo manager PRINCIPAL vivo por empleo. AutoMigrate no crea
+                // índices únicos parciales; se hace con SQL idempotente.
+                if err := tx.Exec(`
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_employment_primary_manager
+                    ON employment_managers (employment_id)
+                    WHERE is_primary = TRUE AND deleted_at IS NULL
+                `).Error; err != nil {
+                    return err
+                }
+                if err := tx.Exec(`
+                    CREATE INDEX IF NOT EXISTS idx_employment_managers_manager
+                    ON employment_managers (manager_id)
+                `).Error; err != nil {
+                    return err
+                }
+                // Backfill idempotente: cada employment con manager_id y sin
+                // vínculo vivo aún → fila principal espejo. Re-correr no duplica.
+                return tx.Exec(`
+                    INSERT INTO employment_managers (employment_id, manager_id, is_primary, created_at)
+                    SELECT e.id, e.manager_id, TRUE, now()
+                    FROM employments e
+                    WHERE e.manager_id IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM employment_managers em
+                          WHERE em.employment_id = e.id AND em.deleted_at IS NULL
+                      )
+                `).Error
+            },
+            Rollback: func(tx *gorm.DB) error {
+                if err := tx.Exec(`DROP INDEX IF EXISTS uq_employment_primary_manager`).Error; err != nil {
+                    return err
+                }
+                if err := tx.Exec(`DROP INDEX IF EXISTS idx_employment_managers_manager`).Error; err != nil {
+                    return err
+                }
+                return tx.Migrator().DropTable(&models.EmploymentManager{})
+            },
+        },
         // Future migrations go here
     })
 

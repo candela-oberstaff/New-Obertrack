@@ -95,6 +95,26 @@ export function CustomerSuccessRoute({ children }: RouteGuardProps) {
   return <>{children}</>
 }
 
+// Módulo de empresa del EMPLEADOR: gestiona a sus empleados acotado a su tenant.
+// Solo cuentas empleador (no superadmin, no otros tipos).
+export function EmployerRoute({ children }: RouteGuardProps) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <Navigate to={ROUTES.login} replace />
+  }
+
+  if (user.user_type !== 'empleador') {
+    return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
+  }
+
+  return <>{children}</>
+}
+
 export function AuthRoute({ children }: RouteGuardProps) {
   const { user, isLoading } = useAuth()
 

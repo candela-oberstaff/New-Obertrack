@@ -12,7 +12,7 @@ export interface User {
   is_superadmin: boolean
   is_active: boolean
   empleador_id?: number
-  manager_id?: number
+  manager_id?: number | null
   company_name?: string
   job_title?: string
   phone_number?: string

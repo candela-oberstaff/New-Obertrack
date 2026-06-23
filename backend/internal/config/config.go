@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -23,6 +24,10 @@ type Config struct {
 	JWTSecret  string
 	ServerPort string
 	DBSSLMode  string
+	// MultiManagerReads activa las lecturas de manager via tabla N-a-N
+	// (employment_managers) con semántica "cualquier manager" (Fase 2).
+	// Default false: comportamiento actual (puntero employments.manager_id).
+	MultiManagerReads bool
 }
 
 func LoadConfig() *Config {
@@ -35,6 +40,8 @@ func LoadConfig() *Config {
 		JWTSecret:  getEnv("JWT_SECRET", ""),
 		ServerPort: getEnv("SERVER_PORT", "8080"),
 		DBSSLMode:  getEnv("DB_SSL_MODE", "disable"),
+		// Feature flag Fase 2: OFF por defecto; "true"/"1" lo activan.
+		MultiManagerReads: getBoolEnv("MULTI_MANAGER_READS", false),
 	}
 
 	// Fail fast on an insecure JWT secret. An empty, default, or short secret
@@ -92,4 +99,19 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getBoolEnv lee un flag booleano de entorno. Acepta "true"/"1" (cualquier
+// caja) como verdadero; cualquier otro valor (o ausencia) cae al default.
+func getBoolEnv(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "1":
+		return true
+	default:
+		return false
+	}
 }

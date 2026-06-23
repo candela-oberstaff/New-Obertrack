@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -36,9 +37,18 @@ type AdminService interface {
 	GetStats() (map[string]interface{}, error)
 
 	GetAllUsers(userType, isManager, isActive, search string, offset, limit int) ([]models.User, int64, error)
+	// GetManagerReports lista los profesionales a cargo de un manager.
+	GetManagerReports(managerID uint) ([]models.User, error)
+	// BulkAssignManager asigna (o desasigna si managerID es nil) un manager a
+	// varios profesionales a la vez. Devuelve (asignados, omitidos).
+	BulkAssignManager(professionalIDs []uint, managerID *uint) (int, int, error)
 	CreateUser(req map[string]interface{}) (*models.User, error)
 	UpdateUser(id uint, updates map[string]interface{}) (*models.User, error)
 	DeleteUser(id uint) error
+	// DeleteUserScoped elimina (soft delete) un usuario solo si pertenece a la
+	// empresa indicada (tenantID). Aplica el mismo guard de orphans que
+	// DeleteUser. Para uso del EMPLEADOR (auto-acotado a su empresa).
+	DeleteUserScoped(id, tenantID uint) error
 	ResetPassword(id uint, newPassword string) error
 
 	GetSeniorityRanking() ([]repository.SeniorityItem, error)
@@ -62,10 +72,11 @@ type AdminService interface {
 }
 
 type adminService struct {
-	repo         repository.AdminRepository
-	userRepo     repository.UserRepository
-	taskRepo     repository.TaskRepository
-	workHourRepo repository.WorkHourRepository
+	repo           repository.AdminRepository
+	userRepo       repository.UserRepository
+	taskRepo       repository.TaskRepository
+	workHourRepo   repository.WorkHourRepository
+	employmentRepo repository.EmploymentRepository
 }
 
 func NewAdminService(
@@ -73,12 +84,14 @@ func NewAdminService(
 	userRepo repository.UserRepository,
 	taskRepo repository.TaskRepository,
 	workHourRepo repository.WorkHourRepository,
+	employmentRepo repository.EmploymentRepository,
 ) AdminService {
 	return &adminService{
-		repo:         repo,
-		userRepo:     userRepo,
-		taskRepo:     taskRepo,
-		workHourRepo: workHourRepo,
+		repo:           repo,
+		userRepo:       userRepo,
+		taskRepo:       taskRepo,
+		workHourRepo:   workHourRepo,
+		employmentRepo: employmentRepo,
 	}
 }
 
@@ -171,6 +184,69 @@ func (s *adminService) GetAllUsers(userType, isManager, isActive, search string,
 	return s.userRepo.GetAll(userType, isManager, search, 0, offset, limit)
 }
 
+func (s *adminService) GetManagerReports(managerID uint) ([]models.User, error) {
+	if MultiManagerReadsEnabled() {
+		return s.userRepo.GetReportsByManagerViaLinks(managerID)
+	}
+	return s.userRepo.GetReportsByManager(managerID)
+}
+
+func (s *adminService) BulkAssignManager(professionalIDs []uint, managerID *uint) (int, int, error) {
+	if managerID != nil {
+		manager, err := s.userRepo.GetByID(*managerID)
+		if err != nil {
+			return 0, 0, errors.New("Manager inválido: manager no encontrado")
+		}
+		if !manager.IsManager {
+			return 0, 0, errors.New("Manager inválido: el usuario seleccionado no es manager")
+		}
+		if !manager.IsActive {
+			return 0, 0, errors.New("Manager inválido: el manager seleccionado está inactivo")
+		}
+	}
+	assigned, skipped := 0, 0
+	for _, pid := range professionalIDs {
+		prof, err := s.userRepo.GetByID(pid)
+		if err != nil || prof.UserType != models.UserTypeProfessional {
+			skipped++
+			continue
+		}
+		// Defensa: en el lote no se asigna un manager a otro manager (evita ciclos).
+		if managerID != nil && prof.IsManager {
+			skipped++
+			continue
+		}
+		companyID := uint(0)
+		if prof.EmpleadorID != nil {
+			companyID = *prof.EmpleadorID
+		}
+		if managerID != nil {
+			// El manager debe pertenecer a la empresa del profesional y no ser él mismo.
+			if companyID == 0 || *managerID == pid {
+				skipped++
+				continue
+			}
+			if _, err := s.employmentRepo.GetActive(*managerID, companyID); err != nil {
+				skipped++
+				continue
+			}
+		}
+		if err := s.userRepo.Update(prof, map[string]interface{}{"manager_id": managerID}); err != nil {
+			skipped++
+			continue
+		}
+		// Espeja el employment activo de la empresa del profesional (per-empresa).
+		if companyID > 0 {
+			if emp, err := s.employmentRepo.GetActive(pid, companyID); err == nil && emp != nil {
+				_ = s.employmentRepo.Update(emp, map[string]interface{}{"manager_id": managerID})
+				syncPrimaryManager(s.employmentRepo, emp.ID, managerID)
+			}
+		}
+		assigned++
+	}
+	return assigned, skipped, nil
+}
+
 func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req["password"].(string)), bcrypt.DefaultCost)
 	if err != nil {
@@ -227,6 +303,21 @@ func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, err
 	}
 	if userType == models.UserTypeProfessional {
 		if v, ok := req["manager_id"].(uint); ok && v > 0 {
+			manager, merr := s.userRepo.GetByID(v)
+			if merr != nil {
+				return nil, errors.New("Manager inválido: manager no encontrado")
+			}
+			// Empresa del nuevo profesional: la que ya quedó fijada en el user,
+			// si no, el empleador_id que trae la petición.
+			companyID := uint(0)
+			if user.EmpleadorID != nil {
+				companyID = *user.EmpleadorID
+			} else if e, ok := req["empleador_id"].(uint); ok {
+				companyID = e
+			}
+			if err := ensureValidManager(s.employmentRepo, manager, companyID); err != nil {
+				return nil, err
+			}
 			managerID := v
 			user.ManagerID = &managerID
 		}
@@ -250,6 +341,36 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 	targetType := user.UserType
 	if t, ok := updates["user_type"].(string); ok && t != "" {
 		targetType = models.UserType(t)
+	}
+
+	// Solo profesionales o customer success pueden ser manager.
+	if v, ok := updates["is_manager"].(bool); ok && v &&
+		targetType != models.UserTypeProfessional && targetType != models.UserTypeCustomerSuccess {
+		return nil, errors.New("Manager inválido: solo profesionales o customer success pueden ser manager")
+	}
+
+	// No permitir quitar el rol de manager si todavía tiene equipo a su cargo:
+	// dejaría a esos subordinados sin aprobador. Hay que reasignarlos primero.
+	if v, ok := updates["is_manager"].(bool); ok && !v && user.IsManager {
+		count, cerr := countManagerReports(s.userRepo, s.employmentRepo, id)
+		if cerr != nil {
+			return nil, cerr // fail-closed: ante error de DB no permitimos dejar huérfanos
+		}
+		if count > 0 {
+			return nil, fmt.Errorf("No se puede quitar el rol de manager: %s todavía tiene %d profesional(es) a su cargo. Reasigna su equipo primero", user.Name, count)
+		}
+	}
+
+	// No permitir desactivar un manager que aún tiene equipo a su cargo:
+	// dejaría a esos profesionales sin aprobador. Hay que reasignarlos primero.
+	if v, ok := updates["is_active"].(bool); ok && !v && user.IsManager {
+		count, cerr := countManagerReports(s.userRepo, s.employmentRepo, id)
+		if cerr != nil {
+			return nil, cerr // fail-closed
+		}
+		if count > 0 {
+			return nil, fmt.Errorf("No se puede desactivar el manager: %s todavía tiene %d profesional(es) a su cargo. Reasigna su equipo primero", user.Name, count)
+		}
 	}
 	if targetType != models.UserTypeProfessional && targetType != models.UserTypeCustomerSuccess {
 		updates["empleador_id"] = nil
@@ -290,6 +411,53 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 		}
 	}
 
+	// Si se asigna un manager (manager_id > 0), validar que el destino sea apto:
+	// que sea manager, esté activo y pertenezca a la empresa del profesional.
+	if mgrIDVal, ok := updates["manager_id"]; ok {
+		var mgrID uint
+		switch v := mgrIDVal.(type) {
+		case uint:
+			mgrID = v
+		case *uint:
+			if v != nil {
+				mgrID = *v
+			}
+		case int:
+			mgrID = uint(v)
+		case float64:
+			mgrID = uint(v)
+		}
+		if mgrID > 0 {
+			manager, merr := s.userRepo.GetByID(mgrID)
+			if merr != nil {
+				return nil, errors.New("Manager inválido: manager no encontrado")
+			}
+			// Empresa resultante del target: la que traiga el update si hay,
+			// si no la actual del usuario.
+			companyID := uint(0)
+			if user.EmpleadorID != nil {
+				companyID = *user.EmpleadorID
+			}
+			if newEmpIDVal, ok := updates["empleador_id"]; ok {
+				switch v := newEmpIDVal.(type) {
+				case uint:
+					companyID = v
+				case *uint:
+					if v != nil {
+						companyID = *v
+					}
+				case int:
+					companyID = uint(v)
+				case float64:
+					companyID = uint(v)
+				}
+			}
+			if err := ensureValidManager(s.employmentRepo, manager, companyID); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	if err := s.userRepo.Update(user, updates); err != nil {
 		return nil, err
 	}
@@ -297,6 +465,46 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 }
 
 func (s *adminService) DeleteUser(id uint) error {
+	user, err := s.userRepo.GetByID(id)
+	if err != nil {
+		// No se pudo cargar: conserva el comportamiento de borrado directo.
+		return s.userRepo.Delete(id)
+	}
+	// No se puede eliminar un manager que aún tiene equipo a su cargo:
+	// dejaría a esos profesionales sin aprobador. Hay que reasignarlos primero.
+	if user.IsManager {
+		count, cerr := countManagerReports(s.userRepo, s.employmentRepo, id)
+		if cerr != nil {
+			return cerr // fail-closed
+		}
+		if count > 0 {
+			return fmt.Errorf("No se puede eliminar el manager: %s todavía tiene %d profesional(es) a su cargo. Reasigna su equipo primero", user.Name, count)
+		}
+	}
+	return s.userRepo.Delete(id)
+}
+
+// DeleteUserScoped elimina un usuario solo si pertenece a la empresa del
+// solicitante (tenantID). Reusa el mismo guard de orphans que DeleteUser.
+func (s *adminService) DeleteUserScoped(id, tenantID uint) error {
+	user, err := s.userRepo.GetByID(id)
+	if err != nil {
+		return errors.New("User not found")
+	}
+	if tenantForUser(user) != tenantID {
+		return errors.New("Access denied")
+	}
+	// No se puede eliminar un manager que aún tiene equipo a su cargo:
+	// dejaría a esos profesionales sin aprobador. Hay que reasignarlos primero.
+	if user.IsManager {
+		count, cerr := countManagerReports(s.userRepo, s.employmentRepo, id)
+		if cerr != nil {
+			return cerr // fail-closed
+		}
+		if count > 0 {
+			return fmt.Errorf("No se puede eliminar el manager: %s todavía tiene %d profesional(es) a su cargo. Reasigna su equipo primero", user.Name, count)
+		}
+	}
 	return s.userRepo.Delete(id)
 }
 

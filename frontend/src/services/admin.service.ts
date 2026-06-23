@@ -79,6 +79,51 @@ export const adminService = {
   endUserEmployment: async (userId: number, employmentId: number, endReason: string) => {
     await api.post(`/admin/users/${userId}/employments/${employmentId}/end`, { end_reason: endReason })
   },
+  // Setea el manager de un empleo concreto; si es la empresa activa del usuario,
+  // el backend espeja users.manager_id.
+  updateEmploymentManager: async (userId: number, employmentId: number, managerId: number | null) => {
+    const { data } = await api.put(`/admin/users/${userId}/employments/${employmentId}/manager`, { manager_id: managerId })
+    return data
+  },
+  // ── Multi-manager por empleo (Fase 3, gateado por flag) ─────────────────────
+  // Flag de features: indica si el front debe mostrar el modo multi-manager.
+  getFeatures: async (): Promise<{ multi_manager_reads: boolean }> => {
+    const { data } = await api.get('/features')
+    return data
+  },
+  // Lista los managers de un empleo (principal primero, luego por nombre).
+  getEmploymentManagers: async (
+    userId: number,
+    employmentId: number,
+  ): Promise<{ manager_id: number; name: string; is_primary: boolean }[]> => {
+    const { data } = await api.get(`/admin/users/${userId}/employments/${employmentId}/managers`)
+    return data
+  },
+  // Agrega un manager ADICIONAL (no principal) al empleo.
+  addEmploymentManager: async (userId: number, employmentId: number, managerId: number) => {
+    const { data } = await api.post(`/admin/users/${userId}/employments/${employmentId}/managers`, { manager_id: managerId })
+    return data
+  },
+  // Quita el vínculo de un manager con el empleo (auto-promueve el siguiente si era principal).
+  removeEmploymentManager: async (userId: number, employmentId: number, managerId: number) => {
+    const { data } = await api.delete(`/admin/users/${userId}/employments/${employmentId}/managers/${managerId}`)
+    return data
+  },
+  // Marca un manager como principal del empleo (actualiza espejos).
+  setPrimaryEmploymentManager: async (userId: number, employmentId: number, managerId: number) => {
+    const { data } = await api.put(`/admin/users/${userId}/employments/${employmentId}/managers/${managerId}/primary`)
+    return data
+  },
+  // Lista los profesionales a cargo de un manager (para mostrar a quién reasignar).
+  getManagerReports: async (userId: number) => {
+    const { data } = await api.get(`/admin/users/${userId}/reports`)
+    return data
+  },
+  // Asigna (o desasigna si managerId es null) un manager a varios profesionales.
+  bulkAssignManager: async (professionalIds: number[], managerId: number | null) => {
+    const { data } = await api.post('/admin/bulk-assign-manager', { professional_ids: professionalIds, manager_id: managerId })
+    return data
+  },
   // ── Expediente laboral (resumen + evaluaciones/notas + documentos) ──────────
   getExpediente: async (userId: number, employmentId: number) => {
     const { data } = await api.get(`/admin/users/${userId}/employments/${employmentId}/expediente`)

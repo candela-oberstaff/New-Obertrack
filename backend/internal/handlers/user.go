@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -207,6 +208,8 @@ func (h *UserHandler) Delete(c *gin.Context) {
 			status = http.StatusNotFound
 		} else if err.Error() == "Access denied" {
 			status = http.StatusForbidden
+		} else if strings.Contains(err.Error(), "a su cargo") {
+			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
@@ -233,6 +236,8 @@ func (h *UserHandler) ToggleStatus(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if err.Error() == "User not found" {
 			status = http.StatusNotFound
+		} else if strings.Contains(err.Error(), "a su cargo") {
+			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
@@ -248,23 +253,74 @@ func (h *UserHandler) PromoteToManager(c *gin.Context) {
 		return
 	}
 
+	// Optional body: { "is_manager": true|false }. If absent, req.IsManager
+	// stays nil and the service falls back to the legacy toggle behavior.
+	var req struct {
+		IsManager *bool `json:"is_manager"`
+	}
+	_ = c.ShouldBindJSON(&req) // body is optional; ignore bind errors (empty body)
+
 	requesterID := middleware.GetUserID(c)
 	tenantID := middleware.GetTenantID(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 	role := middleware.GetUserRole(c)
 	isManager := middleware.IsManager(c)
 
-	user, err := h.service.PromoteToManager(uint(id), requesterID, tenantID, role, isManager, isSuperadmin)
+	user, err := h.service.PromoteToManager(uint(id), requesterID, tenantID, role, isManager, isSuperadmin, req.IsManager)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "User not found" {
 			status = http.StatusNotFound
+		} else if strings.Contains(err.Error(), "a su cargo") {
+			status = http.StatusConflict
+		} else if strings.Contains(err.Error(), "Manager inválido") {
+			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+// ReassignTeam mueve todos los reportes activos del manager actual (:id) al
+// nuevo manager indicado en el body (new_manager_id), o los desasigna si es null.
+func (h *UserHandler) ReassignTeam(c *gin.Context) {
+	oldManagerID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	var req struct {
+		NewManagerID *uint `json:"new_manager_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	requesterID := middleware.GetUserID(c)
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+
+	n, err := h.service.ReassignTeam(uint(oldManagerID), req.NewManagerID, requesterID, tenantID, role, isManager, isSuperadmin)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "User not found" {
+			status = http.StatusNotFound
+		} else if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		} else if strings.Contains(err.Error(), "Manager inválido") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"reassigned": n})
 }
 
 func (h *UserHandler) GetEmployees(c *gin.Context) {
@@ -309,7 +365,9 @@ func (h *UserHandler) AssignToManager(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if err.Error() == "Professional not found" || err.Error() == "Manager not found" {
 			status = http.StatusNotFound
-		} else if err.Error() == "User is not a manager" {
+		} else if err.Error() == "User is not a manager" || err.Error() == "Un profesional no puede ser su propio manager" {
+			status = http.StatusBadRequest
+		} else if strings.Contains(err.Error(), "Manager inválido") {
 			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": err.Error()})

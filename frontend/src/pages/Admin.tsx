@@ -15,6 +15,7 @@ import {
   Pencil,
   Eye,
   UserPlus,
+  UserCog,
   X,
   ChevronLeft,
   ChevronRight,
@@ -81,6 +82,7 @@ export default function Admin() {
     createUser,
     deleteUser,
     updateUser,
+    fetchUsers,
   } = useAdmin()
 
   const navigate = useNavigate()
@@ -90,6 +92,11 @@ export default function Admin() {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState<number | ''>('')
+  // Asignación masiva de managers.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkManagerId, setBulkManagerId] = useState<number | ''>('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null)
   const [usersPage, setUsersPage] = useState(1)
 
   // Actividad de equipo (pestaña Actividad): semáforo de inactividad.
@@ -255,6 +262,35 @@ export default function Admin() {
   const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE))
   const currentUsersPage = Math.min(usersPage, totalUserPages)
   const paginatedUsers = filteredUsers.slice((currentUsersPage - 1) * USERS_PER_PAGE, currentUsersPage * USERS_PER_PAGE)
+
+  // Asignación masiva: solo profesionales que NO son manager (un manager no se
+  // asigna a otro manager — evita ciclos/paradojas).
+  const isBulkSelectable = (u: any) => u.user_type === 'profesional' && !u.is_manager
+  const selectableIds: number[] = filteredUsers.filter(isBulkSelectable).map((u: any) => u.id)
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id: number) => selectedIds.has(id))
+  const bulkManagerOptions = managers.filter((m: any) => companyFilter === '' || m.empleador_id === companyFilter)
+  const toggleSelect = (id: number) => setSelectedIds(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+  const toggleSelectAll = () => setSelectedIds(prev =>
+    selectableIds.every((id: number) => prev.has(id)) ? new Set<number>() : new Set<number>(selectableIds)
+  )
+  const clearSelection = () => { setSelectedIds(new Set()); setBulkMsg(null) }
+  const handleBulkAssign = async () => {
+    if (selectedIds.size === 0) return
+    setBulkBusy(true); setBulkMsg(null)
+    try {
+      const res: any = await adminService.bulkAssignManager(Array.from(selectedIds), bulkManagerId === '' ? null : Number(bulkManagerId))
+      const a = res?.assigned ?? 0, s = res?.skipped ?? 0
+      setBulkMsg(`Asignados ${a}${s ? ` · Omitidos ${s} (otra empresa o sin empleo activo)` : ''}.`)
+      setSelectedIds(new Set())
+      await fetchUsers()
+    } catch (err: any) {
+      setBulkMsg(err?.response?.data?.error ?? 'No se pudo asignar el manager.')
+    } finally { setBulkBusy(false) }
+  }
 
   useEffect(() => {
     setUsersPage(1)
@@ -990,10 +1026,51 @@ export default function Admin() {
               )}
             </div>
 
+            {canManage && (selectedIds.size > 0 || bulkMsg) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '10px 14px', marginBottom: '12px', background: 'rgba(124,58,237,0.06)', border: '1px solid #e9d5ff', borderRadius: '12px' }}>
+                {selectedIds.size > 0 ? (
+                  <>
+                    <span style={{ fontWeight: 700, color: '#6d28d9', whiteSpace: 'nowrap' }}>{selectedIds.size} profesional(es) seleccionado(s)</span>
+                    <select
+                      value={bulkManagerId}
+                      onChange={e => setBulkManagerId(e.target.value === '' ? '' : Number(e.target.value))}
+                      disabled={bulkBusy}
+                      style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', minWidth: 200, background: '#fff', color: '#334155' }}
+                    >
+                      <option value="">Sin manager (desasignar)</option>
+                      {bulkManagerOptions.map((m: any) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleBulkAssign}
+                      disabled={bulkBusy}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '10px', border: 'none', background: 'var(--primary, #7c3aed)', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: bulkBusy ? 'progress' : 'pointer' }}
+                    >
+                      <UserCog size={15} /> Asignar ({selectedIds.size})
+                    </button>
+                    <button
+                      onClick={clearSelection}
+                      disabled={bulkBusy}
+                      style={{ padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      Limpiar
+                    </button>
+                  </>
+                ) : null}
+                {bulkMsg && <span style={{ fontSize: '13px', color: '#475569', fontWeight: 600 }}>{bulkMsg}</span>}
+              </div>
+            )}
+
             <div className={styles['users-table']} data-tour="admin-users-table">
               <table>
                 <thead>
                   <tr>
+                    {canManage && (
+                      <th style={{ width: 36 }}>
+                        <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} title="Seleccionar todos los profesionales filtrados" style={{ cursor: 'pointer' }} />
+                      </th>
+                    )}
                     <th>Usuario</th>
                     <th>Email</th>
                     <th>Tipo</th>
@@ -1004,13 +1081,20 @@ export default function Admin() {
                 <tbody>
                   {paginatedUsers.length === 0 && (
                     <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', padding: '32px 16px', color: '#94a3b8' }}>
+                      <td colSpan={canManage ? 6 : 5} style={{ textAlign: 'center', padding: '32px 16px', color: '#94a3b8' }}>
                         No se encontraron usuarios con los filtros aplicados.
                       </td>
                     </tr>
                   )}
                   {paginatedUsers.map((u: any, index: number) => (
                     <tr key={u.id || `user-${index}`}>
+                      {canManage && (
+                        <td style={{ width: 36 }}>
+                          {isBulkSelectable(u) && (
+                            <input type="checkbox" checked={selectedIds.has(u.id)} onChange={() => toggleSelect(u.id)} style={{ cursor: 'pointer' }} />
+                          )}
+                        </td>
+                      )}
                       <td>
                         <div className={styles['user-cell']}>
                           <Avatar 

@@ -61,6 +61,15 @@ logs/
 *.out
 coverage.txt
 
+# Go build/cache dirs locales (GOCACHE/GOTMPDIR usados para correr tests; se
+# regeneran solos y NUNCA deben commitearse).
+.gocache/
+.gotmp/
+.gocache_tmp/
+**/.gocache/
+**/.gotmp/
+**/.gocache_tmp/
+
 # Vite
 vite.config.ts.timestamp-*
 

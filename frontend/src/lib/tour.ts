@@ -23,11 +23,11 @@ interface ModuleTour {
   steps: ModuleTourStep[]
 }
 
-function getSections(role?: string): TourSection[] {
+function getSections(role?: string, isManager?: boolean): TourSection[] {
   const isEmployer = role === 'empleador' || role === 'empresa'
-  const isManager = role === 'manager'
+  const isMgr = !!isManager || role === 'manager'
 
-  const workHoursDesc = isEmployer || isManager
+  const workHoursDesc = isEmployer || isMgr
     ? 'Revisa y aprueba las jornadas registradas por tu profesional.'
     : 'Registra tus jornadas y lleva control de tus horas trabajadas.'
 
@@ -249,8 +249,8 @@ function getVisibleModuleSteps(moduleTour: ModuleTour): DriveStep[] {
   return steps
 }
 
-export function startSystemTour(role?: string) {
-  const sections = getSections(role)
+export function startSystemTour(role?: string, isManager?: boolean) {
+  const sections = getSections(role, isManager)
 
   const steps: DriveStep[] = [
     {

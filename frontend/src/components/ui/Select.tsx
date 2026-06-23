@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 import './Select.css'
 
@@ -46,6 +47,10 @@ export function Select({
 }: SelectProps) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  // El menú se renderiza en un portal (position: fixed) para no quedar recortado
+  // por contenedores con overflow (p. ej. el cuerpo de un Modal).
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null)
 
   const selected = options.find((o) => String(o.value) === String(value ?? ''))
 
@@ -53,9 +58,9 @@ export function Select({
   useEffect(() => {
     if (!open) return
     const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      const t = e.target as Node
+      if (containerRef.current?.contains(t) || menuRef.current?.contains(t)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -86,7 +91,14 @@ export function Select({
         type="button"
         id={id}
         className={`ui-select__trigger ${open ? 'ui-select__trigger--open' : ''} ${disabled ? 'ui-select__trigger--disabled' : ''} ${className}`}
-        onClick={() => !disabled && setOpen((v) => !v)}
+        onClick={() => {
+          if (disabled) return
+          if (!open && containerRef.current) {
+            const r = containerRef.current.getBoundingClientRect()
+            setMenuPos({ top: r.bottom + 6, left: r.left, width: r.width })
+          }
+          setOpen((v) => !v)
+        }}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -108,8 +120,13 @@ export function Select({
         <ChevronDown size={16} className={`ui-select__chevron ${open ? 'ui-select__chevron--rotated' : ''}`} />
       </button>
 
-      {open && (
-        <div className="ui-select__menu" role="listbox">
+      {open && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          className="ui-select__menu"
+          role="listbox"
+          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, right: 'auto', width: menuPos.width, zIndex: 9999 }}
+        >
           {clearable && (
             <button
               type="button"
@@ -142,7 +159,8 @@ export function Select({
               </button>
             )
           })}
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Hidden native select preserves form integration & required validation */}

@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
-import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute } from './guards'
+import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, EmployerRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
 
 const Login = lazy(() => import('../pages/Login'))
@@ -31,6 +31,8 @@ const TicketDetail = lazy(() => import('../pages/Tickets/TicketDetail'))
 const RejectionReport = lazy(() => import('../pages/Tickets/RejectionReport'))
 const InternalTicketDetail = lazy(() => import('../pages/Tickets/InternalTicketDetail'))
 const EmailCampaigns = lazy(() => import('../pages/Email/EmailCampaigns'))
+const EmpresaEmployees = lazy(() => import('../pages/Empresa/EmpresaEmployees'))
+const EmpresaEmployeeDetail = lazy(() => import('../pages/Empresa/EmployeeDetail'))
 
 export function AppRoutes() {
   return (
@@ -64,6 +66,8 @@ export function AppRoutes() {
           <Route path="admin/email" element={<CustomerSuccessRoute><EmailCampaigns /></CustomerSuccessRoute>} />
           <Route path="admin/metrics" element={<PlatformTechRoute><Metrics /></PlatformTechRoute>} />
           <Route path="admin/audit" element={<PlatformTechRoute><AuditLogs /></PlatformTechRoute>} />
+          <Route path="empresa" element={<EmployerRoute><EmpresaEmployees /></EmployerRoute>} />
+          <Route path="empresa/employees/:id" element={<EmployerRoute><EmpresaEmployeeDetail /></EmployerRoute>} />
           <Route path="tutoriales" element={<Tutoriales />} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
           <Route path="roles-grupos" element={<ReportsRoute><RolesGroups /></ReportsRoute>} />

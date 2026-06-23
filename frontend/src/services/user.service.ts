@@ -39,8 +39,15 @@ export const userService = {
     const { data } = await api.post<User>(`/users/${professionalId}/assign-manager`, { manager_id: managerId })
     return data
   },
-  promoteToManager: async (userId: number) => {
-    const { data } = await api.post<User>(`/users/${userId}/promote-manager`)
+  promoteToManager: async (userId: number, isManager?: boolean) => {
+    const body = typeof isManager === 'boolean' ? { is_manager: isManager } : undefined
+    const { data } = await api.post<User>(`/users/${userId}/promote-manager`, body)
+    return data
+  },
+  // Mueve todos los reportes activos del manager (todas las empresas) a otro
+  // manager, o los desasigna si newManagerId es null. Devuelve { reassigned: n }.
+  reassignTeam: async (managerId: number, newManagerId: number | null) => {
+    const { data } = await api.post<{ reassigned: number }>(`/users/${managerId}/reassign-team`, { new_manager_id: newManagerId })
     return data
   },
 }

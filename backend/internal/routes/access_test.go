@@ -53,6 +53,35 @@ func TestRequireAdminPanel(t *testing.T) {
 	}
 }
 
+// Gestión de usuarios (promover/asignar/reasignar manager, activar/desactivar):
+// solo el dueño de la empresa (empleador) o superadmin. Un manager (is_manager)
+// NO puede, aunque el flag esté activo: defensa en profundidad sobre el servicio.
+func TestRequireManageUsers(t *testing.T) {
+	cases := []struct {
+		name      string
+		role      string
+		isSuper   bool
+		isManager bool
+		wantAllow bool
+	}{
+		{"superadmin", "superadmin", true, false, true},
+		{"empresa (empleador)", string(models.UserTypeEmployer), false, false, true},
+		{"manager (flag) NO puede gestionar usuarios", string(models.UserTypeProfessional), false, true, false},
+		{"profesional sin permiso", string(models.UserTypeProfessional), false, false, false},
+		{"customer success sin permiso", string(models.UserTypeCustomerSuccess), false, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := accessCtx(http.MethodPost, tc.role, tc.isSuper, tc.isManager)
+			requireManageUsers()(c)
+			allowed := !c.IsAborted()
+			if allowed != tc.wantAllow {
+				t.Fatalf("allowed = %v (status %d), esperaba %v", allowed, w.Code, tc.wantAllow)
+			}
+		})
+	}
+}
+
 // Bandeja de soporte (tickets/tools): superadmin y cualquier customer success.
 func TestRequireSupportInboxAccess(t *testing.T) {
 	cases := []struct {

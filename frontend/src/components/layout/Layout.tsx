@@ -23,6 +23,7 @@ import {
   MessageSquare,
   GraduationCap,
   Building2,
+  Users,
   Compass,
   Map,
   Shield,
@@ -110,7 +111,7 @@ export default function Layout() {
     if (localStorage.getItem(key)) return
     localStorage.setItem(key, '1')
     systemTourShownThisSession = true
-    const timer = setTimeout(() => startSystemTour(user.user_type), 800)
+    const timer = setTimeout(() => startSystemTour(user.user_type, user.is_manager), 800)
     return () => clearTimeout(timer)
   }, [user?.id])
 
@@ -130,6 +131,7 @@ export default function Layout() {
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, show: !isIT },
+    { path: '/empresa', label: 'Profesionales', icon: <Users size={20} />, show: isEmployerType },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} />, show: !isIT },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} />, show: !isIT },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, show: isSuper || isEmployerType },
@@ -262,7 +264,7 @@ export default function Layout() {
             <button
               type="button"
               className={`${styles['tour-btn']} ${styles['tour-btn-secondary']}`}
-              onClick={() => startSystemTour(user?.user_type)}
+              onClick={() => startSystemTour(user?.user_type, user?.is_manager)}
               title="Recorrido del menú lateral"
               aria-label="Recorrido del menú lateral"
             >

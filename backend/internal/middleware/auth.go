@@ -109,29 +109,6 @@ func AuthMiddleware(jwtSecret string, tvGetter TokenVersionGetter) gin.HandlerFu
 	}
 }
 
-func RoleMiddleware(allowedRoles ...string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		role := c.GetString("role")
-		isSuperadmin := c.GetBool("is_superadmin")
-		isManager := c.GetBool("is_manager")
-
-		if isSuperadmin {
-			c.Next()
-			return
-		}
-
-		for _, r := range allowedRoles {
-			if role == r || (r == "manager" && isManager) {
-				c.Next()
-				return
-			}
-		}
-
-		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
-		c.Abort()
-	}
-}
-
 func RequireSuperadmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !IsSuperadmin(c) {

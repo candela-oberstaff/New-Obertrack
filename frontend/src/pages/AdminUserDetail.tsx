@@ -1,17 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, Plus, LogOut, FileText, RotateCcw } from 'lucide-react'
+import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, Plus, LogOut, FileText, RotateCcw, Users, Eye } from 'lucide-react'
 import { userService, adminService, authService } from '../services/api'
 import { rbacService } from '../services/rbac.service'
 import { useAuth } from '../context/AuthContext'
 import { Modal, Button } from '../components/ui'
+import { useConfirm } from '../components/ui/ConfirmProvider'
 import { Select } from '../components/ui/Select'
 import type { User, CompanyRole, CompanyGroup } from '../types'
 import Avatar from '../components/Common/Avatar'
 import { Skeleton } from '../components/ui'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { ExpedienteModal } from '../components/Admin/ExpedienteModal'
+import EmploymentManagersEditor from '../components/Admin/EmploymentManagersEditor'
 import styles from './AdminUserDetail.module.css'
 
 // Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de dictar.
@@ -36,6 +38,7 @@ export default function AdminUserDetail() {
   // para que reflejen los cambios hechos desde el detalle (no comparten caché).
   const invalidateAdmin = useCallback(() => qc.invalidateQueries({ queryKey: ['admin'] }), [qc])
   const { user: viewer } = useAuth()
+  const confirm = useConfirm()
   // CS entra en modo consulta: sin acciones ni gestión de roles/grupos.
   const canManage = !!viewer?.is_superadmin
   const [user, setUser] = useState<User | null>(null)
@@ -43,8 +46,24 @@ export default function AdminUserDetail() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionMsg, setActionMsg] = useState<string | null>(null)
+  const [actionErr, setActionErr] = useState(false)
   const [empresaName, setEmpresaName] = useState('')
   const [managerName, setManagerName] = useState('')
+  // Flag de features: si está activo, se gestiona el CONJUNTO de managers por empleo
+  // (multi-manager) en lugar del <select> de manager principal único.
+  const [multiManager, setMultiManager] = useState(false)
+  // Equipo a cargo (solo cuando el usuario es manager).
+  const [managedTeam, setManagedTeam] = useState<any[]>([])
+  // Selector inline de manager (asignar/quitar desde el detalle sin recargar).
+  const [managerOptions, setManagerOptions] = useState<{ id: number; name: string }[]>([])
+  const [managerBusy, setManagerBusy] = useState(false)
+  // Reasignar equipo: mueve todos los reportes del manager a otro (o los desasigna).
+  const [showReassign, setShowReassign] = useState(false)
+  // Listado de profesionales a cargo (modal que bloquea quitar el rol).
+  const [teamBlock, setTeamBlock] = useState<any[] | null>(null)
+  const [teamCheckBusy, setTeamCheckBusy] = useState(false)
+  const [reassignTo, setReassignTo] = useState<number | ''>('')
+  const [reassignBusy, setReassignBusy] = useState(false)
 
   // Membresías (empleos) del usuario: multi-empresa + expediente.
   const [employments, setEmployments] = useState<any[]>([])
@@ -126,6 +145,47 @@ export default function AdminUserDetail() {
 
   useEffect(() => { load() }, [load])
 
+  // Carga el flag de features (multi-manager) una vez al montar.
+  useEffect(() => {
+    let cancelled = false
+    adminService.getFeatures()
+      .then(f => { if (!cancelled) setMultiManager(!!f?.multi_manager_reads) })
+      .catch(() => { /* sin flag: se mantiene el modo single */ })
+    return () => { cancelled = true }
+  }, [])
+
+  // Managers candidatos del mismo tenant para el selector inline (solo superadmin).
+  // Se cargan para profesionales (selector de manager), customer_success (manager
+  // por-empleo) y para cualquier manager (modal "Reasignar equipo").
+  useEffect(() => {
+    if (!user || !canManage) return
+    if (user.user_type !== 'profesional' && user.user_type !== 'customer_success' && !user.is_manager) return
+    let cancelled = false
+    adminService.getUsers({ limit: 1000 })
+      .then((res: any) => {
+        if (cancelled) return
+        const all: User[] = res?.data || (Array.isArray(res) ? res : [])
+        setManagerOptions(
+          all
+            .filter(u => u.is_manager && u.id !== user.id && tenantIdForUser(u) === tenantIdForUser(user))
+            .map(u => ({ id: u.id, name: u.name })),
+        )
+      })
+      .catch(() => { /* selector vacío si falla */ })
+    return () => { cancelled = true }
+  }, [user?.id, canManage])
+
+  // Profesionales a cargo: solo si el usuario es manager. Usa /reports, que con el
+  // flag multi-manager ON resuelve el equipo por la tabla employment_managers.
+  useEffect(() => {
+    if (!user || !user.is_manager) { setManagedTeam([]); return }
+    let cancelled = false
+    adminService.getManagerReports(user.id)
+      .then((rows: any) => { if (!cancelled) setManagedTeam(Array.isArray(rows) ? rows : []) })
+      .catch(() => { if (!cancelled) setManagedTeam([]) })
+    return () => { cancelled = true }
+  }, [user?.id, user?.is_manager])
+
   const toggleActive = async () => {
     if (!user) return
     setBusy(true); setActionMsg(null)
@@ -136,14 +196,98 @@ export default function AdminUserDetail() {
     } catch { setActionMsg('No se pudo cambiar el estado.') } finally { setBusy(false) }
   }
 
-  const promote = async () => {
+  // Promueve (true) o quita el rol de manager (false). Set explícito, no toggle ciego.
+  // Al degradar, pide confirmación; el backend además bloquea si aún tiene equipo.
+  // Antes de quitar el rol: trae el equipo. Si tiene gente, muestra el listado
+  // en un modal (en vez de un número) para que se reasigne primero.
+  const handleRemoveManagerClick = async () => {
     if (!user) return
-    setBusy(true); setActionMsg(null)
+    setTeamCheckBusy(true)
+    let reports: any[] = []
     try {
-      await adminService.updateUser(user.id, { is_manager: true })
+      reports = await adminService.getManagerReports(user.id)
+    } catch { /* el backend igual valida; seguimos al flujo normal */ }
+    setTeamCheckBusy(false)
+    if (Array.isArray(reports) && reports.length > 0) {
+      setTeamBlock(reports)
+      return
+    }
+    setManagerRole(false)
+  }
+
+  const setManagerRole = async (value: boolean) => {
+    if (!user) return
+    if (!value) {
+      const ok = await confirm({
+        title: 'Quitar rol de manager',
+        message: `¿Quitar el rol de Manager a ${user.name}? Si tiene profesionales a su cargo deberás reasignar su equipo primero.`,
+        confirmLabel: 'Quitar rol',
+        variant: 'danger',
+      })
+      if (!ok) return
+    }
+    setBusy(true); setActionMsg(null); setActionErr(false)
+    try {
+      await adminService.updateUser(user.id, { is_manager: value })
       await load()
       invalidateAdmin()
-    } catch { setActionMsg('No se pudo promover.') } finally { setBusy(false) }
+      setActionMsg(value ? 'Usuario promovido a manager.' : 'Rol de manager removido.')
+    } catch (err: any) {
+      setActionErr(true)
+      const base = err?.response?.data?.error ?? (value ? 'No se pudo promover.' : 'No se pudo quitar el rol.')
+      // Si el backend bloquea por equipo aún asignado (409), recuerda "Reasignar equipo".
+      setActionMsg(err?.response?.status === 409 ? `${base} Usa "Reasignar equipo" primero.` : base)
+    } finally { setBusy(false) }
+  }
+
+  // Asigna o quita el manager desde el detalle y refleja el cambio en vivo.
+  const handleAssignManager = async (value: string) => {
+    if (!user) return
+    const managerId = value === '' ? null : Number(value)
+    setManagerBusy(true); setActionMsg(null); setActionErr(false)
+    try {
+      await adminService.updateUser(user.id, { manager_id: managerId })
+      setUser(prev => (prev ? { ...prev, manager_id: managerId ?? undefined } : prev))
+      setManagerName(managerId ? (managerOptions.find(m => m.id === managerId)?.name || '') : '')
+      invalidateAdmin()
+      setActionMsg(managerId ? 'Manager asignado.' : 'Manager removido.')
+    } catch (err: any) {
+      setActionErr(true)
+      setActionMsg(err?.response?.data?.error ?? 'No se pudo actualizar el manager.')
+    } finally { setManagerBusy(false) }
+  }
+
+  // Reasigna todo el equipo del manager a otro manager (o lo desasigna si null).
+  const submitReassignTeam = async () => {
+    if (!user) return
+    const newManagerId = reassignTo === '' ? null : Number(reassignTo)
+    setReassignBusy(true); setActionMsg(null); setActionErr(false)
+    try {
+      const data = await userService.reassignTeam(user.id, newManagerId)
+      setActionMsg(typeof data?.reassigned === 'number' ? `Equipo reasignado (${data.reassigned}).` : 'Equipo reasignado')
+      invalidateAdmin()
+      setShowReassign(false)
+      setActionErr(false)
+      await load() // refresca el detalle (estado del usuario y empleos) sin recargar la página
+    } catch (err: any) {
+      setActionErr(true)
+      setActionMsg(err?.response?.data?.error ?? 'No se pudo reasignar el equipo.')
+    } finally { setReassignBusy(false) }
+  }
+
+  // Cambia el manager de un empleo concreto (cada empresa puede tener uno distinto).
+  const handleEmploymentManager = async (emp: any, value: string) => {
+    if (!user) return
+    const managerId = value === '' ? null : Number(value)
+    setManagerBusy(true); setActionMsg(null); setActionErr(false)
+    try {
+      await adminService.updateEmploymentManager(user.id, emp.id, managerId)
+      await loadEmployments(user)
+      setActionMsg('Manager del empleo actualizado')
+    } catch (err: any) {
+      setActionErr(true)
+      setActionMsg(err?.response?.data?.error ?? 'No se pudo actualizar el manager del empleo.')
+    } finally { setManagerBusy(false) }
   }
 
   const resetPass = async () => {
@@ -286,7 +430,23 @@ export default function AdminUserDetail() {
     )
   }
 
-  const rol = user.is_superadmin ? 'Superadmin' : user.is_manager ? 'Manager' : user.user_type
+  // Etiqueta del tipo de cuenta. El rol de Manager se muestra en un badge aparte
+  // (más abajo), así que aquí NO se colapsa a 'Manager' para no duplicarlo.
+  const rol = user.is_superadmin
+    ? 'Superadmin'
+    : user.user_type === 'empleador'
+      ? 'Empresa'
+      : user.user_type === 'customer_success'
+        ? 'Customer Success'
+        : user.user_type === 'profesional'
+          ? 'Profesional'
+          : user.user_type
+
+  // Asegura que el manager actual aparezca en el selector aunque la lista aún no cargue.
+  const managerSelectOptions =
+    user.manager_id && !managerOptions.some(m => m.id === user.manager_id)
+      ? [{ id: user.manager_id, name: managerName || `#${user.manager_id}` }, ...managerOptions]
+      : managerOptions
 
   const rbacApplicable = canManage && !!tenantIdForUser(user) && !user.is_superadmin && user.user_type !== 'empleador'
 
@@ -355,6 +515,10 @@ export default function AdminUserDetail() {
   ]
 
   // Type-specific fields: only show what's relevant for each user type.
+  // Empleo activo del profesional (empresa actual): el campo MANAGER de arriba
+  // gestiona el conjunto de managers de ESE empleo cuando el multi-manager está ON.
+  const activeEmployment = employments.find((e: any) => e.company_id === user.empleador_id && e.status === 'active')
+
   let specific: { label: string; value: React.ReactNode }[] = []
   if (user.user_type === 'empleador') {
     specific = [{ label: 'Empresa', value: user.company_name || '—' }]
@@ -362,7 +526,33 @@ export default function AdminUserDetail() {
     specific = [
       { label: 'Cargo', value: user.job_title || '—' },
       { label: 'Empresa', value: empresaName || '—' },
-      { label: 'Manager', value: managerName || 'Sin asignar' },
+      {
+        label: multiManager && activeEmployment ? 'Managers' : 'Manager',
+        value: canManage ? (
+          multiManager && activeEmployment ? (
+            <EmploymentManagersEditor
+              userId={user.id}
+              employmentId={activeEmployment.id}
+              companyId={activeEmployment.company_id}
+              managerOptions={managerOptions}
+              onChanged={() => { load(); loadEmployments(user) }}
+            />
+          ) : (
+            <select
+              value={user.manager_id ?? ''}
+              onChange={e => handleAssignManager(e.target.value)}
+              disabled={managerBusy}
+              title="Asignar o quitar manager"
+              style={{ maxWidth: '100%', fontSize: '0.9rem', padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)', background: '#fff', color: '#334155', cursor: managerBusy ? 'progress' : 'pointer' }}
+            >
+              <option value="">Sin asignar</option>
+              {managerSelectOptions.map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          )
+        ) : (managerName || 'Sin asignar'),
+      },
     ]
   } else if (user.user_type === 'customer_success') {
     specific = [{ label: 'Empresa asignada', value: empresaName || 'Soporte global' }]
@@ -407,29 +597,79 @@ export default function AdminUserDetail() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
           <KeyRound size={15} /> Resetear contraseña
         </button>
-        {!user.is_manager && !user.is_superadmin && (
-          <button onClick={promote} disabled={busy}
+        {!user.is_superadmin && (
+          <button onClick={() => (user.is_manager ? handleRemoveManagerClick() : setManagerRole(true))} disabled={busy || teamCheckBusy}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, color: user.is_manager ? '#b91c1c' : undefined, cursor: 'pointer', fontSize: '0.85rem' }}>
+            <Shield size={15} /> {user.is_manager ? 'Quitar rol de manager' : 'Promover a manager'}
+          </button>
+        )}
+        {user.is_manager && (
+          <button onClick={() => { setReassignTo(''); setShowReassign(true) }} disabled={busy}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
-            <Shield size={15} /> Promover a manager
+            <Users size={15} /> Reasignar equipo
           </button>
         )}
       </div>
       )}
       {actionMsg && (
-        <div style={{ margin: '0 0 1rem', padding: '0.6rem 0.9rem', borderRadius: '8px', background: 'rgba(16,185,129,0.1)', color: '#059669', fontSize: '0.85rem', fontWeight: 600 }}>{actionMsg}</div>
+        <div style={{ margin: '0 0 1rem', padding: '0.6rem 0.9rem', borderRadius: '8px', background: actionErr ? 'rgba(220,38,38,0.1)' : 'rgba(16,185,129,0.1)', color: actionErr ? '#dc2626' : '#059669', fontSize: '0.85rem', fontWeight: 600 }}>{actionMsg}</div>
       )}
 
       <div className={styles.card}>
         <h3>Información</h3>
         <div className={styles.grid}>
           {fields.map(f => (
-            <div key={f.label} className={styles.row}>
+            <div
+              key={f.label}
+              className={styles.row}
+              // El editor multi-manager (chips) ocupa toda la fila para que los
+              // chips fluyan en horizontal y no quede espacio muerto a la derecha.
+              style={f.label === 'Managers' ? { gridColumn: '1 / -1' } : undefined}
+            >
               <span className={styles.label}>{f.label}</span>
               <span className={styles.value}>{f.value}</span>
             </div>
           ))}
         </div>
       </div>
+
+      {user.is_manager && (
+        <div className={styles.card} style={{ marginTop: '1rem' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+            <Users size={18} /> Profesionales a cargo
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8' }}>({managedTeam.length})</span>
+          </h3>
+          <p style={{ margin: '6px 0 14px', fontSize: '0.83rem', color: '#94a3b8' }}>
+            Profesionales que tienen a {user.name} como manager{multiManager ? ' (cualquiera de sus managers puede aprobar sus horas)' : ''}.
+          </p>
+          {managedTeam.length === 0 ? (
+            <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>Sin profesionales a cargo.</span>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {managedTeam.map((m: any) => (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 14px', border: '1px solid var(--border, #e2e8f0)', borderRadius: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <Avatar src={m.avatar} name={m.name} size="sm" />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, color: '#0f172a' }}>{m.name}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {(m.job_title || 'Profesional')} · {m.email}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate(`/admin/users/${m.id}`)}
+                    title="Ver detalle"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)', background: '#fff', color: '#334155', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', flexShrink: 0 }}
+                  >
+                    <Eye size={14} /> Ver
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {(user.user_type === 'profesional' || user.user_type === 'customer_success') && (
         <div className={styles.card} style={{ marginTop: '1rem' }}>
@@ -465,6 +705,41 @@ export default function AdminUserDetail() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {canManage && !ended && (
+                        multiManager ? (
+                          // Modo multi-manager: gestiona el CONJUNTO de managers del empleo.
+                          <EmploymentManagersEditor
+                            userId={user.id}
+                            employmentId={emp.id}
+                            companyId={emp.company_id}
+                            managerOptions={managerOptions}
+                            onChanged={() => loadEmployments(user)}
+                          />
+                        ) : (() => {
+                          // Modo single: <select> del manager principal único.
+                          // Si el manager del empleo no está en la lista, lo agregamos como
+                          // fallback (con su id) para no parpadear mientras carga.
+                          const empMgrId: number | null = emp.manager_id ?? null
+                          const empMgrOptions =
+                            empMgrId && !managerOptions.some(m => m.id === empMgrId)
+                              ? [{ id: empMgrId, name: `#${empMgrId}` }, ...managerOptions]
+                              : managerOptions
+                          return (
+                            <select
+                              value={empMgrId ?? ''}
+                              onChange={e => handleEmploymentManager(emp, e.target.value)}
+                              disabled={managerBusy}
+                              title="Manager de este empleo"
+                              style={{ maxWidth: '160px', fontSize: '0.78rem', padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)', background: '#fff', color: '#334155', cursor: managerBusy ? 'progress' : 'pointer' }}
+                            >
+                              <option value="">Sin manager</option>
+                              {empMgrOptions.map(m => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
+                            </select>
+                          )
+                        })()
+                      )}
                       <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: '0.72rem', fontWeight: 700, background: ended ? 'rgba(100,116,139,0.12)' : 'rgba(16,185,129,0.12)', color: ended ? '#64748b' : '#047857' }}>
                         {ended ? 'Finalizado' : 'Activo'}
                       </span>
@@ -617,6 +892,65 @@ export default function AdminUserDetail() {
         <input type="text" value={endReason} onChange={e => setEndReason(e.target.value)} placeholder="Ej: fin de contrato, renuncia..."
           style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px' }} />
         {empError && <p style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem', marginTop: '10px' }}>{empError}</p>}
+      </Modal>
+
+      <Modal
+        isOpen={!!teamBlock}
+        onClose={() => setTeamBlock(null)}
+        title="No puedes quitar el rol todavía"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setTeamBlock(null)}>Cerrar</Button>
+            <Button onClick={() => { setTeamBlock(null); setReassignTo(''); setShowReassign(true) }}>Reasignar equipo</Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 0 }}>
+          {user.name} tiene {teamBlock?.length} profesional(es) a su cargo. Reasigna su equipo antes de quitarle el rol de Manager.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: 300, overflowY: 'auto' }}>
+          {teamBlock?.map((m: any) => (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', border: '1px solid var(--border, #e2e8f0)', borderRadius: '10px' }}>
+              <Avatar src={m.avatar} name={m.name} size="sm" />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, color: '#0f172a' }}>{m.name}</div>
+                <div style={{ fontSize: '0.78rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {(m.job_title || 'Profesional')} · {m.email}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showReassign}
+        onClose={() => setShowReassign(false)}
+        title="Reasignar equipo"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowReassign(false)} disabled={reassignBusy}>Cancelar</Button>
+            <Button onClick={submitReassignTeam} loading={reassignBusy}>Reasignar</Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 0 }}>
+          Mueve a todos los profesionales a cargo de {user.name} (en todas las empresas) a otro manager, o desasígnalos.
+        </p>
+        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Nuevo manager</label>
+        <select
+          value={reassignTo}
+          onChange={e => setReassignTo(e.target.value === '' ? '' : Number(e.target.value))}
+          disabled={reassignBusy}
+          style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', background: '#fff', color: '#334155' }}
+        >
+          <option value="">Sin manager (desasignar)</option>
+          {managerOptions.filter(m => m.id !== user.id).map(m => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
       </Modal>
 
       {expedienteEmp && (

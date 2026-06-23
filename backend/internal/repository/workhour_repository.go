@@ -154,12 +154,40 @@ func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, lim
 	}
 
 	if managerID, ok := filters["manager_id"].(uint); ok {
-		query = query.Joins("JOIN users ON users.id = work_hours.user_id").Where("users.manager_id = ?", managerID)
+		query = query.Joins("JOIN employments ON employments.user_id = work_hours.user_id AND employments.company_id = work_hours.tenant_id AND employments.status = ?", models.EmploymentActive).Where("employments.manager_id = ?", managerID)
 	}
 
 	if managerOrUserID, ok := filters["manager_or_user_id"].(uint); ok {
-		query = query.Joins("JOIN users manager_scope ON manager_scope.id = work_hours.user_id").
+		query = query.Joins("LEFT JOIN employments manager_scope ON manager_scope.user_id = work_hours.user_id AND manager_scope.company_id = work_hours.tenant_id AND manager_scope.status = ?", models.EmploymentActive).
 			Where("work_hours.user_id = ? OR manager_scope.manager_id = ?", managerOrUserID, managerOrUserID)
+	}
+
+	// --- Filtros via-links (FASE 2, semántica "cualquier manager") ---
+	// Se modelan con EXISTS (subconsulta correlacionada) en vez de JOIN para no
+	// duplicar filas de work_hours cuando un empleo tiene varios managers (lo que
+	// rompería el Count y el Preload). El EXISTS recorre employment_managers.
+	if managerLinksID, ok := filters["manager_links_id"].(uint); ok {
+		query = query.Where(`EXISTS (
+			SELECT 1 FROM employments e_ml
+			JOIN employment_managers em_ml ON em_ml.employment_id = e_ml.id AND em_ml.deleted_at IS NULL
+			WHERE e_ml.user_id = work_hours.user_id
+			  AND e_ml.company_id = work_hours.tenant_id
+			  AND e_ml.status = ?
+			  AND e_ml.deleted_at IS NULL
+			  AND em_ml.manager_id = ?
+		)`, models.EmploymentActive, managerLinksID)
+	}
+
+	if managerOrUserLinksID, ok := filters["manager_or_user_links_id"].(uint); ok {
+		query = query.Where(`work_hours.user_id = ? OR EXISTS (
+			SELECT 1 FROM employments e_mul
+			JOIN employment_managers em_mul ON em_mul.employment_id = e_mul.id AND em_mul.deleted_at IS NULL
+			WHERE e_mul.user_id = work_hours.user_id
+			  AND e_mul.company_id = work_hours.tenant_id
+			  AND e_mul.status = ?
+			  AND e_mul.deleted_at IS NULL
+			  AND em_mul.manager_id = ?
+		)`, managerOrUserLinksID, models.EmploymentActive, managerOrUserLinksID)
 	}
 
 	if userID, ok := filters["user_id"].(uint); ok {
@@ -210,8 +238,33 @@ func (r *workHourRepository) GetSummary(filters map[string]interface{}) (map[str
 		}
 
 		if managerOrUserID, ok := filters["manager_or_user_id"].(uint); ok {
-			query = query.Joins("JOIN users manager_scope ON manager_scope.id = work_hours.user_id").
+			query = query.Joins("LEFT JOIN employments manager_scope ON manager_scope.user_id = work_hours.user_id AND manager_scope.company_id = work_hours.tenant_id AND manager_scope.status = ?", models.EmploymentActive).
 				Where("work_hours.user_id = ? OR manager_scope.manager_id = ?", managerOrUserID, managerOrUserID)
+		}
+
+		// --- Filtros via-links (FASE 2). EXISTS para no duplicar al sumar. ---
+		if managerLinksID, ok := filters["manager_links_id"].(uint); ok {
+			query = query.Where(`EXISTS (
+				SELECT 1 FROM employments e_ml
+				JOIN employment_managers em_ml ON em_ml.employment_id = e_ml.id AND em_ml.deleted_at IS NULL
+				WHERE e_ml.user_id = work_hours.user_id
+				  AND e_ml.company_id = work_hours.tenant_id
+				  AND e_ml.status = ?
+				  AND e_ml.deleted_at IS NULL
+				  AND em_ml.manager_id = ?
+			)`, models.EmploymentActive, managerLinksID)
+		}
+
+		if managerOrUserLinksID, ok := filters["manager_or_user_links_id"].(uint); ok {
+			query = query.Where(`work_hours.user_id = ? OR EXISTS (
+				SELECT 1 FROM employments e_mul
+				JOIN employment_managers em_mul ON em_mul.employment_id = e_mul.id AND em_mul.deleted_at IS NULL
+				WHERE e_mul.user_id = work_hours.user_id
+				  AND e_mul.company_id = work_hours.tenant_id
+				  AND e_mul.status = ?
+				  AND e_mul.deleted_at IS NULL
+				  AND em_mul.manager_id = ?
+			)`, managerOrUserLinksID, models.EmploymentActive, managerOrUserLinksID)
 		}
 
 		if userID, ok := filters["user_id"].(uint); ok {

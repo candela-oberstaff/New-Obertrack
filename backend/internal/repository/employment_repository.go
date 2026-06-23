@@ -24,6 +24,53 @@ type EmploymentRepository interface {
 	ListByUser(userID uint) ([]models.Employment, error)
 	// ListActiveByUser lista solo las membresías activas de un usuario.
 	ListActiveByUser(userID uint) ([]models.Employment, error)
+	// CountActiveByManager cuenta las membresías activas que tienen a managerID
+	// como manager (su equipo vigente). Sirve para impedir quitar el rol de
+	// manager mientras aún tenga profesionales a su cargo.
+	CountActiveByManager(managerID uint) (int64, error)
+	// CountActiveByManagerInCompany cuenta las membresías activas que tienen a
+	// managerID como manager dentro de una empresa concreta. Sirve para impedir
+	// finalizar el empleo de un manager que aún tiene reportes en esa empresa.
+	CountActiveByManagerInCompany(managerID, companyID uint) (int64, error)
+	// ReassignManager mueve todas las membresías activas que tienen a oldManagerID
+	// como manager (en todas las empresas) hacia newManagerID, o las desasigna si
+	// newManagerID es nil. Devuelve cuántas filas se afectaron.
+	ReassignManager(oldManagerID uint, newManagerID *uint, companyID uint) (int64, error)
+
+	// --- Multi-manager N-a-N (employment_managers) ---
+	// AddManager agrega managerID al empleo. Con isPrimary=false solo crea el
+	// vínculo (sin tocar el principal); con isPrimary=true equivale a
+	// SetPrimaryManager (lo marca principal y desmarca los demás).
+	AddManager(employmentID, managerID uint, isPrimary bool) error
+	// RemoveManager soft-borra el vínculo (employmentID, managerID).
+	RemoveManager(employmentID, managerID uint) error
+	// SetPrimaryManager marca managerID como principal del empleo (creando el
+	// vínculo si falta o restaurándolo si estaba soft-borrado) y desmarca los
+	// demás del mismo empleo. Respeta el índice único parcial.
+	SetPrimaryManager(employmentID, managerID uint) error
+	// ClearManagers soft-borra todos los vínculos vivos del empleo (desasignar).
+	ClearManagers(employmentID uint) error
+	// ReassignManagerLinks mueve, en los empleos activos de companyID cuyo
+	// vínculo principal es oldManagerID, el principal hacia newManagerID (o lo
+	// quita si newManagerID es nil).
+	ReassignManagerLinks(oldManagerID, newManagerID *uint, companyID uint) error
+
+	// --- Lecturas via-links (FASE 2, semántica "cualquier manager") ---
+	// IsManagerOf indica si managerID es (alguno de) los managers del empleo
+	// activo de (userID, companyID), vía un vínculo vivo en employment_managers.
+	IsManagerOf(userID, companyID, managerID uint) (bool, error)
+	// CountActiveByManagerViaLinks cuenta los empleos ACTIVOS con un vínculo vivo
+	// a managerID (en cualquier empresa). Equivalente via-links de
+	// CountActiveByManager.
+	CountActiveByManagerViaLinks(managerID uint) (int64, error)
+	// CountActiveByManagerInCompanyViaLinks idem, acotado a una empresa.
+	CountActiveByManagerInCompanyViaLinks(managerID, companyID uint) (int64, error)
+	// ListManagerIDs devuelve los IDs de los managers (vínculos vivos) del empleo
+	// activo de (userID, companyID), para notificar a todos.
+	ListManagerIDs(userID, companyID uint) ([]uint, error)
+	// ListEmploymentManagers devuelve los vínculos vivos del empleo, principal
+	// primero (ORDER BY is_primary DESC, id ASC).
+	ListEmploymentManagers(employmentID uint) ([]models.EmploymentManager, error)
 
 	// --- Expediente (FASE 3) ---
 	CreateNote(note *models.EmploymentNote) error
@@ -93,6 +140,200 @@ func (r *employmentRepository) ListActiveByUser(userID uint) ([]models.Employmen
 		Order("started_at DESC").
 		Find(&employments).Error
 	return employments, err
+}
+
+func (r *employmentRepository) CountActiveByManager(managerID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Employment{}).
+		Where("manager_id = ? AND status = ?", managerID, models.EmploymentActive).
+		Count(&count).Error
+	return count, err
+}
+
+func (r *employmentRepository) CountActiveByManagerInCompany(managerID, companyID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Employment{}).
+		Where("manager_id = ? AND company_id = ? AND status = ?", managerID, companyID, models.EmploymentActive).
+		Count(&count).Error
+	return count, err
+}
+
+func (r *employmentRepository) ReassignManager(oldManagerID uint, newManagerID *uint, companyID uint) (int64, error) {
+	result := r.db.Model(&models.Employment{}).
+		Where("manager_id = ? AND company_id = ? AND status = ?", oldManagerID, companyID, models.EmploymentActive).
+		Update("manager_id", newManagerID)
+	return result.RowsAffected, result.Error
+}
+
+// --- Multi-manager N-a-N (employment_managers) ---
+
+func (r *employmentRepository) AddManager(employmentID, managerID uint, isPrimary bool) error {
+	if isPrimary {
+		return r.SetPrimaryManager(employmentID, managerID)
+	}
+	return r.upsertLink(r.db, employmentID, managerID, false)
+}
+
+func (r *employmentRepository) RemoveManager(employmentID, managerID uint) error {
+	return r.db.
+		Where("employment_id = ? AND manager_id = ?", employmentID, managerID).
+		Delete(&models.EmploymentManager{}).Error
+}
+
+func (r *employmentRepository) SetPrimaryManager(employmentID, managerID uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Desmarca cualquier principal vivo del empleo para liberar el índice
+		// único parcial antes de marcar el nuevo.
+		if err := tx.Model(&models.EmploymentManager{}).
+			Where("employment_id = ? AND is_primary = ? AND deleted_at IS NULL", employmentID, true).
+			Update("is_primary", false).Error; err != nil {
+			return err
+		}
+		return r.upsertLink(tx, employmentID, managerID, true)
+	})
+}
+
+func (r *employmentRepository) ClearManagers(employmentID uint) error {
+	return r.db.
+		Where("employment_id = ?", employmentID).
+		Delete(&models.EmploymentManager{}).Error
+}
+
+func (r *employmentRepository) ReassignManagerLinks(oldManagerID, newManagerID *uint, companyID uint) error {
+	if oldManagerID == nil {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// TODOS los vínculos vivos del manager saliente en empleos activos de la
+		// empresa — principal O adicional (antes solo movía los principales, así
+		// que un manager adicional no se reasignaba).
+		var links []models.EmploymentManager
+		if err := tx.Model(&models.EmploymentManager{}).
+			Select("employment_managers.*").
+			Joins("JOIN employments e ON e.id = employment_managers.employment_id").
+			Where("employment_managers.manager_id = ? AND employment_managers.deleted_at IS NULL", *oldManagerID).
+			Where("e.company_id = ? AND e.status = ? AND e.deleted_at IS NULL", companyID, models.EmploymentActive).
+			Find(&links).Error; err != nil {
+			return err
+		}
+
+		for _, link := range links {
+			wasPrimary := link.IsPrimary
+			// Soft-borra el vínculo del manager saliente (sea principal o adicional).
+			if err := tx.
+				Where("employment_id = ? AND manager_id = ?", link.EmploymentID, *oldManagerID).
+				Delete(&models.EmploymentManager{}).Error; err != nil {
+				return err
+			}
+			if newManagerID == nil {
+				continue
+			}
+			// Si el nuevo manager ya está vinculado a ese empleo, no se duplica.
+			var cnt int64
+			if err := tx.Model(&models.EmploymentManager{}).
+				Where("employment_id = ? AND manager_id = ? AND deleted_at IS NULL", link.EmploymentID, *newManagerID).
+				Count(&cnt).Error; err != nil {
+				return err
+			}
+			if cnt == 0 {
+				// Conserva el rol del saliente: principal -> principal, adicional -> adicional.
+				if err := r.upsertLink(tx, link.EmploymentID, *newManagerID, wasPrimary); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// --- Lecturas via-links (FASE 2) ---
+
+func (r *employmentRepository) IsManagerOf(userID, companyID, managerID uint) (bool, error) {
+	var exists bool
+	err := r.db.Raw(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM employments e
+			JOIN employment_managers em
+			  ON em.employment_id = e.id
+			 AND em.manager_id = ?
+			 AND em.deleted_at IS NULL
+			WHERE e.user_id = ?
+			  AND e.company_id = ?
+			  AND e.status = ?
+			  AND e.deleted_at IS NULL
+		)`, managerID, userID, companyID, models.EmploymentActive).
+		Scan(&exists).Error
+	return exists, err
+}
+
+func (r *employmentRepository) CountActiveByManagerViaLinks(managerID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.EmploymentManager{}).
+		Joins("JOIN employments e ON e.id = employment_managers.employment_id").
+		Where("employment_managers.manager_id = ? AND employment_managers.deleted_at IS NULL", managerID).
+		Where("e.status = ? AND e.deleted_at IS NULL", models.EmploymentActive).
+		Count(&count).Error
+	return count, err
+}
+
+func (r *employmentRepository) CountActiveByManagerInCompanyViaLinks(managerID, companyID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.EmploymentManager{}).
+		Joins("JOIN employments e ON e.id = employment_managers.employment_id").
+		Where("employment_managers.manager_id = ? AND employment_managers.deleted_at IS NULL", managerID).
+		Where("e.company_id = ? AND e.status = ? AND e.deleted_at IS NULL", companyID, models.EmploymentActive).
+		Count(&count).Error
+	return count, err
+}
+
+func (r *employmentRepository) ListManagerIDs(userID, companyID uint) ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&models.EmploymentManager{}).
+		Joins("JOIN employments e ON e.id = employment_managers.employment_id").
+		Where("e.user_id = ? AND e.company_id = ? AND e.status = ? AND e.deleted_at IS NULL", userID, companyID, models.EmploymentActive).
+		Where("employment_managers.deleted_at IS NULL").
+		Distinct().
+		Pluck("employment_managers.manager_id", &ids).Error
+	return ids, err
+}
+
+func (r *employmentRepository) ListEmploymentManagers(employmentID uint) ([]models.EmploymentManager, error) {
+	var links []models.EmploymentManager
+	err := r.db.
+		Where("employment_id = ? AND deleted_at IS NULL", employmentID).
+		Order("is_primary DESC, id ASC").
+		Find(&links).Error
+	return links, err
+}
+
+// upsertLink crea o restaura el vínculo (employmentID, managerID) con el valor
+// de is_primary indicado. Si existe vivo, lo actualiza; si está soft-borrado, lo
+// restaura; si no existe, lo crea. Usa el tx/db recibido para encadenar en
+// transacciones.
+func (r *employmentRepository) upsertLink(db *gorm.DB, employmentID, managerID uint, isPrimary bool) error {
+	// Busca cualquier fila (incluso soft-borrada) para ese par.
+	var existing models.EmploymentManager
+	err := db.Unscoped().
+		Where("employment_id = ? AND manager_id = ?", employmentID, managerID).
+		First(&existing).Error
+	if err == gorm.ErrRecordNotFound {
+		return db.Create(&models.EmploymentManager{
+			EmploymentID: employmentID,
+			ManagerID:    managerID,
+			IsPrimary:    isPrimary,
+		}).Error
+	}
+	if err != nil {
+		return err
+	}
+	// Restaura (deleted_at = NULL) y fija is_primary.
+	return db.Unscoped().Model(&models.EmploymentManager{}).
+		Where("id = ?", existing.ID).
+		Updates(map[string]interface{}{
+			"deleted_at": nil,
+			"is_primary": isPrimary,
+		}).Error
 }
 
 func (r *employmentRepository) GetByID(id uint) (*models.Employment, error) {

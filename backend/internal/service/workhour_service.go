@@ -27,11 +27,12 @@ type WorkHourService interface {
 }
 
 type workHourService struct {
-	repo      repository.WorkHourRepository
-	userRepo  repository.UserRepository
-	notifSvc  NotificationService
-	brevoSvc  *BrevoService
-	ticketSvc TicketService
+	repo           repository.WorkHourRepository
+	userRepo       repository.UserRepository
+	notifSvc       NotificationService
+	brevoSvc       *BrevoService
+	ticketSvc      TicketService
+	employmentRepo repository.EmploymentRepository
 }
 
 func NewWorkHourService(
@@ -40,13 +41,15 @@ func NewWorkHourService(
 	notifSvc NotificationService,
 	brevoSvc *BrevoService,
 	ticketSvc TicketService,
+	employmentRepo repository.EmploymentRepository,
 ) WorkHourService {
 	return &workHourService{
-		repo:      repo,
-		userRepo:  userRepo,
-		notifSvc:  notifSvc,
-		brevoSvc:  brevoSvc,
-		ticketSvc: ticketSvc,
+		repo:           repo,
+		userRepo:       userRepo,
+		notifSvc:       notifSvc,
+		brevoSvc:       brevoSvc,
+		ticketSvc:      ticketSvc,
+		employmentRepo: employmentRepo,
 	}
 }
 
@@ -78,14 +81,18 @@ func (s *workHourService) GetAll(userID uint, role string, isSuperadmin, isManag
 			return []models.WorkHour{}, 0, nil
 		}
 		filters["tenant_id"] = companyFilter
-	} else if isManager || role == "manager" {
+	} else if isManager {
 		// Un manager ve solo su equipo (él + subordinados directos), igual que su
 		// lista de pendientes y su resumen; no todas las horas del tenant. Así
 		// "lo que ve" coincide con "lo que puede aprobar".
 		if tenantID > 0 {
 			filters["tenant_id"] = tenantID
 		}
-		filters["manager_or_user_id"] = userID
+		if MultiManagerReadsEnabled() {
+			filters["manager_or_user_links_id"] = userID
+		} else {
+			filters["manager_or_user_id"] = userID
+		}
 	} else if isEmployerRole(role) {
 		// Los empleadores ven todas las horas de su tenant.
 		if tenantID > 0 {
@@ -232,9 +239,16 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 		go func() {
 			user, _ := s.userRepo.GetByID(finalWH.UserID)
 			if user != nil {
-				// Notificar al Manager
-				if user.ManagerID != nil {
-					_ = s.notifSvc.CreateNotification(*user.ManagerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "link": "/work-hours"})
+				// Notificar al Manager per-empresa de la jornada
+				if MultiManagerReadsEnabled() {
+					// Con el flag ON notificamos a TODOS los managers del empleo.
+					if managerIDs, err := s.employmentRepo.ListManagerIDs(finalWH.UserID, finalWH.TenantID); err == nil {
+						for _, managerID := range managerIDs {
+							_ = s.notifSvc.CreateNotification(managerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "link": "/work-hours"})
+						}
+					}
+				} else if emp, err := s.employmentRepo.GetActive(finalWH.UserID, finalWH.TenantID); err == nil && emp != nil && emp.ManagerID != nil {
+					_ = s.notifSvc.CreateNotification(*emp.ManagerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "link": "/work-hours"})
 				}
 				// Notificar al Empleador
 				if user.EmpleadorID != nil {
@@ -264,9 +278,15 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 			return nil, errors.New("Access denied")
 		}
 		allowed := workHour.UserID == userID || isEmployerRole(role)
-		if !allowed && isManager {
-			if owner, err := s.userRepo.GetByID(workHour.UserID); err == nil && owner.ManagerID != nil && *owner.ManagerID == userID {
-				allowed = true
+		if !allowed && isManager && workHour.UserID != userID {
+			if MultiManagerReadsEnabled() {
+				if ok, _ := s.employmentRepo.IsManagerOf(workHour.UserID, workHour.TenantID, userID); ok {
+					allowed = true
+				}
+			} else {
+				if emp, err := s.employmentRepo.GetActive(workHour.UserID, workHour.TenantID); err == nil && emp != nil && emp.ManagerID != nil && *emp.ManagerID == userID {
+					allowed = true
+				}
 			}
 		}
 		if !allowed {
@@ -367,11 +387,19 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 			if wh.User.EmpleadorID != nil && *wh.User.EmpleadorID == userID {
 				canApprove = true
 			}
-		} else if role == "manager" || isManager {
+		} else if isManager {
 			// Separación de funciones: un manager NO puede aprobar sus propias
-			// jornadas, solo las de sus subordinados directos.
-			if wh.UserID != userID && wh.User.ManagerID != nil && *wh.User.ManagerID == userID {
-				canApprove = true
+			// jornadas, solo las de sus subordinados directos (per-empresa).
+			if wh.UserID != userID {
+				if MultiManagerReadsEnabled() {
+					if ok, _ := s.employmentRepo.IsManagerOf(wh.UserID, wh.TenantID, userID); ok {
+						canApprove = true
+					}
+				} else {
+					if emp, err := s.employmentRepo.GetActive(wh.UserID, wh.TenantID); err == nil && emp != nil && emp.ManagerID != nil && *emp.ManagerID == userID {
+						canApprove = true
+					}
+				}
 			}
 		}
 
@@ -461,11 +489,19 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 			if wh.User.EmpleadorID != nil && *wh.User.EmpleadorID == userID {
 				canReject = true
 			}
-		} else if role == "manager" || isManager {
+		} else if isManager {
 			// Separación de funciones: un manager NO puede rechazar sus propias
-			// jornadas, solo las de sus subordinados directos.
-			if wh.UserID != userID && wh.User.ManagerID != nil && *wh.User.ManagerID == userID {
-				canReject = true
+			// jornadas, solo las de sus subordinados directos (per-empresa).
+			if wh.UserID != userID {
+				if MultiManagerReadsEnabled() {
+					if ok, _ := s.employmentRepo.IsManagerOf(wh.UserID, wh.TenantID, userID); ok {
+						canReject = true
+					}
+				} else {
+					if emp, err := s.employmentRepo.GetActive(wh.UserID, wh.TenantID); err == nil && emp != nil && emp.ManagerID != nil && *emp.ManagerID == userID {
+						canReject = true
+					}
+				}
 			}
 		}
 
@@ -547,13 +583,17 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin, isM
 			return map[string]float64{"total_hours": 0, "approved_hours": 0, "pending_hours": 0, "rejected_hours": 0}, nil
 		}
 		filters["tenant_id"] = companyFilter
-	} else if isManager || role == "manager" {
+	} else if isManager {
 		// Un manager solo ve el resumen de su equipo (él + subordinados), igual
 		// que su lista de pendientes; no el total de toda la empresa.
 		if tenantID > 0 {
 			filters["tenant_id"] = tenantID
 		}
-		filters["manager_or_user_id"] = userID
+		if MultiManagerReadsEnabled() {
+			filters["manager_or_user_links_id"] = userID
+		} else {
+			filters["manager_or_user_id"] = userID
+		}
 	} else if (role == string(models.UserTypeEmployer) || role == "empleador") && tenantID > 0 {
 		filters["tenant_id"] = tenantID
 	} else {
@@ -596,16 +636,21 @@ func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuper
 		return res, err
 	}
 
-	if isManager || role == "manager" {
+	if isManager {
 		if tenantID > 0 {
 			filters["tenant_id"] = tenantID
 		}
-		filters["manager_or_user_id"] = userID
+		// solo subordinados: el manager no aprueba sus propias horas
+		if MultiManagerReadsEnabled() {
+			filters["manager_links_id"] = userID
+		} else {
+			filters["manager_id"] = userID
+		}
 		res, _, err := s.repo.FindAll(filters, 0, 1000)
 		return res, err
 	}
 
-	if role == "empresa" || role == "empleador" {
+	if isEmployerRole(role) {
 		tenantID = userID
 	}
 

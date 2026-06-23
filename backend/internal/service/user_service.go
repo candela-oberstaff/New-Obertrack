@@ -2,6 +2,8 @@ package service
 
 import (
 	"errors"
+	"fmt"
+
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/obertrack/backend/internal/models"
@@ -16,9 +18,13 @@ type UserService interface {
 	Delete(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) error
 
 	ToggleStatus(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) (*models.User, error)
-	PromoteToManager(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) (*models.User, error)
+	PromoteToManager(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool, desired *bool) (*models.User, error)
 	AssignToManager(professionalID, managerID, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) (*models.User, error)
-	
+	// ReassignTeam mueve TODOS los reportes activos de oldManagerID (en todas las
+	// empresas) al nuevo manager, o los desasigna si newManagerID es nil. Devuelve
+	// cuántas membresías se reasignaron.
+	ReassignTeam(oldManagerID uint, newManagerID *uint, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) (int64, error)
+
 	GetEmployees(employerID uint) ([]models.User, error)
 	GetMyTeam(userID uint) ([]models.User, error)
 	
@@ -27,11 +33,12 @@ type UserService interface {
 }
 
 type userService struct {
-	repo repository.UserRepository
+	repo           repository.UserRepository
+	employmentRepo repository.EmploymentRepository
 }
 
-func NewUserService(repo repository.UserRepository) UserService {
-	return &userService{repo: repo}
+func NewUserService(repo repository.UserRepository, employmentRepo repository.EmploymentRepository) UserService {
+	return &userService{repo: repo, employmentRepo: employmentRepo}
 }
 
 func (s *userService) authorizeUserTenant(target *models.User, requesterID, tenantID uint, isSuperadmin bool, requireManage bool, role string, isManager bool) error {
@@ -48,6 +55,22 @@ func (s *userService) authorizeUserTenant(target *models.User, requesterID, tena
 		return errors.New("Access denied")
 	}
 	if requireManage && !(isEmployerRole(role) || isManager) {
+		return errors.New("Access denied")
+	}
+	return nil
+}
+
+func (s *userService) authorizeAdminAction(target *models.User, tenantID uint, isSuperadmin bool, role string) error {
+	if isSuperadmin {
+		return nil
+	}
+	if target == nil {
+		return errors.New("User not found")
+	}
+	if !isEmployerRole(role) {
+		return errors.New("Access denied")
+	}
+	if tenantID == 0 || tenantForUser(target) != tenantID {
 		return errors.New("Access denied")
 	}
 	return nil
@@ -156,6 +179,18 @@ func (s *userService) Delete(id, requesterID, tenantID uint, role string, isMana
 		return err
 	}
 
+	// No se puede eliminar un manager que aún tiene equipo a su cargo:
+	// dejaría a esos profesionales sin aprobador. Hay que reasignarlos primero.
+	if user.IsManager {
+		count, cerr := countManagerReports(s.repo, s.employmentRepo, id)
+		if cerr != nil {
+			return cerr // fail-closed
+		}
+		if count > 0 {
+			return fmt.Errorf("No se puede eliminar el manager: %s todavía tiene %d profesional(es) a su cargo. Reasigna su equipo primero", user.Name, count)
+		}
+	}
+
 	return s.repo.Delete(id)
 }
 
@@ -164,8 +199,20 @@ func (s *userService) ToggleStatus(id, requesterID, tenantID uint, role string, 
 	if err != nil {
 		return nil, errors.New("User not found")
 	}
-	if err := s.authorizeUserTenant(user, requesterID, tenantID, isSuperadmin, true, role, isManager); err != nil {
+	if err := s.authorizeAdminAction(user, tenantID, isSuperadmin, role); err != nil {
 		return nil, err
+	}
+
+	// Si el manager va a quedar inactivo y aún tiene equipo, no se puede:
+	// dejaría a esos profesionales sin aprobador. Hay que reasignarlos primero.
+	if user.IsActive && user.IsManager {
+		count, cerr := countManagerReports(s.repo, s.employmentRepo, id)
+		if cerr != nil {
+			return nil, cerr // fail-closed
+		}
+		if count > 0 {
+			return nil, fmt.Errorf("No se puede desactivar el manager: %s todavía tiene %d profesional(es) a su cargo. Reasigna su equipo primero", user.Name, count)
+		}
 	}
 
 	user.IsActive = !user.IsActive
@@ -179,21 +226,45 @@ func (s *userService) ToggleStatus(id, requesterID, tenantID uint, role string, 
 	return user, nil
 }
 
-func (s *userService) PromoteToManager(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) (*models.User, error) {
+func (s *userService) PromoteToManager(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool, desired *bool) (*models.User, error) {
 	user, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("User not found")
 	}
-	if err := s.authorizeUserTenant(user, requesterID, tenantID, isSuperadmin, true, role, isManager); err != nil {
+	if err := s.authorizeAdminAction(user, tenantID, isSuperadmin, role); err != nil {
 		return nil, err
 	}
 
-	updates := map[string]interface{}{"is_manager": !user.IsManager}
+	var newVal bool
+	if desired != nil {
+		newVal = *desired
+	} else {
+		newVal = !user.IsManager // toggle de respaldo por compatibilidad
+	}
+
+	// Solo profesionales y customer success pueden ser manager.
+	if newVal && user.UserType != models.UserTypeProfessional && user.UserType != models.UserTypeCustomerSuccess {
+		return nil, errors.New("Manager inválido: solo profesionales o customer success pueden ser manager")
+	}
+
+	// No permitir quitar el rol de manager si todavía tiene equipo a su cargo:
+	// dejaría a esos subordinados sin aprobador. Hay que reasignarlos primero.
+	if !newVal && user.IsManager {
+		count, cerr := countManagerReports(s.repo, s.employmentRepo, id)
+		if cerr != nil {
+			return nil, cerr // fail-closed
+		}
+		if count > 0 {
+			return nil, fmt.Errorf("No se puede quitar el rol de manager: %s todavía tiene %d profesional(es) a su cargo. Reasigna su equipo primero", user.Name, count)
+		}
+	}
+
+	updates := map[string]interface{}{"is_manager": newVal}
 	if err := s.repo.Update(user, updates); err != nil {
 		return nil, err
 	}
-	
-	user.IsManager = !user.IsManager
+
+	user.IsManager = newVal
 	return user, nil
 }
 
@@ -211,22 +282,29 @@ func (s *userService) AssignToManager(professionalID, managerID, requesterID, te
 	if err != nil {
 		return nil, errors.New("Professional not found")
 	}
-	if err := s.authorizeUserTenant(professional, requesterID, tenantID, isSuperadmin, true, role, isManager); err != nil {
+	if err := s.authorizeAdminAction(professional, tenantID, isSuperadmin, role); err != nil {
 		return nil, err
 	}
 
 	if managerID == 0 {
 		professional.ManagerID = nil
 	} else {
+		if managerID == professionalID {
+			return nil, errors.New("Un profesional no puede ser su propio manager")
+		}
 		manager, err := s.repo.GetByID(managerID)
 		if err != nil {
 			return nil, errors.New("Manager not found")
 		}
-		if err := s.authorizeUserTenant(manager, requesterID, tenantID, isSuperadmin, true, role, isManager); err != nil {
+		if err := s.authorizeAdminAction(manager, tenantID, isSuperadmin, role); err != nil {
 			return nil, err
 		}
-		if !manager.IsManager {
-			return nil, errors.New("User is not a manager")
+		companyID := uint(0)
+		if professional.EmpleadorID != nil {
+			companyID = *professional.EmpleadorID
+		}
+		if err := ensureValidManager(s.employmentRepo, manager, companyID); err != nil {
+			return nil, err
 		}
 		professional.ManagerID = &managerID
 	}
@@ -235,7 +313,66 @@ func (s *userService) AssignToManager(professionalID, managerID, requesterID, te
 		return nil, err
 	}
 
+	// Sincroniza el employment de la empresa que asigna (espejo per-empresa de
+	// users.manager_id) para que la fuente de verdad por-empresa quede alineada.
+	// Un empleador opera sobre su propio tenant; un superadmin no tiene tenant
+	// (tenantID==0), así que se usa la empresa activa del propio profesional.
+	syncCompanyID := tenantID
+	if syncCompanyID == 0 && professional.EmpleadorID != nil {
+		syncCompanyID = *professional.EmpleadorID
+	}
+	if syncCompanyID > 0 {
+		if emp, err := s.employmentRepo.GetActive(professional.ID, syncCompanyID); err == nil && emp != nil {
+			_ = s.employmentRepo.Update(emp, map[string]interface{}{"manager_id": professional.ManagerID})
+			syncPrimaryManager(s.employmentRepo, emp.ID, professional.ManagerID)
+		}
+	}
+
 	return professional, nil
+}
+
+func (s *userService) ReassignTeam(oldManagerID uint, newManagerID *uint, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) (int64, error) {
+	oldManager, err := s.repo.GetByID(oldManagerID)
+	if err != nil {
+		return 0, errors.New("User not found")
+	}
+	if err := s.authorizeAdminAction(oldManager, tenantID, isSuperadmin, role); err != nil {
+		return 0, err
+	}
+
+	// Reasignación acotada a la empresa activa del manager: respeta el invariante
+	// per-empresa (no mueve reportes de otras empresas hacia un manager que no
+	// pertenece a ellas). Para managers multi-empresa se reasigna por empresa.
+	companyID := uint(0)
+	if oldManager.EmpleadorID != nil {
+		companyID = *oldManager.EmpleadorID
+	}
+	if companyID == 0 {
+		return 0, errors.New("El manager no tiene una empresa activa")
+	}
+
+	if newManagerID != nil {
+		newManager, err := s.repo.GetByID(*newManagerID)
+		if err != nil {
+			return 0, errors.New("Manager inválido: manager no encontrado")
+		}
+		if err := ensureValidManager(s.employmentRepo, newManager, companyID); err != nil {
+			return 0, err
+		}
+	}
+
+	n, err := s.employmentRepo.ReassignManager(oldManagerID, newManagerID, companyID)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := s.repo.ReassignManager(oldManagerID, newManagerID, companyID); err != nil {
+		return 0, err
+	}
+	// Dual-write: mueve los vínculos principales del set (employment_managers)
+	// del manager saliente al nuevo (o los quita si newManagerID es nil).
+	old := oldManagerID
+	_ = s.employmentRepo.ReassignManagerLinks(&old, newManagerID, companyID)
+	return n, nil
 }
 
 func (s *userService) GetMyTeam(userID uint) ([]models.User, error) {
@@ -248,6 +385,9 @@ func (s *userService) GetMyTeam(userID uint) ([]models.User, error) {
 		return []models.User{}, nil
 	}
 
+	if MultiManagerReadsEnabled() {
+		return s.repo.GetTeamViaLinks(userID)
+	}
 	return s.repo.GetTeam(userID)
 }
 
