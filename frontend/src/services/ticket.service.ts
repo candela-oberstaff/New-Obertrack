@@ -71,6 +71,7 @@ export interface Ticket {
   assignee_id?: string;
   assignee_name?: string;
   assignee_email?: string;
+  department_id?: string;
   /** 'zoho' Zoho Desk, 'internal' alertas Obertrack, 'support' solicitudes de soporte por chat */
   origin?: 'zoho' | 'internal' | 'support';
   /** Canal de chat asociado (solo origin 'support'): para navegar al chat */
@@ -118,6 +119,7 @@ export interface WhatsAppChatTicket {
   status: string
   assignee_id?: string
   modified_time: string
+  department_id?: string
 }
 
 export interface WhatsAppMessageDTO {
@@ -209,10 +211,17 @@ export const ticketService = {
     return response.data
   },
 
-  sendMessage: async (zohoId: string, content: string, channel: 'whatsapp' | 'email' | 'note'): Promise<TicketMessage> => {
-    const response = await api.post(`/tickets/${zohoId}/messages`, { content, channel })
+  sendMessage: async (zohoId: string, content: string, channel: 'whatsapp' | 'email' | 'note', templateId?: string): Promise<TicketMessage> => {
+    const response = await api.post(`/tickets/${zohoId}/messages`, { content, channel, template_id: templateId })
     return response.data
   },
+
+  getWhatsAppTemplates: async (departmentId?: string): Promise<{ id: string; title: string; message: string; displayMessage: string; status: string; language?: string }[]> => {
+    const params = departmentId ? { departmentId } : {}
+    const response = await api.get('/chats/templates', { params })
+    return response.data
+  },
+
 
   getMyWhatsAppChats: async (modifiedSince?: string): Promise<WhatsAppChatTicket[]> => {
     const params = modifiedSince ? { modifiedSince } : {}
@@ -236,8 +245,8 @@ export const ticketService = {
     return response.data
   },
 
-  sendWhatsAppMessage: async (ticketId: string, content: string): Promise<WhatsAppMessageDTO> => {
-    const response = await api.post(`/chats/${ticketId}/send`, { content })
+  sendWhatsAppMessage: async (ticketId: string, content: string, templateId?: string): Promise<WhatsAppMessageDTO> => {
+    const response = await api.post(`/chats/${ticketId}/send`, { content, template_id: templateId })
     return response.data
   },
 

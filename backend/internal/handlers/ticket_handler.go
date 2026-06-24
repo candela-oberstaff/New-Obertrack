@@ -84,13 +84,28 @@ func ticketStatusOptionFromZoho(status service.ZohoTicketStatus) gin.H {
 func ticketDTOFromZoho(zt service.ZohoTicket, messages []models.TicketMessage) gin.H {
 	contactName := strings.TrimSpace(zt.ContactName)
 	contactPhone := firstNonEmptyLocal(zt.Phone, zt.ContactPhone)
+	contactEmail := firstNonEmptyLocal(zt.Email, zt.ContactEmail)
+
+	if zt.ContactInfo != nil {
+		fullName := strings.TrimSpace(zt.ContactInfo.FirstName + " " + zt.ContactInfo.LastName)
+		if fullName != "" {
+			contactName = fullName
+		}
+		phoneVal := firstNonEmptyLocal(zt.ContactInfo.Phone, zt.ContactInfo.Mobile)
+		if phoneVal != "" {
+			contactPhone = phoneVal
+		}
+		if zt.ContactInfo.Email != "" {
+			contactEmail = zt.ContactInfo.Email
+		}
+	}
+
 	if looksLikePhoneLocal(contactName) {
 		if contactPhone == "" {
 			contactPhone = contactName
 		}
 		contactName = ""
 	}
-	contactEmail := firstNonEmptyLocal(zt.Email, zt.ContactEmail)
 
 	return gin.H{
 		"id":             hashStringToUint(zt.ID),
@@ -111,6 +126,7 @@ func ticketDTOFromZoho(zt service.ZohoTicket, messages []models.TicketMessage) g
 		"assignee_id":    zt.AssigneeID,
 		"assignee_name":  zt.AssigneeName,
 		"assignee_email": zt.AssigneeEmail,
+		"department_id":  zt.DepartmentID,
 		"created_at":     zt.CreatedTime,
 		"updated_at":     zt.ModifiedTime,
 		"origin":         models.OriginZoho,
@@ -231,9 +247,9 @@ func (h *TicketHandler) resolveZohoAgentID(c *gin.Context) (string, error) {
 	return zohoID, nil
 }
 
-// isTicketOwner checks that the ticket is assigned to the current user (or allows superadmins).
+// isTicketOwner checks that the ticket is assigned to the current user (or allows superadmins/customer success).
 func (h *TicketHandler) isTicketOwner(c *gin.Context, zt *service.ZohoTicket) bool {
-	if middleware.IsSuperadmin(c) {
+	if middleware.IsSuperadmin(c) || middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess) {
 		return true
 	}
 	agentID, err := h.resolveZohoAgentID(c)
@@ -672,35 +688,77 @@ func (h *TicketHandler) GetTicket(c *gin.Context) {
 
 	messages := make([]models.TicketMessage, 0, len(threads))
 	for _, thread := range threads {
-		content := thread.Content
-		if content == "" {
-			content = thread.Summary
-		}
-		if content == "" {
-			continue
-		}
+		// Try to get individual sub‑messages for Instant Messaging (e.g. WhatsApp)
+		subMsgs, err := h.zohoSvc.GetThreadMessages(thread.ID)
+		if err == nil && len(subMsgs) > 0 {
+			for _, sub := range subMsgs {
+				if sub.Summary == "" {
+					continue
+				}
 
-		senderType := models.SenderTypeContact
-		switch strings.ToLower(thread.AuthorType) {
-		case "agent":
-			senderType = models.SenderTypeAgent
-		case "system":
-			senderType = models.SenderTypeSystem
-		}
+				senderType := models.SenderTypeContact
+				if sub.Author != nil && strings.EqualFold(sub.Author.Type, "AGENT") {
+					senderType = models.SenderTypeAgent
+				} else if strings.EqualFold(sub.Direction, "OUT") {
+					senderType = models.SenderTypeAgent
+				}
 
-		channel := models.ChannelWhatsApp
-		if strings.EqualFold(thread.Channel, "email") {
-			channel = models.ChannelEmail
-		}
+				channel := models.ChannelWhatsApp
+				if strings.EqualFold(thread.Channel, "email") {
+					channel = models.ChannelEmail
+				}
 
-		messages = append(messages, models.TicketMessage{
-			ID:         hashStringToUint(thread.ID),
-			TicketID:   hashStringToUint(ticketID),
-			SenderType: senderType,
-			Channel:    channel,
-			Content:    stripHTML(content),
-			CreatedAt:  thread.CreatedTime,
-		})
+				content := stripHTML(sub.Summary)
+				if content == "This message has been sent from other source and cannot be viewed" || content == "" {
+					var dbMsg models.TicketMessage
+					if h.db.Where("external_id = ?", sub.ID).First(&dbMsg).Error == nil {
+						content = dbMsg.Content
+					}
+				}
+
+				messages = append(messages, models.TicketMessage{
+					ID:         hashStringToUint(sub.ID),
+					TicketID:   hashStringToUint(ticketID),
+					SenderType: senderType,
+					Channel:    channel,
+					Content:    content,
+					CreatedAt:  sub.CreatedTime,
+				})
+			}
+		} else {
+			content := thread.Content
+			if content == "" {
+				content = thread.Summary
+			}
+			if content == "This message has been sent from other source and cannot be viewed" || content == "" {
+				var dbMsg models.TicketMessage
+				if h.db.Where("external_id = ?", thread.ID).First(&dbMsg).Error == nil {
+					content = dbMsg.Content
+				}
+			}
+
+			senderType := models.SenderTypeContact
+			switch strings.ToLower(thread.AuthorType) {
+			case "agent":
+				senderType = models.SenderTypeAgent
+			case "system":
+				senderType = models.SenderTypeSystem
+			}
+
+			channel := models.ChannelWhatsApp
+			if strings.EqualFold(thread.Channel, "email") {
+				channel = models.ChannelEmail
+			}
+
+			messages = append(messages, models.TicketMessage{
+				ID:         hashStringToUint(thread.ID),
+				TicketID:   hashStringToUint(ticketID),
+				SenderType: senderType,
+				Channel:    channel,
+				Content:    stripHTML(content),
+				CreatedAt:  thread.CreatedTime,
+			})
+		}
 	}
 
 	phone := zt.Phone
@@ -771,8 +829,9 @@ func (h *TicketHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
+	ticketID := c.Param("id")
 	// Verify ownership before sending
-	zt, err := h.zohoSvc.GetTicketDetail(c.Param("id"))
+	zt, err := h.zohoSvc.GetTicketDetail(ticketID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch ticket from Zoho Desk: " + err.Error()})
 		return
@@ -783,40 +842,64 @@ func (h *TicketHandler) SendMessage(c *gin.Context) {
 	}
 
 	var req struct {
-		Content string                `json:"content"`
-		Channel models.MessageChannel `json:"channel"`
+		Content    string                `json:"content"`
+		Channel    models.MessageChannel `json:"channel"`
+		TemplateID string                `json:"template_id"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Content) == "" {
+	if err := c.ShouldBindJSON(&req); err != nil || (strings.TrimSpace(req.Content) == "" && req.TemplateID == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
 		return
 	}
 
 	var (
-		thread *service.ZohoThread
-		sendErr error
+		messageID string
+		sendErr   error
 	)
+
 	if req.Channel == models.ChannelWhatsApp {
-		thread, sendErr = h.zohoSvc.ReplyWhatsAppLiveChat(c.Param("id"), req.Content, c.GetString("email"))
+		thread, err := h.zohoSvc.ReplyWhatsAppLiveChat(ticketID, req.Content, c.GetString("email"), req.TemplateID)
+		if err != nil {
+			sendErr = err
+		} else if thread != nil {
+			messageID = thread.ID
+		}
 	} else {
-		thread, sendErr = h.zohoSvc.ReplyTicket(c.Param("id"), req.Content, string(req.Channel))
+		thread, err := h.zohoSvc.ReplyTicket(ticketID, req.Content, string(req.Channel))
+		if err != nil {
+			sendErr = err
+		} else if thread != nil {
+			messageID = thread.ID
+		}
 	}
+
 	if sendErr != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send message through Zoho Desk: " + sendErr.Error()})
 		return
 	}
 
-	createdAt := time.Now()
-	if thread != nil && !thread.CreatedTime.IsZero() {
-		createdAt = thread.CreatedTime
+	// Save the outgoing message to the local database to bypass Zoho's security masking
+	if messageID != "" {
+		dbMsg := models.TicketMessage{
+			ID:         hashStringToUint(messageID),
+			TicketID:   hashStringToUint(ticketID),
+			SenderType: models.SenderTypeAgent,
+			Channel:    req.Channel,
+			Content:    req.Content,
+			ExternalID: messageID,
+			CreatedAt:  time.Now(),
+		}
+		if err := h.db.Create(&dbMsg).Error; err != nil {
+			log.Printf("[Tickets] Failed to save outgoing message to local cache: %v", err)
+		}
 	}
 
 	c.JSON(http.StatusOK, models.TicketMessage{
-		ID:         hashStringToUint(thread.ID),
-		TicketID:   hashStringToUint(c.Param("id")),
+		ID:         hashStringToUint(messageID),
+		TicketID:   hashStringToUint(ticketID),
 		SenderType: models.SenderTypeAgent,
 		Channel:    req.Channel,
 		Content:    req.Content,
-		CreatedAt:  createdAt,
+		CreatedAt:  time.Now(),
 	})
 }
 

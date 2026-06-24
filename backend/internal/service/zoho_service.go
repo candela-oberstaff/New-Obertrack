@@ -220,6 +220,15 @@ func (s *ZohoService) getOrgID() (string, error) {
 	return s.orgID, nil
 }
 
+type ZohoTicketContact struct {
+	ID        string `json:"id"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	Email     string `json:"email"`
+	Mobile    string `json:"mobile"`
+	Phone     string `json:"phone"`
+}
+
 // ZohoTicket represents a ticket item mapped from Zoho Desk API
 type ZohoTicket struct {
 	ID           string    `json:"id"`
@@ -243,6 +252,7 @@ type ZohoTicket struct {
 	CustomerTone string    `json:"customerTone,omitempty"`
 	IsEscalated  bool      `json:"isEscalated,omitempty"`
 	WebURL       string    `json:"webUrl,omitempty"`
+	ContactInfo  *ZohoTicketContact `json:"contact,omitempty"`
 	// Contact details fetched separately
 	ContactPhone string `json:"-"`
 	ContactEmail string `json:"-"`
@@ -438,6 +448,7 @@ func (s *ZohoService) ListTickets(assigneeID string) ([]ZohoTicket, error) {
 	params := url.Values{}
 	params.Set("sortBy", "-modifiedTime")
 	params.Set("limit", "50")
+	params.Set("include", "contacts")
 	if assigneeID != "" {
 		params.Set("assigneeId", assigneeID)
 	}
@@ -475,6 +486,26 @@ func (s *ZohoService) ListTickets(assigneeID string) ([]ZohoTicket, error) {
 
 	if err := json.Unmarshal(body, &ticketsResponse); err != nil {
 		return nil, err
+	}
+
+	// Warm up agent cache if empty to avoid multiple single GetAgent calls
+	s.mu.RLock()
+	cacheLen := len(s.agentCache)
+	s.mu.RUnlock()
+	if cacheLen == 0 {
+		if _, err := s.ListAgents(); err != nil {
+			log.Printf("[ZohoService] Failed to warm up agent cache: %v", err)
+		}
+	}
+
+	for i := range ticketsResponse.Data {
+		t := &ticketsResponse.Data[i]
+		if t.AssigneeID != "" {
+			if agentInfo, err := s.GetAgent(t.AssigneeID); err == nil {
+				t.AssigneeName = agentInfo.Name
+				t.AssigneeEmail = agentInfo.Email
+			}
+		}
 	}
 
 	return ticketsResponse.Data, nil
@@ -699,7 +730,7 @@ func (s *ZohoService) ReplyTicket(ticketID string, content string, channel strin
 
 // ReplyWhatsAppLiveChat envía una respuesta de WhatsApp real al cliente usando la API de Mensajería Instantánea de Zoho Desk.
 // Esto evita que el mensaje se guarde como un simple comentario y mantiene el formato nativo de chat.
-func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, agentEmail string) (*ZohoThread, error) {
+func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, agentEmail string, cannedMessageID string) (*ZohoThread, error) {
 	token, err := s.GetAccessToken()
 	if err != nil {
 		return nil, err
@@ -711,7 +742,7 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 
 	// 1. OBTENER EL CONVERSATION ID
 	// La API pública de Zoho requiere este ID específico para mensajería
-	convURL := fmt.Sprintf("https://desk.zoho.com/api/v1/conversations?ticketId=%s", ticketID)
+	convURL := fmt.Sprintf("https://desk.zoho.com/api/v1/tickets/%s", ticketID)
 	req, _ := http.NewRequest("GET", convURL, nil)
 	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
 	req.Header.Set("orgId", orgID)
@@ -737,9 +768,7 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 
 	// 2. 🚀 PAYLOAD LIQUIDADO SIN 'displayMessage'
 	payload := map[string]interface{}{
-		"text":        content,
-		"contentType": "text/plain",
-		"type":        "TEXT",
+		"message": content,
 	}
 
 	body, err := json.Marshal(payload)
@@ -747,8 +776,8 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 		return nil, fmt.Errorf("error codificando json: %w", err)
 	}
 
-	// 3. 🎯 LA URL SECRETA QUE SÍ PASÓ EL ROUTING DE ZOHO
-	urlStr := fmt.Sprintf("https://desk.zoho.com/supportapi/zd/oberstaff/api/v1/im/sessions/%s/messages", sessionID)
+	// 3. 🎯 Endpoint oficial de Zoho Desk para IMSession
+	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/im/sessions/%s/messages", sessionID)
 
 	req, err = http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
 	if err != nil {
@@ -981,7 +1010,7 @@ func (s *ZohoService) GetAgentByEmail(email string) (string, AgentInfo, error) {
 		return "", AgentInfo{}, err
 	}
 
-	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/agents?emailId=%s&limit=1", url.QueryEscape(email))
+	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/agents/email/%s", url.PathEscape(email))
 	req, err := http.NewRequest("GET", urlStr, nil)
 	if err != nil {
 		return "", AgentInfo{}, err
@@ -1002,27 +1031,24 @@ func (s *ZohoService) GetAgentByEmail(email string) (string, AgentInfo, error) {
 	}
 
 	var result struct {
-		Data []struct {
-			ID      string `json:"id"`
-			Name    string `json:"name"`
-			EmailID string `json:"emailId"`
-		} `json:"data"`
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		EmailID string `json:"emailId"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", AgentInfo{}, err
 	}
-	if len(result.Data) == 0 {
-		return "", AgentInfo{}, fmt.Errorf("no Zoho agent found for email %s", email)
+	if result.ID == "" {
+		return "", AgentInfo{}, fmt.Errorf("no agent ID returned for email %s", email)
 	}
 
-	ag := result.Data[0]
-	info := AgentInfo{Name: ag.Name, Email: ag.EmailID}
+	info := AgentInfo{Name: result.Name, Email: result.EmailID}
 
 	s.mu.Lock()
-	s.agentCache[ag.ID] = info
+	s.agentCache[result.ID] = info
 	s.mu.Unlock()
 
-	return ag.ID, info, nil
+	return result.ID, info, nil
 }
 
 // ZohoAgent is a Zoho Desk agent (transfer target).
@@ -1096,12 +1122,10 @@ func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modi
 	}
 
 	params := url.Values{}
-	params.Set("channelCode", "ATENCION_AL_CLIENTE")
+	params.Set("channel", "Oberstaff")
 	params.Set("sortBy", "-modifiedTime")
 	params.Set("limit", "50")
-	if assigneeID != "" {
-		params.Set("assigneeId", assigneeID)
-	}
+	params.Set("include", "contacts")
 	if status != "" {
 		params.Set("status", status)
 	}
@@ -1136,6 +1160,44 @@ func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modi
 		return nil, err
 	}
 
+	// Warm up agent cache if empty to avoid multiple single GetAgent calls
+	s.mu.RLock()
+	cacheLen := len(s.agentCache)
+	s.mu.RUnlock()
+	if cacheLen == 0 {
+		if _, err := s.ListAgents(); err != nil {
+			log.Printf("[ZohoService] Failed to warm up agent cache: %v", err)
+		}
+	}
+
+	for i := range ticketsResp.Data {
+		t := &ticketsResp.Data[i]
+		if t.AssigneeID != "" {
+			if agentInfo, err := s.GetAgent(t.AssigneeID); err == nil {
+				t.AssigneeName = agentInfo.Name
+				t.AssigneeEmail = agentInfo.Email
+			}
+		}
+	}
+
+	if assigneeID == "unassigned" {
+		var filtered []ZohoTicket
+		for _, t := range ticketsResp.Data {
+			if t.AssigneeID == "" {
+				filtered = append(filtered, t)
+			}
+		}
+		return filtered, nil
+	} else if assigneeID != "" {
+		var filtered []ZohoTicket
+		for _, t := range ticketsResp.Data {
+			if t.AssigneeID == assigneeID {
+				filtered = append(filtered, t)
+			}
+		}
+		return filtered, nil
+	}
+
 	return ticketsResp.Data, nil
 }
 
@@ -1143,3 +1205,260 @@ func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modi
 func (s *ZohoService) AssignTicket(ticketID string, zohoAgentID string) error {
 	return s.UpdateTicketStatus(ticketID, "", "", zohoAgentID)
 }
+
+type ZohoIMChannel struct {
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	IntegrationService string `json:"integrationService"` // e.g. WHATSAPP
+	PhoneNumber        string `json:"phoneNumber,omitempty"`
+}
+
+type ZohoTemplateMessage struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	Message        string `json:"message"`
+	DisplayMessage string `json:"displayMessage"`
+	Status         string `json:"status"` // e.g. APPROVED
+	Language       string `json:"language,omitempty"`
+}
+
+// ListIMChannels retrieves all Instant Messaging channels registered in Zoho Desk
+func (s *ZohoService) ListIMChannels() ([]ZohoIMChannel, error) {
+	token, err := s.GetAccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	orgID, err := s.getOrgID()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", "https://desk.zoho.com/api/v1/im/channels", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	req.Header.Set("orgId", orgID)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list IM channels failed status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Data []ZohoIMChannel `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result.Data, nil
+}
+
+// GetWhatsAppChannelID attempts to locate the channel ID for the WhatsApp integration
+func (s *ZohoService) GetWhatsAppChannelID() (string, error) {
+	channels, err := s.ListIMChannels()
+	if err != nil {
+		return "", err
+	}
+
+	for _, ch := range channels {
+		if strings.EqualFold(ch.IntegrationService, "WHATSAPP") || strings.Contains(strings.ToLower(ch.Name), "oberstaff") {
+			return ch.ID, nil
+		}
+	}
+
+	return "", fmt.Errorf("no WhatsApp channel found in Zoho Desk")
+}
+
+// ListDepartments retrieves the list of active department IDs in Zoho Desk
+func (s *ZohoService) ListDepartments() ([]string, error) {
+	token, err := s.GetAccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	orgID, err := s.getOrgID()
+	if err != nil {
+		return nil, err
+	}
+
+	urlStr := "https://desk.zoho.com/api/v1/departments?isEnabled=true"
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	req.Header.Set("orgId", orgID)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list departments failed status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	var ids []string
+	for _, d := range result.Data {
+		if d.ID != "" {
+			ids = append(ids, d.ID)
+		}
+	}
+	return ids, nil
+}
+
+// ListWhatsAppTemplates retrieves all approved template messages for a department.
+// If departmentID is empty, it attempts to fetch them using active departments as a fallback.
+func (s *ZohoService) ListWhatsAppTemplates(departmentID string) ([]ZohoTemplateMessage, error) {
+	if departmentID == "" {
+		deptIDs, err := s.ListDepartments()
+		if err == nil && len(deptIDs) > 0 {
+			// Try first department
+			templates, err := s.listTemplatesForDept(deptIDs[0])
+			if err == nil && len(templates) > 0 {
+				return templates, nil
+			}
+			// Try other departments as fallback
+			for i := 1; i < len(deptIDs); i++ {
+				t, err := s.listTemplatesForDept(deptIDs[i])
+				if err == nil && len(t) > 0 {
+					return t, nil
+				}
+			}
+		}
+	}
+	return s.listTemplatesForDept(departmentID)
+}
+
+func (s *ZohoService) listTemplatesForDept(departmentID string) ([]ZohoTemplateMessage, error) {
+	token, err := s.GetAccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	orgID, err := s.getOrgID()
+	if err != nil {
+		return nil, err
+	}
+
+	params := url.Values{}
+	params.Set("type", "TEMPLATE")
+	params.Set("limit", "100")
+	if departmentID != "" {
+		params.Set("departmentId", departmentID)
+	}
+
+	urlStr := "https://desk.zoho.com/api/v1/im/cannedMessages?" + params.Encode()
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	req.Header.Set("orgId", orgID)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list templates failed status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Data []ZohoTemplateMessage `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result.Data, nil
+}
+
+// SendWhatsAppTemplate initiates a session with a template message
+func (s *ZohoService) SendWhatsAppTemplate(channelID string, phone string, templateID string, message string, language string) (string, error) {
+	token, err := s.GetAccessToken()
+	if err != nil {
+		return "", err
+	}
+
+	orgID, err := s.getOrgID()
+	if err != nil {
+		return "", err
+	}
+
+	if language == "" {
+		language = "es" // Default to Spanish
+	}
+
+	payload := map[string]interface{}{
+		"receiverId":      phone,
+		"receiverType":    "PHONENUMBER",
+		"cannedMessageId": templateID,
+		"language":        language,
+		"message":         message,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	urlStr := fmt.Sprintf("https://desk.zoho.com/api/v1/im/channels/%s/initiateSession", channelID)
+	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(body))
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	req.Header.Set("orgId", orgID)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("initiate session failed status %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	var msgResp struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(respBytes, &msgResp)
+
+	return msgResp.ID, nil
+}
+

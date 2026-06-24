@@ -117,7 +117,7 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 	// Módulo de tickets (Zoho + WhatsApp): solo superadmin. Customer success y
 	// profesionales no tienen acceso.
 	tickets := api.Group("/tickets")
-	tickets.Use(middleware.RequireSuperadmin())
+	tickets.Use(requireSupportInboxAccess())
 	{
 		tickets.GET("/waha/status", func(c *gin.Context) {
 			status, err := d.wahaSvc.GetSessionStatusAndQR("default")
@@ -144,13 +144,15 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 	}
 
 	chats := api.Group("/chats")
-	chats.Use(middleware.RequireSuperadmin())
+	chats.Use(requireSupportInboxAccess())
 	{
 		chats.GET("/me", d.whatsapp.GetMyChats)
 		chats.GET("/unassigned", d.whatsapp.GetUnassignedChats)
+		chats.GET("/templates", d.whatsapp.GetTemplates)
 		chats.GET("/:ticketId/messages", d.whatsapp.GetMessages)
 		chats.PATCH("/:ticketId/assign", d.whatsapp.AssignToMe)
 		chats.POST("/:ticketId/send", d.whatsapp.SendMessage)
 		chats.POST("/sync-agent", d.whatsapp.SyncAgentID)
 	}
+
 }

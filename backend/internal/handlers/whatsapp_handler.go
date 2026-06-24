@@ -41,6 +41,7 @@ type WhatsAppTicketDTO struct {
 	Status       string    `json:"status"`
 	AssigneeID   string    `json:"assignee_id,omitempty"`
 	ModifiedTime time.Time `json:"modified_time"`
+	DepartmentID string    `json:"department_id,omitempty"`
 }
 
 // WhatsAppMessageDTO is a single chat bubble.
@@ -82,14 +83,43 @@ func (h *WhatsAppHandler) resolveZohoAgentID(c *gin.Context) (string, error) {
 }
 
 func mapTicketToDTO(t service.ZohoTicket) WhatsAppTicketDTO {
+	modTime := t.ModifiedTime
+	if modTime.IsZero() {
+		modTime = t.CreatedTime
+	}
+
+	contactName := t.ContactName
+	contactPhone := t.Phone
+
+	if t.ContactInfo != nil {
+		if contactName == "" {
+			if t.ContactInfo.FirstName != "" || t.ContactInfo.LastName != "" {
+				contactName = strings.TrimSpace(t.ContactInfo.FirstName + " " + t.ContactInfo.LastName)
+			}
+		}
+		if contactPhone == "" {
+			if t.ContactInfo.Mobile != "" {
+				contactPhone = t.ContactInfo.Mobile
+			} else if t.ContactInfo.Phone != "" {
+				contactPhone = t.ContactInfo.Phone
+			}
+		}
+	}
+
+	subject := t.Subject
+	if subject == "This message has been sent from other source and cannot be viewed" {
+		subject = "Mensaje de WhatsApp"
+	}
+
 	return WhatsAppTicketDTO{
 		ZohoID:       t.ID,
-		ContactName:  t.ContactName,
-		ContactPhone: t.Phone,
-		Subject:      t.Subject,
+		ContactName:  contactName,
+		ContactPhone: contactPhone,
+		Subject:      subject,
 		Status:       t.Status,
 		AssigneeID:   t.AssigneeID,
-		ModifiedTime: t.ModifiedTime,
+		ModifiedTime: modTime,
+		DepartmentID: t.DepartmentID,
 	}
 }
 
@@ -221,9 +251,17 @@ func (h *WhatsAppHandler) GetMessages(c *gin.Context) {
 					authorName = sub.Author.Name
 				}
 
+				content := stripHTMLWA(sub.Summary)
+				if content == "This message has been sent from other source and cannot be viewed" || content == "" {
+					var dbMsg models.TicketMessage
+					if h.DB.Where("external_id = ?", sub.ID).First(&dbMsg).Error == nil {
+						content = dbMsg.Content
+					}
+				}
+
 				messages = append(messages, WhatsAppMessageDTO{
 					ID:          sub.ID,
-					Content:     stripHTMLWA(sub.Summary),
+					Content:     content,
 					Direction:   direction,
 					AuthorName:  authorName,
 					AuthorType:  authorType,
@@ -246,8 +284,11 @@ func (h *WhatsAppHandler) GetMessages(c *gin.Context) {
 			if content == "" {
 				content = thread.Summary
 			}
-			if content == "" {
-				continue
+			if content == "This message has been sent from other source and cannot be viewed" || content == "" {
+				var dbMsg models.TicketMessage
+				if h.DB.Where("external_id = ?", thread.ID).First(&dbMsg).Error == nil {
+					content = dbMsg.Content
+				}
 			}
 
 			// Determine channel from thread.Channel for consistency
@@ -309,12 +350,14 @@ func (h *WhatsAppHandler) AssignToMe(c *gin.Context) {
 
 // ─── POST /api/chats/:ticketId/send ──────────────────────────────────────────
 
+// ─── POST /api/chats/:ticketId/send ──────────────────────────────────────────
+
 type WhatsAppSendRequest struct {
-	Content string `json:"content" binding:"required"`
+	Content    string `json:"content" binding:"required"`
+	TemplateID string `json:"template_id,omitempty"`
 }
 
-// SendMessage sends a message through Zoho Desk's public comment API,
-// which routes it back to the client via the ticket's active channel (WhatsApp).
+// SendMessage sends a message or a template message to Zoho Desk
 func (h *WhatsAppHandler) SendMessage(c *gin.Context) {
 	if !canUseWhatsAppInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
@@ -333,26 +376,74 @@ func (h *WhatsAppHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	thread, err := h.zohoSvc.ReplyWhatsAppLiveChat(ticketID, req.Content, c.GetString("email"))
+	var messageID string
+	var content string = req.Content
+	createdAt := time.Now()
+
+	// Reply via the active live chat session (supports cannedMessageId / TemplateID)
+	thread, err := h.zohoSvc.ReplyWhatsAppLiveChat(ticketID, req.Content, c.GetString("email"), req.TemplateID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "No se pudo enviar el mensaje por Zoho: " + err.Error()})
 		return
 	}
+	if thread != nil {
+		messageID = thread.ID
+		if !thread.CreatedTime.IsZero() {
+			createdAt = thread.CreatedTime
+		}
+	}
 
-	createdAt := time.Now()
-	if thread != nil && !thread.CreatedTime.IsZero() {
-		createdAt = thread.CreatedTime
+	// Save the outgoing message to the local database to bypass Zoho's security masking
+	if messageID != "" {
+		dbMsg := models.TicketMessage{
+			ID:         hashStringToUint(messageID),
+			TicketID:   hashStringToUint(ticketID),
+			SenderType: models.SenderTypeAgent,
+			Channel:    models.ChannelWhatsApp,
+			Content:    content,
+			ExternalID: messageID,
+			CreatedAt:  createdAt,
+		}
+		if err := h.DB.Create(&dbMsg).Error; err != nil {
+			log.Printf("[WhatsApp] Failed to save outgoing message to local cache: %v", err)
+		}
 	}
 
 	c.JSON(http.StatusOK, WhatsAppMessageDTO{
-		ID:          thread.ID,
-		Content:     req.Content,
+		ID:          messageID,
+		Content:     content,
 		Direction:   "outgoing",
 		AuthorName:  "",
 		AuthorType:  "agent",
 		CreatedTime: createdAt,
 	})
 }
+
+// GetTemplates returns the list of approved WhatsApp template messages.
+func (h *WhatsAppHandler) GetTemplates(c *gin.Context) {
+	if !canUseWhatsAppInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to Customer Success role"})
+		return
+	}
+
+	deptID := c.Query("departmentId")
+	templates, err := h.zohoSvc.ListWhatsAppTemplates(deptID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al obtener plantillas de Zoho: " + err.Error()})
+		return
+	}
+
+	// Filter to keep only APPROVED templates
+	approved := make([]service.ZohoTemplateMessage, 0)
+	for _, t := range templates {
+		if strings.EqualFold(t.Status, "APPROVED") {
+			approved = append(approved, t)
+		}
+	}
+
+	c.JSON(http.StatusOK, approved)
+}
+
 
 // ─── Sync endpoint ────────────────────────────────────────────────────────────
 

@@ -5,8 +5,9 @@ import ContactSidebar from './components/ContactSidebar';
 import MessageTimeline from './components/MessageTimeline';
 import ChatInputArea from './components/ChatInputArea';
 import TransferTicketModal from './components/TransferTicketModal';
+import SendEmailModal from './components/SendEmailModal';
 import styles from './Tickets.module.css';
-import { ArrowLeft, ExternalLink, RefreshCw, ArrowRightLeft, History } from 'lucide-react';
+import { ArrowLeft, RefreshCw, ArrowRightLeft, History, Mail } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { canEditModule, isSupportManager } from '../../lib/permissions';
 
@@ -48,6 +49,7 @@ export default function TicketDetail() {
   const [updatingStage, setUpdatingStage] = useState(false);
   const [statusOptions, setStatusOptions] = useState<TicketStatusOption[]>(DEFAULT_STATUS_OPTIONS);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [transfers, setTransfers] = useState<TicketTransfer[]>([]);
   const [zohoAgents, setZohoAgents] = useState<ZohoAgent[]>([]);
 
@@ -89,11 +91,11 @@ export default function TicketDetail() {
     }
   };
 
-  const handleSendResponse = async (content: string, channel: 'whatsapp' | 'email') => {
+  const handleSendResponse = async (content: string, channel: 'whatsapp' | 'email', templateId?: string) => {
     if (!ticket) return;
     setSendError(null);
     try {
-      const newMessage = await ticketService.sendMessage(ticket.zoho_id, content, channel);
+      const newMessage = await ticketService.sendMessage(ticket.zoho_id, content, channel, templateId);
       setTicket(prev => prev ? {
         ...prev,
         messages: [...(prev.messages || []), newMessage],
@@ -150,7 +152,6 @@ export default function TicketDetail() {
   }
 
   const stageMeta = STAGE_LABELS[ticket.stage] ?? STAGE_LABELS['new'];
-  const zohoId = ticket.zoho_id;
 
   return (
     <div className={styles.container}>
@@ -189,26 +190,20 @@ export default function TicketDetail() {
               {ticket.channel}
             </span>
           )}
-
-          {/* Zoho ID link */}
-          {(ticket.web_url || zohoId) && (
-            <a
-              href={ticket.web_url || `https://desk.zoho.com/support/oberstaff/ShowHomePage.do#Cases/dv/${zohoId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                fontSize: '0.75rem', color: 'var(--gray-400)', display: 'flex',
-                alignItems: 'center', gap: '0.25rem', textDecoration: 'none',
-              }}
-              title="Abrir en Zoho Desk"
-            >
-              <ExternalLink size={12} />
-              Ver en Zoho Desk
-            </a>
-          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* Email action */}
+          {canEditModule(user, 'tickets') && (
+            <button
+              onClick={() => setShowEmailModal(true)}
+              className={styles.channelBtn}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem' }}
+            >
+              <Mail size={13} /> Email
+            </button>
+          )}
+
           {/* Transfer: solo CS Managers (el backend también lo exige) */}
           {isSupportManager(user) && (
             <button
@@ -281,7 +276,7 @@ export default function TicketDetail() {
           )}
           <MessageTimeline ticket={ticket} contact={ticket.contact} />
           {canEditModule(user, 'tickets') ? (
-            <ChatInputArea onSend={handleSendResponse} />
+            <ChatInputArea onSend={handleSendResponse} departmentId={ticket.department_id} />
           ) : (
             <div style={{ padding: '0.85rem 1.1rem', borderTop: '1px solid var(--glass-border, #e2e8f0)', fontSize: '0.85rem', color: 'var(--gray-400)', textAlign: 'center' }}>
               Tu rol tiene acceso de solo lectura en Tickets
@@ -293,12 +288,22 @@ export default function TicketDetail() {
       {showTransfer && (
         <TransferTicketModal
           options={zohoAgents
-            .filter(a => a.zoho_agent_id !== ticket.assignee_id)
-            .map(a => ({ value: a.zoho_agent_id, label: `${a.name}${a.email ? ` (${a.email})` : ''}` }))}
+              .filter(a => a.zoho_agent_id !== ticket.assignee_id)
+              .map(a => ({ value: a.zoho_agent_id, label: `${a.name}${a.email ? ` (${a.email})` : ''}` }))}
           onClose={() => setShowTransfer(false)}
           onTransfer={async (value, reason) => {
             await ticketService.transferZohoTicket(ticket.zoho_id, String(value), reason);
             if (id) await fetchTicket(id, true);
+          }}
+        />
+      )}
+
+      {showEmailModal && (
+        <SendEmailModal
+          contactEmail={ticket.contact?.email}
+          onClose={() => setShowEmailModal(false)}
+          onSend={async (content) => {
+            await handleSendResponse(content, 'email');
           }}
         />
       )}

@@ -106,8 +106,11 @@ export default function TicketsBoard() {
     if (filterOrigin !== 'all' && (t.origin ?? 'zoho') !== filterOrigin) {
       return false;
     }
-    if (filterOwn && user?.email) {
-      return t.assignee_email?.toLowerCase() === user.email.toLowerCase();
+    if (filterOwn && user) {
+      const matchId = user.zoho_agent_id && t.assignee_id && String(t.assignee_id) === String(user.zoho_agent_id);
+      const matchEmail = user.email && t.assignee_email && t.assignee_email.toLowerCase() === user.email.toLowerCase();
+      const matchAssignee = t.assigned_to && user.id && t.assigned_to === user.id;
+      return !!(matchId || matchEmail || matchAssignee);
     }
     return true;
   });

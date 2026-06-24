@@ -1,22 +1,44 @@
-import { useState, KeyboardEvent } from 'react';
+import { useState, KeyboardEvent, useEffect } from 'react';
 import styles from '../Tickets.module.css';
-import { Send, MessageSquare, Mail } from 'lucide-react';
+import { Send } from 'lucide-react';
+import { ticketService } from '../../../services/ticket.service';
 
 interface ChatInputAreaProps {
-  onSend: (content: string, channel: 'whatsapp' | 'email') => void;
+  onSend: (content: string, channel: 'whatsapp' | 'email', templateId?: string) => void;
+  departmentId?: string;
 }
 
-export default function ChatInputArea({ onSend }: ChatInputAreaProps) {
+interface TemplateMessage {
+  id: string;
+  title: string;
+  message: string;
+  displayMessage: string;
+  status: string;
+}
+
+export default function ChatInputArea({ onSend, departmentId }: ChatInputAreaProps) {
   const [content, setContent] = useState('');
-  const [channel, setChannel] = useState<'whatsapp' | 'email'>('email');
   const [sending, setSending] = useState(false);
+  const [templates, setTemplates] = useState<TemplateMessage[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+
+  useEffect(() => {
+    ticketService.getWhatsAppTemplates(departmentId)
+      .then(data => {
+        setTemplates(data || []);
+      })
+      .catch(err => {
+        console.error('Error fetching templates:', err);
+      });
+  }, [departmentId]);
 
   const handleSend = async () => {
     if (!content.trim() || sending) return;
     setSending(true);
     try {
-      await onSend(content.trim(), channel);
+      await onSend(content.trim(), 'whatsapp', selectedTemplateId || undefined);
       setContent('');
+      setSelectedTemplateId('');
     } finally {
       setSending(false);
     }
@@ -29,52 +51,65 @@ export default function ChatInputArea({ onSend }: ChatInputAreaProps) {
     }
   };
 
-  const placeholder =
-    channel === 'whatsapp'
-      ? 'Escribe tu respuesta por WhatsApp… (Enter para enviar)'
-      : 'Escribe tu respuesta por Email… (Enter para enviar)';
+  const handleTemplateChange = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    if (templateId) {
+      const template = templates.find(t => t.id === templateId);
+      if (template) {
+        setContent(template.message || template.displayMessage);
+      }
+    } else {
+      setContent('');
+    }
+  };
+
+  const placeholder = 'Escribe tu respuesta por WhatsApp… (Enter para enviar)';
 
   return (
     <div className={styles.chatInput}>
-      {/* Channel selector */}
+      {/* Control bar */}
       <div className={styles.channelSelector}>
-        <button
-          id="channel-email-btn"
-          className={`${styles.channelBtn} ${channel === 'email' ? styles.active : ''}`}
-          onClick={() => setChannel('email')}
-          aria-label="Responder por Email"
-        >
-          <Mail size={14} />
-          <span>Email</span>
-        </button>
-        <button
-          id="channel-whatsapp-btn"
-          className={`${styles.channelBtn} ${channel === 'whatsapp' ? styles.active : ''}`}
-          onClick={() => setChannel('whatsapp')}
-          aria-label="Responder por WhatsApp"
-          style={channel === 'whatsapp' ? {
-            background: '#128C7E',
-            color: 'white',
-            borderColor: '#128C7E',
-            boxShadow: '0 4px 10px rgba(18,140,126,0.25)',
-          } : {}}
-        >
-          <MessageSquare size={14} />
-          <span>WhatsApp</span>
-        </button>
+        {templates.length > 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary, #64748b)', fontWeight: 600 }}>Plantilla:</span>
+            <select
+              value={selectedTemplateId}
+              onChange={(e) => handleTemplateChange(e.target.value)}
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.35rem 0.75rem',
+                borderRadius: '6px',
+                border: '1px solid var(--glass-border, #e2e8f0)',
+                background: 'var(--bg-secondary, #fff)',
+                color: 'var(--text-primary, #333)',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="">-- Escribir texto libre --</option>
+              {templates.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <span style={{ fontSize: '0.8rem', color: 'var(--gray-400)' }}>No hay plantillas de WhatsApp configuradas</span>
+        )}
 
         {/* Active channel badge */}
         <span style={{
           marginLeft: 'auto',
-          fontSize: '0.72rem',
+          fontSize: '0.75rem',
           color: 'var(--gray-400)',
           display: 'flex',
           alignItems: 'center',
           gap: '0.3rem',
         }}>
           Enviando vía{' '}
-          <strong style={{ color: channel === 'whatsapp' ? '#128C7E' : 'var(--primary)' }}>
-            {channel === 'whatsapp' ? 'WhatsApp' : 'Email'}
+          <strong style={{ color: '#128C7E' }}>
+            WhatsApp
           </strong>
         </span>
       </div>

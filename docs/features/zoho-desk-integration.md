@@ -33,11 +33,11 @@ Para interactuar con la API de Zoho Desk, utilizamos una aplicación OAuth tipo 
 * **Refresh Token:** definido en `ZOHO_REFRESH_TOKEN`
 * **Redirect URI:** definido en `ZOHO_REDIRECT_URI`
 * **Ámbitos de API requeridos (Scopes):**
-  * `ZohoDesk.tickets.READ` (Para listar y ver detalles de los tickets)
-  * `ZohoDesk.tickets.CREATE` (Para responder y crear nuevos hilos/threads)
-  * `ZohoDesk.tickets.UPDATE` (Para cambiar estados, departamentos y reasignaciones)
-  * `ZohoDesk.contacts.READ` (Para obtener información y detalles de los perfiles de contacto)
-  * `ZohoDesk.settings.READ` (Para listar departamentos y agentes disponibles)
+  * `Desk.tickets.ALL` (Acceso completo de lectura y escritura a tickets y conversaciones relacionadas)
+  * `Desk.contacts.READ` (Lectura de perfiles de contactos y cuentas)
+  * `Desk.contacts.WRITE` (Creación y actualización de contactos/cuentas)
+  * `Desk.basic.READ` (Lectura de departamentos, organizaciones y agentes)
+  * `Desk.search.READ` (Búsqueda de datos de tickets/contactos)
 
 ---
 
@@ -48,7 +48,7 @@ Zoho utiliza OAuth 2.0. Dado que el `Access Token` expira cada **60 minutos**, e
 ### 1. Obtención de Códigos Iniciales (Paso Manual de Autorización)
 Se genera la URL de autorización para el Administrador:
 ```
-https://accounts.zoho.com/oauth/v2/auth?scope=ZohoDesk.tickets.READ,ZohoDesk.tickets.CREATE,ZohoDesk.tickets.UPDATE,ZohoDesk.contacts.READ,ZohoDesk.settings.READ&client_id=1000.7HY6VNVBSCQRSG4UG7IHVSH38OTL4W&response_type=code&access_type=offline&redirect_uri=YOUR_REDIRECT_URI
+https://accounts.zoho.com/oauth/v2/auth?scope=Desk.tickets.ALL,Desk.contacts.READ,Desk.contacts.WRITE,Desk.basic.READ,Desk.search.READ&client_id=1000.YVRU04LUXVH3SL302YRABIOE8HUY5N&response_type=code&access_type=offline&redirect_uri=https://obertrack.com/auth/zoho/callback
 ```
 > **Nota:** El parámetro `access_type=offline` es obligatorio para que Zoho devuelva el `Refresh Token` que permite la renovación indefinida de credenciales.
 

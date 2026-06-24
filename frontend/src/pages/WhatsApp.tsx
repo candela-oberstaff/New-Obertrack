@@ -158,13 +158,13 @@ export default function WhatsApp() {
     }
   }
 
-  const handleSend = async () => {
+  const handleSend = async (templateId?: string) => {
     if (!inputText.trim() || !activeTicket || sending) return
     const text = inputText.trim()
     setInputText('')
     setSending(true)
     try {
-      const newMsg = await ticketService.sendWhatsAppMessage(activeTicket.zoho_id, text)
+      const newMsg = await ticketService.sendWhatsAppMessage(activeTicket.zoho_id, text, templateId)
       setActiveMessages(prev => [...prev, newMsg])
     } catch (err) {
       console.error('Error sending message:', err)

@@ -35,7 +35,43 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
         {channel === 'email' && <Mail size={14} className={styles.mailIcon} />}
       </div>
       
-      <h3 className={styles.cardTitle}>{ticket.title}</h3>
+      {/* Contact Info (prominent, left-aligned) */}
+      {(ticket.contact?.name || ticket.contact?.phone || ticket.professional_email || ticket.professional_phone) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', textAlign: 'left' }}>
+          <span style={{
+            fontSize: '0.92rem',
+            fontWeight: 600,
+            color: 'var(--text-primary, #1e293b)',
+          }}>
+            {ticket.contact?.name || ticket.professional_email || 'Desconocido'}
+          </span>
+          {(ticket.contact?.phone || ticket.professional_phone) && (
+            <span style={{
+              fontSize: '0.78rem',
+              color: 'var(--text-secondary, #64748b)',
+              fontWeight: 500
+            }}>
+              {ticket.contact?.phone || ticket.professional_phone}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Message Text (smaller, gray, clamped) */}
+      <p style={{
+        fontSize: '0.78rem',
+        color: '#8e8e93',
+        margin: 0,
+        lineHeight: '1.35',
+        wordBreak: 'break-word',
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
+        textAlign: 'left'
+      }}>
+        {ticket.title}
+      </p>
 
       {ticket.assignee_name && (
         <div style={{
