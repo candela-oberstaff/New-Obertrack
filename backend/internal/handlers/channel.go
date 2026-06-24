@@ -69,6 +69,11 @@ func (h *ChannelHandler) supervisionWriteBlocked(c *gin.Context, channel *models
 	if channel.Type != models.ChannelTypeDirect && channel.Type != models.ChannelTypePrivate {
 		return false
 	}
+	// Los canales de soporte (private "Soporte · …") NO son supervisión: tienen su
+	// propio flujo (tomar/reasignar/resolver) y el agente que atiende debe escribir.
+	if channel.Type == models.ChannelTypePrivate && strings.HasPrefix(channel.Name, "Soporte · ") {
+		return false
+	}
 	isMember, err := h.svc.IsExplicitMember(channel.ID, userID)
 	if err != nil {
 		// Ante un fallo al resolver la membresía, fallar cerrado en estos canales

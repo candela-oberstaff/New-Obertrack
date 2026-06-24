@@ -702,6 +702,110 @@
   line-height: 1.5;
   word-break: break-word;
   overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.activity-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.activity-more {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.activity-more:hover {
+  opacity: 0.7;
+  text-decoration: underline;
+}
+
+.activity-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.activity-modal-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.activity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.activity-chip.status-approved {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.activity-chip.status-pending {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.activity-chip.status-rejected {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.activity-modal-reason {
+  margin: 0;
+  font-size: 13.5px;
+  color: #475569;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.activity-modal-reason strong {
+  color: #9a3412;
+}
+
+.activity-modal-body {
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  padding: 18px 20px;
+  max-height: 56vh;
+  overflow-y: auto;
+}
+
+.activity-modal-text {
+  margin: 0;
+  max-width: 72ch;
+  font-size: 15px;
+  color: #334155;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .activity-type {
@@ -709,6 +813,7 @@
   font-weight: 500;
   padding: 4px 8px;
   border-radius: 4px;
+  align-self: flex-start;
 }
 
 .activity-type.complete {

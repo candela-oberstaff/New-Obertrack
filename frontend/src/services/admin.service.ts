@@ -48,6 +48,29 @@ export const adminService = {
     const { data } = await api.get('/admin/tenants')
     return data
   },
+  importPreview: async (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const { data } = await api.post('/admin/import/preview', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return data
+  },
+  importExecute: async (payload: { companies: any[]; professionals: any[] }) => {
+    const { data } = await api.post('/admin/import/execute', payload)
+    return data
+  },
+  downloadImportTemplate: async () => {
+    const res = await api.get('/admin/import/template', { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data as Blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'plantilla_importacion_obertrack.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
   getSeniority: async () => {
     const { data } = await api.get<{ data: any[] }>('/admin/seniority')
     return data.data || []

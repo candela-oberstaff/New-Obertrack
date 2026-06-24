@@ -7,6 +7,7 @@
 .auth-container {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   background:
@@ -225,17 +226,38 @@
 }
 
 /* ── "Powered by" footer ── */
-/* ── "Powered by" footer ── */
 .auth-powered {
   display: flex;
   align-items: center;
-  justify-content: center; /* Mantiene el bloque centrado en la tarjeta */
-  gap: 4px;                /* Controla el espacio exacto entre el texto y el logo */
-  margin-top: 20px;
+  justify-content: center;
+  gap: 6px;
+  margin: 10px 0 0;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.38);
+  z-index: 1;
+}
+
+.auth-powered-link {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.auth-powered-logo {
+  display: block;
+  height: 15px;
+  width: auto;
+  opacity: 0.55;
+  position: relative;
+  top: -0.5px;
+  transition: opacity 0.2s ease;
+}
+
+.auth-powered-link:hover .auth-powered-logo {
+  opacity: 0.9;
 }
 
 /* ── Footer link ── */

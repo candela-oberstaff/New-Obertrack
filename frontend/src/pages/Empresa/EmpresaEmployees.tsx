@@ -1,12 +1,20 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Search, Eye, UserPlus, Copy, Check } from 'lucide-react'
+import { Search, Eye, UserPlus, Copy, Check, UploadCloud } from 'lucide-react'
 import { userService, employerService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import Avatar from '../../components/Common/Avatar'
 import { Modal, Button, Skeleton } from '../../components/ui'
+import { CreateUserModal, type CreateUserForm } from '../../components/Admin/Modals/CreateUserModal'
+import { ImportUsersModal } from '../../components/Admin/Modals/ImportUsersModal'
 import styles from '../../components/Admin/Admin.module.css'
+
+const EMPTY_CREATE_FORM: CreateUserForm = {
+  name: '', email: '', password: '', userType: 'profesional',
+  jobTitle: '', phoneNumber: '', selectedCompanyId: '', managerId: '',
+  companyName: '', industry: '', country: '', province: '', city: '', location: '', address: '',
+}
 
 // Lista de profesionales para el EMPLEADOR (user_type === 'empleador'), acotada a
 // SU empresa por el backend (/users/employees). Tabla clásica, espejo del panel
@@ -17,9 +25,9 @@ export default function EmpresaEmployees() {
   const { user: employer } = useAuth()
   const [search, setSearch] = useState('')
 
-  // Modal "Crear profesional".
+  const [showImport, setShowImport] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', job_title: '' })
+  const [form, setForm] = useState<CreateUserForm>({ ...EMPTY_CREATE_FORM })
   const [creating, setCreating] = useState(false)
   const [createErr, setCreateErr] = useState<string | null>(null)
   // Contraseña temporal devuelta por el backend (se muestra una sola vez).
@@ -32,7 +40,7 @@ export default function EmpresaEmployees() {
   })
 
   const openCreate = () => {
-    setForm({ name: '', email: '', job_title: '' })
+    setForm({ ...EMPTY_CREATE_FORM })
     setCreateErr(null)
     setTempPassword(null)
     setCopied(false)
@@ -49,12 +57,21 @@ export default function EmpresaEmployees() {
     setCreating(true)
     setCreateErr(null)
     try {
-      const payload: { name: string; email: string; job_title?: string } = {
+      const payload: Parameters<typeof employerService.createEmployee>[0] = {
         name: form.name.trim(),
         email: form.email.trim(),
       }
-      const jt = form.job_title.trim()
+      const jt = form.jobTitle.trim()
       if (jt) payload.job_title = jt
+      const phone = form.phoneNumber.trim()
+      if (phone) payload.phone_number = phone
+      if (form.country) payload.country = form.country
+      if (form.province) payload.state = form.province
+      const city = form.city.trim()
+      if (city) payload.city = city
+      const location = form.location.trim()
+      if (location) payload.location = location
+      if (form.managerId) payload.manager_id = Number(form.managerId)
       const res = await employerService.createEmployee(payload)
       setTempPassword(res.temp_password)
       queryClient.invalidateQueries({ queryKey: ['employer', 'employees'] })
@@ -76,6 +93,10 @@ export default function EmpresaEmployees() {
 
   const employees = useMemo(() => data ?? [], [data])
   const totalManagers = employees.filter((u) => u.is_manager).length
+  const managers = useMemo(
+    () => employees.filter((u) => u.is_manager).map((u) => ({ id: u.id, name: u.name })),
+    [employees],
+  )
   const companyName = employer?.company_name || employer?.name || 'Mi empresa'
 
   const filtered = useMemo(() => {
@@ -95,13 +116,22 @@ export default function EmpresaEmployees() {
             {companyName} · {employees.length} profesional(es) · {totalManagers} manager(s)
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.6rem 1rem', borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', flexShrink: 0 }}
-        >
-          <UserPlus size={16} /> Crear profesional
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.6rem 1rem', borderRadius: 10, border: '1px solid #ddd6fe', background: '#fff', color: '#6d28d9', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}
+          >
+            <UploadCloud size={16} /> Importar
+          </button>
+          <button
+            type="button"
+            onClick={openCreate}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.6rem 1rem', borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}
+          >
+            <UserPlus size={16} /> Crear profesional
+          </button>
+        </div>
       </div>
 
       {/* Buscador */}
@@ -178,75 +208,53 @@ export default function EmpresaEmployees() {
         </div>
       )}
 
-      {showCreate && (
+      {showImport && (
+        <ImportUsersModal
+          employerMode
+          onClose={() => setShowImport(false)}
+          onDone={() => queryClient.invalidateQueries({ queryKey: ['employer', 'employees'] })}
+        />
+      )}
+
+      {showCreate && !tempPassword && (
+        <CreateUserModal
+          employerMode
+          form={form}
+          setForm={setForm}
+          onClose={closeCreate}
+          onSubmit={handleCreate}
+          loading={creating}
+          error={createErr ?? undefined}
+          publicCompanies={[]}
+          managers={managers}
+        />
+      )}
+
+      {tempPassword && (
         <Modal
           isOpen
-          onClose={closeCreate}
-          title="Crear profesional"
+          onClose={() => { setShowCreate(false); setTempPassword(null) }}
+          title="Profesional creado"
           size="md"
-          footer={
-            tempPassword ? (
-              <Button onClick={() => setShowCreate(false)}>Listo</Button>
-            ) : (
-              <>
-                <Button variant="secondary" onClick={closeCreate} disabled={creating}>Cancelar</Button>
-                <Button type="submit" form="create-employee-form" loading={creating}>Crear profesional</Button>
-              </>
-            )
-          }
+          footer={<Button onClick={() => { setShowCreate(false); setTempPassword(null) }}>Listo</Button>}
         >
-          {tempPassword ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              <div style={{ padding: '0.7rem 0.9rem', borderRadius: 10, background: 'rgba(16,185,129,0.1)', color: '#059669', fontSize: '0.88rem', fontWeight: 600 }}>
-                Profesional creado correctamente.
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Contraseña temporal</label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <code style={{ flex: 1, padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.95rem', fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all' }}>{tempPassword}</code>
-                  <Button type="button" variant="secondary" onClick={copyTempPassword}>
-                    {copied ? <Check size={15} /> : <Copy size={15} />} {copied ? 'Copiada' : 'Copiar'}
-                  </Button>
-                </div>
-              </div>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: '#b45309', fontWeight: 600 }}>
-                Compártela por un canal seguro; no se vuelve a mostrar.
-              </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <div style={{ padding: '0.7rem 0.9rem', borderRadius: 10, background: 'rgba(16,185,129,0.1)', color: '#059669', fontSize: '0.88rem', fontWeight: 600 }}>
+              Profesional creado correctamente.
             </div>
-          ) : (
-            <form id="create-employee-form" onSubmit={handleCreate} className={styles['user-form']}>
-              <div className={styles['form-group']}>
-                <label>Nombre</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={e => setForm({ ...form, name: e.target.value })}
-                  required
-                  autoFocus
-                />
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Contraseña temporal</label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <code style={{ flex: 1, padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.95rem', fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all' }}>{tempPassword}</code>
+                <Button type="button" variant="secondary" onClick={copyTempPassword}>
+                  {copied ? <Check size={15} /> : <Copy size={15} />} {copied ? 'Copiada' : 'Copiar'}
+                </Button>
               </div>
-              <div className={styles['form-group']}>
-                <label>Email</label>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={e => setForm({ ...form, email: e.target.value })}
-                  required
-                />
-              </div>
-              <div className={styles['form-group']}>
-                <label>Cargo</label>
-                <input
-                  type="text"
-                  value={form.job_title}
-                  onChange={e => setForm({ ...form, job_title: e.target.value })}
-                />
-              </div>
-              {createErr && (
-                <div style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>{createErr}</div>
-              )}
-            </form>
-          )}
+            </div>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#b45309', fontWeight: 600 }}>
+              Compártela por un canal seguro; no se vuelve a mostrar.
+            </p>
+          </div>
         </Modal>
       )}
     </div>

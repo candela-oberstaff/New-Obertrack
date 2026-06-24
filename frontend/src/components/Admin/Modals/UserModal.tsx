@@ -16,6 +16,13 @@ interface UserModalProps {
   newPassword?: string
   setNewPassword?: (val: string) => void
   error?: string | null
+  /** Modo empleador: oculta tipo de usuario, empresa y contraseña (el alta genera
+   *  una temporal). Fuerza profesional + su empresa fuera de este componente. */
+  employerMode?: boolean
+  /** Texto del botón de envío (por defecto Crear Usuario / Guardar Cambios). */
+  submitLabel?: string
+  /** Estado de carga del botón de envío. */
+  busy?: boolean
 }
 
 export function UserModal({
@@ -30,7 +37,10 @@ export function UserModal({
   onResetPassword,
   newPassword,
   setNewPassword,
-  error
+  error,
+  employerMode = false,
+  submitLabel,
+  busy = false,
 }: UserModalProps) {
   return (
     <Modal
@@ -41,7 +51,9 @@ export function UserModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" form="user-form">{mode === 'create' ? 'Crear Usuario' : 'Guardar Cambios'}</Button>
+          <Button type="submit" form="user-form" loading={busy}>
+            {submitLabel ?? (mode === 'create' ? 'Crear Usuario' : 'Guardar Cambios')}
+          </Button>
         </>
       }
     >
@@ -66,7 +78,7 @@ export function UserModal({
           />
         </div>
 
-        {mode === 'create' && (
+        {mode === 'create' && !employerMode && (
           <div className={styles['form-group']}>
             <label>Contraseña</label>
             <input
@@ -78,23 +90,25 @@ export function UserModal({
           </div>
         )}
 
-        <div className={styles['form-group']}>
-          <label>Tipo de Usuario (rol)</label>
-          <Select
-            fullWidth
-            value={form.user_type}
-            onChange={v => setForm({ ...form, user_type: String(v) })}
-            options={[
-              { value: 'profesional', label: 'Profesional' },
-              { value: 'empleador', label: 'Empresa' },
-              { value: 'customer_success', label: 'Customer Success' },
-              { value: 'analista_it', label: 'Analista de IT' },
-              { value: 'superadmin', label: 'Super Administrador' },
-            ]}
-          />
-        </div>
+        {!employerMode && (
+          <div className={styles['form-group']}>
+            <label>Tipo de Usuario (rol)</label>
+            <Select
+              fullWidth
+              value={form.user_type}
+              onChange={v => setForm({ ...form, user_type: String(v) })}
+              options={[
+                { value: 'profesional', label: 'Profesional' },
+                { value: 'empleador', label: 'Empresa' },
+                { value: 'customer_success', label: 'Customer Success' },
+                { value: 'analista_it', label: 'Analista de IT' },
+                { value: 'superadmin', label: 'Super Administrador' },
+              ]}
+            />
+          </div>
+        )}
 
-        {form.user_type === 'empleador' && (
+        {!employerMode && form.user_type === 'empleador' && (
           <div className={styles['form-group']}>
             <label>Nombre de Empresa</label>
             <input
@@ -105,7 +119,7 @@ export function UserModal({
           </div>
         )}
 
-        {(form.user_type === 'profesional' || form.user_type === 'customer_success') && (
+        {!employerMode && (form.user_type === 'profesional' || form.user_type === 'customer_success') && (
           <div className={styles['form-group']}>
             <label>Empresa</label>
             <Select

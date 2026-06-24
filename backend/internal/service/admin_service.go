@@ -44,12 +44,15 @@ type AdminService interface {
 	BulkAssignManager(professionalIDs []uint, managerID *uint) (int, int, error)
 	CreateUser(req map[string]interface{}) (*models.User, error)
 	UpdateUser(id uint, updates map[string]interface{}) (*models.User, error)
+	UpdateUserScoped(id uint, updates map[string]interface{}, tenantID uint) (*models.User, error)
 	DeleteUser(id uint) error
 	// DeleteUserScoped elimina (soft delete) un usuario solo si pertenece a la
 	// empresa indicada (tenantID). Aplica el mismo guard de orphans que
 	// DeleteUser. Para uso del EMPLEADOR (auto-acotado a su empresa).
 	DeleteUserScoped(id, tenantID uint) error
 	ResetPassword(id uint, newPassword string) error
+	ResetPasswordScoped(id uint, newPassword string, tenantID uint) error
+	FindUserByEmail(email string) (*models.User, error)
 
 	GetSeniorityRanking() ([]repository.SeniorityItem, error)
 	GetLatestFollowUps(kind string) ([]repository.FollowUpInfo, error)
@@ -506,6 +509,38 @@ func (s *adminService) DeleteUserScoped(id, tenantID uint) error {
 		}
 	}
 	return s.userRepo.Delete(id)
+}
+
+func (s *adminService) UpdateUserScoped(id uint, updates map[string]interface{}, tenantID uint) (*models.User, error) {
+	user, err := s.userRepo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("User not found")
+	}
+	if tenantForUser(user) != tenantID {
+		return nil, errors.New("Access denied")
+	}
+	if user.UserType != models.UserTypeProfessional {
+		return nil, errors.New("Access denied")
+	}
+	return s.UpdateUser(id, updates)
+}
+
+func (s *adminService) ResetPasswordScoped(id uint, newPassword string, tenantID uint) error {
+	user, err := s.userRepo.GetByID(id)
+	if err != nil {
+		return errors.New("User not found")
+	}
+	if tenantForUser(user) != tenantID {
+		return errors.New("Access denied")
+	}
+	if user.UserType != models.UserTypeProfessional {
+		return errors.New("Access denied")
+	}
+	return s.ResetPassword(id, newPassword)
+}
+
+func (s *adminService) FindUserByEmail(email string) (*models.User, error) {
+	return s.userRepo.GetByEmail(email)
 }
 
 func (s *adminService) ResetPassword(id uint, newPassword string) error {

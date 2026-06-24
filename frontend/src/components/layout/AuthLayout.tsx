@@ -28,6 +28,19 @@ export default function AuthLayout({ children, title, subtitle, isRegister = fal
 
         {children}
       </div>
+
+      <p className={styles['auth-powered']}>
+        <span>Powered by</span>
+        <a
+          href="https://oberstaff.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles['auth-powered-link']}
+          aria-label="Oberstaff (abre en una pestaña nueva)"
+        >
+          <img src="/logos/logo-oberstaff.png" alt="Oberstaff" className={styles['auth-powered-logo']} />
+        </a>
+      </p>
     </div>
   )
 }

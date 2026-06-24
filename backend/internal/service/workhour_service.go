@@ -21,9 +21,9 @@ type WorkHourService interface {
 	Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) error
 	GetSummary(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error)
 	GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string) ([]models.WorkHour, error)
-	SendReportEmail(employerID uint, month int, year int, companyFilter uint) error
-	GetPDFReportBytes(userID uint, month int, year int, companyFilter uint) ([]byte, string, error)
-	GetExcelReportBytes(userID uint, month int, year int, companyFilter uint) ([]byte, string, error)
+	SendReportEmail(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) error
+	GetPDFReportBytes(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) ([]byte, string, error)
+	GetExcelReportBytes(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) ([]byte, string, error)
 }
 
 type workHourService struct {

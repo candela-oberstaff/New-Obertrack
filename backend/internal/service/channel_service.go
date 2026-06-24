@@ -311,9 +311,14 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 		// private. Coherente con el bloque DM de abajo (cuando no es miembro se
 		// llena Participants, y aquí Supervised será true; cuando sí es miembro se
 		// llena Recipient y Supervised será false). Para public siempre false.
+		// Los canales de SOPORTE se excluyen: tienen su propio flujo (tomar/
+		// reasignar/resolver) y el agente que atiende debe poder escribir, no es
+		// "supervisión".
+		chCopy := ch
 		isMemberOfChannel := memberSet[ch.ID]
 		supervised := !isMemberOfChannel &&
-			(ch.Type == models.ChannelTypeDirect || ch.Type == models.ChannelTypePrivate)
+			(ch.Type == models.ChannelTypeDirect || ch.Type == models.ChannelTypePrivate) &&
+			!isSupportChannel(&chCopy)
 
 		var recipient *models.User
 		var participants []models.User

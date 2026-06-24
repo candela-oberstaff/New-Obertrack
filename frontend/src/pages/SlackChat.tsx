@@ -420,8 +420,10 @@ export default function SlackChat() {
   // parte de la conversación ajena); solo observa. Usamos el flag `supervised`
   // que calcula el backend (= no-miembro y DM/privado) como ÚNICA fuente de
   // verdad — la misma que agrupa la sección "Supervisión" del sidebar, así no
-  // pueden divergir. Los canales públicos NO entran (uso normal).
-  const isSupervising = !!selectedChannel?.supervised
+  // pueden divergir. Los canales públicos NO entran (uso normal). Los canales de
+  // SOPORTE tampoco: tienen su propio flujo (tomar/atender) y el agente que
+  // atiende debe poder escribir, aunque sea private y no fuera miembro al abrir.
+  const isSupervising = !!selectedChannel?.supervised && !!selectedChannel && !isSupportChannel(selectedChannel)
 
   const handleJoinChannel = async () => {
     if (!selectedChannel) return

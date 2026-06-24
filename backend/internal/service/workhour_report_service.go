@@ -13,41 +13,37 @@ import (
 	"github.com/obertrack/backend/internal/models"
 )
 
-func (s *workHourService) getReportWorkHours(userID uint, month int, year int, companyFilter uint) ([]models.WorkHour, string, error) {
-	user, err := s.userRepo.GetByID(userID)
-	if err != nil {
-		return nil, "", err
-	}
-
+func (s *workHourService) getReportWorkHours(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) ([]models.WorkHour, string, error) {
 	monthsEs := []string{
 		"Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
 		"Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 	}
 	monthName := monthsEs[month-1]
 
-	var employerID uint
-	if user.IsSuperadmin {
-		employerID = 0
-	} else if user.UserType == models.UserTypeEmployer {
-		employerID = user.ID
-	} else if user.EmpleadorID != nil {
-		employerID = *user.EmpleadorID
-	}
-
 	startDateStr := fmt.Sprintf("%d-%02d-01", year, month)
 	t := time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC)
 	endDateStr := fmt.Sprintf("%d-%02d-%02d", year, month, t.Day())
 
 	filters := make(map[string]interface{})
-	if user.IsSuperadmin {
+	switch {
+	case isSuperadmin:
 		// Superadmin must scope to a company; without it, no data so we never mix
 		// tenants in a report.
 		if companyFilter == 0 {
 			return []models.WorkHour{}, monthName, nil
 		}
 		filters["tenant_id"] = companyFilter
-	} else {
-		filters["tenant_id"] = employerID
+	case isManager:
+		if tenantID > 0 {
+			filters["tenant_id"] = tenantID
+		}
+		if MultiManagerReadsEnabled() {
+			filters["manager_or_user_links_id"] = userID
+		} else {
+			filters["manager_or_user_id"] = userID
+		}
+	default:
+		filters["tenant_id"] = tenantID
 	}
 
 	if start, err := time.Parse("2006-01-02", startDateStr); err == nil {
@@ -65,8 +61,8 @@ func (s *workHourService) getReportWorkHours(userID uint, month int, year int, c
 	return workHours, monthName, nil
 }
 
-func (s *workHourService) GetPDFReportBytes(userID uint, month int, year int, companyFilter uint) ([]byte, string, error) {
-	workHours, monthName, err := s.getReportWorkHours(userID, month, year, companyFilter)
+func (s *workHourService) GetPDFReportBytes(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) ([]byte, string, error) {
+	workHours, monthName, err := s.getReportWorkHours(userID, role, isSuperadmin, isManager, tenantID, month, year, companyFilter)
 	if err != nil {
 		return nil, "", err
 	}
@@ -77,8 +73,8 @@ func (s *workHourService) GetPDFReportBytes(userID uint, month int, year int, co
 	return pdfBytes, monthName, nil
 }
 
-func (s *workHourService) GetExcelReportBytes(userID uint, month int, year int, companyFilter uint) ([]byte, string, error) {
-	workHours, monthName, err := s.getReportWorkHours(userID, month, year, companyFilter)
+func (s *workHourService) GetExcelReportBytes(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) ([]byte, string, error) {
+	workHours, monthName, err := s.getReportWorkHours(userID, role, isSuperadmin, isManager, tenantID, month, year, companyFilter)
 	if err != nil {
 		return nil, "", err
 	}
@@ -89,13 +85,13 @@ func (s *workHourService) GetExcelReportBytes(userID uint, month int, year int, 
 	return excelBytes, monthName, nil
 }
 
-func (s *workHourService) SendReportEmail(employerID uint, month int, year int, companyFilter uint) error {
-	user, err := s.userRepo.GetByID(employerID)
+func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) error {
+	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
 		return err
 	}
 
-	workHours, monthName, err := s.getReportWorkHours(employerID, month, year, companyFilter)
+	workHours, monthName, err := s.getReportWorkHours(userID, role, isSuperadmin, isManager, tenantID, month, year, companyFilter)
 	if err != nil {
 		return err
 	}

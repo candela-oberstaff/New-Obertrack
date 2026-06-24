@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserX, Shield, Users, Eye, FileText, Building2, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, UserX, Shield, Users, Eye, FileText, Building2, Pencil, Trash2, KeyRound, Copy, Check } from 'lucide-react'
 import { userService, employerService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
@@ -9,6 +9,7 @@ import { Select } from '../../components/ui/Select'
 import Avatar from '../../components/Common/Avatar'
 import { ExpedienteModal } from '../../components/Admin/ExpedienteModal'
 import EmploymentManagersEditor from '../../components/Admin/EmploymentManagersEditor'
+import { UserModal } from '../../components/Admin/Modals/UserModal'
 import type { User } from '../../types'
 import styles from '../AdminUserDetail.module.css'
 
@@ -54,24 +55,37 @@ export default function EmployeeDetail() {
   // Expediente abierto.
   const [showExpediente, setShowExpediente] = useState(false)
 
-  // Modal de edición de datos del profesional (usa PUT /users/:id existente).
   const [showEdit, setShowEdit] = useState(false)
-  const [editForm, setEditForm] = useState({
-    name: '', email: '', job_title: '', phone_number: '', country: '', city: '', location: '',
+  const [editForm, setEditForm] = useState<any>({
+    name: '', email: '', password: '', user_type: 'profesional', company_name: '',
+    empleador_id: undefined, manager_id: undefined, job_title: '',
+    phone_number: '', country: '', city: '', location: '',
+    is_manager: false, is_active: true,
   })
   const [editBusy, setEditBusy] = useState(false)
   const [editErr, setEditErr] = useState<string | null>(null)
+
+  const [resetPwd, setResetPwd] = useState<string | null>(null)
+  const [resetBusy, setResetBusy] = useState(false)
+  const [resetCopied, setResetCopied] = useState(false)
 
   const openEdit = () => {
     if (!user) return
     setEditForm({
       name: user.name || '',
       email: user.email || '',
+      password: '',
+      user_type: 'profesional',
+      company_name: '',
+      empleador_id: user.empleador_id,
+      manager_id: user.manager_id ?? undefined,
       job_title: user.job_title || '',
       phone_number: user.phone_number || '',
       country: user.country || '',
       city: user.city || '',
       location: user.location || '',
+      is_manager: !!user.is_manager,
+      is_active: user.is_active !== false,
     })
     setEditErr(null)
     setShowEdit(true)
@@ -82,15 +96,22 @@ export default function EmployeeDetail() {
     if (!id) return
     setEditBusy(true); setEditErr(null)
     try {
-      await userService.update(Number(id), {
+      const payload: Parameters<typeof employerService.updateEmployee>[1] = {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
-        job_title: editForm.job_title.trim(),
-        phone_number: editForm.phone_number.trim(),
-        country: editForm.country.trim(),
-        city: editForm.city.trim(),
-        location: editForm.location.trim(),
-      })
+        job_title: (editForm.job_title || '').trim(),
+        phone_number: (editForm.phone_number || '').trim(),
+        country: (editForm.country || '').trim(),
+        city: (editForm.city || '').trim(),
+        location: (editForm.location || '').trim(),
+        is_manager: !!editForm.is_manager,
+        is_active: !!editForm.is_active,
+      }
+      const newMgr = editForm.manager_id ? Number(editForm.manager_id) : 0
+      const curMgr = user?.manager_id ? Number(user.manager_id) : 0
+      if (newMgr !== curMgr) payload.manager_id = newMgr
+
+      await employerService.updateEmployee(Number(id), payload)
       setShowEdit(false)
       await load()
     } catch (err: any) {
@@ -98,6 +119,35 @@ export default function EmployeeDetail() {
     } finally {
       setEditBusy(false)
     }
+  }
+
+  const handleResetPassword = async () => {
+    if (!user) return
+    const ok = await confirm({
+      title: 'Restablecer contraseña',
+      message: `Se generará una contraseña temporal para ${user.name}. Tendrás que compartírsela para que vuelva a ingresar. ¿Continuar?`,
+      confirmLabel: 'Restablecer',
+    })
+    if (!ok) return
+    setResetBusy(true); setResetCopied(false)
+    try {
+      const { temp_password } = await employerService.resetEmployeePassword(user.id)
+      setResetPwd(temp_password)
+    } catch (err: any) {
+      setActionErr(true)
+      setActionMsg(err?.response?.data?.error ?? 'No se pudo restablecer la contraseña.')
+    } finally {
+      setResetBusy(false)
+    }
+  }
+
+  const copyResetPwd = async () => {
+    if (!resetPwd) return
+    try {
+      await navigator.clipboard.writeText(resetPwd)
+      setResetCopied(true)
+      setTimeout(() => setResetCopied(false), 2000)
+    } catch { }
   }
 
   // Elimina (soft delete) al profesional. 409 si es manager con equipo a cargo.
@@ -351,6 +401,13 @@ export default function EmployeeDetail() {
             </button>
           )}
           <button
+            onClick={handleResetPassword}
+            disabled={busy || resetBusy}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}
+          >
+            <KeyRound size={15} /> {resetBusy ? 'Generando...' : 'Restablecer contraseña'}
+          </button>
+          <button
             onClick={handleDelete}
             disabled={busy}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid #fecaca', background: 'var(--bg-primary, #fff)', fontWeight: 600, color: '#b91c1c', cursor: 'pointer', fontSize: '0.85rem' }}
@@ -458,43 +515,47 @@ export default function EmployeeDetail() {
       )}
 
       {showEdit && (
+        <UserModal
+          title="Editar profesional"
+          mode="edit"
+          employerMode
+          form={editForm}
+          setForm={setEditForm}
+          employers={[]}
+          managers={managerOptions as unknown as User[]}
+          onClose={() => { if (!editBusy) setShowEdit(false) }}
+          onSubmit={submitEdit}
+          submitLabel="Guardar cambios"
+          busy={editBusy}
+          error={editErr}
+        />
+      )}
+
+      {resetPwd && (
         <Modal
           isOpen
-          onClose={() => { if (!editBusy) setShowEdit(false) }}
-          title="Editar profesional"
+          onClose={() => setResetPwd(null)}
+          title="Contraseña restablecida"
           size="md"
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setShowEdit(false)} disabled={editBusy}>Cancelar</Button>
-              <Button type="submit" form="edit-employee-form" loading={editBusy}>Guardar cambios</Button>
-            </>
-          }
+          footer={<Button onClick={() => setResetPwd(null)}>Listo</Button>}
         >
-          <form id="edit-employee-form" onSubmit={submitEdit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-            {([
-              { key: 'name', label: 'Nombre', type: 'text', required: true },
-              { key: 'email', label: 'Email', type: 'email', required: true },
-              { key: 'job_title', label: 'Cargo', type: 'text' },
-              { key: 'phone_number', label: 'Teléfono', type: 'text' },
-              { key: 'country', label: 'País', type: 'text' },
-              { key: 'city', label: 'Ciudad', type: 'text' },
-              { key: 'location', label: 'Ubicación', type: 'text' },
-            ] as const).map(f => (
-              <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>{f.label}</label>
-                <input
-                  type={f.type}
-                  value={editForm[f.key]}
-                  required={'required' in f ? f.required : undefined}
-                  onChange={e => setEditForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  style={{ padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box' }}
-                />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <div style={{ padding: '0.7rem 0.9rem', borderRadius: 10, background: 'rgba(16,185,129,0.1)', color: '#059669', fontSize: '0.88rem', fontWeight: 600 }}>
+              Contraseña temporal generada para {user?.name}.
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Contraseña temporal</label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <code style={{ flex: 1, padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.95rem', fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all' }}>{resetPwd}</code>
+                <Button type="button" variant="secondary" onClick={copyResetPwd}>
+                  {resetCopied ? <Check size={15} /> : <Copy size={15} />} {resetCopied ? 'Copiada' : 'Copiar'}
+                </Button>
               </div>
-            ))}
-            {editErr && (
-              <div style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem' }}>{editErr}</div>
-            )}
-          </form>
+            </div>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#b45309', fontWeight: 600 }}>
+              Compártela por un canal seguro; no se vuelve a mostrar.
+            </p>
+          </div>
         </Modal>
       )}
 

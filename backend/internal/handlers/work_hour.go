@@ -236,6 +236,8 @@ func (h *WorkHourHandler) SendReport(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	isManager := middleware.IsManager(c)
+	tenantID := middleware.GetTenantID(c)
 
 	if role != "empleador" && !isSuperadmin {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Solo las empresas o superadmins pueden solicitar el envío del reporte por correo"})
@@ -252,7 +254,7 @@ func (h *WorkHourHandler) SendReport(c *gin.Context) {
 	}
 
 	companyFilter := superadminCompanyFilter(c, isSuperadmin)
-	err := h.svc.SendReportEmail(userID, req.Month, req.Year, companyFilter)
+	err := h.svc.SendReportEmail(userID, role, isSuperadmin, isManager, tenantID, req.Month, req.Year, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al enviar el reporte: " + err.Error()})
 		return
@@ -265,6 +267,8 @@ func (h *WorkHourHandler) DownloadPDF(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	isManager := middleware.IsManager(c)
+	tenantID := middleware.GetTenantID(c)
 
 	if role != "empleador" && !isSuperadmin {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Solo las empresas o superadmins pueden descargar reportes"})
@@ -282,7 +286,7 @@ func (h *WorkHourHandler) DownloadPDF(c *gin.Context) {
 	}
 
 	companyFilter := superadminCompanyFilter(c, isSuperadmin)
-	pdfBytes, monthName, err := h.svc.GetPDFReportBytes(userID, month, year, companyFilter)
+	pdfBytes, monthName, err := h.svc.GetPDFReportBytes(userID, role, isSuperadmin, isManager, tenantID, month, year, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al generar PDF: " + err.Error()})
 		return
@@ -296,6 +300,8 @@ func (h *WorkHourHandler) DownloadExcel(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
+	isManager := middleware.IsManager(c)
+	tenantID := middleware.GetTenantID(c)
 
 	if role != "empleador" && !isSuperadmin {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Solo las empresas o superadmins pueden descargar reportes"})
@@ -313,7 +319,7 @@ func (h *WorkHourHandler) DownloadExcel(c *gin.Context) {
 	}
 
 	companyFilter := superadminCompanyFilter(c, isSuperadmin)
-	excelBytes, monthName, err := h.svc.GetExcelReportBytes(userID, month, year, companyFilter)
+	excelBytes, monthName, err := h.svc.GetExcelReportBytes(userID, role, isSuperadmin, isManager, tenantID, month, year, companyFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al generar Excel: " + err.Error()})
 		return

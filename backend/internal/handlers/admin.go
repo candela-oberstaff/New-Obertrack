@@ -386,9 +386,15 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 // solicitante (no se acepta empresa por el body).
 func (h *AdminHandler) CreateEmployee(c *gin.Context) {
 	var req struct {
-		Name     string `json:"name" binding:"required"`
-		Email    string `json:"email" binding:"required,email"`
-		JobTitle string `json:"job_title"`
+		Name        string `json:"name" binding:"required"`
+		Email       string `json:"email" binding:"required,email"`
+		JobTitle    string `json:"job_title"`
+		PhoneNumber string `json:"phone_number"`
+		Country     string `json:"country"`
+		State       string `json:"state"`
+		City        string `json:"city"`
+		Location    string `json:"location"`
+		ManagerID   *uint  `json:"manager_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -414,6 +420,14 @@ func (h *AdminHandler) CreateEmployee(c *gin.Context) {
 		"user_type":    "profesional",
 		"empleador_id": uint(tenantID),
 		"job_title":    req.JobTitle,
+		"phone_number": req.PhoneNumber,
+		"country":      req.Country,
+		"state":        req.State,
+		"city":         req.City,
+		"location":     req.Location,
+	}
+	if req.ManagerID != nil && *req.ManagerID > 0 {
+		payload["manager_id"] = *req.ManagerID
 	}
 
 	user, err := h.service.CreateUser(payload)
@@ -442,6 +456,126 @@ func (h *AdminHandler) CreateEmployee(c *gin.Context) {
 
 	// La contraseña temporal en claro se devuelve UNA sola vez.
 	c.JSON(http.StatusCreated, gin.H{"user": user, "temp_password": temp})
+}
+
+func (h *AdminHandler) UpdateEmployee(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	var req struct {
+		Name        string `json:"name"`
+		Email       string `json:"email"`
+		JobTitle    string `json:"job_title"`
+		PhoneNumber string `json:"phone_number"`
+		Country     string `json:"country"`
+		City        string `json:"city"`
+		Location    string `json:"location"`
+		IsActive    *bool  `json:"is_active"`
+		IsManager   *bool  `json:"is_manager"`
+		ManagerID   *uint  `json:"manager_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tenantID := middleware.GetTenantID(c)
+	if tenantID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tu cuenta no está asociada a una empresa"})
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if req.Name != "" {
+		updates["name"] = req.Name
+	}
+	if req.Email != "" {
+		updates["email"] = req.Email
+	}
+	if req.JobTitle != "" {
+		updates["job_title"] = req.JobTitle
+	}
+	if req.PhoneNumber != "" {
+		updates["phone_number"] = req.PhoneNumber
+	}
+	if req.Country != "" {
+		updates["country"] = req.Country
+	}
+	if req.City != "" {
+		updates["city"] = req.City
+	}
+	if req.Location != "" {
+		updates["location"] = req.Location
+	}
+	if req.IsActive != nil {
+		updates["is_active"] = *req.IsActive
+	}
+	if req.IsManager != nil {
+		updates["is_manager"] = *req.IsManager
+	}
+	if req.ManagerID != nil {
+		updates["manager_id"] = *req.ManagerID
+	}
+
+	user, err := h.service.UpdateUserScoped(uint(id), updates, uint(tenantID))
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case err.Error() == "User not found":
+			status = http.StatusNotFound
+		case err.Error() == "Access denied":
+			status = http.StatusForbidden
+		case strings.Contains(err.Error(), "a su cargo"):
+			status = http.StatusConflict
+		case strings.Contains(err.Error(), "Manager inválido") ||
+			strings.Contains(err.Error(), "no se puede cambiar"):
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.employmentSvc.SyncActiveForUser(user); err != nil {
+		log.Printf("[employer] no se pudo sincronizar la membresía del profesional %d: %v", user.ID, err)
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+func (h *AdminHandler) ResetEmployeePassword(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	tenantID := middleware.GetTenantID(c)
+	if tenantID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tu cuenta no está asociada a una empresa"})
+		return
+	}
+
+	temp, err := generateTempPassword(12)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo generar la contraseña temporal"})
+		return
+	}
+
+	if err := h.service.ResetPasswordScoped(uint(id), temp, uint(tenantID)); err != nil {
+		status := http.StatusInternalServerError
+		switch err.Error() {
+		case "User not found":
+			status = http.StatusNotFound
+		case "Access denied":
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"temp_password": temp})
 }
 
 // DeleteEmployee elimina (soft delete) un profesional. El superadmin borra sin

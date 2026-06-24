@@ -8,15 +8,70 @@ export const employerService = {
   // contraseña TEMPORAL que devuelve en claro UNA sola vez (mostrar y compartir
   // por canal seguro). Email duplicado -> 400/409 con mensaje del backend.
   createEmployee: async (
-    payload: { name: string; email: string; job_title?: string },
+    payload: {
+      name: string
+      email: string
+      job_title?: string
+      phone_number?: string
+      country?: string
+      state?: string
+      city?: string
+      location?: string
+      manager_id?: number
+    },
   ): Promise<{ user: User; temp_password: string }> => {
     const { data } = await api.post('/employer/employees', payload)
+    return data
+  },
+  updateEmployee: async (
+    userId: number,
+    payload: {
+      name?: string
+      email?: string
+      job_title?: string
+      phone_number?: string
+      country?: string
+      city?: string
+      location?: string
+      is_active?: boolean
+      is_manager?: boolean
+      manager_id?: number
+    },
+  ): Promise<User> => {
+    const { data } = await api.put(`/employer/users/${userId}`, payload)
     return data
   },
   // Elimina (soft delete) un profesional de la empresa del empleador. 409 si el
   // profesional es manager con equipo a su cargo (reasignar primero).
   deleteEmployee: async (userId: number): Promise<void> => {
     await api.delete(`/employer/users/${userId}`)
+  },
+  resetEmployeePassword: async (userId: number): Promise<{ temp_password: string }> => {
+    const { data } = await api.post(`/employer/users/${userId}/reset-password`)
+    return data
+  },
+  importPreview: async (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const { data } = await api.post('/employer/import/preview', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return data
+  },
+  importExecute: async (payload: { companies: any[]; professionals: any[] }) => {
+    const { data } = await api.post('/employer/import/execute', payload)
+    return data
+  },
+  downloadImportTemplate: async () => {
+    const res = await api.get('/employer/import/template', { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data as Blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'plantilla_profesionales_obertrack.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   },
   // Resuelve el empleo de un profesional dentro de la empresa del empleador.
   resolveEmployment: async (userId: number) => {

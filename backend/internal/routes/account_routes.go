@@ -127,6 +127,9 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	{
 		admin.GET("/users/:id/reports", d.admin.GetManagerReports)
 		admin.POST("/bulk-assign-manager", d.admin.BulkAssignManager)
+		admin.GET("/import/template", d.admin.DownloadImportTemplate)
+		admin.POST("/import/preview", d.admin.ImportPreview)
+		admin.POST("/import/execute", d.admin.ImportExecute)
 		admin.GET("/dashboard", d.admin.GetDashboard)
 		admin.GET("/companies", d.admin.GetCompanies)
 		admin.GET("/inactive-users", d.admin.GetInactiveUsers)
@@ -189,6 +192,11 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		// Alta/baja de profesionales por el EMPLEADOR (auto-acotado a su empresa).
 		// /employees es estático nuevo; DELETE /users/:id es nuevo a esa profundidad.
 		employer.POST("/employees", d.admin.CreateEmployee)
+		employer.GET("/import/template", d.admin.DownloadEmployerImportTemplate)
+		employer.POST("/import/preview", d.admin.EmployerImportPreview)
+		employer.POST("/import/execute", d.admin.EmployerImportExecute)
+		employer.PUT("/users/:id", d.admin.UpdateEmployee)
+		employer.POST("/users/:id/reset-password", d.admin.ResetEmployeePassword)
 		employer.DELETE("/users/:id", d.admin.DeleteEmployee)
 
 		employer.GET("/users/:id/employment", d.admin.GetMyCompanyEmployment)
