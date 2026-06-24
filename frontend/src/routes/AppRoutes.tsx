@@ -70,7 +70,8 @@ export function AppRoutes() {
           <Route path="empresa/employees/:id" element={<EmployerRoute><EmpresaEmployeeDetail /></EmployerRoute>} />
           <Route path="tutoriales" element={<Tutoriales />} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
-          <Route path="roles-grupos" element={<ReportsRoute><RolesGroups /></ReportsRoute>} />
+          {/* Roles y Grupos: no disponible para empresas en esta versión (solo superadmin). */}
+          <Route path="roles-grupos" element={<AdminRoute><RolesGroups /></AdminRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
           <Route path="tickets" element={<AdminRoute><TicketsBoard /></AdminRoute>} />
           <Route path="tickets/report" element={<AdminRoute><RejectionReport /></AdminRoute>} />

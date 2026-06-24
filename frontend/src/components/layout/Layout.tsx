@@ -135,7 +135,8 @@ export default function Layout() {
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} />, show: !isIT },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} />, show: !isIT },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, show: isSuper || isEmployerType },
-    { path: '/roles-grupos', label: 'Roles y Grupos', icon: <UserCog size={20} />, show: isSuper || isEmployerType },
+    // Roles y Grupos: oculto para empresas en esta versión (solo superadmin).
+    { path: '/roles-grupos', label: 'Roles y Grupos', icon: <UserCog size={20} />, show: isSuper },
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} />, show: !isIT },
     { path: '/admin', label: 'Admin', icon: <Settings size={20} />, show: isSuper || isCS },
     { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} />, show: isSuper || isCS },
