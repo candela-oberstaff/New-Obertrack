@@ -8,6 +8,7 @@ import (
 type UserRepository interface {
 	GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	Count(role, isManager, isActive string, companyID uint) (int64, error)
+	CountCompanies() (int64, error)
 	GetByID(id uint) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
 	GetByResetToken(token string) (*models.User, error)
@@ -113,6 +114,15 @@ func (r *userRepository) Count(role, isManager, isActive string, companyID uint)
 		return 0, err
 	}
 	return total, nil
+}
+
+func (r *userRepository) CountCompanies() (int64, error) {
+	var total int64
+	err := r.db.Model(&models.User{}).
+		Where("user_type = ?", models.UserTypeEmployer).
+		Where("COALESCE(TRIM(company_name), '') <> '' OR COALESCE(TRIM(name), '') <> ''").
+		Count(&total).Error
+	return total, err
 }
 
 func (r *userRepository) GetByID(id uint) (*models.User, error) {

@@ -238,7 +238,8 @@ func (r *adminRepository) GetCompaniesMetrics() ([]CompanyMetric, error) {
 		LEFT JOIN users p ON p.empleador_id = u.id AND p.user_type = 'profesional'
 		LEFT JOIN work_hours wh ON wh.user_id = p.id AND wh.work_date >= date_trunc('month', CURRENT_DATE)
 		LEFT JOIN tasks t ON t.created_by = p.id AND t.completed = true
-		WHERE u.user_type = 'empleador'
+		WHERE u.user_type = 'empleador' AND u.deleted_at IS NULL
+		  AND (COALESCE(TRIM(u.company_name), '') <> '' OR COALESCE(TRIM(u.name), '') <> '')
 		GROUP BY u.id, u.company_name
 		ORDER BY hours_this_month DESC
 	`).Rows()

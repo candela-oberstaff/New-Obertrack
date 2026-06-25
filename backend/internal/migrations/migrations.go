@@ -738,46 +738,46 @@ func Run(db *gorm.DB) error {
 			},
 		},
 		{
-            // Dedup de la alerta de vencimiento de documentos.
-            ID: "202606161500_doc_expiry_alerted_at",
-            Migrate: func(tx *gorm.DB) error {
-                return tx.AutoMigrate(&models.EmploymentDocument{})
-            },
-            Rollback: func(tx *gorm.DB) error {
-                return tx.Migrator().DropColumn(&models.EmploymentDocument{}, "expiry_alerted_at")
-            },
-        },
-        {
-            ID: "202606131900_create_audience_groups",
-            Migrate: func(tx *gorm.DB) error {
-                log.Println("Creating audience_groups and audience_group_members tables...")
-                return tx.AutoMigrate(&models.AudienceGroup{}, &models.AudienceGroupMember{})
-            },
-            Rollback: func(tx *gorm.DB) error {
-                return tx.Migrator().DropTable(
-                    "audience_group_members",
-                    "audience_groups",
-                )
-            },
-        },
-        {
-            // Tickets de soporte: gestión (tomar/reasignar/resolver) sobre los canales de soporte.
-            ID: "202606171000_add_support_tickets",
-            Migrate: func(tx *gorm.DB) error {
-                log.Println("Creating support_tickets table...")
-                return tx.AutoMigrate(&models.SupportTicket{})
-            },
-            Rollback: func(tx *gorm.DB) error {
-                return tx.Migrator().DropTable("support_tickets")
-            },
-        },
-        {
-            // Backfill: crea un ticket 'open' para los canales de soporte existentes
-            // (creados antes de esta funcionalidad) que aún no tienen uno.
-            ID: "202606171010_backfill_support_tickets",
-            Migrate: func(tx *gorm.DB) error {
-                log.Println("Backfilling support_tickets for existing support channels...")
-                return tx.Exec(`
+			// Dedup de la alerta de vencimiento de documentos.
+			ID: "202606161500_doc_expiry_alerted_at",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.EmploymentDocument{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.EmploymentDocument{}, "expiry_alerted_at")
+			},
+		},
+		{
+			ID: "202606131900_create_audience_groups",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating audience_groups and audience_group_members tables...")
+				return tx.AutoMigrate(&models.AudienceGroup{}, &models.AudienceGroupMember{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					"audience_group_members",
+					"audience_groups",
+				)
+			},
+		},
+		{
+			// Tickets de soporte: gestión (tomar/reasignar/resolver) sobre los canales de soporte.
+			ID: "202606171000_add_support_tickets",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating support_tickets table...")
+				return tx.AutoMigrate(&models.SupportTicket{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable("support_tickets")
+			},
+		},
+		{
+			// Backfill: crea un ticket 'open' para los canales de soporte existentes
+			// (creados antes de esta funcionalidad) que aún no tienen uno.
+			ID: "202606171010_backfill_support_tickets",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Backfilling support_tickets for existing support channels...")
+				return tx.Exec(`
                     INSERT INTO support_tickets (channel_id, tenant_id, requester_id, status, created_at, updated_at)
                     SELECT c.id, c.tenant_id, c.created_by, 'open', NOW(), NOW()
                     FROM channels c
@@ -786,20 +786,20 @@ func Run(db *gorm.DB) error {
                       AND c.deleted_at IS NULL
                       AND NOT EXISTS (SELECT 1 FROM support_tickets st WHERE st.channel_id = c.id)
                 `).Error
-            },
-            Rollback: func(tx *gorm.DB) error {
-                return nil
-            },
-        },
-        {
-            // Reacciones/stars idempotentes: dedupe de filas existentes + índice
-            // único. En BD nueva el tag uniqueIndex ya crea el índice; este paso
-            // cubre BDs existentes (dedupea primero y luego crea el índice).
-            ID: "202606171100_dedupe_reactions_stars_unique",
-            Migrate: func(tx *gorm.DB) error {
-                log.Println("Deduping message_reactions/starred_messages and creating unique indexes...")
-                // 1) Borra duplicados dejando el de menor id en cada grupo.
-                if err := tx.Exec(`
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return nil
+			},
+		},
+		{
+			// Reacciones/stars idempotentes: dedupe de filas existentes + índice
+			// único. En BD nueva el tag uniqueIndex ya crea el índice; este paso
+			// cubre BDs existentes (dedupea primero y luego crea el índice).
+			ID: "202606171100_dedupe_reactions_stars_unique",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Deduping message_reactions/starred_messages and creating unique indexes...")
+				// 1) Borra duplicados dejando el de menor id en cada grupo.
+				if err := tx.Exec(`
                     DELETE FROM message_reactions a
                     USING message_reactions b
                     WHERE a.message_id = b.message_id
@@ -807,48 +807,48 @@ func Run(db *gorm.DB) error {
                       AND a.emoji = b.emoji
                       AND a.id > b.id
                 `).Error; err != nil {
-                    return err
-                }
-                if err := tx.Exec(`
+					return err
+				}
+				if err := tx.Exec(`
                     DELETE FROM starred_messages a
                     USING starred_messages b
                     WHERE a.user_id = b.user_id
                       AND a.message_id = b.message_id
                       AND a.id > b.id
                 `).Error; err != nil {
-                    return err
-                }
-                // 2) Crea los índices únicos (idempotente con IF NOT EXISTS).
-                if err := tx.Exec(`
+					return err
+				}
+				// 2) Crea los índices únicos (idempotente con IF NOT EXISTS).
+				if err := tx.Exec(`
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_reaction_unique
                     ON message_reactions (message_id, user_id, emoji)
                 `).Error; err != nil {
-                    return err
-                }
-                return tx.Exec(`
+					return err
+				}
+				return tx.Exec(`
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_star_unique
                     ON starred_messages (user_id, message_id)
                 `).Error
-            },
-            Rollback: func(tx *gorm.DB) error {
-                if err := tx.Exec(`DROP INDEX IF EXISTS idx_reaction_unique`).Error; err != nil {
-                    return err
-                }
-                return tx.Exec(`DROP INDEX IF EXISTS idx_star_unique`).Error
-            },
-        },
-        {
-            // Backfill (M-5): agrega a todos los usuarios activos de cada empresa
-            // como miembros de los canales PÚBLICOS existentes de su empresa. Los
-            // públicos se crean con todos los usuarios del momento, pero quienes
-            // llegaron después no quedaban como miembros (no podían escribir bien,
-            // ni tenían no-leídos/tiempo real). joined_at = NOW() para que NO vean
-            // el historial viejo como no-leído (el conteo usa joined_at). Idempotente
-            // (NOT EXISTS); la PK compuesta (channel_id, user_id) evita duplicados.
-            ID: "202606181200_backfill_public_channel_members",
-            Migrate: func(tx *gorm.DB) error {
-                log.Println("Backfilling public channel members for existing company users...")
-                return tx.Exec(`
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_reaction_unique`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`DROP INDEX IF EXISTS idx_star_unique`).Error
+			},
+		},
+		{
+			// Backfill (M-5): agrega a todos los usuarios activos de cada empresa
+			// como miembros de los canales PÚBLICOS existentes de su empresa. Los
+			// públicos se crean con todos los usuarios del momento, pero quienes
+			// llegaron después no quedaban como miembros (no podían escribir bien,
+			// ni tenían no-leídos/tiempo real). joined_at = NOW() para que NO vean
+			// el historial viejo como no-leído (el conteo usa joined_at). Idempotente
+			// (NOT EXISTS); la PK compuesta (channel_id, user_id) evita duplicados.
+			ID: "202606181200_backfill_public_channel_members",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Backfilling public channel members for existing company users...")
+				return tx.Exec(`
                     INSERT INTO channel_members (channel_id, user_id, role, joined_at, created_at)
                     SELECT c.id, u.id, 'member', NOW(), NOW()
                     FROM channels c
@@ -865,22 +865,22 @@ func Run(db *gorm.DB) error {
                           WHERE cm.channel_id = c.id AND cm.user_id = u.id
                       )
                 `).Error
-            },
-            Rollback: func(tx *gorm.DB) error {
-                return nil
-            },
-        },
-        {
-            // Sprint B: el CREADOR de cada canal pasa a ser ADMIN del canal (poderes
-            // de gestión: editar/eliminar/añadir-quitar miembros). Los canales se
-            // crearon con el creador como 'member'; aquí se hace backfill de su fila
-            // de membresía a 'admin'. SOLO toca filas que hoy son 'member' (no pisa
-            // otros roles raros) y es idempotente: re-correrla no cambia nada porque
-            // el WHERE excluye las que ya son 'admin'.
-            ID: "202606191200_backfill_channel_creator_admin",
-            Migrate: func(tx *gorm.DB) error {
-                log.Println("Backfilling channel creators as channel admins...")
-                return tx.Exec(`
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return nil
+			},
+		},
+		{
+			// Sprint B: el CREADOR de cada canal pasa a ser ADMIN del canal (poderes
+			// de gestión: editar/eliminar/añadir-quitar miembros). Los canales se
+			// crearon con el creador como 'member'; aquí se hace backfill de su fila
+			// de membresía a 'admin'. SOLO toca filas que hoy son 'member' (no pisa
+			// otros roles raros) y es idempotente: re-correrla no cambia nada porque
+			// el WHERE excluye las que ya son 'admin'.
+			ID: "202606191200_backfill_channel_creator_admin",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Backfilling channel creators as channel admins...")
+				return tx.Exec(`
                     UPDATE channel_members cm
                     SET role = 'admin'
                     FROM channels c
@@ -888,67 +888,67 @@ func Run(db *gorm.DB) error {
                       AND cm.user_id = c.created_by
                       AND cm.role <> 'admin'
                 `).Error
-            },
-            Rollback: func(tx *gorm.DB) error {
-                return nil
-            },
-        },
-        {
-            // Garantiza a nivel de DB que una jornada no pueda estar aprobada Y
-            // rechazada a la vez (estado imposible). El código ya mantiene la
-            // exclusividad; esto la blinda contra inconsistencias.
-            ID: "202606191500_workhours_status_exclusive",
-            Migrate: func(tx *gorm.DB) error {
-                log.Println("Enforcing mutually-exclusive approved/rejected on work_hours...")
-                // Backfill defensivo: si alguna jornada histórica quedó con ambos
-                // flags, la aprobación (estado terminal positivo) gana y se limpia
-                // el rechazo.
-                if err := tx.Exec(`
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return nil
+			},
+		},
+		{
+			// Garantiza a nivel de DB que una jornada no pueda estar aprobada Y
+			// rechazada a la vez (estado imposible). El código ya mantiene la
+			// exclusividad; esto la blinda contra inconsistencias.
+			ID: "202606191500_workhours_status_exclusive",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Enforcing mutually-exclusive approved/rejected on work_hours...")
+				// Backfill defensivo: si alguna jornada histórica quedó con ambos
+				// flags, la aprobación (estado terminal positivo) gana y se limpia
+				// el rechazo.
+				if err := tx.Exec(`
                     UPDATE work_hours
                     SET rejected = false, rejected_by = NULL, rejected_at = NULL, rejection_reason = ''
                     WHERE approved = true AND rejected = true
                 `).Error; err != nil {
-                    return err
-                }
-                // Idempotente: se elimina antes de (re)crear la constraint.
-                if err := tx.Exec(`ALTER TABLE work_hours DROP CONSTRAINT IF EXISTS chk_work_hours_status_exclusive`).Error; err != nil {
-                    return err
-                }
-                return tx.Exec(`ALTER TABLE work_hours ADD CONSTRAINT chk_work_hours_status_exclusive CHECK (NOT (approved AND rejected))`).Error
-            },
-            Rollback: func(tx *gorm.DB) error {
-                return tx.Exec(`ALTER TABLE work_hours DROP CONSTRAINT IF EXISTS chk_work_hours_status_exclusive`).Error
-            },
-        },
-        {
-            // FASE 0-1 multi-manager: tabla N-a-N employment_managers. Guarda
-            // TODOS los managers de un empleo; el principal (is_primary=true) se
-            // mantiene en espejo con employments.manager_id (dual-write). Las
-            // lecturas no cambian todavía: siguen usando el puntero.
-            ID: "202606231200_add_employment_managers",
-            Migrate: func(tx *gorm.DB) error {
-                log.Println("Creating employment_managers table (multi-manager N-a-N)...")
-                if err := tx.AutoMigrate(&models.EmploymentManager{}); err != nil {
-                    return err
-                }
-                // Un solo manager PRINCIPAL vivo por empleo. AutoMigrate no crea
-                // índices únicos parciales; se hace con SQL idempotente.
-                if err := tx.Exec(`
+					return err
+				}
+				// Idempotente: se elimina antes de (re)crear la constraint.
+				if err := tx.Exec(`ALTER TABLE work_hours DROP CONSTRAINT IF EXISTS chk_work_hours_status_exclusive`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`ALTER TABLE work_hours ADD CONSTRAINT chk_work_hours_status_exclusive CHECK (NOT (approved AND rejected))`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`ALTER TABLE work_hours DROP CONSTRAINT IF EXISTS chk_work_hours_status_exclusive`).Error
+			},
+		},
+		{
+			// FASE 0-1 multi-manager: tabla N-a-N employment_managers. Guarda
+			// TODOS los managers de un empleo; el principal (is_primary=true) se
+			// mantiene en espejo con employments.manager_id (dual-write). Las
+			// lecturas no cambian todavía: siguen usando el puntero.
+			ID: "202606231200_add_employment_managers",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating employment_managers table (multi-manager N-a-N)...")
+				if err := tx.AutoMigrate(&models.EmploymentManager{}); err != nil {
+					return err
+				}
+				// Un solo manager PRINCIPAL vivo por empleo. AutoMigrate no crea
+				// índices únicos parciales; se hace con SQL idempotente.
+				if err := tx.Exec(`
                     CREATE UNIQUE INDEX IF NOT EXISTS uq_employment_primary_manager
                     ON employment_managers (employment_id)
                     WHERE is_primary = TRUE AND deleted_at IS NULL
                 `).Error; err != nil {
-                    return err
-                }
-                if err := tx.Exec(`
+					return err
+				}
+				if err := tx.Exec(`
                     CREATE INDEX IF NOT EXISTS idx_employment_managers_manager
                     ON employment_managers (manager_id)
                 `).Error; err != nil {
-                    return err
-                }
-                // Backfill idempotente: cada employment con manager_id y sin
-                // vínculo vivo aún → fila principal espejo. Re-correr no duplica.
-                return tx.Exec(`
+					return err
+				}
+				// Backfill idempotente: cada employment con manager_id y sin
+				// vínculo vivo aún → fila principal espejo. Re-correr no duplica.
+				return tx.Exec(`
                     INSERT INTO employment_managers (employment_id, manager_id, is_primary, created_at)
                     SELECT e.id, e.manager_id, TRUE, now()
                     FROM employments e
@@ -958,25 +958,54 @@ func Run(db *gorm.DB) error {
                           WHERE em.employment_id = e.id AND em.deleted_at IS NULL
                       )
                 `).Error
-            },
-            Rollback: func(tx *gorm.DB) error {
-                if err := tx.Exec(`DROP INDEX IF EXISTS uq_employment_primary_manager`).Error; err != nil {
-                    return err
-                }
-                if err := tx.Exec(`DROP INDEX IF EXISTS idx_employment_managers_manager`).Error; err != nil {
-                    return err
-                }
-                return tx.Migrator().DropTable(&models.EmploymentManager{})
-            },
-        },
-        // Future migrations go here
-    })
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS uq_employment_primary_manager`).Error; err != nil {
+					return err
+				}
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_employment_managers_manager`).Error; err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.EmploymentManager{})
+			},
+		},
+		{
+			ID: "202606251200_add_incidents",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating incidents and incident_responses tables...")
+				if err := tx.AutoMigrate(&models.Incident{}, &models.IncidentResponse{}); err != nil {
+					return err
+				}
+				return tx.Exec(`
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_incident_user
+                    ON incident_responses (incident_id, user_id)
+                `).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					&models.IncidentResponse{},
+					&models.Incident{},
+				)
+			},
+		},
+		{
+			ID: "202606251300_add_emergency_templates",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating emergency_templates table...")
+				return tx.AutoMigrate(&models.EmergencyTemplate{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.EmergencyTemplate{})
+			},
+		},
+		// Future migrations go here
+	})
 
-    if err := m.Migrate(); err != nil {
-        log.Printf("Could not migrate: %v", err)
-        return err
-    }
+	if err := m.Migrate(); err != nil {
+		log.Printf("Could not migrate: %v", err)
+		return err
+	}
 
-    log.Println("Migration successful")
-    return nil
+	log.Println("Migration successful")
+	return nil
 }

@@ -241,7 +241,9 @@ func (s *authService) GetPublicCompanies() ([]map[string]interface{}, error) {
 		if name == "" {
 			name = u.Name
 		}
-		
+		if name == "" {
+			continue
+		}
 		companies = append(companies, map[string]interface{}{
 			"id":   u.ID,
 			"name": name,

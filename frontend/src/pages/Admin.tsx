@@ -86,6 +86,8 @@ export default function Admin() {
     deleteUser,
     updateUser,
     fetchUsers,
+    fetchDashboard,
+    fetchCompanies,
   } = useAdmin()
 
   const navigate = useNavigate()
@@ -200,7 +202,7 @@ export default function Admin() {
     }
   }
 
-  const employers = Array.isArray(users) ? users.filter((u: any) => u.user_type === 'empleador') : []
+  const employers = Array.isArray(users) ? users.filter((u: any) => u.user_type === 'empleador' && ((u.company_name || '').trim() || (u.name || '').trim())) : []
   const managers = Array.isArray(users) ? users.filter((u: any) => u.is_manager) : []
 
   const openEdit = (u: any) => {
@@ -212,6 +214,7 @@ export default function Admin() {
       job_title: u.job_title || '',
       phone_number: u.phone_number || '',
       country: u.country || '',
+      state: u.state || '',
       city: u.city || '',
       location: u.location || '',
       company_name: u.company_name || '',
@@ -377,7 +380,7 @@ export default function Admin() {
 
   // ── Tarjeta del dashboard: lista plana con filtro por empresa + paginación ──
   const RPT_PER_PAGE = 5
-  const rptCompanies = Array.from(new Set(absenceItems.map((i: any) => i.company).filter(Boolean))).sort() as string[]
+  const rptCompanies = Array.from(new Set(absenceItems.map((i: any) => i.company).filter((c: any) => c && c !== '-' && c !== '—'))).sort() as string[]
   // Conteo de motivos acotado a la empresa seleccionada (los chips reflejan el
   // filtro, no el total global del mes).
   const rptReasonCounts = (() => {
@@ -597,8 +600,8 @@ export default function Admin() {
                   <Building2 size={26} />
                 </div>
                 <div className={styles['stat-info']}>
-                  <span className={styles['stat-value']}>{stats?.totalBoards || 0}</span>
-                  <span className={styles['stat-label']}>Tableros</span>
+                  <span className={styles['stat-value']}>{stats?.totalCompanies || 0}</span>
+                  <span className={styles['stat-label']}>Empresas registradas</span>
                 </div>
               </div>
               <div className={styles['stat-card']}>
@@ -1654,7 +1657,7 @@ export default function Admin() {
       {showImportModal && (
         <ImportUsersModal
           onClose={() => setShowImportModal(false)}
-          onDone={() => { fetchUsers() }}
+          onDone={() => { fetchUsers(); fetchDashboard(); fetchCompanies() }}
         />
       )}    </div>
   )

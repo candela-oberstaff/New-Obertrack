@@ -154,6 +154,9 @@ func (s *userService) Update(id, requesterID, tenantID uint, role string, isMana
 	if country, ok := updates["country"].(string); ok && country != "" {
 		user.Country = country
 	}
+	if state, ok := updates["state"].(string); ok && state != "" {
+		user.State = state
+	}
 	if city, ok := updates["city"].(string); ok && city != "" {
 		user.City = city
 	}

@@ -226,10 +226,16 @@ export function useAdmin(): UseAdminReturn {
   })
 
   const invalidateUsers = () => qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+  const invalidateAfterUserChange = () => {
+    qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+    qc.invalidateQueries({ queryKey: ['admin', 'dashboard'] })
+    qc.invalidateQueries({ queryKey: ['admin', 'companies'] })
+    qc.invalidateQueries({ queryKey: ['admin', 'tenants-summary'] })
+  }
 
-  const createMut = useMutation({ mutationFn: (data: any) => adminService.createUser(data), onSuccess: invalidateUsers })
-  const updateMut = useMutation({ mutationFn: ({ id, data }: { id: number; data: any }) => adminService.updateUser(id, data), onSuccess: invalidateUsers })
-  const deleteMut = useMutation({ mutationFn: (id: number) => adminService.deleteUser(id), onSuccess: invalidateUsers })
+  const createMut = useMutation({ mutationFn: (data: any) => adminService.createUser(data), onSuccess: invalidateAfterUserChange })
+  const updateMut = useMutation({ mutationFn: ({ id, data }: { id: number; data: any }) => adminService.updateUser(id, data), onSuccess: invalidateAfterUserChange })
+  const deleteMut = useMutation({ mutationFn: (id: number) => adminService.deleteUser(id), onSuccess: invalidateAfterUserChange })
 
   const users: User[] = usersQ.data ?? []
 

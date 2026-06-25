@@ -1,0 +1,127 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty {
+  color: var(--gray-400, #8880a8);
+  font-size: 14px;
+  margin: 4px 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--gray-100, #f0eef8);
+  border-radius: var(--radius-sm, 10px);
+  background: var(--gray-50, #faf9fe);
+}
+
+.item.active {
+  border-color: var(--primary, #cc33cc);
+  background: #fdf3fd;
+}
+
+.itemMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemTitle {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--black, #060b23);
+}
+
+.itemSubject {
+  font-size: 12px;
+  color: var(--gray-400, #8880a8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemActions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--gray-100, #f0eef8);
+  border-radius: var(--radius-sm, 8px);
+  background: #fff;
+  color: var(--gray-500, #6b6388);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.iconBtn:hover { background: var(--gray-100, #f0eef8); }
+.iconBtn.danger:hover { background: #fef2f2; color: #dc2626; }
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--gray-100, #f0eef8);
+  padding-top: 16px;
+}
+
+.formHead {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--black, #060b23);
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500, #6b6388);
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--gray-200, #e5e1f2);
+  border-radius: var(--radius-sm, 10px);
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--black, #060b23);
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.input:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--primary, #cc33cc);
+}
+
+.textarea { resize: vertical; }
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.error {
+  color: #dc2626;
+  font-size: 13px;
+  margin: 0;
+}

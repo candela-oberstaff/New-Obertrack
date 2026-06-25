@@ -26,8 +26,10 @@ import {
   Users,
   Compass,
   Map,
+  MapPin,
   Shield,
   UserCog,
+  AlertTriangle,
 } from 'lucide-react'
 
 // Módulo de permisos (roles) que gobierna cada entrada del sidebar.
@@ -140,6 +142,8 @@ export default function Layout() {
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} />, show: !isIT },
     { path: '/admin', label: 'Admin', icon: <Settings size={20} />, show: isSuper || isCS },
     { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} />, show: isSuper || isCS },
+    { path: '/admin/mapa', label: 'Mapa', icon: <MapPin size={20} />, show: isSuper },
+    { path: '/admin/incidentes', label: 'Incidentes', icon: <AlertTriangle size={20} />, show: isSuper },
     { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: isCS || isSuper},
     { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} />, show: isSuper || isCS },
     { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} />, show: isSuper || isIT },

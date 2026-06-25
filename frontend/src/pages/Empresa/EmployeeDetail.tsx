@@ -59,7 +59,7 @@ export default function EmployeeDetail() {
   const [editForm, setEditForm] = useState<any>({
     name: '', email: '', password: '', user_type: 'profesional', company_name: '',
     empleador_id: undefined, manager_id: undefined, job_title: '',
-    phone_number: '', country: '', city: '', location: '',
+    phone_number: '', country: '', state: '', city: '', location: '',
     is_manager: false, is_active: true,
   })
   const [editBusy, setEditBusy] = useState(false)
@@ -82,6 +82,7 @@ export default function EmployeeDetail() {
       job_title: user.job_title || '',
       phone_number: user.phone_number || '',
       country: user.country || '',
+      state: user.state || '',
       city: user.city || '',
       location: user.location || '',
       is_manager: !!user.is_manager,
@@ -102,6 +103,7 @@ export default function EmployeeDetail() {
         job_title: (editForm.job_title || '').trim(),
         phone_number: (editForm.phone_number || '').trim(),
         country: (editForm.country || '').trim(),
+        state: (editForm.state || '').trim(),
         city: (editForm.city || '').trim(),
         location: (editForm.location || '').trim(),
         is_manager: !!editForm.is_manager,

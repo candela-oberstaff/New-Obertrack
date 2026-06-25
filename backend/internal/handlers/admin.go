@@ -130,6 +130,44 @@ func (h *AdminHandler) GetAllUsers(c *gin.Context) {
 	})
 }
 
+func (h *AdminHandler) GetProfessionalLocations(c *gin.Context) {
+	if !middleware.IsSuperadmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin"})
+		return
+	}
+
+	professionals, err := h.service.GetProfessionalLocations(c.Query("country"), c.Query("state"), c.Query("active"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch professional locations"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"professionals": professionals})
+}
+
+func (h *AdminHandler) BulkEmailProfessionals(c *gin.Context) {
+	if !middleware.IsSuperadmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin"})
+		return
+	}
+
+	var req struct {
+		UserIDs []uint `json:"user_ids" binding:"required"`
+		Subject string `json:"subject" binding:"required"`
+		Body    string `json:"body" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No hay destinatarios seleccionados"})
+		return
+	}
+
+	result := h.service.BulkEmailProfessionals(req.UserIDs, req.Subject, req.Body)
+	c.JSON(http.StatusOK, gin.H{"sent": result.Sent, "failed": result.Failed})
+}
+
 func (h *AdminHandler) CreateUser(c *gin.Context) {
 	var req struct {
 		Name        string `json:"name" binding:"required"`
@@ -471,6 +509,7 @@ func (h *AdminHandler) UpdateEmployee(c *gin.Context) {
 		JobTitle    string `json:"job_title"`
 		PhoneNumber string `json:"phone_number"`
 		Country     string `json:"country"`
+		State       string `json:"state"`
 		City        string `json:"city"`
 		Location    string `json:"location"`
 		IsActive    *bool  `json:"is_active"`
@@ -503,6 +542,9 @@ func (h *AdminHandler) UpdateEmployee(c *gin.Context) {
 	}
 	if req.Country != "" {
 		updates["country"] = req.Country
+	}
+	if req.State != "" {
+		updates["state"] = req.State
 	}
 	if req.City != "" {
 		updates["city"] = req.City

@@ -1,5 +1,61 @@
 import api from './client'
 
+export interface ProfessionalLocation {
+  id: number
+  name: string
+  email: string
+  phone_number: string
+  avatar: string
+  country: string
+  state: string
+  city: string
+  company: string
+  is_active: boolean
+}
+
+export type IncidentStatus = 'pendiente' | 'contactado' | 'ok' | 'sin_respuesta'
+
+export interface IncidentCounts {
+  affected: number
+  pendiente: number
+  contactado: number
+  ok: number
+  sin_respuesta: number
+}
+
+export interface Incident {
+  id: number
+  title: string
+  kind: string
+  country: string
+  state: string
+  status: string
+  created_at: string
+  closed_at: string | null
+  counts: IncidentCounts
+}
+
+export interface EmergencyTemplate {
+  id: number
+  title: string
+  subject: string
+  body: string
+  created_at: string
+}
+
+export interface IncidentProfessional {
+  id: number
+  name: string
+  email: string
+  phone_number: string
+  company: string
+  country: string
+  state: string
+  city: string
+  is_active: boolean
+  status: IncidentStatus
+}
+
 export const adminService = {
   getDashboard: async () => {
     const { data } = await api.get('/admin/dashboard')
@@ -23,6 +79,10 @@ export const adminService = {
   },
   getStats: async () => {
     const { data } = await api.get('/admin/stats')
+    return data
+  },
+  getProfessionalLocations: async (params: { country?: string; state?: string; active?: string }): Promise<{ professionals: ProfessionalLocation[] }> => {
+    const { data } = await api.get('/admin/professionals/locations', { params })
     return data
   },
   getUsers: async (params?: { user_type?: string; is_active?: string; is_manager?: string; page?: number; limit?: number; q?: string }) => {
@@ -197,12 +257,16 @@ export const adminService = {
   logContact: async (userId: number, channel: 'email' | 'whatsapp' | 'chat') => {
     try { await api.post(`/users/${userId}/contacts`, { channel }) } catch { /* no bloquear */ }
   },
-  getFollowUps: async (kind: 'inactivity' | 'absence') => {
+  getFollowUps: async (kind: 'inactivity' | 'absence' | 'emergencia') => {
     const { data } = await api.get<{ data: any[] }>('/follow-ups', { params: { kind } })
     return data.data || []
   },
-  createFollowUp: async (payload: { user_id: number; kind: 'inactivity' | 'absence'; status: string; note?: string }) => {
+  createFollowUp: async (payload: { user_id: number; kind: 'inactivity' | 'absence' | 'emergencia'; status: string; note?: string }) => {
     const { data } = await api.post('/follow-ups', payload)
+    return data
+  },
+  bulkEmailProfessionals: async (payload: { user_ids: number[]; subject: string; body: string }): Promise<{ sent: number; failed: { id: number; email: string; error: string }[] }> => {
+    const { data } = await api.post('/admin/professionals/bulk-email', payload)
     return data
   },
   getTenant: async (id: number) => {
@@ -223,6 +287,46 @@ export const adminService = {
   },
   createTenant: async (tenantData: { company_name: string; user_id?: number; name?: string; email?: string; password?: string }) => {
     const { data } = await api.post('/admin/tenants', tenantData)
+    return data
+  },
+  getIncidents: async (): Promise<{ incidents: Incident[] }> => {
+    const { data } = await api.get('/admin/incidents')
+    return data
+  },
+  createIncident: async (payload: { title: string; description: string; kind: string; country: string; state: string }): Promise<{ incident: Incident }> => {
+    const { data } = await api.post('/admin/incidents', payload)
+    return data
+  },
+  getIncident: async (id: number): Promise<{ incident: Incident; professionals: IncidentProfessional[] }> => {
+    const { data } = await api.get(`/admin/incidents/${id}`)
+    return data
+  },
+  closeIncident: async (id: number): Promise<{ incident: Incident }> => {
+    const { data } = await api.put(`/admin/incidents/${id}/close`)
+    return data
+  },
+  broadcastIncident: async (id: number, payload: { subject: string; body: string }): Promise<{ sent: number; failed: { id: number; email: string; error: string }[] }> => {
+    const { data } = await api.post(`/admin/incidents/${id}/broadcast`, payload)
+    return data
+  },
+  setIncidentResponse: async (id: number, userId: number, payload: { status: IncidentStatus; note?: string }): Promise<{ ok: true }> => {
+    const { data } = await api.put(`/admin/incidents/${id}/responses/${userId}`, payload)
+    return data
+  },
+  getEmergencyTemplates: async (): Promise<{ templates: EmergencyTemplate[] }> => {
+    const { data } = await api.get('/admin/emergency-templates')
+    return data
+  },
+  createEmergencyTemplate: async (payload: { title: string; subject: string; body: string }): Promise<{ template: EmergencyTemplate }> => {
+    const { data } = await api.post('/admin/emergency-templates', payload)
+    return data
+  },
+  updateEmergencyTemplate: async (id: number, payload: { title: string; subject: string; body: string }): Promise<{ template: EmergencyTemplate }> => {
+    const { data } = await api.put(`/admin/emergency-templates/${id}`, payload)
+    return data
+  },
+  deleteEmergencyTemplate: async (id: number): Promise<{ ok: true }> => {
+    const { data } = await api.delete(`/admin/emergency-templates/${id}`)
     return data
   },
   suspendTenant: async (id: number) => {

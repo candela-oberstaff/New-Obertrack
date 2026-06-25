@@ -31,6 +31,7 @@ type UpdateUserRequest struct {
 	JobTitle    string `json:"job_title"`
 	PhoneNumber string `json:"phone_number"`
 	Country     string `json:"country"`
+	State       string `json:"state"`
 	City        string `json:"city"`
 	Location    string `json:"location"`
 }
@@ -160,6 +161,9 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 	if req.Country != "" {
 		updates["country"] = req.Country
+	}
+	if req.State != "" {
+		updates["state"] = req.State
 	}
 	if req.City != "" {
 		updates["city"] = req.City

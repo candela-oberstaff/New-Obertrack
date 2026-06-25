@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -28,6 +29,19 @@ type DashboardMetrics struct {
 	InactiveWarning    int     `json:"inactive_warning"`
 }
 
+type ProfessionalLocation struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	PhoneNumber string `json:"phone_number"`
+	Avatar      string `json:"avatar"`
+	Country     string `json:"country"`
+	State       string `json:"state"`
+	City        string `json:"city"`
+	Company     string `json:"company"`
+	IsActive    bool   `json:"is_active"`
+}
+
 type AdminService interface {
 	GetDashboardMetrics() (*DashboardMetrics, error)
 	GetCompanies() ([]repository.CompanyMetric, error)
@@ -37,6 +51,7 @@ type AdminService interface {
 	GetStats() (map[string]interface{}, error)
 
 	GetAllUsers(userType, isManager, isActive, search string, offset, limit int) ([]models.User, int64, error)
+	GetProfessionalLocations(country, state, active string) ([]ProfessionalLocation, error)
 	// GetManagerReports lista los profesionales a cargo de un manager.
 	GetManagerReports(managerID uint) ([]models.User, error)
 	// BulkAssignManager asigna (o desasigna si managerID es nil) un manager a
@@ -55,6 +70,7 @@ type AdminService interface {
 	FindUserByEmail(email string) (*models.User, error)
 
 	GetSeniorityRanking() ([]repository.SeniorityItem, error)
+	BulkEmailProfessionals(userIDs []uint, subject, body string) BulkEmailResult
 	GetLatestFollowUps(kind string) ([]repository.FollowUpInfo, error)
 	CreateFollowUp(userID, createdBy uint, kind, status, note string) (*models.FollowUp, error)
 	GetTenants() ([]repository.TenantSummary, error)
@@ -80,6 +96,7 @@ type adminService struct {
 	taskRepo       repository.TaskRepository
 	workHourRepo   repository.WorkHourRepository
 	employmentRepo repository.EmploymentRepository
+	brevoSvc       *BrevoService
 }
 
 func NewAdminService(
@@ -88,6 +105,7 @@ func NewAdminService(
 	taskRepo repository.TaskRepository,
 	workHourRepo repository.WorkHourRepository,
 	employmentRepo repository.EmploymentRepository,
+	brevoSvc *BrevoService,
 ) AdminService {
 	return &adminService{
 		repo:           repo,
@@ -95,6 +113,7 @@ func NewAdminService(
 		taskRepo:       taskRepo,
 		workHourRepo:   workHourRepo,
 		employmentRepo: employmentRepo,
+		brevoSvc:       brevoSvc,
 	}
 }
 
@@ -107,7 +126,7 @@ func (s *adminService) GetDashboardMetrics() (*DashboardMetrics, error) {
 	activeUsers, _ := s.userRepo.Count("", "", "true", 0)
 	m.ActiveUsers = int(activeUsers)
 
-	_, comp, _ := s.userRepo.GetAll("empleador", "", "", 0, 0, 1)
+	comp, _ := s.userRepo.CountCompanies()
 	m.TotalCompanies = int(comp)
 
 	_, prof, _ := s.userRepo.GetAll("profesional", "", "", 0, 0, 1)
@@ -170,7 +189,7 @@ func (s *adminService) GetAbsenceReport(month, year int) (*repository.AbsenceRep
 func (s *adminService) GetStats() (map[string]interface{}, error) {
 	_, totalUsersCount, _ := s.userRepo.GetAll("", "", "", 0, 0, 1)
 	_, activeUsers, _ := s.userRepo.GetAll("", "", "", 0, 0, 1) // Needs IsActive filter in UserRepository
-	_, comp, _ := s.userRepo.GetAll("empleador", "", "", 0, 0, 1)
+	comp, _ := s.userRepo.CountCompanies()
 	hours, _ := s.workHourRepo.GetTotalHoursMonth()
 	s.taskRepo.FindAll(nil, 0, 1)
 
@@ -185,6 +204,55 @@ func (s *adminService) GetStats() (map[string]interface{}, error) {
 
 func (s *adminService) GetAllUsers(userType, isManager, isActive, search string, offset, limit int) ([]models.User, int64, error) {
 	return s.userRepo.GetAll(userType, isManager, search, 0, offset, limit)
+}
+
+func (s *adminService) GetProfessionalLocations(country, state, active string) ([]ProfessionalLocation, error) {
+	professionals, _, err := s.userRepo.GetAll(string(models.UserTypeProfessional), "", "", 0, 0, -1)
+	if err != nil {
+		return nil, err
+	}
+
+	companyByID := map[uint]string{}
+	for _, p := range professionals {
+		if p.EmpleadorID != nil {
+			companyByID[*p.EmpleadorID] = ""
+		}
+	}
+	for id := range companyByID {
+		if employer, err := s.userRepo.GetByID(id); err == nil {
+			companyByID[id] = employer.CompanyName
+		}
+	}
+
+	result := make([]ProfessionalLocation, 0, len(professionals))
+	for _, p := range professionals {
+		if country != "" && p.Country != country {
+			continue
+		}
+		if state != "" && p.State != state {
+			continue
+		}
+		if (active == "true" && !p.IsActive) || (active == "false" && p.IsActive) {
+			continue
+		}
+		company := ""
+		if p.EmpleadorID != nil {
+			company = companyByID[*p.EmpleadorID]
+		}
+		result = append(result, ProfessionalLocation{
+			ID:          p.ID,
+			Name:        p.Name,
+			Email:       p.Email,
+			PhoneNumber: p.PhoneNumber,
+			Avatar:      p.Avatar,
+			Country:     p.Country,
+			State:       p.State,
+			City:        p.City,
+			Company:     company,
+			IsActive:    p.IsActive,
+		})
+	}
+	return result, nil
 }
 
 func (s *adminService) GetManagerReports(managerID uint) ([]models.User, error) {
@@ -291,6 +359,10 @@ func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, err
 	}
 	if v, ok := req["is_manager"].(bool); ok {
 		user.IsManager = v
+	}
+
+	if userType == models.UserTypeEmployer && strings.TrimSpace(user.CompanyName) == "" {
+		return nil, errors.New("El nombre de la empresa es obligatorio")
 	}
 
 	// Solo profesionales y customer success pueden quedar vinculados a una empresa.
@@ -565,19 +637,50 @@ func (s *adminService) GetArchived(tenantID uint) ([]repository.ArchivedEntry, e
 	return s.repo.GetArchived(tenantID)
 }
 
+type BulkEmailFailure struct {
+	ID    uint   `json:"id"`
+	Email string `json:"email"`
+	Error string `json:"error"`
+}
+
+type BulkEmailResult struct {
+	Sent   int                `json:"sent"`
+	Failed []BulkEmailFailure `json:"failed"`
+}
+
+func (s *adminService) BulkEmailProfessionals(userIDs []uint, subject, body string) BulkEmailResult {
+	result := BulkEmailResult{Failed: []BulkEmailFailure{}}
+	for _, id := range userIDs {
+		user, err := s.userRepo.GetByID(id)
+		if err != nil {
+			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Error: "Usuario no encontrado"})
+			continue
+		}
+		if err := s.brevoSvc.SendEmail(user.Email, user.Name, subject, body); err != nil {
+			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Email: user.Email, Error: err.Error()})
+			continue
+		}
+		result.Sent++
+	}
+	return result
+}
+
 func (s *adminService) GetLatestFollowUps(kind string) ([]repository.FollowUpInfo, error) {
 	if !models.IsValidFollowUpKind(kind) {
-		return nil, errors.New("Tipo de seguimiento inválido: usa 'inactivity' o 'absence'")
+		return nil, errors.New("Tipo de seguimiento inválido: usa 'inactivity', 'absence' o 'emergencia'")
 	}
 	return s.repo.GetLatestFollowUps(kind)
 }
 
 func (s *adminService) CreateFollowUp(userID, createdBy uint, kind, status, note string) (*models.FollowUp, error) {
 	if !models.IsValidFollowUpKind(kind) {
-		return nil, errors.New("Tipo de seguimiento inválido: usa 'inactivity' o 'absence'")
+		return nil, errors.New("Tipo de seguimiento inválido: usa 'inactivity', 'absence' o 'emergencia'")
 	}
-	if !models.IsValidFollowUpStatus(status) {
+	if kind != models.FollowUpKindEmergency && !models.IsValidFollowUpStatus(status) {
 		return nil, errors.New("Estado inválido: usa 'contacted', 'justified' o 'escalated'")
+	}
+	if status == "" {
+		return nil, errors.New("Estado requerido")
 	}
 	if _, err := s.userRepo.GetByID(userID); err != nil {
 		return nil, errors.New("Usuario no encontrado")
@@ -692,6 +795,9 @@ func (s *adminService) AssignTenant(userID uint, companyName string) (*models.Us
 }
 
 func (s *adminService) CreateTenant(name, companyName, email, password string) (*models.User, error) {
+	if strings.TrimSpace(companyName) == "" {
+		return nil, errors.New("El nombre de la empresa es obligatorio")
+	}
 	if _, err := s.userRepo.GetByEmail(email); err == nil {
 		return nil, errors.New("Email already registered")
 	}

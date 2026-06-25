@@ -31,6 +31,7 @@ export const employerService = {
       job_title?: string
       phone_number?: string
       country?: string
+      state?: string
       city?: string
       location?: string
       is_active?: boolean

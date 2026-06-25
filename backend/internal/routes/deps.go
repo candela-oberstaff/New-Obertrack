@@ -41,6 +41,8 @@ type deps struct {
 	brevoInbound *handlers.BrevoInboundHandler
 	audit        *handlers.AuditHandler
 	audience     *handlers.AudienceHandler
+	incident     *handlers.IncidentHandler
+	emergencyTpl *handlers.EmergencyTemplateHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -76,6 +78,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	ticketRepo := repository.NewTicketRepository(db)
 	auditRepo := repository.NewAuditRepository(db)
 	audienceRepo := repository.NewAudienceRepository(db)
+	incidentRepo := repository.NewIncidentRepository(db)
+	emergencyTplRepo := repository.NewEmergencyTemplateRepository(db)
 
 	// Integrations
 	brevoSvc := service.NewBrevoService()
@@ -93,12 +97,14 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc, employmentRepo)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
 	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
-	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo)
+	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo, brevoSvc)
 	boardSvc := service.NewBoardService(boardRepo, userRepo)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
 	rbacSvc := service.NewRBACService(rbacRepo, userRepo)
 	employmentSvc := service.NewEmploymentService(employmentRepo, userRepo, workHourRepo, notifSvc)
 	auditSvc := service.NewAuditService(auditRepo)
+	incidentSvc := service.NewIncidentService(incidentRepo, userRepo, brevoSvc)
+	emergencyTplSvc := service.NewEmergencyTemplateService(emergencyTplRepo)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})
@@ -168,6 +174,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		brevoInbound: handlers.NewBrevoInboundHandler(ticketSvc),
 		audit:        handlers.NewAuditHandler(auditSvc),
 		audience:     handlers.NewAudienceHandler(audienceRepo),
+		incident:     handlers.NewIncidentHandler(incidentSvc),
+		emergencyTpl: handlers.NewEmergencyTemplateHandler(emergencyTplSvc),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,

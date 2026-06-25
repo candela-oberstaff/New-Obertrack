@@ -127,6 +127,8 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	{
 		admin.GET("/users/:id/reports", d.admin.GetManagerReports)
 		admin.POST("/bulk-assign-manager", d.admin.BulkAssignManager)
+		admin.GET("/professionals/locations", d.admin.GetProfessionalLocations)
+		admin.POST("/professionals/bulk-email", d.admin.BulkEmailProfessionals)
 		admin.GET("/import/template", d.admin.DownloadImportTemplate)
 		admin.POST("/import/preview", d.admin.ImportPreview)
 		admin.POST("/import/execute", d.admin.ImportExecute)
@@ -182,6 +184,18 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.POST("/tenants/:id/suspend", d.admin.SuspendTenant)
 		admin.POST("/tenants/:id/activate", d.admin.ActivateTenant)
 		admin.GET("/employees/:id/tracking", d.admin.GetEmployeeTracking)
+
+		admin.GET("/incidents", d.incident.List)
+		admin.POST("/incidents", d.incident.Create)
+		admin.GET("/incidents/:id", d.incident.Get)
+		admin.PUT("/incidents/:id/close", d.incident.Close)
+		admin.POST("/incidents/:id/broadcast", d.incident.Broadcast)
+		admin.PUT("/incidents/:id/responses/:userId", d.incident.UpsertResponse)
+
+		admin.GET("/emergency-templates", d.emergencyTpl.List)
+		admin.POST("/emergency-templates", d.emergencyTpl.Create)
+		admin.PUT("/emergency-templates/:id", d.emergencyTpl.Update)
+		admin.DELETE("/emergency-templates/:id", d.emergencyTpl.Delete)
 	}
 
 	// Gestión del expediente por el EMPLEADOR (solo su empresa). Reusa los

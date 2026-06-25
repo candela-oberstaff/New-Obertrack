@@ -3,7 +3,7 @@ import { userService } from '../../services/api'
 import type { User } from '../../types'
 import Tooltip from '../Common/Tooltip'
 import { Select } from '../ui/Select'
-import { COUNTRY_OPTIONS } from '../Auth/countries'
+import { COUNTRY_OPTIONS, getStatesForCountry } from '../Auth/countries'
 import styles from '../../pages/Profile.module.css'
 
 interface ProfileFormProps {
@@ -20,6 +20,7 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
     name: user.name || '',
     phone_number: user.phone_number || '',
     country: user.country || '',
+    state: user.state || '',
     city: user.city || '',
     location: user.location || '',
     job_title: user.job_title || '',
@@ -50,6 +51,11 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
   const countryOptions = !formData.country || COUNTRY_OPTIONS.some(o => o.value === formData.country)
     ? COUNTRY_OPTIONS
     : [{ value: formData.country, label: formData.country }, ...COUNTRY_OPTIONS]
+
+  const baseStateOptions = getStatesForCountry(formData.country)
+  const stateOptions = !formData.state || baseStateOptions.some(o => o.value === formData.state)
+    ? baseStateOptions
+    : [{ value: formData.state, label: formData.state }, ...baseStateOptions]
 
   return (
     <div className={styles['info-card']}>
@@ -94,11 +100,25 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
               <Select
                 fullWidth
                 value={formData.country}
-                onChange={(v) => setFormData({ ...formData, country: String(v) })}
+                onChange={(v) => setFormData({ ...formData, country: String(v), state: '' })}
                 placeholder="Selecciona un país..."
                 options={countryOptions}
               />
             </div>
+            <div className={styles['form-group']}>
+              <label>Provincia / Estado</label>
+              <Select
+                fullWidth
+                value={formData.state}
+                onChange={(v) => setFormData({ ...formData, state: String(v) })}
+                placeholder="Selecciona una provincia..."
+                options={stateOptions}
+                disabled={!formData.country || stateOptions.length === 0}
+              />
+            </div>
+          </div>
+
+          <div className={styles['form-row']}>
             <div className={styles['form-group']}>
               <label>Ciudad</label>
               <input
@@ -148,6 +168,10 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
           <div className={styles['info-item']}>
             <span className={styles['info-label']}>País</span>
             <span className={styles['info-value']}>{user.country || 'No registrado'}</span>
+          </div>
+          <div className={styles['info-item']}>
+            <span className={styles['info-label']}>Provincia / Estado</span>
+            <span className={styles['info-value']}>{user.state || 'No registrado'}</span>
           </div>
           <div className={styles['info-item']}>
             <span className={styles['info-label']}>Ciudad</span>

@@ -17,10 +17,11 @@ func IsValidFollowUpStatus(status string) bool {
 const (
 	FollowUpKindInactivity = "inactivity"
 	FollowUpKindAbsence    = "absence"
+	FollowUpKindEmergency  = "emergencia"
 )
 
 func IsValidFollowUpKind(kind string) bool {
-	return kind == FollowUpKindInactivity || kind == FollowUpKindAbsence
+	return kind == FollowUpKindInactivity || kind == FollowUpKindAbsence || kind == FollowUpKindEmergency
 }
 
 // FollowUp es una entrada de la bitácora de gestión de customer success sobre

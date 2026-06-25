@@ -1,6 +1,7 @@
 import { User } from '../../../types'
 import { Select } from '../../ui/Select'
 import { Modal, Button } from '../../ui'
+import { COUNTRY_OPTIONS, getStatesForCountry } from '../../Auth/countries'
 import styles from '../Admin.module.css'
 
 interface UserModalProps {
@@ -170,10 +171,15 @@ export function UserModal({
             <div className={styles['form-row']}>
               <div className={styles['form-group']}>
                 <label>País</label>
-                <input
-                  type="text"
-                  value={form.country}
-                  onChange={e => setForm({ ...form, country: e.target.value })}
+                <Select
+                  fullWidth
+                  clearable
+                  value={form.country || ''}
+                  onChange={v => setForm({ ...form, country: v ? String(v) : '', state: '' })}
+                  placeholder="Seleccionar país..."
+                  options={form.country && !COUNTRY_OPTIONS.some(o => o.value === form.country)
+                    ? [{ value: form.country, label: form.country }, ...COUNTRY_OPTIONS]
+                    : COUNTRY_OPTIONS}
                 />
               </div>
               <div className={styles['form-group']}>
@@ -184,6 +190,25 @@ export function UserModal({
                   onChange={e => setForm({ ...form, city: e.target.value })}
                 />
               </div>
+            </div>
+            <div className={styles['form-group']}>
+              <label>Provincia / Estado</label>
+              {getStatesForCountry(form.country).length > 0 ? (
+                <Select
+                  fullWidth
+                  clearable
+                  value={form.state || ''}
+                  onChange={v => setForm({ ...form, state: v ? String(v) : '' })}
+                  placeholder="Seleccionar provincia/estado..."
+                  options={getStatesForCountry(form.country)}
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={form.state || ''}
+                  onChange={e => setForm({ ...form, state: e.target.value })}
+                />
+              )}
             </div>
             <div className={styles['form-group']}>
               <label>Ubicación</label>
