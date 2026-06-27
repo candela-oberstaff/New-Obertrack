@@ -35,8 +35,7 @@ func WrapInPremiumTemplate(title string, content string) string {
             </tr>
             <tr>
                 <td style="padding: 20px; text-align: center; font-size: 12px; color: #64748b;">
-                    &copy; %d %s. Todos los derechos reservados.<br>
-                    Este es un mensaje automático, por favor no respondas a este correo.
+                    &copy; %d %s. Todos los derechos reservados.
                 </td>
             </tr>
         </table>
