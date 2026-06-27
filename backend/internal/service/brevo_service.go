@@ -58,7 +58,7 @@ func (s *BrevoService) SendEmail(toEmail, toName, subject, htmlContent string) e
 
 	// Wrap HTML with Obertrack header/logo and footer if it is not already wrapped
 	wrappedHTML := htmlContent
-	if !strings.Contains(htmlContent, "<!-- Obertrack Logo -->") && !strings.Contains(htmlContent, "<html") {
+	if !strings.Contains(htmlContent, "<!-- Obertrack Logo -->") && !strings.Contains(htmlContent, "<!-- Oberstaff Logo -->") && !strings.Contains(htmlContent, "<html") {
 		wrappedHTML = fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
@@ -67,9 +67,9 @@ func (s *BrevoService) SendEmail(toEmail, toName, subject, htmlContent string) e
 <body style="margin: 0; padding: 0; background-color: #f6f8fa;">
 	<div style="max-width: 600px; margin: 24px auto; background: #ffffff; border: 1px solid #ddd9ef; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(6, 11, 35, 0.05); font-family: sans-serif;">
 		<!-- Banner con Logo -->
-		<div style="background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; color: #ffffff; text-align: center;">
-			<img src="https://obertrack.com/logos/Horizontal_Blanco.png" alt="Obertrack Logo" height="40" style="display: block; margin: 0 auto 12px auto; height: 40px; border: 0; outline: none;" />
-			<!-- Obertrack Logo -->
+		<div style="background: #ffffff; padding: 32px 24px; text-align: center; border-bottom: 1px solid #ddd9ef;">
+			<img src="https://obertrack.com/logos/logo-oberstaff.png" alt="Oberstaff Logo" height="40" style="display: block; margin: 0 auto 12px auto; height: 40px; border: 0; outline: none;" />
+			<!-- Oberstaff Logo -->
 		</div>
 
 		<!-- Contenido -->

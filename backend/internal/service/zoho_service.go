@@ -488,6 +488,11 @@ func (s *ZohoService) ListTickets(assigneeID string) ([]ZohoTicket, error) {
 		return nil, err
 	}
 
+	channelName := os.Getenv("ZOHO_WHATSAPP_CHANNEL")
+	if channelName == "" {
+		channelName = "Oberstaff"
+	}
+
 	// Warm up agent cache if empty to avoid multiple single GetAgent calls
 	s.mu.RLock()
 	cacheLen := len(s.agentCache)
@@ -498,17 +503,25 @@ func (s *ZohoService) ListTickets(assigneeID string) ([]ZohoTicket, error) {
 		}
 	}
 
+	var filtered []ZohoTicket
 	for i := range ticketsResponse.Data {
 		t := &ticketsResponse.Data[i]
+
+		// Filter locally by channel
+		if !strings.EqualFold(t.Channel, channelName) {
+			continue
+		}
+
 		if t.AssigneeID != "" {
 			if agentInfo, err := s.GetAgent(t.AssigneeID); err == nil {
 				t.AssigneeName = agentInfo.Name
 				t.AssigneeEmail = agentInfo.Email
 			}
 		}
+		filtered = append(filtered, *t)
 	}
 
-	return ticketsResponse.Data, nil
+	return filtered, nil
 }
 
 // GetTicketDetail retrieves detailed single ticket info including details
@@ -724,6 +737,60 @@ func (s *ZohoService) ReplyTicket(ticketID string, content string, channel strin
 	return &thread, nil
 }
 
+// getSystemAgentID retorna el ID del agente de sistema (de integración).
+// Primero intenta leer ZOHO_SYSTEM_AGENT_ID del entorno. Si está vacío,
+// busca dinámicamente en la lista de agentes al agente con email "info@oberstaff.com".
+func (s *ZohoService) getSystemAgentID(token string, orgID string) (string, error) {
+	systemAgentID := os.Getenv("ZOHO_SYSTEM_AGENT_ID")
+	if systemAgentID != "" {
+		return systemAgentID, nil
+	}
+
+	urlStr := "https://desk.zoho.com/api/v1/agents"
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+	req.Header.Set("orgId", orgID)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("error listing agents: status %d, body %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Data []struct {
+			ID      string `json:"id"`
+			EmailID string `json:"emailId"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	for _, agent := range result.Data {
+		if strings.ToLower(agent.EmailID) == "info@oberstaff.com" {
+			return agent.ID, nil
+		}
+	}
+
+	if len(result.Data) > 0 {
+		log.Printf("[ZohoService] Warning: system agent info@oberstaff.com not found, using first agent: %s", result.Data[0].ID)
+		return result.Data[0].ID, nil
+	}
+
+	return "", errors.New("no agents found in Zoho Desk")
+}
+
 // 🚀 ======================================================================
 // 🚀 METODO AGREGADO: ReplyWhatsAppLiveChat para h.zohoSvc.ReplyWhatsAppLiveChat
 // 🚀 ======================================================================
@@ -760,13 +827,54 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 		return nil, fmt.Errorf("error parseando json del ticket: %w", err)
 	}
 
+	var originalAssigneeID string
+	if ticketData["assigneeId"] != nil {
+		originalAssigneeID, _ = ticketData["assigneeId"].(string)
+	}
+
 	source, ok := ticketData["source"].(map[string]interface{})
 	if !ok || source["extId"] == nil {
 		return nil, fmt.Errorf("el ticket no contiene una sesion de mensajeria activa (source.extId)")
 	}
 	sessionID := source["extId"].(string)
 
-	// 2. 🚀 PAYLOAD LIQUIDADO SIN 'displayMessage'
+	// 2. 🚀 TOMA DE CONTROL DE LA SESION (PATCH assignee)
+	systemAgentID, err := s.getSystemAgentID(token, orgID)
+	if err != nil {
+		log.Printf("[ZohoService] Warning: no se pudo obtener el ID del agente de sistema: %v", err)
+	} else if systemAgentID != "" {
+		patchURL := fmt.Sprintf("https://desk.zoho.com/api/v1/im/sessions/%s", sessionID)
+		patchPayload := map[string]interface{}{
+			"agentId": systemAgentID,
+		}
+		patchBody, err := json.Marshal(patchPayload)
+		if err != nil {
+			return nil, fmt.Errorf("error codificando patch: %w", err)
+		}
+
+		patchReq, err := http.NewRequest("PATCH", patchURL, bytes.NewBuffer(patchBody))
+		if err != nil {
+			return nil, fmt.Errorf("error creando patch request: %w", err)
+		}
+		patchReq.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+		patchReq.Header.Set("orgId", orgID)
+		patchReq.Header.Set("Content-Type", "application/json")
+
+		patchResp, err := client.Do(patchReq)
+		if err != nil {
+			log.Printf("[ZohoService] Warning: error enviando patch de reasignacion: %v", err)
+		} else {
+			defer patchResp.Body.Close()
+			if patchResp.StatusCode != http.StatusOK {
+				patchBytes, _ := io.ReadAll(patchResp.Body)
+				log.Printf("[ZohoService] Warning: patch retorno status %d: %s", patchResp.StatusCode, string(patchBytes))
+			} else {
+				log.Printf("[ZohoService] Sesión de chat %s reasignada exitosamente a agente de sistema %s", sessionID, systemAgentID)
+			}
+		}
+	}
+
+	// 3. 🚀 PAYLOAD LIQUIDADO SIN 'displayMessage'
 	payload := map[string]interface{}{
 		"message": content,
 	}
@@ -805,6 +913,26 @@ func (s *ZohoService) ReplyWhatsAppLiveChat(ticketID string, content string, age
 	}
 
 	log.Printf("[ZohoService] ✅ Mensaje enviado exitosamente vía API pública.")
+
+	// 4. 🚀 DEVOLVER EL CONTROL A LA PERSONA ASIGNADA ORIGINALMENTE
+	if originalAssigneeID != "" && originalAssigneeID != systemAgentID {
+		restoreURL := fmt.Sprintf("https://desk.zoho.com/api/v1/im/sessions/%s", sessionID)
+		restorePayload := map[string]interface{}{
+			"agentId": originalAssigneeID,
+		}
+		restoreBody, _ := json.Marshal(restorePayload)
+		restoreReq, _ := http.NewRequest("PATCH", restoreURL, bytes.NewBuffer(restoreBody))
+		restoreReq.Header.Set("Authorization", "Zoho-oauthtoken "+token)
+		restoreReq.Header.Set("orgId", orgID)
+		restoreReq.Header.Set("Content-Type", "application/json")
+
+		if restoreResp, rErr := client.Do(restoreReq); rErr == nil {
+			restoreResp.Body.Close()
+			log.Printf("[ZohoService] ✅ Sesión de chat devuelta al agente original: %s", originalAssigneeID)
+		} else {
+			log.Printf("[ZohoService] Warning: no se pudo devolver la sesión al agente original %s: %v", originalAssigneeID, rErr)
+		}
+	}
 
 	var msgResp struct {
 		ID string `json:"id"`
@@ -1122,7 +1250,11 @@ func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modi
 	}
 
 	params := url.Values{}
-	params.Set("channel", "Oberstaff")
+	channelName := os.Getenv("ZOHO_WHATSAPP_CHANNEL")
+	if channelName == "" {
+		channelName = "Oberstaff"
+	}
+	params.Set("channel", channelName)
 	params.Set("sortBy", "-modifiedTime")
 	params.Set("limit", "50")
 	params.Set("include", "contacts")
@@ -1131,6 +1263,9 @@ func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modi
 	}
 	if modifiedTimeRange != "" {
 		params.Set("modifiedTimeRange", modifiedTimeRange)
+	}
+	if assigneeID != "" && assigneeID != "unassigned" {
+		params.Set("assigneeId", assigneeID)
 	}
 
 	urlStr := "https://desk.zoho.com/api/v1/tickets?" + params.Encode()
@@ -1180,25 +1315,27 @@ func (s *ZohoService) ListWhatsAppTickets(assigneeID string, status string, modi
 		}
 	}
 
-	if assigneeID == "unassigned" {
-		var filtered []ZohoTicket
-		for _, t := range ticketsResp.Data {
+	var filtered []ZohoTicket
+	for _, t := range ticketsResp.Data {
+		// Filter by channel name locally since Zoho GET /tickets ignores the channel parameter
+		if !strings.EqualFold(t.Channel, channelName) {
+			continue
+		}
+
+		if assigneeID == "unassigned" {
 			if t.AssigneeID == "" {
 				filtered = append(filtered, t)
 			}
-		}
-		return filtered, nil
-	} else if assigneeID != "" {
-		var filtered []ZohoTicket
-		for _, t := range ticketsResp.Data {
+		} else if assigneeID != "" {
 			if t.AssigneeID == assigneeID {
 				filtered = append(filtered, t)
 			}
+		} else {
+			filtered = append(filtered, t)
 		}
-		return filtered, nil
 	}
 
-	return ticketsResp.Data, nil
+	return filtered, nil
 }
 
 // AssignTicket assigns a Zoho Desk ticket to the given agent ID.
@@ -1271,8 +1408,21 @@ func (s *ZohoService) GetWhatsAppChannelID() (string, error) {
 		return "", err
 	}
 
+	channelName := strings.ToLower(os.Getenv("ZOHO_WHATSAPP_CHANNEL"))
+	if channelName == "" {
+		channelName = "oberstaff"
+	}
+
+	// First pass: look for exact/partial name match
 	for _, ch := range channels {
-		if strings.EqualFold(ch.IntegrationService, "WHATSAPP") || strings.Contains(strings.ToLower(ch.Name), "oberstaff") {
+		if strings.Contains(strings.ToLower(ch.Name), channelName) {
+			return ch.ID, nil
+		}
+	}
+
+	// Second pass: fallback to any service that is WHATSAPP
+	for _, ch := range channels {
+		if strings.EqualFold(ch.IntegrationService, "WHATSAPP") {
 			return ch.ID, nil
 		}
 	}

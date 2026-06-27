@@ -4,6 +4,7 @@ import (
 	"hash/fnv"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -255,6 +256,10 @@ func (h *TicketHandler) isTicketOwner(c *gin.Context, zt *service.ZohoTicket) bo
 	agentID, err := h.resolveZohoAgentID(c)
 	if err != nil {
 		return false
+	}
+	systemAgentID := os.Getenv("ZOHO_SYSTEM_AGENT_ID")
+	if systemAgentID != "" && zt.AssigneeID == systemAgentID {
+		return true
 	}
 	return zt.AssigneeID == agentID
 }
