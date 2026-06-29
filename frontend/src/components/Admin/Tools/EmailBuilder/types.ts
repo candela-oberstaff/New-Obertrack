@@ -1,4 +1,4 @@
-export type BlockType = 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'social' | 'columns';
+export type BlockType = 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'social' | 'columns' | 'settings';
 
 export interface Block {
   id: string;

@@ -7,7 +7,7 @@ import styles from './EmailBuilder.module.css'
 import { uploadService } from '../../services/upload.service'
 
 // ─── Block types & defaults ─────────────────────────────────────────────────
-export type BlockType = 'text' | 'button' | 'image' | 'divider' | 'spacer' | 'social'
+export type BlockType = 'text' | 'button' | 'image' | 'divider' | 'spacer' | 'social' | 'settings'
 
 export interface EmailBlock {
   id: string
@@ -41,49 +41,71 @@ const uid = () => Math.random().toString(36).slice(2, 9)
 
 // Helper to compile blocks into final HTML structure
 export function compileBlocksToHTML(blocks: EmailBlock[]): string {
-  const rows = blocks.map(block => {
-    switch (block.type) {
-      case 'text':
-        return `<div style="padding: 12px 24px; font-size: ${block.style.fontSize || '16px'}; color: ${block.style.color || '#1e293b'}; line-height: 1.6; font-family: sans-serif; white-space: pre-wrap;">${block.content}</div>`
-      case 'button': {
-        const align = block.style.align || 'center'
-        return `<div style="padding: 12px 24px; text-align: ${align};">
-          <a href="${block.style.linkUrl || '#'}" target="_blank" style="display: inline-block; padding: 12px 28px; background-color: ${block.style.backgroundColor || '#7c3aed'}; color: ${block.style.color || '#ffffff'}; border-radius: ${block.style.borderRadius || '8px'}; font-weight: bold; text-decoration: none; font-size: 15px; font-family: sans-serif;">
-            ${block.content}
-          </a>
-        </div>`
-      }
-      case 'image':
-        if (!block.content) return ''
-        return `<div style="padding: 12px 24px; text-align: center;">
-          <img src="${block.content}" alt="" style="width: ${block.style.width || '100%'}; max-width: 100%; border-radius: 4px; display: inline-block;" />
-        </div>`
-      case 'divider':
-        return `<div style="padding: 8px 24px;">
-          <hr style="border: none; border-top: ${block.style.borderHeight || '1px'} ${block.style.borderStyle || 'solid'} ${block.style.borderColor || '#e2e8f0'}; margin: 0;" />
-        </div>`
-      case 'spacer':
-        return `<div style="height: ${block.style.height || '24px'};"></div>`
-      case 'social':
-        return `<div style="padding: 12px 24px; text-align: center; font-family: sans-serif;">
-          <a href="#" style="margin: 0 8px; color: #7c3aed; font-weight: 600; text-decoration: none; font-size: 13px;">Facebook</a>
-          <a href="#" style="margin: 0 8px; color: #7c3aed; font-weight: 600; text-decoration: none; font-size: 13px;">Instagram</a>
-          <a href="#" style="margin: 0 8px; color: #7c3aed; font-weight: 600; text-decoration: none; font-size: 13px;">LinkedIn</a>
-        </div>`
-      default:
-        return ''
-    }
-  }).join('\n')
+  const settingsBlock = blocks.find(b => b.type === 'settings')
+  const settings = {
+    maxWidth: settingsBlock?.style?.maxWidth || '600px',
+    showHeader: settingsBlock?.style?.showHeader !== 'false',
+    showFooter: settingsBlock?.style?.showFooter !== 'false',
+    companyName: settingsBlock?.style?.companyName || 'Oberstaff',
+    logoUrl: settingsBlock?.style?.logoUrl || 'https://obertrack.com/logos/logo-oberstaff.png',
+    headerBg: settingsBlock?.style?.headerBg || '#ffffff',
+    footerBg: settingsBlock?.style?.footerBg || '#f8fafc'
+  }
 
-  return `
-<div style="background-color: #ffffff; width: 100%; max-width: 600px; margin: 0 auto; overflow: hidden; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
-  <div style="background-color: #f5f2fb; padding: 20px; text-align: center; border-bottom: 1px solid #e2e8f0;">
-    <span style="font-size: 12px; color: #7c3aed; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; font-family: sans-serif;">Obertrack</span>
-  </div>
-  ${rows}
-  <div style="background-color: #f8fafc; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; font-family: sans-serif;">
-    © 2026 Obertrack · Este mensaje fue enviado automáticamente.
-  </div>
+  const rows = blocks
+    .filter(b => b.type !== 'settings')
+    .map(block => {
+      switch (block.type) {
+        case 'text':
+          return `<div style="padding: 12px 24px; font-size: ${block.style.fontSize || '16px'}; color: ${block.style.color || '#1e293b'}; line-height: 1.6; font-family: sans-serif; white-space: pre-wrap;">${block.content}</div>`
+        case 'button': {
+          const align = block.style.align || 'center'
+          return `<div style="padding: 12px 24px; text-align: ${align};">
+            <a href="${block.style.linkUrl || '#'}" target="_blank" style="display: inline-block; padding: 12px 28px; background-color: ${block.style.backgroundColor || '#7c3aed'}; color: ${block.style.color || '#ffffff'}; border-radius: ${block.style.borderRadius || '8px'}; font-weight: bold; text-decoration: none; font-size: 15px; font-family: sans-serif;">
+              ${block.content}
+            </a>
+          </div>`
+        }
+        case 'image':
+          if (!block.content) return ''
+          return `<div style="padding: 12px 24px; text-align: center;">
+            <img src="${block.content}" alt="" style="width: ${block.style.width || '100%'}; max-width: 100%; border-radius: 4px; display: inline-block;" />
+          </div>`
+        case 'divider':
+          return `<div style="padding: 8px 24px;">
+            <hr style="border: none; border-top: ${block.style.borderHeight || '1px'} ${block.style.borderStyle || 'solid'} ${block.style.borderColor || '#e2e8f0'}; margin: 0;" />
+          </div>`
+        case 'spacer':
+          return `<div style="height: ${block.style.height || '24px'};"></div>`
+        case 'social':
+          return `<div style="padding: 12px 24px; text-align: center; font-family: sans-serif;">
+            <a href="#" style="margin: 0 8px; color: #7c3aed; font-weight: 600; text-decoration: none; font-size: 13px;">Facebook</a>
+            <a href="#" style="margin: 0 8px; color: #7c3aed; font-weight: 600; text-decoration: none; font-size: 13px;">Instagram</a>
+            <a href="#" style="margin: 0 8px; color: #7c3aed; font-weight: 600; text-decoration: none; font-size: 13px;">LinkedIn</a>
+          </div>`
+        default:
+          return ''
+      }
+    }).join('\n')
+
+  let headerHTML = ''
+  if (settings.showHeader) {
+    headerHTML = `\n  <div style="background-color: ${settings.headerBg}; padding: 20px; text-align: center; border-bottom: 1px solid #e2e8f0;">
+    <a href="https://oberstaff.com" target="_blank" style="display: inline-block; text-decoration: none;">
+      <img src="${settings.logoUrl}" alt="${settings.companyName}" style="max-height: 50px; width: auto; border: 0; display: block; margin: 0 auto;" />
+    </a>
+  </div>`
+  }
+
+  let footerHTML = ''
+  if (settings.showFooter) {
+    footerHTML = `\n  <div style="background-color: ${settings.footerBg}; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; font-family: sans-serif;">
+    © 2026 ${settings.companyName} · Este mensaje fue enviado automáticamente.
+  </div>`
+  }
+
+  return `<div style="background-color: #ffffff; width: 100%; max-width: ${settings.maxWidth}; margin: 0 auto; overflow: hidden; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">${headerHTML}
+  ${rows}${footerHTML}
 </div>`
 }
 
@@ -285,6 +307,44 @@ export default function EmailBuilder({ blocks, onChange }: Props) {
 
   const selectedBlock = blocks.find(b => b.id === selectedId) ?? null
 
+  const contentBlocks = blocks.filter(b => b.type !== 'settings')
+  const isRaw = contentBlocks.length === 1 && contentBlocks[0].style?.raw === 'true'
+
+  const settingsBlock = blocks.find(b => b.type === 'settings')
+  const settings = {
+    maxWidth: settingsBlock?.style?.maxWidth || '600px',
+    showHeader: settingsBlock?.style?.showHeader !== 'false',
+    showFooter: settingsBlock?.style?.showFooter !== 'false',
+    companyName: settingsBlock?.style?.companyName || 'Oberstaff',
+    logoUrl: settingsBlock?.style?.logoUrl || 'https://obertrack.com/logos/logo-oberstaff.png',
+    headerBg: settingsBlock?.style?.headerBg || '#ffffff',
+    footerBg: settingsBlock?.style?.footerBg || '#f8fafc'
+  }
+
+  const updateSettings = useCallback((key: string, value: string) => {
+    const hasSettings = blocks.some(b => b.type === 'settings')
+    if (hasSettings) {
+      onChange(blocks.map(b => b.type === 'settings' ? { ...b, style: { ...b.style, [key]: value } } : b))
+    } else {
+      const newSettingsBlock: EmailBlock = {
+        id: 'settings_block',
+        type: 'settings',
+        content: '',
+        style: {
+          maxWidth: '600px',
+          showHeader: 'true',
+          showFooter: 'true',
+          companyName: 'Oberstaff',
+          logoUrl: 'https://obertrack.com/logos/logo-oberstaff.png',
+          headerBg: '#ffffff',
+          footerBg: '#f8fafc',
+          [key]: value
+        }
+      }
+      onChange([...blocks, newSettingsBlock])
+    }
+  }, [blocks, onChange])
+
   const addBlock = useCallback((type: BlockType) => {
     const newBlock: EmailBlock = { id: uid(), ...defaultBlock(type) }
     onChange([...blocks, newBlock])
@@ -446,17 +506,32 @@ export default function EmailBuilder({ blocks, onChange }: Props) {
 
             {/* Canvas */}
             <div className="flex-1 overflow-y-auto bg-slate-100 flex flex-col items-center py-6 px-4">
-              <div className="w-full max-w-[500px] bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                <div className="bg-purple-50/50 py-3 text-center border-b border-slate-100">
-                  <span className="text-[10px] text-purple-600 font-bold uppercase tracking-widest">Pre-Header Obertrack</span>
-                </div>
-                {blocks.length === 0 || (blocks.length === 1 && blocks[0].style?.raw === 'true') ? (
-                  <div className="py-16 text-center text-slate-400">
-                    <AlignJustify className="mx-auto mb-2.5 opacity-30" size={32} />
-                    <p className="text-xs">Haz clic en los bloques de la izquierda<br />para comenzar a armar tu correo.</p>
+              <div 
+                className="w-full bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden transition-all duration-300"
+                style={{ maxWidth: settings.maxWidth }}
+              >
+                {settings.showHeader && (
+                  <div 
+                    className="py-4 text-center border-b border-slate-100 flex items-center justify-center"
+                    style={{ backgroundColor: settings.headerBg }}
+                  >
+                    <img src={settings.logoUrl} alt={settings.companyName} className="max-h-8 object-contain" />
                   </div>
+                )}
+                {contentBlocks.length === 0 || isRaw ? (
+                  isRaw ? (
+                    <div className="py-16 text-center text-slate-400">
+                      <Code className="mx-auto mb-2.5 opacity-30" size={32} />
+                      <p className="text-xs">Esta plantilla utiliza código HTML crudo / Tailwind.<br />Edítala desde la pestaña <strong>Código</strong>.</p>
+                    </div>
+                  ) : (
+                    <div className="py-16 text-center text-slate-400">
+                      <AlignJustify className="mx-auto mb-2.5 opacity-30" size={32} />
+                      <p className="text-xs">Haz clic en los bloques de la izquierda<br />para comenzar a armar tu correo.</p>
+                    </div>
+                  )
                 ) : (
-                  blocks.filter(b => b.style?.raw !== 'true').map(b => (
+                  contentBlocks.map(b => (
                     <div
                       key={b.id}
                       className={`relative group border-2 border-transparent transition-all ${
@@ -491,22 +566,106 @@ export default function EmailBuilder({ blocks, onChange }: Props) {
                     </div>
                   ))
                 )}
-                <div className="bg-slate-50 py-3 text-center border-t border-slate-100 text-[9px] text-slate-400">
-                  © 2026 Obertrack · Este mensaje fue enviado automáticamente.
-                </div>
+                {settings.showFooter && (
+                  <div 
+                    className="py-3 text-center border-t border-slate-100 text-[9px] text-slate-400"
+                    style={{ backgroundColor: settings.footerBg }}
+                  >
+                    © 2026 {settings.companyName} · Este mensaje fue enviado automáticamente.
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Inspector */}
             <div className="w-[220px] bg-white border-l border-slate-200 flex flex-col overflow-y-auto">
               <div className="px-4 py-3 text-[10px] font-bold tracking-wider text-slate-500 uppercase border-b border-slate-200 bg-slate-50">
-                Propiedades
+                {selectedBlock ? 'Propiedades' : 'Ajustes de Plantilla'}
               </div>
               {selectedBlock && selectedBlock.style?.raw !== 'true' ? (
                 <Inspector block={selectedBlock} onChange={updateBlock} />
               ) : (
-                <div className="flex-1 flex items-center justify-center text-slate-300 text-xs text-center px-6 py-8">
-                  Selecciona un bloque para editar sus propiedades
+                <div className="flex flex-col p-4 gap-4 text-slate-700 text-xs">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Ancho Máximo</label>
+                    <select
+                      value={settings.maxWidth}
+                      onChange={e => updateSettings('maxWidth', e.target.value)}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-slate-700 outline-none focus:border-purple-500 bg-white"
+                    >
+                      <option value="500px">500px</option>
+                      <option value="600px">600px (Default)</option>
+                      <option value="650px">650px</option>
+                      <option value="700px">700px</option>
+                      <option value="800px">800px</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mostrar Cabecera</label>
+                    <input
+                      type="checkbox"
+                      checked={settings.showHeader}
+                      onChange={e => updateSettings('showHeader', e.target.checked ? 'true' : 'false')}
+                      className="rounded text-purple-600 focus:ring-purple-500 h-4 w-4 border-slate-300"
+                    />
+                  </div>
+
+                  {settings.showHeader && (
+                    <>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">URL del Logo</label>
+                        <input
+                          type="text"
+                          value={settings.logoUrl}
+                          onChange={e => updateSettings('logoUrl', e.target.value)}
+                          className="w-full px-2 py-1.5 border border-slate-200 rounded text-slate-700 outline-none focus:border-purple-500 font-mono text-[10px]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Fondo Cabecera</label>
+                        <input
+                          type="color"
+                          value={settings.headerBg.startsWith('#') ? settings.headerBg : '#ffffff'}
+                          onChange={e => updateSettings('headerBg', e.target.value)}
+                          className="w-full h-8 border border-slate-200 rounded cursor-pointer outline-none focus:border-purple-500"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mostrar Footer</label>
+                    <input
+                      type="checkbox"
+                      checked={settings.showFooter}
+                      onChange={e => updateSettings('showFooter', e.target.checked ? 'true' : 'false')}
+                      className="rounded text-purple-600 focus:ring-purple-500 h-4 w-4 border-slate-300"
+                    />
+                  </div>
+
+                  {settings.showFooter && (
+                    <>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Nombre de la Empresa</label>
+                        <input
+                          type="text"
+                          value={settings.companyName}
+                          onChange={e => updateSettings('companyName', e.target.value)}
+                          className="w-full px-2 py-1.5 border border-slate-200 rounded text-slate-700 outline-none focus:border-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Fondo Footer</label>
+                        <input
+                          type="color"
+                          value={settings.footerBg.startsWith('#') ? settings.footerBg : '#f8fafc'}
+                          onChange={e => updateSettings('footerBg', e.target.value)}
+                          className="w-full h-8 border border-slate-200 rounded cursor-pointer outline-none focus:border-purple-500"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
