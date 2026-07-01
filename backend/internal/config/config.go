@@ -80,6 +80,12 @@ func InitDB(cfg *Config) (*gorm.DB, error) {
 		PreferSimpleProtocol: true,
 	}), &gorm.Config{
 		Logger: logger.Default.LogMode(gormLogLevel),
+		// No crear foreign keys físicas al hacer AutoMigrate: las relaciones del
+		// modelo (p.ej. User.Empleador) son solo para Preload/lectura. Crear la FK
+		// users.empleador_id → users.id rompía la migración en producción por
+		// empleador_id huérfanos preexistentes (SQLSTATE 23503). La integridad se
+		// valida en la capa de aplicación.
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
