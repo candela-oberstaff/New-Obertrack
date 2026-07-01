@@ -14,6 +14,7 @@ export { uploadService } from './upload.service'
 export type { UploadResponse } from './upload.service'
 export { notificationService } from './notification.service'
 export { tutorialService } from './tutorial.service'
+export { profileChangeService } from './profileChange.service'
 
 // Re-export Notification type for Notifications.tsx (import { type Notification } from '../services/api')
 export type { Notification } from '../types'

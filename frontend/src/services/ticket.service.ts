@@ -57,6 +57,7 @@ export interface Ticket {
   ticket_number?: string;
   priority?: string;
   category?: string;
+  module?: string;
   description?: string;
   stage: 'new' | 'in_progress' | 'waiting' | 'closed';
   status: string;

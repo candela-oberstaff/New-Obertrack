@@ -94,6 +94,7 @@ type ChannelService interface {
 	SetMemberRole(channelID, actorID, targetID uint, role string, isSuperadmin bool) error
 	Join(channelID, userID uint) error
 	Leave(channelID, userID uint) error
+	RemoveUserFromCompanyChannels(userID, companyID uint) error
 	// IsExplicitMember indica si el usuario tiene una fila de membresía explícita en
 	// el canal (channel_members), sin el auto-join de canales públicos. Lo usa el
 	// handler para impedir que un NO-miembro (incluido un superadmin que solo
@@ -222,7 +223,7 @@ type channelService struct {
 	// acoplar service→routes. Lo cablea routes/deps.go. Puede ser nil (no-op) en
 	// tests. NUNCA se llama en el path de envío de mensajes (no degradar el caché).
 	onMembershipChange func(channelID uint)
-	supportNtfy *SupportNotifier
+	supportNtfy        *SupportNotifier
 }
 
 func NewChannelService(repo repository.ChannelRepository, userRepo repository.UserRepository, notifSvc NotificationService) ChannelService {
@@ -423,7 +424,7 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 					info.RequesterName = t.Requester.Name
 					info.RequesterEmail = t.Requester.Email
 					info.RequesterPhone = t.Requester.PhoneNumber
-					info.CompanyName = t.Requester.CompanyName
+					info.CompanyName = t.Requester.CompanyDisplayName()
 				}
 				result[i].Support = info
 			}
@@ -875,5 +876,16 @@ func (s *channelService) Leave(channelID, userID uint) error {
 		return err
 	}
 	s.invalidateMembers(channelID)
+	return nil
+}
+
+func (s *channelService) RemoveUserFromCompanyChannels(userID, companyID uint) error {
+	affected, err := s.repo.RemoveUserFromTenantChannels(userID, companyID)
+	if err != nil {
+		return err
+	}
+	for _, channelID := range affected {
+		s.invalidateMembers(channelID)
+	}
 	return nil
 }

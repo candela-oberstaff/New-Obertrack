@@ -1023,6 +1023,57 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropColumn(&models.SupportTicket{}, "module")
 			},
 		},
+		{
+			ID: "202607011200_followup_contact_company_scope",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding company_id to follow_ups and contact_logs (expediente multi-empresa scope)...")
+				if err := tx.AutoMigrate(&models.FollowUp{}, &models.ContactLog{}); err != nil {
+					return err
+				}
+				if err := tx.Exec(`
+					UPDATE follow_ups SET company_id = users.empleador_id
+					FROM users
+					WHERE follow_ups.user_id = users.id
+					  AND users.empleador_id IS NOT NULL
+					  AND follow_ups.company_id = 0
+				`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					UPDATE contact_logs SET company_id = users.empleador_id
+					FROM users
+					WHERE contact_logs.user_id = users.id
+					  AND users.empleador_id IS NOT NULL
+					  AND contact_logs.company_id = 0
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&models.FollowUp{}, "company_id"); err != nil {
+					return err
+				}
+				return tx.Migrator().DropColumn(&models.ContactLog{}, "company_id")
+			},
+		},
+		{
+			ID: "202607011300_user_identity_document",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding identity_document to users...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.User{}, "identity_document")
+			},
+		},
+		{
+			ID: "202607011400_profile_change_requests",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating profile_change_requests table...")
+				return tx.AutoMigrate(&models.ProfileChangeRequest{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.ProfileChangeRequest{})
+			},
+		},
 		// Future migrations go here
 	})
 

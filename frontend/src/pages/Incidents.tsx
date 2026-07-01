@@ -27,8 +27,16 @@ import styles from './Incidents.module.css'
 
 const KIND_OPTIONS = [
   { value: 'Sismo', label: 'Sismo' },
-  { value: 'Inundación', label: 'Inundación' },
-  { value: 'Otro', label: 'Otro' },
+  { value: 'Eventos conflictivos', label: 'Eventos conflictivos' },
+  { value: 'Caídas de internet', label: 'Caídas de internet' },
+  { value: 'Apagones', label: 'Apagones' },
+  { value: 'Incendios forestales', label: 'Incendios forestales' },
+  { value: 'Tormentas', label: 'Tormentas' },
+  { value: 'Inundaciones', label: 'Inundaciones' },
+  { value: 'Volcanes', label: 'Volcanes' },
+  { value: 'Sequía', label: 'Sequía' },
+  { value: 'UAP', label: 'UAP' },
+  { value: 'Otros', label: 'Otros' },
 ]
 
 const STATUS_OPTIONS: { value: IncidentStatus; label: string }[] = [

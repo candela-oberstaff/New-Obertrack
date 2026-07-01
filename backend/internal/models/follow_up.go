@@ -29,6 +29,7 @@ func IsValidFollowUpKind(kind string) bool {
 // (user, kind) es el estado vigente; el historial completo queda en la tabla.
 type FollowUp struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
+	CompanyID uint      `gorm:"index" json:"company_id"`
 	UserID    uint      `gorm:"not null;index:idx_followups_user_kind" json:"user_id"`
 	Kind      string    `gorm:"size:20;not null;index:idx_followups_user_kind" json:"kind"`
 	Status    string    `gorm:"size:20;not null" json:"status"`

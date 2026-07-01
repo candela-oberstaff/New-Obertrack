@@ -20,29 +20,30 @@ type deps struct {
 	cfg      *config.Config
 	tvGetter middleware.TokenVersionGetter
 
-	auth         *handlers.AuthHandler
-	user         *handlers.UserHandler
-	admin        *handlers.AdminHandler
-	board        *handlers.BoardHandler
-	task         *handlers.TaskHandler
-	workHour     *handlers.WorkHourHandler
-	chat         *handlers.ChatHandler
-	channel      *handlers.ChannelHandler
-	upload       *handlers.UploadHandler
-	notification *handlers.NotificationHandler
-	email        *handlers.EmailHandler
-	survey       *handlers.SurveyHandler
-	metrics      *handlers.MetricsHandler
-	tutorial     *handlers.TutorialHandler
-	rbac         *handlers.RBACHandler
-	ticket       *handlers.TicketHandler
-	whatsapp     *handlers.WhatsAppHandler
-	waha         *handlers.WahaHandler
-	brevoInbound *handlers.BrevoInboundHandler
-	audit        *handlers.AuditHandler
-	audience     *handlers.AudienceHandler
-	incident     *handlers.IncidentHandler
-	emergencyTpl *handlers.EmergencyTemplateHandler
+	auth          *handlers.AuthHandler
+	user          *handlers.UserHandler
+	admin         *handlers.AdminHandler
+	board         *handlers.BoardHandler
+	task          *handlers.TaskHandler
+	workHour      *handlers.WorkHourHandler
+	chat          *handlers.ChatHandler
+	channel       *handlers.ChannelHandler
+	upload        *handlers.UploadHandler
+	notification  *handlers.NotificationHandler
+	email         *handlers.EmailHandler
+	survey        *handlers.SurveyHandler
+	metrics       *handlers.MetricsHandler
+	tutorial      *handlers.TutorialHandler
+	rbac          *handlers.RBACHandler
+	ticket        *handlers.TicketHandler
+	whatsapp      *handlers.WhatsAppHandler
+	waha          *handlers.WahaHandler
+	brevoInbound  *handlers.BrevoInboundHandler
+	audit         *handlers.AuditHandler
+	audience      *handlers.AudienceHandler
+	incident      *handlers.IncidentHandler
+	emergencyTpl  *handlers.EmergencyTemplateHandler
+	profileChange *handlers.ProfileChangeHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -80,6 +81,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	audienceRepo := repository.NewAudienceRepository(db)
 	incidentRepo := repository.NewIncidentRepository(db)
 	emergencyTplRepo := repository.NewEmergencyTemplateRepository(db)
+	profileChangeRepo := repository.NewProfileChangeRequestRepository(db)
 
 	// Integrations
 	brevoSvc := service.NewBrevoService()
@@ -105,9 +107,11 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
 	rbacSvc := service.NewRBACService(rbacRepo, userRepo)
 	employmentSvc := service.NewEmploymentService(employmentRepo, userRepo, workHourRepo, notifSvc)
+	employmentSvc.SetChannelCleaner(channelSvc.RemoveUserFromCompanyChannels)
 	auditSvc := service.NewAuditService(auditRepo)
 	incidentSvc := service.NewIncidentService(incidentRepo, userRepo, brevoSvc)
 	emergencyTplSvc := service.NewEmergencyTemplateService(emergencyTplRepo)
+	profileChangeSvc := service.NewProfileChangeService(profileChangeRepo, userRepo, channelRepo, channelSvc, notifSvc)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})
@@ -156,29 +160,30 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		// Session-revocation lookup used by the auth middleware (audit A-04).
 		tvGetter: func(userID uint) (int, error) { return authSvc.GetTokenVersion(userID) },
 
-		auth:         handlers.NewAuthHandler(authSvc, auditSvc, rbacSvc, employmentSvc),
-		user:         handlers.NewUserHandler(userSvc),
-		admin:        handlers.NewAdminHandler(adminSvc, rbacSvc, employmentSvc),
-		board:        handlers.NewBoardHandler(boardSvc),
-		task:         handlers.NewTaskHandler(taskSvc),
-		workHour:     handlers.NewWorkHourHandler(workHourSvc),
-		chat:         handlers.NewChatHandler(chatSvc, chatHub),
-		channel:      handlers.NewChannelHandler(channelSvc, channelHub),
-		upload:       handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"), employmentSvc),
-		notification: handlers.NewNotificationHandler(notifSvc),
-		email:        handlers.NewEmailHandler(emailRepo, brevoSvc),
-		survey:       handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
-		metrics:      handlers.NewMetricsHandler(metricsRepo),
-		tutorial:     handlers.NewTutorialHandler(tutorialSvc),
-		rbac:         handlers.NewRBACHandler(rbacSvc),
-		ticket:       handlers.NewTicketHandler(db, zohoSvc, ticketSvc, channelSvc),
-		whatsapp:     handlers.NewWhatsAppHandler(db, zohoSvc),
-		waha:         handlers.NewWahaHandler(ticketSvc),
-		brevoInbound: handlers.NewBrevoInboundHandler(ticketSvc),
-		audit:        handlers.NewAuditHandler(auditSvc),
-		audience:     handlers.NewAudienceHandler(audienceRepo),
-		incident:     handlers.NewIncidentHandler(incidentSvc),
-		emergencyTpl: handlers.NewEmergencyTemplateHandler(emergencyTplSvc),
+		auth:          handlers.NewAuthHandler(authSvc, auditSvc, rbacSvc, employmentSvc),
+		user:          handlers.NewUserHandler(userSvc),
+		admin:         handlers.NewAdminHandler(adminSvc, rbacSvc, employmentSvc),
+		board:         handlers.NewBoardHandler(boardSvc),
+		task:          handlers.NewTaskHandler(taskSvc),
+		workHour:      handlers.NewWorkHourHandler(workHourSvc),
+		chat:          handlers.NewChatHandler(chatSvc, chatHub),
+		channel:       handlers.NewChannelHandler(channelSvc, channelHub),
+		upload:        handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"), employmentSvc),
+		notification:  handlers.NewNotificationHandler(notifSvc),
+		email:         handlers.NewEmailHandler(emailRepo, brevoSvc),
+		survey:        handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
+		metrics:       handlers.NewMetricsHandler(metricsRepo),
+		tutorial:      handlers.NewTutorialHandler(tutorialSvc),
+		rbac:          handlers.NewRBACHandler(rbacSvc),
+		ticket:        handlers.NewTicketHandler(db, zohoSvc, ticketSvc, channelSvc),
+		whatsapp:      handlers.NewWhatsAppHandler(db, zohoSvc),
+		waha:          handlers.NewWahaHandler(ticketSvc),
+		brevoInbound:  handlers.NewBrevoInboundHandler(ticketSvc),
+		audit:         handlers.NewAuditHandler(auditSvc),
+		audience:      handlers.NewAudienceHandler(audienceRepo),
+		incident:      handlers.NewIncidentHandler(incidentSvc),
+		emergencyTpl:  handlers.NewEmergencyTemplateHandler(emergencyTplSvc),
+		profileChange: handlers.NewProfileChangeHandler(profileChangeSvc),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,

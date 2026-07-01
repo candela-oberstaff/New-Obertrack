@@ -87,12 +87,12 @@ type EmploymentRepository interface {
 	// tenant; alimenta el resumen congelado al terminar un empleo.
 	CountTasks(userID, tenantID uint) (assigned int64, completed int64, err error)
 	// ListFollowUps lista las gestiones de CS (inactividad/ausencia) de un
-	// usuario dentro de un rango de fechas, más recientes primero.
-	ListFollowUps(userID uint, start, end time.Time) ([]models.FollowUp, error)
+	// usuario en una empresa dentro de un rango de fechas, más recientes primero.
+	ListFollowUps(userID, companyID uint, start, end time.Time) ([]models.FollowUp, error)
 	// CreateContact registra un intento de contacto sobre un profesional.
 	CreateContact(contact *models.ContactLog) error
-	// ListContacts lista los contactos a un usuario dentro de un rango.
-	ListContacts(userID uint, start, end time.Time) ([]models.ContactLog, error)
+	// ListContacts lista los contactos a un usuario en una empresa dentro de un rango.
+	ListContacts(userID, companyID uint, start, end time.Time) ([]models.ContactLog, error)
 	// ListDocumentsExpiringSoon lista documentos que vencen antes de `before` y
 	// que aún no fueron alertados (para el watcher de vencimientos).
 	ListDocumentsExpiringSoon(before time.Time) ([]models.EmploymentDocument, error)
@@ -431,10 +431,10 @@ func (r *employmentRepository) CountTasks(userID, tenantID uint) (int64, int64, 
 	return assigned, completed, nil
 }
 
-func (r *employmentRepository) ListFollowUps(userID uint, start, end time.Time) ([]models.FollowUp, error) {
+func (r *employmentRepository) ListFollowUps(userID, companyID uint, start, end time.Time) ([]models.FollowUp, error) {
 	var fus []models.FollowUp
 	err := r.db.
-		Where("user_id = ? AND created_at >= ? AND created_at <= ?", userID, start, end).
+		Where("user_id = ? AND company_id = ? AND created_at >= ? AND created_at <= ?", userID, companyID, start, end).
 		Order("created_at DESC").
 		Find(&fus).Error
 	return fus, err
@@ -444,10 +444,10 @@ func (r *employmentRepository) CreateContact(contact *models.ContactLog) error {
 	return r.db.Create(contact).Error
 }
 
-func (r *employmentRepository) ListContacts(userID uint, start, end time.Time) ([]models.ContactLog, error) {
+func (r *employmentRepository) ListContacts(userID, companyID uint, start, end time.Time) ([]models.ContactLog, error) {
 	var contacts []models.ContactLog
 	err := r.db.
-		Where("user_id = ? AND created_at >= ? AND created_at <= ?", userID, start, end).
+		Where("user_id = ? AND company_id = ? AND created_at >= ? AND created_at <= ?", userID, companyID, start, end).
 		Order("created_at DESC").
 		Find(&contacts).Error
 	return contacts, err

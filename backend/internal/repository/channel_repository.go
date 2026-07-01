@@ -30,6 +30,7 @@ type ChannelRepository interface {
 	GetMemberRoles(channelID uint) ([]models.ChannelMember, error)
 	AddMember(member *models.ChannelMember) error
 	RemoveMember(channelID, userID uint) error
+	RemoveUserFromTenantChannels(userID, tenantID uint) ([]uint, error)
 	UpdateMemberRole(channelID, userID uint, role string) error
 	IsMember(channelID, userID uint) (bool, error)
 
@@ -245,6 +246,24 @@ func (r *channelRepository) AddMember(member *models.ChannelMember) error {
 
 func (r *channelRepository) RemoveMember(channelID, userID uint) error {
 	return r.db.Where("channel_id = ? AND user_id = ?", channelID, userID).Delete(&models.ChannelMember{}).Error
+}
+
+func (r *channelRepository) RemoveUserFromTenantChannels(userID, tenantID uint) ([]uint, error) {
+	var channelIDs []uint
+	if err := r.db.Table("channel_members").
+		Joins("JOIN channels ON channels.id = channel_members.channel_id").
+		Where("channel_members.user_id = ? AND channels.tenant_id = ?", userID, tenantID).
+		Pluck("channel_members.channel_id", &channelIDs).Error; err != nil {
+		return nil, err
+	}
+	if len(channelIDs) == 0 {
+		return nil, nil
+	}
+	if err := r.db.Where("user_id = ? AND channel_id IN ?", userID, channelIDs).
+		Delete(&models.ChannelMember{}).Error; err != nil {
+		return nil, err
+	}
+	return channelIDs, nil
 }
 
 func (r *channelRepository) IsMember(channelID, userID uint) (bool, error) {
@@ -710,7 +729,7 @@ func (r *channelRepository) GetSupportTicketsByRequester(requesterID uint) ([]mo
 
 func (r *channelRepository) GetAllSupportTickets() ([]models.SupportTicket, error) {
 	var tickets []models.SupportTicket
-	err := r.db.Preload("Requester").Preload("Assignee").
+	err := r.db.Preload("Requester").Preload("Requester.Empleador").Preload("Assignee").
 		Order("updated_at DESC").Find(&tickets).Error
 	return tickets, err
 }
@@ -720,7 +739,7 @@ func (r *channelRepository) GetSupportTicketsByChannelIDs(channelIDs []uint) ([]
 	if len(channelIDs) == 0 {
 		return tickets, nil
 	}
-	err := r.db.Preload("Assignee").Preload("Requester").Where("channel_id IN ?", channelIDs).Find(&tickets).Error
+	err := r.db.Preload("Assignee").Preload("Requester").Preload("Requester.Empleador").Where("channel_id IN ?", channelIDs).Find(&tickets).Error
 	return tickets, err
 }
 

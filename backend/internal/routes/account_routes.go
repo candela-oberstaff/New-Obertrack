@@ -122,6 +122,19 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		users.POST("/:id/change-password", d.user.ChangePassword)
 	}
 
+	profile := api.Group("/profile")
+	{
+		profile.POST("/change-requests", d.profileChange.Create)
+		profile.GET("/change-request", d.profileChange.GetMine)
+	}
+	profileReview := api.Group("/admin/profile-change-requests")
+	profileReview.Use(requireSupportInboxAccess())
+	{
+		profileReview.GET("/user/:id", d.profileChange.GetForUser)
+		profileReview.POST("/:reqId/apply", d.profileChange.Apply)
+		profileReview.POST("/:reqId/reject", d.profileChange.Reject)
+	}
+
 	admin := api.Group("/admin")
 	admin.Use(requireAdminPanel())
 	{
