@@ -21,6 +21,7 @@ export interface User {
   city?: string
   location?: string
   address?: string
+  identity_document?: string
   industry?: string
   created_at: string
   updated_at: string
@@ -32,6 +33,19 @@ export interface User {
   /** Empresas donde el profesional tiene empleo activo (switcher multi-empresa).
    * La activa es la que apunta empleador_id. */
   companies?: { id: number; name: string }[]
+}
+
+export interface ProfileChangeRequest {
+  id: number
+  user_id: number
+  support_ticket_id?: number
+  changes: string
+  note?: string
+  status: 'pending' | 'applied' | 'rejected'
+  reviewed_by?: number
+  reviewed_at?: string
+  created_at: string
+  updated_at: string
 }
 
 export interface Tenant {

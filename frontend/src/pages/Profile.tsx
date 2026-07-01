@@ -1,8 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { userService, uploadService } from '../services/api'
+import { userService, uploadService, profileChangeService } from '../services/api'
 import { ProfileForm } from '../components/Profile/ProfileForm'
+import { ProfileChangeRequestModal } from '../components/Profile/ProfileChangeRequestModal'
 import { PasswordModal } from '../components/Profile/PasswordModal'
+import type { ProfileChangeRequest } from '../types'
 import { MiCV } from '../components/Profile/MiCV'
 import Avatar from '../components/Common/Avatar'
 import Tooltip from '../components/Common/Tooltip'
@@ -12,9 +15,20 @@ export default function Profile() {
   const { user, setUser, logout } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [showChangeModal, setShowChangeModal] = useState(false)
+  const [pendingRequest, setPendingRequest] = useState<ProfileChangeRequest | null>(null)
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  const isProfessional = user?.user_type === 'profesional'
+  useEffect(() => {
+    if (!isProfessional) return
+    profileChangeService.getMine().then(setPendingRequest).catch(() => {})
+  }, [isProfessional])
+  const refreshPending = () => {
+    profileChangeService.getMine().then(setPendingRequest).catch(() => {})
+  }
 
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,6 +115,45 @@ export default function Profile() {
 
       <div className={styles['profile-content']}>
         <div className={styles['profile-main-info']} data-tour="profile-form">
+          {isProfessional && pendingRequest && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                marginBottom: '16px',
+                padding: '14px 16px',
+                borderRadius: '14px',
+                border: '1px solid #fcd34d',
+                background: 'linear-gradient(180deg, #fffdf5 0%, #fef9ec 100%)',
+                boxShadow: '0 1px 2px rgba(146, 64, 14, 0.06)',
+              }}
+            >
+              <div
+                style={{
+                  flexShrink: 0,
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#fef3c7',
+                  color: '#b45309',
+                }}
+              >
+                <Clock size={20} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: '#92400e', fontSize: '0.95rem' }}>
+                  Solicitud de actualización pendiente
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#a16207', marginTop: '2px' }}>
+                  Customer Success revisará tus cambios y los aplicará. Te avisaremos cuando esté listo.
+                </div>
+              </div>
+            </div>
+          )}
           {user && (
             <ProfileForm
               user={user}
@@ -125,13 +178,25 @@ export default function Profile() {
               >
                 Cambiar Contraseña
               </button>
-              <button 
-                className={styles['btn-primary']} 
-                style={{ flex: 1, padding: '8px' }}
-                onClick={() => setIsEditing(!isEditing)}
-              >
-                {isEditing ? 'Cancelar' : 'Editar Perfil'}
-              </button>
+              {isProfessional ? (
+                <button
+                  className={styles['btn-primary']}
+                  style={{ flex: 1, padding: '8px' }}
+                  onClick={() => setShowChangeModal(true)}
+                  disabled={!!pendingRequest}
+                  title={pendingRequest ? 'Ya tienes una solicitud pendiente' : 'Solicitar actualización de tus datos'}
+                >
+                  {pendingRequest ? 'Solicitud pendiente' : 'Solicitar cambios'}
+                </button>
+              ) : (
+                <button
+                  className={styles['btn-primary']}
+                  style={{ flex: 1, padding: '8px' }}
+                  onClick={() => setIsEditing(!isEditing)}
+                >
+                  {isEditing ? 'Cancelar' : 'Editar Perfil'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -163,10 +228,18 @@ export default function Profile() {
         </div>
       </div>
       {user && (
-        <PasswordModal 
-          isOpen={showPasswordModal} 
-          onClose={() => setShowPasswordModal(false)} 
-          userId={user.id!} 
+        <PasswordModal
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+          userId={user.id!}
+        />
+      )}
+      {user && isProfessional && (
+        <ProfileChangeRequestModal
+          user={user}
+          isOpen={showChangeModal}
+          onClose={() => setShowChangeModal(false)}
+          onSubmitted={refreshPending}
         />
       )}
     </div>

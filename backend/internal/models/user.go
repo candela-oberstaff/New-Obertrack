@@ -11,9 +11,9 @@ type TaskStatus string
 type TaskPriority string
 
 const (
-	UserTypeEmployer        UserType = "empleador"
-	UserTypeProfessional    UserType = "profesional"
-	UserTypeSuperadmin      UserType = "superadmin"
+	UserTypeEmployer     UserType = "empleador"
+	UserTypeProfessional UserType = "profesional"
+	UserTypeSuperadmin   UserType = "superadmin"
 	// Analista de IT: soporte técnico de plataforma — acceso a Tools, Métricas
 	// y Auditoría, sin gestión de usuarios/empresas ni datos operativos de clientes.
 	UserTypeITAnalyst       UserType = "analista_it"
@@ -30,49 +30,67 @@ const (
 )
 
 type User struct {
-	ID                  uint           `gorm:"primaryKey" json:"id"`
-	Name                string         `gorm:"size:255;not null" json:"name"`
-	Email               string         `gorm:"size:255;uniqueIndex;not null" json:"email"`
-	Password            string         `gorm:"size:255;not null" json:"-"`
-	Avatar              string         `gorm:"size:500" json:"avatar"`
-	UserType            UserType       `gorm:"type:varchar(20);not null;default:'profesional'" json:"user_type"`
-	IsManager           bool           `gorm:"default:false" json:"is_manager"`
-	IsSuperadmin        bool           `gorm:"default:false" json:"is_superadmin"`
-	IsActive            bool           `gorm:"default:true" json:"is_active"`
-	EmpleadorID         *uint          `gorm:"index" json:"empleador_id,omitempty"`
-	CompanyName         string         `gorm:"size:255" json:"company_name"`
-	Industry            string         `gorm:"size:255" json:"industry"`
-	JobTitle            string         `gorm:"size:255" json:"job_title"`
-	PhoneNumber         string         `gorm:"size:50" json:"phone_number"`
-	Country             string         `gorm:"size:100" json:"country"`
-	State               string         `gorm:"size:100" json:"state"`
-	City                string         `gorm:"size:100" json:"city"`
-	Location            string         `gorm:"type:text" json:"location"`
-	Address             string         `gorm:"type:text" json:"address"`
-	RememberToken       string         `gorm:"size:100" json:"-"`
-	EmailVerifiedAt     *time.Time     `json:"email_verified_at,omitempty"`
-	ManagerID           *uint          `gorm:"index" json:"manager_id,omitempty"`
-	ResetToken          string         `gorm:"size:100;index" json:"-"`
-	ResetTokenExpiry    *time.Time     `json:"-"`
+	ID               uint       `gorm:"primaryKey" json:"id"`
+	Name             string     `gorm:"size:255;not null" json:"name"`
+	Email            string     `gorm:"size:255;uniqueIndex;not null" json:"email"`
+	Password         string     `gorm:"size:255;not null" json:"-"`
+	Avatar           string     `gorm:"size:500" json:"avatar"`
+	UserType         UserType   `gorm:"type:varchar(20);not null;default:'profesional'" json:"user_type"`
+	IsManager        bool       `gorm:"default:false" json:"is_manager"`
+	IsSuperadmin     bool       `gorm:"default:false" json:"is_superadmin"`
+	IsActive         bool       `gorm:"default:true" json:"is_active"`
+	EmpleadorID      *uint      `gorm:"index" json:"empleador_id,omitempty"`
+	Empleador        *User      `gorm:"foreignKey:EmpleadorID" json:"-"`
+	CompanyName      string     `gorm:"size:255" json:"company_name"`
+	Industry         string     `gorm:"size:255" json:"industry"`
+	JobTitle         string     `gorm:"size:255" json:"job_title"`
+	PhoneNumber      string     `gorm:"size:50" json:"phone_number"`
+	Country          string     `gorm:"size:100" json:"country"`
+	State            string     `gorm:"size:100" json:"state"`
+	City             string     `gorm:"size:100" json:"city"`
+	Location         string     `gorm:"type:text" json:"location"`
+	IdentityDocument string     `gorm:"size:500" json:"identity_document"`
+	Address          string     `gorm:"type:text" json:"address"`
+	RememberToken    string     `gorm:"size:100" json:"-"`
+	EmailVerifiedAt  *time.Time `json:"email_verified_at,omitempty"`
+	ManagerID        *uint      `gorm:"index" json:"manager_id,omitempty"`
+	ResetToken       string     `gorm:"size:100;index" json:"-"`
+	ResetTokenExpiry *time.Time `json:"-"`
 	// TokenVersion is bumped to invalidate all previously issued access/refresh
 	// tokens for this user (logout-all, password change, suspension) — audit A-04.
-	TokenVersion        int            `gorm:"not null;default:0" json:"-"`
-	ZohoAgentID         string         `gorm:"size:255" json:"zoho_agent_id"`
+	TokenVersion int    `gorm:"not null;default:0" json:"-"`
+	ZohoAgentID  string `gorm:"size:255" json:"zoho_agent_id"`
 	// Permissions son los permisos efectivos por módulo derivados de los roles
 	// asignados (campo transitorio: solo viaja en /auth/me y /auth/login).
 	// Ausente = sin roles = comportamiento histórico del tipo de cuenta.
-	Permissions         map[string]string `gorm:"-" json:"permissions,omitempty"`
+	Permissions map[string]string `gorm:"-" json:"permissions,omitempty"`
 	// Companies son las empresas donde el profesional tiene un empleo ACTIVO
 	// (campo transitorio para el switcher multi-empresa). La activa es la que
 	// apunta empleador_id. Vacío/único = sin switcher.
-	Companies           []CompanyRef   `gorm:"-" json:"companies,omitempty"`
-	CreatedAt           time.Time      `json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
-	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`
+	Companies []CompanyRef   `gorm:"-" json:"companies,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (User) TableName() string {
 	return "users"
+}
+
+func (u *User) CompanyDisplayName() string {
+	if u == nil {
+		return ""
+	}
+	if u.CompanyName != "" {
+		return u.CompanyName
+	}
+	if u.Empleador != nil {
+		if u.Empleador.CompanyName != "" {
+			return u.Empleador.CompanyName
+		}
+		return u.Empleador.Name
+	}
+	return ""
 }
 
 // CompanyRef es una referencia ligera a una empresa (para el switcher).

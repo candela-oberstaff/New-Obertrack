@@ -44,15 +44,15 @@ func (EmploymentNote) TableName() string {
 // (contrato, certificado, evaluación firmada, etc.). El binario se sube por el
 // flujo de uploads existente; aquí guardamos solo los metadatos y el vínculo.
 type EmploymentDocument struct {
-	ID           uint           `gorm:"primaryKey" json:"id"`
-	EmploymentID uint           `gorm:"not null;index" json:"employment_id"`
-	UploadedBy   uint           `gorm:"not null" json:"uploaded_by"`
-	Title        string         `gorm:"size:255" json:"title"`
-	FileName     string         `gorm:"size:255;not null" json:"file_name"`
-	FileURL      string         `gorm:"size:512;not null" json:"file_url"`
-	FileSize     int64          `json:"file_size"`
-	MimeType     string         `gorm:"size:128" json:"mime_type"`
-	Visibility   string         `gorm:"size:20;not null;default:'private'" json:"visibility"`
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	EmploymentID uint   `gorm:"not null;index" json:"employment_id"`
+	UploadedBy   uint   `gorm:"not null" json:"uploaded_by"`
+	Title        string `gorm:"size:255" json:"title"`
+	FileName     string `gorm:"size:255;not null" json:"file_name"`
+	FileURL      string `gorm:"size:512;not null" json:"file_url"`
+	FileSize     int64  `json:"file_size"`
+	MimeType     string `gorm:"size:128" json:"mime_type"`
+	Visibility   string `gorm:"size:20;not null;default:'private'" json:"visibility"`
 	// ExpiresAt marca el vencimiento del documento (contratos, certificados...).
 	// Nullable: la mayoría de los documentos no vencen.
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
@@ -60,8 +60,8 @@ type EmploymentDocument struct {
 	// renovar (cambiar expires_at). Interno, no se expone.
 	ExpiryAlertedAt *time.Time     `gorm:"index" json:"-"`
 	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (EmploymentDocument) TableName() string {
@@ -85,6 +85,7 @@ func IsValidContactChannel(ch string) bool {
 // clic en "contactar"), no la entrega.
 type ContactLog struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
+	CompanyID uint      `gorm:"index" json:"company_id"`
 	UserID    uint      `gorm:"not null;index" json:"user_id"`
 	ByUserID  uint      `gorm:"not null" json:"by_user_id"`
 	Channel   string    `gorm:"size:20;not null" json:"channel"`

@@ -1,6 +1,8 @@
-import { LifeBuoy, Building2, Mail, Phone, Calendar, UserCheck, X } from 'lucide-react'
+import { LifeBuoy, Building2, Mail, Phone, Calendar, UserCheck, X, Tag, UserCog } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import type { Channel } from '../../types/chat'
 import { supportStatusMeta } from './ChatUtils'
+import { PROFILE_CHANGE_MODULE } from '../../constants/support'
 
 interface SupportContextPanelProps {
   channel: Channel
@@ -12,9 +14,11 @@ interface SupportContextPanelProps {
  * estado y responsable. Acompaña al chat sin reemplazarlo.
  */
 export function SupportContextPanel({ channel, onClose }: SupportContextPanelProps) {
+  const navigate = useNavigate()
   const s = channel.support
   if (!s) return null
 
+  const isProfileChange = s.module === PROFILE_CHANGE_MODULE
   const meta = supportStatusMeta(s.status)
   const created = s.created_at ? new Date(s.created_at).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
 
@@ -52,6 +56,22 @@ export function SupportContextPanel({ channel, onClose }: SupportContextPanelPro
             {meta.label}
           </span>
         </div>
+
+        {s.module && row(<Tag size={12} />, 'Módulo', s.module)}
+
+        {isProfileChange && (
+          <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid #ddd6fe', background: '#f5f3ff', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <span style={{ fontSize: 12.5, color: '#5b21b6', lineHeight: 1.4 }}>
+              Esta solicitud <strong>no se resuelve por el chat</strong>. Revisa y aplica los cambios en la ficha del profesional (eso resuelve el ticket).
+            </span>
+            <button
+              onClick={() => navigate(`/admin/users/${s.requester_id}`)}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+            >
+              <UserCog size={14} /> Aplicar cambios en la ficha
+            </button>
+          </div>
+        )}
 
         {row(<UserCheck size={12} />, 'Responsable', s.assignee_name || <span style={{ color: '#b45309' }}>Sin asignar</span>)}
         {row(<LifeBuoy size={12} />, 'Solicitante', s.requester_name)}

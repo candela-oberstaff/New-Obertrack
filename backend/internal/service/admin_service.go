@@ -682,12 +682,18 @@ func (s *adminService) CreateFollowUp(userID, createdBy uint, kind, status, note
 	if status == "" {
 		return nil, errors.New("Estado requerido")
 	}
-	if _, err := s.userRepo.GetByID(userID); err != nil {
+	prof, err := s.userRepo.GetByID(userID)
+	if err != nil {
 		return nil, errors.New("Usuario no encontrado")
+	}
+	var companyID uint
+	if prof.EmpleadorID != nil {
+		companyID = *prof.EmpleadorID
 	}
 
 	followUp := &models.FollowUp{
 		UserID:    userID,
+		CompanyID: companyID,
 		Kind:      kind,
 		Status:    status,
 		Note:      utils.SanitizeHTML(note),

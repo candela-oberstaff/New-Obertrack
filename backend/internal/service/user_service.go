@@ -27,7 +27,7 @@ type UserService interface {
 
 	GetEmployees(employerID uint) ([]models.User, error)
 	GetMyTeam(userID uint) ([]models.User, error)
-	
+
 	ChangePassword(id uint, currentPassword, newPassword string) error
 	GetByEmail(email string) (*models.User, error)
 }
@@ -105,10 +105,10 @@ func (s *userService) Create(req map[string]interface{}) (*models.User, error) {
 	userType, _ := req["user_type"].(string)
 
 	user := &models.User{
-		Name:        req["name"].(string),
-		Email:       req["email"].(string),
-		Password:    string(hashedPassword),
-		UserType:    models.UserType(userType),
+		Name:         req["name"].(string),
+		Email:        req["email"].(string),
+		Password:     string(hashedPassword),
+		UserType:     models.UserType(userType),
 		IsSuperadmin: userType == "superadmin",
 	}
 
@@ -133,6 +133,14 @@ func (s *userService) Update(id, requesterID, tenantID uint, role string, isMana
 	}
 	if err := s.authorizeUserTenant(user, requesterID, tenantID, isSuperadmin, true, role, isManager); err != nil {
 		return nil, err
+	}
+
+	if id == requesterID && !isSuperadmin && role == string(models.UserTypeProfessional) {
+		for k := range updates {
+			if k != "avatar" {
+				delete(updates, k)
+			}
+		}
 	}
 
 	// This validates fields manually like the original implementation
@@ -162,6 +170,9 @@ func (s *userService) Update(id, requesterID, tenantID uint, role string, isMana
 	}
 	if location, ok := updates["location"].(string); ok && location != "" {
 		user.Location = location
+	}
+	if idDoc, ok := updates["identity_document"].(string); ok && idDoc != "" {
+		user.IdentityDocument = idDoc
 	}
 
 	if len(updates) > 0 {

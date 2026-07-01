@@ -339,7 +339,7 @@ func ticketDTOFromSupport(t models.SupportTicket) gin.H {
 	if t.Requester != nil {
 		requesterName = t.Requester.Name
 		requesterEmail = t.Requester.Email
-		companyName = t.Requester.CompanyName
+		companyName = t.Requester.CompanyDisplayName()
 	}
 	assigneeName, assigneeEmail := "", ""
 	if t.Assignee != nil {
@@ -362,6 +362,8 @@ func ticketDTOFromSupport(t models.SupportTicket) gin.H {
 		"assignee_email":     assigneeEmail,
 		"title":              title,
 		"description":        "Solicitud de soporte por chat",
+		"module":             t.Module,
+		"priority":           t.Priority,
 		"stage":              stage,
 		"status":             status,
 		"origin":             "support",

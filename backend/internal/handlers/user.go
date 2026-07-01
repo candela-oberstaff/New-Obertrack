@@ -25,15 +25,16 @@ func NewUserHandler(s service.UserService) *UserHandler {
 }
 
 type UpdateUserRequest struct {
-	Name        string `json:"name"`
-	Email       string `json:"email"`
-	Avatar      string `json:"avatar"`
-	JobTitle    string `json:"job_title"`
-	PhoneNumber string `json:"phone_number"`
-	Country     string `json:"country"`
-	State       string `json:"state"`
-	City        string `json:"city"`
-	Location    string `json:"location"`
+	Name             string `json:"name"`
+	Email            string `json:"email"`
+	Avatar           string `json:"avatar"`
+	JobTitle         string `json:"job_title"`
+	PhoneNumber      string `json:"phone_number"`
+	Country          string `json:"country"`
+	State            string `json:"state"`
+	City             string `json:"city"`
+	Location         string `json:"location"`
+	IdentityDocument string `json:"identity_document"`
 }
 
 func (h *UserHandler) GetAll(c *gin.Context) {
@@ -109,10 +110,10 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	payload := map[string]interface{}{
-		"name":         req.Name,
-		"email":        req.Email,
-		"password":     req.Password,
-		"user_type":    req.UserType,
+		"name":      req.Name,
+		"email":     req.Email,
+		"password":  req.Password,
+		"user_type": req.UserType,
 	}
 	if req.CompanyName != "" {
 		payload["company_name"] = req.CompanyName
@@ -170,6 +171,9 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 	if req.Location != "" {
 		updates["location"] = req.Location
+	}
+	if req.IdentityDocument != "" {
+		updates["identity_document"] = req.IdentityDocument
 	}
 
 	requesterID := middleware.GetUserID(c)
