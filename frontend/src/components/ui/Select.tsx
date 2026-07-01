@@ -28,6 +28,7 @@ export interface SelectProps {
   className?: string
   fullWidth?: boolean
   ariaLabel?: string
+  searchable?: boolean
 }
 
 export function Select({
@@ -44,8 +45,11 @@ export function Select({
   className = '',
   fullWidth = false,
   ariaLabel,
+  searchable = false,
 }: SelectProps) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   // El menú se renderiza en un portal (position: fixed) para no quedar recortado
   // por contenedores con overflow (p. ej. el cuerpo de un Modal).
@@ -53,6 +57,38 @@ export function Select({
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null)
 
   const selected = options.find((o) => String(o.value) === String(value ?? ''))
+
+  const showSearch = searchable || options.length > 5
+  const visibleOptions = showSearch && query.trim()
+    ? options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : options
+
+  const updatePosition = useCallback(() => {
+    if (containerRef.current) {
+      const r = containerRef.current.getBoundingClientRect()
+      setMenuPos({ top: r.bottom + 6, left: r.left, width: r.width })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    updatePosition()
+    const onReflow = () => updatePosition()
+    window.addEventListener('scroll', onReflow, true)
+    window.addEventListener('resize', onReflow)
+    return () => {
+      window.removeEventListener('scroll', onReflow, true)
+      window.removeEventListener('resize', onReflow)
+    }
+  }, [open, updatePosition])
+
+  useEffect(() => {
+    if (open && showSearch) {
+      const raf = requestAnimationFrame(() => searchRef.current?.focus())
+      return () => cancelAnimationFrame(raf)
+    }
+    if (!open) setQuery('')
+  }, [open, showSearch])
 
   // Close on outside click
   useEffect(() => {
@@ -127,6 +163,18 @@ export function Select({
           role="listbox"
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, right: 'auto', width: menuPos.width, zIndex: 9999 }}
         >
+          {showSearch && (
+            <div style={{ padding: 6, position: 'sticky', top: 0, background: '#fff', borderBottom: '1px solid #eef2f7', zIndex: 1 }}>
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar..."
+                style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+          )}
           {clearable && (
             <button
               type="button"
@@ -139,7 +187,12 @@ export function Select({
               {!selected && <Check size={15} />}
             </button>
           )}
-          {options.map((opt) => {
+          {showSearch && visibleOptions.length === 0 && (
+            <div className="ui-select__option ui-select__option--disabled" style={{ cursor: 'default' }}>
+              <span className="ui-select__placeholder">Sin resultados</span>
+            </div>
+          )}
+          {visibleOptions.map((opt) => {
             const isSelected = String(opt.value) === String(value ?? '')
             return (
               <button

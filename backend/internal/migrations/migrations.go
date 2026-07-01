@@ -998,6 +998,31 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.EmergencyTemplate{})
 			},
 		},
+		{
+			ID: "202606301400_support_ticket_subject_priority",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding subject/priority to support_tickets...")
+				return tx.AutoMigrate(&models.SupportTicket{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.SupportTicket{}, "subject")
+			},
+		},
+		{
+			ID: "202606301500_support_tickets_multi",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Allowing multiple support tickets per channel (+module)...")
+				if err := tx.AutoMigrate(&models.SupportTicket{}); err != nil {
+					return err
+				}
+				tx.Exec(`DROP INDEX IF EXISTS idx_support_tickets_channel_id`)
+				tx.Exec(`CREATE INDEX IF NOT EXISTS idx_support_tickets_channel_id ON support_tickets (channel_id)`)
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.SupportTicket{}, "module")
+			},
+		},
 		// Future migrations go here
 	})
 

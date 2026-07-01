@@ -118,7 +118,7 @@ export default function RecipientSelector({ value, onChange }: Props) {
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 bg-white">
-        {(['users', 'groups', 'express'] as Tab[]).map(t => {
+        {(['users', 'groups'] as Tab[]).map(t => {
           const isActive = tab === t
           return (
             <button

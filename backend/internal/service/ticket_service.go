@@ -66,15 +66,16 @@ type RejectionAlertInput struct {
 }
 
 type ticketService struct {
-	repo     repository.TicketRepository
-	userRepo repository.UserRepository
-	notifSvc NotificationService
-	wahaSvc  *WahaService
-	brevoSvc *BrevoService
+	repo        repository.TicketRepository
+	userRepo    repository.UserRepository
+	notifSvc    NotificationService
+	wahaSvc     *WahaService
+	brevoSvc    *BrevoService
+	supportNtfy *SupportNotifier
 }
 
-func NewTicketService(repo repository.TicketRepository, userRepo repository.UserRepository, notifSvc NotificationService, wahaSvc *WahaService, brevoSvc *BrevoService) TicketService {
-	return &ticketService{repo: repo, userRepo: userRepo, notifSvc: notifSvc, wahaSvc: wahaSvc, brevoSvc: brevoSvc}
+func NewTicketService(repo repository.TicketRepository, userRepo repository.UserRepository, notifSvc NotificationService, wahaSvc *WahaService, brevoSvc *BrevoService, supportNtfy *SupportNotifier) TicketService {
+	return &ticketService{repo: repo, userRepo: userRepo, notifSvc: notifSvc, wahaSvc: wahaSvc, brevoSvc: brevoSvc, supportNtfy: supportNtfy}
 }
 
 // TransferInput describes a ticket reassignment to be audited.
@@ -270,6 +271,15 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 		if err := s.repo.CreateTicket(ticket); err != nil {
 			return err
 		}
+		if s.supportNtfy != nil {
+			s.supportNtfy.Notify(SupportTicketInfo{
+				Type:        "WhatsApp",
+				Requester:   resolvedName,
+				Subject:     ticket.Title,
+				Description: body,
+				Link:        "/tickets",
+			})
+		}
 	}
 
 	msg := &models.TicketMessage{
@@ -322,6 +332,15 @@ func (s *ticketService) IngestEmail(fromEmail, fromName, subject, textBody, mess
 		}
 		if err := s.repo.CreateTicket(ticket); err != nil {
 			return err
+		}
+		if s.supportNtfy != nil {
+			s.supportNtfy.Notify(SupportTicketInfo{
+				Type:        "Email",
+				Requester:   contact.Name,
+				Subject:     subject,
+				Description: textBody,
+				Link:        "/tickets",
+			})
 		}
 	}
 
@@ -382,7 +401,21 @@ func (s *ticketService) CreateWorkHourRejectionAlert(in RejectionAlertInput) err
 		Stage:             models.StageNew,
 		Status:            "open",
 	}
-	return s.repo.CreateTicket(ticket)
+	if err := s.repo.CreateTicket(ticket); err != nil {
+		return err
+	}
+	if s.supportNtfy != nil {
+		s.supportNtfy.Notify(SupportTicketInfo{
+			Type:        "Rechazo de horas",
+			Requester:   in.ProfessionalName,
+			Company:     in.CompanyName,
+			Subject:     ticket.Title,
+			Description: ticket.Description,
+			Reason:      in.Reason,
+			Link:        fmt.Sprintf("/tickets/internal/%d", ticket.ID),
+		})
+	}
+	return nil
 }
 
 // GetInternal returns a single internal alert ticket (with notes/messages).

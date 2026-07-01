@@ -32,10 +32,16 @@ const labelStyle: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: 
 
 function StatusPill({ row }: { row: ImportRow }) {
   if (row.status === 'ok') return <span style={{ ...pill, background: '#d1fae5', color: '#059669' }}>Nuevo</span>
-  if (row.status === 'conflict') return <span style={{ ...pill, background: '#fef3c7', color: '#b45309' }}>Ya existe</span>
+  if (row.status === 'conflict') {
+    const label = row.existing ? 'Ya existe' : 'Duplicada'
+    return <span style={{ ...pill, background: '#fef3c7', color: '#b45309' }}>{label}</span>
+  }
   return <span style={{ ...pill, background: '#fee2e2', color: '#dc2626' }}>Error</span>
 }
 const pill: React.CSSProperties = { display: 'inline-block', padding: '2px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700 }
+
+const isManagerValue = (v?: string) =>
+  ['si', 'sí', 'yes', 'y', 'true', '1', 'x', 'verdadero'].includes((v ?? '').trim().toLowerCase())
 
 export function ImportUsersModal({ onClose, onDone, employerMode = false }: { onClose: () => void; onDone?: () => void; employerMode?: boolean }) {
   const svc = employerMode ? employerService : adminService
@@ -313,12 +319,18 @@ function PreviewTable({
             {rows.map(r => (
               <tr key={r.row} style={{ borderTop: '1px solid #f1f5f9', background: r.status === 'error' ? 'rgba(239,68,68,0.04)' : undefined }}>
                 <td style={td}>{r.row}</td>
-                <td style={td}>{r.data[nameKey] || '—'}</td>
+                <td style={td}>
+                  {r.data[nameKey] || '—'}
+                  {isManagerValue(r.data.es_manager) && (
+                    <span style={{ ...pill, marginLeft: 6, background: '#ede9fe', color: '#6d28d9', fontSize: 10 }}>Manager</span>
+                  )}
+                </td>
                 <td style={td}>{r.data.email || '—'}</td>
                 {showCompany && <td style={td}>{r.data[companyKey] || '—'}</td>}
                 <td style={td}>
                   <StatusPill row={r} />
                   {r.status === 'conflict' && r.existing && <div style={{ fontSize: 11, color: '#94a3b8' }}>de {r.existing.name}</div>}
+                  {r.status === 'conflict' && !r.existing && r.message && <div style={{ fontSize: 11, color: '#b45309' }}>{r.message}</div>}
                   {r.status === 'error' && <div style={{ fontSize: 11, color: '#dc2626' }}>{r.message}</div>}
                 </td>
                 <td style={td}>
@@ -331,7 +343,9 @@ function PreviewTable({
                       style={{ padding: '5px 8px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
                     >
                       <option value="skip">Omitir</option>
-                      <option value="overwrite">Sobreescribir</option>
+                      {r.existing
+                        ? <option value="overwrite">Sobreescribir</option>
+                        : <option value="create">Crear igual</option>}
                     </select>
                   )}
                 </td>

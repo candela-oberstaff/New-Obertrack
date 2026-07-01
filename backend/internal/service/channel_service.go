@@ -117,14 +117,16 @@ type ChannelService interface {
 	GetStarredMessages(userID uint) ([]models.ChannelMessage, error)
 	SearchMessages(channelID, userID uint, query string) ([]models.ChannelMessage, error)
 	CreateDirectMessage(userID, recipientID uint, tenantOverride uint) (*DirectMessageResponse, error)
-	ContactSupport(userID uint) (*ChannelWithUnread, error)
+	ContactSupport(userID uint, subject, message, priority, module string, forceNew bool) (*ChannelWithUnread, error)
+	ReopenSupportTicket(ticketID, actorID uint) (*models.SupportTicket, error)
 	ListSupportAgents() ([]models.User, error)
 	ListPendingSupport(userID uint, companyFilter uint) ([]models.SupportTicket, error)
 	ListSupportTicketsForBoard() ([]models.SupportTicket, error)
+	ListMySupportTickets(userID uint) ([]MySupportTicket, error)
 	NotifySupportReply(channelID, senderID uint, content string, alreadyNotified []uint)
-	ClaimSupportTicket(channelID, userID uint) (*models.SupportTicket, error)
-	AssignSupportTicket(channelID, actorID, assigneeID uint) (*models.SupportTicket, error)
-	ResolveSupportTicket(channelID, actorID uint) (*models.SupportTicket, error)
+	ClaimSupportTicket(ticketID, userID uint) (*models.SupportTicket, error)
+	AssignSupportTicket(ticketID, actorID, assigneeID uint) (*models.SupportTicket, error)
+	ResolveSupportTicket(ticketID, actorID uint) (*models.SupportTicket, error)
 	UpdateStatus(userID uint, status string) (*models.UserStatus, error)
 	GetStatuses(userIDs []uint, tenantID uint, isSuperadmin bool) ([]models.UserStatus, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
@@ -138,6 +140,8 @@ type ChannelService interface {
 	// se invoca tras CADA mutación de membresía para que el hub WS refleje los
 	// cambios al instante (sin esperar el TTL del caché).
 	SetMembershipChangeHandler(fn func(channelID uint))
+
+	SetSupportNotifier(n *SupportNotifier)
 }
 
 type ChannelWithUnread struct {
@@ -167,6 +171,10 @@ type ChannelWithUnread struct {
 // la lista de canales para que el frontend muestre responsable/estado y el panel
 // de contexto (datos del solicitante) sin pedir nada más.
 type SupportInfo struct {
+	TicketID       uint      `json:"ticket_id"`
+	Subject        string    `json:"subject,omitempty"`
+	Priority       string    `json:"priority,omitempty"`
+	Module         string    `json:"module,omitempty"`
 	Status         string    `json:"status"`
 	AssignedTo     *uint     `json:"assigned_to,omitempty"`
 	AssigneeName   string    `json:"assignee_name,omitempty"`
@@ -214,10 +222,15 @@ type channelService struct {
 	// acoplar service→routes. Lo cablea routes/deps.go. Puede ser nil (no-op) en
 	// tests. NUNCA se llama en el path de envío de mensajes (no degradar el caché).
 	onMembershipChange func(channelID uint)
+	supportNtfy *SupportNotifier
 }
 
 func NewChannelService(repo repository.ChannelRepository, userRepo repository.UserRepository, notifSvc NotificationService) ChannelService {
 	return &channelService{repo: repo, userRepo: userRepo, notifSvc: notifSvc}
+}
+
+func (s *channelService) SetSupportNotifier(n *SupportNotifier) {
+	s.supportNtfy = n
 }
 
 // SetBroadcaster inyecta el difusor WebSocket usado por los mensajes de sistema
@@ -352,13 +365,13 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 		}
 
 		result = append(result, ChannelWithUnread{
-			ID:          ch.ID,
-			Name:        ch.Name,
-			Description: ch.Description,
-			Type:        ch.Type,
-			CreatedBy:   ch.CreatedBy,
-			IsActive:    ch.IsActive,
-			CreatedAt:   ch.CreatedAt,
+			ID:           ch.ID,
+			Name:         ch.Name,
+			Description:  ch.Description,
+			Type:         ch.Type,
+			CreatedBy:    ch.CreatedBy,
+			IsActive:     ch.IsActive,
+			CreatedAt:    ch.CreatedAt,
 			UnreadCount:  unreadCount,
 			Recipient:    recipient,
 			Participants: participants,
@@ -374,11 +387,30 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 	if tickets, err := s.repo.GetSupportTicketsByChannelIDs(ids); err == nil {
 		byChannel := make(map[uint]models.SupportTicket, len(tickets))
 		for _, t := range tickets {
-			byChannel[t.ChannelID] = t
+			cur, ok := byChannel[t.ChannelID]
+			if !ok {
+				byChannel[t.ChannelID] = t
+				continue
+			}
+			curResolved := cur.Status == models.SupportStatusResolved
+			tResolved := t.Status == models.SupportStatusResolved
+			if curResolved != tResolved {
+				if curResolved {
+					byChannel[t.ChannelID] = t
+				}
+				continue
+			}
+			if t.UpdatedAt.After(cur.UpdatedAt) {
+				byChannel[t.ChannelID] = t
+			}
 		}
 		for i := range result {
 			if t, ok := byChannel[result[i].ID]; ok {
 				info := &SupportInfo{
+					TicketID:    t.ID,
+					Subject:     t.Subject,
+					Priority:    t.Priority,
+					Module:      t.Module,
 					Status:      t.Status,
 					AssignedTo:  t.AssignedTo,
 					RequesterID: t.RequesterID,
@@ -434,6 +466,9 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 	// inactive channel or trying to insert a duplicate (which would violate the
 	// uniqueIndex idx_channel_name_type_tenant). Recreating == reopening.
 	if existing, _ := s.repo.GetChannelByNameAndType(name, cType, tenantID); existing != nil {
+		if existing.IsActive {
+			return nil, ErrDuplicateChannelName
+		}
 		reactivated, err := s.reactivateChannel(existing, userID)
 		if err != nil {
 			return nil, err

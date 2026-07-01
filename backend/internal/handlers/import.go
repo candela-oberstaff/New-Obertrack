@@ -20,12 +20,12 @@ var importCompanyHeaders = []string{
 
 var importProfessionalHeaders = []string{
 	"nombre *", "email *", "empresa *",
-	"cargo", "telefono", "pais", "estado_provincia", "ciudad", "ubicacion",
+	"cargo", "telefono", "pais", "estado_provincia", "ciudad", "ubicacion", "es_manager",
 }
 
 var importEmployerProfHeaders = []string{
 	"nombre *", "email *",
-	"cargo", "telefono", "pais", "estado_provincia", "ciudad", "ubicacion",
+	"cargo", "telefono", "pais", "estado_provincia", "ciudad", "ubicacion", "es_manager",
 }
 
 func (h *AdminHandler) DownloadImportTemplate(c *gin.Context) {
@@ -64,13 +64,16 @@ func (h *AdminHandler) DownloadImportTemplate(c *gin.Context) {
 		"   • empresa*: nombre EXACTO de la empresa, o su ID. La empresa debe existir",
 		"     (si la estás creando en la hoja Empresas, esa se procesa primero).",
 		"   • cargo, telefono, pais, estado_provincia, ciudad, ubicacion: opcionales.",
+		"   • es_manager: escribí 'Sí' si el profesional es un manager (puede tener gente a cargo);",
+		"     'No' o vacío en caso contrario.",
 		"",
 		"Reglas importantes:",
 		"   • Contraseña: NO la pongas en el Excel. El sistema genera una temporal por cada fila",
 		"     y te la entrega al finalizar para que la compartas.",
 		"   • Email ya existente: te avisaremos a quién pertenece y podrás elegir SOBREESCRIBIR u OMITIR,",
 		"     fila por fila. Por defecto se OMITE.",
-		"   • Managers: NO se asignan en la importación (se hace después, desde el detalle).",
+		"   • Managers: marcá 'Sí' en es_manager para identificarlos. A quién reporta cada profesional",
+		"     se asigna después, desde el detalle del usuario.",
 		"   • País y ubicación: texto libre.",
 	}
 	for i, line := range instructions {
@@ -88,7 +91,7 @@ func (h *AdminHandler) DownloadImportTemplate(c *gin.Context) {
 
 	writeImportSheet(f, "Profesionales", importProfessionalHeaders, headerStyle, exampleStyle, []string{
 		"María González", "maria@miempresa.com", "Mi Empresa S.A.",
-		"Desarrolladora Backend", "+58 412 111 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao",
+		"Desarrolladora Backend", "+58 412 111 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "No",
 	})
 
 	if idx, err := f.GetSheetIndex("Instrucciones"); err == nil {
@@ -219,6 +222,7 @@ func (h *AdminHandler) ImportPreview(c *gin.Context) {
 
 	var compReports []importRow
 	pendingCompanyNames := map[string]bool{}
+	seenCompanyNames := map[string]int{}
 	if cIdx, cRows := readImportSheet(xl, "Empresas"); cIdx != nil {
 		for i, row := range cRows {
 			data := map[string]string{
@@ -247,11 +251,17 @@ func (h *AdminHandler) ImportPreview(c *gin.Context) {
 				rep.Status, rep.Message = "error", fmt.Sprintf("Email repetido en el archivo (ya está en la fila %d).", seen[email])
 			default:
 				seen[email] = rep.Row
+				lname := strings.ToLower(strings.TrimSpace(data["nombre_empresa"]))
 				if existing, err := h.service.FindUserByEmail(data["email"]); err == nil && existing != nil {
 					rep.Status, rep.Message = "conflict", "Este correo ya existe."
 					rep.Existing = &importExisting{ID: existing.ID, Name: existing.Name, Email: existing.Email}
+				} else if companyByName[lname] {
+					rep.Status, rep.Message = "conflict", "Ya existe una empresa con ese nombre en el sistema."
+				} else if prev, dup := seenCompanyNames[lname]; dup {
+					rep.Status, rep.Message = "conflict", fmt.Sprintf("Empresa repetida en el archivo (ya está en la fila %d).", prev)
 				} else {
-					pendingCompanyNames[strings.ToLower(data["nombre_empresa"])] = true
+					seenCompanyNames[lname] = rep.Row
+					pendingCompanyNames[lname] = true
 				}
 			}
 			compReports = append(compReports, rep)
@@ -271,6 +281,7 @@ func (h *AdminHandler) ImportPreview(c *gin.Context) {
 				"estado_provincia": cellVal(pIdx, row, "estado_provincia"),
 				"ciudad":           cellVal(pIdx, row, "ciudad"),
 				"ubicacion":        cellVal(pIdx, row, "ubicacion"),
+				"es_manager":       cellVal(pIdx, row, "es_manager"),
 			}
 			if emptyRow(data) {
 				continue
@@ -348,6 +359,14 @@ func putIf(m map[string]interface{}, key, val string) {
 	if strings.TrimSpace(val) != "" {
 		m[key] = val
 	}
+}
+
+func managerFlag(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "si", "sí", "yes", "y", "true", "1", "x", "verdadero":
+		return true
+	}
+	return false
 }
 
 func (h *AdminHandler) ImportExecute(c *gin.Context) {
@@ -451,6 +470,9 @@ func (h *AdminHandler) ImportExecute(c *gin.Context) {
 			putIf(updates, "state", d["estado_provincia"])
 			putIf(updates, "city", d["ciudad"])
 			putIf(updates, "location", d["ubicacion"])
+			if strings.TrimSpace(d["es_manager"]) != "" {
+				updates["is_manager"] = managerFlag(d["es_manager"])
+			}
 			u, err := h.service.UpdateUser(existing.ID, updates)
 			if err != nil {
 				profErrors = append(profErrors, rowErr{d["email"], err.Error()})
@@ -474,6 +496,7 @@ func (h *AdminHandler) ImportExecute(c *gin.Context) {
 				"user_type": string(models.UserTypeProfessional), "empleador_id": empID,
 				"job_title": d["cargo"], "phone_number": d["telefono"], "country": d["pais"],
 				"state": d["estado_provincia"], "city": d["ciudad"], "location": d["ubicacion"],
+				"is_manager": managerFlag(d["es_manager"]),
 			}
 			u, err := h.service.CreateUser(payload)
 			if err != nil {
@@ -527,6 +550,7 @@ func (h *AdminHandler) DownloadEmployerImportTemplate(c *gin.Context) {
 		"   • Contraseña: NO la pongas; se genera una temporal por fila y te la entregamos al finalizar.",
 		"   • Email ya existente: si pertenece a TU empresa podrás SOBREESCRIBIR u OMITIR; si pertenece a",
 		"     otra empresa, no se podrá importar (usá otro correo).",
+		"   • es_manager: escribí 'Sí' si el profesional es un manager; 'No' o vacío en caso contrario.",
 		"   • País y ubicación: texto libre.",
 	}
 	for i, line := range instructions {
@@ -538,7 +562,7 @@ func (h *AdminHandler) DownloadEmployerImportTemplate(c *gin.Context) {
 
 	writeImportSheet(f, "Profesionales", importEmployerProfHeaders, headerStyle, exampleStyle, []string{
 		"María González", "maria@miempresa.com",
-		"Desarrolladora Backend", "+58 412 111 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao",
+		"Desarrolladora Backend", "+58 412 111 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "No",
 	})
 
 	if idx, err := f.GetSheetIndex("Instrucciones"); err == nil {
@@ -570,6 +594,7 @@ func employerProfRows(xl *excelize.File, h *AdminHandler, tenantID uint) []impor
 			"estado_provincia": cellVal(idx, row, "estado_provincia"),
 			"ciudad":           cellVal(idx, row, "ciudad"),
 			"ubicacion":        cellVal(idx, row, "ubicacion"),
+			"es_manager":       cellVal(idx, row, "es_manager"),
 		}
 		if emptyRow(data) {
 			continue
@@ -663,6 +688,9 @@ func (h *AdminHandler) EmployerImportExecute(c *gin.Context) {
 			putIf(updates, "state", d["estado_provincia"])
 			putIf(updates, "city", d["ciudad"])
 			putIf(updates, "location", d["ubicacion"])
+			if strings.TrimSpace(d["es_manager"]) != "" {
+				updates["is_manager"] = managerFlag(d["es_manager"])
+			}
 			u, err := h.service.UpdateUserScoped(existing.ID, updates, tenantID)
 			if err != nil {
 				errs = append(errs, rowErr{d["email"], err.Error()})
@@ -681,6 +709,7 @@ func (h *AdminHandler) EmployerImportExecute(c *gin.Context) {
 				"user_type": string(models.UserTypeProfessional), "empleador_id": tenantID,
 				"job_title": d["cargo"], "phone_number": d["telefono"], "country": d["pais"],
 				"state": d["estado_provincia"], "city": d["ciudad"], "location": d["ubicacion"],
+				"is_manager": managerFlag(d["es_manager"]),
 			}
 			u, err := h.service.CreateUser(payload)
 			if err != nil {

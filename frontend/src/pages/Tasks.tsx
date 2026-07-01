@@ -140,6 +140,7 @@ export default function Tasks() {
           setSelectedBoard(null)
         }}
         clearable
+        searchable
         placeholder="Seleccione una empresa..."
         options={companies.map(c => ({ value: c.id, label: c.company_name }))}
       />
@@ -254,6 +255,7 @@ export default function Tasks() {
                   value={selectedBoard?.id ?? ''}
                   onChange={(v) => setSelectedBoard(v ? boards.find(b => b.id === Number(v)) ?? null : null)}
                   clearable
+                  searchable
                   placeholder="Seleccione un tablero..."
                   options={boards.map(b => ({ value: b.id, label: b.name, color: b.color || 'var(--primary)' }))}
                 />

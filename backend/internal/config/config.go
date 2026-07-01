@@ -24,6 +24,7 @@ type Config struct {
 	JWTSecret  string
 	ServerPort string
 	DBSSLMode  string
+	SupportEmail string
 	// MultiManagerReads activa las lecturas de manager via tabla N-a-N
 	// (employment_managers) con semántica "cualquier manager" (Fase 2).
 	// Default false: comportamiento actual (puntero employments.manager_id).
@@ -32,14 +33,15 @@ type Config struct {
 
 func LoadConfig() *Config {
 	cfg := &Config{
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "postgres"),
-		DBPassword: getEnv("DB_PASSWORD", ""),
-		DBName:     getEnv("DB_NAME", "obertrack"),
-		JWTSecret:  getEnv("JWT_SECRET", ""),
-		ServerPort: getEnv("SERVER_PORT", "8080"),
-		DBSSLMode:  getEnv("DB_SSL_MODE", "disable"),
+		DBHost:       getEnv("DB_HOST", "localhost"),
+		DBPort:       getEnv("DB_PORT", "5432"),
+		DBUser:       getEnv("DB_USER", "postgres"),
+		DBPassword:   getEnv("DB_PASSWORD", ""),
+		DBName:       getEnv("DB_NAME", "obertrack"),
+		JWTSecret:    getEnv("JWT_SECRET", ""),
+		ServerPort:   getEnv("SERVER_PORT", "8080"),
+		DBSSLMode:    getEnv("DB_SSL_MODE", "disable"),
+		SupportEmail: getEnv("SUPPORT_EMAIL", ""),
 		// Feature flag Fase 2: OFF por defecto; "true"/"1" lo activan.
 		MultiManagerReads: getBoolEnv("MULTI_MANAGER_READS", false),
 	}

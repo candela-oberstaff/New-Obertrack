@@ -95,6 +95,28 @@ export function CustomerSuccessRoute({ children }: RouteGuardProps) {
   return <>{children}</>
 }
 
+export function SupportInboxRoute({ children }: RouteGuardProps) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <Navigate to={ROUTES.login} replace />
+  }
+
+  const allowed =
+    user.is_superadmin ||
+    user.user_type === 'customer_success' ||
+    user.user_type === 'analista_it'
+  if (!allowed) {
+    return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
+  }
+
+  return <>{children}</>
+}
+
 // Módulo de empresa del EMPLEADOR: gestiona a sus empleados acotado a su tenant.
 // Solo cuentas empleador (no superadmin, no otros tipos).
 export function EmployerRoute({ children }: RouteGuardProps) {
@@ -109,6 +131,27 @@ export function EmployerRoute({ children }: RouteGuardProps) {
   }
 
   if (user.user_type !== 'empleador') {
+    return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
+  }
+
+  return <>{children}</>
+}
+
+export function SupportRoute({ children }: RouteGuardProps) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <Navigate to={ROUTES.login} replace />
+  }
+
+  const canOpen =
+    !user.is_superadmin &&
+    (user.user_type === 'profesional' || user.user_type === 'empleador')
+  if (!canOpen) {
     return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
   }
 
