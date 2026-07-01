@@ -14,10 +14,13 @@ const (
 // la solicitud manteniendo continuidad (un responsable visible para todo el equipo).
 type SupportTicket struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
-	ChannelID   uint       `gorm:"uniqueIndex;not null" json:"channel_id"`
+	ChannelID   uint       `gorm:"index;not null" json:"channel_id"`
 	TenantID    uint       `gorm:"index" json:"tenant_id"`
 	RequesterID uint       `gorm:"not null;index" json:"requester_id"`
 	Requester   *User      `gorm:"foreignKey:RequesterID" json:"requester,omitempty"`
+	Subject     string     `gorm:"size:160" json:"subject"`
+	Priority    string     `gorm:"size:20" json:"priority"`
+	Module      string     `gorm:"size:60" json:"module"`
 	Status      string     `gorm:"size:20;not null;default:'open'" json:"status"`
 	AssignedTo  *uint      `gorm:"index" json:"assigned_to,omitempty"`
 	Assignee    *User      `gorm:"foreignKey:AssignedTo" json:"assignee,omitempty"`

@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
-import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, EmployerRoute } from './guards'
+import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, EmployerRoute, SupportRoute, SupportInboxRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
 
 const Login = lazy(() => import('../pages/Login'))
@@ -27,6 +27,7 @@ const Tutoriales = lazy(() => import('../pages/Tutoriales'))
 const RolesGroups = lazy(() => import('../pages/RolesGroups'))
 const SurveyViewer = lazy(() => import('../pages/SurveyViewer'))
 const TicketsBoard = lazy(() => import('../pages/Tickets/TicketsBoard'))
+const SupportBoard = lazy(() => import('../pages/Tickets/SupportBoard'))
 const TicketDetail = lazy(() => import('../pages/Tickets/TicketDetail'))
 const RejectionReport = lazy(() => import('../pages/Tickets/RejectionReport'))
 const InternalTicketDetail = lazy(() => import('../pages/Tickets/InternalTicketDetail'))
@@ -35,6 +36,7 @@ const EmpresaEmployees = lazy(() => import('../pages/Empresa/EmpresaEmployees'))
 const ProfessionalsMap = lazy(() => import('../pages/ProfessionalsMap'))
 const Incidents = lazy(() => import('../pages/Incidents'))
 const EmpresaEmployeeDetail = lazy(() => import('../pages/Empresa/EmployeeDetail'))
+const Soporte = lazy(() => import('../pages/Soporte'))
 
 export function AppRoutes() {
   return (
@@ -58,6 +60,7 @@ export function AppRoutes() {
           <Route path="chat" element={<SlackChat />} />
           <Route path="whatsapp" element={<AdminRoute><WhatsApp /></AdminRoute>} />
           <Route path="profile" element={<Profile />} />
+          <Route path="soporte" element={<SupportRoute><Soporte /></SupportRoute>} />
           {/* Admin y Empresas: superadmin gestiona; CS consulta (el backend solo les permite GETs). */}
           <Route path="admin" element={<CustomerSuccessRoute><Admin /></CustomerSuccessRoute>} />
           <Route path="admin/users/:id" element={<CustomerSuccessRoute><AdminUserDetail /></CustomerSuccessRoute>} />
@@ -78,6 +81,7 @@ export function AppRoutes() {
           <Route path="roles-grupos" element={<AdminRoute><RolesGroups /></AdminRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
           <Route path="tickets" element={<AdminRoute><TicketsBoard /></AdminRoute>} />
+          <Route path="tickets/soporte" element={<SupportInboxRoute><SupportBoard /></SupportInboxRoute>} />
           <Route path="tickets/report" element={<AdminRoute><RejectionReport /></AdminRoute>} />
           <Route path="tickets/internal/:id" element={<AdminRoute><InternalTicketDetail /></AdminRoute>} />
           <Route path="tickets/:id" element={<AdminRoute><TicketDetail /></AdminRoute>} />

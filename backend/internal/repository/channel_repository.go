@@ -84,7 +84,10 @@ type ChannelRepository interface {
 	// Support tickets
 	CreateSupportTicket(ticket *models.SupportTicket) error
 	GetSupportTicketByChannel(channelID uint) (*models.SupportTicket, error)
+	GetSupportTicketByID(id uint) (*models.SupportTicket, error)
+	GetActiveSupportTicketByChannel(channelID uint) (*models.SupportTicket, error)
 	GetSupportTicketsByChannelIDs(channelIDs []uint) ([]models.SupportTicket, error)
+	GetSupportTicketsByRequester(requesterID uint) ([]models.SupportTicket, error)
 	GetPendingSupportTickets(companyID uint) ([]models.SupportTicket, error)
 	GetAllSupportTickets() ([]models.SupportTicket, error)
 	UpdateSupportTicket(ticket *models.SupportTicket, updates map[string]interface{}) error
@@ -161,7 +164,7 @@ func (r *channelRepository) GetChannel(id uint) (*models.Channel, error) {
 // would violate the uniqueIndex idx_channel_name_type_tenant.
 func (r *channelRepository) GetChannelByNameAndType(name string, channelType models.ChannelType, tenantID uint) (*models.Channel, error) {
 	var channel models.Channel
-	err := r.db.Where("name = ? AND type = ? AND tenant_id = ?", name, channelType, tenantID).First(&channel).Error
+	err := r.db.Where("LOWER(TRIM(name)) = LOWER(TRIM(?)) AND type = ? AND tenant_id = ?", name, channelType, tenantID).First(&channel).Error
 	if err != nil {
 		return nil, err
 	}
@@ -672,6 +675,36 @@ func (r *channelRepository) GetPendingSupportTickets(companyID uint) ([]models.S
 		q = q.Where("tenant_id = ?", companyID)
 	}
 	err := q.Order("created_at ASC").Find(&tickets).Error
+	return tickets, err
+}
+
+func (r *channelRepository) GetSupportTicketByID(id uint) (*models.SupportTicket, error) {
+	var ticket models.SupportTicket
+	err := r.db.Preload("Assignee").Preload("Requester").First(&ticket, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &ticket, nil
+}
+
+func (r *channelRepository) GetActiveSupportTicketByChannel(channelID uint) (*models.SupportTicket, error) {
+	var ticket models.SupportTicket
+	err := r.db.Preload("Assignee").Preload("Requester").
+		Where("channel_id = ?", channelID).
+		Order("CASE WHEN status = 'resolved' THEN 1 ELSE 0 END ASC").
+		Order("updated_at DESC").
+		First(&ticket).Error
+	if err != nil {
+		return nil, err
+	}
+	return &ticket, nil
+}
+
+func (r *channelRepository) GetSupportTicketsByRequester(requesterID uint) ([]models.SupportTicket, error) {
+	var tickets []models.SupportTicket
+	err := r.db.Preload("Assignee").
+		Where("requester_id = ?", requesterID).
+		Order("updated_at DESC").Find(&tickets).Error
 	return tickets, err
 }
 

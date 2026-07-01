@@ -15,8 +15,8 @@ import (
 )
 
 type ChannelHandler struct {
-	svc  service.ChannelService
-	hub  *websocket.ChannelHub
+	svc service.ChannelService
+	hub *websocket.ChannelHub
 }
 
 func NewChannelHandler(svc service.ChannelService, hub *websocket.ChannelHub) *ChannelHandler {
@@ -120,6 +120,10 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 	companyFilter := superadminCompanyFilter(c, middleware.IsSuperadmin(c))
 	channel, err := h.svc.Create(userID, req.Name, req.Description, req.Type, req.MemberIDs, companyFilter)
 	if err != nil {
+		if errors.Is(err, service.ErrDuplicateChannelName) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Ya existe un canal con ese nombre en esta empresa."})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -849,7 +853,16 @@ func (h *ChannelHandler) CreateDirectMessage(c *gin.Context) {
 func (h *ChannelHandler) ContactSupport(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
-	channel, err := h.svc.ContactSupport(userID)
+	var req struct {
+		Subject  string `json:"subject"`
+		Message  string `json:"message"`
+		Priority string `json:"priority"`
+		Module   string `json:"module"`
+		New      bool   `json:"new"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	channel, err := h.svc.ContactSupport(userID, req.Subject, req.Message, req.Priority, req.Module, req.New)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -881,12 +894,35 @@ func (h *ChannelHandler) ListPendingSupport(c *gin.Context) {
 	c.JSON(http.StatusOK, tickets)
 }
 
+func (h *ChannelHandler) ListMySupportTickets(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+
+	tickets, err := h.svc.ListMySupportTickets(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, tickets)
+}
+
 // ClaimSupport: el agente toma el ticket (se autoasigna).
 func (h *ChannelHandler) ClaimSupport(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	userID := middleware.GetUserID(c)
 
 	ticket, err := h.svc.ClaimSupportTicket(uint(id), userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ticket)
+}
+
+func (h *ChannelHandler) ReopenSupport(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	userID := middleware.GetUserID(c)
+
+	ticket, err := h.svc.ReopenSupportTicket(uint(id), userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

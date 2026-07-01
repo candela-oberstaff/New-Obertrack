@@ -28,7 +28,10 @@ func NewTicketHandler(db *gorm.DB, zohoSvc *service.ZohoService, ticketSvc servi
 }
 
 func canUseSupportInbox(c *gin.Context) bool {
-	return middleware.IsSuperadmin(c) || middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess)
+	role := middleware.GetUserRole(c)
+	return middleware.IsSuperadmin(c) ||
+		role == string(models.UserTypeCustomerSuccess) ||
+		role == string(models.UserTypeITAnalyst)
 }
 
 func hashStringToUint(s string) uint {
@@ -344,7 +347,9 @@ func ticketDTOFromSupport(t models.SupportTicket) gin.H {
 		assigneeEmail = t.Assignee.Email
 	}
 	title := "Soporte"
-	if requesterName != "" {
+	if t.Subject != "" {
+		title = t.Subject
+	} else if requesterName != "" {
 		title = "Soporte · " + requesterName
 	}
 

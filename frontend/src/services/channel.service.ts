@@ -1,6 +1,6 @@
 import api from './client'
 import type { User } from '../types'
-import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket } from '../types/chat'
+import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket, MySupportTicket } from '../types/chat'
 
 export const channelService = {
   getChannels: async (companyId?: number | null): Promise<Channel[]> => {
@@ -118,8 +118,16 @@ export const channelService = {
     return data
   },
   // Abre (o reutiliza) el canal de soporte con Customer Success y los alerta.
-  contactSupport: async (): Promise<Channel> => {
-    const { data } = await api.post<Channel>('/channels/support', {})
+  contactSupport: async (payload?: { subject?: string; message?: string; priority?: string; module?: string; new?: boolean }): Promise<Channel> => {
+    const { data } = await api.post<Channel>('/channels/support', payload ?? {})
+    return data
+  },
+  reopenSupport: async (ticketId: number): Promise<SupportTicket> => {
+    const { data } = await api.post<SupportTicket>(`/channels/support/tickets/${ticketId}/reopen`, {})
+    return data
+  },
+  getMySupportTickets: async (): Promise<MySupportTicket[]> => {
+    const { data } = await api.get<MySupportTicket[]>('/channels/support/mine')
     return data
   },
   // Gestión de tickets de soporte (Customer Success / superadmin).
@@ -133,16 +141,16 @@ export const channelService = {
     const { data } = await api.get<SupportTicket[]>('/channels/support/pending', { params })
     return data
   },
-  claimSupport: async (channelId: number): Promise<SupportTicket> => {
-    const { data } = await api.post<SupportTicket>(`/channels/${channelId}/support/claim`, {})
+  claimSupport: async (ticketId: number): Promise<SupportTicket> => {
+    const { data } = await api.post<SupportTicket>(`/channels/support/tickets/${ticketId}/claim`, {})
     return data
   },
-  assignSupport: async (channelId: number, assigneeId: number): Promise<SupportTicket> => {
-    const { data } = await api.post<SupportTicket>(`/channels/${channelId}/support/assign`, { assignee_id: assigneeId })
+  assignSupport: async (ticketId: number, assigneeId: number): Promise<SupportTicket> => {
+    const { data } = await api.post<SupportTicket>(`/channels/support/tickets/${ticketId}/assign`, { assignee_id: assigneeId })
     return data
   },
-  resolveSupport: async (channelId: number): Promise<SupportTicket> => {
-    const { data } = await api.post<SupportTicket>(`/channels/${channelId}/support/resolve`, {})
+  resolveSupport: async (ticketId: number): Promise<SupportTicket> => {
+    const { data } = await api.post<SupportTicket>(`/channels/support/tickets/${ticketId}/resolve`, {})
     return data
   },
   markAsRead: async (id: number) => {

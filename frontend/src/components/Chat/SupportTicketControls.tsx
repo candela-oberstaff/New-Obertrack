@@ -41,7 +41,20 @@ export function SupportTicketControls({
     </span>
   )
 
-  if (!isSupportAgent) return pill
+  const subjectLabel = support.subject ? (
+    <span title={support.subject} style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+      {support.subject}
+    </span>
+  ) : null
+
+  if (!isSupportAgent) {
+    return (
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        {pill}
+        {subjectLabel}
+      </div>
+    )
+  }
 
   const baseBtn: React.CSSProperties = {
     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
@@ -52,6 +65,7 @@ export function SupportTicketControls({
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
       {pill}
+      {subjectLabel}
 
       {!assignedToMe && support.status !== 'resolved' && (
         <button disabled={busy} onClick={onClaim} style={{ ...baseBtn, background: '#7c3aed', color: '#fff', border: 'none' }} title="Tomar el ticket">

@@ -549,6 +549,7 @@ export default function WorkHours() {
         value={selectedCompanyId ?? ''}
         onChange={(v) => setSelectedCompanyId(v ? Number(v) : null)}
         clearable
+        searchable
         placeholder="Seleccione una empresa..."
         options={companies.map(c => ({ value: c.id, label: c.company_name }))}
       />
@@ -557,6 +558,7 @@ export default function WorkHours() {
           value={selectedEmployeeId ?? ''}
           onChange={(v) => setSelectedEmployeeId(v ? Number(v) : null)}
           clearable
+          searchable
           placeholder="Todos los Profesionales"
           options={employees.map(e => ({ value: e.id, label: e.name }))}
         />
