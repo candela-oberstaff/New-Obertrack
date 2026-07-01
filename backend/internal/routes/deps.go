@@ -87,12 +87,15 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	zohoSvc := service.NewZohoService()
 	slackSvc := service.NewSlackService()
 
+	supportNtfy := service.NewSupportNotifier(brevoSvc, userRepo, cfg.SupportEmail)
+
 	// Services
 	userSvc := service.NewUserService(userRepo, employmentRepo)
 	notifSvc := service.NewNotificationService(notifRepo)
 	chatSvc := service.NewChatService(chatRepo)
 	channelSvc := service.NewChannelService(channelRepo, userRepo, notifSvc)
-	ticketSvc := service.NewTicketService(ticketRepo, userRepo, notifSvc, wahaSvc, brevoSvc)
+	channelSvc.SetSupportNotifier(supportNtfy)
+	ticketSvc := service.NewTicketService(ticketRepo, userRepo, notifSvc, wahaSvc, brevoSvc, supportNtfy)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, brevoSvc)
 	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc, employmentRepo)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))

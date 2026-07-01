@@ -24,7 +24,7 @@ interface SidebarProps {
   // Cola de soporte (solo agentes): solicitudes sin asignar para aceptar.
   isSupportAgent?: boolean
   pendingSupport?: SupportTicket[]
-  onAcceptSupport?: (channelId: number) => void
+  onAcceptSupport?: (ticket: SupportTicket) => void
   supportBusy?: boolean
 }
 
@@ -127,17 +127,19 @@ export function Sidebar({
                   </div>
 
                   {!hidePending && pendingSupport.map(ticket => (
-                    <div key={ticket.channel_id} className={styles['channel-mini-item']}>
+                    <div key={ticket.id} className={styles['channel-mini-item']}>
                       {avatar(ticket.requester?.name || `#${ticket.channel_id}`)}
                       <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
                         <span className={styles['channel-mini-name']}>
                           {ticket.requester?.name || `Solicitud #${ticket.channel_id}`}
                         </span>
-                        <span className={styles['channel-mini-sub']} style={{ color: '#b45309' }}>Solicita soporte</span>
+                        <span className={styles['channel-mini-sub']} style={{ color: '#b45309' }}>
+                          {ticket.subject || 'Solicita soporte'}
+                        </span>
                       </span>
                       <button
                         disabled={supportBusy}
-                        onClick={() => onAcceptSupport?.(ticket.channel_id)}
+                        onClick={() => onAcceptSupport?.(ticket)}
                         title="Aceptar y atender"
                         style={{
                           border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 7,

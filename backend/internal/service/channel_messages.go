@@ -568,7 +568,7 @@ func (s *channelService) buildDMResponse(channel *models.Channel, recipientID ui
 // The channel lives in the client's tenant but CS agents (tenant 0) are added as
 // explicit members, so they see it and can read/reply via membership checks —
 // tenant isolation is bypassed deliberately, only for this support channel.
-func (s *channelService) ContactSupport(userID uint) (*ChannelWithUnread, error) {
+func (s *channelService) ContactSupport(userID uint, subject, message, priority, module string, forceNew bool) (*ChannelWithUnread, error) {
 	user, err := s.userRepo.GetByID(userID)
 	if err != nil || user == nil {
 		return nil, ErrUserNotFound
@@ -583,38 +583,31 @@ func (s *channelService) ContactSupport(userID uint) (*ChannelWithUnread, error)
 		tenantID = user.ID
 	}
 
-	// Agentes de Customer Success activos: miembros del canal y destinatarios de la alerta.
 	csUsers, _, err := s.userRepo.GetAll(string(models.UserTypeCustomerSuccess), "", "", 0, 0, 1000)
 	if err != nil {
 		return nil, err
 	}
-	activeCS := make([]models.User, 0, len(csUsers))
-	for _, cs := range csUsers {
-		if cs.IsActive {
-			activeCS = append(activeCS, cs)
+	itUsers, _, err := s.userRepo.GetAll(string(models.UserTypeITAnalyst), "", "", 0, 0, 1000)
+	if err != nil {
+		return nil, err
+	}
+	activeCS := make([]models.User, 0, len(csUsers)+len(itUsers))
+	for _, u := range append(csUsers, itUsers...) {
+		if u.IsActive {
+			activeCS = append(activeCS, u)
 		}
 	}
 
-	// Nombre único por profesional (incluye el id para evitar colisiones de
-	// nombres dentro del mismo tenant, que enrutarían a otro a su canal).
 	channelName := fmt.Sprintf("Soporte · %s #%d", user.Name, user.ID)
-
 	channel, lookupErr := s.repo.GetChannelByNameAndType(channelName, models.ChannelTypePrivate, tenantID)
-	isNew := lookupErr != nil || channel == nil
-	if !isNew && !channel.IsActive {
-		// B-7: the support channel existed but was soft-deleted. Reopen it in place so
-		// the user lands back in their (now visible) support channel instead of a
-		// ghost inactive one. Reuses the existing membership; re-adds only if missing.
-		var err error
+	channelIsNew := lookupErr != nil || channel == nil
+	if !channelIsNew && !channel.IsActive {
 		channel, err = s.reactivateChannel(channel, userID)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if isNew {
-		// El canal se crea SOLO con el profesional. Los agentes de soporte NO se
-		// agregan automáticamente (eso saturaría a todos los CS con cada canal):
-		// reciben una invitación y se unen al aceptar el ticket (claim/assign).
+	if channelIsNew {
 		channel = &models.Channel{
 			Name:        channelName,
 			Description: "Canal de soporte con Customer Success",
@@ -630,32 +623,76 @@ func (s *channelService) ContactSupport(userID uint) (*ChannelWithUnread, error)
 		channel, _ = s.repo.GetChannel(channel.ID)
 	}
 
-	// Asegura el ticket de gestión asociado al canal (crea si falta — también
-	// hace backfill de canales de soporte creados antes de esta funcionalidad).
-	ticket, terr := s.repo.GetSupportTicketByChannel(channel.ID)
-	if terr != nil || ticket == nil {
+	subject = strings.TrimSpace(subject)
+	message = strings.TrimSpace(message)
+	priority = strings.TrimSpace(priority)
+	module = strings.TrimSpace(module)
+
+	wantNew := forceNew || subject != ""
+	var ticket *models.SupportTicket
+	ticketIsNew := false
+	if !wantNew {
+		if active, aerr := s.repo.GetActiveSupportTicketByChannel(channel.ID); aerr == nil && active != nil && active.Status != models.SupportStatusResolved {
+			ticket = active
+		}
+	}
+	if ticket == nil {
+		subj := subject
+		if subj == "" {
+			subj = "Consulta general"
+		}
 		ticket = &models.SupportTicket{
 			ChannelID:   channel.ID,
 			TenantID:    tenantID,
 			RequesterID: userID,
+			Subject:     subj,
+			Priority:    priority,
+			Module:      module,
 			Status:      models.SupportStatusOpen,
 		}
 		if err := s.repo.CreateSupportTicket(ticket); err != nil {
 			log.Printf("[ContactSupport] no se pudo crear el ticket: %v", err)
+		} else {
+			ticketIsNew = true
 		}
 	}
 
-	// Mensaje inicial solo al crear, para dar contexto a Customer Success.
-	if isNew {
-		intro := fmt.Sprintf("👋 Hola, soy %s. Necesito ayuda del equipo de soporte.", user.Name)
-		if _, _, err := s.SendMessage(channel.ID, userID, intro, "", "", 0, ""); err != nil {
-			log.Printf("[ContactSupport] no se pudo publicar el mensaje inicial: %v", err)
+	if ticketIsNew {
+		header := fmt.Sprintf("🆕 Nueva solicitud: %s", ticket.Subject)
+		extras := make([]string, 0, 2)
+		if priority != "" {
+			extras = append(extras, "Prioridad "+priority)
+		}
+		if module != "" {
+			extras = append(extras, "Módulo "+module)
+		}
+		if len(extras) > 0 {
+			header = fmt.Sprintf("%s · %s", header, strings.Join(extras, " · "))
+		}
+		s.postSupportSystemMessage(channel.ID, userID, header)
+	}
+	if message != "" {
+		if _, _, err := s.SendMessage(channel.ID, userID, message, "", "", 0, ""); err != nil {
+			log.Printf("[ContactSupport] no se pudo publicar el mensaje: %v", err)
+		}
+	} else if ticketIsNew && subject == "" {
+		greeting := fmt.Sprintf("👋 Hola, soy %s. Necesito ayuda del equipo de soporte.", user.Name)
+		if _, _, err := s.SendMessage(channel.ID, userID, greeting, "", "", 0, ""); err != nil {
+			log.Printf("[ContactSupport] no se pudo publicar el saludo: %v", err)
 		}
 	}
 
-	// Invitación: si el ticket está sin asignar, se avisa a TODOS los agentes para
-	// que alguno lo acepte (entra a la cola de pendientes). Si ya tiene responsable,
-	// se avisa solo a ese agente para no saturar al resto del equipo.
+	if ticketIsNew && s.supportNtfy != nil {
+		s.supportNtfy.Notify(SupportTicketInfo{
+			Type:        "Solicitud de soporte",
+			Requester:   user.Name,
+			Company:     user.CompanyName,
+			Subject:     ticket.Subject,
+			Description: message,
+			Link:        "/tickets/soporte",
+		})
+	}
+
 	who := user.Name
 	if user.CompanyName != "" {
 		who = fmt.Sprintf("%s (%s)", user.Name, user.CompanyName)
@@ -687,7 +724,9 @@ func (s *channelService) isSupportAgent(userID uint) bool {
 	if err != nil || user == nil {
 		return false
 	}
-	return isSuperadminUser(user) || user.UserType == models.UserTypeCustomerSuccess
+	return isSuperadminUser(user) ||
+		user.UserType == models.UserTypeCustomerSuccess ||
+		user.UserType == models.UserTypeITAnalyst
 }
 
 // ListSupportAgents devuelve los agentes activos (customer_success + superadmin),
@@ -701,8 +740,13 @@ func (s *channelService) ListSupportAgents() ([]models.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	agents := make([]models.User, 0, len(cs)+len(sa))
-	for _, u := range append(cs, sa...) {
+	it, _, err := s.userRepo.GetAll(string(models.UserTypeITAnalyst), "", "", 0, 0, 1000)
+	if err != nil {
+		return nil, err
+	}
+	agents := make([]models.User, 0, len(cs)+len(sa)+len(it))
+	combined := append(append(cs, sa...), it...)
+	for _, u := range combined {
 		if u.IsActive {
 			agents = append(agents, u)
 		}
@@ -725,13 +769,69 @@ func (s *channelService) ListSupportTicketsForBoard() ([]models.SupportTicket, e
 	return s.repo.GetAllSupportTickets()
 }
 
+type MySupportTicket struct {
+	ID            uint       `json:"id"`
+	ChannelID     uint       `json:"channel_id"`
+	Subject       string     `json:"subject,omitempty"`
+	Priority      string     `json:"priority,omitempty"`
+	Module        string     `json:"module,omitempty"`
+	Status        string     `json:"status"`
+	AssigneeName  string     `json:"assignee_name,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
+	UnreadCount   int64      `json:"unread_count"`
+	LastMessage   string     `json:"last_message,omitempty"`
+	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
+}
+
+func (s *channelService) ListMySupportTickets(userID uint) ([]MySupportTicket, error) {
+	tickets, err := s.repo.GetSupportTicketsByRequester(userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MySupportTicket, 0, len(tickets))
+	for i := range tickets {
+		t := tickets[i]
+		dto := MySupportTicket{
+			ID:         t.ID,
+			ChannelID:  t.ChannelID,
+			Subject:    t.Subject,
+			Priority:   t.Priority,
+			Module:     t.Module,
+			Status:     t.Status,
+			CreatedAt:  t.CreatedAt,
+			UpdatedAt:  t.UpdatedAt,
+			ResolvedAt: t.ResolvedAt,
+		}
+		if t.Assignee != nil {
+			dto.AssigneeName = t.Assignee.Name
+		}
+		if unread, uerr := s.repo.GetUnreadCount(t.ChannelID, userID); uerr == nil {
+			dto.UnreadCount = unread
+		}
+		if msgs, merr := s.repo.GetMessages(t.ChannelID, 1, nil, 0); merr == nil && len(msgs) > 0 {
+			last := msgs[len(msgs)-1]
+			preview := strings.TrimSpace(last.Content)
+			if len(preview) > 140 {
+				preview = preview[:140] + "…"
+			}
+			dto.LastMessage = preview
+			lm := last.CreatedAt
+			dto.LastMessageAt = &lm
+		}
+		out = append(out, dto)
+	}
+	return out, nil
+}
+
 // NotifySupportReply avisa por campana cuando hay una respuesta en un ticket de
 // soporte YA ASIGNADO: si responde el solicitante, avisa al responsable; si
 // responde un agente, avisa al solicitante. Best-effort, no bloquea el envío.
 // Se invoca desde el handler (solo mensajes reales de usuario), no para los
 // mensajes de sistema internos (tomó/asignó/resolvió).
 func (s *channelService) NotifySupportReply(channelID, senderID uint, content string, alreadyNotified []uint) {
-	ticket, err := s.repo.GetSupportTicketByChannel(channelID)
+	ticket, err := s.repo.GetActiveSupportTicketByChannel(channelID)
 	if err != nil || ticket == nil || ticket.AssignedTo == nil {
 		return // no es un canal de soporte, o aún no tiene responsable
 	}
@@ -797,30 +897,30 @@ func (s *channelService) notifySupport(userID uint, channelID uint, title, messa
 }
 
 // ClaimSupportTicket asigna el ticket al agente que lo toma (estado → asignado).
-func (s *channelService) ClaimSupportTicket(channelID, userID uint) (*models.SupportTicket, error) {
+func (s *channelService) ClaimSupportTicket(ticketID, userID uint) (*models.SupportTicket, error) {
 	if !s.isSupportAgent(userID) {
 		return nil, fmt.Errorf("solo Customer Success o superadmins pueden gestionar tickets de soporte")
 	}
-	return s.assignSupport(channelID, userID, userID, true)
+	return s.assignSupport(ticketID, userID, userID, true)
 }
 
 // AssignSupportTicket reasigna el ticket a otro agente de soporte.
-func (s *channelService) AssignSupportTicket(channelID, actorID, assigneeID uint) (*models.SupportTicket, error) {
+func (s *channelService) AssignSupportTicket(ticketID, actorID, assigneeID uint) (*models.SupportTicket, error) {
 	if !s.isSupportAgent(actorID) {
 		return nil, fmt.Errorf("solo Customer Success o superadmins pueden gestionar tickets de soporte")
 	}
 	if !s.isSupportAgent(assigneeID) {
 		return nil, fmt.Errorf("solo puedes asignar el ticket a un agente de soporte")
 	}
-	return s.assignSupport(channelID, actorID, assigneeID, false)
+	return s.assignSupport(ticketID, actorID, assigneeID, false)
 }
 
-// assignSupport es la lógica común de tomar/reasignar.
-func (s *channelService) assignSupport(channelID, actorID, assigneeID uint, selfClaim bool) (*models.SupportTicket, error) {
-	ticket, err := s.repo.GetSupportTicketByChannel(channelID)
+func (s *channelService) assignSupport(ticketID, actorID, assigneeID uint, selfClaim bool) (*models.SupportTicket, error) {
+	ticket, err := s.repo.GetSupportTicketByID(ticketID)
 	if err != nil || ticket == nil {
 		return nil, fmt.Errorf("ticket de soporte no encontrado")
 	}
+	channelID := ticket.ChannelID
 
 	// El asignado debe ser miembro del canal para verlo y responder.
 	if member, _ := s.repo.GetMember(channelID, assigneeID); member == nil {
@@ -868,18 +968,19 @@ func (s *channelService) assignSupport(channelID, actorID, assigneeID uint, self
 		s.notifySupport(ticket.RequesterID, channelID, "Soporte en camino", fmt.Sprintf("%s está atendiendo tu solicitud.", assigneeName))
 	}
 
-	return s.repo.GetSupportTicketByChannel(channelID)
+	return s.repo.GetSupportTicketByID(ticketID)
 }
 
 // ResolveSupportTicket marca el ticket como resuelto.
-func (s *channelService) ResolveSupportTicket(channelID, actorID uint) (*models.SupportTicket, error) {
+func (s *channelService) ResolveSupportTicket(ticketID, actorID uint) (*models.SupportTicket, error) {
 	if !s.isSupportAgent(actorID) {
 		return nil, fmt.Errorf("solo Customer Success o superadmins pueden gestionar tickets de soporte")
 	}
-	ticket, err := s.repo.GetSupportTicketByChannel(channelID)
+	ticket, err := s.repo.GetSupportTicketByID(ticketID)
 	if err != nil || ticket == nil {
 		return nil, fmt.Errorf("ticket de soporte no encontrado")
 	}
+	channelID := ticket.ChannelID
 
 	now := time.Now()
 	if err := s.repo.UpdateSupportTicket(ticket, map[string]interface{}{
@@ -896,7 +997,41 @@ func (s *channelService) ResolveSupportTicket(channelID, actorID uint) (*models.
 		s.notifySupport(ticket.RequesterID, channelID, "Ticket de soporte resuelto", fmt.Sprintf("%s marcó tu solicitud como resuelta.", actorName))
 	}
 
-	return s.repo.GetSupportTicketByChannel(channelID)
+	return s.repo.GetSupportTicketByID(ticketID)
+}
+
+func (s *channelService) ReopenSupportTicket(ticketID, actorID uint) (*models.SupportTicket, error) {
+	ticket, err := s.repo.GetSupportTicketByID(ticketID)
+	if err != nil || ticket == nil {
+		return nil, fmt.Errorf("ticket de soporte no encontrado")
+	}
+	channelID := ticket.ChannelID
+	if ticket.RequesterID != actorID && !s.isSupportAgent(actorID) {
+		return nil, fmt.Errorf("no tenés permiso para reabrir este ticket")
+	}
+	if ticket.Status != models.SupportStatusResolved {
+		return s.repo.GetSupportTicketByID(ticketID)
+	}
+
+	newStatus := models.SupportStatusOpen
+	if ticket.AssignedTo != nil {
+		newStatus = models.SupportStatusAssigned
+	}
+	if err := s.repo.UpdateSupportTicket(ticket, map[string]interface{}{
+		"status":      newStatus,
+		"resolved_by": nil,
+		"resolved_at": nil,
+	}); err != nil {
+		return nil, err
+	}
+
+	actorName := s.userName(actorID)
+	s.postSupportSystemMessage(channelID, actorID, fmt.Sprintf("🔄 %s reabrió la solicitud.", actorName))
+	if ticket.AssignedTo != nil && *ticket.AssignedTo != actorID {
+		s.notifySupport(*ticket.AssignedTo, channelID, "Solicitud de soporte reabierta", fmt.Sprintf("%s reabrió su solicitud de soporte.", actorName))
+	}
+
+	return s.repo.GetSupportTicketByID(ticketID)
 }
 
 func (s *channelService) UpdateStatus(userID uint, status string) (*models.UserStatus, error) {

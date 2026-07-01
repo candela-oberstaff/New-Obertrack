@@ -130,9 +130,11 @@ export function ChatHeader({
             <button onClick={() => setShowChannelSettings(true)} title="Info del canal">
               <InfoIcon />
             </button>
-            <button onClick={() => leaveChannel(selectedChannel.id)} title="Salir del canal" className={styles['leave-btn']}>
-              <LogOutIcon />
-            </button>
+            {!isSupportChannel(selectedChannel) && (
+              <button onClick={() => leaveChannel(selectedChannel.id)} title="Salir del canal" className={styles['leave-btn']}>
+                <LogOutIcon />
+              </button>
+            )}
           </>
         )}
       </div>

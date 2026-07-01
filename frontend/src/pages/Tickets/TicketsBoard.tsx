@@ -40,13 +40,13 @@ function getInitialStageOrder(): TicketStageConfig[] {
   }
 }
 
-export default function TicketsBoard() {
+export default function TicketsBoard({ forcedOrigin }: { forcedOrigin?: OriginFilter } = {}) {
   const { user } = useAuth();
   const [stages, setStages] = useState<TicketStageConfig[]>(getInitialStageOrder);
   const [draggedStageIdx, setDraggedStageIdx] = useState<number | null>(null);
   const [dragOverStageIdx, setDragOverStageIdx] = useState<number | null>(null);
   const [filterOwn, setFilterOwn] = useState(false);
-  const [filterOrigin, setFilterOrigin] = useState<OriginFilter>('all');
+  const [filterOrigin, setFilterOrigin] = useState<OriginFilter>(forcedOrigin ?? 'all');
   const navigate = useNavigate();
 
   // Tickets auto-refresh every 60s via React Query's polling.
@@ -102,8 +102,9 @@ export default function TicketsBoard() {
     navigate(`/tickets/${encodeURIComponent(ticket.zoho_id)}`);
   };
 
+  const effectiveOrigin = forcedOrigin ?? filterOrigin
   const filteredTickets = tickets.filter(t => {
-    if (filterOrigin !== 'all' && (t.origin ?? 'zoho') !== filterOrigin) {
+    if (effectiveOrigin !== 'all' && (t.origin ?? 'zoho') !== effectiveOrigin) {
       return false;
     }
     if (filterOwn && user) {
@@ -191,6 +192,7 @@ export default function TicketsBoard() {
             </div>
           )}
 
+          {!forcedOrigin && (
           <div style={{
             display: 'flex',
             background: 'var(--bg-secondary)',
@@ -224,6 +226,7 @@ export default function TicketsBoard() {
               </button>
             ))}
           </div>
+          )}
 
           {lastRefresh && (
             <span style={{ fontSize: '0.75rem', color: 'var(--gray-400)' }}>

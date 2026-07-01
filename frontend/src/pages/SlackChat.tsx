@@ -45,7 +45,7 @@ export default function SlackChat() {
   const [contactingSupport, setContactingSupport] = useState(false)
 
   // Gestión de tickets de soporte: la pueden hacer CS y superadmins.
-  const isSupportAgent = !!user && (isSuperadmin || user.user_type === 'customer_success')
+  const isSupportAgent = !!user && (isSuperadmin || user.user_type === 'customer_success' || user.user_type === 'analista_it')
   const [supportAgents, setSupportAgents] = useState<User[]>([])
   const [pendingSupport, setPendingSupport] = useState<SupportTicket[]>([])
   const [supportBusy, setSupportBusy] = useState(false)
@@ -515,6 +515,9 @@ export default function SlackChat() {
     setSelectedChannel({
       ...selectedChannel,
       support: {
+        ...(selectedChannel as any).support,
+        ticket_id: ticket.id,
+        subject: ticket.subject,
         status: ticket.status,
         assigned_to: ticket.assigned_to,
         assignee_name: ticket.assignee?.name,
@@ -547,21 +550,30 @@ export default function SlackChat() {
     setShowSupportPanel(true)
   }, [selectedChannel?.id])
 
-  const handleClaimSupport = () => runSupportAction(() => channelService.claimSupport(selectedChannel!.id), 'Tomaste el ticket.')
-  const handleAssignSupport = (assigneeId: number) => runSupportAction(() => channelService.assignSupport(selectedChannel!.id, assigneeId), 'Ticket reasignado.')
-  const handleResolveSupport = () => runSupportAction(() => channelService.resolveSupport(selectedChannel!.id), 'Ticket marcado como resuelto.')
+  const supportTicketId = () => (selectedChannel as any)?.support?.ticket_id as number | undefined
+  const handleClaimSupport = () => {
+    const tid = supportTicketId(); if (!tid) return
+    runSupportAction(() => channelService.claimSupport(tid), 'Tomaste el ticket.')
+  }
+  const handleAssignSupport = (assigneeId: number) => {
+    const tid = supportTicketId(); if (!tid) return
+    runSupportAction(() => channelService.assignSupport(tid, assigneeId), 'Ticket reasignado.')
+  }
+  const handleResolveSupport = () => {
+    const tid = supportTicketId(); if (!tid) return
+    runSupportAction(() => channelService.resolveSupport(tid), 'Ticket marcado como resuelto.')
+  }
 
-  // Aceptar una solicitud pendiente desde la cola: la toma y abre el canal.
-  const handleAcceptSupport = async (channelId: number) => {
+  const handleAcceptSupport = async (ticket: SupportTicket) => {
     if (supportBusy) return
     setSupportBusy(true)
     try {
-      await channelService.claimSupport(channelId)
+      await channelService.claimSupport(ticket.id)
       await fetchChannels()
       refreshPendingSupport()
       try {
         const fresh = await channelService.getChannels(isSuperadmin ? selectedCompanyId : null)
-        const ch = fresh.find(c => c.id === channelId)
+        const ch = fresh.find(c => c.id === ticket.channel_id)
         if (ch) setSelectedChannel(ch as any)
       } catch { /* la lista ya se refrescó */ }
       showSuccess('Aceptaste la solicitud de soporte.')
