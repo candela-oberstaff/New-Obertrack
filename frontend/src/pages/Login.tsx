@@ -65,6 +65,10 @@ export default function Login() {
       </form>
 
       <p className={styles['auth-link']} style={{ marginTop: '12px', marginBottom: '0' }}>
+        ¿No tienes cuenta? <a href="/register">Regístrate</a>
+      </p>
+
+      <p className={styles['auth-link']} style={{ marginTop: '8px', marginBottom: '0' }}>
         <a href="/forgot-password">¿Olvidaste tu contraseña?</a>
       </p>
     </AuthLayout>
