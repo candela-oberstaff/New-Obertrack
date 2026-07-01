@@ -10,9 +10,6 @@ import (
 	"github.com/obertrack/backend/internal/repository"
 )
 
-// SupportNotifier envía un correo (best-effort) al equipo de soporte cada vez que
-// se crea un ticket. Los destinatarios son los agentes activos de Customer Success
-// y Analista de IT (soporte técnico), más, si está configurado, el buzón fijo SUPPORT_EMAIL.
 type SupportNotifier struct {
 	brevoSvc     *BrevoService
 	userRepo     repository.UserRepository
@@ -23,7 +20,6 @@ func NewSupportNotifier(brevoSvc *BrevoService, userRepo repository.UserReposito
 	return &SupportNotifier{brevoSvc: brevoSvc, userRepo: userRepo, supportEmail: strings.TrimSpace(supportEmail)}
 }
 
-// SupportTicketInfo describe el ticket recién creado para el cuerpo del correo.
 type SupportTicketInfo struct {
 	Type        string
 	Requester   string
@@ -34,8 +30,6 @@ type SupportTicketInfo struct {
 	Link        string
 }
 
-// recipients resuelve la lista de correos (agentes CS activos + SUPPORT_EMAIL),
-// en minúsculas, sin blancos y sin duplicados.
 func (n *SupportNotifier) recipients() []BrevoContact {
 	seen := make(map[string]bool)
 	out := make([]BrevoContact, 0, 8)
@@ -50,7 +44,6 @@ func (n *SupportNotifier) recipients() []BrevoContact {
 	}
 
 	if n.userRepo != nil {
-		// Equipo de soporte: Customer Success + Analista de IT (soporte técnico).
 		for _, role := range []models.UserType{models.UserTypeCustomerSuccess, models.UserTypeITAnalyst} {
 			users, _, err := n.userRepo.GetAll(string(role), "", "", 0, 0, 1000)
 			if err != nil {
@@ -68,8 +61,6 @@ func (n *SupportNotifier) recipients() []BrevoContact {
 	return out
 }
 
-// Notify envía el correo en segundo plano. Nunca falla la creación del ticket:
-// los errores se registran y se descartan.
 func (n *SupportNotifier) Notify(info SupportTicketInfo) {
 	if n == nil || n.brevoSvc == nil {
 		return

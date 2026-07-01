@@ -785,8 +785,6 @@ type MySupportTicket struct {
 	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
 }
 
-// ListMySupportTickets devuelve las solicitudes de soporte abiertas por el usuario
-// para que pueda hacerles seguimiento (estado, responsable y respuestas sin leer).
 func (s *channelService) ListMySupportTickets(userID uint) ([]MySupportTicket, error) {
 	tickets, err := s.repo.GetSupportTicketsByRequester(userID)
 	if err != nil {
@@ -917,7 +915,6 @@ func (s *channelService) AssignSupportTicket(ticketID, actorID, assigneeID uint)
 	return s.assignSupport(ticketID, actorID, assigneeID, false)
 }
 
-// assignSupport es la lógica común de tomar/reasignar (por id de ticket).
 func (s *channelService) assignSupport(ticketID, actorID, assigneeID uint, selfClaim bool) (*models.SupportTicket, error) {
 	ticket, err := s.repo.GetSupportTicketByID(ticketID)
 	if err != nil || ticket == nil {
@@ -1003,8 +1000,6 @@ func (s *channelService) ResolveSupportTicket(ticketID, actorID uint) (*models.S
 	return s.repo.GetSupportTicketByID(ticketID)
 }
 
-// ReopenSupportTicket reabre una solicitud resuelta. Lo puede hacer el solicitante
-// (si necesita más ayuda) o un agente de soporte. Vuelve a la cola del responsable.
 func (s *channelService) ReopenSupportTicket(ticketID, actorID uint) (*models.SupportTicket, error) {
 	ticket, err := s.repo.GetSupportTicketByID(ticketID)
 	if err != nil || ticket == nil {
@@ -1018,7 +1013,6 @@ func (s *channelService) ReopenSupportTicket(ticketID, actorID uint) (*models.Su
 		return s.repo.GetSupportTicketByID(ticketID)
 	}
 
-	// Si aún tiene responsable, vuelve a "asignado"; si no, a la cola abierta.
 	newStatus := models.SupportStatusOpen
 	if ticket.AssignedTo != nil {
 		newStatus = models.SupportStatusAssigned
