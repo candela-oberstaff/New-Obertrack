@@ -81,8 +81,11 @@ type ExpedienteNoteView struct {
 // viejos que solo tenían el resumen).
 type FrozenExpediente struct {
 	ExpedienteSummary
-	Notes     []ExpedienteNoteView `json:"frozen_notes,omitempty"`
-	Gestiones []GestionEntry       `json:"frozen_gestiones,omitempty"`
+	Notes     []ExpedienteNoteView        `json:"frozen_notes,omitempty"`
+	Gestiones []GestionEntry              `json:"frozen_gestiones,omitempty"`
+	Contactos []ContactEntry              `json:"frozen_contactos,omitempty"`
+	Absences  []AbsenceEntry              `json:"frozen_absences,omitempty"`
+	Documents []models.EmploymentDocument `json:"frozen_documents,omitempty"`
 }
 
 // CVEntry es una empresa en el CV del profesional: el empleo, su resumen y lo
@@ -178,6 +181,8 @@ type EmploymentService interface {
 	// del usuario, espeja el cambio en users.manager_id.
 	UpdateEmploymentManager(userID, employmentID uint, managerID *uint) error
 
+	SetChannelCleaner(fn func(userID, companyID uint) error)
+
 	// --- Conjunto de managers por empleo (FASE 3 multi-manager) ---
 	// ListEmploymentManagers devuelve el CONJUNTO de managers del empleo
 	// (principal primero, luego por nombre), con el nombre resuelto.
@@ -201,14 +206,19 @@ type ManagerView struct {
 }
 
 type employmentService struct {
-	repo         repository.EmploymentRepository
-	userRepo     repository.UserRepository
-	workHourRepo repository.WorkHourRepository
-	notifSvc     NotificationService
+	repo           repository.EmploymentRepository
+	userRepo       repository.UserRepository
+	workHourRepo   repository.WorkHourRepository
+	notifSvc       NotificationService
+	channelCleaner func(userID, companyID uint) error
 }
 
 func NewEmploymentService(repo repository.EmploymentRepository, userRepo repository.UserRepository, workHourRepo repository.WorkHourRepository, notifSvc NotificationService) EmploymentService {
 	return &employmentService{repo: repo, userRepo: userRepo, workHourRepo: workHourRepo, notifSvc: notifSvc}
+}
+
+func (s *employmentService) SetChannelCleaner(fn func(userID, companyID uint) error) {
+	s.channelCleaner = fn
 }
 
 func (s *employmentService) SyncActiveForUser(user *models.User) error {
@@ -422,7 +432,7 @@ func (s *employmentService) EndEmployment(userID, employmentID uint, endReason s
 		}
 		frozen.Notes = append(frozen.Notes, nv)
 	}
-	if fus, err := s.repo.ListFollowUps(target.UserID, target.StartedAt, now); err == nil {
+	if fus, err := s.repo.ListFollowUps(target.UserID, target.CompanyID, target.StartedAt, now); err == nil {
 		for _, f := range fus {
 			g := GestionEntry{Kind: f.Kind, Status: f.Status, Note: f.Note, CreatedAt: f.CreatedAt}
 			if by, err := s.userRepo.GetByID(f.CreatedBy); err == nil {
@@ -430,6 +440,11 @@ func (s *employmentService) EndEmployment(userID, employmentID uint, endReason s
 			}
 			frozen.Gestiones = append(frozen.Gestiones, g)
 		}
+	}
+	frozen.Contactos = s.listContacts(target, now)
+	frozen.Absences = s.listAbsences(target, now)
+	if docs, err := s.repo.ListDocuments(target.ID); err == nil {
+		frozen.Documents = docs
 	}
 
 	endSummary := ""
@@ -444,6 +459,10 @@ func (s *employmentService) EndEmployment(userID, employmentID uint, endReason s
 		"end_summary": endSummary,
 	}); err != nil {
 		return err
+	}
+
+	if s.channelCleaner != nil {
+		_ = s.channelCleaner(target.UserID, target.CompanyID)
 	}
 
 	// Si era la empresa activa, reasigna empleador_id a otra membresía activa
@@ -561,6 +580,22 @@ func (s *employmentService) listAbsences(e *models.Employment, at time.Time) []A
 	return entries
 }
 
+func (s *employmentService) listContacts(e *models.Employment, at time.Time) []ContactEntry {
+	contactos := make([]ContactEntry, 0)
+	cs, err := s.repo.ListContacts(e.UserID, e.CompanyID, e.StartedAt, at)
+	if err != nil {
+		return contactos
+	}
+	for _, c := range cs {
+		ce := ContactEntry{Channel: c.Channel, Note: c.Note, CreatedAt: c.CreatedAt}
+		if by, err := s.userRepo.GetByID(c.ByUserID); err == nil {
+			ce.ByName = by.Name
+		}
+		contactos = append(contactos, ce)
+	}
+	return contactos
+}
+
 // GetExpediente arma el expediente de un empleo: datos del empleo, resumen
 // (congelado si terminó, en vivo si sigue activo), notas y documentos. La
 // audiencia filtra la visibilidad: el profesional solo ve lo compartido.
@@ -621,8 +656,14 @@ func (s *employmentService) GetExpediente(employmentID uint, audience string) (*
 		}
 	}
 
-	// Documentos (filtrados por audiencia).
-	docs, _ := s.repo.ListDocuments(employmentID)
+	// Documentos: congelados si el empleo terminó (legajo sellado); en vivo si
+	// sigue activo. En ambos casos se filtran por audiencia.
+	var docs []models.EmploymentDocument
+	if useFrozen {
+		docs = frozen.Documents
+	} else {
+		docs, _ = s.repo.ListDocuments(employmentID)
+	}
 	docViews := make([]models.EmploymentDocument, 0, len(docs))
 	for _, d := range docs {
 		if audience == AudienceProfessional && d.Visibility != models.ExpedienteShared {
@@ -631,18 +672,24 @@ func (s *employmentService) GetExpediente(employmentID uint, audience string) (*
 		docViews = append(docViews, d)
 	}
 
-	// Detalle de ausencias hasta el cierre del empleo (o ahora si sigue activo).
+	// Detalle de ausencias hasta el cierre del empleo (o ahora si sigue activo):
+	// congelado si terminó, en vivo (acotado a la empresa) si sigue activo.
 	absUntil := time.Now()
 	if emp.EndedAt != nil {
 		absUntil = *emp.EndedAt
 	}
-	absences := s.listAbsences(emp, absUntil)
+	var absences []AbsenceEntry
+	if useFrozen {
+		absences = frozen.Absences
+	} else {
+		absences = s.listAbsences(emp, absUntil)
+	}
 
 	// Gestiones de CS: congeladas si el empleo terminó; en vivo si sigue activo.
 	gestiones := make([]GestionEntry, 0)
 	if useFrozen {
 		gestiones = append(gestiones, frozen.Gestiones...)
-	} else if fus, err := s.repo.ListFollowUps(emp.UserID, emp.StartedAt, absUntil); err == nil {
+	} else if fus, err := s.repo.ListFollowUps(emp.UserID, emp.CompanyID, emp.StartedAt, absUntil); err == nil {
 		for _, f := range fus {
 			g := GestionEntry{Kind: f.Kind, Status: f.Status, Note: f.Note, CreatedAt: f.CreatedAt}
 			if by, err := s.userRepo.GetByID(f.CreatedBy); err == nil {
@@ -652,16 +699,20 @@ func (s *employmentService) GetExpediente(employmentID uint, audience string) (*
 		}
 	}
 
-	// Contactos (email/WhatsApp/chat) durante el empleo, con autor resuelto.
-	contactos := make([]ContactEntry, 0)
-	if cs, err := s.repo.ListContacts(emp.UserID, emp.StartedAt, absUntil); err == nil {
-		for _, c := range cs {
-			ce := ContactEntry{Channel: c.Channel, Note: c.Note, CreatedAt: c.CreatedAt}
-			if by, err := s.userRepo.GetByID(c.ByUserID); err == nil {
-				ce.ByName = by.Name
-			}
-			contactos = append(contactos, ce)
-		}
+	// Contactos (email/WhatsApp/chat): congelados si el empleo terminó; en vivo
+	// (acotado a la empresa) si sigue activo.
+	var contactos []ContactEntry
+	if useFrozen {
+		contactos = frozen.Contactos
+	} else {
+		contactos = s.listContacts(emp, absUntil)
+	}
+
+	if absences == nil {
+		absences = []AbsenceEntry{}
+	}
+	if contactos == nil {
+		contactos = []ContactEntry{}
 	}
 
 	return &ExpedienteView{
@@ -788,10 +839,15 @@ func (s *employmentService) LogContact(userID, byUserID uint, channel string) er
 	if !models.IsValidContactChannel(channel) {
 		return errors.New("Canal de contacto inválido")
 	}
+	var companyID uint
+	if u, err := s.userRepo.GetByID(userID); err == nil && u.EmpleadorID != nil {
+		companyID = *u.EmpleadorID
+	}
 	return s.repo.CreateContact(&models.ContactLog{
-		UserID:   userID,
-		ByUserID: byUserID,
-		Channel:  channel,
+		UserID:    userID,
+		CompanyID: companyID,
+		ByUserID:  byUserID,
+		Channel:   channel,
 	})
 }
 

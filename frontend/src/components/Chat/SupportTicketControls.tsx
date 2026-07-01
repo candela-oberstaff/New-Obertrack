@@ -1,7 +1,9 @@
-import { LifeBuoy, Check, UserCheck } from 'lucide-react'
+import { LifeBuoy, Check, UserCheck, UserCog } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import type { Channel } from '../../types/chat'
 import type { User } from '../../types'
 import { supportStatusMeta } from './ChatUtils'
+import { PROFILE_CHANGE_MODULE } from '../../constants/support'
 
 interface SupportTicketControlsProps {
   channel: Channel
@@ -22,8 +24,11 @@ interface SupportTicketControlsProps {
 export function SupportTicketControls({
   channel, currentUserId, isSupportAgent, supportAgents, onClaim, onAssign, onResolve, busy,
 }: SupportTicketControlsProps) {
+  const navigate = useNavigate()
   const support = channel.support
   if (!support) return null
+
+  const isProfileChange = support.module === PROFILE_CHANGE_MODULE
 
   const meta = supportStatusMeta(support.status)
   const assignedToMe = !!support.assigned_to && support.assigned_to === currentUserId
@@ -89,9 +94,19 @@ export function SupportTicketControls({
       )}
 
       {support.status !== 'resolved' ? (
-        <button disabled={busy} onClick={onResolve} style={{ ...baseBtn, background: '#16a34a', color: '#fff', border: 'none' }} title="Marcar como resuelto">
-          <Check size={14} /> Resolver
-        </button>
+        isProfileChange ? (
+          <button
+            onClick={() => navigate(`/admin/users/${support.requester_id}`)}
+            style={{ ...baseBtn, background: '#7c3aed', color: '#fff', border: 'none' }}
+            title="Revisar y aplicar los cambios en la ficha del profesional"
+          >
+            <UserCog size={14} /> Aplicar en ficha
+          </button>
+        ) : (
+          <button disabled={busy} onClick={onResolve} style={{ ...baseBtn, background: '#16a34a', color: '#fff', border: 'none' }} title="Marcar como resuelto">
+            <Check size={14} /> Resolver
+          </button>
+        )
       ) : (
         <button disabled={busy} onClick={onClaim} style={baseBtn} title="Reabrir el ticket">
           Reabrir

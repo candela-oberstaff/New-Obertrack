@@ -13,6 +13,7 @@ import Avatar from '../components/Common/Avatar'
 import { Skeleton } from '../components/ui'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { ExpedienteModal } from '../components/Admin/ExpedienteModal'
+import { ProfileChangeReviewPanel } from '../components/Admin/ProfileChangeReviewPanel'
 import EmploymentManagersEditor from '../components/Admin/EmploymentManagersEditor'
 import styles from './AdminUserDetail.module.css'
 
@@ -41,6 +42,8 @@ export default function AdminUserDetail() {
   const confirm = useConfirm()
   // CS entra en modo consulta: sin acciones ni gestión de roles/grupos.
   const canManage = !!viewer?.is_superadmin
+  const canReviewProfileChange = !!viewer?.is_superadmin ||
+    viewer?.user_type === 'customer_success' || viewer?.user_type === 'analista_it'
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -632,6 +635,15 @@ export default function AdminUserDetail() {
           ))}
         </div>
       </div>
+
+      {user.user_type === 'profesional' && (
+        <ProfileChangeReviewPanel
+          userId={user.id}
+          user={user}
+          canReview={canReviewProfileChange}
+          onApplied={load}
+        />
+      )}
 
       {user.is_manager && (
         <div className={styles.card} style={{ marginTop: '1rem' }}>

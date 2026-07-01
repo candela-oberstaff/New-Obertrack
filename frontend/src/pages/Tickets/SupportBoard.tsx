@@ -6,10 +6,12 @@ import { channelService } from '../../services/channel.service';
 import styles from './Tickets.module.css';
 import {
   RefreshCw, LifeBuoy, Search, User as UserIcon, Filter, Hand, CheckCircle2,
-  MessageSquare, AlertTriangle, Building2, Mail, Clock, UserX,
+  MessageSquare, AlertTriangle, Building2, Mail, Clock, UserX, Phone, Tag, RotateCcw, UserCog,
 } from 'lucide-react';
+import { Modal, Button } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
+import { PROFILE_CHANGE_MODULE } from '../../constants/support';
 
 type SupportState = 'open' | 'assigned' | 'resolved';
 
@@ -167,6 +169,7 @@ export default function SupportBoard() {
 
   const [dragTicket, setDragTicket] = useState<Ticket | null>(null);
   const [dragOverStage, setDragOverStage] = useState<StageId | null>(null);
+  const [detailTicket, setDetailTicket] = useState<Ticket | null>(null);
 
   const moveTicket = (ticket: Ticket, target: StageId) => {
     const current = (ticket.stage ?? 'new') as StageId;
@@ -186,6 +189,11 @@ export default function SupportBoard() {
 
   const openChat = (t: Ticket) => {
     if (t.channel_id) navigate(`/chat?channel=${t.channel_id}`);
+  };
+
+  const isProfileChange = (t: Ticket) => t.module === PROFILE_CHANGE_MODULE;
+  const openFicha = (t: Ticket) => {
+    if (t.user_id) navigate(`/admin/users/${t.user_id}`);
   };
 
   const metricCards = [
@@ -355,6 +363,9 @@ export default function SupportBoard() {
                         onClaim={() => claimMutation.mutate(t.id)}
                         onResolve={() => resolveMutation.mutate(t.id)}
                         onOpenChat={() => openChat(t)}
+                        onOpenDetail={() => setDetailTicket(t)}
+                        profileChange={isProfileChange(t)}
+                        onApplyInFicha={() => openFicha(t)}
                       />
                     ))
                   )}
@@ -365,10 +376,129 @@ export default function SupportBoard() {
         </div>
       )}
 
+      <TicketDetailModal
+        ticket={detailTicket}
+        busy={busyTicketId === detailTicket?.id}
+        onClose={() => setDetailTicket(null)}
+        onClaim={() => detailTicket && claimMutation.mutate(detailTicket.id)}
+        onResolve={() => detailTicket && resolveMutation.mutate(detailTicket.id)}
+        onReopen={() => detailTicket && reopenMutation.mutate(detailTicket.id)}
+        onOpenChat={() => { if (detailTicket) openChat(detailTicket); }}
+        onApplyInFicha={() => { if (detailTicket) openFicha(detailTicket); }}
+      />
+
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
     </div>
+  );
+}
+
+interface TicketDetailModalProps {
+  ticket: Ticket | null;
+  busy: boolean;
+  onClose: () => void;
+  onClaim: () => void;
+  onResolve: () => void;
+  onReopen: () => void;
+  onOpenChat: () => void;
+  onApplyInFicha: () => void;
+}
+
+function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
+  if (!value) return null;
+  return (
+    <div style={{ display: 'flex', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--gray-100)' }}>
+      <span style={{ flexShrink: 0, width: 20, color: 'var(--gray-400)', marginTop: 1 }}>{icon}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '0.02em' }}>{label}</span>
+        <span style={{ fontSize: '0.9rem', color: 'var(--text-primary, #1e293b)', wordBreak: 'break-word' }}>{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function TicketDetailModal({ ticket, busy, onClose, onClaim, onResolve, onReopen, onOpenChat, onApplyInFicha }: TicketDetailModalProps) {
+  if (!ticket) return null;
+  const st = supportState(ticket);
+  const meta = STATE_META[st];
+  const profileChange = ticket.module === PROFILE_CHANGE_MODULE;
+  const requester = ticket.contact?.name || ticket.professional_email || 'Desconocido';
+  const email = ticket.contact?.email || ticket.professional_email;
+  const phone = ticket.contact?.phone || ticket.professional_phone;
+  const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+
+  return (
+    <Modal
+      isOpen={!!ticket}
+      onClose={onClose}
+      title="Detalle del ticket"
+      size="md"
+      footer={
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%', justifyContent: 'flex-end' }}>
+          {st !== 'resolved' && !ticket.assigned_to && (
+            <Button variant="secondary" onClick={onClaim} loading={busy} disabled={!ticket.channel_id}>
+              <Hand size={14} /> Tomar
+            </Button>
+          )}
+          {st !== 'resolved' && (
+            profileChange ? (
+              <Button variant="primary" onClick={onApplyInFicha}>
+                <UserCog size={14} /> Aplicar en ficha
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={onResolve} loading={busy} disabled={!ticket.channel_id}>
+                <CheckCircle2 size={14} /> Resolver
+              </Button>
+            )
+          )}
+          {st === 'resolved' && (
+            <Button variant="secondary" onClick={onReopen} loading={busy} disabled={!ticket.channel_id}>
+              <RotateCcw size={14} /> Reabrir
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onOpenChat} disabled={!ticket.channel_id}>
+            <MessageSquare size={14} /> Abrir chat
+          </Button>
+        </div>
+      }
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '4px' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0.3rem 0.6rem', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', fontWeight: 600, color: meta.color, background: meta.bg }}>
+          {meta.label}
+        </span>
+        <span style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary, #1e293b)' }}>{ticket.title}</span>
+      </div>
+
+      {ticket.description && (
+        <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary, #64748b)', lineHeight: 1.5, whiteSpace: 'pre-wrap', margin: '10px 0 4px' }}>
+          {ticket.description}
+        </p>
+      )}
+
+      {profileChange && (
+        <div style={{ margin: '10px 0 4px', padding: '10px 12px', borderRadius: 10, border: '1px solid #ddd6fe', background: '#f5f3ff', fontSize: '0.83rem', color: '#5b21b6', lineHeight: 1.4 }}>
+          Esta solicitud <strong>no se resuelve por el chat</strong>: revisa y aplica los cambios en la ficha del profesional (eso resuelve el ticket).
+        </div>
+      )}
+
+      <div style={{ marginTop: '8px' }}>
+        <DetailRow icon={<Tag size={16} />} label="Módulo" value={ticket.module} />
+        <DetailRow icon={<UserIcon size={16} />} label="Solicitante" value={requester} />
+        <DetailRow icon={<Mail size={16} />} label="Correo" value={email} />
+        <DetailRow icon={<Phone size={16} />} label="Teléfono" value={phone} />
+        <DetailRow icon={<Building2 size={16} />} label="Empresa" value={ticket.company_name} />
+        <DetailRow icon={<Tag size={16} />} label="Categoría" value={ticket.category} />
+        <DetailRow icon={<AlertTriangle size={16} />} label="Prioridad" value={ticket.priority} />
+        <DetailRow
+          icon={<UserIcon size={16} />}
+          label="Responsable"
+          value={ticket.assigned_to ? (ticket.assignee_name || 'Agente') : 'Sin asignar'}
+        />
+        <DetailRow icon={<Clock size={16} />} label="Creado" value={fmtDate(ticket.created_at)} />
+        <DetailRow icon={<Clock size={16} />} label="Última actualización" value={fmtDate(ticket.updated_at)} />
+      </div>
+    </Modal>
   );
 }
 
@@ -383,9 +513,12 @@ interface SupportCardProps {
   onClaim: () => void;
   onResolve: () => void;
   onOpenChat: () => void;
+  onOpenDetail: () => void;
+  profileChange: boolean;
+  onApplyInFicha: () => void;
 }
 
-function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragEnd, onClaim, onResolve, onOpenChat }: SupportCardProps) {
+function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragEnd, onClaim, onResolve, onOpenChat, onOpenDetail, profileChange, onApplyInFicha }: SupportCardProps) {
   const st = supportState(ticket);
   const meta = STATE_META[st];
   const unassigned = !ticket.assigned_to;
@@ -398,8 +531,10 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
       draggable={!busy}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onClick={onOpenDetail}
+      title="Ver detalle"
       style={{
-        cursor: 'grab',
+        cursor: 'pointer',
         opacity: dragging ? 0.5 : 1,
         borderColor: stale ? 'rgba(239,68,68,0.45)' : undefined,
         boxShadow: stale ? '0 0 0 1px rgba(239,68,68,0.25)' : undefined,
@@ -441,6 +576,11 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
       </p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {profileChange && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, color: '#6d28d9', background: 'rgba(124,58,237,0.1)', padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(124,58,237,0.2)' }}>
+            <UserCog size={10} /> Datos de perfil
+          </span>
+        )}
         {unassigned ? (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: '#b45309', background: 'rgba(245,158,11,0.12)', padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(245,158,11,0.2)' }}>
             <UserX size={10} /> Sin asignar
@@ -455,7 +595,7 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
       <div className={styles.cardFooter} style={{ borderTop: '1px solid var(--gray-100)', gap: 8, flexWrap: 'wrap' }}>
         {st !== 'resolved' && unassigned && (
           <button
-            onClick={onClaim}
+            onClick={(e) => { e.stopPropagation(); onClaim(); }}
             disabled={busy || !ticket.channel_id}
             className={styles.channelBtn}
             style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center' }}
@@ -464,17 +604,28 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
           </button>
         )}
         {st !== 'resolved' && (
-          <button
-            onClick={onResolve}
-            disabled={busy || !ticket.channel_id}
-            className={styles.channelBtn}
-            style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center', color: '#15803d', borderColor: 'rgba(22,163,74,0.3)' }}
-          >
-            <CheckCircle2 size={13} style={{ flexShrink: 0 }} /> Resolver
-          </button>
+          profileChange ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onApplyInFicha(); }}
+              className={styles.channelBtn}
+              style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center', color: '#6d28d9', borderColor: 'rgba(124,58,237,0.3)' }}
+              title="Aplicar los cambios en la ficha del profesional"
+            >
+              <UserCog size={13} style={{ flexShrink: 0 }} /> Aplicar en ficha
+            </button>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); onResolve(); }}
+              disabled={busy || !ticket.channel_id}
+              className={styles.channelBtn}
+              style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center', color: '#15803d', borderColor: 'rgba(22,163,74,0.3)' }}
+            >
+              <CheckCircle2 size={13} style={{ flexShrink: 0 }} /> Resolver
+            </button>
+          )
         )}
         <button
-          onClick={onOpenChat}
+          onClick={(e) => { e.stopPropagation(); onOpenChat(); }}
           disabled={!ticket.channel_id}
           className={styles.channelBtn}
           style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center', color: '#7c3aed', borderColor: 'rgba(124,58,237,0.3)' }}

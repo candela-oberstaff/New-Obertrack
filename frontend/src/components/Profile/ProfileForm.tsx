@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { userService } from '../../services/api'
+import React, { useRef, useState } from 'react'
+import { Upload, FileCheck2, Eye, Loader2 } from 'lucide-react'
+import { userService, uploadService } from '../../services/api'
 import type { User } from '../../types'
 import Tooltip from '../Common/Tooltip'
 import { Select } from '../ui/Select'
@@ -15,7 +16,9 @@ interface ProfileFormProps {
 
 export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileFormProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
+  const docInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState({
     name: user.name || '',
     phone_number: user.phone_number || '',
@@ -24,6 +27,7 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
     city: user.city || '',
     location: user.location || '',
     job_title: user.job_title || '',
+    identity_document: user.identity_document || '',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,7 +48,38 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
     }
   }
 
+  const handleDocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    if (!allowed.includes(file.type)) {
+      setMessage({ type: 'error', text: 'El documento debe ser un PDF o una imagen' })
+      if (docInputRef.current) docInputRef.current.value = ''
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage({ type: 'error', text: 'El documento debe ser menor a 10MB' })
+      if (docInputRef.current) docInputRef.current.value = ''
+      return
+    }
+
+    setIsUploadingDoc(true)
+    setMessage({ type: '', text: '' })
+    try {
+      const result = await uploadService.upload(file)
+      setFormData((prev) => ({ ...prev, identity_document: result.url }))
+      setMessage({ type: 'success', text: 'Documento cargado. Guarda los cambios para confirmar.' })
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Error al subir el documento' })
+    } finally {
+      setIsUploadingDoc(false)
+      if (docInputRef.current) docInputRef.current.value = ''
+    }
+  }
+
   const isEmployer = user?.user_type === 'empleador' || user?.is_superadmin || user?.is_manager
+  const isProfessional = user?.user_type === 'profesional' || user?.user_type === 'customer_success'
 
   // Profiles saved before this was a dropdown may hold free text — keep that
   // value selectable instead of silently dropping it.
@@ -149,6 +184,60 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
             />
           </div>
 
+          {isProfessional && (
+            <div className={styles['form-group']}>
+              <label>Documento de identidad</label>
+              <input
+                ref={docInputRef}
+                type="file"
+                accept="application/pdf,image/*"
+                onChange={handleDocUpload}
+                style={{ display: 'none' }}
+              />
+              {formData.identity_document ? (
+                <div className={styles['doc-loaded']}>
+                  <FileCheck2 size={22} color="#10b981" style={{ flexShrink: 0 }} />
+                  <div className={styles['doc-loaded-info']}>
+                    <span className={styles['doc-loaded-title']}>Documento cargado</span>
+                    <a
+                      href={formData.identity_document}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles['doc-loaded-link']}
+                    >
+                      <Eye size={14} /> Ver documento
+                    </a>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles['doc-replace-btn']}
+                    onClick={() => docInputRef.current?.click()}
+                    disabled={isUploadingDoc}
+                  >
+                    {isUploadingDoc ? 'Subiendo…' : 'Reemplazar'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={styles['doc-dropzone']}
+                  onClick={() => docInputRef.current?.click()}
+                  disabled={isUploadingDoc}
+                >
+                  {isUploadingDoc ? (
+                    <Loader2 size={26} className={styles['doc-spin']} />
+                  ) : (
+                    <Upload size={26} />
+                  )}
+                  <span className={styles['doc-dropzone-title']}>
+                    {isUploadingDoc ? 'Subiendo documento…' : 'Haz clic para subir tu documento'}
+                  </span>
+                  <span className={styles['doc-dropzone-hint']}>PDF o imagen, hasta 10MB</span>
+                </button>
+              )}
+            </div>
+          )}
+
           <div className={styles['form-actions']}>
             <button type="submit" className={styles['btn-primary']} disabled={isLoading}>
               {isLoading ? 'Guardando...' : 'Guardar Cambios'}
@@ -185,6 +274,20 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
             <span className={styles['info-label']}>Dirección</span>
             <span className={styles['info-value']}>{user.location || 'No registrada'}</span>
           </div>
+          {isProfessional && (
+            <div className={styles['info-item']}>
+              <span className={styles['info-label']}>Documento de identidad</span>
+              <span className={styles['info-value']}>
+                {user.identity_document ? (
+                  <a href={user.identity_document} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary, #8b5cf6)' }}>
+                    Ver documento
+                  </a>
+                ) : (
+                  'No registrado'
+                )}
+              </span>
+            </div>
+          )}
           {user.company_name && (
             <div className={styles['info-item']}>
               <span className={styles['info-label']}>Empresa</span>
