@@ -8,7 +8,7 @@ import {
   RefreshCw, LifeBuoy, Search, User as UserIcon, Filter, Hand, CheckCircle2,
   MessageSquare, AlertTriangle, Building2, Mail, Clock, UserX, Phone, Tag, RotateCcw, UserCog,
 } from 'lucide-react';
-import { Modal, Button } from '../../components/ui';
+import { Modal, Button, Select } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { PROFILE_CHANGE_MODULE } from '../../constants/support';
@@ -79,6 +79,15 @@ export default function SupportBoard() {
   const error = queryError ? ((queryError as any)?.response?.data?.error ?? 'No se pudieron cargar los tickets.') : null;
 
   const supportTickets = useMemo(() => tickets.filter(t => t.origin === 'support'), [tickets]);
+
+  const isSuperadmin = !!(user as any)?.is_superadmin;
+
+  // Agentes de soporte (CS + superadmin + IT) para el selector de reasignación.
+  const { data: supportAgents = [] } = useQuery({
+    queryKey: ['support-agents'],
+    queryFn: () => channelService.getSupportAgents(),
+    staleTime: 5 * 60_000,
+  });
 
   const isMine = (t: Ticket): boolean => {
     if (!user) return false;
@@ -163,9 +172,20 @@ export default function SupportBoard() {
     onError: (e: any) => showError(e?.response?.data?.error || 'No se pudo reabrir la solicitud.'),
   });
 
+  const assignMutation = useMutation({
+    mutationFn: ({ ticketId, assigneeId }: { ticketId: number; assigneeId: number }) =>
+      channelService.assignSupport(ticketId, assigneeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      showSuccess('Ticket reasignado.');
+    },
+    onError: (e: any) => showError(e?.response?.data?.error || 'No se pudo reasignar el ticket.'),
+  });
+
   const busyTicketId = (claimMutation.isPending ? claimMutation.variables : undefined)
     ?? (resolveMutation.isPending ? resolveMutation.variables : undefined)
-    ?? (reopenMutation.isPending ? reopenMutation.variables : undefined);
+    ?? (reopenMutation.isPending ? reopenMutation.variables : undefined)
+    ?? (assignMutation.isPending ? assignMutation.variables?.ticketId : undefined);
 
   const [dragTicket, setDragTicket] = useState<Ticket | null>(null);
   const [dragOverStage, setDragOverStage] = useState<StageId | null>(null);
@@ -182,7 +202,7 @@ export default function SupportBoard() {
       if (supportState(ticket) === 'resolved') {
         reopenMutation.mutate(ticket.id);
       } else {
-        showError('Un ticket asignado no se puede dejar sin asignar arrastrándolo. Usá "Reasignar" en el chat.');
+        showError('Un ticket asignado no se puede dejar sin asignar arrastrándolo. Abrí el ticket y usá "Reasignar…".');
       }
     }
   };
@@ -379,6 +399,9 @@ export default function SupportBoard() {
       <TicketDetailModal
         ticket={detailTicket}
         busy={busyTicketId === detailTicket?.id}
+        agents={supportAgents}
+        canReassign={!!detailTicket && (!detailTicket.assigned_to || isMine(detailTicket) || isSuperadmin)}
+        onAssign={(assigneeId) => detailTicket && assignMutation.mutate({ ticketId: detailTicket.id, assigneeId })}
         onClose={() => setDetailTicket(null)}
         onClaim={() => detailTicket && claimMutation.mutate(detailTicket.id)}
         onResolve={() => detailTicket && resolveMutation.mutate(detailTicket.id)}
@@ -397,6 +420,11 @@ export default function SupportBoard() {
 interface TicketDetailModalProps {
   ticket: Ticket | null;
   busy: boolean;
+  /** Agentes de soporte disponibles como destino de reasignación. */
+  agents: Array<{ id: number; name: string }>;
+  /** True si el usuario puede reasignar ESTE ticket (sin asignar, propio o superadmin). */
+  canReassign: boolean;
+  onAssign: (assigneeId: number) => void;
   onClose: () => void;
   onClaim: () => void;
   onResolve: () => void;
@@ -418,7 +446,7 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
   );
 }
 
-function TicketDetailModal({ ticket, busy, onClose, onClaim, onResolve, onReopen, onOpenChat, onApplyInFicha }: TicketDetailModalProps) {
+function TicketDetailModal({ ticket, busy, agents, canReassign, onAssign, onClose, onClaim, onResolve, onReopen, onOpenChat, onApplyInFicha }: TicketDetailModalProps) {
   if (!ticket) return null;
   const st = supportState(ticket);
   const meta = STATE_META[st];
@@ -435,7 +463,23 @@ function TicketDetailModal({ ticket, busy, onClose, onClaim, onResolve, onReopen
       title="Detalle del ticket"
       size="md"
       footer={
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%', justifyContent: 'flex-end', alignItems: 'center' }}>
+          {st !== 'resolved' && canReassign && agents.length > 0 && (
+            <div style={{ width: 190, marginRight: 'auto' }}>
+              <Select
+                value=""
+                onChange={(v) => { const id = Number(v); if (id) onAssign(id); }}
+                placeholder="Reasignar…"
+                disabled={busy || !ticket.channel_id}
+                fullWidth
+                ariaLabel="Reasignar a otro agente"
+                leftIcon={<UserCog size={14} />}
+                options={agents
+                  .filter(a => a.id !== ticket.assigned_to)
+                  .map(a => ({ value: a.id, label: a.name }))}
+              />
+            </div>
+          )}
           {st !== 'resolved' && !ticket.assigned_to && (
             <Button variant="secondary" onClick={onClaim} loading={busy} disabled={!ticket.channel_id}>
               <Hand size={14} /> Tomar

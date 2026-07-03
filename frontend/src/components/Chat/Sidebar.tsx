@@ -1,11 +1,13 @@
 import { useState, useCallback, type ReactNode } from 'react'
-import { LifeBuoy, Inbox, Eye, EyeOff, Hash, AtSign, ChevronDown, ChevronRight } from 'lucide-react'
+import { LifeBuoy, Inbox, Eye, EyeOff, Hash, AtSign, ChevronDown, ChevronRight, Archive } from 'lucide-react'
 import { Channel, SupportTicket } from '../../types/chat'
 import { isSupportChannel, supportLabel, supportStatusMeta, dmContactName, getUserColor } from './ChatUtils'
 import styles from '../../pages/SlackChat.module.css'
 
 interface SidebarProps {
   channels: Channel[]
+  archivedChannels?: Channel[]
+  onRestoreChannel?: (id: number) => void
   selectedChannel: Channel | null
   setSelectedChannel: (channel: Channel) => void
   showMobileChannels: boolean
@@ -45,6 +47,8 @@ function usePersistentToggle(key: string): [boolean, () => void] {
 
 export function Sidebar({
   channels,
+  archivedChannels,
+  onRestoreChannel,
   selectedChannel,
   setSelectedChannel,
   showMobileChannels,
@@ -78,6 +82,7 @@ export function Sidebar({
   const [hideSupervision, toggleSupervision] = usePersistentToggle('chat_hide_supervision')
   const [hidePending, togglePending] = usePersistentToggle('chat_hide_pending')
   const [hideSupport, toggleSupport] = usePersistentToggle('chat_hide_support')
+  const [hideArchived, toggleArchived] = usePersistentToggle('chat_hide_archived')
 
   // Avatar redondo (inicial + color) para personas/DMs; con punto de estado opcional.
   const avatar = (name: string, status?: 'online' | 'away' | 'offline') => (
@@ -275,6 +280,52 @@ export function Sidebar({
                 </div>
                 )
               })}
+
+              {archivedChannels && archivedChannels.length > 0 && (
+                <>
+                  <div
+                    className={styles['channel-group-label']}
+                    onClick={toggleArchived}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    title={hideArchived ? 'Mostrar archivados' : 'Ocultar archivados'}
+                  >
+                    <span className={styles['channel-group-label-text']}><Archive size={13} /> Archivados</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span className={styles['channel-group-count']}>{archivedChannels.length}</span>
+                      {hideArchived ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                    </span>
+                  </div>
+
+                  {!hideArchived && archivedChannels.map(channel => {
+                    const name = channel.type === 'direct'
+                      ? dmContactName(channel)
+                      : isSupportChannel(channel) ? supportLabel(channel.name) : channel.name
+                    return (
+                      <div
+                        key={channel.id}
+                        className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
+                        onClick={() => { setSelectedChannel(channel); setShowMobileChannels(false) }}
+                      >
+                        <span className={styles['channel-mini-icon']} style={{ color: '#94a3b8' }}>
+                          {channel.type === 'direct' ? <AtSign size={15} /> : isSupportChannel(channel) ? <LifeBuoy size={15} /> : channel.type === 'private' ? '🔒' : '#'}
+                        </span>
+                        <span className={styles['channel-mini-name']} title={name} style={{ opacity: 0.75 }}>{name}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onRestoreChannel?.(channel.id) }}
+                          title="Restaurar"
+                          style={{
+                            border: '1px solid #e2e8f0', background: '#fff', color: '#334155', borderRadius: 7,
+                            padding: '4px 9px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                            whiteSpace: 'nowrap', width: 'auto', flexShrink: 0,
+                          }}
+                        >
+                          Restaurar
+                        </button>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
             </div>
           </>
         )}

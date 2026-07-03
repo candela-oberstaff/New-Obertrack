@@ -4,14 +4,72 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"html"
 	"os"
+	"regexp"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jung-kurt/gofpdf"
 	"github.com/xuri/excelize/v2"
 
 	"github.com/obertrack/backend/internal/models"
 )
+
+// Las actividades vienen del editor de texto enriquecido como HTML (tiptap:
+// <p data-path-to-node…>, <div style="--tw-…">). Para los reportes se
+// convierten a texto plano legible: saltos de línea en bloques, viñetas en
+// listas y entidades decodificadas.
+var (
+	reHTMLBreak = regexp.MustCompile(`(?i)<br\s*/?>`)
+	reHTMLLi    = regexp.MustCompile(`(?i)<li[^>]*>`)
+	// Apertura y cierre de bloques generan salto de línea (los <div> anidados de
+	// tiptap venían pegados: "llamadas<div>PS</div>" debe ser dos líneas).
+	reHTMLBlock = regexp.MustCompile(`(?i)</?(p|div|li|ul|ol|h[1-6]|tr|blockquote)(\s[^>]*)?>`)
+	reHTMLTag   = regexp.MustCompile(`<[^>]*>`)
+	reSpaces    = regexp.MustCompile(`[ \t]+`)
+	reBlankNL   = regexp.MustCompile(`\s*\n\s*`)
+)
+
+func htmlToPlainText(s string) string {
+	if strings.ContainsAny(s, "<&") {
+		s = reHTMLBreak.ReplaceAllString(s, "\n")
+		s = reHTMLLi.ReplaceAllString(s, "\n- ")
+		s = reHTMLBlock.ReplaceAllString(s, "\n")
+		s = reHTMLTag.ReplaceAllString(s, "")
+		s = html.UnescapeString(s)
+	}
+	s = reSpaces.ReplaceAllString(s, " ")
+	s = reBlankNL.ReplaceAllString(s, "\n")
+	return strings.TrimSpace(s)
+}
+
+// toLatin1Safe descarta las runas fuera de Latin-1 (emojis, símbolos): gofpdf
+// las pintaría como "." y SplitText entra en pánico con runas altas al indexar
+// la tabla de anchos de 256 entradas de las fuentes core.
+func toLatin1Safe(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r <= 0xFF {
+			b.WriteRune(r)
+		}
+	}
+	// Al quitar un emoji quedan espacios dobles; se colapsan de nuevo.
+	return strings.TrimSpace(reSpaces.ReplaceAllString(b.String(), " "))
+}
+
+// humanizeReason convierte el slug del motivo de ausencia ("cita_medica") en
+// texto presentable ("Cita medica") para los reportes.
+func humanizeReason(s string) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "_", " "))
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
+}
 
 func (s *workHourService) getReportWorkHours(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) ([]models.WorkHour, string, error) {
 	monthsEs := []string{
@@ -155,49 +213,7 @@ func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin
 				</tr>
 			</table>
 
-			<div style="font-size: 15px; font-weight: 700; color: #512868; border-bottom: 2px solid #f0eef8; padding-bottom: 8px; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.025em; font-family: sans-serif;">Detalle de Actividades</div>
-			
-			<table cellpadding="0" cellspacing="0" border="0" width="100%%" style="width: 100%%; border-collapse: collapse; margin-bottom: 24px;">
-				<thead>
-					<tr>
-						<th style="background-color: #f5f2fb; border-bottom: 2px solid #ddd9ef; padding: 12px 8px; text-align: left; font-size: 11px; font-weight: 700; color: #5c5680; text-transform: uppercase; font-family: sans-serif;">Fecha</th>
-						<th style="background-color: #f5f2fb; border-bottom: 2px solid #ddd9ef; padding: 12px 8px; text-align: left; font-size: 11px; font-weight: 700; color: #5c5680; text-transform: uppercase; font-family: sans-serif;">Profesional</th>
-						<th style="background-color: #f5f2fb; border-bottom: 2px solid #ddd9ef; padding: 12px 8px; text-align: left; font-size: 11px; font-weight: 700; color: #5c5680; text-transform: uppercase; font-family: sans-serif;">Tipo</th>
-						<th style="background-color: #f5f2fb; border-bottom: 2px solid #ddd9ef; padding: 12px 8px; text-align: left; font-size: 11px; font-weight: 700; color: #5c5680; text-transform: uppercase; font-family: sans-serif;">Horas</th>
-						<th style="background-color: #f5f2fb; border-bottom: 2px solid #ddd9ef; padding: 12px 8px; text-align: left; font-size: 11px; font-weight: 700; color: #5c5680; text-transform: uppercase; font-family: sans-serif;">Detalles</th>
-					</tr>
-				</thead>
-				<tbody>`, monthName, year, user.Name, monthName, year, totalHours, approvedHours, totalAbsences, totalAbsenceHours)
-
-	for _, wh := range workHours {
-		typeStr := "Completo"
-		badgeStyle := "background-color: #dcfce7; color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2);"
-		detailStr := wh.Activities
-		if wh.WorkType == models.WorkTypeAbsence {
-			typeStr = "Ausencia"
-			badgeStyle = "background-color: #fee2e2; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2);"
-			detailStr = fmt.Sprintf("Faltantes: %.1f h<br><span style='font-size: 11px; color: #8880a8;'>Motivo: %s</span>", wh.AbsenceHours, wh.AbsenceReason)
-		} else {
-			if len(detailStr) > 60 {
-				detailStr = detailStr[:57] + "..."
-			}
-		}
-
-		htmlContent += fmt.Sprintf(`
-					<tr>
-						<td style="border-bottom: 1px solid #f0eef8; padding: 12px 8px; font-size: 13px; color: #060b23; white-space: nowrap; font-family: sans-serif;">%s</td>
-						<td style="border-bottom: 1px solid #f0eef8; padding: 12px 8px; font-size: 13px; color: #060b23; font-family: sans-serif;"><strong>%s</strong></td>
-						<td style="border-bottom: 1px solid #f0eef8; padding: 12px 8px; font-size: 13px; color: #060b23; font-family: sans-serif;">
-							<span style="display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; text-transform: uppercase; %s">%s</span>
-						</td>
-						<td style="border-bottom: 1px solid #f0eef8; padding: 12px 8px; font-size: 13px; color: #060b23; font-family: sans-serif;"><strong>%.1f h</strong></td>
-						<td style="border-bottom: 1px solid #f0eef8; padding: 12px 8px; font-size: 13px; color: #5c5680; font-family: sans-serif;">%s</td>
-					</tr>`, wh.WorkDate.Format("02-01-2006"), wh.User.Name, badgeStyle, typeStr, wh.HoursWorked, detailStr)
-	}
-
-	htmlContent += `
-				</tbody>
-			</table>
+			<p style="font-size: 13px; line-height: 1.6; margin: 0; color: #8880a8; font-family: sans-serif;">El detalle completo de actividades va en los archivos adjuntos (PDF y Excel).</p>
 		</div>
 
 		<!-- Footer con Estilos Inline de la Marca -->
@@ -207,7 +223,7 @@ func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin
 		</div>
 	</div>
 </body>
-</html>`
+</html>`, monthName, year, html.EscapeString(user.Name), monthName, year, totalHours, approvedHours, totalAbsences, totalAbsenceHours)
 
 	subject := fmt.Sprintf("Obertrack - Reporte de Jornadas (%s %d)", monthName, year)
 
@@ -259,7 +275,7 @@ func generateExcelReport(workHours []models.WorkHour, monthName string, year int
 	f.SetRowHeight(sheetName, 1, 35)
 
 	// A3 Headers
-	headers := []string{"Profesional", "Fecha", "Tipo de Jornada", "Horas Trabajadas", "Ausencia (Horas)", "Motivo de Ausencia", "Actividades Realizadas", "Estado"}
+	headers := []string{"Profesional", "Fecha", "Tipo de Jornada", "Jornada (Horas)", "Ausencias (Horas)", "Motivo de Ausencia", "Actividades Realizadas", "Estado"}
 	for i, h := range headers {
 		colName, _ := excelize.ColumnNumberToName(i + 1)
 		f.SetCellValue(sheetName, fmt.Sprintf("%s3", colName), h)
@@ -313,8 +329,8 @@ func generateExcelReport(workHours []models.WorkHour, monthName string, year int
 		f.SetCellValue(sheetName, fmt.Sprintf("C%d", rowIdx), workTypeLabel)
 		f.SetCellValue(sheetName, fmt.Sprintf("D%d", rowIdx), wh.HoursWorked)
 		f.SetCellValue(sheetName, fmt.Sprintf("E%d", rowIdx), wh.AbsenceHours)
-		f.SetCellValue(sheetName, fmt.Sprintf("F%d", rowIdx), wh.AbsenceReason)
-		f.SetCellValue(sheetName, fmt.Sprintf("G%d", rowIdx), wh.Activities)
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", rowIdx), humanizeReason(htmlToPlainText(wh.AbsenceReason)))
+		f.SetCellValue(sheetName, fmt.Sprintf("G%d", rowIdx), htmlToPlainText(wh.Activities))
 		f.SetCellValue(sheetName, fmt.Sprintf("H%d", rowIdx), statusLabel)
 
 		// Stylings for cells
@@ -340,6 +356,7 @@ func generateExcelReport(workHours []models.WorkHour, monthName string, year int
 			},
 			Alignment: &excelize.Alignment{
 				Vertical: "center",
+				WrapText: true,
 			},
 		})
 		
@@ -389,6 +406,11 @@ func generateExcelReport(workHours []models.WorkHour, monthName string, year int
 				maxLen = len(cell)
 			}
 		}
+		// Tope de ancho: las actividades largas se envuelven (WrapText) en vez de
+		// estirar la columna a lo absurdo.
+		if maxLen > 60 {
+			maxLen = 60
+		}
 		colName, _ := excelize.ColumnNumberToName(i + 1)
 		f.SetColWidth(sheetName, colName, colName, float64(maxLen+4))
 	}
@@ -403,6 +425,10 @@ func generateExcelReport(workHours []models.WorkHour, monthName string, year int
 func generatePDFReport(workHours []models.WorkHour, monthName string, year int) ([]byte, error) {
 	pdf := gofpdf.New("L", "mm", "A4", "")
 	pdf.SetMargins(10, 15, 10)
+	// El salto de página lo manejamos manualmente (para re-dibujar el encabezado
+	// de la tabla); el auto page break de gofpdf saltaría antes (y=190) y dejaría
+	// páginas de continuación sin encabezado.
+	pdf.SetAutoPageBreak(false, 0)
 	pdf.AddPage()
 
 	// Try to locate the white logo on the filesystem
@@ -483,98 +509,120 @@ func generatePDFReport(workHours []models.WorkHour, monthName string, year int) 
 	pdf.Text(200, 53, fmt.Sprintf("%d (%.1f h)", totalAbsences, totalAbsenceHours))
 
 	pdf.SetY(68)
-	
-	// Table headers
-	pdf.SetFillColor(245, 242, 251) // Lavender Mist
-	pdf.SetTextColor(92, 86, 128)  // Gray 500
-	pdf.SetDrawColor(221, 217, 239)
-	pdf.SetLineWidth(0.2)
-	pdf.SetFont("Arial", "B", 9)
-	
-	pdf.CellFormat(50, 7, "Profesional", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(25, 7, "Fecha", "1", 0, "C", true, 0, "")
-	pdf.CellFormat(30, 7, "Tipo Jornada", "1", 0, "C", true, 0, "")
-	pdf.CellFormat(25, 7, "Horas Trab.", "1", 0, "C", true, 0, "")
-	pdf.CellFormat(35, 7, "Horas Faltantes", "1", 0, "C", true, 0, "")
-	pdf.CellFormat(77, 7, "Actividades / Motivo", "1", 0, "L", true, 0, "")
-	pdf.CellFormat(30, 7, "Estado", "1", 1, "C", true, 0, "")
 
-	pdf.SetFont("Arial", "", 8)
+	// Traduce UTF-8 a CP1252 (fuentes core de gofpdf): sin esto los acentos
+	// salen como "reuniÃ³n".
+	tr := pdf.UnicodeTranslatorFromDescriptor("")
+
+	drawTableHeader := func() {
+		pdf.SetFillColor(245, 242, 251) // Lavender Mist
+		pdf.SetTextColor(92, 86, 128)   // Gray 500
+		pdf.SetDrawColor(221, 217, 239)
+		pdf.SetLineWidth(0.2)
+		pdf.SetFont("Arial", "B", 9)
+		pdf.CellFormat(50, 7, "Profesional", "1", 0, "L", true, 0, "")
+		pdf.CellFormat(25, 7, "Fecha", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(30, 7, "Tipo Jornada", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(25, 7, "Jornada", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(35, 7, "Ausencias", "1", 0, "C", true, 0, "")
+		pdf.CellFormat(77, 7, "Actividades / Motivo", "1", 0, "L", true, 0, "")
+		pdf.CellFormat(30, 7, "Estado", "1", 1, "C", true, 0, "")
+		pdf.SetFont("Arial", "", 8)
+	}
+	drawTableHeader()
+
+	drawBadge := func(x, y, rowH float64, text string, bgR, bgG, bgB, fgR, fgG, fgB int) {
+		badgeY := y + rowH/2 - 2
+		pdf.SetFillColor(bgR, bgG, bgB)
+		pdf.RoundedRect(x+3, badgeY, 24, 4, 1.0, "1234", "F")
+		pdf.SetTextColor(fgR, fgG, fgB)
+		pdf.SetFont("Arial", "B", 7)
+		pdf.Text(x+6, badgeY+3, text)
+		pdf.SetFont("Arial", "", 8)
+	}
+
 	fill := false
 	for _, wh := range workHours {
 		userLabel := ""
 		if wh.User.ID != 0 {
 			userLabel = wh.User.Name
 		}
-		
+
 		detailsText := wh.Activities
 		if wh.WorkType == models.WorkTypeAbsence {
-			detailsText = wh.AbsenceReason
+			detailsText = humanizeReason(wh.AbsenceReason)
 		}
 
-		pdf.SetFillColor(255, 255, 255)
-		if fill {
-			pdf.SetFillColor(245, 242, 251)
+		// Texto plano, envuelto en hasta 4 líneas; la fila crece con el contenido.
+		// SplitText recibe UTF-8 crudo (ya filtrado a Latin-1) y tr() se aplica
+		// línea a línea al dibujar: pasarle texto ya traducido (bytes CP1252, no
+		// UTF-8 válido) lo hace entrar en pánico con cualquier acento.
+		lines := pdf.SplitText(toLatin1Safe(htmlToPlainText(detailsText)), 71)
+		if len(lines) > 4 {
+			lines = lines[:4]
+			lines[3] += "..."
 		}
-		pdf.SetTextColor(6, 11, 35)
+		lineH := 3.6
+		rowH := 6.0
+		if len(lines) > 1 {
+			rowH = float64(len(lines))*lineH + 2.4
+		}
 
-		pdf.CellFormat(50, 6, userLabel, "1", 0, "L", true, 0, "")
-		pdf.CellFormat(25, 6, wh.WorkDate.Format("2006-01-02"), "1", 0, "C", true, 0, "")
-		
-		// Draw Type Badge
-		typeX := pdf.GetX()
-		typeY := pdf.GetY()
-		pdf.CellFormat(30, 6, "", "1", 0, "C", true, 0, "")
+		// Salto de página: A4 apaisado mide 210 mm de alto; corta antes del margen
+		// y vuelve a dibujar el encabezado de la tabla.
+		if pdf.GetY()+rowH > 195 {
+			pdf.AddPage()
+			pdf.SetY(15)
+			drawTableHeader()
+		}
+
+		rowFill := func() {
+			pdf.SetFillColor(255, 255, 255)
+			if fill {
+				pdf.SetFillColor(245, 242, 251)
+			}
+			pdf.SetTextColor(6, 11, 35)
+		}
+		rowFill()
+
+		name := toLatin1Safe(userLabel)
+		if pdf.GetStringWidth(tr(name)) > 46 {
+			r := []rune(name)
+			for len(r) > 0 && pdf.GetStringWidth(tr(string(r))+"...") > 46 {
+				r = r[:len(r)-1]
+			}
+			name = string(r) + "..."
+		}
+		pdf.CellFormat(50, rowH, tr(name), "1", 0, "LM", true, 0, "")
+		pdf.CellFormat(25, rowH, wh.WorkDate.Format("02-01-2006"), "1", 0, "CM", true, 0, "")
+
+		typeX, typeY := pdf.GetX(), pdf.GetY()
+		pdf.CellFormat(30, rowH, "", "1", 0, "C", true, 0, "")
 		if wh.WorkType == models.WorkTypeAbsence {
-			pdf.SetFillColor(254, 226, 226) // #fee2e2
-			pdf.RoundedRect(typeX+3, typeY+1, 24, 4, 1.0, "1234", "F")
-			pdf.SetTextColor(239, 68, 68) // #ef4444
-			pdf.SetFont("Arial", "B", 7)
-			pdf.Text(typeX+6, typeY+4, "AUSENCIA")
+			drawBadge(typeX, typeY, rowH, "AUSENCIA", 254, 226, 226, 239, 68, 68)
 		} else {
-			pdf.SetFillColor(220, 252, 231) // #dcfce7
-			pdf.RoundedRect(typeX+3, typeY+1, 24, 4, 1.0, "1234", "F")
-			pdf.SetTextColor(16, 185, 129) // #10b981
-			pdf.SetFont("Arial", "B", 7)
-			pdf.Text(typeX+6, typeY+4, "COMPLETO")
+			drawBadge(typeX, typeY, rowH, "COMPLETO", 220, 252, 231, 16, 185, 129)
 		}
-		
-		// Restore row styles
-		pdf.SetFont("Arial", "", 8)
+		rowFill()
+
+		pdf.CellFormat(25, rowH, fmt.Sprintf("%.1f h", wh.HoursWorked), "1", 0, "CM", true, 0, "")
+		pdf.CellFormat(35, rowH, fmt.Sprintf("%.1f h", wh.AbsenceHours), "1", 0, "CM", true, 0, "")
+
+		actX, actY := pdf.GetX(), pdf.GetY()
+		pdf.CellFormat(77, rowH, "", "1", 0, "L", true, 0, "")
 		pdf.SetTextColor(6, 11, 35)
-		pdf.SetFillColor(255, 255, 255)
-		if fill {
-			pdf.SetFillColor(245, 242, 251)
+		textTop := actY + rowH/2 - float64(len(lines))*lineH/2
+		for i, ln := range lines {
+			pdf.Text(actX+2, textTop+float64(i+1)*lineH-0.9, tr(ln))
 		}
 
-		pdf.CellFormat(25, 6, fmt.Sprintf("%.1f h", wh.HoursWorked), "1", 0, "C", true, 0, "")
-		pdf.CellFormat(35, 6, fmt.Sprintf("%.1f h", wh.AbsenceHours), "1", 0, "C", true, 0, "")
-		
-		if len(detailsText) > 42 {
-			detailsText = detailsText[:39] + "..."
-		}
-		pdf.CellFormat(77, 6, detailsText, "1", 0, "L", true, 0, "")
-		
-		// Draw Status Badge
-		statusX := pdf.GetX()
-		statusY := pdf.GetY()
-		pdf.CellFormat(30, 6, "", "1", 1, "C", true, 0, "")
+		statusX, statusY := pdf.GetX(), pdf.GetY()
+		pdf.CellFormat(30, rowH, "", "1", 1, "C", true, 0, "")
 		if wh.Approved {
-			pdf.SetFillColor(220, 252, 231) // #dcfce7
-			pdf.RoundedRect(statusX+3, statusY+1, 24, 4, 1.0, "1234", "F")
-			pdf.SetTextColor(16, 185, 129) // #10b981
-			pdf.SetFont("Arial", "B", 7)
-			pdf.Text(statusX+6, statusY+4, "APROBADO")
+			drawBadge(statusX, statusY, rowH, "APROBADO", 220, 252, 231, 16, 185, 129)
 		} else {
-			pdf.SetFillColor(254, 243, 199) // #fef3c7
-			pdf.RoundedRect(statusX+3, statusY+1, 24, 4, 1.0, "1234", "F")
-			pdf.SetTextColor(245, 158, 11) // #f59e0b
-			pdf.SetFont("Arial", "B", 7)
-			pdf.Text(statusX+6, statusY+4, "PENDIENTE")
+			drawBadge(statusX, statusY, rowH, "PENDIENTE", 254, 243, 199, 245, 158, 11)
 		}
-		
-		// Restore row styles
-		pdf.SetFont("Arial", "", 8)
 		pdf.SetTextColor(6, 11, 35)
 
 		fill = !fill

@@ -95,6 +95,9 @@ type ChannelService interface {
 	Join(channelID, userID uint) error
 	Leave(channelID, userID uint) error
 	RemoveUserFromCompanyChannels(userID, companyID uint) error
+	HideChannel(userID, channelID uint) error
+	UnhideChannel(userID, channelID uint) error
+	ListArchivedChannels(userID uint) ([]ChannelWithUnread, error)
 	// IsExplicitMember indica si el usuario tiene una fila de membresía explícita en
 	// el canal (channel_members), sin el auto-join de canales públicos. Lo usa el
 	// handler para impedir que un NO-miembro (incluido un superadmin que solo
@@ -290,6 +293,23 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// Excluye los canales que el usuario archivó. Para el path de superadmin
+	// (GetChannelsByCompany) esto es imprescindible; para el normal es idempotente
+	// (GetChannelsByUser ya los filtra), pero unifica el comportamiento.
+	if archived, aerr := s.repo.ListArchivedChannels(userID); aerr == nil && len(archived) > 0 {
+		skip := make(map[uint]bool, len(archived))
+		for _, a := range archived {
+			skip[a.ID] = true
+		}
+		filtered := make([]models.Channel, 0, len(channels))
+		for _, c := range channels {
+			if !skip[c.ID] {
+				filtered = append(filtered, c)
+			}
+		}
+		channels = filtered
 	}
 
 	// Unread counts for all of the user's channels in a single grouped query
@@ -868,15 +888,84 @@ func (s *channelService) Leave(channelID, userID uint) error {
 		return err
 	}
 
+	// El creador siempre puede salir. Si hay otros miembros, transfiere la
+	// propiedad (como WhatsApp): prefiere un admin del canal; si no, toma a otro
+	// miembro. Si es el único, sale igual (el canal sigue gestionable por
+	// superadmin; los públicos siguen visibles para el tenant).
 	if channel.CreatedBy == userID {
-		return fmt.Errorf("channel creator cannot leave")
+		members, merr := s.repo.GetMemberRoles(channelID)
+		if merr != nil {
+			return merr
+		}
+		var newOwner, firstMember uint
+		for _, m := range members {
+			if m.UserID == userID {
+				continue
+			}
+			if firstMember == 0 {
+				firstMember = m.UserID
+			}
+			if m.Role == "admin" {
+				newOwner = m.UserID
+				break
+			}
+		}
+		if newOwner == 0 {
+			newOwner = firstMember
+		}
+		if newOwner != 0 {
+			if err := s.repo.UpdateChannel(channel, map[string]interface{}{"created_by": newOwner}); err != nil {
+				return err
+			}
+			_ = s.repo.UpdateMemberRole(channelID, newOwner, "admin")
+		}
 	}
 
 	if err := s.repo.RemoveMember(channelID, userID); err != nil {
 		return err
 	}
+	// Los canales públicos se ven para todo el tenant, así que quitar la membresía
+	// no los saca de la lista del usuario: también los ocultamos para que "Salir"
+	// sí lo quite de su bandeja (reaparece si hay actividad nueva).
+	_ = s.repo.HideChannel(userID, channelID)
 	s.invalidateMembers(channelID)
 	return nil
+}
+
+func (s *channelService) HideChannel(userID, channelID uint) error {
+	return s.repo.HideChannel(userID, channelID)
+}
+
+func (s *channelService) UnhideChannel(userID, channelID uint) error {
+	return s.repo.UnhideChannel(userID, channelID)
+}
+
+func (s *channelService) ListArchivedChannels(userID uint) ([]ChannelWithUnread, error) {
+	chans, err := s.repo.ListArchivedChannels(userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ChannelWithUnread, 0, len(chans))
+	for i := range chans {
+		ch := chans[i]
+		cw := ChannelWithUnread{
+			ID: ch.ID, Name: ch.Name, Description: ch.Description,
+			Type: ch.Type, CreatedBy: ch.CreatedBy, IsActive: ch.IsActive, CreatedAt: ch.CreatedAt,
+		}
+		if ch.Type == models.ChannelTypeDirect {
+			if members, err := s.repo.GetMembers(ch.ID); err == nil {
+				for j := range members {
+					if members[j].ID != userID {
+						m := members[j]
+						cw.Recipient = &m
+						break
+					}
+				}
+			}
+		}
+		out = append(out, cw)
+	}
+	return out, nil
 }
 
 func (s *channelService) RemoveUserFromCompanyChannels(userID, companyID uint) error {

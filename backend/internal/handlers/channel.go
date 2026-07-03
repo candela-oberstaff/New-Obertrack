@@ -102,6 +102,16 @@ func (h *ChannelHandler) GetChannels(c *gin.Context) {
 	c.JSON(http.StatusOK, channels)
 }
 
+// GetArchivedChannels devuelve los canales que el usuario archivó ("Archivados").
+func (h *ChannelHandler) GetArchivedChannels(c *gin.Context) {
+	channels, err := h.svc.ListArchivedChannels(middleware.GetUserID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch archived channels"})
+		return
+	}
+	c.JSON(http.StatusOK, channels)
+}
+
 func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
@@ -363,6 +373,26 @@ func (h *ChannelHandler) LeaveChannel(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Left channel"})
+}
+
+// HideChannel oculta el canal de la lista del usuario ("cerrar chat").
+func (h *ChannelHandler) HideChannel(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err := h.svc.HideChannel(middleware.GetUserID(c), uint(id)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Chat cerrado"})
+}
+
+// UnhideChannel restaura un canal ocultado en la lista del usuario.
+func (h *ChannelHandler) UnhideChannel(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err := h.svc.UnhideChannel(middleware.GetUserID(c), uint(id)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Chat restaurado"})
 }
 
 func (h *ChannelHandler) GetMessages(c *gin.Context) {

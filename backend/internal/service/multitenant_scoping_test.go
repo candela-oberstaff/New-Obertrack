@@ -330,6 +330,12 @@ func (f *fakeChannelRepo) GetSupportTicketsByChannelIDs(channelIDs []uint) ([]mo
 	return nil, nil
 }
 
+// GetChannels también excluye los canales archivados por el usuario; el fake
+// devuelve vacío para no caer en la interfaz embebida (nil).
+func (f *fakeChannelRepo) ListArchivedChannels(userID uint) ([]models.Channel, error) {
+	return nil, nil
+}
+
 func (f *fakeChannelRepo) GetMembers(channelID uint) ([]models.User, error) {
 	return nil, nil
 }

@@ -61,6 +61,12 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 		return nil, nil, fmt.Errorf("you are not a member of this channel")
 	}
 
+	// Un canal archivado es de solo lectura para quien lo archivó: debe restaurarlo
+	// para volver a escribir.
+	if archived, _ := s.repo.IsArchived(userID, channelID); archived {
+		return nil, nil, fmt.Errorf("este chat está archivado; restáuralo para escribir")
+	}
+
 	message := &models.ChannelMessage{
 		ChannelID:  channelID,
 		TenantID:   channel.TenantID,
@@ -654,6 +660,11 @@ func (s *channelService) ContactSupport(userID uint, subject, message, priority,
 			log.Printf("[ContactSupport] no se pudo crear el ticket: %v", err)
 		} else {
 			ticketIsNew = true
+			// Un solo ticket activo por canal: al abrir uno nuevo, resuelve los
+			// anteriores abiertos (evita el RESPONSABLE ambiguo por tickets duplicados).
+			if err := s.repo.ResolveOpenTicketsExcept(channel.ID, ticket.ID); err != nil {
+				log.Printf("[ContactSupport] no se pudieron resolver tickets previos: %v", err)
+			}
 		}
 	}
 
@@ -912,6 +923,20 @@ func (s *channelService) AssignSupportTicket(ticketID, actorID, assigneeID uint)
 	if !s.isSupportAgent(assigneeID) {
 		return nil, fmt.Errorf("solo puedes asignar el ticket a un agente de soporte")
 	}
+	// Un ticket ya asignado lo reasigna su responsable actual (al entregarlo se
+	// cede el control) o un superadmin (puede redistribuir cualquier ticket, p. ej.
+	// si el responsable está ausente). Si está sin asignar, cualquier agente puede
+	// distribuirlo.
+	ticket, err := s.repo.GetSupportTicketByID(ticketID)
+	if err != nil || ticket == nil {
+		return nil, fmt.Errorf("ticket de soporte no encontrado")
+	}
+	if ticket.AssignedTo != nil && *ticket.AssignedTo != actorID {
+		actor, aerr := s.userRepo.GetByID(actorID)
+		if aerr != nil || actor == nil || !isSuperadminUser(actor) {
+			return nil, fmt.Errorf("solo el responsable actual o un superadmin pueden reasignar este ticket")
+		}
+	}
 	return s.assignSupport(ticketID, actorID, assigneeID, false)
 }
 
@@ -953,6 +978,11 @@ func (s *channelService) assignSupport(ticketID, actorID, assigneeID uint, selfC
 	}); err != nil {
 		return nil, err
 	}
+
+	// Un solo ticket activo por canal: al tomar/reasignar uno, resuelve cualquier
+	// otro abierto del mismo canal. Así el RESPONSABLE nunca queda ambiguo por
+	// tickets duplicados (y limpia duplicados heredados en la primera interacción).
+	_ = s.repo.ResolveOpenTicketsExcept(channelID, ticketID)
 
 	actorName := s.userName(actorID)
 	assigneeName := s.userName(assigneeID)

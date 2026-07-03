@@ -11,11 +11,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 20px;
+  padding: 10px 20px;
   background: white;
   border-bottom: 1px solid #e1e4e8;
   flex-wrap: wrap;
-  height: 52px;
+  min-height: 52px;
+  row-gap: 8px;
   z-index: 10;
 }
 
@@ -52,7 +53,7 @@
   gap: 4px;
 }
 
-.channel-actions button {
+.channel-actions button:not(:global(.ui-select__trigger)) {
   padding: 8px;
   background: transparent;
   border: 1px solid #e2e8f0;

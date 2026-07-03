@@ -54,7 +54,7 @@ export function Select({
   // El menú se renderiza en un portal (position: fixed) para no quedar recortado
   // por contenedores con overflow (p. ej. el cuerpo de un Modal).
   const menuRef = useRef<HTMLDivElement>(null)
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; left: number; width: number; maxHeight: number } | null>(null)
 
   const selected = options.find((o) => String(o.value) === String(value ?? ''))
 
@@ -64,9 +64,30 @@ export function Select({
     : options
 
   const updatePosition = useCallback(() => {
-    if (containerRef.current) {
-      const r = containerRef.current.getBoundingClientRect()
-      setMenuPos({ top: r.bottom + 6, left: r.left, width: r.width })
+    if (!containerRef.current) return
+    const r = containerRef.current.getBoundingClientRect()
+    const GAP = 6
+    const MARGIN = 8
+    const MENU_MAX = 280
+    const below = window.innerHeight - r.bottom - GAP - MARGIN
+    const above = r.top - GAP - MARGIN
+    // Si abajo no cabe un menú razonable y arriba hay más espacio, abre hacia
+    // arriba (p. ej. triggers en el footer de un Modal). En ambos casos la
+    // altura se limita al espacio real para que el menú nunca salga del viewport.
+    if (below < Math.min(MENU_MAX, 160) && above > below) {
+      setMenuPos({
+        bottom: window.innerHeight - r.top + GAP,
+        left: r.left,
+        width: r.width,
+        maxHeight: Math.max(120, Math.min(MENU_MAX, above)),
+      })
+    } else {
+      setMenuPos({
+        top: r.bottom + GAP,
+        left: r.left,
+        width: r.width,
+        maxHeight: Math.max(120, Math.min(MENU_MAX, below)),
+      })
     }
   }, [])
 
@@ -129,10 +150,7 @@ export function Select({
         className={`ui-select__trigger ${open ? 'ui-select__trigger--open' : ''} ${disabled ? 'ui-select__trigger--disabled' : ''} ${className}`}
         onClick={() => {
           if (disabled) return
-          if (!open && containerRef.current) {
-            const r = containerRef.current.getBoundingClientRect()
-            setMenuPos({ top: r.bottom + 6, left: r.left, width: r.width })
-          }
+          if (!open) updatePosition()
           setOpen((v) => !v)
         }}
         disabled={disabled}
@@ -161,7 +179,16 @@ export function Select({
           ref={menuRef}
           className="ui-select__menu"
           role="listbox"
-          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, right: 'auto', width: menuPos.width, zIndex: 9999 }}
+          style={{
+            position: 'fixed',
+            top: menuPos.top ?? 'auto',
+            bottom: menuPos.bottom ?? 'auto',
+            left: menuPos.left,
+            right: 'auto',
+            width: menuPos.width,
+            maxHeight: menuPos.maxHeight,
+            zIndex: 9999,
+          }}
         >
           {showSearch && (
             <div style={{ padding: 6, position: 'sticky', top: 0, background: '#fff', borderBottom: '1px solid #eef2f7', zIndex: 1 }}>

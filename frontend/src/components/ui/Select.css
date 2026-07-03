@@ -46,6 +46,11 @@
   background: #f8fafc;
 }
 
+.ui-select__trigger.ui-select__trigger--compact {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
 .ui-select__value {
   display: flex;
   align-items: center;

@@ -8,6 +8,7 @@ import { useNotification } from '../context/NotificationContext'
 
 export function useSlackChat(user: User | null, companyId: number | null = null) {
   const [channels, setChannels] = useState<Channel[]>([])
+  const [archivedChannels, setArchivedChannels] = useState<Channel[]>([])
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [hasMoreMessages, setHasMoreMessages] = useState(false)
@@ -42,6 +43,7 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordingCancelledRef = useRef(false)
   const selectedChannelIdRef = useRef<number | null>(null)
+  const selectedIsSupportRef = useRef(false)
   const userIdRef = useRef<number | null>(null)
   const messagesRef = useRef<Message[]>([])
   const threadRepliesRef = useRef<Message[]>([])
@@ -82,7 +84,23 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannel?.id ?? null
-  }, [selectedChannel?.id])
+    selectedIsSupportRef.current = !!(selectedChannel as any)?.support
+  }, [selectedChannel])
+
+  // Mantiene el panel de soporte del canal activo en sync con la lista de canales
+  // (que se refresca tras acciones y mensajes): estado y responsable del ticket
+  // reflejan el backend aunque no seas quien hizo la acción.
+  useEffect(() => {
+    const id = selectedChannelIdRef.current
+    if (!id) return
+    const fresh = channels.find(c => c.id === id) as any
+    if (!fresh) return
+    setSelectedChannel(prev => {
+      if (!prev || prev.id !== id) return prev
+      if (JSON.stringify((prev as any).support ?? null) === JSON.stringify(fresh.support ?? null)) return prev
+      return { ...prev, support: fresh.support }
+    })
+  }, [channels])
 
   useEffect(() => {
     userIdRef.current = user?.id ?? null
@@ -96,6 +114,15 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
       setChannels(data || [])
     } catch (error) {
       console.error('Error fetching channels:', error)
+    }
+  }, [])
+
+  const fetchArchivedChannels = useCallback(async () => {
+    try {
+      const data = await channelService.getArchivedChannels()
+      setArchivedChannels(data || [])
+    } catch (error) {
+      console.error('Error fetching archived channels:', error)
     }
   }, [])
 
@@ -327,6 +354,10 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
               const reconciled = optimistic ? { ...msg.data, tempId: optimistic.tempId } : msg.data
               return [...filtered, reconciled]
             })
+            // En canales de soporte, refresca la ficha del ticket (estado/responsable)
+            // ante cualquier mensaje (incluye los de sistema tomó/asignó/resolvió),
+            // para que el panel se actualice en vivo también para los observadores.
+            if (selectedIsSupportRef.current) refetchChannelsSoon()
             // Only notify/mark-read for messages from OTHER users; the sender's own
             // message must not ring or mark the channel read.
             if (msg.user_id !== currentUserId) {
@@ -439,8 +470,9 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
     setSelectedChannel(null)
     setMessages([])
     fetchChannels()
+    fetchArchivedChannels()
     fetchAllUsers()
-  }, [companyId, fetchChannels, fetchAllUsers])
+  }, [companyId, fetchChannels, fetchArchivedChannels, fetchAllUsers])
 
   // Open the persistent WS socket once on mount and tear it down on unmount.
   // The socket survives company switches (A-2) because connectWebSocket is stable.
@@ -780,6 +812,7 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
     sendMessage, sendTypingIndicator, startRecording, stopRecording,
     editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels, fetchAllUsers,
     toggleReaction, starMessage, unstarMessage, starredMessages, starredIds, fetchStarredMessages,
-    userStatuses
+    userStatuses,
+    archivedChannels, fetchArchivedChannels,
   }
 }

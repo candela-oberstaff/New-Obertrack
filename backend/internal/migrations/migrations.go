@@ -1074,6 +1074,44 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.ProfileChangeRequest{})
 			},
 		},
+		{
+			ID: "202607021200_hidden_channels",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating hidden_channels table...")
+				return tx.AutoMigrate(&models.HiddenChannel{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.HiddenChannel{})
+			},
+		},
+		{
+			// Un solo ticket ACTIVO por canal de soporte. Los canales con tickets
+			// duplicados hacían que "Tomar/Reasignar/Resolver" cayera sobre un ticket
+			// distinto al que muestra el panel (el responsable "no cambiaba" nunca).
+			// Conserva por canal el ticket activo con actividad más reciente y
+			// resuelve el resto. El servicio ya evita nuevos duplicados
+			// (ResolveOpenTicketsExcept en claim/assign/nueva solicitud).
+			ID: "202607021600_consolidate_support_tickets",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Consolidating duplicate active support tickets...")
+				return tx.Exec(`
+					UPDATE support_tickets
+					SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP
+					WHERE status <> 'resolved'
+					  AND id NOT IN (
+						SELECT DISTINCT ON (channel_id) id
+						FROM support_tickets
+						WHERE status <> 'resolved'
+						ORDER BY channel_id, updated_at DESC, id DESC
+					  )
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// Consolidación de datos: no es reversible (no sabemos qué tickets
+				// estaban abiertos antes). No-op.
+				return nil
+			},
+		},
 		// Future migrations go here
 	})
 
