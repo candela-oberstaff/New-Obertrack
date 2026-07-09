@@ -2,36 +2,105 @@ package service
 
 import (
 	"errors"
+	"fmt"
+	"os"
 
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
+	"github.com/obertrack/backend/internal/utils"
+)
+
+var (
+	ErrBoardNotFound      = errors.New("Tablero no encontrado")
+	ErrBoardAccessDenied  = errors.New("Access denied")
+	ErrAlreadyBoardMember = errors.New("Ya eres miembro de este tablero")
+	ErrAlreadyPending     = errors.New("Ya existe una invitación o solicitud pendiente para este tablero")
+	ErrInvitationNotFound = errors.New("Invitación no encontrada")
+	ErrInvitationResolved = errors.New("Esta invitación ya fue resuelta")
+	ErrCreatorCannotLeave = errors.New("El creador no puede salir de su propio tablero")
+	ErrNotBoardMember     = errors.New("No eres miembro de este tablero")
 )
 
 type BoardService interface {
 	GetAll(userID uint, role string, isSuperadmin bool, companyID uint) ([]models.Board, error)
 	GetPublicBoards(userID uint, companyID uint) ([]models.Board, error)
-	JoinBoard(userID, boardID uint) (*models.Board, error)
 	GetByID(userID uint, role string, isSuperadmin bool, companyID uint, boardID uint) (*models.Board, error)
 	Create(userID uint, name, description, color string, memberIDs []uint, phases []struct {
 		Name  string
 		Color string
 	}, tenantOverride uint) (*models.Board, error)
-	Update(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}, memberIDs []uint) (*models.Board, error)
+	Update(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}) (*models.Board, error)
 	Delete(userID, boardID, tenantID uint, isSuperadmin bool) error
 	AddPhase(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, name, color string) (*models.Board, error)
 	RemovePhase(boardID, phaseID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error)
 	ReorderPhases(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, phaseIDs []uint) (*models.Board, error)
+
+	InviteMembers(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, targetIDs []uint) ([]models.BoardInvitation, error)
+	RequestJoin(userID, boardID uint) (*models.BoardInvitation, error)
+	ListMyInvitations(userID uint) ([]models.BoardInvitation, error)
+	ListBoardPending(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, kind string) ([]models.BoardInvitation, error)
+	ResolveInvitation(invID, userID uint, role string, isManager, isSuperadmin bool, accept bool) (*models.BoardInvitation, error)
+	CancelInvitation(invID, userID uint, role string, isManager, isSuperadmin bool) error
+	RemoveMember(boardID, targetUserID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error)
+	LeaveBoard(userID, boardID uint) error
 }
 
 type boardService struct {
 	repo     repository.BoardRepository
 	userRepo repository.UserRepository
+	notifSvc NotificationService
+	brevoSvc *BrevoService
 }
 
-func NewBoardService(repo repository.BoardRepository, userRepo repository.UserRepository) BoardService {
+func NewBoardService(
+	repo repository.BoardRepository,
+	userRepo repository.UserRepository,
+	notifSvc NotificationService,
+	brevoSvc *BrevoService,
+) BoardService {
 	return &boardService{
 		repo:     repo,
 		userRepo: userRepo,
+		notifSvc: notifSvc,
+		brevoSvc: brevoSvc,
+	}
+}
+
+func (s *boardService) canManageBoard(board *models.Board, userID uint, role string, isManager, isSuperadmin bool) bool {
+	return isSuperadmin || board.CreatedBy == userID || isEmployerRole(role) || isManager
+}
+
+func boardHasMember(board *models.Board, userID uint) bool {
+	for _, m := range board.Members {
+		if m.ID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func frontendBaseURL() string {
+	if u := os.Getenv("FRONTEND_URL"); u != "" {
+		return u
+	}
+	return os.Getenv("SERVICE_URL_FRONTEND")
+}
+
+func (s *boardService) notify(user *models.User, notifType, title, message, link, emailSubject, emailBody string) {
+	if user == nil {
+		return
+	}
+	if s.notifSvc != nil {
+		_ = s.notifSvc.CreateNotification(user.ID, notifType, title, message, map[string]interface{}{"link": link})
+	}
+	if s.brevoSvc != nil && user.Email != "" {
+		if base := frontendBaseURL(); base != "" {
+			emailBody += fmt.Sprintf(
+				`<div style="text-align:center;margin-top:28px;"><a href="%s%s" style="background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Abrir en Obertrack</a></div>`,
+				base, link,
+			)
+		}
+		_ = s.brevoSvc.SendEmail(user.Email, user.Name, emailSubject, utils.WrapInPremiumTemplate(emailSubject, emailBody))
 	}
 }
 
@@ -97,66 +166,29 @@ func (s *boardService) GetPublicBoards(userID uint, companyID uint) ([]models.Bo
 		return []models.Board{}, nil
 	}
 
-	// Simplified: boards that I'm NOT in.
 	filters := map[string]interface{}{"tenant_id": companyID}
 	all, err := s.repo.FindAll(filters)
 	if err != nil {
 		return nil, err
 	}
 
-	var public []models.Board
-	for _, b := range all {
-		isMe := b.CreatedBy == userID
-		if !isMe {
-			isMember := false
-			for _, m := range b.Members {
-				if m.ID == userID {
-					isMember = true
-					break
-				}
-			}
-			if !isMember {
-				public = append(public, b)
-			}
-		}
-	}
-	return public, nil
-}
-
-
-
-func (s *boardService) JoinBoard(userID, boardID uint) (*models.Board, error) {
-	board, err := s.repo.GetByID(boardID)
+	pendingIDs, err := s.repo.ListPendingBoardIDsForUser(userID)
 	if err != nil {
-		return nil, errors.New("Board not found")
-	}
-
-	for _, m := range board.Members {
-		if m.ID == userID {
-			return nil, errors.New("Ya eres miembro de este tablero")
-		}
-	}
-
-	user, err := s.userRepo.GetByID(userID)
-	if err != nil {
-		return nil, errors.New("User not found")
-	}
-
-	creator, err := s.userRepo.GetByID(board.CreatedBy)
-	if err != nil {
-		return nil, errors.New("Board creator not found")
-	}
-
-	// Superadmins can join any board
-	if !isSuperadminUser(user) && tenantForUser(user) != tenantForUser(creator) {
-		return nil, errors.New("No tienes permisos para unirte a este tablero")
-	}
-
-	if err := s.repo.AddMember(board, user); err != nil {
 		return nil, err
 	}
+	pending := make(map[uint]bool, len(pendingIDs))
+	for _, id := range pendingIDs {
+		pending[id] = true
+	}
 
-	return s.repo.GetByID(boardID)
+	public := []models.Board{}
+	for _, b := range all {
+		if b.CreatedBy == userID || boardHasMember(&b, userID) || pending[b.ID] {
+			continue
+		}
+		public = append(public, b)
+	}
+	return public, nil
 }
 
 func (s *boardService) GetByID(userID uint, role string, isSuperadmin bool, companyID uint, boardID uint) (*models.Board, error) {
@@ -269,32 +301,19 @@ func (s *boardService) Create(userID uint, name, description, color string, memb
 	return s.repo.GetByID(board.ID)
 }
 
-func (s *boardService) Update(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}, memberIDs []uint) (*models.Board, error) {
+func (s *boardService) Update(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}) (*models.Board, error) {
 	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {
 		return nil, err
 	}
 
-	// Only creator, employer or manager can update board metadata/members
-	if !isSuperadmin && board.CreatedBy != userID && !isEmployerRole(role) && !isManager {
-		return nil, errors.New("Access denied")
+	if !s.canManageBoard(board, userID, role, isManager, isSuperadmin) {
+		return nil, ErrBoardAccessDenied
 	}
 
 	if len(updates) > 0 {
 		if err := s.repo.Update(board, updates); err != nil {
 			return nil, err
-		}
-	}
-
-	if memberIDs != nil {
-		for _, m := range board.Members {
-			s.repo.RemoveMember(board, m.ID)
-		}
-		for _, mid := range memberIDs {
-			user, _ := s.userRepo.GetByID(mid)
-			if user != nil && (isSuperadminUser(user) || models.TenantForUser(user) == board.TenantID) {
-				s.repo.AddMember(board, user)
-			}
 		}
 	}
 
@@ -397,4 +416,280 @@ func (s *boardService) ReorderPhases(boardID, tenantID, userID uint, role string
 	}
 
 	return s.repo.GetByID(boardID)
+}
+
+
+func (s *boardService) InviteMembers(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, targetIDs []uint) ([]models.BoardInvitation, error) {
+	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
+	if err != nil {
+		return nil, err
+	}
+	if !s.canManageBoard(board, userID, role, isManager, isSuperadmin) {
+		return nil, ErrBoardAccessDenied
+	}
+
+	inviter, _ := s.userRepo.GetByID(userID)
+	created := []models.BoardInvitation{}
+
+	for _, tid := range targetIDs {
+		if tid == userID || boardHasMember(board, tid) {
+			continue
+		}
+		target, err := s.userRepo.GetByID(tid)
+		if err != nil || target == nil {
+			continue
+		}
+		if !isSuperadminUser(target) && models.TenantForUser(target) != board.TenantID {
+			continue
+		}
+		if has, err := s.repo.HasPendingInvitation(boardID, tid); err != nil || has {
+			continue
+		}
+
+		inv := &models.BoardInvitation{
+			BoardID:   boardID,
+			UserID:    tid,
+			Kind:      models.BoardInviteKindInvitation,
+			Status:    models.BoardInviteStatusPending,
+			CreatedBy: userID,
+		}
+		if err := s.repo.CreateInvitation(inv); err != nil {
+			continue
+		}
+		created = append(created, *inv)
+
+		inviterName := "Un responsable"
+		if inviter != nil {
+			inviterName = inviter.Name
+		}
+		go s.notify(target,
+			"board_invitation",
+			"Invitación a un tablero",
+			fmt.Sprintf("%s te invitó al tablero \"%s\".", inviterName, board.Name),
+			"/tasks?invitations=1",
+			"Te invitaron al tablero "+board.Name,
+			fmt.Sprintf(`<h2>Hola %s,</h2><p><strong>%s</strong> te invitó a colaborar en el tablero <strong>%s</strong>.</p><p>Podés aceptar o rechazar la invitación desde Obertrack.</p>`,
+				target.Name, inviterName, board.Name),
+		)
+	}
+
+	return created, nil
+}
+
+func (s *boardService) RequestJoin(userID, boardID uint) (*models.BoardInvitation, error) {
+	board, err := s.repo.GetByID(boardID)
+	if err != nil {
+		return nil, ErrBoardNotFound
+	}
+	if board.CreatedBy == userID || boardHasMember(board, userID) {
+		return nil, ErrAlreadyBoardMember
+	}
+
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil || user == nil {
+		return nil, errors.New("User not found")
+	}
+	if !isSuperadminUser(user) && models.TenantForUser(user) != board.TenantID {
+		return nil, ErrBoardAccessDenied
+	}
+
+	if has, err := s.repo.HasPendingInvitation(boardID, userID); err != nil {
+		return nil, err
+	} else if has {
+		return nil, ErrAlreadyPending
+	}
+
+	inv := &models.BoardInvitation{
+		BoardID:   boardID,
+		UserID:    userID,
+		Kind:      models.BoardInviteKindRequest,
+		Status:    models.BoardInviteStatusPending,
+		CreatedBy: userID,
+	}
+	if err := s.repo.CreateInvitation(inv); err != nil {
+		return nil, err
+	}
+
+	if owner, err := s.userRepo.GetByID(board.CreatedBy); err == nil {
+		go s.notify(owner,
+			"board_join_request",
+			"Solicitud para unirse a un tablero",
+			fmt.Sprintf("%s quiere unirse al tablero \"%s\".", user.Name, board.Name),
+			fmt.Sprintf("/tasks?board=%d&requests=1", board.ID),
+			"Nueva solicitud para "+board.Name,
+			fmt.Sprintf(`<h2>Hola %s,</h2><p><strong>%s</strong> solicitó unirse al tablero <strong>%s</strong>.</p><p>Podés aprobar o rechazar la solicitud desde Obertrack.</p>`,
+				owner.Name, user.Name, board.Name),
+		)
+	}
+
+	return inv, nil
+}
+
+func (s *boardService) ListMyInvitations(userID uint) ([]models.BoardInvitation, error) {
+	return s.repo.ListPendingInvitationsForUser(userID)
+}
+
+func (s *boardService) ListBoardPending(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, kind string) ([]models.BoardInvitation, error) {
+	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
+	if err != nil {
+		return nil, err
+	}
+	if !s.canManageBoard(board, userID, role, isManager, isSuperadmin) {
+		return nil, ErrBoardAccessDenied
+	}
+	return s.repo.ListPendingByBoard(boardID, kind)
+}
+
+func (s *boardService) ResolveInvitation(invID, userID uint, role string, isManager, isSuperadmin bool, accept bool) (*models.BoardInvitation, error) {
+	inv, err := s.repo.GetInvitationByID(invID)
+	if err != nil {
+		return nil, ErrInvitationNotFound
+	}
+	if inv.Status != models.BoardInviteStatusPending {
+		return nil, ErrInvitationResolved
+	}
+
+	board, err := s.repo.GetByID(inv.BoardID)
+	if err != nil {
+		return nil, ErrBoardNotFound
+	}
+
+	switch inv.Kind {
+	case models.BoardInviteKindInvitation:
+		if inv.UserID != userID {
+			return nil, ErrBoardAccessDenied
+		}
+	case models.BoardInviteKindRequest:
+		if !s.canManageBoard(board, userID, role, isManager, isSuperadmin) {
+			return nil, ErrBoardAccessDenied
+		}
+	default:
+		return nil, ErrInvitationNotFound
+	}
+
+	if accept {
+		if err := s.repo.AcceptInvitation(inv, userID); err != nil {
+			return nil, err
+		}
+	} else if err := s.repo.ResolveInvitation(invID, models.BoardInviteStatusRejected, userID); err != nil {
+		return nil, err
+	}
+
+	s.notifyResolution(inv, board, accept)
+
+	return s.repo.GetInvitationByID(invID)
+}
+
+func (s *boardService) notifyResolution(inv *models.BoardInvitation, board *models.Board, accept bool) {
+	target, _ := s.userRepo.GetByID(inv.UserID)
+	owner, _ := s.userRepo.GetByID(board.CreatedBy)
+	if target == nil {
+		return
+	}
+
+	if inv.Kind == models.BoardInviteKindInvitation {
+		verb := "rechazó"
+		notifType := "board_invitation_rejected"
+		if accept {
+			verb = "aceptó"
+			notifType = "board_invitation_accepted"
+		}
+		go s.notify(owner, notifType,
+			"Invitación "+verb,
+			fmt.Sprintf("%s %s la invitación al tablero \"%s\".", target.Name, verb, board.Name),
+			fmt.Sprintf("/tasks?board=%d", board.ID),
+			fmt.Sprintf("%s %s tu invitación", target.Name, verb),
+			fmt.Sprintf(`<h2>Hola,</h2><p><strong>%s</strong> %s la invitación al tablero <strong>%s</strong>.</p>`, target.Name, verb, board.Name),
+		)
+		return
+	}
+
+	if accept {
+		go s.notify(target, "board_request_approved",
+			"Solicitud aprobada",
+			fmt.Sprintf("Tu solicitud para unirte al tablero \"%s\" fue aprobada.", board.Name),
+			fmt.Sprintf("/tasks?board=%d", board.ID),
+			"Ya sos parte de "+board.Name,
+			fmt.Sprintf(`<h2>Hola %s,</h2><p>Tu solicitud para unirte al tablero <strong>%s</strong> fue aprobada. Ya podés colaborar.</p>`, target.Name, board.Name),
+		)
+		return
+	}
+	go s.notify(target, "board_request_rejected",
+		"Solicitud rechazada",
+		fmt.Sprintf("Tu solicitud para unirte al tablero \"%s\" fue rechazada.", board.Name),
+		"/tasks",
+		"Solicitud rechazada",
+		fmt.Sprintf(`<h2>Hola %s,</h2><p>Tu solicitud para unirte al tablero <strong>%s</strong> fue rechazada.</p>`, target.Name, board.Name),
+	)
+}
+
+func (s *boardService) CancelInvitation(invID, userID uint, role string, isManager, isSuperadmin bool) error {
+	inv, err := s.repo.GetInvitationByID(invID)
+	if err != nil {
+		return ErrInvitationNotFound
+	}
+	if inv.Status != models.BoardInviteStatusPending {
+		return ErrInvitationResolved
+	}
+
+	board, err := s.repo.GetByID(inv.BoardID)
+	if err != nil {
+		return ErrBoardNotFound
+	}
+
+	isOwnRequest := inv.Kind == models.BoardInviteKindRequest && inv.UserID == userID
+	if !isOwnRequest && !s.canManageBoard(board, userID, role, isManager, isSuperadmin) {
+		return ErrBoardAccessDenied
+	}
+
+	return s.repo.ResolveInvitation(invID, models.BoardInviteStatusCanceled, userID)
+}
+
+func (s *boardService) RemoveMember(boardID, targetUserID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error) {
+	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
+	if err != nil {
+		return nil, err
+	}
+	if !s.canManageBoard(board, userID, role, isManager, isSuperadmin) {
+		return nil, ErrBoardAccessDenied
+	}
+	if targetUserID == board.CreatedBy {
+		return nil, errors.New("No se puede quitar al creador del tablero")
+	}
+	if !boardHasMember(board, targetUserID) {
+		return nil, ErrNotBoardMember
+	}
+	if err := s.repo.RemoveMember(board, targetUserID); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByID(boardID)
+}
+
+func (s *boardService) LeaveBoard(userID, boardID uint) error {
+	board, err := s.repo.GetByID(boardID)
+	if err != nil {
+		return ErrBoardNotFound
+	}
+	if board.CreatedBy == userID {
+		return ErrCreatorCannotLeave
+	}
+	if !boardHasMember(board, userID) {
+		return ErrNotBoardMember
+	}
+	if err := s.repo.RemoveMember(board, userID); err != nil {
+		return err
+	}
+
+	if owner, err := s.userRepo.GetByID(board.CreatedBy); err == nil {
+		if leaver, err := s.userRepo.GetByID(userID); err == nil {
+			go s.notify(owner, "board_member_left",
+				"Un miembro salió del tablero",
+				fmt.Sprintf("%s salió del tablero \"%s\".", leaver.Name, board.Name),
+				fmt.Sprintf("/tasks?board=%d", board.ID),
+				"Un miembro salió de "+board.Name,
+				fmt.Sprintf(`<h2>Hola,</h2><p><strong>%s</strong> salió del tablero <strong>%s</strong>.</p>`, leaver.Name, board.Name),
+			)
+		}
+	}
+	return nil
 }

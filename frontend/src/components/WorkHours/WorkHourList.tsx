@@ -2,6 +2,7 @@ import { Check, ClipboardList } from 'lucide-react'
 import Tooltip from '../Common/Tooltip'
 import type { WorkHour } from '../../types'
 import { MONTHS_ES, parseLocalDate, JORNADA_COMPLETA } from './utils'
+import { formatHours } from '../../utils/formatHours'
 import styles from '../../pages/WorkHours.module.css'
 
 interface WorkHourListProps {
@@ -73,7 +74,7 @@ export function WorkHourList({
                     ? 'Jornada Completa'
                     : wh.work_type === 'recover'
                     ? `Recuperación (${wh.hours_worked}h)`
-                    : `Ausencia (${wh.absence_hours != null ? wh.absence_hours : 8 - wh.hours_worked}h)`}
+                    : `Ausencia (${formatHours(wh.absence_hours != null ? wh.absence_hours : 8 - wh.hours_worked)})`}
                 </span>
                 {wh.activities && <p className={styles['hours-comments']}>{wh.activities.replace(/<[^>]*>/g, '')}</p>}
               </div>

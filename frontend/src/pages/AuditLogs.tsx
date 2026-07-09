@@ -20,7 +20,7 @@ function entityRoute(entityType?: string, entityId?: string): string | null {
     case 'channels':
     case 'channel_messages':
     case 'messages': return '/chat'
-    case 'tutorials': return '/tutoriales'
+    case 'tutorials': return '/novedades'
     case 'surveys': return id ? `/survey/${id}` : null
     case 'tickets': return id && /^\d+$/.test(id) ? `/tickets/internal/${id}` : '/tickets'
     case 'auth': return null

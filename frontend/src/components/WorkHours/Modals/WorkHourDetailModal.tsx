@@ -3,6 +3,8 @@ import { Check, Pencil, XCircle } from 'lucide-react'
 import type { WorkHour } from '../../../types'
 import { parseLocalDate } from '../utils'
 import { sanitizeHtml } from '../../../utils/sanitize'
+import { formatHours } from '../../../utils/formatHours'
+import { absenceReasonLabel } from '../../../utils/absenceReasons'
 import { Modal, Button } from '../../ui'
 import styles from '../../../pages/WorkHours.module.css'
 
@@ -128,7 +130,7 @@ export function WorkHourDetailModal({
             {workHour.work_type === 'recover'
               ? `Horas Recuperadas (${workHour.hours_worked}h)`
               : workHour.work_type === 'complete' || workHour.hours_worked >= 8
-              ? 'Jornada Completa' : `Ausencia (${workHour.absence_hours != null ? workHour.absence_hours : 8 - workHour.hours_worked}h)`}
+              ? 'Jornada Completa' : `Ausencia (${formatHours(workHour.absence_hours != null ? workHour.absence_hours : 8 - workHour.hours_worked)})`}
           </span>
         </div>
         <div className={styles['detail-row']}>
@@ -138,7 +140,16 @@ export function WorkHourDetailModal({
         {workHour.absence_reason && (
           <div className={styles['detail-row']}>
             <span className={styles['detail-label']}>Motivo</span>
-            <span className={styles['detail-value']}>{workHour.absence_reason}</span>
+            <span className={styles['detail-value']}>{absenceReasonLabel(workHour.absence_reason)}</span>
+          </div>
+        )}
+        {workHour.work_type === 'absence' && workHour.comments && (
+          <div className={styles['detail-activities']}>
+            <span className={styles['detail-label']}>Justificación</span>
+            <div
+              className={styles['detail-text']}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(workHour.comments) }}
+            />
           </div>
         )}
         {workHour.activities && (

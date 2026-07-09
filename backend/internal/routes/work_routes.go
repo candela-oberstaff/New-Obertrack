@@ -20,13 +20,28 @@ func registerWorkRoutes(api *gin.RouterGroup, d *deps) {
 		boards.GET("", d.board.GetAll)
 		boards.POST("", tasksEdit, d.board.Create)
 		boards.GET("/public", d.board.GetPublicBoards)
-		boards.POST("/:id/join", tasksEdit, d.board.JoinBoard)
 		boards.GET("/:id", d.board.GetByID)
 		boards.PUT("/:id", tasksEdit, d.board.Update)
 		boards.DELETE("/:id", tasksEdit, d.board.Delete)
 		boards.POST("/:id/phases", tasksEdit, d.board.AddPhase)
 		boards.DELETE("/:id/phases/:phaseId", tasksEdit, d.board.RemovePhase)
 		boards.PUT("/:id/phases/reorder", tasksEdit, d.board.ReorderPhases)
+
+		boards.POST("/:id/invite", tasksEdit, d.board.InviteMembers)
+		boards.POST("/:id/request", tasksEdit, d.board.RequestJoin)
+		boards.GET("/:id/requests", d.board.BoardRequests)
+		boards.GET("/:id/invitations", d.board.BoardInvitations)
+		boards.DELETE("/:id/members/:userId", tasksEdit, d.board.RemoveMember)
+		boards.POST("/:id/leave", tasksEdit, d.board.LeaveBoard)
+	}
+
+	boardInvites := api.Group("/board-invitations")
+	boardInvites.Use(tasksView)
+	{
+		boardInvites.GET("/mine", d.board.MyInvitations)
+		boardInvites.POST("/:invId/accept", tasksEdit, d.board.AcceptInvitation)
+		boardInvites.POST("/:invId/reject", tasksEdit, d.board.RejectInvitation)
+		boardInvites.DELETE("/:invId", tasksEdit, d.board.CancelInvitation)
 	}
 
 	tasks := api.Group("/tasks")

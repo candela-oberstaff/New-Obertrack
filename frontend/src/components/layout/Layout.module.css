@@ -57,7 +57,8 @@
   padding: 0 32px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   flex-shrink: 0;
-  z-index: 10;
+  position: relative;
+  z-index: 150;
 }
 
 .top-bar-actions {

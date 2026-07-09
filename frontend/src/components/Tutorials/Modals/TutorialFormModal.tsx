@@ -35,13 +35,13 @@ export function TutorialFormModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isEditing ? 'Editar tutorial' : 'Nuevo tutorial'}
+      title={isEditing ? 'Editar novedad' : 'Nueva novedad'}
       size="md"
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={isSaving}>Cancelar</Button>
           <Button type="submit" form="tutorial-form" loading={isSaving}>
-            {isEditing ? 'Guardar cambios' : 'Crear tutorial'}
+            {isEditing ? 'Guardar cambios' : 'Crear novedad'}
           </Button>
         </>
       }
@@ -64,7 +64,7 @@ export function TutorialFormModal({
           <textarea
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            placeholder="Resumen breve de lo que enseña el tutorial"
+            placeholder="Resumen breve de la novedad"
             rows={3}
           />
         </div>
@@ -136,7 +136,7 @@ export function TutorialFormModal({
             <option value="profesional">Solo profesionales</option>
           </select>
           <small className={styles['tutorial-form-hint']}>
-            Define el alcance de visibilidad: las empresas y los profesionales solo verán los tutoriales dirigidos a su tipo de cuenta.
+            Define el alcance de visibilidad: las empresas y los profesionales solo verán las novedades dirigidas a su tipo de cuenta.
           </small>
         </div>
 

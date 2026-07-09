@@ -4,7 +4,8 @@ import { Select } from '../../../components/ui/Select';
 import styles from '../Tickets.module.css';
 import {
   User, Phone, Mail, Clock, AlertCircle, Building2,
-  Briefcase, MapPin, MessageCircle, Shield, Brain, TrendingUp, ArrowRightLeft
+  Briefcase, MapPin, MessageCircle, Shield, Brain, TrendingUp, ArrowRightLeft,
+  Hand, CheckCircle2, RotateCcw
 } from 'lucide-react';
 
 interface ContactSidebarProps {
@@ -15,11 +16,21 @@ interface ContactSidebarProps {
   stageError?: string | null;
   updatingStage?: boolean;
   onTransfer?: () => void;
+  onWhatsAppAction?: (action: 'claim' | 'resolve' | 'reopen') => void;
+  actionBusy?: boolean;
 }
 
-export default function ContactSidebar({ ticket, linkedUser, statusOptions, onStatusChange, stageError, updatingStage = false, onTransfer }: ContactSidebarProps) {
+const STAGE_META: Record<string, { label: string; color: string }> = {
+  new:         { label: 'Nuevo',       color: 'var(--color-azure)' },
+  in_progress: { label: 'En Progreso', color: 'var(--primary)' },
+  waiting:     { label: 'Esperando',   color: 'var(--warning)' },
+  closed:      { label: 'Cerrado',     color: 'var(--gray-400)' },
+};
+
+export default function ContactSidebar({ ticket, linkedUser, statusOptions, onStatusChange, stageError, updatingStage = false, onTransfer, onWhatsAppAction, actionBusy = false }: ContactSidebarProps) {
   const navigate = useNavigate();
 
+  const isWa = ticket.origin === 'whatsapp';
   const isProfessional = linkedUser?.user_type === 'profesional';
   const currentStatusOption = {
     value: ticket.status,
@@ -308,23 +319,24 @@ export default function ContactSidebar({ ticket, linkedUser, statusOptions, onSt
               </div>
             )}
 
-            {/* WhatsApp button even without linked user */}
-            <button
-              onClick={() => navigate(`/whatsapp?ticketId=${encodeURIComponent(ticket.zoho_id)}`)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                width: '100%', marginTop: '12px', padding: '9px 14px',
-                borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600,
-                fontSize: '13px', justifyContent: 'center',
-                background: 'linear-gradient(135deg, #25D366, #128C7E)',
-                color: 'white', transition: 'opacity 0.2s'
-              }}
-              onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
-              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-            >
-              <MessageCircle size={16} />
-              Ir al chat de WhatsApp
-            </button>
+            {!isWa && (
+              <button
+                onClick={() => navigate(`/whatsapp?ticketId=${encodeURIComponent(ticket.zoho_id)}`)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  width: '100%', marginTop: '12px', padding: '9px 14px',
+                  borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600,
+                  fontSize: '13px', justifyContent: 'center',
+                  background: 'linear-gradient(135deg, #25D366, #128C7E)',
+                  color: 'white', transition: 'opacity 0.2s'
+                }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+              >
+                <MessageCircle size={16} />
+                Ir al chat de WhatsApp
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -357,7 +369,7 @@ export default function ContactSidebar({ ticket, linkedUser, statusOptions, onSt
                   {ticket.assignee_name}
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600 }}>
-                  Agente Zoho Desk
+                  {isWa ? 'Agente de soporte' : 'Agente Zoho Desk'}
                 </div>
               </div>
             </div>
@@ -386,42 +398,104 @@ export default function ContactSidebar({ ticket, linkedUser, statusOptions, onSt
         <h4 className={styles.sectionTitle}>Estado de Gestión</h4>
         <div className={styles.controlGroup}>
           <label className={styles.fieldLabel} htmlFor="stage-select">Etapa actual</label>
-          <Select
-            id="stage-select"
-            value={ticket.status || ''}
-            onChange={(value) => onStatusChange(String(value))}
-            options={options.map(option => ({
-              value: option.value,
-              label: option.label,
-              color: statusColor(option.stage),
-            }))}
-            placeholder="Seleccionar estado"
-            fullWidth
-            disabled={updatingStage}
-          />
-          {updatingStage && (
-            <span className={styles.label} style={{ marginTop: 6, display: 'block' }}>
-              Actualizando en Zoho Desk...
-            </span>
-          )}
-          {stageError && (
-            <span style={{ marginTop: 6, display: 'block', color: '#dc2626', fontSize: '0.78rem', fontWeight: 600 }}>
-              {stageError}
-            </span>
-          )}
-          {onTransfer && (
-            <button
-              onClick={onTransfer}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                width: '100%', marginTop: '12px', padding: '9px 14px',
-                borderRadius: '8px', border: '1px solid var(--primary)', cursor: 'pointer', fontWeight: 600,
-                fontSize: '13px', background: 'transparent', color: 'var(--primary)',
-              }}
-            >
-              <ArrowRightLeft size={15} />
-              Traspasar ticket
-            </button>
+          {isWa ? (
+            <>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start',
+                fontSize: '0.78rem', fontWeight: 700, padding: '0.28rem 0.75rem',
+                borderRadius: '99px',
+                border: `1px solid ${STAGE_META[ticket.stage]?.color ?? 'var(--color-azure)'}`,
+                color: STAGE_META[ticket.stage]?.color ?? 'var(--color-azure)',
+                background: `${STAGE_META[ticket.stage]?.color ?? 'var(--color-azure)'}18`,
+              }}>
+                {STAGE_META[ticket.stage]?.label ?? 'Nuevo'}
+              </span>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                {ticket.stage !== 'closed' && !ticket.assigned_to && (
+                  <button
+                    onClick={() => onWhatsAppAction?.('claim')}
+                    disabled={actionBusy}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      width: '100%', padding: '9px 14px', borderRadius: '8px',
+                      border: '1px solid var(--primary)', cursor: 'pointer', fontWeight: 600,
+                      fontSize: '13px', background: 'transparent', color: 'var(--primary)',
+                    }}
+                  >
+                    <Hand size={15} /> Tomar
+                  </button>
+                )}
+                {ticket.stage !== 'closed' && (
+                  <button
+                    onClick={() => onWhatsAppAction?.('resolve')}
+                    disabled={actionBusy}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      width: '100%', padding: '9px 14px', borderRadius: '8px',
+                      border: '1px solid rgba(22,163,74,0.4)', cursor: 'pointer', fontWeight: 600,
+                      fontSize: '13px', background: 'transparent', color: '#15803d',
+                    }}
+                  >
+                    <CheckCircle2 size={15} /> Resolver
+                  </button>
+                )}
+                {ticket.stage === 'closed' && (
+                  <button
+                    onClick={() => onWhatsAppAction?.('reopen')}
+                    disabled={actionBusy}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      width: '100%', padding: '9px 14px', borderRadius: '8px',
+                      border: '1px solid var(--primary)', cursor: 'pointer', fontWeight: 600,
+                      fontSize: '13px', background: 'transparent', color: 'var(--primary)',
+                    }}
+                  >
+                    <RotateCcw size={15} /> Reabrir
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <Select
+                id="stage-select"
+                value={ticket.status || ''}
+                onChange={(value) => onStatusChange(String(value))}
+                options={options.map(option => ({
+                  value: option.value,
+                  label: option.label,
+                  color: statusColor(option.stage),
+                }))}
+                placeholder="Seleccionar estado"
+                fullWidth
+                disabled={updatingStage}
+              />
+              {updatingStage && (
+                <span className={styles.label} style={{ marginTop: 6, display: 'block' }}>
+                  Actualizando en Zoho Desk...
+                </span>
+              )}
+              {stageError && (
+                <span style={{ marginTop: 6, display: 'block', color: '#dc2626', fontSize: '0.78rem', fontWeight: 600 }}>
+                  {stageError}
+                </span>
+              )}
+              {onTransfer && (
+                <button
+                  onClick={onTransfer}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    width: '100%', marginTop: '12px', padding: '9px 14px',
+                    borderRadius: '8px', border: '1px solid var(--primary)', cursor: 'pointer', fontWeight: 600,
+                    fontSize: '13px', background: 'transparent', color: 'var(--primary)',
+                  }}
+                >
+                  <ArrowRightLeft size={15} />
+                  Traspasar ticket
+                </button>
+              )}
+            </>
           )}
         </div>
 
@@ -439,7 +513,7 @@ export default function ContactSidebar({ ticket, linkedUser, statusOptions, onSt
           {ticket.status && (
             <div className={styles.metaRow}>
               <span style={{ width: 14 }}>●</span>
-              <span>Estado Zoho: <strong>{ticket.status}</strong></span>
+              <span>{isWa ? 'Estado' : 'Estado Zoho'}: <strong>{isWa ? (STAGE_META[ticket.stage]?.label ?? ticket.status) : ticket.status}</strong></span>
             </div>
           )}
           {ticket.priority && (

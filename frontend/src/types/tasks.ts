@@ -216,6 +216,22 @@ export interface Board {
   phases?: Phase[]
 }
 
+export type BoardInvitationKind = 'invitation' | 'request'
+export type BoardInvitationStatus = 'pending' | 'accepted' | 'rejected' | 'canceled'
+
+export interface BoardInvitation {
+  id: number
+  board_id: number
+  board?: Board
+  user_id: number
+  user?: User
+  kind: BoardInvitationKind
+  status: BoardInvitationStatus
+  created_by: number
+  inviter?: User
+  created_at: string
+}
+
 export interface Phase {
   id: number
   name: string

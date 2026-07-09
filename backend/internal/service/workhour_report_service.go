@@ -124,7 +124,7 @@ func (s *workHourService) GetPDFReportBytes(userID uint, role string, isSuperadm
 	if err != nil {
 		return nil, "", err
 	}
-	pdfBytes, err := generatePDFReport(workHours, monthName, year)
+	pdfBytes, err := generatePDFReport(workHours, fmt.Sprintf("%s %d", monthName, year))
 	if err != nil {
 		return nil, "", err
 	}
@@ -136,13 +136,16 @@ func (s *workHourService) GetExcelReportBytes(userID uint, role string, isSupera
 	if err != nil {
 		return nil, "", err
 	}
-	excelBytes, err := generateExcelReport(workHours, monthName, year)
+	excelBytes, err := generateExcelReport(workHours, fmt.Sprintf("%s %d", monthName, year))
 	if err != nil {
 		return nil, "", err
 	}
 	return excelBytes, monthName, nil
 }
 
+// SendReportEmail mantiene la firma que usa el botón manual de /work-hours.
+// Resuelve los bordes del mes y delega en SendPeriodReport para no duplicar la
+// construcción del correo ni de los adjuntos.
 func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) error {
 	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
@@ -154,7 +157,39 @@ func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin
 		return err
 	}
 
-	// Calculate summary stats
+	label := fmt.Sprintf("%s %d", monthName, year)
+	return s.sendReportWithAttachments(user, workHours, "Reporte Mensual de Jornadas", label)
+}
+
+// reportWorkHoursInRange trae las jornadas de una empresa en un rango de fechas
+// arbitrario. El repositorio ya soporta start_date/end_date.
+func (s *workHourService) reportWorkHoursInRange(tenantID uint, start, end time.Time) ([]models.WorkHour, error) {
+	filters := map[string]interface{}{
+		"tenant_id":  tenantID,
+		"start_date": start,
+		"end_date":   end,
+	}
+	workHours, _, err := s.repo.FindAll(filters, 0, 1000)
+	return workHours, err
+}
+
+// SendPeriodReport envía el reporte de una empresa para un rango arbitrario.
+// Lo usa el worker de envíos automáticos (diario / semanal / mensual).
+func (s *workHourService) SendPeriodReport(recipient *models.User, tenantID uint, periodTitle, periodLabel string, start, end time.Time) error {
+	if recipient == nil {
+		return fmt.Errorf("destinatario inválido")
+	}
+	workHours, err := s.reportWorkHoursInRange(tenantID, start, end)
+	if err != nil {
+		return err
+	}
+	return s.sendReportWithAttachments(recipient, workHours, periodTitle, periodLabel)
+}
+
+// sendReportWithAttachments arma el correo branded, genera PDF + Excel y envía.
+// periodTitle es el encabezado ("Reporte Diario de Jornadas") y periodLabel el
+// período legible ("08/07/2026", "Julio 2026").
+func (s *workHourService) sendReportWithAttachments(user *models.User, workHours []models.WorkHour, periodTitle, periodLabel string) error {
 	var totalHours float64
 	var approvedHours float64
 	var totalAbsences int
@@ -171,7 +206,6 @@ func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin
 		}
 	}
 
-	// Format a beautiful, premium, branded email matching the Obertrack theme
 	htmlContent := fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
@@ -184,14 +218,14 @@ func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin
 		<!-- Banner Superior con Degradado de Obertrack (Prussian Blue a Orchid) -->
 		<div style="background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; color: #ffffff; text-align: center;">
 			<img src="https://obertrack.com/logos/Horizontal_Blanco.png" alt="Obertrack Logo" height="40" style="display: block; margin: 0 auto 12px auto; height: 40px; border: 0; outline: none;" />
-			<h1 style="font-size: 20px; font-weight: 700; opacity: 0.95; margin: 0; color: #ffffff; font-family: sans-serif; letter-spacing: -0.01em;">Reporte Mensual de Jornadas</h1>
-			<div style="font-size: 14px; opacity: 0.85; margin-top: 6px; color: #f5f2fb; font-family: sans-serif;">%s %d</div>
+			<h1 style="font-size: 20px; font-weight: 700; opacity: 0.95; margin: 0; color: #ffffff; font-family: sans-serif; letter-spacing: -0.01em;">%s</h1>
+			<div style="font-size: 14px; opacity: 0.85; margin-top: 6px; color: #f5f2fb; font-family: sans-serif;">%s</div>
 		</div>
-		
+
 		<!-- Contenido Principal -->
 		<div style="padding: 32px 24px;">
 			<p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px; color: #060b23; font-family: sans-serif;">Hola <strong>%s</strong>,</p>
-			<p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #5c5680; font-family: sans-serif;">Aquí tienes el informe de horas y asistencia consolidado de tu equipo correspondiente a <strong>%s de %d</strong>.</p>
+			<p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #5c5680; font-family: sans-serif;">Aquí tienes el informe de horas y asistencia consolidado de tu equipo correspondiente a <strong>%s</strong>.</p>
 			
 			<!-- Rejilla de Estadísticas compatible con Outlook (Tablas) -->
 			<table cellpadding="0" cellspacing="0" border="0" width="100%%" style="width: 100%%; margin-bottom: 32px; table-layout: fixed;">
@@ -223,27 +257,28 @@ func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin
 		</div>
 	</div>
 </body>
-</html>`, monthName, year, html.EscapeString(user.Name), monthName, year, totalHours, approvedHours, totalAbsences, totalAbsenceHours)
+</html>`, periodTitle, periodLabel, html.EscapeString(user.Name), periodLabel, totalHours, approvedHours, totalAbsences, totalAbsenceHours)
 
-	subject := fmt.Sprintf("Obertrack - Reporte de Jornadas (%s %d)", monthName, year)
+	subject := fmt.Sprintf("Obertrack - Reporte de Jornadas (%s)", periodLabel)
 
-	pdfBytes, err := generatePDFReport(workHours, monthName, year)
+	pdfBytes, err := generatePDFReport(workHours, periodLabel)
 	if err != nil {
 		return fmt.Errorf("failed to generate PDF attachment: %w", err)
 	}
 
-	excelBytes, err := generateExcelReport(workHours, monthName, year)
+	excelBytes, err := generateExcelReport(workHours, periodLabel)
 	if err != nil {
 		return fmt.Errorf("failed to generate Excel attachment: %w", err)
 	}
 
+	slug := reportFileSlug(periodLabel)
 	attachments := []BrevoAttachment{
 		{
-			Name:    fmt.Sprintf("reporte_jornadas_%s_%d.pdf", monthName, year),
+			Name:    fmt.Sprintf("reporte_jornadas_%s.pdf", slug),
 			Content: base64.StdEncoding.EncodeToString(pdfBytes),
 		},
 		{
-			Name:    fmt.Sprintf("reporte_jornadas_%s_%d.xlsx", monthName, year),
+			Name:    fmt.Sprintf("reporte_jornadas_%s.xlsx", slug),
 			Content: base64.StdEncoding.EncodeToString(excelBytes),
 		},
 	}
@@ -251,7 +286,14 @@ func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin
 	return s.brevoSvc.SendEmailWithAttachments(user.Email, user.Name, subject, htmlContent, attachments)
 }
 
-func generateExcelReport(workHours []models.WorkHour, monthName string, year int) ([]byte, error) {
+// reportFileSlug convierte "01/07 al 07/07/2026" en algo apto para un nombre de
+// archivo adjunto.
+func reportFileSlug(label string) string {
+	repl := strings.NewReplacer(" ", "_", "/", "-", ":", "-", "\\", "-")
+	return repl.Replace(strings.TrimSpace(label))
+}
+
+func generateExcelReport(workHours []models.WorkHour, periodLabel string) ([]byte, error) {
 	f := excelize.NewFile()
 	defer f.Close()
 
@@ -259,7 +301,7 @@ func generateExcelReport(workHours []models.WorkHour, monthName string, year int
 	f.SetSheetName("Sheet1", sheetName)
 
 	// A1 Title styled with brand color (Prussian Blue)
-	f.SetCellValue(sheetName, "A1", fmt.Sprintf("Reporte de Actividades - %s %d", monthName, year))
+	f.SetCellValue(sheetName, "A1", fmt.Sprintf("Reporte de Actividades - %s", periodLabel))
 	titleStyle, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Family: "Plus Jakarta Sans",
@@ -422,7 +464,7 @@ func generateExcelReport(workHours []models.WorkHour, monthName string, year int
 	return buf.Bytes(), nil
 }
 
-func generatePDFReport(workHours []models.WorkHour, monthName string, year int) ([]byte, error) {
+func generatePDFReport(workHours []models.WorkHour, periodLabel string) ([]byte, error) {
 	pdf := gofpdf.New("L", "mm", "A4", "")
 	pdf.SetMargins(10, 15, 10)
 	// El salto de página lo manejamos manualmente (para re-dibujar el encabezado
@@ -460,7 +502,7 @@ func generatePDFReport(workHours []models.WorkHour, monthName string, year int) 
 	pdf.Text(155, 14, "REPORTE MENSUAL DE JORNADAS")
 	pdf.SetFont("Arial", "", 10)
 	pdf.SetTextColor(245, 242, 251) // Lavender Mist
-	pdf.Text(155, 21, fmt.Sprintf("Periodo: %s de %d", monthName, year))
+	pdf.Text(155, 21, fmt.Sprintf("Periodo: %s", periodLabel))
 
 	// Calcular estadísticas
 	var totalHours float64

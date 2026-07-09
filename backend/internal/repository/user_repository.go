@@ -17,6 +17,7 @@ type UserRepository interface {
 	Delete(id uint) error
 	GetEmployees(employerID uint) ([]models.User, error)
 	GetTeam(managerID uint) ([]models.User, error)
+	CountActiveSuperadminsExcluding(excludeID uint) (int64, error)
 	// CountReportsByManager cuenta los usuarios activos que tienen a managerID
 	// como manager (relación canónica users.manager_id, que escribe toda
 	// asignación). Es la fuente principal para impedir degradar/eliminar a un
@@ -230,6 +231,14 @@ func (r *userRepository) ReassignManager(oldManagerID uint, newManagerID *uint, 
 		Where("manager_id = ? AND empleador_id = ?", oldManagerID, companyID).
 		Update("manager_id", newManagerID)
 	return result.RowsAffected, result.Error
+}
+
+func (r *userRepository) CountActiveSuperadminsExcluding(excludeID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.User{}).
+		Where("is_superadmin = ? AND is_active = ? AND id <> ?", true, true, excludeID).
+		Count(&count).Error
+	return count, err
 }
 
 func (r *userRepository) CountReportsByManager(managerID uint) (int64, error) {

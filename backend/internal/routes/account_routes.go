@@ -140,6 +140,10 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	{
 		admin.GET("/users/:id/reports", d.admin.GetManagerReports)
 		admin.POST("/bulk-assign-manager", d.admin.BulkAssignManager)
+		admin.POST("/bulk-delete-users", d.admin.BulkDeleteUsers)
+		admin.GET("/trash", d.trash.List)
+		admin.POST("/trash/restore", d.trash.Restore)
+		admin.POST("/trash/purge", d.trash.Purge)
 		admin.GET("/professionals/locations", d.admin.GetProfessionalLocations)
 		admin.POST("/professionals/bulk-email", d.admin.BulkEmailProfessionals)
 		admin.GET("/import/template", d.admin.DownloadImportTemplate)
@@ -161,6 +165,17 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.PUT("/users/:id", d.admin.UpdateUser)
 		admin.DELETE("/users/:id", d.admin.DeleteUser)
 		admin.POST("/users/:id/reset-password", d.admin.ResetPassword)
+
+		// Configuración de la app: SOLO superadmin, ni siquiera lectura para CS
+		// (requireAdminPanel dejaría pasar sus GET, RequireSuperadmin los corta).
+		settings := admin.Group("/settings")
+		settings.Use(middleware.RequireSuperadmin())
+		{
+			settings.GET("/report-schedule", d.reportSched.Get)
+			settings.PUT("/report-schedule", d.reportSched.Update)
+			settings.POST("/report-schedule/run-now", d.reportSched.RunNow)
+			settings.GET("/report-schedule/runs", d.reportSched.ListRuns)
+		}
 
 		// Membresías (multi-empresa + expediente). GET lo puede consultar CS;
 		// las mutaciones son solo superadmin (requireAdminPanel lo aplica).

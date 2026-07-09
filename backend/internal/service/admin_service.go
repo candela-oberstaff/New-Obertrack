@@ -42,6 +42,8 @@ type ProfessionalLocation struct {
 	IsActive    bool   `json:"is_active"`
 }
 
+var ErrLastSuperadmin = errors.New("Es el último superadmin activo: asigná otro superadmin antes de degradar, desactivar o eliminar esta cuenta.")
+
 type AdminService interface {
 	GetDashboardMetrics() (*DashboardMetrics, error)
 	GetCompanies() ([]repository.CompanyMetric, error)
@@ -61,6 +63,8 @@ type AdminService interface {
 	UpdateUser(id uint, updates map[string]interface{}) (*models.User, error)
 	UpdateUserScoped(id uint, updates map[string]interface{}, tenantID uint) (*models.User, error)
 	DeleteUser(id uint) error
+	IsLastActiveSuperadmin(userID uint) (bool, error)
+	BulkDeleteUsers(ids []uint, requesterID uint) (int, []BulkDeleteSkip, error)
 	// DeleteUserScoped elimina (soft delete) un usuario solo si pertenece a la
 	// empresa indicada (tenantID). Aplica el mismo guard de orphans que
 	// DeleteUser. Para uso del EMPLEADOR (auto-acotado a su empresa).
@@ -539,11 +543,31 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 	return user, nil
 }
 
+func (s *adminService) IsLastActiveSuperadmin(userID uint) (bool, error) {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return false, err
+	}
+	if !user.IsSuperadmin || !user.IsActive {
+		return false, nil
+	}
+	others, err := s.userRepo.CountActiveSuperadminsExcluding(userID)
+	if err != nil {
+		return false, err
+	}
+	return others == 0, nil
+}
+
 func (s *adminService) DeleteUser(id uint) error {
 	user, err := s.userRepo.GetByID(id)
 	if err != nil {
 		// No se pudo cargar: conserva el comportamiento de borrado directo.
 		return s.userRepo.Delete(id)
+	}
+	if last, lerr := s.IsLastActiveSuperadmin(id); lerr != nil {
+		return lerr
+	} else if last {
+		return ErrLastSuperadmin
 	}
 	// No se puede eliminar un manager que aún tiene equipo a su cargo:
 	// dejaría a esos profesionales sin aprobador. Hay que reasignarlos primero.
@@ -557,6 +581,53 @@ func (s *adminService) DeleteUser(id uint) error {
 		}
 	}
 	return s.userRepo.Delete(id)
+}
+
+type BulkDeleteSkip struct {
+	ID     uint   `json:"id"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+func (s *adminService) BulkDeleteUsers(ids []uint, requesterID uint) (int, []BulkDeleteSkip, error) {
+	deleted := 0
+	skipped := []BulkDeleteSkip{}
+	for _, id := range ids {
+		user, err := s.userRepo.GetByID(id)
+		if err != nil {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Reason: "no encontrado"})
+			continue
+		}
+		if id == requesterID {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "es tu propia cuenta"})
+			continue
+		}
+		if user.IsSuperadmin {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "es superadmin (protegido)"})
+			continue
+		}
+		if user.UserType == models.UserTypeEmployer {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "es una empresa (elimínala desde Empresas)"})
+			continue
+		}
+		if user.IsManager {
+			count, cerr := countManagerReports(s.userRepo, s.employmentRepo, id)
+			if cerr != nil {
+				skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "no se pudo verificar su equipo"})
+				continue
+			}
+			if count > 0 {
+				skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: fmt.Sprintf("manager con %d a cargo", count)})
+				continue
+			}
+		}
+		if err := s.userRepo.Delete(id); err != nil {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "error al eliminar"})
+			continue
+		}
+		deleted++
+	}
+	return deleted, skipped, nil
 }
 
 // DeleteUserScoped elimina un usuario solo si pertenece a la empresa del

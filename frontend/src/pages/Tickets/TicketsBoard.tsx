@@ -8,7 +8,7 @@ import { RefreshCw, Ticket as TicketIcon, Filter, User as UserIcon, FileText } f
 import { useAuth } from '../../context/AuthContext';
 import { isSupportManager } from '../../lib/permissions';
 
-type OriginFilter = 'all' | 'zoho' | 'internal' | 'support';
+type OriginFilter = 'all' | 'zoho' | 'internal' | 'support' | 'whatsapp';
 
 const STAGES = [
   { id: 'new', title: 'Nuevo' },
@@ -90,6 +90,10 @@ export default function TicketsBoard({ forcedOrigin }: { forcedOrigin?: OriginFi
   }, []);
 
   const openTicket = (ticket: Ticket) => {
+    if (ticket.origin === 'whatsapp') {
+      navigate(`/tickets/wa/${ticket.id}`);
+      return;
+    }
     if (ticket.origin === 'support') {
       // Las solicitudes de soporte por chat se atienden en el chat.
       navigate(`/chat?channel=${ticket.channel_id}`);
@@ -203,6 +207,7 @@ export default function TicketsBoard({ forcedOrigin }: { forcedOrigin?: OriginFi
             {([
               { id: 'all', label: 'Todos' },
               { id: 'zoho', label: 'Zoho' },
+              { id: 'whatsapp', label: 'WhatsApp' },
               { id: 'internal', label: 'Internos' },
               { id: 'support', label: 'Soporte' },
             ] as { id: OriginFilter; label: string }[]).map(opt => (
@@ -279,7 +284,9 @@ export default function TicketsBoard({ forcedOrigin }: { forcedOrigin?: OriginFi
               key={stage.id}
               title={stage.title}
               stage={stage.id}
-              tickets={filteredTickets.filter(t => t.stage === stage.id)}
+              tickets={filteredTickets
+                .filter(t => t.stage === stage.id)
+                .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())}
               onTicketClick={openTicket}
               index={idx}
               draggable

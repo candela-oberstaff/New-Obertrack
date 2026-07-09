@@ -1112,6 +1112,89 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			ID: "202607081700_workhours_split_jornada_recover_unique",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Separando el único de work_hours: jornada vs recuperación (permite 1 jornada + 1 recuperación por día)...")
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_user_tenant_date`).Error; err != nil {
+					return err
+				}
+				if err := tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_user_tenant_date_jornada
+					ON work_hours (user_id, tenant_id, work_date)
+					WHERE deleted_at IS NULL AND work_type <> 'recover'
+				`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_user_tenant_date_recover
+					ON work_hours (user_id, tenant_id, work_date)
+					WHERE deleted_at IS NULL AND work_type = 'recover'
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_user_tenant_date_jornada`).Error; err != nil {
+					return err
+				}
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_user_tenant_date_recover`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_user_tenant_date
+					ON work_hours (user_id, tenant_id, work_date)
+					WHERE deleted_at IS NULL
+				`).Error
+			},
+		},
+		{
+			ID: "202607091200_add_board_invitations",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating board_invitations table...")
+				if err := tx.AutoMigrate(&models.BoardInvitation{}); err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_board_invitation_pending
+					ON board_invitations (board_id, user_id)
+					WHERE status = 'pending' AND deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_board_invitation_pending`).Error; err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.BoardInvitation{})
+			},
+		},
+		{
+			ID: "202607091500_add_report_schedule",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating report_schedules and report_runs tables...")
+				if err := tx.AutoMigrate(&models.ReportSchedule{}, &models.ReportRun{}); err != nil {
+					return err
+				}
+				if err := tx.Exec(`
+					INSERT INTO report_schedules (id, enabled, frequency, hour, minute, timezone, weekday, day_of_month, created_at, updated_at)
+					VALUES (1, false, 'monthly', 8, 0, 'UTC', 1, 1, now(), now())
+					ON CONFLICT (id) DO NOTHING
+				`).Error; err != nil {
+					return err
+				}
+				// Único parcial: bloquea reenviar un período ya entregado, pero deja
+				// reintentar los fallidos (no ocupan el índice).
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_report_run_sent
+					ON report_runs (tenant_id, period_key)
+					WHERE status = 'sent'
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_report_run_sent`).Error; err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.ReportRun{}, &models.ReportSchedule{})
+			},
+		},
 		// Future migrations go here
 	})
 

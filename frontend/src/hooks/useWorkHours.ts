@@ -17,6 +17,7 @@ interface WorkHourFormData {
   activities: string
   absence_reason: string
   absence_hours: number
+  comments: string
 }
 
 interface UseWorkHoursReturn {
@@ -78,6 +79,7 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
     activities: '',
     absence_reason: '',
     absence_hours: 0,
+    comments: '',
   })
 
   const isEmployer = user?.user_type === 'empleador'
@@ -134,7 +136,7 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
 
   const fetchData = useCallback(async () => { await refetch() }, [refetch])
 
-  const createWorkHour = useCallback(async (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours'> & { id?: number; absence_reason?: string; absence_hours?: number }) => {
+  const createWorkHour = useCallback(async (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours' | 'comments'> & { id?: number; absence_reason?: string; absence_hours?: number; comments?: string }) => {
     const hoursWorked = data.work_type === 'recover'
       ? (data as any).hours_worked || JORNADA_COMPLETA
       : data.work_type === 'absence'
@@ -148,6 +150,7 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
       hours_worked: hoursWorked,
       absence_reason: data.work_type === 'absence' ? data.absence_reason : undefined,
       absence_hours: data.work_type === 'absence' ? data.absence_hours : undefined,
+      comments: data.work_type === 'absence' ? (data.comments || '') : undefined,
     }
 
     if (data.id) {
@@ -180,6 +183,7 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
       activities: '',
       absence_reason: '',
       absence_hours: 0,
+      comments: '',
     })
   }, [])
 

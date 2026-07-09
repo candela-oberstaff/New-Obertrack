@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -276,12 +277,18 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// Guard: evita que un superadmin cambie su propio tipo de usuario y se quede
-	// sin acceso al panel (mismo espíritu que el guard de auto-desactivación).
-	if req.UserType != "" && req.UserType != string(models.UserTypeSuperadmin) &&
-		uint(id) == middleware.GetUserID(c) && middleware.IsSuperadmin(c) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No puedes cambiar tu propio rol de superadmin."})
-		return
+	demoting := req.UserType != "" && req.UserType != string(models.UserTypeSuperadmin)
+	deactivating := req.IsActive != nil && !*req.IsActive
+	if demoting || deactivating {
+		last, lerr := h.service.IsLastActiveSuperadmin(uint(id))
+		if lerr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo verificar los superadmins activos"})
+			return
+		}
+		if last {
+			c.JSON(http.StatusConflict, gin.H{"error": service.ErrLastSuperadmin.Error()})
+			return
+		}
 	}
 
 	updates := map[string]interface{}{}
@@ -399,6 +406,26 @@ func (h *AdminHandler) BulkAssignManager(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"assigned": assigned, "skipped": skipped})
 }
 
+func (h *AdminHandler) BulkDeleteUsers(c *gin.Context) {
+	var req struct {
+		UserIDs []uint `json:"user_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No hay usuarios seleccionados"})
+		return
+	}
+	deleted, skipped, err := h.service.BulkDeleteUsers(req.UserIDs, middleware.GetUserID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": deleted, "skipped": skipped})
+}
+
 func (h *AdminHandler) DeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -406,8 +433,13 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 
+	if uint(id) == middleware.GetUserID(c) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No puedes eliminar tu propia cuenta."})
+		return
+	}
+
 	if err := h.service.DeleteUser(uint(id)); err != nil {
-		if strings.Contains(err.Error(), "a su cargo") {
+		if errors.Is(err, service.ErrLastSuperadmin) || strings.Contains(err.Error(), "a su cargo") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}

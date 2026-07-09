@@ -116,14 +116,14 @@ export function useTutorialsPageState() {
     try {
       if (editingTutorial) {
         await updateTutorial(editingTutorial.id, formData)
-        success('Tutorial actualizado')
+        success('Novedad actualizada')
       } else {
         await createTutorial(formData)
-        success('Tutorial creado')
+        success('Novedad creada')
       }
       closeForm()
     } catch (err: any) {
-      error(err?.response?.data?.error || 'No se pudo guardar el tutorial')
+      error(err?.response?.data?.error || 'No se pudo guardar la novedad')
     } finally {
       setIsSaving(false)
     }
@@ -131,20 +131,20 @@ export function useTutorialsPageState() {
 
   const handleDelete = useCallback(async (tutorial: Tutorial) => {
     const ok = await confirm({
-      title: 'Eliminar tutorial',
-      message: `¿Eliminar el tutorial "${tutorial.title}"?`,
+      title: 'Eliminar novedad',
+      message: `¿Eliminar la novedad "${tutorial.title}"?`,
       confirmLabel: 'Eliminar',
       variant: 'danger',
     })
     if (!ok) return
     try {
       await deleteTutorial(tutorial.id)
-      success('Tutorial eliminado')
+      success('Novedad eliminada')
       if (selectedTutorial?.id === tutorial.id) {
         setSelectedTutorial(null)
       }
     } catch (err: any) {
-      error(err?.response?.data?.error || 'No se pudo eliminar el tutorial')
+      error(err?.response?.data?.error || 'No se pudo eliminar la novedad')
     }
   }, [deleteTutorial, selectedTutorial, success, error, confirm])
 

@@ -26,6 +26,10 @@ type TicketService interface {
 
 	// ListInternal returns Obertrack-generated alert tickets (origin = internal).
 	ListInternal() ([]models.Ticket, error)
+	ListWhatsApp() ([]models.Ticket, error)
+	GetWhatsAppTicket(id uint) (*models.Ticket, error)
+	SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error)
+	WhatsAppAction(id, agentID uint, action string) (*models.Ticket, error)
 	// GetInternal returns a single internal alert ticket (with notes).
 	GetInternal(id uint) (*models.Ticket, error)
 	// ListInternalReport returns internal alerts created within [start, end].
@@ -203,8 +207,12 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 		if ticket.Contact == nil {
 			return nil, apperrors.ErrExternalSend
 		}
+		dest := ticket.Contact.WaID
+		if dest == "" {
+			dest = ticket.Contact.Phone
+		}
 		session := s.wahaSvc.GetSession()
-		if err := s.wahaSvc.SendMessage(session, ticket.Contact.Phone, content); err != nil {
+		if err := s.wahaSvc.SendMessage(session, dest, content); err != nil {
 			return nil, apperrors.ErrExternalSend
 		}
 	case models.ChannelEmail:
@@ -240,23 +248,33 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 
 	resolvedName := "WA User " + phone
 	if contact, err := s.wahaSvc.GetContact(session, from); err == nil && contact != nil {
-		if contact.Name != "" {
-			resolvedName = contact.Name
+		if name := contact.BestName(); name != "" {
+			resolvedName = name
 		}
-		if contact.Phone != "" {
-			phone = contact.Phone
+		if realPhone := contact.RealPhone(); realPhone != "" {
+			phone = realPhone
 		}
 	}
 
 	contact, err := s.repo.GetContactByPhone(phone)
 	if err != nil {
-		contact = &models.Contact{Phone: phone, Name: resolvedName}
+		contact = &models.Contact{Phone: phone, Name: resolvedName, WaID: from}
 		if err := s.repo.CreateContact(contact); err != nil {
 			return err
 		}
-	} else if contact.Name == "WA User "+phone && resolvedName != "WA User "+phone {
-		contact.Name = resolvedName
-		_ = s.repo.SaveContact(contact)
+	} else {
+		dirty := false
+		if contact.Name == "WA User "+phone && resolvedName != "WA User "+phone {
+			contact.Name = resolvedName
+			dirty = true
+		}
+		if contact.WaID == "" && from != "" {
+			contact.WaID = from
+			dirty = true
+		}
+		if dirty {
+			_ = s.repo.SaveContact(contact)
+		}
 	}
 
 	ticket, err := s.repo.GetOpenTicketByContactSince(contact.ID, time.Now().Add(-1*time.Hour))
@@ -369,6 +387,104 @@ func (s *ticketService) ListInternal() ([]models.Ticket, error) {
 		s.enrichInternal(&tickets[i])
 	}
 	return tickets, nil
+}
+
+func (s *ticketService) ListWhatsApp() ([]models.Ticket, error) {
+	return s.repo.ListByOrigin(string(models.ChannelWhatsApp))
+}
+
+func (s *ticketService) GetWhatsAppTicket(id uint) (*models.Ticket, error) {
+	ticket, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, apperrors.ErrNotFound
+	}
+	if ticket.Origin != string(models.ChannelWhatsApp) {
+		return nil, apperrors.ErrNotFound
+	}
+
+	if c := ticket.Contact; c != nil && strings.HasPrefix(c.Name, "WA User ") && c.WaID != "" {
+		if resolved, rerr := s.wahaSvc.GetContact(s.wahaSvc.GetSession(), c.WaID); rerr == nil && resolved != nil {
+			changed := false
+			if name := resolved.BestName(); name != "" {
+				c.Name = name
+				changed = true
+			}
+			if realPhone := resolved.RealPhone(); realPhone != "" && realPhone != c.Phone {
+				c.Phone = realPhone
+				changed = true
+			}
+			if changed {
+				_ = s.repo.SaveContact(c)
+				if reloaded, rlErr := s.repo.GetByID(id); rlErr == nil {
+					ticket = reloaded
+				}
+			}
+		}
+	}
+	return ticket, nil
+}
+
+func (s *ticketService) SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error) {
+	ticket, err := s.repo.GetWithContact(id)
+	if err != nil {
+		return nil, apperrors.ErrNotFound
+	}
+	if ticket.Origin != string(models.ChannelWhatsApp) || ticket.Contact == nil {
+		return nil, apperrors.ErrExternalSend
+	}
+	dest := ticket.Contact.WaID
+	if dest == "" {
+		dest = ticket.Contact.Phone
+	}
+	if err := s.wahaSvc.SendMessage(s.wahaSvc.GetSession(), dest, content); err != nil {
+		return nil, apperrors.ErrExternalSend
+	}
+
+	msg := &models.TicketMessage{
+		TicketID:   ticket.ID,
+		SenderType: models.SenderTypeAgent,
+		SenderID:   &agentID,
+		Channel:    models.ChannelWhatsApp,
+		Content:    content,
+	}
+	if err := s.repo.CreateMessage(msg); err != nil {
+		return nil, err
+	}
+	_ = s.repo.TouchTicket(ticket)
+	broadcastTicketMessage(ticket.ID, msg)
+	return msg, nil
+}
+
+func (s *ticketService) WhatsAppAction(id, agentID uint, action string) (*models.Ticket, error) {
+	ticket, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, apperrors.ErrNotFound
+	}
+	if ticket.Origin != string(models.ChannelWhatsApp) {
+		return nil, apperrors.ErrNotFound
+	}
+	switch action {
+	case "claim":
+		ticket.AssignedTo = &agentID
+		ticket.Stage = models.StageInProgress
+		ticket.Status = "open"
+	case "resolve":
+		ticket.Stage = models.StageClosed
+		ticket.Status = "closed"
+	case "reopen":
+		ticket.AssignedTo = nil
+		ticket.Stage = models.StageNew
+		ticket.Status = "open"
+	default:
+		return nil, apperrors.ErrInvalidInput
+	}
+	ticket.Contact = nil
+	ticket.Assignee = nil
+	ticket.Messages = nil
+	if err := s.repo.SaveTicket(ticket); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByID(id)
 }
 
 // ListInternalReport returns internal alerts created within [start, end].

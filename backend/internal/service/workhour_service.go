@@ -22,6 +22,9 @@ type WorkHourService interface {
 	GetSummary(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error)
 	GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string) ([]models.WorkHour, error)
 	SendReportEmail(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) error
+	// SendPeriodReport envía el reporte de una empresa para un rango arbitrario
+	// de fechas. Lo usa el worker de envíos automáticos.
+	SendPeriodReport(recipient *models.User, tenantID uint, periodTitle, periodLabel string, start, end time.Time) error
 	GetPDFReportBytes(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) ([]byte, string, error)
 	GetExcelReportBytes(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) ([]byte, string, error)
 }
@@ -128,7 +131,8 @@ func (s *workHourService) GetAll(userID uint, role string, isSuperadmin, isManag
 var (
 	ErrInvalidDateFormat = errors.New("Invalid date format")
 	ErrFutureWorkDate    = errors.New("No puedes registrar horas en fechas futuras")
-	ErrDuplicateWorkDay  = errors.New("Ya existe un registro para esta fecha en esta empresa. Solo puedes registrar un máximo de una jornada por día.")
+	ErrDuplicateWorkDay  = errors.New("Ya existe una jornada para esta fecha en esta empresa. Solo puedes registrar una jornada por día.")
+	ErrDuplicateRecover = errors.New("Ya existe una recuperación para esta fecha en esta empresa. Solo puedes registrar una recuperación por día.")
 )
 
 const standardWorkDay = 8.0
@@ -172,12 +176,6 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 	creator, _ := s.userRepo.GetByID(userID)
 	tenantID := models.TenantForUser(creator)
 
-	// El límite de una jornada por día es POR empresa activa: un profesional
-	// multi-empresa puede registrar el mismo día en cada una.
-	if _, err := s.repo.FindByUserAndDate(userID, workDate, tenantID); err == nil {
-		return nil, ErrDuplicateWorkDay
-	}
-
 	// Las horas son autoritativas en el servidor: no se confía en lo que mande
 	// el cliente para complete/absence; recover se acota a [0,24].
 	workTypeStr := s.parseStringVal(reqData["work_type"])
@@ -197,6 +195,14 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 		workType = models.WorkTypeComplete
 		absenceHours = 0
 		hoursWorked = standardWorkDay
+	}
+
+	isRecover := workType == models.WorkTypeRecover
+	if _, err := s.repo.FindByUserDateKind(userID, workDate, tenantID, isRecover); err == nil {
+		if isRecover {
+			return nil, ErrDuplicateRecover
+		}
+		return nil, ErrDuplicateWorkDay
 	}
 
 	workHour := &models.WorkHour{
@@ -227,6 +233,9 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 
 	if err := s.repo.Create(workHour); err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
+			if isRecover {
+				return nil, ErrDuplicateRecover
+			}
 			return nil, ErrDuplicateWorkDay
 		}
 		return nil, errors.New("Failed to create work hour")

@@ -85,7 +85,7 @@ func (h *WorkHourHandler) Create(c *gin.Context) {
 		switch {
 		case errors.Is(err, service.ErrInvalidDateFormat), errors.Is(err, service.ErrFutureWorkDate):
 			status = http.StatusBadRequest
-		case errors.Is(err, service.ErrDuplicateWorkDay):
+		case errors.Is(err, service.ErrDuplicateWorkDay), errors.Is(err, service.ErrDuplicateRecover):
 			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": err.Error()})

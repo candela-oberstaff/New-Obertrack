@@ -29,6 +29,7 @@ const SurveyViewer = lazy(() => import('../pages/SurveyViewer'))
 const TicketsBoard = lazy(() => import('../pages/Tickets/TicketsBoard'))
 const SupportBoard = lazy(() => import('../pages/Tickets/SupportBoard'))
 const TicketDetail = lazy(() => import('../pages/Tickets/TicketDetail'))
+const WhatsAppTicketDetail = lazy(() => import('../pages/Tickets/WhatsAppTicketDetail'))
 const RejectionReport = lazy(() => import('../pages/Tickets/RejectionReport'))
 const InternalTicketDetail = lazy(() => import('../pages/Tickets/InternalTicketDetail'))
 const EmailCampaigns = lazy(() => import('../pages/Email/EmailCampaigns'))
@@ -37,6 +38,8 @@ const ProfessionalsMap = lazy(() => import('../pages/ProfessionalsMap'))
 const Incidents = lazy(() => import('../pages/Incidents'))
 const EmpresaEmployeeDetail = lazy(() => import('../pages/Empresa/EmployeeDetail'))
 const Soporte = lazy(() => import('../pages/Soporte'))
+const Papelera = lazy(() => import('../pages/Papelera'))
+const AppSettings = lazy(() => import('../pages/AppSettings'))
 
 export function AppRoutes() {
   return (
@@ -73,9 +76,12 @@ export function AppRoutes() {
           <Route path="admin/incidentes" element={<AdminRoute><Incidents /></AdminRoute>} />
           <Route path="admin/metrics" element={<PlatformTechRoute><Metrics /></PlatformTechRoute>} />
           <Route path="admin/audit" element={<PlatformTechRoute><AuditLogs /></PlatformTechRoute>} />
+          <Route path="admin/settings" element={<AdminRoute><AppSettings /></AdminRoute>} />
+          <Route path="papelera" element={<AdminRoute><Papelera /></AdminRoute>} />
           <Route path="empresa" element={<EmployerRoute><EmpresaEmployees /></EmployerRoute>} />
           <Route path="empresa/employees/:id" element={<EmployerRoute><EmpresaEmployeeDetail /></EmployerRoute>} />
-          <Route path="tutoriales" element={<Tutoriales />} />
+          <Route path="novedades" element={<Tutoriales />} />
+          <Route path="tutoriales" element={<Navigate to="/novedades" replace />} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
           {/* Roles y Grupos: no disponible para empresas en esta versión (solo superadmin). */}
           <Route path="roles-grupos" element={<AdminRoute><RolesGroups /></AdminRoute>} />
@@ -84,6 +90,7 @@ export function AppRoutes() {
           <Route path="tickets/soporte" element={<SupportInboxRoute><SupportBoard /></SupportInboxRoute>} />
           <Route path="tickets/report" element={<AdminRoute><RejectionReport /></AdminRoute>} />
           <Route path="tickets/internal/:id" element={<AdminRoute><InternalTicketDetail /></AdminRoute>} />
+          <Route path="tickets/wa/:id" element={<SupportInboxRoute><WhatsAppTicketDetail /></SupportInboxRoute>} />
           <Route path="tickets/:id" element={<AdminRoute><TicketDetail /></AdminRoute>} />
         </Route>
       </Routes>

@@ -48,6 +48,14 @@ services:
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Obertrack}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-noreply@obertrack.com}
       BREVO_WEBHOOK_TOKEN: ${BREVO_WEBHOOK_TOKEN}
+      # WAHA (WhatsApp HTTP API): URL de la instancia, API key (X-Api-Key) y
+      # nombre de la sesión. Sin WAHA_API_URL el backend intenta localhost:3000.
+      # WAHA_SESSION debe coincidir con el nombre de la sesión creada en WAHA.
+      WAHA_API_URL: ${WAHA_API_URL:-http://localhost:3000}
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+      # HMAC compartido: firma los webhooks entrantes de WAHA (X-Webhook-Hmac).
+      # Debe ser idéntico al configurado en el webhook de la sesión en WAHA.
       WAHA_WEBHOOK_HMAC: ${WAHA_WEBHOOK_HMAC}
       ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}
       ZOHO_CLIENT_SECRET: ${ZOHO_CLIENT_SECRET}

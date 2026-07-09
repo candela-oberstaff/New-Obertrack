@@ -6,6 +6,7 @@ import { userService, taskService, adminService } from '../../../services/api'
 import type { User, Board, Task, CreateTaskInput, Phase } from '../../../types'
 import { ColumnType } from '../types'
 import { useBoards } from './useBoards'
+import { useBoardInvitations } from './useBoardInvitations'
 import { useTasks } from './useTasks'
 
 export interface CompanyOption {
@@ -34,7 +35,7 @@ const DEFAULT_COLUMNS: ColumnType[] = [
 
 export function useTasksPageState() {
   const { user } = useAuth()
-  const { error: showError } = useNotification()
+  const { error: showError, success: showSuccess } = useNotification()
   const confirm = useConfirm()
 
   const isSuperadmin = user?.user_type === 'superadmin'
@@ -65,11 +66,14 @@ export function useTasksPageState() {
   const [showBoardMembersModal, setShowBoardMembersModal] = useState(false)
   const [showPhasesModal, setShowPhasesModal] = useState(false)
   const [showJoinBoardModal, setShowJoinBoardModal] = useState(false)
+  const [showInvitationsModal, setShowInvitationsModal] = useState(false)
+  const [showRequestsModal, setShowRequestsModal] = useState(false)
   const [isSavingPhase, setIsSavingPhase] = useState(false)
-  const [optimisticMembers, setOptimisticMembers] = useState<number[]>([])
   const [isCreatingTask, setIsCreatingTask] = useState(false)
   const [isDeletingBoard, setIsDeletingBoard] = useState(false)
   const [isJoiningBoard, setIsJoiningBoard] = useState(false)
+  const [isLeavingBoard, setIsLeavingBoard] = useState(false)
+  const [requestedBoardIds, setRequestedBoardIds] = useState<number[]>([])
 
   // Phases drag state
   const [draggingPhase, setDraggingPhase] = useState<number | null>(null)
@@ -111,9 +115,12 @@ export function useTasksPageState() {
     isCreatingBoard,
     createBoard,
     deleteBoard,
-    joinBoard,
+    requestJoin,
+    fetchBoards,
     fetchPublicBoards,
-    updateBoardMembers,
+    inviteMembers,
+    removeMember,
+    leaveBoard,
     reorderPhases,
     addPhase,
     removePhase,
@@ -123,6 +130,30 @@ export function useTasksPageState() {
     // Superadmin lands on a board picker after choosing a company instead of
     // jumping straight into a board.
     autoSelectFirst: !isSuperadmin,
+  })
+
+  const canManageBoard = !!selectedBoard && (
+    isSuperadmin ||
+    user?.is_superadmin ||
+    user?.is_manager ||
+    user?.user_type === 'empleador' ||
+    user?.id === selectedBoard.created_by
+  )
+  const isBoardMember = !!selectedBoard?.members?.some((m) => m.id === user?.id)
+  const canLeaveBoard = isBoardMember && !!selectedBoard && user?.id !== selectedBoard.created_by
+
+  const {
+    myInvitations,
+    boardRequests,
+    boardInvitations,
+    accept: acceptInvitation,
+    reject: rejectInvitation,
+    cancel: cancelInvitation,
+    refetchAll: refetchInvitations,
+  } = useBoardInvitations({
+    boardId: selectedBoard?.id ?? null,
+    canManage: canManageBoard,
+    companyId: isSuperadmin ? selectedCompanyId : null,
   })
 
   // Tasks hook
@@ -452,18 +483,96 @@ export function useTasksPageState() {
     await deleteTask(id)
   }, [deleteTask])
 
-  const handleJoinBoard = useCallback(async (boardId: number) => {
+  const handleRequestJoin = useCallback(async (boardId: number) => {
     setIsJoiningBoard(true)
     try {
-      const success = await joinBoard(boardId)
-      if (!success) {
-        showError('No se pudo unir al tablero. Es posible que ya seas miembro.')
+      const ok = await requestJoin(boardId)
+      if (ok) {
+        setRequestedBoardIds((prev) => [...prev, boardId])
+        showSuccess('Solicitud enviada. Te avisaremos cuando la respondan.')
+      } else {
+        showError('No se pudo enviar la solicitud.')
       }
-      setShowJoinBoardModal(false)
     } finally {
       setIsJoiningBoard(false)
     }
-  }, [joinBoard, showError])
+  }, [requestJoin, showError, showSuccess])
+
+  const handleInviteMember = useCallback(async (userId: number) => {
+    if (!selectedBoard) return
+    try {
+      await inviteMembers(selectedBoard.id, [userId])
+      await refetchInvitations()
+      showSuccess('Invitación enviada.')
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo enviar la invitación.')
+    }
+  }, [selectedBoard, inviteMembers, refetchInvitations, showError, showSuccess])
+
+  const handleRemoveMember = useCallback(async (userId: number) => {
+    if (!selectedBoard) return
+    const ok = await confirm({
+      title: 'Quitar del tablero',
+      message: '¿Seguro que querés quitar a esta persona del tablero?',
+      confirmLabel: 'Quitar',
+      variant: 'danger',
+    })
+    if (!ok) return
+    try {
+      await removeMember(selectedBoard.id, userId)
+      showSuccess('Miembro quitado del tablero.')
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo quitar al miembro.')
+    }
+  }, [selectedBoard, removeMember, confirm, showError, showSuccess])
+
+  const handleCancelInvitation = useCallback(async (invId: number) => {
+    try {
+      await cancelInvitation(invId)
+      showSuccess('Invitación cancelada.')
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo cancelar la invitación.')
+    }
+  }, [cancelInvitation, showError, showSuccess])
+
+  const handleLeaveBoard = useCallback(async () => {
+    if (!selectedBoard) return
+    const ok = await confirm({
+      title: 'Salir del tablero',
+      message: `¿Seguro que querés salir de "${selectedBoard.name}"? Perderás el acceso a sus tareas.`,
+      confirmLabel: 'Salir',
+      variant: 'danger',
+    })
+    if (!ok) return
+    setIsLeavingBoard(true)
+    try {
+      await leaveBoard(selectedBoard.id)
+      showSuccess('Saliste del tablero.')
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo salir del tablero.')
+    } finally {
+      setIsLeavingBoard(false)
+    }
+  }, [selectedBoard, leaveBoard, confirm, showError, showSuccess])
+
+  const handleAcceptInvitation = useCallback(async (invId: number) => {
+    try {
+      await acceptInvitation(invId)
+      await fetchBoards()
+      showSuccess('Te uniste al tablero.')
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo aceptar la invitación.')
+    }
+  }, [acceptInvitation, fetchBoards, showError, showSuccess])
+
+  const handleRejectInvitation = useCallback(async (invId: number) => {
+    try {
+      await rejectInvitation(invId)
+      showSuccess('Invitación rechazada.')
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo rechazar la invitación.')
+    }
+  }, [rejectInvitation, showError, showSuccess])
 
   const getCurrentColumns = useCallback((): ColumnType[] => {
     if (selectedBoard?.phases?.length) {
@@ -515,8 +624,6 @@ export function useTasksPageState() {
     isSavingPhase,
     showJoinBoardModal,
     setShowJoinBoardModal,
-    optimisticMembers,
-    setOptimisticMembers,
     isCreatingTask,
     isDeletingBoard,
     isJoiningBoard,
@@ -555,10 +662,27 @@ export function useTasksPageState() {
     handleCreateTask,
     handleUpdateTask,
     handleDeleteTask,
-    handleJoinBoard,
     getCurrentColumns,
     openBoardModal,
     fetchPublicBoards,
-    updateBoardMembers,
+
+    handleRequestJoin,
+    requestedBoardIds,
+    showInvitationsModal,
+    setShowInvitationsModal,
+    showRequestsModal,
+    setShowRequestsModal,
+    myInvitations,
+    boardRequests,
+    boardInvitations,
+    handleAcceptInvitation,
+    handleRejectInvitation,
+    handleInviteMember,
+    handleRemoveMember,
+    handleCancelInvitation,
+    handleLeaveBoard,
+    isLeavingBoard,
+    canManageBoard,
+    canLeaveBoard,
   }
 }

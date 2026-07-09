@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -32,11 +33,9 @@ type WahaSendTextRequest struct {
 	Session string `json:"session"`
 }
 
-// SendMessage sends a text message via WAHA to a specific WhatsApp number
-func (s *WahaService) SendMessage(session string, toPhone string, text string) error {
-	// Format to WhatsApp chat ID
-	chatID := toPhone
-	if !strings.HasSuffix(chatID, "@c.us") {
+func (s *WahaService) SendMessage(session string, to string, text string) error {
+	chatID := to
+	if !strings.Contains(chatID, "@") {
 		chatID = fmt.Sprintf("%s@c.us", chatID)
 	}
 
@@ -78,33 +77,42 @@ func (s *WahaService) SendMessage(session string, toPhone string, text string) e
 }
 
 type WahaContactResponse struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Phone string `json:"phone"`
+	ID        string `json:"id"`
+	Number    string `json:"number"`
+	Name      string `json:"name"`
+	Pushname  string `json:"pushname"`
+	ShortName string `json:"shortName"`
+	Phone     string `json:"phone"`
 }
 
-func (m *WahaContactResponse) GetDisplayName() string {
-	if m.Name != "" {
-		return m.Name
+func (m *WahaContactResponse) BestName() string {
+	for _, v := range []string{m.Name, m.Pushname, m.ShortName} {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
 	}
 	return ""
 }
 
-func (m *WahaContactResponse) GetPhone() string {
-	if m.Phone != "" {
-		return m.Phone
+func (m *WahaContactResponse) RealPhone() string {
+	if i := strings.IndexByte(m.ID, '@'); i > 0 && strings.HasSuffix(m.ID, "@c.us") {
+		return m.ID[:i]
 	}
-	return ""
+	return strings.TrimSpace(m.Phone)
 }
 
-// GetContact fetches contact details from WAHA
+func (m *WahaContactResponse) GetDisplayName() string { return m.BestName() }
+
+func (m *WahaContactResponse) GetPhone() string { return m.RealPhone() }
+
 func (s *WahaService) GetContact(session string, contactID string) (*WahaContactResponse, error) {
 	if !strings.Contains(contactID, "@") {
 		contactID = fmt.Sprintf("%s@c.us", contactID)
 	}
 
-	url := fmt.Sprintf("%s/api/%s/contacts/all?id=%s", s.apiURL, session, contactID)
-	req, err := http.NewRequest("GET", url, nil)
+	reqURL := fmt.Sprintf("%s/api/contacts?session=%s&contactId=%s",
+		s.apiURL, url.QueryEscape(session), url.QueryEscape(contactID))
+	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -125,13 +133,12 @@ func (s *WahaService) GetContact(session string, contactID string) (*WahaContact
 		return nil, fmt.Errorf("waha API error: status %d", resp.StatusCode)
 	}
 
-	var contacts []WahaContactResponse
-	if err := json.NewDecoder(resp.Body).Decode(&contacts); err != nil {
+	var contact WahaContactResponse
+	if err := json.NewDecoder(resp.Body).Decode(&contact); err != nil {
 		return nil, fmt.Errorf("failed to decode contact: %w", err)
 	}
-
-	if len(contacts) > 0 {
-		return &contacts[0], nil
+	if contact.ID != "" || contact.BestName() != "" {
+		return &contact, nil
 	}
 
 	return nil, fmt.Errorf("contact not found")

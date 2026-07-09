@@ -6,6 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	// Embebe la base de zonas horarias IANA en el binario. La imagen de runtime
+	// es alpine sin el paquete tzdata, así que sin esto time.LoadLocation
+	// ("America/Caracas") fallaría y el worker de reportes caería siempre a UTC.
+	_ "time/tzdata"
+
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 

@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTasksPageState } from '../components/Tasks/hooks/useTasksPageState'
 import { canEditModule } from '../lib/permissions'
-import type { User } from '../types'
 
 import { TasksBoard } from '../components/Tasks/components/TasksBoard'
 import { Select } from '../components/ui/Select'
@@ -12,13 +11,18 @@ import { NewTaskModal } from '../components/Tasks/Modals/NewTaskModal'
 import { BoardModal } from '../components/Tasks/Modals/BoardModal'
 import { BoardMembersModal } from '../components/Tasks/Modals/BoardMembersModal'
 import { JoinBoardModal } from '../components/Tasks/Modals/JoinBoardModal'
+import { BoardInvitationsModal } from '../components/Tasks/Modals/BoardInvitationsModal'
+import { BoardRequestsModal } from '../components/Tasks/Modals/BoardRequestsModal'
 import { PhasesModal } from '../components/Tasks/Modals/PhasesModal'
 import {
   Plus,
   UserPlus,
   Trash2,
   CheckSquare,
-  Columns3
+  Columns3,
+  Mail,
+  UserCheck,
+  LogOut
 } from 'lucide-react'
 import styles from './Tasks.module.css'
 
@@ -43,8 +47,6 @@ export default function Tasks() {
     isSavingPhase,
     showJoinBoardModal,
     setShowJoinBoardModal,
-    optimisticMembers,
-    setOptimisticMembers,
     isCreatingTask,
     isDeletingBoard,
     isJoiningBoard,
@@ -83,11 +85,28 @@ export default function Tasks() {
     handleCreateTask,
     handleUpdateTask,
     handleDeleteTask,
-    handleJoinBoard,
     getCurrentColumns,
     openBoardModal,
     fetchPublicBoards,
-    updateBoardMembers,
+
+    handleRequestJoin,
+    requestedBoardIds,
+    showInvitationsModal,
+    setShowInvitationsModal,
+    showRequestsModal,
+    setShowRequestsModal,
+    myInvitations,
+    boardRequests,
+    boardInvitations,
+    handleAcceptInvitation,
+    handleRejectInvitation,
+    handleInviteMember,
+    handleRemoveMember,
+    handleCancelInvitation,
+    handleLeaveBoard,
+    isLeavingBoard,
+    canManageBoard,
+    canLeaveBoard,
   } = useTasksPageState()
 
   // Permiso del rol sobre el módulo Tareas: con "Ver" se ocultan las acciones
@@ -101,6 +120,24 @@ export default function Tasks() {
   const dlCompany = searchParams.get('company')
   const dlBoard = searchParams.get('board')
   const dlTask = searchParams.get('task')
+  const dlInvitations = searchParams.get('invitations')
+  const dlRequests = searchParams.get('requests')
+
+  useEffect(() => {
+    if (dlInvitations) {
+      setShowInvitationsModal(true)
+      searchParams.delete('invitations')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [dlInvitations])
+
+  useEffect(() => {
+    if (dlRequests && canManageBoard) {
+      setShowRequestsModal(true)
+      searchParams.delete('requests')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [dlRequests, canManageBoard])
 
   // 1) Superadmin: make sure the task's company is the one in scope.
   useEffect(() => {
@@ -198,6 +235,27 @@ export default function Tasks() {
           </div>
         </div>
         <div className={styles['tasks-loading']} data-tour="tasks-empty">
+          {myInvitations.length > 0 && (
+            <div
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'center',
+                background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 12,
+                padding: '14px 18px', marginBottom: 24, maxWidth: 520,
+              }}
+            >
+              <Mail size={20} style={{ color: '#7c3aed', flexShrink: 0 }} />
+              <span style={{ fontSize: 14, color: '#4c1d95', fontWeight: 600 }}>
+                Tenés {myInvitations.length} invitación{myInvitations.length === 1 ? '' : 'es'} a tableros.
+              </span>
+              <button
+                className={styles['btn-primary']}
+                onClick={() => setShowInvitationsModal(true)}
+                style={{ padding: '6px 14px', fontSize: 13 }}
+              >
+                Ver invitaciones
+              </button>
+            </div>
+          )}
           <h2>No tienes tableros</h2>
           <p>Crea tu primer tablero para organizar tus tareas</p>
           {canEditTasks && (
@@ -213,7 +271,7 @@ export default function Tasks() {
                   setShowJoinBoardModal(true)
                 }}
               >
-                Unirse a Tablero
+                Solicitar Tablero
               </button>
             </div>
           )}
@@ -235,8 +293,17 @@ export default function Tasks() {
           isOpen={showJoinBoardModal}
           onClose={() => setShowJoinBoardModal(false)}
           publicBoards={publicBoards}
-          handleJoinBoard={handleJoinBoard}
+          handleRequestJoin={handleRequestJoin}
           isJoiningBoard={isJoiningBoard}
+          requestedBoardIds={requestedBoardIds}
+        />
+
+        <BoardInvitationsModal
+          isOpen={showInvitationsModal}
+          onClose={() => setShowInvitationsModal(false)}
+          invitations={myInvitations}
+          onAccept={handleAcceptInvitation}
+          onReject={handleRejectInvitation}
         />
       </div>
     )
@@ -273,24 +340,48 @@ export default function Tasks() {
                       }}
                       style={{ marginLeft: '8px', fontSize: '12px', padding: '6px 10px' }}
                     >
-                      Unirse a Tablero
+                      Solicitar Tablero
                     </button>
                   </>
                 )}
+                {myInvitations.length > 0 && (
+                  <button
+                    className={`${styles['btn-secondary'] || 'btn-secondary'} ${styles['btn-sm'] || 'btn-sm'}`}
+                    onClick={() => setShowInvitationsModal(true)}
+                    title="Invitaciones pendientes"
+                    style={{ marginLeft: '8px', fontSize: '12px', padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <Mail size={15} /> Invitaciones ({myInvitations.length})
+                  </button>
+                )}
                 {selectedBoard && (
                   <>
-                    <button
-                      className={`${styles['btn-icon']} ${styles['members-btn'] || 'members-btn'}`}
-                      data-tour="tasks-members"
-                      onClick={() => {
-                        setOptimisticMembers(selectedBoard.members?.map((m: User) => m.id) || [])
-                        setShowBoardMembersModal(true)
-                      }}
-                      title="Gestionar miembros"
-                      style={{ marginLeft: '4px' }}
-                    >
-                      <UserPlus size={18} />
-                    </button>
+                    {canManageBoard && (
+                      <>
+                        <button
+                          className={`${styles['btn-icon']} ${styles['members-btn'] || 'members-btn'}`}
+                          data-tour="tasks-members"
+                          onClick={() => setShowBoardMembersModal(true)}
+                          title="Gestionar miembros"
+                          style={{ marginLeft: '4px' }}
+                        >
+                          <UserPlus size={18} />
+                        </button>
+                        <button
+                          className={styles['btn-icon']}
+                          onClick={() => setShowRequestsModal(true)}
+                          title={boardRequests.length > 0 ? `${boardRequests.length} solicitud(es) pendiente(s)` : 'Solicitudes para unirse'}
+                          style={{ marginLeft: '4px', position: 'relative' }}
+                        >
+                          <UserCheck size={18} />
+                          {boardRequests.length > 0 && (
+                            <span style={{ position: 'absolute', top: -2, right: -2, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 800, minWidth: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                              {boardRequests.length}
+                            </span>
+                          )}
+                        </button>
+                      </>
+                    )}
                     <button
                       className={styles['btn-icon']}
                       data-tour="tasks-phases"
@@ -300,6 +391,17 @@ export default function Tasks() {
                     >
                       <Columns3 size={18} />
                     </button>
+                    {canLeaveBoard && (
+                      <button
+                        className={styles['btn-icon']}
+                        onClick={handleLeaveBoard}
+                        disabled={isLeavingBoard}
+                        title="Salir del tablero"
+                        style={{ marginLeft: '4px', color: '#ef4444' }}
+                      >
+                        <LogOut size={18} />
+                      </button>
+                    )}
                     {user?.id === selectedBoard.created_by && (
                       <button
                         className={`${styles['btn-icon']} ${styles['delete-board-btn'] || 'delete-board-btn'}`}
@@ -501,23 +603,39 @@ export default function Tasks() {
 
       <BoardMembersModal
         isOpen={showBoardMembersModal}
-        onClose={() => {
-          setShowBoardMembersModal(false)
-          setOptimisticMembers(selectedBoard?.members?.map((m: User) => m.id) || [])
-        }}
+        onClose={() => setShowBoardMembersModal(false)}
         selectedBoard={selectedBoard}
-        optimisticMembers={optimisticMembers}
-        setOptimisticMembers={setOptimisticMembers}
         users={visibleUsers}
-        onUpdateMembers={(newMembers: number[]) => selectedBoard ? updateBoardMembers(selectedBoard.id, newMembers) : Promise.resolve()}
+        pendingInvitations={boardInvitations}
+        onInvite={handleInviteMember}
+        onRemoveMember={handleRemoveMember}
+        onCancelInvitation={handleCancelInvitation}
       />
 
       <JoinBoardModal
         isOpen={showJoinBoardModal}
         onClose={() => setShowJoinBoardModal(false)}
         publicBoards={publicBoards}
-        handleJoinBoard={handleJoinBoard}
+        handleRequestJoin={handleRequestJoin}
         isJoiningBoard={isJoiningBoard}
+        requestedBoardIds={requestedBoardIds}
+      />
+
+      <BoardInvitationsModal
+        isOpen={showInvitationsModal}
+        onClose={() => setShowInvitationsModal(false)}
+        invitations={myInvitations}
+        onAccept={handleAcceptInvitation}
+        onReject={handleRejectInvitation}
+      />
+
+      <BoardRequestsModal
+        isOpen={showRequestsModal}
+        onClose={() => setShowRequestsModal(false)}
+        boardName={selectedBoard?.name}
+        requests={boardRequests}
+        onApprove={handleAcceptInvitation}
+        onReject={handleRejectInvitation}
       />
 
       <PhasesModal

@@ -42,7 +42,7 @@ function getSections(role?: string, isManager?: boolean): TourSection[] {
     { path: '/chat', title: 'Chat', description: 'Mensajería interna por canales y mensajes directos con tu equipo.' },
     { path: '/admin/tools', title: 'Tools', description: 'Herramientas administrativas avanzadas de la plataforma.' },
     { path: '/admin/metrics', title: 'Métricas', description: 'Métricas globales del sistema.' },
-    { path: '/tutoriales', title: 'Tutoriales', description: 'Guías en video para aprender a usar cada sección de Obertrack.' },
+    { path: '/novedades', title: 'Novedades', description: 'Novedades y anuncios en video de cada sección de Obertrack.' },
     { path: '/profile', title: 'Perfil', description: 'Tu cuenta: datos personales, preferencias y configuración.' },
   ]
 }
@@ -187,16 +187,16 @@ const MODULE_TOURS: ModuleTour[] = [
     ],
   },
   {
-    match: (pathname) => pathname === '/tutoriales',
-    title: 'Tutoriales',
-    description: 'Aquí se consultan guías publicadas y se administra la biblioteca de videos.',
+    match: (pathname) => pathname === '/novedades',
+    title: 'Novedades',
+    description: 'Aquí se consultan las novedades publicadas y se administra la biblioteca de videos.',
     steps: [
-      { selector: '[data-tour="tutoriales-header"]', title: 'Biblioteca de tutoriales', description: 'La pantalla agrupa guías rápidas para aprender el funcionamiento de Obertrack.', side: 'bottom', align: 'start' },
+      { selector: '[data-tour="tutoriales-header"]', title: 'Biblioteca de novedades', description: 'La pantalla agrupa las novedades y anuncios de Obertrack.', side: 'bottom', align: 'start' },
       { selector: '[data-tour="tutoriales-current-tour"]', title: 'Recorrido contextual', description: 'Este botón inicia el recorrido específico de la pantalla actual.', side: 'bottom', align: 'center' },
-      { selector: '[data-tour="tutoriales-create"]', title: 'Nuevo tutorial', description: 'Crea una nueva guía para publicarla en la biblioteca de tutoriales.', side: 'bottom', align: 'end' },
-      { selector: '[data-tour="tutoriales-tabs"]', title: 'Categorías', description: 'Filtra tutoriales por categoría o vuelve a verlos todos.', side: 'bottom', align: 'start' },
-      { selector: '[data-tour="tutoriales-search"]', title: 'Buscador', description: 'Encuentra tutoriales por título o descripción.', side: 'bottom', align: 'end' },
-      { selector: '[data-tour="tutoriales-grid"]', title: 'Tarjetas de tutorial', description: 'Abre un video haciendo clic en su tarjeta. El check indica que ya fue visto.', side: 'top', align: 'start' },
+      { selector: '[data-tour="tutoriales-create"]', title: 'Nueva novedad', description: 'Crea una nueva novedad para publicarla en la biblioteca.', side: 'bottom', align: 'end' },
+      { selector: '[data-tour="tutoriales-tabs"]', title: 'Categorías', description: 'Filtra novedades por categoría o vuelve a verlas todas.', side: 'bottom', align: 'start' },
+      { selector: '[data-tour="tutoriales-search"]', title: 'Buscador', description: 'Encuentra novedades por título o descripción.', side: 'bottom', align: 'end' },
+      { selector: '[data-tour="tutoriales-grid"]', title: 'Tarjetas de novedad', description: 'Abre un video haciendo clic en su tarjeta. El check indica que ya fue vista.', side: 'top', align: 'start' },
     ],
   },
 ]

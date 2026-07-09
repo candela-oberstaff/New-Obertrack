@@ -454,6 +454,7 @@ export default function WorkHours() {
           activities: formData.activities,
           absence_reason: formData.absence_reason,
           absence_hours: formData.absence_hours,
+          comments: formData.comments,
         })
       }
       setShowModal(false)
@@ -482,6 +483,7 @@ export default function WorkHours() {
       activities: wh.activities || '',
       absence_reason: wh.absence_reason || '',
       absence_hours: wh.absence_hours || 0,
+      comments: wh.comments || '',
     })
     setEditingId(wh.id)
     setShowModal(true)

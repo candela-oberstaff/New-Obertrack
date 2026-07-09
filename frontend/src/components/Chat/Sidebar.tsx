@@ -100,6 +100,7 @@ export function Sidebar({
         className={`${styles['channels-panel']} ${showMobileChannels ? styles['open'] : ''} ${chatSidebarCollapsed ? styles['collapsed'] : ''}`}
         style={{ width: chatSidebarCollapsed ? 52 : chatSidebarWidth }}
       >
+        <div className={styles['channels-scroll']}>
         {!chatSidebarCollapsed && (
           <>
             <div className={styles['channels-panel-header']}>
@@ -330,7 +331,9 @@ export function Sidebar({
           </>
         )}
         
-        <button 
+        </div>
+
+        <button
           className={styles['sidebar-toggle']}
           onClick={() => setChatSidebarCollapsed(!chatSidebarCollapsed)}
         >

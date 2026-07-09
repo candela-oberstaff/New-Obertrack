@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/service"
 )
 
@@ -36,7 +38,37 @@ type UpdateBoardRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Color       string `json:"color"`
-	MemberIDs   []uint `json:"member_ids"`
+}
+
+func boardMembershipStatus(err error) int {
+	switch {
+	case errors.Is(err, service.ErrBoardNotFound), errors.Is(err, service.ErrInvitationNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, service.ErrBoardAccessDenied):
+		return http.StatusForbidden
+	case errors.Is(err, service.ErrAlreadyBoardMember),
+		errors.Is(err, service.ErrAlreadyPending),
+		errors.Is(err, service.ErrInvitationResolved):
+		return http.StatusConflict
+	case errors.Is(err, service.ErrCreatorCannotLeave), errors.Is(err, service.ErrNotBoardMember):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func boardCtx(c *gin.Context) (userID, tenantID uint, role string, isManager, isSuperadmin bool) {
+	return middleware.GetUserID(c), middleware.GetTenantID(c), middleware.GetUserRole(c),
+		middleware.IsManager(c), middleware.IsSuperadmin(c)
+}
+
+func parseUintParam(c *gin.Context, name string) (uint, bool) {
+	v, err := strconv.ParseUint(c.Param(name), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid " + name})
+		return 0, false
+	}
+	return uint(v), true
 }
 
 func (h *BoardHandler) GetAll(c *gin.Context) {
@@ -86,28 +118,132 @@ func (h *BoardHandler) GetPublicBoards(c *gin.Context) {
 	c.JSON(http.StatusOK, boards)
 }
 
-func (h *BoardHandler) JoinBoard(c *gin.Context) {
-	boardID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid board ID"})
+type InviteMembersRequest struct {
+	UserIDs []uint `json:"user_ids" binding:"required"`
+}
+
+func (h *BoardHandler) InviteMembers(c *gin.Context) {
+	boardID, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	var req InviteMembersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	userID := middleware.GetUserID(c)
-
-	board, err := h.service.JoinBoard(userID, uint(boardID))
+	userID, tenantID, role, isManager, isSuperadmin := boardCtx(c)
+	invs, err := h.service.InviteMembers(boardID, tenantID, userID, role, isManager, isSuperadmin, req.UserIDs)
 	if err != nil {
-		status := http.StatusInternalServerError
-		if err.Error() == "Board not found" {
-			status = http.StatusNotFound
-		} else if err.Error() == "Ya eres miembro de este tablero" {
-			status = http.StatusConflict
-		}
-		c.JSON(status, gin.H{"error": err.Error()})
+		c.JSON(boardMembershipStatus(err), gin.H{"error": err.Error()})
 		return
 	}
+	c.JSON(http.StatusCreated, gin.H{"invited": len(invs), "invitations": invs})
+}
 
+func (h *BoardHandler) RequestJoin(c *gin.Context) {
+	boardID, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	inv, err := h.service.RequestJoin(middleware.GetUserID(c), boardID)
+	if err != nil {
+		c.JSON(boardMembershipStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, inv)
+}
+
+func (h *BoardHandler) MyInvitations(c *gin.Context) {
+	invs, err := h.service.ListMyInvitations(middleware.GetUserID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar las invitaciones"})
+		return
+	}
+	c.JSON(http.StatusOK, invs)
+}
+
+func (h *BoardHandler) BoardRequests(c *gin.Context) {
+	h.listPending(c, models.BoardInviteKindRequest)
+}
+
+func (h *BoardHandler) BoardInvitations(c *gin.Context) {
+	h.listPending(c, models.BoardInviteKindInvitation)
+}
+
+func (h *BoardHandler) listPending(c *gin.Context, kind string) {
+	boardID, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	userID, tenantID, role, isManager, isSuperadmin := boardCtx(c)
+	invs, err := h.service.ListBoardPending(boardID, tenantID, userID, role, isManager, isSuperadmin, kind)
+	if err != nil {
+		c.JSON(boardMembershipStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, invs)
+}
+
+func (h *BoardHandler) AcceptInvitation(c *gin.Context) { h.resolve(c, true) }
+func (h *BoardHandler) RejectInvitation(c *gin.Context) { h.resolve(c, false) }
+
+func (h *BoardHandler) resolve(c *gin.Context, accept bool) {
+	invID, ok := parseUintParam(c, "invId")
+	if !ok {
+		return
+	}
+	userID, _, role, isManager, isSuperadmin := boardCtx(c)
+	inv, err := h.service.ResolveInvitation(invID, userID, role, isManager, isSuperadmin, accept)
+	if err != nil {
+		c.JSON(boardMembershipStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, inv)
+}
+
+func (h *BoardHandler) CancelInvitation(c *gin.Context) {
+	invID, ok := parseUintParam(c, "invId")
+	if !ok {
+		return
+	}
+	userID, _, role, isManager, isSuperadmin := boardCtx(c)
+	if err := h.service.CancelInvitation(invID, userID, role, isManager, isSuperadmin); err != nil {
+		c.JSON(boardMembershipStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Invitación cancelada"})
+}
+
+func (h *BoardHandler) RemoveMember(c *gin.Context) {
+	boardID, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	targetID, ok := parseUintParam(c, "userId")
+	if !ok {
+		return
+	}
+	userID, tenantID, role, isManager, isSuperadmin := boardCtx(c)
+	board, err := h.service.RemoveMember(boardID, targetID, tenantID, userID, role, isManager, isSuperadmin)
+	if err != nil {
+		c.JSON(boardMembershipStatus(err), gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, board)
+}
+
+func (h *BoardHandler) LeaveBoard(c *gin.Context) {
+	boardID, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.service.LeaveBoard(middleware.GetUserID(c), boardID); err != nil {
+		c.JSON(boardMembershipStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Saliste del tablero"})
 }
 
 func (h *BoardHandler) GetByID(c *gin.Context) {
@@ -199,7 +335,7 @@ func (h *BoardHandler) Update(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isManager := middleware.IsManager(c)
 
-	board, err := h.service.Update(uint(id), tenantID, userID, role, isManager, isSuperadmin, updates, req.MemberIDs)
+	board, err := h.service.Update(uint(id), tenantID, userID, role, isManager, isSuperadmin, updates)
 	if err != nil {
 		status := http.StatusNotFound
 		if err.Error() == "Access denied" {

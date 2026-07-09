@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
 )
@@ -18,6 +20,15 @@ type BoardRepository interface {
 	RemovePhase(board *models.Board, phaseID uint) error
 	UpdatePhasesOrder(board *models.Board, orderedPhaseIDs []uint) error
 	FindTasksByPhase(boardID uint, status string) ([]models.Task, int64, error)
+
+	CreateInvitation(inv *models.BoardInvitation) error
+	GetInvitationByID(id uint) (*models.BoardInvitation, error)
+	HasPendingInvitation(boardID, userID uint) (bool, error)
+	ListPendingInvitationsForUser(userID uint) ([]models.BoardInvitation, error)
+	ListPendingByBoard(boardID uint, kind string) ([]models.BoardInvitation, error)
+	ListPendingBoardIDsForUser(userID uint) ([]uint, error)
+	AcceptInvitation(inv *models.BoardInvitation, resolvedBy uint) error
+	ResolveInvitation(invID uint, status string, resolvedBy uint) error
 }
 
 type boardRepository struct {
@@ -123,4 +134,77 @@ func (r *boardRepository) FindTasksByPhase(boardID uint, status string) ([]model
 	query := r.db.Model(&models.Task{}).Where("board_id = ? AND status = ?", boardID, status)
 	err := query.Count(&total).Preload("Creator").Find(&tasks).Error
 	return tasks, total, err
+}
+
+func (r *boardRepository) CreateInvitation(inv *models.BoardInvitation) error {
+	return r.db.Create(inv).Error
+}
+
+func (r *boardRepository) GetInvitationByID(id uint) (*models.BoardInvitation, error) {
+	var inv models.BoardInvitation
+	if err := r.db.Preload("Board").Preload("User").First(&inv, id).Error; err != nil {
+		return nil, err
+	}
+	return &inv, nil
+}
+
+func (r *boardRepository) HasPendingInvitation(boardID, userID uint) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.BoardInvitation{}).
+		Where("board_id = ? AND user_id = ? AND status = ?", boardID, userID, models.BoardInviteStatusPending).
+		Count(&count).Error
+	return count > 0, err
+}
+
+func (r *boardRepository) ListPendingInvitationsForUser(userID uint) ([]models.BoardInvitation, error) {
+	var invs []models.BoardInvitation
+	err := r.db.
+		Where("user_id = ? AND kind = ? AND status = ?", userID, models.BoardInviteKindInvitation, models.BoardInviteStatusPending).
+		Preload("Board").Preload("Board.Creator").Preload("Inviter").
+		Order("created_at DESC").Find(&invs).Error
+	return invs, err
+}
+
+func (r *boardRepository) ListPendingByBoard(boardID uint, kind string) ([]models.BoardInvitation, error) {
+	var invs []models.BoardInvitation
+	q := r.db.Where("board_id = ? AND status = ?", boardID, models.BoardInviteStatusPending)
+	if kind != "" {
+		q = q.Where("kind = ?", kind)
+	}
+	err := q.Preload("User").Order("created_at DESC").Find(&invs).Error
+	return invs, err
+}
+
+func (r *boardRepository) ListPendingBoardIDsForUser(userID uint) ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&models.BoardInvitation{}).
+		Where("user_id = ? AND status = ?", userID, models.BoardInviteStatusPending).
+		Pluck("board_id", &ids).Error
+	return ids, err
+}
+
+func (r *boardRepository) AcceptInvitation(inv *models.BoardInvitation, resolvedBy uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		if err := tx.Model(&models.BoardInvitation{}).Where("id = ?", inv.ID).Updates(map[string]interface{}{
+			"status":      models.BoardInviteStatusAccepted,
+			"resolved_by": resolvedBy,
+			"resolved_at": now,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Exec(
+			`INSERT INTO board_members (board_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING`,
+			inv.BoardID, inv.UserID,
+		).Error
+	})
+}
+
+func (r *boardRepository) ResolveInvitation(invID uint, status string, resolvedBy uint) error {
+	now := time.Now()
+	return r.db.Model(&models.BoardInvitation{}).Where("id = ?", invID).Updates(map[string]interface{}{
+		"status":      status,
+		"resolved_by": resolvedBy,
+		"resolved_at": now,
+	}).Error
 }

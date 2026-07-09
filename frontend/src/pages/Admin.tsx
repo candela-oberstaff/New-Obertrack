@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdmin } from '../hooks'
 import {
@@ -97,11 +97,14 @@ export default function Admin() {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState<number | ''>('')
-  // Asignación masiva de managers.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkManagerId, setBulkManagerId] = useState<number | ''>('')
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkMsg, setBulkMsg] = useState<string | null>(null)
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false)
+  const [bulkDeleteResult, setBulkDeleteResult] = useState<{ deleted: number; skipped: { id: number; name: string; reason: string }[] } | null>(null)
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null)
   const [usersPage, setUsersPage] = useState(1)
 
   // Actividad de equipo (pestaña Actividad): semáforo de inactividad.
@@ -270,9 +273,7 @@ export default function Admin() {
   const currentUsersPage = Math.min(usersPage, totalUserPages)
   const paginatedUsers = filteredUsers.slice((currentUsersPage - 1) * USERS_PER_PAGE, currentUsersPage * USERS_PER_PAGE)
 
-  // Asignación masiva: solo profesionales que NO son manager (un manager no se
-  // asigna a otro manager — evita ciclos/paradojas).
-  const isBulkSelectable = (u: any) => u.user_type === 'profesional' && !u.is_manager
+  const isBulkSelectable = (u: any) => !u.is_superadmin && u.user_type !== 'empleador' && u.id !== viewer?.id
   const selectableIds: number[] = filteredUsers.filter(isBulkSelectable).map((u: any) => u.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every((id: number) => selectedIds.has(id))
   const bulkManagerOptions = managers.filter((m: any) => companyFilter === '' || m.empleador_id === companyFilter)
@@ -285,6 +286,21 @@ export default function Admin() {
     selectableIds.every((id: number) => prev.has(id)) ? new Set<number>() : new Set<number>(selectableIds)
   )
   const clearSelection = () => { setSelectedIds(new Set()); setBulkMsg(null) }
+
+  const reportsCountByManager = useMemo(() => {
+    const m = new Map<number, number>()
+    ;(Array.isArray(users) ? users : []).forEach((u: any) => {
+      if (u.manager_id) m.set(u.manager_id, (m.get(u.manager_id) || 0) + 1)
+    })
+    return m
+  }, [users])
+  const selectedManagersWithTeam = useMemo(() =>
+    (Array.isArray(users) ? users : [])
+      .filter((u: any) => selectedIds.has(u.id) && u.is_manager && (reportsCountByManager.get(u.id) || 0) > 0)
+      .map((u: any) => ({ id: u.id, name: u.name, count: reportsCountByManager.get(u.id) || 0 }))
+      .sort((a: any, b: any) => b.count - a.count)
+  , [users, selectedIds, reportsCountByManager])
+  const bulkWillDelete = Math.max(0, selectedIds.size - selectedManagersWithTeam.length)
   const handleBulkAssign = async () => {
     if (selectedIds.size === 0) return
     setBulkBusy(true); setBulkMsg(null)
@@ -297,6 +313,26 @@ export default function Admin() {
     } catch (err: any) {
       setBulkMsg(err?.response?.data?.error ?? 'No se pudo asignar el manager.')
     } finally { setBulkBusy(false) }
+  }
+
+  const openBulkDelete = () => {
+    if (selectedIds.size === 0) return
+    setBulkDeleteResult(null)
+    setBulkDeleteError(null)
+    setShowBulkDeleteModal(true)
+  }
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+    setBulkDeleteBusy(true); setBulkDeleteError(null)
+    try {
+      const res = await adminService.bulkDeleteUsers(Array.from(selectedIds))
+      setBulkDeleteResult({ deleted: res?.deleted ?? 0, skipped: res?.skipped ?? [] })
+      setSelectedIds(new Set())
+      setBulkMsg(null)
+      await fetchUsers()
+    } catch (err: any) {
+      setBulkDeleteError(err?.response?.data?.error ?? 'No se pudieron eliminar los usuarios.')
+    } finally { setBulkDeleteBusy(false) }
   }
 
   useEffect(() => {
@@ -1060,11 +1096,11 @@ export default function Admin() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '10px 14px', marginBottom: '12px', background: 'rgba(124,58,237,0.06)', border: '1px solid #e9d5ff', borderRadius: '12px' }}>
                 {selectedIds.size > 0 ? (
                   <>
-                    <span style={{ fontWeight: 700, color: '#6d28d9', whiteSpace: 'nowrap' }}>{selectedIds.size} profesional(es) seleccionado(s)</span>
+                    <span style={{ fontWeight: 700, color: '#6d28d9', whiteSpace: 'nowrap' }}>{selectedIds.size} usuario(s) seleccionado(s)</span>
                     <select
                       value={bulkManagerId}
                       onChange={e => setBulkManagerId(e.target.value === '' ? '' : Number(e.target.value))}
-                      disabled={bulkBusy}
+                      disabled={bulkBusy || bulkDeleteBusy}
                       style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', minWidth: 200, background: '#fff', color: '#334155' }}
                     >
                       <option value="">Sin manager (desasignar)</option>
@@ -1074,14 +1110,21 @@ export default function Admin() {
                     </select>
                     <button
                       onClick={handleBulkAssign}
-                      disabled={bulkBusy}
+                      disabled={bulkBusy || bulkDeleteBusy}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '10px', border: 'none', background: 'var(--primary, #7c3aed)', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: bulkBusy ? 'progress' : 'pointer' }}
                     >
                       <UserCog size={15} /> Asignar ({selectedIds.size})
                     </button>
                     <button
+                      onClick={openBulkDelete}
+                      disabled={bulkBusy || bulkDeleteBusy}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '10px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: (bulkBusy || bulkDeleteBusy) ? 'progress' : 'pointer' }}
+                    >
+                      <Trash2 size={15} /> Eliminar ({selectedIds.size})
+                    </button>
+                    <button
                       onClick={clearSelection}
-                      disabled={bulkBusy}
+                      disabled={bulkBusy || bulkDeleteBusy}
                       style={{ padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
                     >
                       Limpiar
@@ -1098,7 +1141,7 @@ export default function Admin() {
                   <tr>
                     {canManage && (
                       <th style={{ width: 36 }}>
-                        <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} title="Seleccionar todos los profesionales filtrados" style={{ cursor: 'pointer' }} />
+                        <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} title="Seleccionar todos los usuarios filtrados" style={{ cursor: 'pointer' }} />
                       </th>
                     )}
                     <th>Usuario</th>
@@ -1616,6 +1659,69 @@ export default function Admin() {
               <button className={styles['btn-secondary']} onClick={() => setShowDeleteModal(false)} disabled={deleting}>Cancelar</button>
               <button className={styles['btn-danger']} onClick={handleDeleteUser} disabled={deleting}>{deleting ? 'Eliminando…' : 'Eliminar'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkDeleteModal && (
+        <div className={styles['modal-overlay']} onClick={() => !bulkDeleteBusy && setShowBulkDeleteModal(false)}>
+          <div className={styles['modal']} onClick={(e) => e.stopPropagation()}>
+            {bulkDeleteResult ? (
+              <>
+                <h2>Eliminación masiva completada</h2>
+                <p><strong>{bulkDeleteResult.deleted}</strong> usuario(s) eliminado(s).</p>
+                {bulkDeleteResult.skipped.length > 0 && (
+                  <>
+                    <p className={styles['warning-text']}>
+                      {bulkDeleteResult.skipped.length} omitido(s):
+                    </p>
+                    <ul style={{ maxHeight: 200, overflowY: 'auto', margin: '0 1.5rem 0.5rem', padding: '0 0 0 1.1rem', fontSize: '13px', color: '#475569' }}>
+                      {bulkDeleteResult.skipped.map((s) => (
+                        <li key={s.id}><strong>{s.name || `#${s.id}`}</strong> — {s.reason}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                <div className={styles['modal-actions']}>
+                  <button className={styles['btn-secondary']} onClick={() => setShowBulkDeleteModal(false)}>Cerrar</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2>Eliminar usuarios seleccionados</h2>
+                <p>
+                  Seleccionaste <strong>{selectedIds.size}</strong> usuario(s). Se eliminarán{' '}
+                  <strong>{bulkWillDelete}</strong>.
+                </p>
+                {selectedManagersWithTeam.length > 0 && (
+                  <>
+                    <p className={styles['warning-text']}>
+                      Se omitirán {selectedManagersWithTeam.length} manager(es) con profesionales a
+                      cargo (reasigna su equipo primero para poder eliminarlos):
+                    </p>
+                    <ul style={{ maxHeight: 180, overflowY: 'auto', margin: '0 1.5rem 0.5rem', padding: '0 0 0 1.1rem', fontSize: '13px', color: '#475569' }}>
+                      {selectedManagersWithTeam.map((m) => (
+                        <li key={m.id}><strong>{m.name}</strong> — {m.count} profesional(es) a cargo</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                <p className={styles['warning-text']}>
+                  Dejarán de aparecer y no podrán iniciar sesión (sus registros se conservan). Los
+                  superadmins, las empresas (cuentas empleador) y tu propia cuenta nunca se
+                  eliminan desde aquí.
+                </p>
+                {bulkDeleteError && (
+                  <p style={{ color: '#dc2626', fontWeight: 600, padding: '0 1.5rem', margin: '0 0 0.5rem' }}>{bulkDeleteError}</p>
+                )}
+                <div className={styles['modal-actions']}>
+                  <button className={styles['btn-secondary']} onClick={() => setShowBulkDeleteModal(false)} disabled={bulkDeleteBusy}>Cancelar</button>
+                  <button className={styles['btn-danger']} onClick={handleBulkDelete} disabled={bulkDeleteBusy || bulkWillDelete === 0}>
+                    {bulkDeleteBusy ? 'Eliminando…' : `Eliminar ${bulkWillDelete}`}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

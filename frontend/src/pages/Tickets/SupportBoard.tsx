@@ -78,7 +78,7 @@ export default function SupportBoard() {
   const lastRefresh = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
   const error = queryError ? ((queryError as any)?.response?.data?.error ?? 'No se pudieron cargar los tickets.') : null;
 
-  const supportTickets = useMemo(() => tickets.filter(t => t.origin === 'support'), [tickets]);
+  const supportTickets = useMemo(() => tickets.filter(t => t.origin === 'support' || t.origin === 'whatsapp'), [tickets]);
 
   const isSuperadmin = !!(user as any)?.is_superadmin;
 
@@ -172,6 +172,16 @@ export default function SupportBoard() {
     onError: (e: any) => showError(e?.response?.data?.error || 'No se pudo reabrir la solicitud.'),
   });
 
+  const waActionMutation = useMutation({
+    mutationFn: ({ ticketId, action }: { ticketId: number; action: 'claim' | 'resolve' | 'reopen' }) =>
+      ticketService.whatsAppAction(ticketId, action),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      showSuccess('Ticket actualizado.');
+    },
+    onError: (e: any) => showError(e?.response?.data?.error || 'No se pudo actualizar el ticket.'),
+  });
+
   const assignMutation = useMutation({
     mutationFn: ({ ticketId, assigneeId }: { ticketId: number; assigneeId: number }) =>
       channelService.assignSupport(ticketId, assigneeId),
@@ -185,6 +195,7 @@ export default function SupportBoard() {
   const busyTicketId = (claimMutation.isPending ? claimMutation.variables : undefined)
     ?? (resolveMutation.isPending ? resolveMutation.variables : undefined)
     ?? (reopenMutation.isPending ? reopenMutation.variables : undefined)
+    ?? (waActionMutation.isPending ? waActionMutation.variables?.ticketId : undefined)
     ?? (assignMutation.isPending ? assignMutation.variables?.ticketId : undefined);
 
   const [dragTicket, setDragTicket] = useState<Ticket | null>(null);
@@ -194,13 +205,14 @@ export default function SupportBoard() {
   const moveTicket = (ticket: Ticket, target: StageId) => {
     const current = (ticket.stage ?? 'new') as StageId;
     if (current === target) return;
+    const isWa = ticket.origin === 'whatsapp';
     if (target === 'in_progress') {
-      claimMutation.mutate(ticket.id);
+      isWa ? waActionMutation.mutate({ ticketId: ticket.id, action: 'claim' }) : claimMutation.mutate(ticket.id);
     } else if (target === 'closed') {
-      resolveMutation.mutate(ticket.id);
+      isWa ? waActionMutation.mutate({ ticketId: ticket.id, action: 'resolve' }) : resolveMutation.mutate(ticket.id);
     } else if (target === 'new') {
       if (supportState(ticket) === 'resolved') {
-        reopenMutation.mutate(ticket.id);
+        isWa ? waActionMutation.mutate({ ticketId: ticket.id, action: 'reopen' }) : reopenMutation.mutate(ticket.id);
       } else {
         showError('Un ticket asignado no se puede dejar sin asignar arrastrándolo. Abrí el ticket y usá "Reasignar…".');
       }
@@ -208,6 +220,7 @@ export default function SupportBoard() {
   };
 
   const openChat = (t: Ticket) => {
+    if (t.origin === 'whatsapp') { navigate(`/tickets/wa/${t.id}`); return; }
     if (t.channel_id) navigate(`/chat?channel=${t.channel_id}`);
   };
 
@@ -343,7 +356,13 @@ export default function SupportBoard() {
       ) : (
         <div className={styles.board}>
           {STAGES.map(stage => {
-            const colTickets = filtered.filter(t => t.stage === stage.id);
+            const colTickets = filtered
+              .filter(t => t.stage === stage.id)
+              .sort((a, b) => {
+                const ta = new Date(a.updated_at || a.created_at).getTime();
+                const tb = new Date(b.updated_at || b.created_at).getTime();
+                return tb - ta;
+              });
             const isDropTarget = !!dragTicket && (dragTicket.stage ?? 'new') !== stage.id;
             const isOver = dragOverStage === stage.id && isDropTarget;
             return (
@@ -380,10 +399,10 @@ export default function SupportBoard() {
                         dragging={dragTicket?.id === t.id}
                         onDragStart={() => setDragTicket(t)}
                         onDragEnd={() => { setDragTicket(null); setDragOverStage(null); }}
-                        onClaim={() => claimMutation.mutate(t.id)}
-                        onResolve={() => resolveMutation.mutate(t.id)}
+                        onClaim={() => t.origin === 'whatsapp' ? waActionMutation.mutate({ ticketId: t.id, action: 'claim' }) : claimMutation.mutate(t.id)}
+                        onResolve={() => t.origin === 'whatsapp' ? waActionMutation.mutate({ ticketId: t.id, action: 'resolve' }) : resolveMutation.mutate(t.id)}
                         onOpenChat={() => openChat(t)}
-                        onOpenDetail={() => setDetailTicket(t)}
+                        onOpenDetail={() => t.origin === 'whatsapp' ? openChat(t) : setDetailTicket(t)}
                         profileChange={isProfileChange(t)}
                         onApplyInFicha={() => openFicha(t)}
                       />
@@ -568,6 +587,8 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
   const unassigned = !ticket.assigned_to;
   const requester = ticket.contact?.name || ticket.professional_email || 'Desconocido';
   const email = ticket.contact?.email || ticket.professional_email;
+  const isWhatsApp = ticket.origin === 'whatsapp';
+  const phone = ticket.contact?.phone || ticket.professional_phone;
 
   return (
     <div
@@ -603,6 +624,12 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</span>
           </span>
         )}
+        {phone && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.76rem', color: 'var(--text-secondary, #64748b)', minWidth: 0 }}>
+            <Phone size={11} style={{ flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{phone}</span>
+          </span>
+        )}
         {ticket.company_name && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.76rem', color: 'var(--text-secondary, #64748b)', minWidth: 0 }}>
             <Building2 size={11} style={{ flexShrink: 0 }} />
@@ -620,6 +647,11 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
       </p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {isWhatsApp && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, color: '#15803d', background: 'rgba(37,211,102,0.12)', padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(37,211,102,0.25)' }}>
+            <MessageSquare size={10} /> WhatsApp
+          </span>
+        )}
         {profileChange && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, color: '#6d28d9', background: 'rgba(124,58,237,0.1)', padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(124,58,237,0.2)' }}>
             <UserCog size={10} /> Datos de perfil
@@ -640,7 +672,7 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
         {st !== 'resolved' && unassigned && (
           <button
             onClick={(e) => { e.stopPropagation(); onClaim(); }}
-            disabled={busy || !ticket.channel_id}
+            disabled={busy || (!ticket.channel_id && ticket.origin !== 'whatsapp')}
             className={styles.channelBtn}
             style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center' }}
           >
@@ -660,7 +692,7 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); onResolve(); }}
-              disabled={busy || !ticket.channel_id}
+              disabled={busy || (!ticket.channel_id && ticket.origin !== 'whatsapp')}
               className={styles.channelBtn}
               style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center', color: '#15803d', borderColor: 'rgba(22,163,74,0.3)' }}
             >
@@ -670,7 +702,7 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
         )}
         <button
           onClick={(e) => { e.stopPropagation(); onOpenChat(); }}
-          disabled={!ticket.channel_id}
+          disabled={!ticket.channel_id && ticket.origin !== 'whatsapp'}
           className={styles.channelBtn}
           style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center', color: '#7c3aed', borderColor: 'rgba(124,58,237,0.3)' }}
         >

@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/obertrack/backend/internal/apperrors"
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/service"
@@ -182,6 +183,154 @@ func ticketDTOFromInternal(t models.Ticket) gin.H {
 	}
 }
 
+func ticketDTOFromWhatsApp(t models.Ticket) gin.H {
+	messages := t.Messages
+	if messages == nil {
+		messages = []models.TicketMessage{}
+	}
+	contactPhone := ""
+	if t.Contact != nil {
+		contactPhone = t.Contact.Phone
+	}
+	assigneeName, assigneeEmail := "", ""
+	if t.Assignee != nil {
+		assigneeName = t.Assignee.Name
+		assigneeEmail = t.Assignee.Email
+	}
+	preview := t.Title
+	for i := len(messages) - 1; i >= 0; i-- {
+		if strings.TrimSpace(messages[i].Content) != "" {
+			preview = messages[i].Content
+			break
+		}
+	}
+	stage := t.Stage
+	if stage == "" {
+		stage = models.StageNew
+	}
+	status := t.Status
+	if status == "" {
+		status = "open"
+	}
+	return gin.H{
+		"id":                 t.ID,
+		"zoho_id":            "",
+		"contact_id":         t.ContactID,
+		"contact":            t.Contact,
+		"assigned_to":        t.AssignedTo,
+		"assignee_name":      assigneeName,
+		"assignee_email":     assigneeEmail,
+		"title":              preview,
+		"description":        preview,
+		"channel":            "WhatsApp",
+		"stage":              stage,
+		"status":             status,
+		"origin":             string(models.ChannelWhatsApp),
+		"user_id":            nil,
+		"professional_email": "",
+		"professional_phone": contactPhone,
+		"company_name":       "",
+		"created_at":         t.CreatedAt,
+		"updated_at":         t.UpdatedAt,
+		"messages":           messages,
+	}
+}
+
+func (h *TicketHandler) ListWhatsAppTickets(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	tickets, err := h.ticketSvc.ListWhatsApp()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar los chats de WhatsApp"})
+		return
+	}
+	out := make([]gin.H, 0, len(tickets))
+	for _, t := range tickets {
+		out = append(out, ticketDTOFromWhatsApp(t))
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+func (h *TicketHandler) GetWhatsAppTicket(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+	ticket, err := h.ticketSvc.GetWhatsAppTicket(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp ticket not found"})
+		return
+	}
+	c.JSON(http.StatusOK, ticketDTOFromWhatsApp(*ticket))
+}
+
+func (h *TicketHandler) SendWhatsAppMessage(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Content) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "El mensaje no puede estar vacío"})
+		return
+	}
+	agentID := middleware.GetUserID(c)
+	msg, err := h.ticketSvc.SendWhatsAppReply(uint(id), agentID, strings.TrimSpace(req.Content))
+	if err != nil {
+		if err == apperrors.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp ticket not found"})
+			return
+		}
+		c.JSON(http.StatusBadGateway, gin.H{"error": "No se pudo enviar el mensaje por WhatsApp"})
+		return
+	}
+	c.JSON(http.StatusOK, msg)
+}
+
+func (h *TicketHandler) UpdateWhatsAppTicket(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+	var req struct {
+		Action string `json:"action"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
+	agentID := middleware.GetUserID(c)
+	ticket, err := h.ticketSvc.WhatsAppAction(uint(id), agentID, req.Action)
+	if err != nil {
+		if err == apperrors.ErrInvalidInput {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Acción no válida"})
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp ticket not found"})
+		return
+	}
+	c.JSON(http.StatusOK, ticketDTOFromWhatsApp(*ticket))
+}
+
 func firstNonEmptyLocal(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -310,6 +459,17 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 		} else {
 			for _, st := range support {
 				tickets = append(tickets, ticketDTOFromSupport(st))
+			}
+		}
+	}
+
+	if h.ticketSvc != nil {
+		waTickets, werr := h.ticketSvc.ListWhatsApp()
+		if werr != nil {
+			log.Printf("[Tickets] failed to list WhatsApp tickets: %v", werr)
+		} else {
+			for _, wt := range waTickets {
+				tickets = append(tickets, ticketDTOFromWhatsApp(wt))
 			}
 		}
 	}
