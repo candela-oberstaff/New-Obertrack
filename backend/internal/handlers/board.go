@@ -357,13 +357,15 @@ func (h *BoardHandler) Delete(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 	tenantID := middleware.GetTenantID(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
-	if err := h.service.Delete(userID, uint(id), tenantID, isSuperadmin); err != nil {
+	if err := h.service.Delete(userID, uint(id), tenantID, role, isManager, isSuperadmin); err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Board not found" {
 			status = http.StatusNotFound
-		} else if err.Error() == "Solo el creador puede eliminar el tablero" {
+		} else if err.Error() == "Access denied" || err.Error() == "No tienes permisos para eliminar este tablero" {
 			status = http.StatusForbidden
 		}
 		c.JSON(status, gin.H{"error": err.Error()})

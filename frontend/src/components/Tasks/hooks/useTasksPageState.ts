@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import { useNotification } from '../../../context/NotificationContext'
 import { useConfirm } from '../../ui/ConfirmProvider'
+import { usePrompt } from '../../ui/PromptProvider'
 import { userService, taskService, adminService } from '../../../services/api'
 import type { User, Board, Task, CreateTaskInput, Phase } from '../../../types'
 import { ColumnType } from '../types'
@@ -37,6 +38,7 @@ export function useTasksPageState() {
   const { user } = useAuth()
   const { error: showError, success: showSuccess } = useNotification()
   const confirm = useConfirm()
+  const prompt = usePrompt()
 
   const isSuperadmin = user?.user_type === 'superadmin'
 
@@ -114,6 +116,7 @@ export function useTasksPageState() {
     isLoading: isLoadingBoards,
     isCreatingBoard,
     createBoard,
+    updateBoard,
     deleteBoard,
     requestJoin,
     fetchBoards,
@@ -132,13 +135,33 @@ export function useTasksPageState() {
     autoSelectFirst: !isSuperadmin,
   })
 
-  const canManageBoard = !!selectedBoard && (
-    isSuperadmin ||
-    user?.is_superadmin ||
-    user?.is_manager ||
-    user?.user_type === 'empleador' ||
-    user?.id === selectedBoard.created_by
-  )
+  // Permiso de gestión de miembros (invitar / aprobar solicitudes / quitar).
+  // Incluye a los managers además del creador y la empresa.
+  const canManageBoardItem = useCallback((board: Board | null | undefined) => {
+    return !!board && (
+      isSuperadmin ||
+      !!user?.is_superadmin ||
+      !!user?.is_manager ||
+      user?.user_type === 'empleador' ||
+      user?.id === board.created_by
+    )
+  }, [isSuperadmin, user])
+
+  // Permiso para EDITAR (renombrar) y ELIMINAR el tablero. Más restrictivo:
+  // solo el creador del tablero, el dueño de la empresa (empleador) y el
+  // superadmin. Los managers u otros miembros sin relación con la creación NO
+  // pueden. Debe mantenerse en sincronía con canEditBoard() del backend.
+  const canEditBoardItem = useCallback((board: Board | null | undefined) => {
+    return !!board && (
+      isSuperadmin ||
+      !!user?.is_superadmin ||
+      user?.user_type === 'empleador' ||
+      user?.id === board.created_by
+    )
+  }, [isSuperadmin, user])
+
+  const canManageBoard = canManageBoardItem(selectedBoard)
+  const canEditBoard = canEditBoardItem(selectedBoard)
   const isBoardMember = !!selectedBoard?.members?.some((m) => m.id === user?.id)
   const canLeaveBoard = isBoardMember && !!selectedBoard && user?.id !== selectedBoard.created_by
 
@@ -271,6 +294,29 @@ export function useTasksPageState() {
   })
 
   // Board actions
+  const handleRenameBoard = useCallback(async (board?: Board) => {
+    const target = board ?? selectedBoard
+    if (!target) return
+    const current = target.name ?? ''
+    const input = await prompt({
+      title: 'Renombrar tablero',
+      message: 'Escribe el nuevo nombre del tablero.',
+      placeholder: 'Nombre del tablero',
+      initialValue: current,
+      confirmLabel: 'Guardar',
+    })
+    if (input === null) return
+    const name = input.trim()
+    if (!name || name === current) return
+    try {
+      await updateBoard(target.id, { name })
+      showSuccess('Tablero renombrado.')
+    } catch (error: any) {
+      console.error('Error renaming board:', error)
+      showError(error?.response?.data?.error ?? 'No se pudo renombrar el tablero.')
+    }
+  }, [selectedBoard, updateBoard, prompt, showSuccess, showError])
+
   const handleDeleteBoard = useCallback(async (boardId: number) => {
     const ok = await confirm({
       title: 'Eliminar tablero',
@@ -649,6 +695,7 @@ export function useTasksPageState() {
     potentialMemberUsers,
     assignableUsers,
     handleDeleteBoard,
+    handleRenameBoard,
     handleBoardSubmit,
     handlePhaseDragStart,
     handlePhaseDragEnter,
@@ -683,6 +730,9 @@ export function useTasksPageState() {
     handleLeaveBoard,
     isLeavingBoard,
     canManageBoard,
+    canManageBoardItem,
+    canEditBoard,
+    canEditBoardItem,
     canLeaveBoard,
   }
 }

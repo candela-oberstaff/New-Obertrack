@@ -241,6 +241,12 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		employer.POST("/users/:id/reset-password", d.admin.ResetEmployeePassword)
 		employer.DELETE("/users/:id", d.admin.DeleteEmployee)
 
+		// Acciones masivas del EMPLEADOR (auto-acotadas a su empresa). Rutas
+		// estáticas sin :id -> requireExpedienteOwnership hace c.Next() y el
+		// handler se acota por tenant.
+		employer.POST("/bulk-assign-manager", d.admin.EmployerBulkAssignManager)
+		employer.POST("/bulk-delete-users", d.admin.EmployerBulkDeleteUsers)
+
 		employer.GET("/users/:id/employment", d.admin.GetMyCompanyEmployment)
 		// Equipo a cargo de un manager (para el bloqueo "reasigna primero" al
 		// degradar). Solo :id -> el gate hace c.Next() (auto-acotado por el handler).

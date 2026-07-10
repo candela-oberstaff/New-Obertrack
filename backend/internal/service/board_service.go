@@ -28,7 +28,7 @@ type BoardService interface {
 		Color string
 	}, tenantOverride uint) (*models.Board, error)
 	Update(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}) (*models.Board, error)
-	Delete(userID, boardID, tenantID uint, isSuperadmin bool) error
+	Delete(userID, boardID, tenantID uint, role string, isManager, isSuperadmin bool) error
 	AddPhase(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, name, color string) (*models.Board, error)
 	RemovePhase(boardID, phaseID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error)
 	ReorderPhases(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, phaseIDs []uint) (*models.Board, error)
@@ -63,6 +63,15 @@ func NewBoardService(
 
 func (s *boardService) canManageBoard(board *models.Board, userID uint, role string, isManager, isSuperadmin bool) bool {
 	return isSuperadmin || board.CreatedBy == userID || isEmployerRole(role) || isManager
+}
+
+// canEditBoard limita la edición (renombrar) y eliminación del tablero al
+// creador, al dueño de la empresa (empleador) y al superadmin. A diferencia de
+// canManageBoard, los managers NO entran: un usuario sin relación con la
+// creación del tablero no puede editarlo ni eliminarlo. Debe mantenerse en
+// sincronía con canEditBoardItem() del frontend.
+func (s *boardService) canEditBoard(board *models.Board, userID uint, role string, isSuperadmin bool) bool {
+	return isSuperadmin || board.CreatedBy == userID || isEmployerRole(role)
 }
 
 func boardHasMember(board *models.Board, userID uint) bool {
@@ -287,7 +296,7 @@ func (s *boardService) Update(boardID, tenantID, userID uint, role string, isMan
 		return nil, err
 	}
 
-	if !s.canManageBoard(board, userID, role, isManager, isSuperadmin) {
+	if !s.canEditBoard(board, userID, role, isSuperadmin) {
 		return nil, ErrBoardAccessDenied
 	}
 
@@ -300,7 +309,7 @@ func (s *boardService) Update(boardID, tenantID, userID uint, role string, isMan
 	return s.repo.GetByID(boardID)
 }
 
-func (s *boardService) Delete(userID, boardID, tenantID uint, isSuperadmin bool) error {
+func (s *boardService) Delete(userID, boardID, tenantID uint, role string, isManager, isSuperadmin bool) error {
 	board, err := s.repo.GetByID(boardID)
 	if err != nil {
 		return errors.New("Board not found")
@@ -315,8 +324,11 @@ func (s *boardService) Delete(userID, boardID, tenantID uint, isSuperadmin bool)
 		return errors.New("Access denied")
 	}
 
-	if board.CreatedBy != userID {
-		return errors.New("Solo el creador puede eliminar el tablero")
+	// Solo el creador, el dueño de la empresa (empleador) y el superadmin pueden
+	// eliminar el tablero. Managers u otros miembros sin relación con la creación
+	// no pueden.
+	if !s.canEditBoard(board, userID, role, isSuperadmin) {
+		return errors.New("No tienes permisos para eliminar este tablero")
 	}
 
 	return s.repo.Delete(board)

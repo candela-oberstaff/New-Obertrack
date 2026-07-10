@@ -29,6 +29,26 @@ export function sanitizeHtml(dirty: string | null | undefined): string {
   })
 }
 
+// 3. Configuración "rich": como la estándar pero permite <img> (para editores
+// de texto enriquecido, p. ej. la descripción de tareas con imágenes pegadas).
+// DOMPurify sigue bloqueando src peligrosos (javascript:) y solo deja
+// http/https/data para imágenes.
+const RICH_ALLOWED_TAGS = [...ALLOWED_TAGS, 'img']
+const RICH_ALLOWED_ATTR = [...ALLOWED_ATTR, 'src', 'alt', 'title', 'width', 'height']
+
+/**
+ * sanitizeRichHtml es como sanitizeHtml pero conserva imágenes. Úsalo para
+ * contenido que puede incluir imágenes (descripciones de tareas).
+ */
+export function sanitizeRichHtml(dirty: string | null | undefined): string {
+  if (!dirty) return ''
+  return DOMPurify.sanitize(dirty, {
+    ALLOWED_TAGS: RICH_ALLOWED_TAGS,
+    ALLOWED_ATTR: RICH_ALLOWED_ATTR,
+    ADD_ATTR: ['target'],
+  })
+}
+
 /**
  * compileAndSanitizeEmail toma el HTML con el CDN de Tailwind, genera el CSS real
  * en un entorno aislado, remueve los scripts y sanitiza el resultado final de forma segura.

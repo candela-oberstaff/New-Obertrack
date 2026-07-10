@@ -426,6 +426,59 @@ func (h *AdminHandler) BulkDeleteUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deleted": deleted, "skipped": skipped})
 }
 
+// EmployerBulkAssignManager: versión para el EMPLEADOR, acotada a su empresa.
+func (h *AdminHandler) EmployerBulkAssignManager(c *gin.Context) {
+	var req struct {
+		ProfessionalIDs []uint `json:"professional_ids"`
+		ManagerID       *uint  `json:"manager_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.ProfessionalIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No hay profesionales seleccionados"})
+		return
+	}
+	tenantID := middleware.GetTenantID(c)
+	assigned, skipped, err := h.service.BulkAssignManagerScoped(req.ProfessionalIDs, req.ManagerID, tenantID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "Manager inválido") || strings.Contains(err.Error(), "Empresa no válida") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"assigned": assigned, "skipped": skipped})
+}
+
+// EmployerBulkDeleteUsers: versión para el EMPLEADOR, acotada a su empresa.
+func (h *AdminHandler) EmployerBulkDeleteUsers(c *gin.Context) {
+	var req struct {
+		UserIDs []uint `json:"user_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No hay usuarios seleccionados"})
+		return
+	}
+	tenantID := middleware.GetTenantID(c)
+	deleted, skipped, err := h.service.BulkDeleteUsersScoped(req.UserIDs, middleware.GetUserID(c), tenantID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "Empresa no válida") {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": deleted, "skipped": skipped})
+}
+
 func (h *AdminHandler) DeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {

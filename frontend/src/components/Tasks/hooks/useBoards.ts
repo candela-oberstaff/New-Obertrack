@@ -11,6 +11,7 @@ interface UseBoardsReturn {
   isLoading: boolean
   isCreatingBoard: boolean
   createBoard: (data: CreateBoardInput) => Promise<Board | null>
+  updateBoard: (boardId: number, data: { name?: string; description?: string; color?: string }) => Promise<void>
   deleteBoard: (boardId: number) => Promise<void>
   requestJoin: (boardId: number) => Promise<boolean>
   fetchBoards: () => Promise<Board[]>
@@ -175,6 +176,13 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
     }
   }, [fetchBoards, companyId, invalidateBoards])
 
+  const updateBoard = useCallback(async (boardId: number, data: { name?: string; description?: string; color?: string }) => {
+    const updated = await boardService.update(boardId, data)
+    setBoards((prev) => prev.map((b) => (b.id === boardId ? updated : b)))
+    setSelectedBoardState((current) => (current?.id === boardId ? updated : current))
+    await invalidateBoards()
+  }, [invalidateBoards])
+
   const deleteBoard = useCallback(async (boardId: number) => {
     await boardService.delete(boardId)
     await invalidateBoards()
@@ -241,6 +249,7 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
     isLoading,
     isCreatingBoard,
     createBoard,
+    updateBoard,
     deleteBoard,
     requestJoin,
     fetchBoards,

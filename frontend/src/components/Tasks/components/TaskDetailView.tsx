@@ -5,7 +5,7 @@ import { TaskCommentsSection } from './TaskCommentsSection'
 import { Select } from '../../ui/Select'
 import { useConfirm } from '../../ui/ConfirmProvider'
 import { Pencil, Trash2 } from 'lucide-react'
-import { sanitizeHtml } from '../../../utils/sanitize'
+import { sanitizeRichHtml } from '../../../utils/sanitize'
 import { formatDateOnly } from '../../../utils/date'
 
 type TaskComment = NonNullable<Task['comments']>[number]
@@ -84,7 +84,7 @@ export function TaskDetailView({
       <div className={styles['task-section']}>
         <h4>Descripción</h4>
         {task.description ? (
-          <div className={styles['task-description-html']} dangerouslySetInnerHTML={{ __html: sanitizeHtml(task.description) }} />
+          <div className={styles['task-description-html']} dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(task.description) }} />
         ) : (
           <p>Sin descripción</p>
         )}

@@ -18,6 +18,7 @@ import {
   Plus,
   UserPlus,
   Trash2,
+  Pencil,
   CheckSquare,
   Columns3,
   Mail,
@@ -69,6 +70,9 @@ export default function Tasks() {
     potentialMemberUsers,
     assignableUsers,
     handleDeleteBoard,
+    handleRenameBoard,
+    canEditBoard,
+    canEditBoardItem,
     handleBoardSubmit,
     handleMovePhaseLeft,
     handleMovePhaseRight,
@@ -402,16 +406,26 @@ export default function Tasks() {
                         <LogOut size={18} />
                       </button>
                     )}
-                    {user?.id === selectedBoard.created_by && (
-                      <button
-                        className={`${styles['btn-icon']} ${styles['delete-board-btn'] || 'delete-board-btn'}`}
-                        onClick={() => handleDeleteBoard(selectedBoard.id)}
-                        title={isDeletingBoard ? "Eliminando..." : "Eliminar tablero"}
-                        disabled={isDeletingBoard}
-                        style={{ marginLeft: '4px', color: '#ef4444' }}
-                      >
-                        {isDeletingBoard ? '...' : <Trash2 size={18} />}
-                      </button>
+                    {canEditBoard && (
+                      <>
+                        <button
+                          className={styles['btn-icon']}
+                          onClick={() => handleRenameBoard()}
+                          title="Renombrar tablero"
+                          style={{ marginLeft: '4px' }}
+                        >
+                          <Pencil size={18} />
+                        </button>
+                        <button
+                          className={`${styles['btn-icon']} ${styles['delete-board-btn'] || 'delete-board-btn'}`}
+                          onClick={() => handleDeleteBoard(selectedBoard.id)}
+                          title={isDeletingBoard ? "Eliminando..." : "Eliminar tablero"}
+                          disabled={isDeletingBoard}
+                          style={{ marginLeft: '4px', color: '#ef4444' }}
+                        >
+                          {isDeletingBoard ? '...' : <Trash2 size={18} />}
+                        </button>
+                      </>
                     )}
                   </>
                 )}
@@ -449,8 +463,28 @@ export default function Tasks() {
                 }))
                 const total = Object.values(counts).reduce((sum, n) => sum + n, 0)
                 return (
+                  <div key={b.id} className={styles['board-picker-card-wrap']}>
+                  {canEditBoardItem(b) && (
+                    <div className={styles['board-picker-actions']}>
+                      <button
+                        type="button"
+                        className={styles['board-picker-action']}
+                        onClick={(e) => { e.stopPropagation(); handleRenameBoard(b) }}
+                        title="Renombrar tablero"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles['board-picker-action']} ${styles['board-picker-action--danger']}`}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteBoard(b.id) }}
+                        title="Eliminar tablero"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  )}
                   <button
-                    key={b.id}
                     type="button"
                     className={styles['board-picker-card']}
                     style={{ ['--board-color' as any]: b.color || 'var(--primary)' }}
@@ -495,6 +529,7 @@ export default function Tasks() {
                       {(b.members?.length || 0)} miembro{(b.members?.length || 0) === 1 ? '' : 's'}
                     </span>
                   </button>
+                  </div>
                 )
               })}
               <button

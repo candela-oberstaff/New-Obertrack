@@ -16,7 +16,7 @@ export const boardService = {
     const { data } = await api.post<Board>('/boards', boardData, { params })
     return data
   },
-  update: async (id: number, boardData: CreateBoardInput) => {
+  update: async (id: number, boardData: Partial<Pick<CreateBoardInput, 'name' | 'description' | 'color'>>) => {
     const { data } = await api.put<Board>(`/boards/${id}`, boardData)
     return data
   },
