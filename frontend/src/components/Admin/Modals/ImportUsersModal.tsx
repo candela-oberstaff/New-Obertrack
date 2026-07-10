@@ -67,7 +67,15 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
   const handleFile = async (file: File) => {
     setBusy(true); setError(null)
     try {
-      const data: PreviewData = await svc.importPreview(file)
+      const raw: PreviewData = await svc.importPreview(file)
+      // Go serializa un slice vacío como `null`, no `[]`. Si una hoja no trae
+      // filas, el campo llega null; normalizamos para que todo lo de abajo pueda
+      // tratar siempre con arreglos y no explote con "Cannot read ... of null".
+      const data: PreviewData = {
+        ...raw,
+        companies: Array.isArray(raw.companies) ? raw.companies : undefined,
+        professionals: Array.isArray(raw.professionals) ? raw.professionals : [],
+      }
       setPreview(data)
       setFileName(file.name)
       const d: Record<string, Action> = {}
@@ -113,7 +121,7 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
   const counts = useMemo(() => {
     if (!preview) return { create: 0, overwrite: 0 }
     let create = 0, overwrite = 0
-    ;([['emp', preview.companies ?? []], ['pro', preview.professionals]] as const).forEach(([e, rows]) =>
+    ;([['emp', preview.companies ?? []], ['pro', preview.professionals ?? []]] as const).forEach(([e, rows]) =>
       rows.forEach(r => {
         const a = actionFor(e, r)
         if (a === 'create') create++
@@ -148,7 +156,7 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
     try {
       const res: ExecResult = await svc.importExecute({
         companies: preview.companies ? toExecRows('emp', preview.companies) : [],
-        professionals: toExecRows('pro', preview.professionals),
+        professionals: toExecRows('pro', preview.professionals ?? []),
       })
       setResult(res)
       setStep('result')
@@ -332,7 +340,7 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>
-                Se importarán <strong>{totalToImport}</strong> de {(preview.companies?.length ?? 0) + preview.professionals.length} filas.
+                Se importarán <strong>{totalToImport}</strong> de {(preview.companies?.length ?? 0) + (preview.professionals?.length ?? 0)} filas.
               </span>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button type="button" onClick={() => setStep('preview')} disabled={busy} style={btnSecondary}>Atrás</button>
