@@ -1200,6 +1200,22 @@
   border-radius: 8px;
   transition: all 0.2s;
   border: 1px solid transparent;
+  background: transparent;
+}
+
+.user-item:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+  transform: none;
+  box-shadow: none;
+}
+
+.spinning {
+  animation: spinning 0.8s linear infinite;
+}
+
+@keyframes spinning {
+  to { transform: rotate(360deg); }
 }
 
 .user-item:hover {

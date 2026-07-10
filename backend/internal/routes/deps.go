@@ -105,7 +105,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
 	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo, brevoSvc)
-	boardSvc := service.NewBoardService(boardRepo, userRepo, notifSvc, brevoSvc)
+	boardSvc := service.NewBoardService(boardRepo, userRepo, notifSvc)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
 	rbacSvc := service.NewRBACService(rbacRepo, userRepo)
 	employmentSvc := service.NewEmploymentService(employmentRepo, userRepo, workHourRepo, notifSvc)

@@ -1009,7 +1009,10 @@
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
-  z-index: 100;
+  /* Entre la barra superior (150) y el overlay de los modales (200): el panel
+     arranca en top:0, así que por debajo de 150 la campana tapaba su botón de
+     cerrar. */
+  z-index: 160;
   animation: slideIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow-x: hidden;
 }

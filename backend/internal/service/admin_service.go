@@ -606,10 +606,6 @@ func (s *adminService) BulkDeleteUsers(ids []uint, requesterID uint) (int, []Bul
 			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "es superadmin (protegido)"})
 			continue
 		}
-		if user.UserType == models.UserTypeEmployer {
-			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "es una empresa (elimínala desde Empresas)"})
-			continue
-		}
 		if user.IsManager {
 			count, cerr := countManagerReports(s.userRepo, s.employmentRepo, id)
 			if cerr != nil {

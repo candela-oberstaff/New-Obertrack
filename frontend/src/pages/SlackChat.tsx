@@ -27,6 +27,20 @@ import styles from './SlackChat.module.css'
 
 interface CompanyOption { id: number; company_name: string }
 
+const MEMBERSHIP_ERRORS: Record<string, string> = {
+  'unauthorized': 'No tienes permiso para gestionar los miembros de este canal.',
+  'professionals cannot add superadmins': 'No puedes añadir a un superadmin.',
+  'user belongs to a different tenant': 'Esa persona pertenece a otra empresa.',
+  'user is already a member': 'Esa persona ya es miembro del canal.',
+  'channel not found': 'El canal ya no existe.',
+  'user not found': 'No se encontró a esa persona.',
+}
+
+function membershipErrorMessage(e: any, fallback: string): string {
+  const raw = e?.response?.data?.error
+  return MEMBERSHIP_ERRORS[raw] || fallback
+}
+
 export default function SlackChat() {
   const { user } = useAuth()
   const confirm = useConfirm()
@@ -384,8 +398,26 @@ export default function SlackChat() {
     }
   }
   const isSelectedArchived = !!selectedChannel && archivedChannels.some(c => c.id === selectedChannel.id)
-  const addMember = async (id: number) => { if (selectedChannel) try { await channelService.addMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
-  const removeMember = async (id: number) => { if (selectedChannel) try { await channelService.removeMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
+  const addMember = async (id: number) => {
+    if (!selectedChannel) return
+    try {
+      await channelService.addMember(selectedChannel.id, id)
+      await fetchChannelMembers(selectedChannel.id)
+    } catch (e: any) {
+      showError(membershipErrorMessage(e, 'No se pudo añadir a la persona. Intenta de nuevo.'))
+      throw e
+    }
+  }
+  const removeMember = async (id: number) => {
+    if (!selectedChannel) return
+    try {
+      await channelService.removeMember(selectedChannel.id, id)
+      await fetchChannelMembers(selectedChannel.id)
+      showSuccess('Persona removida del canal')
+    } catch (e: any) {
+      showError(membershipErrorMessage(e, 'No se pudo remover a la persona. Intenta de nuevo.'))
+    }
+  }
   const handleUpdateChannel = async (id: number, updates: { name: string; description: string; type?: 'public' | 'private' }) => {
     try {
       const updated = await channelService.updateChannel(id, updates)

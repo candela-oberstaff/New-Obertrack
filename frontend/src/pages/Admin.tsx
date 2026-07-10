@@ -24,11 +24,15 @@ import {
   MessageSquare,
   Archive,
   UploadCloud,
+  Download,
+  ChevronDown,
+  FileSpreadsheet,
 } from 'lucide-react'
 import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { CreateUserModal } from '../components/Admin/Modals/CreateUserModal'
 import { ImportUsersModal } from '../components/Admin/Modals/ImportUsersModal'
+import { ExportUsersModal } from '../components/Admin/Modals/ExportUsersModal'
 import { EmailComposerModal, type ComposerRecipient } from '../components/Admin/EmailComposerModal'
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
@@ -140,6 +144,8 @@ export default function Admin() {
 
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [showActionsMenu, setShowActionsMenu] = useState(false)
   const [createForm, setCreateForm] = useState({ ...EMPTY_CREATE_FORM })
   const [createError, setCreateError] = useState('')
   const [createLoading, setCreateLoading] = useState(false)
@@ -208,6 +214,20 @@ export default function Admin() {
   const employers = Array.isArray(users) ? users.filter((u: any) => u.user_type === 'empleador' && ((u.company_name || '').trim() || (u.name || '').trim())) : []
   const managers = Array.isArray(users) ? users.filter((u: any) => u.is_manager) : []
 
+  // Resuelve el nombre de empresa para el export: un empleador es su propia
+  // empresa; un profesional/CS toma la del empleador al que está vinculado.
+  const companyNameById = useMemo(() => {
+    const m = new Map<number, string>()
+    ;(Array.isArray(users) ? users : []).forEach((u: any) => {
+      if (u.user_type === 'empleador') m.set(u.id, (u.company_name || '').trim() || u.name || '')
+    })
+    return m
+  }, [users])
+  const resolveCompanyName = (u: any): string => {
+    if (u.user_type === 'empleador') return (u.company_name || '').trim() || u.name || ''
+    return (u.company_name || '').trim() || (u.empleador_id ? companyNameById.get(u.empleador_id) || '' : '')
+  }
+
   const openEdit = (u: any) => {
     setEditId(u.id)
     setEditForm({
@@ -273,7 +293,7 @@ export default function Admin() {
   const currentUsersPage = Math.min(usersPage, totalUserPages)
   const paginatedUsers = filteredUsers.slice((currentUsersPage - 1) * USERS_PER_PAGE, currentUsersPage * USERS_PER_PAGE)
 
-  const isBulkSelectable = (u: any) => !u.is_superadmin && u.user_type !== 'empleador' && u.id !== viewer?.id
+  const isBulkSelectable = (u: any) => !u.is_superadmin && u.id !== viewer?.id
   const selectableIds: number[] = filteredUsers.filter(isBulkSelectable).map((u: any) => u.id)
   const allSelected = selectableIds.length > 0 && selectableIds.every((id: number) => selectedIds.has(id))
   const bulkManagerOptions = managers.filter((m: any) => companyFilter === '' || m.empleador_id === companyFilter)
@@ -301,6 +321,21 @@ export default function Admin() {
       .sort((a: any, b: any) => b.count - a.count)
   , [users, selectedIds, reportsCountByManager])
   const bulkWillDelete = Math.max(0, selectedIds.size - selectedManagersWithTeam.length)
+
+  // Borrar una cuenta empleador se lleva la empresa entera, así que el modal
+  // las nombra aparte junto con la gente que quedaría sin empresa.
+  const selectedEmployers = useMemo(() => {
+    const all = Array.isArray(users) ? users : []
+    return all
+      .filter((u: any) => selectedIds.has(u.id) && u.user_type === 'empleador')
+      .map((u: any) => ({
+        id: u.id,
+        name: u.company_name?.trim() || u.name,
+        linked: all.filter((o: any) => o.empleador_id === u.id).length,
+      }))
+      .sort((a: any, b: any) => b.linked - a.linked)
+  }, [users, selectedIds])
+
   const handleBulkAssign = async () => {
     if (selectedIds.size === 0) return
     setBulkBusy(true); setBulkMsg(null)
@@ -1042,27 +1077,43 @@ export default function Admin() {
                 )}
               </div>
               {canManage && (
-              <button
-                type="button"
-                onClick={() => setShowImportModal(true)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 16px',
-                  background: '#fff',
-                  color: '#6d28d9',
-                  border: '1px solid #ddd6fe',
-                  borderRadius: '12px',
-                  fontWeight: 700,
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-                title="Importar empresas y profesionales desde un Excel"
-              >
-                <UploadCloud size={16} /> Importar
-              </button>
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowActionsMenu(o => !o)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 16px',
+                    background: '#fff',
+                    color: '#6d28d9',
+                    border: '1px solid #ddd6fe',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title="Importar o exportar usuarios"
+                >
+                  <FileSpreadsheet size={16} /> Acciones
+                  <ChevronDown size={15} style={{ transform: showActionsMenu ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                </button>
+                {showActionsMenu && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 20 }} onClick={() => setShowActionsMenu(false)} />
+                    <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 21, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', padding: '6px', minWidth: '200px' }}>
+                      <button type="button" onClick={() => { setShowActionsMenu(false); setShowImportModal(true) }} style={actionMenuItem}>
+                        <UploadCloud size={16} /> Importar desde Excel
+                      </button>
+                      <button type="button" onClick={() => { setShowActionsMenu(false); setShowExportModal(true) }} style={actionMenuItem}>
+                        <Download size={16} /> Exportar a Excel
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
               )}
               {canManage && (
               <button
@@ -1693,6 +1744,19 @@ export default function Admin() {
                   Seleccionaste <strong>{selectedIds.size}</strong> usuario(s). Se eliminarán{' '}
                   <strong>{bulkWillDelete}</strong>.
                 </p>
+                {selectedEmployers.length > 0 && (
+                  <>
+                    <p className={styles['warning-text']} style={{ color: '#b91c1c' }}>
+                      Atención: hay {selectedEmployers.length} cuenta(s) de empresa en la selección.
+                      Al eliminarlas, su gente queda sin empresa:
+                    </p>
+                    <ul style={{ maxHeight: 180, overflowY: 'auto', margin: '0 1.5rem 0.5rem', padding: '0 0 0 1.1rem', fontSize: '13px', color: '#475569' }}>
+                      {selectedEmployers.map((e) => (
+                        <li key={e.id}><strong>{e.name}</strong> — {e.linked} usuario(s) vinculado(s)</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
                 {selectedManagersWithTeam.length > 0 && (
                   <>
                     <p className={styles['warning-text']}>
@@ -1707,8 +1771,8 @@ export default function Admin() {
                   </>
                 )}
                 <p className={styles['warning-text']}>
-                  Dejarán de aparecer y no podrán iniciar sesión (sus registros se conservan). Los
-                  superadmins, las empresas (cuentas empleador) y tu propia cuenta nunca se
+                  Dejarán de aparecer y no podrán iniciar sesión (sus registros se conservan, podés
+                  restaurarlos desde la Papelera). Los superadmins y tu propia cuenta nunca se
                   eliminan desde aquí.
                 </p>
                 {bulkDeleteError && (
@@ -1765,6 +1829,31 @@ export default function Admin() {
           onClose={() => setShowImportModal(false)}
           onDone={() => { fetchUsers(); fetchDashboard(); fetchCompanies() }}
         />
+      )}
+
+      {showExportModal && (
+        <ExportUsersModal
+          users={filteredUsers}
+          companyName={resolveCompanyName}
+          filtered={!!(searchQuery.trim() || roleFilter || companyFilter !== '')}
+          onClose={() => setShowExportModal(false)}
+        />
       )}    </div>
   )
+}
+
+const actionMenuItem: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  width: '100%',
+  padding: '10px 12px',
+  border: 'none',
+  borderRadius: 8,
+  background: 'transparent',
+  color: '#334155',
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: 'pointer',
+  textAlign: 'left',
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { UploadCloud, X, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { UploadCloud, X, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { adminService, employerService } from '../../../services/api'
 
 type ImportStatus = 'ok' | 'error' | 'conflict'
@@ -26,6 +26,8 @@ interface ExecResult {
   credentials: Cred[]
 }
 
+const PAGE_SIZE = 25
+
 const overlay: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.5)' }
 const panel: React.CSSProperties = { background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 940, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }
 const labelStyle: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#334155' }
@@ -43,9 +45,18 @@ const pill: React.CSSProperties = { display: 'inline-block', padding: '2px 9px',
 const isManagerValue = (v?: string) =>
   ['si', 'sí', 'yes', 'y', 'true', '1', 'x', 'verdadero'].includes((v ?? '').trim().toLowerCase())
 
+const downloadCSV = (rows: string[][], filename: string) => {
+  const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+}
+
 export function ImportUsersModal({ onClose, onDone, employerMode = false }: { onClose: () => void; onDone?: () => void; employerMode?: boolean }) {
   const svc = employerMode ? employerService : adminService
-  const [step, setStep] = useState<'upload' | 'preview' | 'result'>('upload')
+  const [step, setStep] = useState<'upload' | 'preview' | 'errors' | 'result'>('upload')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fileName, setFileName] = useState('')
@@ -70,6 +81,22 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
       setBusy(false)
     }
   }
+
+  // Las filas con error nunca se importan, así que viven en su propia pantalla y
+  // no ensucian la revisión de las que sí van a entrar.
+  const { okCompanies, okProfessionals, errCompanies, errProfessionals, errTotal } = useMemo(() => {
+    const companies = preview?.companies ?? []
+    const professionals = preview?.professionals ?? []
+    const errC = companies.filter(r => r.status === 'error')
+    const errP = professionals.filter(r => r.status === 'error')
+    return {
+      okCompanies: preview?.companies ? companies.filter(r => r.status !== 'error') : undefined,
+      okProfessionals: professionals.filter(r => r.status !== 'error'),
+      errCompanies: errC,
+      errProfessionals: errP,
+      errTotal: errC.length + errP.length,
+    }
+  }, [preview])
 
   const actionFor = (entity: 'emp' | 'pro', r: ImportRow): Action => {
     if (r.status === 'error') return 'skip'
@@ -96,6 +123,25 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
     return { create, overwrite }
   }, [preview, decisions])
 
+  const totalToImport = counts.create + counts.overwrite
+
+  // Las filas con error y las que el usuario marcó "Omitir" se filtran antes de
+  // llamar al backend, así que él las reporta como 0. El conteo real es de acá.
+  const omitted = useMemo(() => {
+    const tally = (entity: 'emp' | 'pro', rows: ImportRow[]) => {
+      let skipped = 0, errored = 0
+      rows.forEach(r => {
+        if (r.status === 'error') errored++
+        else if (actionFor(entity, r) === 'skip') skipped++
+      })
+      return { skipped, errored }
+    }
+    return {
+      companies: tally('emp', preview?.companies ?? []),
+      professionals: tally('pro', preview?.professionals ?? []),
+    }
+  }, [preview, decisions])
+
   const handleExecute = async () => {
     if (!preview) return
     setBusy(true); setError(null)
@@ -116,16 +162,53 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
 
   const downloadCreds = () => {
     if (!result?.credentials?.length) return
-    const rows = employerMode
-      ? [['Nombre', 'Email', 'Contraseña temporal'], ...result.credentials.map(c => [c.name, c.email, c.temp_password])]
-      : [['Nombre', 'Email', 'Empresa', 'Contraseña temporal'], ...result.credentials.map(c => [c.name, c.email, c.company, c.temp_password])]
-    const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = 'credenciales_importacion.csv'
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+    downloadCSV(
+      employerMode
+        ? [['Nombre', 'Email', 'Contraseña temporal'], ...result.credentials.map(c => [c.name, c.email, c.temp_password])]
+        : [['Nombre', 'Email', 'Empresa', 'Contraseña temporal'], ...result.credentials.map(c => [c.name, c.email, c.company, c.temp_password])],
+      'credenciales_importacion.csv',
+    )
   }
+
+  const downloadErrors = async () => {
+    setError(null)
+    try {
+      // Carga diferida: la librería de xlsx solo pesa en el bundle si se usa.
+      const { default: writeXlsxFile } = await import('write-excel-file/browser')
+      const header = ['Fila', 'Tipo', 'Nombre', 'Email', 'Empresa', 'Motivo'].map(value => ({
+        value, type: String, fontWeight: 'bold' as const, backgroundColor: '#FEF2F2', color: '#B91C1C',
+      }))
+      const toRow = (tipo: string, nameKey: string, companyKey: string) => (r: ImportRow) => [
+        { value: r.row, type: Number },
+        { value: tipo, type: String },
+        { value: r.data[nameKey] || '', type: String },
+        { value: r.data.email || '', type: String },
+        { value: r.data[companyKey] || '', type: String },
+        { value: r.message || 'Fila inválida', type: String },
+      ]
+      const { toFile } = await writeXlsxFile(
+        [
+          header,
+          ...errCompanies.map(toRow('Empresa', 'nombre_responsable', 'nombre_empresa')),
+          ...errProfessionals.map(toRow('Profesional', 'nombre', 'empresa')),
+        ],
+        {
+          sheet: 'Errores',
+          stickyRowsCount: 1,
+          columns: [{ width: 8 }, { width: 14 }, { width: 28 }, { width: 34 }, { width: 30 }, { width: 52 }],
+        },
+      )
+      await toFile('filas_con_error.xlsx')
+    } catch {
+      setError('No se pudo generar el archivo de errores.')
+    }
+  }
+
+  const importButton = (
+    <button type="button" onClick={handleExecute} disabled={busy || totalToImport === 0} style={btnPrimary}>
+      {busy ? 'Importando...' : `Importar (${totalToImport})`}
+    </button>
+  )
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -176,13 +259,24 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
         {step === 'preview' && preview && (
           <div>
             <p style={{ margin: '0 0 14px', fontSize: 13, color: '#64748b' }}>
-              Archivo: <strong>{fileName}</strong>. Revisá las filas; en los conflictos elegí sobreescribir u omitir. Las filas con error se omiten.
+              Archivo: <strong>{fileName}</strong>. Revisá las filas; en los conflictos elegí sobreescribir u omitir.
             </p>
-            {preview.companies && (
+
+            {errTotal > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 12, padding: '11px 14px', marginBottom: 16 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#b91c1c', fontWeight: 600 }}>
+                  <AlertCircle size={16} />
+                  {errTotal === 1 ? '1 fila no se puede importar' : `${errTotal} filas no se pueden importar`} y quedaron fuera de esta lista.
+                </span>
+                <button type="button" onClick={() => setStep('errors')} style={{ ...btnSecondary, padding: '6px 12px', fontSize: 12.5, borderColor: '#fecaca', color: '#b91c1c' }}>Ver detalle</button>
+              </div>
+            )}
+
+            {okCompanies && (
               <PreviewTable
                 title="Empresas"
                 entity="emp"
-                rows={preview.companies}
+                rows={okCompanies}
                 nameKey="nombre_responsable"
                 companyKey="nombre_empresa"
                 showCompany
@@ -193,7 +287,7 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
             <PreviewTable
               title="Profesionales"
               entity="pro"
-              rows={preview.professionals}
+              rows={okProfessionals}
               nameKey="nombre"
               companyKey="empresa"
               showCompany={!employerMode}
@@ -207,9 +301,42 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
               </span>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button type="button" onClick={() => { setStep('upload'); setPreview(null) }} disabled={busy} style={btnSecondary}>Atrás</button>
-                <button type="button" onClick={handleExecute} disabled={busy || (counts.create + counts.overwrite === 0)} style={btnPrimary}>
-                  {busy ? 'Importando...' : `Importar (${counts.create + counts.overwrite})`}
-                </button>
+                {errTotal > 0
+                  ? <button type="button" onClick={() => setStep('errors')} disabled={busy} style={btnPrimary}>Continuar</button>
+                  : importButton}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 'errors' && preview && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12, background: 'rgba(239,68,68,0.08)', color: '#b91c1c', marginBottom: 16 }}>
+              <AlertCircle size={20} />
+              <div>
+                <div style={{ fontWeight: 700 }}>{errTotal === 1 ? '1 fila no se puede importar' : `${errTotal} filas no se pueden importar`}</div>
+                <div style={{ fontSize: 12.5, color: '#7f1d1d' }}>Se van a omitir. Corregilas en el Excel y volvé a subirlo si las necesitás.</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+              <button type="button" onClick={downloadErrors} style={{ ...btnSecondary, padding: '6px 12px', fontSize: 12 }}><Download size={14} /> Descargar errores (.xlsx)</button>
+            </div>
+
+            {errCompanies.length > 0 && (
+              <ErrorTable title="Empresas" rows={errCompanies} nameKey="nombre_responsable" companyKey="nombre_empresa" showCompany />
+            )}
+            {errProfessionals.length > 0 && (
+              <ErrorTable title="Profesionales" rows={errProfessionals} nameKey="nombre" companyKey="empresa" showCompany={!employerMode} />
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>
+                Se importarán <strong>{totalToImport}</strong> de {(preview.companies?.length ?? 0) + preview.professionals.length} filas.
+              </span>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" onClick={() => setStep('preview')} disabled={busy} style={btnSecondary}>Atrás</button>
+                {importButton}
               </div>
             </div>
           </div>
@@ -221,8 +348,8 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
               <CheckCircle2 size={20} /> Importación finalizada
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: result.companies ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 16 }}>
-              {result.companies && <ResultCard title="Empresas" r={result.companies} />}
-              <ResultCard title="Profesionales" r={result.professionals} />
+              {result.companies && <ResultCard title="Empresas" r={result.companies} omitted={omitted.companies} />}
+              <ResultCard title="Profesionales" r={result.professionals} omitted={omitted.professionals} />
             </div>
 
             {((result.companies?.errors.length ?? 0) > 0 || result.professionals.errors.length > 0) && (
@@ -278,15 +405,54 @@ const td: React.CSSProperties = { padding: '7px 10px', color: '#334155' }
 const btnPrimary: React.CSSProperties = { padding: '10px 18px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, var(--primary), var(--primary-dark, #1d4ed8))', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }
 const btnSecondary: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569', fontWeight: 600, fontSize: 14, cursor: 'pointer' }
 
-function ResultCard({ title, r }: { title: string; r: NonNullable<ExecResult['companies']> }) {
+function ResultCard({ title, r, omitted }: { title: string; r: NonNullable<ExecResult['companies']>; omitted: { skipped: number; errored: number } }) {
+  // El backend solo ve las filas que le mandamos: lo que omitiste vos y las filas
+  // con error del archivo hay que sumarlos acá o el resumen miente.
+  const totalSkipped = r.skipped + omitted.skipped
   return (
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14 }}>
       <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>{title}</div>
       <div style={{ display: 'flex', gap: 14, fontSize: 13, color: '#475569', flexWrap: 'wrap' }}>
         <span>✅ Creados: <strong>{r.created}</strong></span>
         <span>♻️ Actualizados: <strong>{r.updated}</strong></span>
-        <span>⏭️ Omitidos: <strong>{r.skipped}</strong></span>
-        {r.errors.length > 0 && <span style={{ color: '#b91c1c' }}>⚠️ Errores: <strong>{r.errors.length}</strong></span>}
+        <span>⏭️ Omitidos: <strong>{totalSkipped}</strong></span>
+        {omitted.errored > 0 && <span style={{ color: '#b45309' }}>🚫 Con error en el archivo: <strong>{omitted.errored}</strong></span>}
+        {r.errors.length > 0 && <span style={{ color: '#b91c1c' }}>⚠️ Fallaron al crear: <strong>{r.errors.length}</strong></span>}
+      </div>
+    </div>
+  )
+}
+
+/** Pagina un arreglo y expone los controles. La página se corrige sola si el
+ *  arreglo se acorta (p. ej. al volver atrás y subir otro archivo). */
+function usePagedRows(rows: ImportRow[]) {
+  const [page, setPage] = useState(0)
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount - 1)
+  const from = safePage * PAGE_SIZE
+  const visible = rows.slice(from, from + PAGE_SIZE)
+  return { visible, page: safePage, pageCount, setPage, from }
+}
+
+function Pager({ page, pageCount, setPage, from, shown, total }: { page: number; pageCount: number; setPage: (p: number) => void; from: number; shown: number; total: number }) {
+  if (total <= PAGE_SIZE) return null
+  const navBtn = (disabled: boolean): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 8,
+    border: '1px solid #e2e8f0', background: disabled ? '#f8fafc' : '#fff',
+    color: disabled ? '#cbd5e1' : '#475569', fontSize: 12.5, fontWeight: 600,
+    cursor: disabled ? 'default' : 'pointer',
+  })
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', borderTop: '1px solid #f1f5f9', background: '#fcfdff', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12, color: '#94a3b8' }}>Mostrando {from + 1}–{from + shown} de {total}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button type="button" onClick={() => setPage(page - 1)} disabled={page === 0} style={navBtn(page === 0)}>
+          <ChevronLeft size={14} /> Anterior
+        </button>
+        <span style={{ fontSize: 12.5, color: '#475569', fontWeight: 600 }}>{page + 1} / {pageCount}</span>
+        <button type="button" onClick={() => setPage(page + 1)} disabled={page >= pageCount - 1} style={navBtn(page >= pageCount - 1)}>
+          Siguiente <ChevronRight size={14} />
+        </button>
       </div>
     </div>
   )
@@ -304,6 +470,7 @@ function PreviewTable({
   decisions: Record<string, Action>
   setDecision: (row: number, a: Action) => void
 }) {
+  const { visible, page, pageCount, setPage, from } = usePagedRows(rows)
   if (rows.length === 0) return null
   return (
     <div style={{ marginBottom: 18 }}>
@@ -316,8 +483,8 @@ function PreviewTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map(r => (
-              <tr key={r.row} style={{ borderTop: '1px solid #f1f5f9', background: r.status === 'error' ? 'rgba(239,68,68,0.04)' : undefined }}>
+            {visible.map(r => (
+              <tr key={r.row} style={{ borderTop: '1px solid #f1f5f9' }}>
                 <td style={td}>{r.row}</td>
                 <td style={td}>
                   {r.data[nameKey] || '—'}
@@ -331,11 +498,9 @@ function PreviewTable({
                   <StatusPill row={r} />
                   {r.status === 'conflict' && r.existing && <div style={{ fontSize: 11, color: '#94a3b8' }}>de {r.existing.name}</div>}
                   {r.status === 'conflict' && !r.existing && r.message && <div style={{ fontSize: 11, color: '#b45309' }}>{r.message}</div>}
-                  {r.status === 'error' && <div style={{ fontSize: 11, color: '#dc2626' }}>{r.message}</div>}
                 </td>
                 <td style={td}>
                   {r.status === 'ok' && <span style={{ color: '#059669', fontWeight: 600 }}>Crear</span>}
-                  {r.status === 'error' && <span style={{ color: '#94a3b8' }}>Se omite</span>}
                   {r.status === 'conflict' && (
                     <select
                       value={decisions[`${entity}-${r.row}`] ?? 'skip'}
@@ -353,6 +518,37 @@ function PreviewTable({
             ))}
           </tbody>
         </table>
+        <Pager page={page} pageCount={pageCount} setPage={setPage} from={from} shown={visible.length} total={rows.length} />
+      </div>
+    </div>
+  )
+}
+
+function ErrorTable({ title, rows, nameKey, companyKey, showCompany }: { title: string; rows: ImportRow[]; nameKey: string; companyKey: string; showCompany: boolean }) {
+  const { visible, page, pageCount, setPage, from } = usePagedRows(rows)
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ ...labelStyle, marginBottom: 8 }}>{title} ({rows.length})</div>
+      <div style={{ border: '1px solid #fee2e2', borderRadius: 10, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ background: '#fef2f2', textAlign: 'left' }}>
+              <th style={th}>Fila</th><th style={th}>Nombre</th><th style={th}>Email</th>{showCompany && <th style={th}>Empresa</th>}<th style={th}>Motivo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map(r => (
+              <tr key={r.row} style={{ borderTop: '1px solid #fef2f2' }}>
+                <td style={td}>{r.row}</td>
+                <td style={td}>{r.data[nameKey] || '—'}</td>
+                <td style={td}>{r.data.email || '—'}</td>
+                {showCompany && <td style={td}>{r.data[companyKey] || '—'}</td>}
+                <td style={{ ...td, color: '#b91c1c' }}>{r.message || 'Fila inválida'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <Pager page={page} pageCount={pageCount} setPage={setPage} from={from} shown={visible.length} total={rows.length} />
       </div>
     </div>
   )

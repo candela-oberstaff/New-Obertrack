@@ -3,11 +3,9 @@ package service
 import (
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
-	"github.com/obertrack/backend/internal/utils"
 )
 
 var (
@@ -49,20 +47,17 @@ type boardService struct {
 	repo     repository.BoardRepository
 	userRepo repository.UserRepository
 	notifSvc NotificationService
-	brevoSvc *BrevoService
 }
 
 func NewBoardService(
 	repo repository.BoardRepository,
 	userRepo repository.UserRepository,
 	notifSvc NotificationService,
-	brevoSvc *BrevoService,
 ) BoardService {
 	return &boardService{
 		repo:     repo,
 		userRepo: userRepo,
 		notifSvc: notifSvc,
-		brevoSvc: brevoSvc,
 	}
 }
 
@@ -79,29 +74,14 @@ func boardHasMember(board *models.Board, userID uint) bool {
 	return false
 }
 
-func frontendBaseURL() string {
-	if u := os.Getenv("FRONTEND_URL"); u != "" {
-		return u
-	}
-	return os.Getenv("SERVICE_URL_FRONTEND")
-}
-
-func (s *boardService) notify(user *models.User, notifType, title, message, link, emailSubject, emailBody string) {
-	if user == nil {
+// notify avisa solo por notificación in-app (campana + WebSocket). La membresía
+// de tableros NO manda correos: invitar, aceptar y aprobar se avisan únicamente
+// dentro de la app.
+func (s *boardService) notify(user *models.User, notifType, title, message, link string) {
+	if user == nil || s.notifSvc == nil {
 		return
 	}
-	if s.notifSvc != nil {
-		_ = s.notifSvc.CreateNotification(user.ID, notifType, title, message, map[string]interface{}{"link": link})
-	}
-	if s.brevoSvc != nil && user.Email != "" {
-		if base := frontendBaseURL(); base != "" {
-			emailBody += fmt.Sprintf(
-				`<div style="text-align:center;margin-top:28px;"><a href="%s%s" style="background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Abrir en Obertrack</a></div>`,
-				base, link,
-			)
-		}
-		_ = s.brevoSvc.SendEmail(user.Email, user.Name, emailSubject, utils.WrapInPremiumTemplate(emailSubject, emailBody))
-	}
+	_ = s.notifSvc.CreateNotification(user.ID, notifType, title, message, map[string]interface{}{"link": link})
 }
 
 func (s *boardService) authorizeBoardTenant(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error) {
@@ -467,9 +447,6 @@ func (s *boardService) InviteMembers(boardID, tenantID, userID uint, role string
 			"Invitación a un tablero",
 			fmt.Sprintf("%s te invitó al tablero \"%s\".", inviterName, board.Name),
 			"/tasks?invitations=1",
-			"Te invitaron al tablero "+board.Name,
-			fmt.Sprintf(`<h2>Hola %s,</h2><p><strong>%s</strong> te invitó a colaborar en el tablero <strong>%s</strong>.</p><p>Podés aceptar o rechazar la invitación desde Obertrack.</p>`,
-				target.Name, inviterName, board.Name),
 		)
 	}
 
@@ -516,9 +493,6 @@ func (s *boardService) RequestJoin(userID, boardID uint) (*models.BoardInvitatio
 			"Solicitud para unirse a un tablero",
 			fmt.Sprintf("%s quiere unirse al tablero \"%s\".", user.Name, board.Name),
 			fmt.Sprintf("/tasks?board=%d&requests=1", board.ID),
-			"Nueva solicitud para "+board.Name,
-			fmt.Sprintf(`<h2>Hola %s,</h2><p><strong>%s</strong> solicitó unirse al tablero <strong>%s</strong>.</p><p>Podés aprobar o rechazar la solicitud desde Obertrack.</p>`,
-				owner.Name, user.Name, board.Name),
 		)
 	}
 
@@ -598,8 +572,6 @@ func (s *boardService) notifyResolution(inv *models.BoardInvitation, board *mode
 			"Invitación "+verb,
 			fmt.Sprintf("%s %s la invitación al tablero \"%s\".", target.Name, verb, board.Name),
 			fmt.Sprintf("/tasks?board=%d", board.ID),
-			fmt.Sprintf("%s %s tu invitación", target.Name, verb),
-			fmt.Sprintf(`<h2>Hola,</h2><p><strong>%s</strong> %s la invitación al tablero <strong>%s</strong>.</p>`, target.Name, verb, board.Name),
 		)
 		return
 	}
@@ -609,8 +581,6 @@ func (s *boardService) notifyResolution(inv *models.BoardInvitation, board *mode
 			"Solicitud aprobada",
 			fmt.Sprintf("Tu solicitud para unirte al tablero \"%s\" fue aprobada.", board.Name),
 			fmt.Sprintf("/tasks?board=%d", board.ID),
-			"Ya sos parte de "+board.Name,
-			fmt.Sprintf(`<h2>Hola %s,</h2><p>Tu solicitud para unirte al tablero <strong>%s</strong> fue aprobada. Ya podés colaborar.</p>`, target.Name, board.Name),
 		)
 		return
 	}
@@ -618,8 +588,6 @@ func (s *boardService) notifyResolution(inv *models.BoardInvitation, board *mode
 		"Solicitud rechazada",
 		fmt.Sprintf("Tu solicitud para unirte al tablero \"%s\" fue rechazada.", board.Name),
 		"/tasks",
-		"Solicitud rechazada",
-		fmt.Sprintf(`<h2>Hola %s,</h2><p>Tu solicitud para unirte al tablero <strong>%s</strong> fue rechazada.</p>`, target.Name, board.Name),
 	)
 }
 
@@ -686,8 +654,6 @@ func (s *boardService) LeaveBoard(userID, boardID uint) error {
 				"Un miembro salió del tablero",
 				fmt.Sprintf("%s salió del tablero \"%s\".", leaver.Name, board.Name),
 				fmt.Sprintf("/tasks?board=%d", board.ID),
-				"Un miembro salió de "+board.Name,
-				fmt.Sprintf(`<h2>Hola,</h2><p><strong>%s</strong> salió del tablero <strong>%s</strong>.</p>`, leaver.Name, board.Name),
 			)
 		}
 	}

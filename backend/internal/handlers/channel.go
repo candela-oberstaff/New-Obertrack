@@ -266,13 +266,16 @@ func (h *ChannelHandler) AddMember(c *gin.Context) {
 
 	isSuperadmin := middleware.IsSuperadmin(c)
 	if err := h.svc.AddMember(uint(id), userID, req.UserID, isSuperadmin); err != nil {
-		if err.Error() == "unauthorized" || err.Error() == "professionals cannot add superadmins" {
+		switch {
+		case errors.Is(err, service.ErrUnauthorized),
+			errors.Is(err, service.ErrSuperadminBlocked),
+			errors.Is(err, service.ErrCrossTenant):
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-		} else if err.Error() == "user is already a member" {
+		case errors.Is(err, service.ErrAlreadyMember):
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-		} else if err.Error() == "channel not found" || err.Error() == "user not found" {
+		case errors.Is(err, service.ErrChannelNotFound), errors.Is(err, service.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		} else {
+		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
 		return
