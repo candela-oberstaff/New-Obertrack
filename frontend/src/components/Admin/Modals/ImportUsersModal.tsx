@@ -154,10 +154,20 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
     if (!preview) return
     setBusy(true); setError(null)
     try {
-      const res: ExecResult = await svc.importExecute({
+      const raw: ExecResult = await svc.importExecute({
         companies: preview.companies ? toExecRows('emp', preview.companies) : [],
         professionals: toExecRows('pro', preview.professionals ?? []),
       })
+      // Mismo caso que el preview: Go manda `null` por los slices/arreglos vacíos
+      // (errors, credentials, y hasta el bloque companies). Normalizamos acá para
+      // que el render del resultado nunca haga `.length` sobre null.
+      const norm = (b?: ExecResult['companies']) =>
+        b ? { ...b, errors: Array.isArray(b.errors) ? b.errors : [] } : b
+      const res: ExecResult = {
+        companies: norm(raw.companies),
+        professionals: norm(raw.professionals) ?? { created: 0, updated: 0, skipped: 0, errors: [] },
+        credentials: Array.isArray(raw.credentials) ? raw.credentials : [],
+      }
       setResult(res)
       setStep('result')
       onDone?.()
@@ -360,18 +370,18 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
               <ResultCard title="Profesionales" r={result.professionals} omitted={omitted.professionals} />
             </div>
 
-            {((result.companies?.errors.length ?? 0) > 0 || result.professionals.errors.length > 0) && (
+            {((result.companies?.errors?.length ?? 0) > 0 || (result.professionals.errors?.length ?? 0) > 0) && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ ...labelStyle, marginBottom: 6, color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 6 }}><AlertCircle size={15} /> Errores</div>
                 <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid #fee2e2', borderRadius: 10, padding: 10 }}>
-                  {[...(result.companies?.errors ?? []), ...result.professionals.errors].map((e, i) => (
+                  {[...(result.companies?.errors ?? []), ...(result.professionals.errors ?? [])].map((e, i) => (
                     <div key={i} style={{ fontSize: 12.5, color: '#475569' }}><strong>{e.email}</strong>: {e.error}</div>
                   ))}
                 </div>
               </div>
             )}
 
-            {result.credentials.length > 0 && (
+            {(result.credentials?.length ?? 0) > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span style={labelStyle}>Contraseñas temporales ({result.credentials.length})</span>

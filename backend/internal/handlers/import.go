@@ -386,7 +386,7 @@ func (h *AdminHandler) ImportExecute(c *gin.Context) {
 		Email string `json:"email"`
 		Error string `json:"error"`
 	}
-	var creds []cred
+	creds := []cred{}
 
 	compCreated, compUpdated, compSkipped := 0, 0, 0
 	profCreated, profUpdated, profSkipped := 0, 0, 0
@@ -665,7 +665,7 @@ func (h *AdminHandler) EmployerImportExecute(c *gin.Context) {
 		Email string `json:"email"`
 		Error string `json:"error"`
 	}
-	var creds []cred
+	creds := []cred{}
 	created, updated, skipped := 0, 0, 0
 	errs := []rowErr{}
 
