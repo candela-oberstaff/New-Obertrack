@@ -1759,6 +1759,108 @@
   display: block;
 }
 
+/* Contenedor de imagen con botones superpuestos (ampliar / descargar). Las
+   clases se inyectan como HTML, por eso van con :global(). */
+.task-description-html :global(.ot-img-wrap) {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.task-description-html :global(.ot-img-wrap img) {
+  cursor: zoom-in;
+}
+
+.task-description-html :global(.ot-img-actions) {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.task-description-html :global(.ot-img-wrap:hover .ot-img-actions),
+.task-description-html :global(.ot-img-wrap:focus-within .ot-img-actions) {
+  opacity: 1;
+  transform: none;
+}
+
+.task-description-html :global(.ot-img-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.62);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+  transition: background 0.15s ease;
+}
+
+.task-description-html :global(.ot-img-btn:hover) {
+  background: rgba(15, 23, 42, 0.85);
+}
+
+/* Lightbox de imagen ampliada */
+.img-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(6, 11, 35, 0.8);
+  backdrop-filter: blur(4px);
+  animation: img-lightbox-fade 0.15s ease;
+}
+
+@keyframes img-lightbox-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.img-lightbox-img {
+  max-width: 92vw;
+  max-height: 84vh;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  cursor: default;
+}
+
+.img-lightbox-toolbar {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 8px;
+}
+
+.img-lightbox-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.img-lightbox-btn:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
 /* New Task Modal - Balanced & Spacious */
 .new-task-modal {
   width: 1000px;
