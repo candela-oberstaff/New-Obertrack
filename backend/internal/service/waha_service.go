@@ -4,23 +4,77 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/obertrack/backend/internal/apperrors"
 )
 
 type WahaService struct {
 	apiURL  string
 	apiKey  string
 	session string
+	// client is shared across all requests and carries a timeout so a slow or
+	// hung WAHA server can never block a request handler (or the ContactSync
+	// goroutine) indefinitely.
+	client *http.Client
+
+	// --- Outbound anti-ban throttle ---
+	// WhatsApp bans numbers that behave like bots (bursts, no pauses). All sends
+	// funnel through a single serialized gate that (a) enforces a minimum spacing
+	// between consecutive messages and (b) caps the number of messages per rolling
+	// minute. Combined with the human-typing sequence it makes traffic look manual.
+	sendMu      sync.Mutex
+	lastSendAt  time.Time
+	sendWindow  []time.Time   // timestamps of sends in the last minute (sliding window)
+	maxPerMin      int           // hard ceiling per rolling minute
+	minInterval    time.Duration // minimum gap between two consecutive sends
+	humanTyping    bool          // send "seen" + "typing…" with a proportional delay before sending
+	requireInbound bool          // only allow sending to contacts that messaged first (anti cold-outreach)
 }
+
+// RequireInboundBeforeSend reports whether cold-outreach protection is enabled:
+// outbound WhatsApp messages are only allowed to contacts that wrote first.
+func (s *WahaService) RequireInboundBeforeSend() bool { return s.requireInbound }
 
 func NewWahaService() *WahaService {
 	return &WahaService{
 		apiURL:  getEnvOrDefault("WAHA_API_URL", "http://localhost:3000"), // Default WAHA port
 		apiKey:  getEnvOrDefault("WAHA_API_KEY", ""),                      // Optional API Key
 		session: getEnvOrDefault("WAHA_SESSION", "default"),               // Session name (e.g. 'default')
+		client:  &http.Client{Timeout: 10 * time.Second},
+
+		maxPerMin:      envInt("WAHA_MAX_MSGS_PER_MIN", 20),
+		minInterval:    time.Duration(envInt("WAHA_MIN_SEND_INTERVAL_MS", 1500)) * time.Millisecond,
+		humanTyping:    envBool("WAHA_HUMAN_TYPING", true),
+		requireInbound: envBool("WAHA_REQUIRE_INBOUND", true),
 	}
+}
+
+// envInt reads an integer env var with a fallback (invalid/empty -> fallback).
+func envInt(key string, fallback int) int {
+	if v := getEnvOrDefault(key, ""); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
+
+// envBool reads a boolean env var with a fallback.
+func envBool(key string, fallback bool) bool {
+	if v := getEnvOrDefault(key, ""); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
+	}
+	return fallback
 }
 
 func (s *WahaService) GetSession() string {
@@ -39,12 +93,73 @@ func (s *WahaService) SendMessage(session string, to string, text string) error 
 		chatID = fmt.Sprintf("%s@c.us", chatID)
 	}
 
-	payload := WahaSendTextRequest{
-		ChatID:  chatID,
-		Text:    text,
-		Session: session,
+	// 1) Anti-ban gate: rejects when over the per-minute cap, otherwise blocks just
+	// long enough to honor the minimum spacing between messages.
+	if err := s.throttleGate(); err != nil {
+		return err
 	}
 
+	// 2) Human-like pre-send: mark the chat as seen and show "typing…" for a delay
+	// proportional to the message length. Best-effort — failures don't block the send.
+	if s.humanTyping {
+		s.sendSeen(session, chatID)
+		s.startTyping(session, chatID)
+		time.Sleep(typingDelay(text))
+		s.stopTyping(session, chatID)
+	}
+
+	// 3) Actual send.
+	return s.postSendText(session, chatID, text)
+}
+
+// throttleGate serializes all outbound sends. It enforces a rolling per-minute
+// cap (returning apperrors.ErrRateLimited when exceeded) and a minimum spacing
+// between consecutive messages (sleeping while holding the lock, which naturally
+// prevents parallel bursts).
+func (s *WahaService) throttleGate() error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-time.Minute)
+	kept := s.sendWindow[:0]
+	for _, t := range s.sendWindow {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	s.sendWindow = kept
+
+	if s.maxPerMin > 0 && len(s.sendWindow) >= s.maxPerMin {
+		log.Printf("[WAHA] outbound rate limit hit (%d/min) — rejecting send", s.maxPerMin)
+		return apperrors.ErrRateLimited
+	}
+
+	if s.minInterval > 0 && !s.lastSendAt.IsZero() {
+		if gap := now.Sub(s.lastSendAt); gap < s.minInterval {
+			time.Sleep(s.minInterval - gap)
+			now = time.Now()
+		}
+	}
+
+	s.lastSendAt = now
+	s.sendWindow = append(s.sendWindow, now)
+	return nil
+}
+
+// typingDelay returns a human-like "typing…" duration: a base plus time
+// proportional to the message length, capped, with random jitter.
+func typingDelay(text string) time.Duration {
+	d := 700*time.Millisecond + time.Duration(len([]rune(text)))*35*time.Millisecond
+	if d > 4*time.Second {
+		d = 4 * time.Second
+	}
+	return d + time.Duration(rand.Intn(700))*time.Millisecond
+}
+
+// postSendText performs the raw sendText call to WAHA.
+func (s *WahaService) postSendText(session, chatID, text string) error {
+	payload := WahaSendTextRequest{ChatID: chatID, Text: text, Session: session}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal waha payload: %w", err)
@@ -62,8 +177,7 @@ func (s *WahaService) SendMessage(session string, to string, text string) error 
 		req.Header.Set("X-Api-Key", s.apiKey)
 	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request to WAHA: %w", err)
 	}
@@ -72,9 +186,36 @@ func (s *WahaService) SendMessage(session string, to string, text string) error 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("waha API error: status %d", resp.StatusCode)
 	}
-
 	return nil
 }
+
+// postChatAction fires a best-effort presence/read action (sendSeen, startTyping,
+// stopTyping) for a chat. Errors are swallowed: these must never block a send.
+func (s *WahaService) postChatAction(endpoint, session, chatID string) {
+	payload := map[string]string{"chatId": chatID, "session": session}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/%s", s.apiURL, endpoint), bytes.NewBuffer(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("accept", "application/json")
+	req.Header.Set("content-type", "application/json")
+	if s.apiKey != "" {
+		req.Header.Set("X-Api-Key", s.apiKey)
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
+}
+
+func (s *WahaService) sendSeen(session, chatID string)    { s.postChatAction("sendSeen", session, chatID) }
+func (s *WahaService) startTyping(session, chatID string) { s.postChatAction("startTyping", session, chatID) }
+func (s *WahaService) stopTyping(session, chatID string)  { s.postChatAction("stopTyping", session, chatID) }
 
 type WahaContactResponse struct {
 	ID        string `json:"id"`
@@ -122,7 +263,7 @@ func (s *WahaService) GetContact(session string, contactID string) (*WahaContact
 		req.Header.Set("X-Api-Key", s.apiKey)
 	}
 
-	client := &http.Client{}
+	client := s.client
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch contact from WAHA: %w", err)
@@ -156,7 +297,7 @@ func (s *WahaService) GetAllContacts(session string) ([]WahaContactResponse, err
 		req.Header.Set("X-Api-Key", s.apiKey)
 	}
 
-	client := &http.Client{}
+	client := s.client
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch contacts from WAHA: %w", err)
@@ -197,7 +338,7 @@ func (s *WahaService) GetSessionStatusAndQR(session string) (*WahaSessionStatusR
 		req.Header.Set("X-Api-Key", s.apiKey)
 	}
 
-	client := &http.Client{}
+	client := s.client
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch session status: %w", err)

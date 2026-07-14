@@ -1,7 +1,9 @@
 package service
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -207,12 +209,18 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 		if ticket.Contact == nil {
 			return nil, apperrors.ErrExternalSend
 		}
+		if err := s.ensureCanColdOutreach(ticket.ID); err != nil {
+			return nil, err
+		}
 		dest := ticket.Contact.WaID
 		if dest == "" {
 			dest = ticket.Contact.Phone
 		}
 		session := s.wahaSvc.GetSession()
 		if err := s.wahaSvc.SendMessage(session, dest, content); err != nil {
+			if errors.Is(err, apperrors.ErrRateLimited) {
+				return nil, apperrors.ErrRateLimited
+			}
 			return nil, apperrors.ErrExternalSend
 		}
 	case models.ChannelEmail:
@@ -241,6 +249,14 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 // attach it to a recent open ticket (or open a new one), persist the message and
 // broadcast it.
 func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) error {
+	// Idempotencia: si el webhook se reintenta, el mismo external_id ya fue
+	// procesado. Cortamos temprano para no recrear contacto/ticket ni redifundir.
+	if externalID != "" {
+		if exists, err := s.repo.MessageExistsByExternalID(externalID); err == nil && exists {
+			return nil
+		}
+	}
+
 	phone := from
 	if i := strings.IndexByte(from, '@'); i >= 0 {
 		phone = from[:i]
@@ -307,8 +323,14 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 		Content:    body,
 		ExternalID: externalID,
 	}
-	if err := s.repo.CreateMessage(msg); err != nil {
+	// Insert idempotente: si una entrega concurrente ya guardó este external_id,
+	// no se inserta de nuevo y evitamos redifundir un mensaje duplicado.
+	inserted, err := s.repo.CreateMessageIfNew(msg)
+	if err != nil {
 		return err
+	}
+	if !inserted {
+		return nil
 	}
 	_ = s.repo.TouchTicket(ticket)
 
@@ -321,6 +343,13 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 func (s *ticketService) IngestEmail(fromEmail, fromName, subject, textBody, messageID string) error {
 	if fromEmail == "" {
 		return apperrors.ErrInvalidInput
+	}
+
+	// Idempotencia: los reintentos de Brevo reenvían el mismo Message-ID.
+	if messageID != "" {
+		if exists, err := s.repo.MessageExistsByExternalID(messageID); err == nil && exists {
+			return nil
+		}
 	}
 
 	contact, err := s.repo.GetContactByEmail(fromEmail)
@@ -369,8 +398,13 @@ func (s *ticketService) IngestEmail(fromEmail, fromName, subject, textBody, mess
 		Content:    textBody,
 		ExternalID: messageID,
 	}
-	if err := s.repo.CreateMessage(msg); err != nil {
+	// Insert idempotente: backstop ante entregas concurrentes con el mismo Message-ID.
+	inserted, err := s.repo.CreateMessageIfNew(msg)
+	if err != nil {
 		return err
+	}
+	if !inserted {
+		return nil
 	}
 
 	broadcastTicketMessage(ticket.ID, msg)
@@ -402,26 +436,59 @@ func (s *ticketService) GetWhatsAppTicket(id uint) (*models.Ticket, error) {
 		return nil, apperrors.ErrNotFound
 	}
 
+	// If the contact is still a generic "WA User <n>" placeholder, resolve its
+	// real name/phone from WAHA — but do it in the background so opening a chat
+	// never waits on an external HTTP round-trip. The refreshed data lands in the
+	// DB and shows on the next open (ContactSync also backfills these periodically).
 	if c := ticket.Contact; c != nil && strings.HasPrefix(c.Name, "WA User ") && c.WaID != "" {
-		if resolved, rerr := s.wahaSvc.GetContact(s.wahaSvc.GetSession(), c.WaID); rerr == nil && resolved != nil {
-			changed := false
-			if name := resolved.BestName(); name != "" {
-				c.Name = name
-				changed = true
-			}
-			if realPhone := resolved.RealPhone(); realPhone != "" && realPhone != c.Phone {
-				c.Phone = realPhone
-				changed = true
-			}
-			if changed {
-				_ = s.repo.SaveContact(c)
-				if reloaded, rlErr := s.repo.GetByID(id); rlErr == nil {
-					ticket = reloaded
-				}
-			}
-		}
+		go s.refreshWhatsAppContact(c.ID, c.WaID)
 	}
 	return ticket, nil
+}
+
+// refreshWhatsAppContact resolves a placeholder contact's real name/phone from
+// WAHA and persists it. Runs off the request path (fire-and-forget goroutine).
+func (s *ticketService) refreshWhatsAppContact(contactID uint, waID string) {
+	resolved, err := s.wahaSvc.GetContact(s.wahaSvc.GetSession(), waID)
+	if err != nil || resolved == nil {
+		return
+	}
+	// Re-load the contact fresh to avoid racing with a concurrent update.
+	c, err := s.repo.GetContactByID(contactID)
+	if err != nil || c == nil {
+		return
+	}
+	changed := false
+	if name := resolved.BestName(); name != "" && strings.HasPrefix(c.Name, "WA User ") {
+		c.Name = name
+		changed = true
+	}
+	if realPhone := resolved.RealPhone(); realPhone != "" && realPhone != c.Phone {
+		c.Phone = realPhone
+		changed = true
+	}
+	if changed {
+		_ = s.repo.SaveContact(c)
+	}
+}
+
+// ensureCanColdOutreach blocks sending to a WhatsApp contact that never wrote
+// first — cold outreach is the highest ban risk. Disabled via WAHA_REQUIRE_INBOUND.
+// On a DB error it fails open (logs and allows) so a transient glitch never blocks
+// a legitimate reply; the rate limiter remains the primary anti-ban control.
+func (s *ticketService) ensureCanColdOutreach(ticketID uint) error {
+	if !s.wahaSvc.RequireInboundBeforeSend() {
+		return nil
+	}
+	hasInbound, err := s.repo.HasInboundMessage(ticketID)
+	if err != nil {
+		log.Printf("[WAHA] cold-outreach check failed for ticket %d, allowing send: %v", ticketID, err)
+		return nil
+	}
+	if !hasInbound {
+		return apperrors.ErrColdOutreach
+	}
+	return nil
 }
 
 func (s *ticketService) SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error) {
@@ -432,11 +499,17 @@ func (s *ticketService) SendWhatsAppReply(id, agentID uint, content string) (*mo
 	if ticket.Origin != string(models.ChannelWhatsApp) || ticket.Contact == nil {
 		return nil, apperrors.ErrExternalSend
 	}
+	if err := s.ensureCanColdOutreach(ticket.ID); err != nil {
+		return nil, err
+	}
 	dest := ticket.Contact.WaID
 	if dest == "" {
 		dest = ticket.Contact.Phone
 	}
 	if err := s.wahaSvc.SendMessage(s.wahaSvc.GetSession(), dest, content); err != nil {
+		if errors.Is(err, apperrors.ErrRateLimited) {
+			return nil, apperrors.ErrRateLimited
+		}
 		return nil, apperrors.ErrExternalSend
 	}
 

@@ -24,7 +24,9 @@ func NewContactSyncService(db *gorm.DB, wahaSvc *WahaService) *ContactSyncServic
 // Start launches a background goroutine that runs a sync every `interval`.
 func (s *ContactSyncService) Start(interval time.Duration) {
 	go func() {
-		// Run immediately on startup, then on each tick
+		// Small startup jitter so several backend instances (or a fast restart
+		// loop) don't all hit WAHA at the same instant on boot.
+		time.Sleep(startupJitter())
 		s.Sync()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -34,11 +36,29 @@ func (s *ContactSyncService) Start(interval time.Duration) {
 	}()
 }
 
-// Sync fetches all WAHA contacts and updates any local contacts that still
-// have a generic "WA User" name or a missing phone number.
+// startupJitter returns a short, deterministic-per-process delay (0–15s) derived
+// from the current time, avoiding a hard dependency on math/rand.
+func startupJitter() time.Duration {
+	return time.Duration(time.Now().UnixNano()%15000) * time.Millisecond
+}
+
+// Sync updates any local contacts that still have a generic "WA User" name or a
+// missing wa_id, resolving their real name/phone from WAHA.
+//
+// It queries the local candidates FIRST and skips the (potentially large) WAHA
+// contacts fetch entirely when there is nothing to enrich — which is the common
+// steady state once the initial backfill is done, so most ticks make zero HTTP
+// calls to WAHA.
 func (s *ContactSyncService) Sync() {
+	// Find all contacts that need updating (generic name or empty wa_id).
+	var contacts []models.Contact
+	s.db.Where("name LIKE ? OR wa_id = '' OR wa_id IS NULL", "WA User %").Find(&contacts)
+	if len(contacts) == 0 {
+		return // nothing to enrich — don't touch WAHA
+	}
+
 	session := s.wahaSvc.GetSession()
-	log.Printf("[ContactSync] Starting sync for session: %s", session)
+	log.Printf("[ContactSync] %d contact(s) pending enrichment; fetching WAHA contacts for session %s", len(contacts), session)
 
 	waContacts, err := s.wahaSvc.GetAllContacts(session)
 	if err != nil {
@@ -63,10 +83,6 @@ func (s *ContactSyncService) Sync() {
 			}
 		}
 	}
-
-	// Find all contacts that need updating (generic name or empty wa_id)
-	var contacts []models.Contact
-	s.db.Where("name LIKE ? OR wa_id = '' OR wa_id IS NULL", "WA User %").Find(&contacts)
 
 	updated := 0
 	for _, contact := range contacts {

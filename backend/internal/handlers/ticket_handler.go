@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"hash/fnv"
 	"log"
 	"net/http"
@@ -293,6 +294,14 @@ func (h *TicketHandler) SendWhatsAppMessage(c *gin.Context) {
 	if err != nil {
 		if err == apperrors.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp ticket not found"})
+			return
+		}
+		if errors.Is(err, apperrors.ErrRateLimited) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Estás enviando mensajes muy rápido. Esperá unos segundos e intentá de nuevo."})
+			return
+		}
+		if errors.Is(err, apperrors.ErrColdOutreach) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "No podés escribir a un contacto que no te escribió primero (protección anti-baneo)."})
 			return
 		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "No se pudo enviar el mensaje por WhatsApp"})

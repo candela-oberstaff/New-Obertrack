@@ -5,12 +5,14 @@ import (
 
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // TicketRepository centralizes all DB access for the support-inbox domain
 // (contacts, tickets, ticket messages). Handlers must go through the service,
 // which goes through this repository — never touching *gorm.DB directly.
 type TicketRepository interface {
+	GetContactByID(id uint) (*models.Contact, error)
 	GetContactByPhone(phone string) (*models.Contact, error)
 	GetContactByEmail(email string) (*models.Contact, error)
 	CreateContact(c *models.Contact) error
@@ -29,6 +31,18 @@ type TicketRepository interface {
 	ListInternalReport(start, end time.Time) ([]models.Ticket, error)
 
 	CreateMessage(m *models.TicketMessage) error
+	// HasInboundMessage reports whether the ticket has at least one message from
+	// the contact — i.e. the contact wrote first. Used by the cold-outreach guard.
+	HasInboundMessage(ticketID uint) (bool, error)
+	// MessageExistsByExternalID reports whether a message with the given
+	// (non-empty) provider ID is already stored — used to make inbound webhook
+	// ingestion idempotent against retries.
+	MessageExistsByExternalID(externalID string) (bool, error)
+	// CreateMessageIfNew inserts the message unless one with the same external_id
+	// already exists (ON CONFLICT DO NOTHING against the partial unique index).
+	// Returns true when a row was actually inserted, false when it was a
+	// duplicate. This is the race-safe backstop for concurrent webhook deliveries.
+	CreateMessageIfNew(m *models.TicketMessage) (bool, error)
 
 	CreateTransfer(t *models.TicketTransfer) error
 	ListTransfers(origin, ref string) ([]models.TicketTransfer, error)
@@ -40,6 +54,14 @@ type ticketRepository struct {
 
 func NewTicketRepository(db *gorm.DB) TicketRepository {
 	return &ticketRepository{db: db}
+}
+
+func (r *ticketRepository) GetContactByID(id uint) (*models.Contact, error) {
+	var c models.Contact
+	if err := r.db.First(&c, id).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
 }
 
 func (r *ticketRepository) GetContactByPhone(phone string) (*models.Contact, error) {
@@ -145,6 +167,36 @@ func (r *ticketRepository) ListInternalReport(start, end time.Time) ([]models.Ti
 
 func (r *ticketRepository) CreateMessage(m *models.TicketMessage) error {
 	return r.db.Create(m).Error
+}
+
+func (r *ticketRepository) HasInboundMessage(ticketID uint) (bool, error) {
+	var count int64
+	if err := r.db.Model(&models.TicketMessage{}).
+		Where("ticket_id = ? AND sender_type = ?", ticketID, models.SenderTypeContact).
+		Limit(1).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (r *ticketRepository) MessageExistsByExternalID(externalID string) (bool, error) {
+	if externalID == "" {
+		return false, nil
+	}
+	var count int64
+	if err := r.db.Model(&models.TicketMessage{}).
+		Where("external_id = ?", externalID).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (r *ticketRepository) CreateMessageIfNew(m *models.TicketMessage) (bool, error) {
+	res := r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(m)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
 }
 
 func (r *ticketRepository) CreateTransfer(t *models.TicketTransfer) error {

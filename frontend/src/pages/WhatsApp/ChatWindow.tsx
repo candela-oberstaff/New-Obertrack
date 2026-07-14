@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { Send, CheckCheck, UserRoundPlus } from 'lucide-react'
-import { WhatsAppMessageDTO, ticketService } from '../../services/ticket.service'
+import { WhatsAppMessageDTO } from '../../services/ticket.service'
 import styles from '../WhatsApp.module.css'
 
 interface ChatWindowProps {
@@ -17,7 +17,7 @@ interface ChatWindowProps {
   inputText: string
   setInputText: (val: string) => void
   sending: boolean
-  handleSend: (templateId?: string) => void
+  handleSend: () => void
   handleAssign: () => void
   handleBack: () => void
   showMobileChat: boolean
@@ -26,14 +26,6 @@ interface ChatWindowProps {
   formatTime: (iso: string) => string
   isUnassignedChat: boolean
   isAssignedToMe: boolean
-}
-
-interface TemplateMessage {
-  id: string
-  title: string
-  message: string
-  displayMessage: string
-  status: string
 }
 
 export default function ChatWindow({
@@ -56,36 +48,8 @@ export default function ChatWindow({
   const contactName = activeTicket.contact_name || activeTicket.subject || 'Sin nombre'
   const canWriteInput = isAssignedToMe || !isUnassignedChat
 
-  const [templates, setTemplates] = useState<TemplateMessage[]>([])
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
-
-  // Fetch templates when the ticket/chat changes
-  useEffect(() => {
-    setSelectedTemplateId('')
-    ticketService.getWhatsAppTemplates(activeTicket.department_id)
-      .then(data => {
-        setTemplates(data || [])
-      })
-      .catch(err => {
-        console.error('Error fetching templates in WhatsApp chat window:', err)
-      })
-  }, [activeTicket.zoho_id, activeTicket.department_id])
-
-  const handleTemplateChange = (templateId: string) => {
-    setSelectedTemplateId(templateId)
-    if (templateId) {
-      const template = templates.find(t => t.id === templateId)
-      if (template) {
-        setInputText(template.message || template.displayMessage)
-      }
-    } else {
-      setInputText('')
-    }
-  }
-
   const onSubmit = () => {
-    handleSend(selectedTemplateId || undefined)
-    setSelectedTemplateId('')
+    handleSend()
   }
 
   return (
@@ -180,38 +144,6 @@ export default function ChatWindow({
 
       {canWriteInput ? (
         <div style={{ display: 'flex', flexDirection: 'column', background: '#f0f2f5', borderTop: '1px solid #e9edef' }}>
-          {templates.length > 0 && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 16px',
-              background: '#fafbfc',
-              borderBottom: '1px solid #e9edef',
-              fontSize: '13px'
-            }}>
-              <span style={{ color: '#667781', fontWeight: 500 }}>Plantilla:</span>
-              <select
-                value={selectedTemplateId}
-                onChange={e => handleTemplateChange(e.target.value)}
-                style={{
-                  fontSize: '12px',
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  border: '1px solid #ccc',
-                  background: 'white',
-                  outline: 'none',
-                  flex: 1,
-                  maxWidth: '300px'
-                }}
-              >
-                <option value="">-- Escribir texto libre --</option>
-                {templates.map(t => (
-                  <option key={t.id} value={t.id}>{t.title}</option>
-                ))}
-              </select>
-            </div>
-          )}
           <div className={styles.inputBar}>
             <input
               type="text"

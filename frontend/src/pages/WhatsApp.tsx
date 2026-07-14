@@ -99,7 +99,7 @@ export default function WhatsApp() {
     setActiveMessages([])
     setInputText('')
     try {
-      const msgs = await ticketService.getChatMessages(ticket.zoho_id)
+      const msgs = await ticketService.getWaChatMessages(ticket.zoho_id)
       setActiveMessages(msgs)
     } catch (err) {
       console.error('Error fetching messages:', err)

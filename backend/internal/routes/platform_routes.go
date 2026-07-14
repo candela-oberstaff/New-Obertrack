@@ -120,7 +120,7 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 	tickets.Use(requireSupportInboxAccess())
 	{
 		tickets.GET("/waha/status", func(c *gin.Context) {
-			status, err := d.wahaSvc.GetSessionStatusAndQR("default")
+			status, err := d.wahaSvc.GetSessionStatusAndQR(d.wahaSvc.GetSession())
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return

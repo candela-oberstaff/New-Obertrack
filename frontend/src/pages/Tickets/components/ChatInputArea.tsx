@@ -23,6 +23,13 @@ export default function ChatInputArea({ onSend, departmentId }: ChatInputAreaPro
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
 
   useEffect(() => {
+    // Las plantillas aprobadas provienen de Zoho/Meta y solo aplican al módulo
+    // de tickets Zoho (que envía `departmentId`). El flujo WAHA usa texto libre y
+    // no debe consultar Zoho.
+    if (!departmentId) {
+      setTemplates([]);
+      return;
+    }
     ticketService.getWhatsAppTemplates(departmentId)
       .then(data => {
         setTemplates(data || []);

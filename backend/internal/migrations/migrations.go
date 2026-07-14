@@ -1195,6 +1195,40 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.ReportRun{}, &models.ReportSchedule{})
 			},
 		},
+		{
+			// Idempotencia del webhook de WAHA: un mensaje entrante trae un
+			// external_id único (el ID del mensaje en WAHA). Si el webhook se
+			// reintenta (respuesta lenta, 500 tras commit, reentrega), el mismo
+			// mensaje llegaba dos veces y se duplicaba. Se dedupean los duplicados
+			// existentes y se crea un único parcial: solo aplica a external_id no
+			// vacío y filas vivas (las respuestas de agente/notas van con external_id
+			// vacío y no deben chocar entre sí).
+			ID: "202607131200_ticket_messages_external_id_unique",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Deduping ticket_messages by external_id and creating partial unique index (webhook idempotency)...")
+				// 1) Borra duplicados vivos dejando el de menor id por external_id.
+				if err := tx.Exec(`
+					DELETE FROM ticket_messages a
+					USING ticket_messages b
+					WHERE a.external_id = b.external_id
+					  AND a.external_id <> ''
+					  AND a.deleted_at IS NULL
+					  AND b.deleted_at IS NULL
+					  AND a.id > b.id
+				`).Error; err != nil {
+					return err
+				}
+				// 2) Único parcial (ignora external_id vacío y filas soft-deleted).
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_messages_external_id
+					ON ticket_messages (external_id)
+					WHERE external_id <> '' AND deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`DROP INDEX IF EXISTS idx_ticket_messages_external_id`).Error
+			},
+		},
 		// Future migrations go here
 	})
 
