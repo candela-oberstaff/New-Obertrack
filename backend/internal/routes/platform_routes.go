@@ -127,6 +127,22 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 			}
 			c.JSON(http.StatusOK, status)
 		})
+		// Forzar conexión: (re)arranca la sesión en WAHA y devuelve el estado/QR
+		// fresco. Útil cuando la sesión se cae (SCAN_QR/FAILED) y hay que
+		// re-vincularla sin entrar al dashboard de WAHA.
+		tickets.POST("/waha/start", func(c *gin.Context) {
+			session := d.wahaSvc.GetSession()
+			if err := d.wahaSvc.StartSession(session); err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			status, err := d.wahaSvc.GetSessionStatusAndQR(session)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, status)
+		})
 		tickets.GET("/statuses", d.ticket.GetTicketStatuses)
 		tickets.GET("/agents", d.ticket.GetSupportAgents)
 		tickets.GET("/zoho-agents", d.ticket.GetZohoAgents)

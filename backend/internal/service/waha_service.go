@@ -382,3 +382,94 @@ func (s *WahaService) GetSessionStatusAndQR(session string) (*WahaSessionStatusR
 	return &status, nil
 }
 
+// WahaChatOverview is one entry from /chats/overview: a chat and its last message.
+type WahaChatOverview struct {
+	ID   string `json:"id"`   // e.g. "1234@c.us" or "1234@g.us" (group)
+	Name string `json:"name"` // display name, may be empty
+}
+
+// WahaChatMessage is one message from /chats/{chatId}/messages.
+type WahaChatMessage struct {
+	ID        string `json:"id"`
+	Timestamp int64  `json:"timestamp"` // unix seconds
+	Body      string `json:"body"`
+	FromMe    bool   `json:"fromMe"`
+	Type      string `json:"type"`
+	From      string `json:"from"`
+}
+
+// GetChatsOverview returns the most recent chats of a session (with their last
+// message). Used to import existing conversations when the session connects.
+func (s *WahaService) GetChatsOverview(session string, limit int) ([]WahaChatOverview, error) {
+	reqURL := fmt.Sprintf("%s/api/%s/chats/overview?limit=%d", s.apiURL, session, limit)
+	var chats []WahaChatOverview
+	if err := s.getJSON(reqURL, &chats); err != nil {
+		return nil, err
+	}
+	return chats, nil
+}
+
+// GetChatMessages returns the most recent messages of a chat (newest first as
+// WAHA returns them). downloadMedia is disabled to keep the import light.
+func (s *WahaService) GetChatMessages(session, chatID string, limit int) ([]WahaChatMessage, error) {
+	reqURL := fmt.Sprintf("%s/api/%s/chats/%s/messages?limit=%d&downloadMedia=false",
+		s.apiURL, session, url.PathEscape(chatID), limit)
+	var msgs []WahaChatMessage
+	if err := s.getJSON(reqURL, &msgs); err != nil {
+		return nil, err
+	}
+	return msgs, nil
+}
+
+// getJSON performs an authenticated GET and decodes the JSON body into out.
+func (s *WahaService) getJSON(url string, out interface{}) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("accept", "application/json")
+	if s.apiKey != "" {
+		req.Header.Set("X-Api-Key", s.apiKey)
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to fetch from WAHA: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("waha API error: status %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// StartSession asks WAHA to (re)start a session. Powers the "force connection"
+// action so operators can bring a dropped/failed session back up from the app
+// without opening the WAHA dashboard. Treats "already started" (422) as success.
+func (s *WahaService) StartSession(session string) error {
+	url := fmt.Sprintf("%s/api/sessions/%s/start", s.apiURL, session)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("accept", "application/json")
+	if s.apiKey != "" {
+		req.Header.Set("X-Api-Key", s.apiKey)
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to start WAHA session: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 2xx = started; 422 = already started (idempotent for a force button).
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("waha API error: status %d", resp.StatusCode)
+	}
+	return nil
+}
+

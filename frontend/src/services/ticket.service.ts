@@ -131,6 +131,15 @@ export interface WhatsAppMessageDTO {
   created_time: string
 }
 
+export interface WahaStatus {
+  name: string
+  status: string // "WORKING" | "SCAN_QR_CODE" | "STARTING" | "STOPPED" | "FAILED" ...
+  qr?: {
+    raw?: string
+    image?: string // base64 (o data URI) del QR cuando hace falta escanear
+  }
+}
+
 export const ticketService = {
   getTickets: async (): Promise<Ticket[]> => {
     const response = await api.get('/tickets')
@@ -274,6 +283,18 @@ export const ticketService = {
 
   assignWaChat: async (id: string): Promise<void> => {
     await api.patch(`/tickets/wa/${id}`, { action: 'claim' })
+  },
+
+  // Estado de la sesión WAHA (Conectado / Escanear QR / Desconectado).
+  getWahaStatus: async (): Promise<WahaStatus> => {
+    const response = await api.get('/tickets/waha/status')
+    return response.data
+  },
+
+  // Fuerza el (re)arranque de la sesión en WAHA y devuelve el estado/QR fresco.
+  forceWahaConnection: async (): Promise<WahaStatus> => {
+    const response = await api.post('/tickets/waha/start')
+    return response.data
   },
 
   getWhatsAppTemplates: async (departmentId?: string): Promise<{ id: string; title: string; message: string; displayMessage: string; status: string; language?: string }[]> => {

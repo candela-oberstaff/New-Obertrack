@@ -30,6 +30,10 @@ type TicketService interface {
 	ListInternal() ([]models.Ticket, error)
 	ListWhatsApp() ([]models.Ticket, error)
 	GetWhatsAppTicket(id uint) (*models.Ticket, error)
+	// ImportWhatsAppHistory pulls recent chats + messages from the connected WAHA
+	// session and imports them as tickets/messages (idempotent). Returns the count
+	// of newly imported messages.
+	ImportWhatsAppHistory() (int, error)
 	SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error)
 	WhatsAppAction(id, agentID uint, action string) (*models.Ticket, error)
 	// GetInternal returns a single internal alert ticket (with notes).
@@ -470,6 +474,94 @@ func (s *ticketService) refreshWhatsAppContact(contactID uint, waID string) {
 	if changed {
 		_ = s.repo.SaveContact(c)
 	}
+}
+
+const (
+	importMaxChats = 30 // how many recent chats to pull from the session
+	importMaxMsgs  = 20 // messages per chat (chosen: last ~20)
+)
+
+// ImportWhatsAppHistory pulls recent 1:1 chats from the connected WAHA session
+// and imports each chat's last messages as a ticket + messages. Idempotent: the
+// external_id unique index dedups messages, so re-running only adds new ones.
+func (s *ticketService) ImportWhatsAppHistory() (int, error) {
+	session := s.wahaSvc.GetSession()
+	chats, err := s.wahaSvc.GetChatsOverview(session, importMaxChats)
+	if err != nil {
+		return 0, err
+	}
+
+	imported := 0
+	for _, chat := range chats {
+		// Solo chats individuales (los grupos terminan en @g.us).
+		if !strings.HasSuffix(chat.ID, "@c.us") {
+			continue
+		}
+		phone := chat.ID
+		if i := strings.IndexByte(chat.ID, '@'); i >= 0 {
+			phone = chat.ID[:i]
+		}
+
+		// Resolver/crear contacto.
+		contact, cerr := s.repo.GetContactByPhone(phone)
+		if cerr != nil {
+			name := strings.TrimSpace(chat.Name)
+			if name == "" {
+				name = "WA User " + phone
+			}
+			contact = &models.Contact{Phone: phone, Name: name, WaID: chat.ID}
+			if err := s.repo.CreateContact(contact); err != nil {
+				continue
+			}
+		}
+
+		// Un ticket por contacto: reutiliza el abierto o crea uno.
+		ticket, terr := s.repo.GetOpenTicketByContact(contact.ID)
+		if terr != nil {
+			ticket = &models.Ticket{
+				ContactID: &contact.ID,
+				Origin:    string(models.ChannelWhatsApp),
+				Title:     "WA: " + phone,
+				Stage:     models.StageNew,
+				Status:    "open",
+			}
+			if err := s.repo.CreateTicket(ticket); err != nil {
+				continue
+			}
+		}
+
+		// WAHA devuelve los mensajes de más nuevo a más viejo; los recorremos en
+		// reversa para insertarlos en orden cronológico.
+		msgs, merr := s.wahaSvc.GetChatMessages(session, chat.ID, importMaxMsgs)
+		if merr != nil {
+			continue
+		}
+		for i := len(msgs) - 1; i >= 0; i-- {
+			m := msgs[i]
+			body := strings.TrimSpace(m.Body)
+			if body == "" {
+				continue // ignora no-texto/vacíos (multimedia se aborda aparte)
+			}
+			sender := models.SenderTypeContact
+			if m.FromMe {
+				sender = models.SenderTypeAgent
+			}
+			tm := &models.TicketMessage{
+				TicketID:   ticket.ID,
+				SenderType: sender,
+				Channel:    models.ChannelWhatsApp,
+				Content:    body,
+				ExternalID: m.ID,
+			}
+			if m.Timestamp > 0 {
+				tm.CreatedAt = time.Unix(m.Timestamp, 0)
+			}
+			if inserted, err := s.repo.CreateMessageIfNew(tm); err == nil && inserted {
+				imported++
+			}
+		}
+	}
+	return imported, nil
 }
 
 // ensureCanColdOutreach blocks sending to a WhatsApp contact that never wrote

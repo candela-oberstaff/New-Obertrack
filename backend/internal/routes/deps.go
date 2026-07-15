@@ -2,6 +2,7 @@ package routes
 
 import (
 	"os"
+	"time"
 
 	"github.com/obertrack/backend/internal/config"
 	"github.com/obertrack/backend/internal/handlers"
@@ -162,6 +163,11 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	reportScheduleRepo := repository.NewReportScheduleRepository(db)
 	reportWatcher := service.NewReportMailWatcher(reportScheduleRepo, userRepo, workHourSvc)
 	reportWatcher.Start()
+
+	// Watcher de WhatsApp: cuando la sesión WAHA queda conectada (WORKING),
+	// importa las conversaciones existentes del número como tickets (una vez por
+	// conexión; la re-importación es idempotente por el índice de external_id).
+	service.NewChatImportWatcher(wahaSvc, ticketSvc).Start(60 * time.Second)
 
 	return &deps{
 		cfg: cfg,
