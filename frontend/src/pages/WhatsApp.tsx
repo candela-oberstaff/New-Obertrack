@@ -35,7 +35,6 @@ export default function WhatsApp() {
   const [activeMessages, setActiveMessages] = useState<WhatsAppMessageDTO[]>([])
   const [loadingTickets, setLoadingTickets] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
-  const [lastModified, setLastModified] = useState<string | null>(null)
   const [inputText, setInputText] = useState('')
   const [sending, setSending] = useState(false)
   const [search, setSearch] = useState('')
@@ -47,50 +46,12 @@ export default function WhatsApp() {
   const fetchTickets = async (isPoll = false) => {
     if (!isPoll) setLoadingTickets(true)
     try {
-      const lastModifiedTime = lastModified || undefined
-      const [my, unassigned] = await Promise.all([
-        ticketService.getMyWhatsAppChats(lastModifiedTime),
-        ticketService.getUnassignedWhatsAppChats(lastModifiedTime),
-      ])
-
-      // Logic to merge deltas or replace
-      if (isPoll) {
-        // Delta sync: update only if there's new data
-        if (my.length > 0) {
-          setMyChats(prev => {
-            const newChats = [...my]
-            const existingIds = new Set(newChats.map(c => c.zoho_id))
-            prev.forEach(c => {
-              if (!existingIds.has(c.zoho_id)) newChats.push(c)
-            })
-            return newChats.sort((a, b) => new Date(b.modified_time).getTime() - new Date(a.modified_time).getTime())
-          })
-        }
-        if (unassigned.length > 0) {
-          setUnassignedChats(prev => {
-            const newChats = [...unassigned]
-            const existingIds = new Set(newChats.map(c => c.zoho_id))
-            prev.forEach(c => {
-              if (!existingIds.has(c.zoho_id)) newChats.push(c)
-            })
-            return newChats.sort((a, b) => new Date(b.modified_time).getTime() - new Date(a.modified_time).getTime())
-          })
-        }
-      } else {
-        // Cold start
-        setMyChats(my)
-        setUnassignedChats(unassigned)
-      }
-
-      // Update lastModified timestamp from the most recent ticket
-      const allFetched = [...my, ...unassigned]
-      if (allFetched.length > 0) {
-        const newest = allFetched.reduce((max, t) => 
-          new Date(t.modified_time) > new Date(max) ? t.modified_time : max, 
-          allFetched[0].modified_time
-        )
-        setLastModified(newest)
-      }
+      const all = await ticketService.getWaChats()
+      const byRecent = (a: WhatsAppChatTicket, b: WhatsAppChatTicket) =>
+        new Date(b.modified_time).getTime() - new Date(a.modified_time).getTime()
+      const meId = user?.id != null ? String(user.id) : ''
+      setMyChats(all.filter(c => c.assignee_id && c.assignee_id === meId).sort(byRecent))
+      setUnassignedChats(all.filter(c => !c.assignee_id).sort(byRecent))
     } catch (err) {
       console.error('Error fetching WhatsApp chats:', err)
     } finally {
@@ -115,7 +76,7 @@ export default function WhatsApp() {
 
     const pollMessages = async () => {
       try {
-        const msgs = await ticketService.getChatMessages(activeTicket.zoho_id)
+        const msgs = await ticketService.getWaChatMessages(activeTicket.zoho_id)
         // Only update if length changed or something simple for now
         // A better approach would be checking last message ID
         setActiveMessages(prev => {
@@ -138,7 +99,7 @@ export default function WhatsApp() {
     setActiveMessages([])
     setInputText('')
     try {
-      const msgs = await ticketService.getChatMessages(ticket.zoho_id)
+      const msgs = await ticketService.getWaChatMessages(ticket.zoho_id)
       setActiveMessages(msgs)
     } catch (err) {
       console.error('Error fetching messages:', err)
@@ -150,21 +111,21 @@ export default function WhatsApp() {
   const handleAssign = async () => {
     if (!activeTicket) return
     try {
-      await ticketService.assignChat(activeTicket.zoho_id)
+      await ticketService.assignWaChat(activeTicket.zoho_id)
       await fetchTickets()
-      setActiveTicket(prev => prev ? { ...prev, assignee_id: user?.zoho_agent_id || '' } : null)
+      setActiveTicket(prev => prev ? { ...prev, assignee_id: user?.id != null ? String(user.id) : '' } : null)
     } catch (err) {
       console.error('Error assigning chat:', err)
     }
   }
 
-  const handleSend = async (templateId?: string) => {
+  const handleSend = async (_templateId?: string) => {
     if (!inputText.trim() || !activeTicket || sending) return
     const text = inputText.trim()
     setInputText('')
     setSending(true)
     try {
-      const newMsg = await ticketService.sendWhatsAppMessage(activeTicket.zoho_id, text, templateId)
+      const newMsg = await ticketService.sendWaChatMessage(activeTicket.zoho_id, text)
       setActiveMessages(prev => [...prev, newMsg])
     } catch (err) {
       console.error('Error sending message:', err)
@@ -186,7 +147,7 @@ export default function WhatsApp() {
   }
 
   const isUnassignedChat = activeTab === 'unassigned'
-  const isAssignedToMe = activeTicket?.assignee_id === user?.zoho_agent_id
+  const isAssignedToMe = !!activeTicket?.assignee_id && activeTicket.assignee_id === (user?.id != null ? String(user.id) : '')
 
   const filteredTickets = currentChats.filter(t =>
     (t.contact_name ?? '').toLowerCase().includes(search.toLowerCase()) ||

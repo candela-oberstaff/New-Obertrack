@@ -23,6 +23,14 @@ type ChannelRepository interface {
 	CreateChannel(channel *models.Channel) error
 	UpdateChannel(channel *models.Channel, updates map[string]interface{}) error
 	DeleteChannel(id uint) error
+	// HideChannel / UnhideChannel archivan o restauran un canal en la lista de un
+	// usuario (personal, no afecta a otros). Un canal archivado no reaparece solo.
+	HideChannel(userID, channelID uint) error
+	UnhideChannel(userID, channelID uint) error
+	// ListArchivedChannels devuelve los canales que el usuario archivó (para la
+	// sección "Archivados"). IsArchived indica si un canal está archivado para él.
+	ListArchivedChannels(userID uint) ([]models.Channel, error)
+	IsArchived(userID, channelID uint) (bool, error)
 
 	// Members
 	GetMembers(channelID uint) ([]models.User, error)
@@ -92,6 +100,9 @@ type ChannelRepository interface {
 	GetPendingSupportTickets(companyID uint) ([]models.SupportTicket, error)
 	GetAllSupportTickets() ([]models.SupportTicket, error)
 	UpdateSupportTicket(ticket *models.SupportTicket, updates map[string]interface{}) error
+	// ResolveOpenTicketsExcept marca como resueltos los tickets NO resueltos del
+	// canal salvo exceptID: garantiza un solo ticket activo por canal de soporte.
+	ResolveOpenTicketsExcept(channelID, exceptID uint) error
 }
 
 type channelRepository struct {
@@ -124,6 +135,8 @@ func (r *channelRepository) GetChannelsByUser(userID uint) ([]models.Channel, er
 			r.db.Where("channel_members.user_id = ?", userID).
 				Or("channels.type = ? AND channels.tenant_id = ?", models.ChannelTypePublic, tenantID),
 		).
+		// Excluye los canales que el usuario ocultó ("cerrar chat").
+		Where("NOT EXISTS (SELECT 1 FROM hidden_channels h WHERE h.channel_id = channels.id AND h.user_id = ?)", userID).
 		Order("channels.created_at DESC").
 		Find(&channels).Error
 	return channels, err
@@ -195,7 +208,8 @@ func (r *channelRepository) CreateChannel(channel *models.Channel) error {
 }
 
 func (r *channelRepository) UpdateChannel(channel *models.Channel, updates map[string]interface{}) error {
-	return r.db.Model(channel).Updates(updates).Error
+	// Modelo limpio por ID: mismas razones que UpdateSupportTicket.
+	return r.db.Model(&models.Channel{}).Where("id = ?", channel.ID).Updates(updates).Error
 }
 
 func (r *channelRepository) DeleteChannel(id uint) error {
@@ -369,6 +383,35 @@ func (r *channelRepository) GetMessage(id uint) (*models.ChannelMessage, error) 
 
 func (r *channelRepository) CreateMessage(message *models.ChannelMessage) error {
 	return r.db.Create(message).Error
+}
+
+func (r *channelRepository) HideChannel(userID, channelID uint) error {
+	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.HiddenChannel{
+		UserID: userID, ChannelID: channelID, HiddenAt: time.Now(),
+	}).Error
+}
+
+func (r *channelRepository) UnhideChannel(userID, channelID uint) error {
+	return r.db.Where("user_id = ? AND channel_id = ?", userID, channelID).
+		Delete(&models.HiddenChannel{}).Error
+}
+
+func (r *channelRepository) ListArchivedChannels(userID uint) ([]models.Channel, error) {
+	var channels []models.Channel
+	err := r.db.Table("channels").
+		Joins("JOIN hidden_channels h ON h.channel_id = channels.id AND h.user_id = ?", userID).
+		Where("channels.is_active = ?", true).
+		Order("h.hidden_at DESC").
+		Find(&channels).Error
+	return channels, err
+}
+
+func (r *channelRepository) IsArchived(userID, channelID uint) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.HiddenChannel{}).
+		Where("user_id = ? AND channel_id = ?", userID, channelID).
+		Count(&count).Error
+	return count > 0, err
 }
 
 func (r *channelRepository) UpdateMessage(message *models.ChannelMessage, updates map[string]interface{}) error {
@@ -744,7 +787,16 @@ func (r *channelRepository) GetSupportTicketsByChannelIDs(channelIDs []uint) ([]
 }
 
 func (r *channelRepository) UpdateSupportTicket(ticket *models.SupportTicket, updates map[string]interface{}) error {
-	return r.db.Model(ticket).Updates(updates).Error
+	// No usar Model(ticket): sus asociaciones precargadas (Assignee/Requester)
+	// pisarían las FKs del map (la reasignación volvía al responsable anterior).
+	return r.db.Model(&models.SupportTicket{}).Where("id = ?", ticket.ID).Updates(updates).Error
+}
+
+func (r *channelRepository) ResolveOpenTicketsExcept(channelID, exceptID uint) error {
+	now := time.Now()
+	return r.db.Model(&models.SupportTicket{}).
+		Where("channel_id = ? AND id <> ? AND status <> ?", channelID, exceptID, models.SupportStatusResolved).
+		Updates(map[string]interface{}{"status": models.SupportStatusResolved, "resolved_at": now}).Error
 }
 
 // CreateWithMembers inserts the channel and all its members atomically. The

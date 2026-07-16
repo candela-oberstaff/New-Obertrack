@@ -1,6 +1,7 @@
 import Avatar from '../../components/Common/Avatar'
 import { Search, Users, User } from 'lucide-react'
 import { WhatsAppChatTicket } from '../../services/ticket.service'
+import WahaStatus from './WahaStatus'
 import styles from '../WhatsApp.module.css'
 
 interface ChatListProps {
@@ -53,6 +54,8 @@ export default function ChatList({
           <span className={styles.sidebarTitle}>WhatsApp</span>
         </div>
       </div>
+
+      <WahaStatus />
 
       <div style={{ display: 'flex', borderBottom: '1px solid #e9edef', flexShrink: 0 }}>
         <button

@@ -142,18 +142,28 @@ func (r *employmentRepository) ListActiveByUser(userID uint) ([]models.Employmen
 	return employments, err
 }
 
+// joinLivingUser acota un conteo de empleos a los que pertenecen a un
+// profesional que todavía existe y sigue activo. Sin esto se cuentan empleos
+// huérfanos: borrar a un profesional no cierra su employment, así que su manager
+// quedaba bloqueado para siempre por gente que ya no está.
+func joinLivingUser(q *gorm.DB) *gorm.DB {
+	return q.Joins("JOIN users ON users.id = employments.user_id AND users.deleted_at IS NULL AND users.is_active = ?", true)
+}
+
 func (r *employmentRepository) CountActiveByManager(managerID uint) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.Employment{}).
-		Where("manager_id = ? AND status = ?", managerID, models.EmploymentActive).
+	err := joinLivingUser(r.db.Model(&models.Employment{})).
+		Where("employments.manager_id = ? AND employments.status = ?", managerID, models.EmploymentActive).
+		Distinct("employments.user_id").
 		Count(&count).Error
 	return count, err
 }
 
 func (r *employmentRepository) CountActiveByManagerInCompany(managerID, companyID uint) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.Employment{}).
-		Where("manager_id = ? AND company_id = ? AND status = ?", managerID, companyID, models.EmploymentActive).
+	err := joinLivingUser(r.db.Model(&models.Employment{})).
+		Where("employments.manager_id = ? AND employments.company_id = ? AND employments.status = ?", managerID, companyID, models.EmploymentActive).
+		Distinct("employments.user_id").
 		Count(&count).Error
 	return count, err
 }
@@ -271,8 +281,10 @@ func (r *employmentRepository) CountActiveByManagerViaLinks(managerID uint) (int
 	var count int64
 	err := r.db.Model(&models.EmploymentManager{}).
 		Joins("JOIN employments e ON e.id = employment_managers.employment_id").
+		Joins("JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL AND u.is_active = ?", true).
 		Where("employment_managers.manager_id = ? AND employment_managers.deleted_at IS NULL", managerID).
 		Where("e.status = ? AND e.deleted_at IS NULL", models.EmploymentActive).
+		Distinct("e.user_id").
 		Count(&count).Error
 	return count, err
 }
@@ -281,8 +293,10 @@ func (r *employmentRepository) CountActiveByManagerInCompanyViaLinks(managerID, 
 	var count int64
 	err := r.db.Model(&models.EmploymentManager{}).
 		Joins("JOIN employments e ON e.id = employment_managers.employment_id").
+		Joins("JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL AND u.is_active = ?", true).
 		Where("employment_managers.manager_id = ? AND employment_managers.deleted_at IS NULL", managerID).
 		Where("e.company_id = ? AND e.status = ? AND e.deleted_at IS NULL", companyID, models.EmploymentActive).
+		Distinct("e.user_id").
 		Count(&count).Error
 	return count, err
 }

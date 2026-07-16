@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react'
 import { Check, ClipboardList } from 'lucide-react'
 import Tooltip from '../Common/Tooltip'
 import type { WorkHour } from '../../types'
 import { MONTHS_ES, parseLocalDate, JORNADA_COMPLETA } from './utils'
+import { formatHours } from '../../utils/formatHours'
 import styles from '../../pages/WorkHours.module.css'
 
 interface WorkHourListProps {
@@ -12,6 +14,9 @@ interface WorkHourListProps {
   onBulkApprove: () => void
   onItemClick: (wh: WorkHour) => void
   isEmployer?: boolean
+  /** Filtro opcional (p. ej. selector de profesional para la empresa) que se
+   *  muestra en la cabecera de "Registros". */
+  filterSlot?: ReactNode
 }
 
 export function WorkHourList({
@@ -21,7 +26,8 @@ export function WorkHourList({
   pendingForSelectedDate,
   onBulkApprove,
   onItemClick,
-  isEmployer
+  isEmployer,
+  filterSlot
 }: WorkHourListProps) {
   const getStatus = (wh: WorkHour) => {
     if (wh.approved) return { className: 'approved', label: 'Aprobado' }
@@ -42,11 +48,14 @@ export function WorkHourList({
             <Tooltip content="Últimos registros que haz realizado" size={14} />
           )}
         </h3>
-        {canApprove && pendingForSelectedDate.length > 0 && (
-          <button className={styles['btn-bulk-approve']} onClick={onBulkApprove}>
-            <Check size={16} /> Aprobar todos ({pendingForSelectedDate.length})
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {filterSlot}
+          {canApprove && pendingForSelectedDate.length > 0 && (
+            <button className={styles['btn-bulk-approve']} onClick={onBulkApprove}>
+              <Check size={16} /> Aprobar todos ({pendingForSelectedDate.length})
+            </button>
+          )}
+        </div>
       </div>
 
       {filteredHours.length === 0 ? (
@@ -73,7 +82,7 @@ export function WorkHourList({
                     ? 'Jornada Completa'
                     : wh.work_type === 'recover'
                     ? `Recuperación (${wh.hours_worked}h)`
-                    : `Ausencia (${wh.absence_hours != null ? wh.absence_hours : 8 - wh.hours_worked}h)`}
+                    : `Ausencia (${formatHours(wh.absence_hours != null ? wh.absence_hours : 8 - wh.hours_worked)})`}
                 </span>
                 {wh.activities && <p className={styles['hours-comments']}>{wh.activities.replace(/<[^>]*>/g, '')}</p>}
               </div>

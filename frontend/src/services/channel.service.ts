@@ -66,6 +66,16 @@ export const channelService = {
   leaveChannel: async (channelId: number) => {
     await api.post(`/channels/${channelId}/leave`)
   },
+  hideChannel: async (channelId: number) => {
+    await api.post(`/channels/${channelId}/hide`)
+  },
+  unhideChannel: async (channelId: number) => {
+    await api.post(`/channels/${channelId}/unhide`)
+  },
+  getArchivedChannels: async (): Promise<Channel[]> => {
+    const { data } = await api.get<Channel[]>('/channels/archived')
+    return data
+  },
   pinMessage: async (channelId: number, messageId: number) => {
     await api.post(`/channels/${channelId}/pin/${messageId}`)
   },

@@ -7,10 +7,28 @@ import {
   ClipboardList, 
   CheckCircle2, 
   XCircle, 
-  MessageSquare, 
-  AtSign 
+  MessageSquare,
+  AtSign,
+  Mail,
+  UserPlus,
+  LogOut
 } from 'lucide-react'
 import styles from './Notifications.module.css'
+
+const LIVE_NOTIFICATION_TYPES = new Set([
+  'task_assigned',
+  'mention',
+  'task_created',
+  'task_updated',
+  'task_completed',
+  'board_invitation',
+  'board_join_request',
+  'board_invitation_accepted',
+  'board_invitation_rejected',
+  'board_request_approved',
+  'board_request_rejected',
+  'board_member_left',
+])
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -49,13 +67,7 @@ export default function Notifications() {
       wsRef.current.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data)
-          if (
-            message.type === 'task_assigned' ||
-            message.type === 'mention' ||
-            message.type === 'task_created' ||
-            message.type === 'task_updated' ||
-            message.type === 'task_completed'
-          ) {
+          if (LIVE_NOTIFICATION_TYPES.has(message.type)) {
             const newNotification: Notification = {
               id: message.data?.id || Date.now(),
               user_id: 0,
@@ -185,6 +197,13 @@ export default function Notifications() {
       case 'work_hour_rejected': return <XCircle size={18} className="text-red-500" />
       case 'new_comment': return <MessageSquare size={18} className="text-indigo-500" />
       case 'mention': return <AtSign size={18} className="text-orange-500" />
+      case 'board_invitation': return <Mail size={18} className="text-violet-500" />
+      case 'board_join_request': return <UserPlus size={18} className="text-amber-500" />
+      case 'board_invitation_accepted':
+      case 'board_request_approved': return <CheckCircle2 size={18} className="text-green-500" />
+      case 'board_invitation_rejected':
+      case 'board_request_rejected': return <XCircle size={18} className="text-red-500" />
+      case 'board_member_left': return <LogOut size={18} className="text-gray-500" />
       default: return <Bell size={18} className="text-gray-500" />
     }
   }

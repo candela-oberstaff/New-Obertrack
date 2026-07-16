@@ -14,6 +14,7 @@ type WorkHourRepository interface {
 	FindManyByIDs(ids []uint) ([]models.WorkHour, error)
 	FindManyByIDsAndTenant(ids []uint, tenantID uint) ([]models.WorkHour, error)
 	FindByUserAndDate(userID uint, date time.Time, tenantID uint) (*models.WorkHour, error)
+	FindByUserDateKind(userID uint, date time.Time, tenantID uint, recover bool) (*models.WorkHour, error)
 	Update(workHour *models.WorkHour) error
 	ApproveMultiple(ids []uint, approvedBy uint, approvedAt time.Time) error
 	ApproveMultipleAndTenant(ids []uint, approvedBy uint, approvedAt time.Time, tenantID uint) error
@@ -77,6 +78,18 @@ func (r *workHourRepository) FindManyByIDsAndTenant(ids []uint, tenantID uint) (
 func (r *workHourRepository) FindByUserAndDate(userID uint, date time.Time, tenantID uint) (*models.WorkHour, error) {
 	var workHour models.WorkHour
 	err := r.db.Where("user_id = ? AND work_date = ? AND tenant_id = ?", userID, date, tenantID).First(&workHour).Error
+	return &workHour, err
+}
+
+func (r *workHourRepository) FindByUserDateKind(userID uint, date time.Time, tenantID uint, recover bool) (*models.WorkHour, error) {
+	var workHour models.WorkHour
+	q := r.db.Where("user_id = ? AND work_date = ? AND tenant_id = ?", userID, date, tenantID)
+	if recover {
+		q = q.Where("work_type = ?", models.WorkTypeRecover)
+	} else {
+		q = q.Where("work_type <> ?", models.WorkTypeRecover)
+	}
+	err := q.First(&workHour).Error
 	return &workHour, err
 }
 

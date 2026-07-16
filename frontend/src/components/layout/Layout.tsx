@@ -31,6 +31,8 @@ import {
   UserCog,
   AlertTriangle,
   LifeBuoy,
+  Trash2,
+  SlidersHorizontal,
 } from 'lucide-react'
 
 // Módulo de permisos (roles) que gobierna cada entrada del sidebar.
@@ -40,7 +42,7 @@ const MODULE_BY_PATH: Record<string, string> = {
   '/reports': 'reports',
   '/chat': 'chat',
   '/tickets': 'tickets',
-  '/tutoriales': 'tutorials',
+  '/novedades': 'tutorials',
 }
 import Avatar from '../Common/Avatar'
 import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
@@ -146,11 +148,13 @@ export default function Layout() {
     { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} />, show: isSuper || isCS },
     { path: '/admin/mapa', label: 'Mapa', icon: <MapPin size={20} />, show: isSuper },
     { path: '/admin/incidentes', label: 'Incidentes', icon: <AlertTriangle size={20} />, show: isSuper },
-    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: isCS || isSuper},
+    { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: false },
     { path: '/tickets/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isCS || isSuper || isIT },
     { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} />, show: isSuper || isCS },
     { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} />, show: isSuper || isIT },
-    { path: '/tutoriales', label: 'Tutoriales', icon: <GraduationCap size={20} />, show: !isIT },
+    { path: '/admin/settings', label: 'Configuración', icon: <SlidersHorizontal size={20} />, show: isSuper },
+    { path: '/papelera', label: 'Papelera', icon: <Trash2 size={20} />, show: isSuper },
+    { path: '/novedades', label: 'Novedades', icon: <GraduationCap size={20} />, show: !isIT },
     { path: '/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isEndUser },
     { path: '/profile', label: 'Perfil', icon: <User size={20} />, show: true },
   ].filter(item => {

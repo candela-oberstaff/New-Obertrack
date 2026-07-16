@@ -35,6 +35,7 @@ func registerMessagingRoutes(api *gin.RouterGroup, d *deps) {
 	{
 		channels.GET("/unread/total", d.channel.GetTotalUnreadCount)
 		channels.GET("", d.channel.GetChannels)
+		channels.GET("/archived", d.channel.GetArchivedChannels)
 		channels.POST("", chatEdit, d.channel.CreateChannel)
 		channels.GET("/all-users", d.channel.GetAllUsers)
 		channels.GET("/:id", d.channel.GetChannel)
@@ -55,6 +56,8 @@ func registerMessagingRoutes(api *gin.RouterGroup, d *deps) {
 		channels.PATCH("/:id/members/:userId/role", chatEdit, d.channel.UpdateMemberRole)
 		channels.POST("/:id/join", d.channel.JoinChannel)
 		channels.POST("/:id/leave", d.channel.LeaveChannel)
+		channels.POST("/:id/hide", d.channel.HideChannel)
+		channels.POST("/:id/unhide", d.channel.UnhideChannel)
 		channels.POST("/:id/read", d.channel.MarkAsRead)
 		channels.POST("/:id/pin/:messageId", chatEdit, d.channel.PinMessage)
 		channels.POST("/:id/unpin/:messageId", chatEdit, d.channel.UnpinMessage)

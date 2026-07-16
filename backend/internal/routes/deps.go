@@ -2,6 +2,7 @@ package routes
 
 import (
 	"os"
+	"time"
 
 	"github.com/obertrack/backend/internal/config"
 	"github.com/obertrack/backend/internal/handlers"
@@ -44,6 +45,8 @@ type deps struct {
 	incident      *handlers.IncidentHandler
 	emergencyTpl  *handlers.EmergencyTemplateHandler
 	profileChange *handlers.ProfileChangeHandler
+	trash         *handlers.TrashHandler
+	reportSched   *handlers.ReportScheduleHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -103,7 +106,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
 	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo, brevoSvc)
-	boardSvc := service.NewBoardService(boardRepo, userRepo)
+	boardSvc := service.NewBoardService(boardRepo, userRepo, notifSvc)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
 	rbacSvc := service.NewRBACService(rbacRepo, userRepo)
 	employmentSvc := service.NewEmploymentService(employmentRepo, userRepo, workHourRepo, notifSvc)
@@ -155,6 +158,17 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// están por vencer (contratos, certificados...).
 	service.NewDocumentExpiryWatcher(employmentRepo, userRepo, notifSvc).Start()
 
+	// Worker de reportes automáticos. A diferencia de los otros, se conserva la
+	// instancia: el panel de configuración la usa para "Enviar ahora".
+	reportScheduleRepo := repository.NewReportScheduleRepository(db)
+	reportWatcher := service.NewReportMailWatcher(reportScheduleRepo, userRepo, workHourSvc)
+	reportWatcher.Start()
+
+	// Watcher de WhatsApp: cuando la sesión WAHA queda conectada (WORKING),
+	// importa las conversaciones existentes del número como tickets (una vez por
+	// conexión; la re-importación es idempotente por el índice de external_id).
+	service.NewChatImportWatcher(wahaSvc, ticketSvc).Start(60 * time.Second)
+
 	return &deps{
 		cfg: cfg,
 		// Session-revocation lookup used by the auth middleware (audit A-04).
@@ -184,6 +198,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		incident:      handlers.NewIncidentHandler(incidentSvc),
 		emergencyTpl:  handlers.NewEmergencyTemplateHandler(emergencyTplSvc),
 		profileChange: handlers.NewProfileChangeHandler(profileChangeSvc),
+		trash:         handlers.NewTrashHandler(service.NewTrashService(db)),
+		reportSched:   handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,

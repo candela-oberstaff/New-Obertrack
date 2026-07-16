@@ -56,6 +56,37 @@ func (BoardMember) TableName() string {
 	return "board_members"
 }
 
+const (
+	BoardInviteKindInvitation = "invitation"
+	BoardInviteKindRequest    = "request"
+
+	BoardInviteStatusPending  = "pending"
+	BoardInviteStatusAccepted = "accepted"
+	BoardInviteStatusRejected = "rejected"
+	BoardInviteStatusCanceled = "canceled"
+)
+
+type BoardInvitation struct {
+	ID         uint           `gorm:"primaryKey" json:"id"`
+	BoardID    uint           `gorm:"not null;index" json:"board_id"`
+	Board      Board          `gorm:"foreignKey:BoardID" json:"board,omitempty"`
+	UserID     uint           `gorm:"not null;index" json:"user_id"`
+	User       User           `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Kind       string         `gorm:"size:20;not null;index" json:"kind"`
+	Status     string         `gorm:"size:20;not null;default:'pending';index" json:"status"`
+	CreatedBy  uint           `gorm:"not null" json:"created_by"`
+	Inviter    User           `gorm:"foreignKey:CreatedBy" json:"inviter,omitempty"`
+	ResolvedBy *uint          `json:"resolved_by,omitempty"`
+	ResolvedAt *time.Time     `json:"resolved_at,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+func (BoardInvitation) TableName() string {
+	return "board_invitations"
+}
+
 type Task struct {
 	ID          uint           `gorm:"primaryKey" json:"id"`
 	Title       string         `gorm:"size:255;not null" json:"title"`

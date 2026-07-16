@@ -18,7 +18,7 @@ import Tooltip from '../components/Common/Tooltip'
 
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
-import { adminService } from '../services/api'
+import { adminService, userService } from '../services/api'
 import { MONTHS_ES, parseLocalDate } from '../components/WorkHours/utils'
 import { WorkHourCalendar } from '../components/WorkHours/WorkHourCalendar'
 import { WorkHourStats } from '../components/WorkHours/WorkHourStats'
@@ -39,6 +39,7 @@ export default function WorkHours() {
   const { user } = useAuth()
   const notify = useNotification()
   const isSuperadmin = !!user?.is_superadmin
+  const isEmployerAccount = user?.user_type === 'empleador'
 
   // Superadmin scope: company (tenant) + optional employee. Persisted across reloads.
   const [companies, setCompanies] = useState<CompanyOption[]>([])
@@ -91,6 +92,28 @@ export default function WorkHours() {
     return () => { active = false }
   }, [isSuperadmin, selectedCompanyId])
 
+  // Load the employer's own professionals (para filtrar sus horas por persona).
+  useEffect(() => {
+    if (!isEmployerAccount) return
+    let active = true
+    userService.getEmployees()
+      .then((res: any) => {
+        if (!active) return
+        setEmployees((res || []).map((e: any) => ({ id: e.id, name: e.name || e.email })))
+      })
+      .catch((err) => console.error('Error fetching employees:', err))
+    return () => { active = false }
+  }, [isEmployerAccount])
+
+  // Opciones del filtro por profesional, ordenadas alfabéticamente (es-419).
+  const employeeOptions = useMemo(
+    () =>
+      [...employees]
+        .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
+        .map((e) => ({ value: e.id, label: e.name })),
+    [employees],
+  )
+
   const {
     workHours,
     summary,
@@ -116,7 +139,7 @@ export default function WorkHours() {
     canEditHours,
   } = useWorkHours(user, {
     companyId: isSuperadmin ? selectedCompanyId : null,
-    employeeId: isSuperadmin ? selectedEmployeeId : null,
+    employeeId: isSuperadmin || isEmployerAccount ? selectedEmployeeId : null,
   })
 
   const [showModal, setShowModal] = useState(false)
@@ -454,6 +477,7 @@ export default function WorkHours() {
           activities: formData.activities,
           absence_reason: formData.absence_reason,
           absence_hours: formData.absence_hours,
+          comments: formData.comments,
         })
       }
       setShowModal(false)
@@ -482,6 +506,7 @@ export default function WorkHours() {
       activities: wh.activities || '',
       absence_reason: wh.absence_reason || '',
       absence_hours: wh.absence_hours || 0,
+      comments: wh.comments || '',
     })
     setEditingId(wh.id)
     setShowModal(true)
@@ -542,7 +567,9 @@ export default function WorkHours() {
     }
   }
 
-  // Company + employee scope selectors (superadmin only)
+  // Selectores de alcance del header. Superadmin: empresa + profesional (ambos
+  // con búsqueda y orden alfabético). El filtro por profesional del EMPLEADOR se
+  // renderiza aparte, en la cabecera de "Registros" (ver employeeFilter).
   const scopeSelectors = isSuperadmin ? (
     <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
       <Select
@@ -560,9 +587,23 @@ export default function WorkHours() {
           clearable
           searchable
           placeholder="Todos los Profesionales"
-          options={employees.map(e => ({ value: e.id, label: e.name }))}
+          options={employeeOptions}
         />
       )}
+    </div>
+  ) : null
+
+  // Filtro por profesional para la EMPRESA, montado en la cabecera de "Registros".
+  const employeeFilter = isEmployerAccount ? (
+    <div style={{ minWidth: 220 }}>
+      <Select
+        value={selectedEmployeeId ?? ''}
+        onChange={(v) => setSelectedEmployeeId(v ? Number(v) : null)}
+        clearable
+        searchable
+        placeholder="Todos los Profesionales"
+        options={employeeOptions}
+      />
     </div>
   ) : null
 
@@ -761,7 +802,7 @@ export default function WorkHours() {
           )}
         </div>
 
-        <WorkHourList 
+        <WorkHourList
           filteredHours={filteredHours}
           selectedDate={selectedDate}
           canApprove={canApprove}
@@ -769,6 +810,7 @@ export default function WorkHours() {
           onBulkApprove={handleBulkApprove}
           onItemClick={setSelectedWorkHour}
           isEmployer={isEmployer}
+          filterSlot={employeeFilter}
         />
       </div>
 

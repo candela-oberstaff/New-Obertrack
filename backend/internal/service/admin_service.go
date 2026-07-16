@@ -42,6 +42,8 @@ type ProfessionalLocation struct {
 	IsActive    bool   `json:"is_active"`
 }
 
+var ErrLastSuperadmin = errors.New("Es el último superadmin activo: asigná otro superadmin antes de degradar, desactivar o eliminar esta cuenta.")
+
 type AdminService interface {
 	GetDashboardMetrics() (*DashboardMetrics, error)
 	GetCompanies() ([]repository.CompanyMetric, error)
@@ -57,10 +59,20 @@ type AdminService interface {
 	// BulkAssignManager asigna (o desasigna si managerID es nil) un manager a
 	// varios profesionales a la vez. Devuelve (asignados, omitidos).
 	BulkAssignManager(professionalIDs []uint, managerID *uint) (int, int, error)
+	// BulkAssignManagerScoped es la variante acotada a una empresa (tenantID):
+	// solo toca profesionales de esa empresa y exige que el manager también sea
+	// de ella. Para uso del EMPLEADOR.
+	BulkAssignManagerScoped(professionalIDs []uint, managerID *uint, tenantID uint) (int, int, error)
 	CreateUser(req map[string]interface{}) (*models.User, error)
 	UpdateUser(id uint, updates map[string]interface{}) (*models.User, error)
 	UpdateUserScoped(id uint, updates map[string]interface{}, tenantID uint) (*models.User, error)
 	DeleteUser(id uint) error
+	IsLastActiveSuperadmin(userID uint) (bool, error)
+	BulkDeleteUsers(ids []uint, requesterID uint) (int, []BulkDeleteSkip, error)
+	// BulkDeleteUsersScoped es la variante acotada a una empresa (tenantID):
+	// solo elimina profesionales que pertenezcan a esa empresa. Para uso del
+	// EMPLEADOR.
+	BulkDeleteUsersScoped(ids []uint, requesterID, tenantID uint) (int, []BulkDeleteSkip, error)
 	// DeleteUserScoped elimina (soft delete) un usuario solo si pertenece a la
 	// empresa indicada (tenantID). Aplica el mismo guard de orphans que
 	// DeleteUser. Para uso del EMPLEADOR (auto-acotado a su empresa).
@@ -318,6 +330,75 @@ func (s *adminService) BulkAssignManager(professionalIDs []uint, managerID *uint
 	return assigned, skipped, nil
 }
 
+// BulkAssignManagerScoped repite la lógica de BulkAssignManager pero acotada a
+// una empresa: cada profesional debe pertenecer al tenantID (si no, se omite) y,
+// cuando se asigna manager, este también debe ser de la misma empresa. Evita que
+// un empleador toque profesionales o use managers fuera de su empresa.
+func (s *adminService) BulkAssignManagerScoped(professionalIDs []uint, managerID *uint, tenantID uint) (int, int, error) {
+	if tenantID == 0 {
+		return 0, 0, errors.New("Empresa no válida")
+	}
+	if managerID != nil {
+		manager, err := s.userRepo.GetByID(*managerID)
+		if err != nil {
+			return 0, 0, errors.New("Manager inválido: manager no encontrado")
+		}
+		if tenantForUser(manager) != tenantID {
+			return 0, 0, errors.New("Manager inválido: no pertenece a tu empresa")
+		}
+		if !manager.IsManager {
+			return 0, 0, errors.New("Manager inválido: el usuario seleccionado no es manager")
+		}
+		if !manager.IsActive {
+			return 0, 0, errors.New("Manager inválido: el manager seleccionado está inactivo")
+		}
+	}
+	assigned, skipped := 0, 0
+	for _, pid := range professionalIDs {
+		prof, err := s.userRepo.GetByID(pid)
+		if err != nil || prof.UserType != models.UserTypeProfessional {
+			skipped++
+			continue
+		}
+		// Solo profesionales de la propia empresa.
+		if tenantForUser(prof) != tenantID {
+			skipped++
+			continue
+		}
+		// Defensa: en el lote no se asigna un manager a otro manager (evita ciclos).
+		if managerID != nil && prof.IsManager {
+			skipped++
+			continue
+		}
+		companyID := uint(0)
+		if prof.EmpleadorID != nil {
+			companyID = *prof.EmpleadorID
+		}
+		if managerID != nil {
+			if companyID == 0 || *managerID == pid {
+				skipped++
+				continue
+			}
+			if _, err := s.employmentRepo.GetActive(*managerID, companyID); err != nil {
+				skipped++
+				continue
+			}
+		}
+		if err := s.userRepo.Update(prof, map[string]interface{}{"manager_id": managerID}); err != nil {
+			skipped++
+			continue
+		}
+		if companyID > 0 {
+			if emp, err := s.employmentRepo.GetActive(pid, companyID); err == nil && emp != nil {
+				_ = s.employmentRepo.Update(emp, map[string]interface{}{"manager_id": managerID})
+				syncPrimaryManager(s.employmentRepo, emp.ID, managerID)
+			}
+		}
+		assigned++
+	}
+	return assigned, skipped, nil
+}
+
 func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req["password"].(string)), bcrypt.DefaultCost)
 	if err != nil {
@@ -539,11 +620,31 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 	return user, nil
 }
 
+func (s *adminService) IsLastActiveSuperadmin(userID uint) (bool, error) {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return false, err
+	}
+	if !user.IsSuperadmin || !user.IsActive {
+		return false, nil
+	}
+	others, err := s.userRepo.CountActiveSuperadminsExcluding(userID)
+	if err != nil {
+		return false, err
+	}
+	return others == 0, nil
+}
+
 func (s *adminService) DeleteUser(id uint) error {
 	user, err := s.userRepo.GetByID(id)
 	if err != nil {
 		// No se pudo cargar: conserva el comportamiento de borrado directo.
 		return s.userRepo.Delete(id)
+	}
+	if last, lerr := s.IsLastActiveSuperadmin(id); lerr != nil {
+		return lerr
+	} else if last {
+		return ErrLastSuperadmin
 	}
 	// No se puede eliminar un manager que aún tiene equipo a su cargo:
 	// dejaría a esos profesionales sin aprobador. Hay que reasignarlos primero.
@@ -557,6 +658,96 @@ func (s *adminService) DeleteUser(id uint) error {
 		}
 	}
 	return s.userRepo.Delete(id)
+}
+
+type BulkDeleteSkip struct {
+	ID     uint   `json:"id"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+func (s *adminService) BulkDeleteUsers(ids []uint, requesterID uint) (int, []BulkDeleteSkip, error) {
+	deleted := 0
+	skipped := []BulkDeleteSkip{}
+	for _, id := range ids {
+		user, err := s.userRepo.GetByID(id)
+		if err != nil {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Reason: "no encontrado"})
+			continue
+		}
+		if id == requesterID {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "es tu propia cuenta"})
+			continue
+		}
+		if user.IsSuperadmin {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "es superadmin (protegido)"})
+			continue
+		}
+		if user.IsManager {
+			count, cerr := countManagerReports(s.userRepo, s.employmentRepo, id)
+			if cerr != nil {
+				skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "no se pudo verificar su equipo"})
+				continue
+			}
+			if count > 0 {
+				skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: fmt.Sprintf("manager con %d a cargo", count)})
+				continue
+			}
+		}
+		if err := s.userRepo.Delete(id); err != nil {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "error al eliminar"})
+			continue
+		}
+		deleted++
+	}
+	return deleted, skipped, nil
+}
+
+// BulkDeleteUsersScoped elimina en lote solo profesionales de la empresa
+// (tenantID). Aplica los mismos guards que BulkDeleteUsers (self, superadmin,
+// manager con equipo) y además omite cualquier id que no pertenezca al tenant.
+func (s *adminService) BulkDeleteUsersScoped(ids []uint, requesterID, tenantID uint) (int, []BulkDeleteSkip, error) {
+	if tenantID == 0 {
+		return 0, nil, errors.New("Empresa no válida")
+	}
+	deleted := 0
+	skipped := []BulkDeleteSkip{}
+	for _, id := range ids {
+		user, err := s.userRepo.GetByID(id)
+		if err != nil {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Reason: "no encontrado"})
+			continue
+		}
+		if tenantForUser(user) != tenantID {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "no pertenece a tu empresa"})
+			continue
+		}
+		if id == requesterID {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "es tu propia cuenta"})
+			continue
+		}
+		if user.IsSuperadmin {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "es superadmin (protegido)"})
+			continue
+		}
+		if user.IsManager {
+			count, cerr := countManagerReports(s.userRepo, s.employmentRepo, id)
+			if cerr != nil {
+				skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "no se pudo verificar su equipo"})
+				continue
+			}
+			if count > 0 {
+				skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: fmt.Sprintf("manager con %d a cargo", count)})
+				continue
+			}
+		}
+		if err := s.userRepo.Delete(id); err != nil {
+			skipped = append(skipped, BulkDeleteSkip{ID: id, Name: user.Name, Reason: "error al eliminar"})
+			continue
+		}
+		deleted++
+	}
+	return deleted, skipped, nil
 }
 
 // DeleteUserScoped elimina un usuario solo si pertenece a la empresa del

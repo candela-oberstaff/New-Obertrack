@@ -120,7 +120,23 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 	tickets.Use(requireSupportInboxAccess())
 	{
 		tickets.GET("/waha/status", func(c *gin.Context) {
-			status, err := d.wahaSvc.GetSessionStatusAndQR("default")
+			status, err := d.wahaSvc.GetSessionStatusAndQR(d.wahaSvc.GetSession())
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, status)
+		})
+		// Forzar conexión: (re)arranca la sesión en WAHA y devuelve el estado/QR
+		// fresco. Útil cuando la sesión se cae (SCAN_QR/FAILED) y hay que
+		// re-vincularla sin entrar al dashboard de WAHA.
+		tickets.POST("/waha/start", func(c *gin.Context) {
+			session := d.wahaSvc.GetSession()
+			if err := d.wahaSvc.StartSession(session); err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+			status, err := d.wahaSvc.GetSessionStatusAndQR(session)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
@@ -137,6 +153,10 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		tickets.PUT("/internal/:id", d.ticket.UpdateInternalTicket)
 		tickets.POST("/internal/:id/notes", d.ticket.AddInternalNote)
 		tickets.POST("/internal/:id/transfer", d.ticket.TransferInternalTicket)
+		tickets.GET("/wa", d.ticket.ListWhatsAppTickets)
+		tickets.GET("/wa/:id", d.ticket.GetWhatsAppTicket)
+		tickets.POST("/wa/:id/messages", d.ticket.SendWhatsAppMessage)
+		tickets.PATCH("/wa/:id", d.ticket.UpdateWhatsAppTicket)
 		tickets.GET("/:id", d.ticket.GetTicket)
 		tickets.PUT("/:id", d.ticket.UpdateTicket)
 		tickets.POST("/:id/messages", d.ticket.SendMessage)

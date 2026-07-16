@@ -14,4 +14,10 @@ var (
 	ErrInvalidInput = errors.New("invalid input")
 	// ErrExternalSend indicates an outbound integration (WAHA/Brevo) failed.
 	ErrExternalSend = errors.New("failed to send external message")
+	// ErrRateLimited indicates an outbound send was throttled by the anti-ban
+	// rate limiter and should be retried later (maps to HTTP 429).
+	ErrRateLimited = errors.New("outbound rate limit exceeded")
+	// ErrColdOutreach indicates a send was blocked because the contact never
+	// messaged first — cold outreach is the highest WhatsApp-ban risk (maps to 403).
+	ErrColdOutreach = errors.New("cannot message a contact that has not written first")
 )

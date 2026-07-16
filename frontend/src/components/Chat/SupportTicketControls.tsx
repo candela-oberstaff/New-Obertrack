@@ -4,6 +4,7 @@ import type { Channel } from '../../types/chat'
 import type { User } from '../../types'
 import { supportStatusMeta } from './ChatUtils'
 import { PROFILE_CHANGE_MODULE } from '../../constants/support'
+import { Select } from '../ui/Select'
 
 interface SupportTicketControlsProps {
   channel: Channel
@@ -20,6 +21,8 @@ interface SupportTicketControlsProps {
  * Controles de gestión del ticket de soporte en el encabezado del chat.
  * - Para el solicitante: solo una píldora de estado (lectura).
  * - Para Customer Success / superadmins: Tomar, Reasignar y Resolver.
+ * - Si el ticket lo atiende OTRO agente, la conversación es suya: Reasignar y
+ *   Resolver quedan bloqueados y el único camino es "Tomar" el ticket.
  */
 export function SupportTicketControls({
   channel, currentUserId, isSupportAgent, supportAgents, onClaim, onAssign, onResolve, busy,
@@ -32,6 +35,7 @@ export function SupportTicketControls({
 
   const meta = supportStatusMeta(support.status)
   const assignedToMe = !!support.assigned_to && support.assigned_to === currentUserId
+  const attendedByOther = !!support.assigned_to && !assignedToMe
   const pillText =
     support.status === 'resolved'
       ? 'Resuelto'
@@ -79,18 +83,21 @@ export function SupportTicketControls({
       )}
 
       {support.status !== 'resolved' && supportAgents.length > 0 && (
-        <select
-          value=""
-          disabled={busy}
-          onChange={(e) => { const v = Number(e.target.value); if (v) onAssign(v) }}
-          title="Reasignar a otro agente"
-          style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 8px', fontSize: 13, color: '#334155', cursor: busy ? 'wait' : 'pointer', background: '#fff' }}
-        >
-          <option value="">Reasignar…</option>
-          {supportAgents.filter(a => a.id !== support.assigned_to).map(a => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))}
-        </select>
+        <div style={{ width: 150 }} title={attendedByOther ? 'Este ticket lo atiende otro agente. Tómalo para reasignarlo.' : undefined}>
+          <Select
+            value=""
+            onChange={(v) => { const id = Number(v); if (id) onAssign(id) }}
+            placeholder="Reasignar…"
+            disabled={busy || attendedByOther}
+            fullWidth
+            className="ui-select__trigger--compact"
+            ariaLabel="Reasignar a otro agente"
+            leftIcon={<UserCog size={14} />}
+            options={supportAgents
+              .filter(a => a.id !== support.assigned_to)
+              .map(a => ({ value: a.id, label: a.name }))}
+          />
+        </div>
       )}
 
       {support.status !== 'resolved' ? (
@@ -103,7 +110,12 @@ export function SupportTicketControls({
             <UserCog size={14} /> Aplicar en ficha
           </button>
         ) : (
-          <button disabled={busy} onClick={onResolve} style={{ ...baseBtn, background: '#16a34a', color: '#fff', border: 'none' }} title="Marcar como resuelto">
+          <button
+            disabled={busy || attendedByOther}
+            onClick={onResolve}
+            style={{ ...baseBtn, background: '#16a34a', color: '#fff', border: 'none', opacity: attendedByOther ? 0.5 : 1, cursor: attendedByOther ? 'not-allowed' : busy ? 'wait' : 'pointer' }}
+            title={attendedByOther ? 'Este ticket lo atiende otro agente. Tómalo para resolverlo.' : 'Marcar como resuelto'}
+          >
             <Check size={14} /> Resolver
           </button>
         )

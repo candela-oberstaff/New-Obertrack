@@ -1,4 +1,4 @@
-import { LifeBuoy } from 'lucide-react'
+import { LifeBuoy, Archive } from 'lucide-react'
 import { Channel } from '../../types/chat'
 import type { User } from '../../types'
 import { PinIcon, UserPlusIcon, InfoIcon, LogOutIcon, SearchIcon, StarIcon } from './Icons'
@@ -20,6 +20,7 @@ interface ChatHeaderProps {
   setShowAddMembers: (show: boolean) => void
   setShowChannelSettings: (show: boolean) => void
   leaveChannel: (channelId: number) => void
+  hideChannel: (channelId: number) => void
   onShowSearch: () => void
   onShowStarred: () => void
   recipientStatus?: 'online' | 'away' | 'offline'
@@ -46,6 +47,7 @@ export function ChatHeader({
   setShowAddMembers,
   setShowChannelSettings,
   leaveChannel,
+  hideChannel,
   onShowSearch,
   onShowStarred,
   recipientStatus,
@@ -135,6 +137,9 @@ export function ChatHeader({
                 <LogOutIcon />
               </button>
             )}
+            <button onClick={() => hideChannel(selectedChannel.id)} title="Archivar chat (lo guarda en Archivados; queda de solo lectura hasta restaurarlo)">
+              <Archive size={18} />
+            </button>
           </>
         )}
       </div>

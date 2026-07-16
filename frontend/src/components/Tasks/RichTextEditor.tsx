@@ -1,6 +1,7 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useState } from 'react'
 import { Bold, Italic, Underline, List, ListOrdered, Link as LinkIcon, Heading2, Type } from 'lucide-react'
-import { sanitizeHtml } from '../../utils/sanitize'
+import { sanitizeRichHtml } from '../../utils/sanitize'
+import { uploadService } from '../../services/api'
 import styles from './RichTextEditor.module.css'
 
 interface RichTextEditorProps {
@@ -12,11 +13,12 @@ interface RichTextEditorProps {
 export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const isInternalChange = useRef(false)
+  const [isUploading, setIsUploading] = useState(false)
 
   // Sync value from prop to innerHTML
   useEffect(() => {
     if (editorRef.current && !isInternalChange.current) {
-      const safe = sanitizeHtml(value)
+      const safe = sanitizeRichHtml(value)
       if (editorRef.current.innerHTML !== safe) {
         editorRef.current.innerHTML = safe
       }
@@ -31,6 +33,45 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
       onChange(html === '<br>' ? '' : html)
     }
   }, [onChange])
+
+  // Al pegar una imagen (p. ej. una captura), la subimos al servidor e
+  // insertamos su URL en vez de dejar el base64 gigante en la descripción.
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const images: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      if (it.kind === 'file' && it.type.startsWith('image/')) {
+        const f = it.getAsFile()
+        if (f) images.push(f)
+      }
+    }
+    if (images.length === 0) return // pegado normal (texto/HTML)
+
+    e.preventDefault()
+    // Guarda la posición del cursor para insertar la imagen donde estaba.
+    const sel = window.getSelection()
+    const range = sel && sel.rangeCount ? sel.getRangeAt(0) : null
+
+    setIsUploading(true)
+    try {
+      for (const file of images) {
+        const res = await uploadService.upload(file)
+        editorRef.current?.focus()
+        if (range) {
+          sel!.removeAllRanges()
+          sel!.addRange(range)
+        }
+        document.execCommand('insertImage', false, res.url)
+      }
+      handleInput()
+    } catch (err) {
+      console.error('Error subiendo la imagen pegada:', err)
+    } finally {
+      setIsUploading(false)
+    }
+  }, [handleInput])
 
   const execCommand = (command: string, arg?: string) => {
     document.execCommand(command, false, arg)
@@ -87,8 +128,12 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
         contentEditable
         onInput={handleInput}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         data-placeholder={placeholder || 'Escribe aquí...'}
       />
+      {isUploading && (
+        <div className={styles.richTextUploading}>Subiendo imagen…</div>
+      )}
     </div>
   )
 }

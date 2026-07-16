@@ -11,11 +11,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 20px;
+  padding: 10px 20px;
   background: white;
   border-bottom: 1px solid #e1e4e8;
   flex-wrap: wrap;
-  height: 52px;
+  min-height: 52px;
+  row-gap: 8px;
   z-index: 10;
 }
 
@@ -52,7 +53,7 @@
   gap: 4px;
 }
 
-.channel-actions button {
+.channel-actions button:not(:global(.ui-select__trigger)) {
   padding: 8px;
   background: transparent;
   border: 1px solid #e2e8f0;
@@ -134,10 +135,18 @@
 .channels-panel {
   background: white;
   border-right: 1px solid #e1e4e8;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   flex-shrink: 0;
   position: relative;
   color: #1d1c1d;
+}
+
+.channels-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .channels-panel.collapsed {
@@ -180,10 +189,9 @@
 }
 
 .sidebar-toggle {
-  position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  flex-shrink: 0;
+  align-self: center;
+  margin: 8px 0;
   background: #e2e8f0;
   border: none;
   width: 32px;
@@ -194,11 +202,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.channels-panel.collapsed .sidebar-toggle {
-  left: 50%;
-  transform: translateX(-50%);
 }
 
 .resize-handle {
@@ -1197,6 +1200,22 @@
   border-radius: 8px;
   transition: all 0.2s;
   border: 1px solid transparent;
+  background: transparent;
+}
+
+.user-item:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+  transform: none;
+  box-shadow: none;
+}
+
+.spinning {
+  animation: spinning 0.8s linear infinite;
+}
+
+@keyframes spinning {
+  to { transform: rotate(360deg); }
 }
 
 .user-item:hover {

@@ -1074,6 +1074,161 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.ProfileChangeRequest{})
 			},
 		},
+		{
+			ID: "202607021200_hidden_channels",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating hidden_channels table...")
+				return tx.AutoMigrate(&models.HiddenChannel{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.HiddenChannel{})
+			},
+		},
+		{
+			// Un solo ticket ACTIVO por canal de soporte. Los canales con tickets
+			// duplicados hacían que "Tomar/Reasignar/Resolver" cayera sobre un ticket
+			// distinto al que muestra el panel (el responsable "no cambiaba" nunca).
+			// Conserva por canal el ticket activo con actividad más reciente y
+			// resuelve el resto. El servicio ya evita nuevos duplicados
+			// (ResolveOpenTicketsExcept en claim/assign/nueva solicitud).
+			ID: "202607021600_consolidate_support_tickets",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Consolidating duplicate active support tickets...")
+				return tx.Exec(`
+					UPDATE support_tickets
+					SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP
+					WHERE status <> 'resolved'
+					  AND id NOT IN (
+						SELECT DISTINCT ON (channel_id) id
+						FROM support_tickets
+						WHERE status <> 'resolved'
+						ORDER BY channel_id, updated_at DESC, id DESC
+					  )
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// Consolidación de datos: no es reversible (no sabemos qué tickets
+				// estaban abiertos antes). No-op.
+				return nil
+			},
+		},
+		{
+			ID: "202607081700_workhours_split_jornada_recover_unique",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Separando el único de work_hours: jornada vs recuperación (permite 1 jornada + 1 recuperación por día)...")
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_user_tenant_date`).Error; err != nil {
+					return err
+				}
+				if err := tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_user_tenant_date_jornada
+					ON work_hours (user_id, tenant_id, work_date)
+					WHERE deleted_at IS NULL AND work_type <> 'recover'
+				`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_user_tenant_date_recover
+					ON work_hours (user_id, tenant_id, work_date)
+					WHERE deleted_at IS NULL AND work_type = 'recover'
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_user_tenant_date_jornada`).Error; err != nil {
+					return err
+				}
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_user_tenant_date_recover`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_user_tenant_date
+					ON work_hours (user_id, tenant_id, work_date)
+					WHERE deleted_at IS NULL
+				`).Error
+			},
+		},
+		{
+			ID: "202607091200_add_board_invitations",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating board_invitations table...")
+				if err := tx.AutoMigrate(&models.BoardInvitation{}); err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_board_invitation_pending
+					ON board_invitations (board_id, user_id)
+					WHERE status = 'pending' AND deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_board_invitation_pending`).Error; err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.BoardInvitation{})
+			},
+		},
+		{
+			ID: "202607091500_add_report_schedule",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating report_schedules and report_runs tables...")
+				if err := tx.AutoMigrate(&models.ReportSchedule{}, &models.ReportRun{}); err != nil {
+					return err
+				}
+				if err := tx.Exec(`
+					INSERT INTO report_schedules (id, enabled, frequency, hour, minute, timezone, weekday, day_of_month, created_at, updated_at)
+					VALUES (1, false, 'monthly', 8, 0, 'UTC', 1, 1, now(), now())
+					ON CONFLICT (id) DO NOTHING
+				`).Error; err != nil {
+					return err
+				}
+				// Único parcial: bloquea reenviar un período ya entregado, pero deja
+				// reintentar los fallidos (no ocupan el índice).
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_report_run_sent
+					ON report_runs (tenant_id, period_key)
+					WHERE status = 'sent'
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_report_run_sent`).Error; err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.ReportRun{}, &models.ReportSchedule{})
+			},
+		},
+		{
+			// Idempotencia del webhook de WAHA: un mensaje entrante trae un
+			// external_id único (el ID del mensaje en WAHA). Si el webhook se
+			// reintenta (respuesta lenta, 500 tras commit, reentrega), el mismo
+			// mensaje llegaba dos veces y se duplicaba. Se dedupean los duplicados
+			// existentes y se crea un único parcial: solo aplica a external_id no
+			// vacío y filas vivas (las respuestas de agente/notas van con external_id
+			// vacío y no deben chocar entre sí).
+			ID: "202607131200_ticket_messages_external_id_unique",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Deduping ticket_messages by external_id and creating partial unique index (webhook idempotency)...")
+				// 1) Borra duplicados vivos dejando el de menor id por external_id.
+				if err := tx.Exec(`
+					DELETE FROM ticket_messages a
+					USING ticket_messages b
+					WHERE a.external_id = b.external_id
+					  AND a.external_id <> ''
+					  AND a.deleted_at IS NULL
+					  AND b.deleted_at IS NULL
+					  AND a.id > b.id
+				`).Error; err != nil {
+					return err
+				}
+				// 2) Único parcial (ignora external_id vacío y filas soft-deleted).
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_messages_external_id
+					ON ticket_messages (external_id)
+					WHERE external_id <> '' AND deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`DROP INDEX IF EXISTS idx_ticket_messages_external_id`).Error
+			},
+		},
 		// Future migrations go here
 	})
 

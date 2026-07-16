@@ -51,6 +51,22 @@ export const employerService = {
     const { data } = await api.post(`/employer/users/${userId}/reset-password`)
     return data
   },
+  // Acciones masivas acotadas a la empresa del empleador (el backend valida el tenant).
+  // Asigna (o desasigna si managerId es null) un manager a varios profesionales.
+  bulkAssignManager: async (professionalIds: number[], managerId: number | null) => {
+    const { data } = await api.post<{ assigned: number; skipped: number }>(
+      '/employer/bulk-assign-manager',
+      { professional_ids: professionalIds, manager_id: managerId },
+    )
+    return data
+  },
+  bulkDeleteUsers: async (userIds: number[]) => {
+    const { data } = await api.post<{ deleted: number; skipped: { id: number; name: string; reason: string }[] }>(
+      '/employer/bulk-delete-users',
+      { user_ids: userIds },
+    )
+    return data
+  },
   importPreview: async (file: File) => {
     const fd = new FormData()
     fd.append('file', file)

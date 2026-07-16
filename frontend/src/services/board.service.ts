@@ -1,5 +1,5 @@
 import api from './client'
-import type { Board, CreateBoardInput } from '../types'
+import type { Board, BoardInvitation, CreateBoardInput } from '../types'
 
 export const boardService = {
   getAll: async (companyId?: number | null) => {
@@ -16,7 +16,7 @@ export const boardService = {
     const { data } = await api.post<Board>('/boards', boardData, { params })
     return data
   },
-  update: async (id: number, boardData: CreateBoardInput) => {
+  update: async (id: number, boardData: Partial<Pick<CreateBoardInput, 'name' | 'description' | 'color'>>) => {
     const { data } = await api.put<Board>(`/boards/${id}`, boardData)
     return data
   },
@@ -40,8 +40,45 @@ export const boardService = {
     const { data } = await api.get<Board[]>('/boards/public', { params })
     return data
   },
-  join: async (boardId: number) => {
-    const { data } = await api.post<Board>(`/boards/${boardId}/join`)
+  invite: async (boardId: number, userIds: number[]) => {
+    const { data } = await api.post<{ invited: number; invitations: BoardInvitation[] }>(
+      `/boards/${boardId}/invite`,
+      { user_ids: userIds },
+    )
     return data
+  },
+  requestJoin: async (boardId: number) => {
+    const { data } = await api.post<BoardInvitation>(`/boards/${boardId}/request`)
+    return data
+  },
+  getMyInvitations: async () => {
+    const { data } = await api.get<BoardInvitation[]>('/board-invitations/mine')
+    return data
+  },
+  getBoardRequests: async (boardId: number) => {
+    const { data } = await api.get<BoardInvitation[]>(`/boards/${boardId}/requests`)
+    return data
+  },
+  getBoardInvitations: async (boardId: number) => {
+    const { data } = await api.get<BoardInvitation[]>(`/boards/${boardId}/invitations`)
+    return data
+  },
+  acceptInvitation: async (invId: number) => {
+    const { data } = await api.post<BoardInvitation>(`/board-invitations/${invId}/accept`)
+    return data
+  },
+  rejectInvitation: async (invId: number) => {
+    const { data } = await api.post<BoardInvitation>(`/board-invitations/${invId}/reject`)
+    return data
+  },
+  cancelInvitation: async (invId: number) => {
+    await api.delete(`/board-invitations/${invId}`)
+  },
+  removeMember: async (boardId: number, userId: number) => {
+    const { data } = await api.delete<Board>(`/boards/${boardId}/members/${userId}`)
+    return data
+  },
+  leaveBoard: async (boardId: number) => {
+    await api.post(`/boards/${boardId}/leave`)
   },
 }

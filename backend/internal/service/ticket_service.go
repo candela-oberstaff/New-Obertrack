@@ -1,7 +1,9 @@
 package service
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +28,14 @@ type TicketService interface {
 
 	// ListInternal returns Obertrack-generated alert tickets (origin = internal).
 	ListInternal() ([]models.Ticket, error)
+	ListWhatsApp() ([]models.Ticket, error)
+	GetWhatsAppTicket(id uint) (*models.Ticket, error)
+	// ImportWhatsAppHistory pulls recent chats + messages from the connected WAHA
+	// session and imports them as tickets/messages (idempotent). Returns the count
+	// of newly imported messages.
+	ImportWhatsAppHistory() (int, error)
+	SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error)
+	WhatsAppAction(id, agentID uint, action string) (*models.Ticket, error)
 	// GetInternal returns a single internal alert ticket (with notes).
 	GetInternal(id uint) (*models.Ticket, error)
 	// ListInternalReport returns internal alerts created within [start, end].
@@ -203,8 +213,18 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 		if ticket.Contact == nil {
 			return nil, apperrors.ErrExternalSend
 		}
+		if err := s.ensureCanColdOutreach(ticket.ID); err != nil {
+			return nil, err
+		}
+		dest := ticket.Contact.WaID
+		if dest == "" {
+			dest = ticket.Contact.Phone
+		}
 		session := s.wahaSvc.GetSession()
-		if err := s.wahaSvc.SendMessage(session, ticket.Contact.Phone, content); err != nil {
+		if err := s.wahaSvc.SendMessage(session, dest, content); err != nil {
+			if errors.Is(err, apperrors.ErrRateLimited) {
+				return nil, apperrors.ErrRateLimited
+			}
 			return nil, apperrors.ErrExternalSend
 		}
 	case models.ChannelEmail:
@@ -233,6 +253,14 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 // attach it to a recent open ticket (or open a new one), persist the message and
 // broadcast it.
 func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) error {
+	// Idempotencia: si el webhook se reintenta, el mismo external_id ya fue
+	// procesado. Cortamos temprano para no recrear contacto/ticket ni redifundir.
+	if externalID != "" {
+		if exists, err := s.repo.MessageExistsByExternalID(externalID); err == nil && exists {
+			return nil
+		}
+	}
+
 	phone := from
 	if i := strings.IndexByte(from, '@'); i >= 0 {
 		phone = from[:i]
@@ -240,23 +268,33 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 
 	resolvedName := "WA User " + phone
 	if contact, err := s.wahaSvc.GetContact(session, from); err == nil && contact != nil {
-		if contact.Name != "" {
-			resolvedName = contact.Name
+		if name := contact.BestName(); name != "" {
+			resolvedName = name
 		}
-		if contact.Phone != "" {
-			phone = contact.Phone
+		if realPhone := contact.RealPhone(); realPhone != "" {
+			phone = realPhone
 		}
 	}
 
 	contact, err := s.repo.GetContactByPhone(phone)
 	if err != nil {
-		contact = &models.Contact{Phone: phone, Name: resolvedName}
+		contact = &models.Contact{Phone: phone, Name: resolvedName, WaID: from}
 		if err := s.repo.CreateContact(contact); err != nil {
 			return err
 		}
-	} else if contact.Name == "WA User "+phone && resolvedName != "WA User "+phone {
-		contact.Name = resolvedName
-		_ = s.repo.SaveContact(contact)
+	} else {
+		dirty := false
+		if contact.Name == "WA User "+phone && resolvedName != "WA User "+phone {
+			contact.Name = resolvedName
+			dirty = true
+		}
+		if contact.WaID == "" && from != "" {
+			contact.WaID = from
+			dirty = true
+		}
+		if dirty {
+			_ = s.repo.SaveContact(contact)
+		}
 	}
 
 	ticket, err := s.repo.GetOpenTicketByContactSince(contact.ID, time.Now().Add(-1*time.Hour))
@@ -289,8 +327,14 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 		Content:    body,
 		ExternalID: externalID,
 	}
-	if err := s.repo.CreateMessage(msg); err != nil {
+	// Insert idempotente: si una entrega concurrente ya guardó este external_id,
+	// no se inserta de nuevo y evitamos redifundir un mensaje duplicado.
+	inserted, err := s.repo.CreateMessageIfNew(msg)
+	if err != nil {
 		return err
+	}
+	if !inserted {
+		return nil
 	}
 	_ = s.repo.TouchTicket(ticket)
 
@@ -303,6 +347,13 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 func (s *ticketService) IngestEmail(fromEmail, fromName, subject, textBody, messageID string) error {
 	if fromEmail == "" {
 		return apperrors.ErrInvalidInput
+	}
+
+	// Idempotencia: los reintentos de Brevo reenvían el mismo Message-ID.
+	if messageID != "" {
+		if exists, err := s.repo.MessageExistsByExternalID(messageID); err == nil && exists {
+			return nil
+		}
 	}
 
 	contact, err := s.repo.GetContactByEmail(fromEmail)
@@ -351,8 +402,13 @@ func (s *ticketService) IngestEmail(fromEmail, fromName, subject, textBody, mess
 		Content:    textBody,
 		ExternalID: messageID,
 	}
-	if err := s.repo.CreateMessage(msg); err != nil {
+	// Insert idempotente: backstop ante entregas concurrentes con el mismo Message-ID.
+	inserted, err := s.repo.CreateMessageIfNew(msg)
+	if err != nil {
 		return err
+	}
+	if !inserted {
+		return nil
 	}
 
 	broadcastTicketMessage(ticket.ID, msg)
@@ -369,6 +425,231 @@ func (s *ticketService) ListInternal() ([]models.Ticket, error) {
 		s.enrichInternal(&tickets[i])
 	}
 	return tickets, nil
+}
+
+func (s *ticketService) ListWhatsApp() ([]models.Ticket, error) {
+	return s.repo.ListByOrigin(string(models.ChannelWhatsApp))
+}
+
+func (s *ticketService) GetWhatsAppTicket(id uint) (*models.Ticket, error) {
+	ticket, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, apperrors.ErrNotFound
+	}
+	if ticket.Origin != string(models.ChannelWhatsApp) {
+		return nil, apperrors.ErrNotFound
+	}
+
+	// If the contact is still a generic "WA User <n>" placeholder, resolve its
+	// real name/phone from WAHA — but do it in the background so opening a chat
+	// never waits on an external HTTP round-trip. The refreshed data lands in the
+	// DB and shows on the next open (ContactSync also backfills these periodically).
+	if c := ticket.Contact; c != nil && strings.HasPrefix(c.Name, "WA User ") && c.WaID != "" {
+		go s.refreshWhatsAppContact(c.ID, c.WaID)
+	}
+	return ticket, nil
+}
+
+// refreshWhatsAppContact resolves a placeholder contact's real name/phone from
+// WAHA and persists it. Runs off the request path (fire-and-forget goroutine).
+func (s *ticketService) refreshWhatsAppContact(contactID uint, waID string) {
+	resolved, err := s.wahaSvc.GetContact(s.wahaSvc.GetSession(), waID)
+	if err != nil || resolved == nil {
+		return
+	}
+	// Re-load the contact fresh to avoid racing with a concurrent update.
+	c, err := s.repo.GetContactByID(contactID)
+	if err != nil || c == nil {
+		return
+	}
+	changed := false
+	if name := resolved.BestName(); name != "" && strings.HasPrefix(c.Name, "WA User ") {
+		c.Name = name
+		changed = true
+	}
+	if realPhone := resolved.RealPhone(); realPhone != "" && realPhone != c.Phone {
+		c.Phone = realPhone
+		changed = true
+	}
+	if changed {
+		_ = s.repo.SaveContact(c)
+	}
+}
+
+const (
+	importMaxChats = 30 // how many recent chats to pull from the session
+	importMaxMsgs  = 20 // messages per chat (chosen: last ~20)
+)
+
+// ImportWhatsAppHistory pulls recent 1:1 chats from the connected WAHA session
+// and imports each chat's last messages as a ticket + messages. Idempotent: the
+// external_id unique index dedups messages, so re-running only adds new ones.
+func (s *ticketService) ImportWhatsAppHistory() (int, error) {
+	session := s.wahaSvc.GetSession()
+	chats, err := s.wahaSvc.GetChatsOverview(session, importMaxChats)
+	if err != nil {
+		return 0, err
+	}
+
+	imported := 0
+	for _, chat := range chats {
+		// Solo chats individuales (los grupos terminan en @g.us).
+		if !strings.HasSuffix(chat.ID, "@c.us") {
+			continue
+		}
+		phone := chat.ID
+		if i := strings.IndexByte(chat.ID, '@'); i >= 0 {
+			phone = chat.ID[:i]
+		}
+
+		// Resolver/crear contacto.
+		contact, cerr := s.repo.GetContactByPhone(phone)
+		if cerr != nil {
+			name := strings.TrimSpace(chat.Name)
+			if name == "" {
+				name = "WA User " + phone
+			}
+			contact = &models.Contact{Phone: phone, Name: name, WaID: chat.ID}
+			if err := s.repo.CreateContact(contact); err != nil {
+				continue
+			}
+		}
+
+		// Un ticket por contacto: reutiliza el abierto o crea uno.
+		ticket, terr := s.repo.GetOpenTicketByContact(contact.ID)
+		if terr != nil {
+			ticket = &models.Ticket{
+				ContactID: &contact.ID,
+				Origin:    string(models.ChannelWhatsApp),
+				Title:     "WA: " + phone,
+				Stage:     models.StageNew,
+				Status:    "open",
+			}
+			if err := s.repo.CreateTicket(ticket); err != nil {
+				continue
+			}
+		}
+
+		// WAHA devuelve los mensajes de más nuevo a más viejo; los recorremos en
+		// reversa para insertarlos en orden cronológico.
+		msgs, merr := s.wahaSvc.GetChatMessages(session, chat.ID, importMaxMsgs)
+		if merr != nil {
+			continue
+		}
+		for i := len(msgs) - 1; i >= 0; i-- {
+			m := msgs[i]
+			body := strings.TrimSpace(m.Body)
+			if body == "" {
+				continue // ignora no-texto/vacíos (multimedia se aborda aparte)
+			}
+			sender := models.SenderTypeContact
+			if m.FromMe {
+				sender = models.SenderTypeAgent
+			}
+			tm := &models.TicketMessage{
+				TicketID:   ticket.ID,
+				SenderType: sender,
+				Channel:    models.ChannelWhatsApp,
+				Content:    body,
+				ExternalID: m.ID,
+			}
+			if m.Timestamp > 0 {
+				tm.CreatedAt = time.Unix(m.Timestamp, 0)
+			}
+			if inserted, err := s.repo.CreateMessageIfNew(tm); err == nil && inserted {
+				imported++
+			}
+		}
+	}
+	return imported, nil
+}
+
+// ensureCanColdOutreach blocks sending to a WhatsApp contact that never wrote
+// first — cold outreach is the highest ban risk. Disabled via WAHA_REQUIRE_INBOUND.
+// On a DB error it fails open (logs and allows) so a transient glitch never blocks
+// a legitimate reply; the rate limiter remains the primary anti-ban control.
+func (s *ticketService) ensureCanColdOutreach(ticketID uint) error {
+	if !s.wahaSvc.RequireInboundBeforeSend() {
+		return nil
+	}
+	hasInbound, err := s.repo.HasInboundMessage(ticketID)
+	if err != nil {
+		log.Printf("[WAHA] cold-outreach check failed for ticket %d, allowing send: %v", ticketID, err)
+		return nil
+	}
+	if !hasInbound {
+		return apperrors.ErrColdOutreach
+	}
+	return nil
+}
+
+func (s *ticketService) SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error) {
+	ticket, err := s.repo.GetWithContact(id)
+	if err != nil {
+		return nil, apperrors.ErrNotFound
+	}
+	if ticket.Origin != string(models.ChannelWhatsApp) || ticket.Contact == nil {
+		return nil, apperrors.ErrExternalSend
+	}
+	if err := s.ensureCanColdOutreach(ticket.ID); err != nil {
+		return nil, err
+	}
+	dest := ticket.Contact.WaID
+	if dest == "" {
+		dest = ticket.Contact.Phone
+	}
+	if err := s.wahaSvc.SendMessage(s.wahaSvc.GetSession(), dest, content); err != nil {
+		if errors.Is(err, apperrors.ErrRateLimited) {
+			return nil, apperrors.ErrRateLimited
+		}
+		return nil, apperrors.ErrExternalSend
+	}
+
+	msg := &models.TicketMessage{
+		TicketID:   ticket.ID,
+		SenderType: models.SenderTypeAgent,
+		SenderID:   &agentID,
+		Channel:    models.ChannelWhatsApp,
+		Content:    content,
+	}
+	if err := s.repo.CreateMessage(msg); err != nil {
+		return nil, err
+	}
+	_ = s.repo.TouchTicket(ticket)
+	broadcastTicketMessage(ticket.ID, msg)
+	return msg, nil
+}
+
+func (s *ticketService) WhatsAppAction(id, agentID uint, action string) (*models.Ticket, error) {
+	ticket, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, apperrors.ErrNotFound
+	}
+	if ticket.Origin != string(models.ChannelWhatsApp) {
+		return nil, apperrors.ErrNotFound
+	}
+	switch action {
+	case "claim":
+		ticket.AssignedTo = &agentID
+		ticket.Stage = models.StageInProgress
+		ticket.Status = "open"
+	case "resolve":
+		ticket.Stage = models.StageClosed
+		ticket.Status = "closed"
+	case "reopen":
+		ticket.AssignedTo = nil
+		ticket.Stage = models.StageNew
+		ticket.Status = "open"
+	default:
+		return nil, apperrors.ErrInvalidInput
+	}
+	ticket.Contact = nil
+	ticket.Assignee = nil
+	ticket.Messages = nil
+	if err := s.repo.SaveTicket(ticket); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByID(id)
 }
 
 // ListInternalReport returns internal alerts created within [start, end].

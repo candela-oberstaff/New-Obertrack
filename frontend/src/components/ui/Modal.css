@@ -28,6 +28,7 @@
 .ui-modal__panel--sm { max-width: 420px; }
 .ui-modal__panel--md { max-width: 560px; }
 .ui-modal__panel--lg { max-width: 820px; }
+.ui-modal__panel--xl { max-width: 1080px; }
 
 .ui-modal__header {
   display: flex;

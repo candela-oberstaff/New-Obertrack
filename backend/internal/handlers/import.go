@@ -220,7 +220,7 @@ func (h *AdminHandler) ImportPreview(c *gin.Context) {
 
 	seen := map[string]int{}
 
-	var compReports []importRow
+	compReports := []importRow{}
 	pendingCompanyNames := map[string]bool{}
 	seenCompanyNames := map[string]int{}
 	if cIdx, cRows := readImportSheet(xl, "Empresas"); cIdx != nil {
@@ -268,7 +268,7 @@ func (h *AdminHandler) ImportPreview(c *gin.Context) {
 		}
 	}
 
-	var profReports []importRow
+	profReports := []importRow{}
 	if pIdx, pRows := readImportSheet(xl, "Profesionales"); pIdx != nil {
 		for i, row := range pRows {
 			data := map[string]string{
@@ -386,7 +386,7 @@ func (h *AdminHandler) ImportExecute(c *gin.Context) {
 		Email string `json:"email"`
 		Error string `json:"error"`
 	}
-	var creds []cred
+	creds := []cred{}
 
 	compCreated, compUpdated, compSkipped := 0, 0, 0
 	profCreated, profUpdated, profSkipped := 0, 0, 0
@@ -579,7 +579,7 @@ func (h *AdminHandler) DownloadEmployerImportTemplate(c *gin.Context) {
 
 func employerProfRows(xl *excelize.File, h *AdminHandler, tenantID uint) []importRow {
 	seen := map[string]int{}
-	var reports []importRow
+	reports := []importRow{}
 	idx, rows := readImportSheet(xl, "Profesionales")
 	if idx == nil {
 		return reports
@@ -665,7 +665,7 @@ func (h *AdminHandler) EmployerImportExecute(c *gin.Context) {
 		Email string `json:"email"`
 		Error string `json:"error"`
 	}
-	var creds []cred
+	creds := []cred{}
 	created, updated, skipped := 0, 0, 0
 	errs := []rowErr{}
 

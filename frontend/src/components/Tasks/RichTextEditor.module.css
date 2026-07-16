@@ -61,3 +61,19 @@
   color: #94a3b8;
   pointer-events: none;
 }
+
+.richTextContent img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 6px 0;
+}
+
+.richTextUploading {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6d28d9;
+  background: #f5f3ff;
+  border-top: 1px solid #e2e8f0;
+}

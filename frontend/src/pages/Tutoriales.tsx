@@ -84,21 +84,21 @@ export default function Tutoriales() {
     <div className={styles['tutorials-page']}>
       <header className={styles['tutorials-header']} data-tour="tutoriales-header">
         <div>
-          <h1>Tutoriales</h1>
+          <h1>Novedades</h1>
           <p className={styles['tutorials-date']}>
             {today.charAt(0).toUpperCase() + today.slice(1)} · {greeting}, {user?.name?.split(' ')[0] || ''}
           </p>
           <p className={styles['tutorials-subtitle']}>
-            Guías rápidas para sacar el máximo provecho de Obertrack.
+            Últimas novedades y anuncios de Obertrack.
           </p>
         </div>
         <div className={styles['tutorials-header-actions']}>
-          <button type="button" className={styles['tutorials-tour-btn']} onClick={() => startCurrentPageTour('/tutoriales')} data-tour="tutoriales-current-tour">
+          <button type="button" className={styles['tutorials-tour-btn']} onClick={() => startCurrentPageTour('/novedades')} data-tour="tutoriales-current-tour">
             <Compass size={18} /> Recorrido guiado
           </button>
           {isAdmin && (
             <button type="button" className={styles['tutorials-create-btn']} onClick={openCreate} data-tour="tutoriales-create">
-              <Plus size={18} /> Nuevo tutorial
+              <Plus size={18} /> Nueva novedad
             </button>
           )}
         </div>
@@ -151,7 +151,7 @@ export default function Tutoriales() {
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar tutorial..."
+              placeholder="Buscar novedad..."
             />
           </div>
         </div>
@@ -164,15 +164,15 @@ export default function Tutoriales() {
       ) : tutorials.length === 0 ? (
         <div className={styles['tutorials-empty']}>
           <BookOpen size={48} />
-          <h2>Aún no hay tutoriales</h2>
+          <h2>Aún no hay novedades</h2>
           <p>
             {isAdmin
-              ? 'Crea el primero para que tu equipo aprenda a usar la plataforma.'
-              : 'Tu administrador todavía no ha publicado tutoriales.'}
+              ? 'Crea la primera para mantener a tu equipo al día.'
+              : 'Tu administrador todavía no ha publicado novedades.'}
           </p>
           {isAdmin && (
             <button type="button" className={styles['tutorials-create-btn']} onClick={openCreate} data-tour="tutoriales-create">
-              <Plus size={18} /> Crear primer tutorial
+              <Plus size={18} /> Crear primera novedad
             </button>
           )}
         </div>

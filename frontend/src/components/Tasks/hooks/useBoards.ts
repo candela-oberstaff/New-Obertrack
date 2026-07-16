@@ -11,11 +11,14 @@ interface UseBoardsReturn {
   isLoading: boolean
   isCreatingBoard: boolean
   createBoard: (data: CreateBoardInput) => Promise<Board | null>
+  updateBoard: (boardId: number, data: { name?: string; description?: string; color?: string }) => Promise<void>
   deleteBoard: (boardId: number) => Promise<void>
-  joinBoard: (boardId: number) => Promise<boolean>
+  requestJoin: (boardId: number) => Promise<boolean>
   fetchBoards: () => Promise<Board[]>
   fetchPublicBoards: () => Promise<void>
-  updateBoardMembers: (boardId: number, memberIds: number[]) => Promise<void>
+  inviteMembers: (boardId: number, userIds: number[]) => Promise<number>
+  removeMember: (boardId: number, userId: number) => Promise<void>
+  leaveBoard: (boardId: number) => Promise<void>
   reorderPhases: (boardId: number, phaseIds: number[]) => Promise<void>
   addPhase: (boardId: number, phase: { name: string; color?: string }) => Promise<void>
   removePhase: (boardId: number, phaseId: number) => Promise<void>
@@ -173,6 +176,13 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
     }
   }, [fetchBoards, companyId, invalidateBoards])
 
+  const updateBoard = useCallback(async (boardId: number, data: { name?: string; description?: string; color?: string }) => {
+    const updated = await boardService.update(boardId, data)
+    setBoards((prev) => prev.map((b) => (b.id === boardId ? updated : b)))
+    setSelectedBoardState((current) => (current?.id === boardId ? updated : current))
+    await invalidateBoards()
+  }, [invalidateBoards])
+
   const deleteBoard = useCallback(async (boardId: number) => {
     await boardService.delete(boardId)
     await invalidateBoards()
@@ -182,31 +192,33 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
     }
   }, [fetchBoards, selectedBoard, invalidateBoards])
 
-  const joinBoard = useCallback(async (boardId: number): Promise<boolean> => {
+  const requestJoin = useCallback(async (boardId: number): Promise<boolean> => {
     try {
-      await boardService.join(boardId)
-      await invalidateBoards()
-      const boardsRes = await fetchBoards()
-      const found = boardsRes.find((b: Board) => b.id === boardId)
-      if (found) setSelectedBoard(found)
+      await boardService.requestJoin(boardId)
+      await fetchPublicBoards()
       return true
-    } catch (error: any) {
-      if (error?.response?.status === 409) {
-        await invalidateBoards()
-        const boardsRes = await fetchBoards()
-        const found = boardsRes.find((b: Board) => b.id === boardId)
-        if (found) setSelectedBoard(found)
-        return true
-      }
-      console.error('Error joining board:', error)
+    } catch (error) {
+      console.error('Error requesting to join board:', error)
       return false
     }
-  }, [fetchBoards, invalidateBoards])
+  }, [fetchPublicBoards])
 
-  const updateBoardMembers = useCallback(async (boardId: number, memberIds: number[]) => {
-    await boardService.update(boardId, { member_ids: memberIds })
+  const inviteMembers = useCallback(async (boardId: number, userIds: number[]): Promise<number> => {
+    const res = await boardService.invite(boardId, userIds)
+    return res?.invited ?? 0
+  }, [])
+
+  const removeMember = useCallback(async (boardId: number, userId: number) => {
+    await boardService.removeMember(boardId, userId)
     await invalidateBoards()
     await fetchBoards()
+  }, [fetchBoards, invalidateBoards])
+
+  const leaveBoard = useCallback(async (boardId: number) => {
+    await boardService.leaveBoard(boardId)
+    await invalidateBoards()
+    const boardsRes = await fetchBoards()
+    if (!boardsRes.find((b: Board) => b.id === boardId)) setSelectedBoard(null)
   }, [fetchBoards, invalidateBoards])
 
   const reorderPhases = useCallback(async (boardId: number, phaseIds: number[]) => {
@@ -237,11 +249,14 @@ export function useBoards({ companyId = null, requireCompany = false, autoSelect
     isLoading,
     isCreatingBoard,
     createBoard,
+    updateBoard,
     deleteBoard,
-    joinBoard,
+    requestJoin,
     fetchBoards,
     fetchPublicBoards,
-    updateBoardMembers,
+    inviteMembers,
+    removeMember,
+    leaveBoard,
     reorderPhases,
     addPhase,
     removePhase,

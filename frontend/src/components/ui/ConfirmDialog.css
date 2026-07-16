@@ -93,6 +93,24 @@
   color: var(--gray-500, #5c5680);
 }
 
+.ui-confirm__input {
+  width: 100%;
+  margin: 0 0 24px;
+  padding: 12px 14px;
+  font-size: 14.5px;
+  color: var(--black, #060b23);
+  background: var(--white, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ui-confirm__input:focus {
+  border-color: var(--primary, #cc33cc);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.15);
+}
+
 .ui-confirm__actions {
   display: flex;
   gap: 10px;

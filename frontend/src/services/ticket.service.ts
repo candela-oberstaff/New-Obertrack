@@ -73,8 +73,7 @@ export interface Ticket {
   assignee_name?: string;
   assignee_email?: string;
   department_id?: string;
-  /** 'zoho' Zoho Desk, 'internal' alertas Obertrack, 'support' solicitudes de soporte por chat */
-  origin?: 'zoho' | 'internal' | 'support';
+  origin?: 'zoho' | 'internal' | 'support' | 'whatsapp';
   /** Canal de chat asociado (solo origin 'support'): para navegar al chat */
   channel_id?: number;
   // Internal work-hour-rejection alert fields
@@ -130,6 +129,15 @@ export interface WhatsAppMessageDTO {
   author_name: string
   author_type: string
   created_time: string
+}
+
+export interface WahaStatus {
+  name: string
+  status: string // "WORKING" | "SCAN_QR_CODE" | "STARTING" | "STOPPED" | "FAILED" ...
+  qr?: {
+    raw?: string
+    image?: string // base64 (o data URI) del QR cuando hace falta escanear
+  }
 }
 
 export const ticketService = {
@@ -214,6 +222,78 @@ export const ticketService = {
 
   sendMessage: async (zohoId: string, content: string, channel: 'whatsapp' | 'email' | 'note', templateId?: string): Promise<TicketMessage> => {
     const response = await api.post(`/tickets/${zohoId}/messages`, { content, channel, template_id: templateId })
+    return response.data
+  },
+
+  getWhatsAppTicket: async (id: number): Promise<Ticket> => {
+    const response = await api.get(`/tickets/wa/${id}`)
+    return response.data
+  },
+
+  sendWhatsAppReply: async (id: number, content: string): Promise<TicketMessage> => {
+    const response = await api.post(`/tickets/wa/${id}/messages`, { content })
+    return response.data
+  },
+
+  whatsAppAction: async (id: number, action: 'claim' | 'resolve' | 'reopen'): Promise<Ticket> => {
+    const response = await api.patch(`/tickets/wa/${id}`, { action })
+    return response.data
+  },
+
+  getWaChats: async (): Promise<WhatsAppChatTicket[]> => {
+    const response = await api.get('/tickets/wa')
+    const tickets: Ticket[] = response.data ?? []
+    return tickets.map(t => ({
+      zoho_id: String(t.id),
+      contact_name: t.contact?.name || t.title || t.contact?.phone || 'Sin nombre',
+      contact_phone: t.contact?.phone || t.professional_phone || '',
+      subject: t.title || '',
+      status: t.status,
+      assignee_id: t.assigned_to ? String(t.assigned_to) : '',
+      modified_time: t.updated_at || t.created_at,
+    }))
+  },
+
+  getWaChatMessages: async (id: string): Promise<WhatsAppMessageDTO[]> => {
+    const response = await api.get(`/tickets/wa/${id}`)
+    const contactName = response.data?.contact?.name || 'Contacto'
+    const msgs: TicketMessage[] = response.data?.messages ?? []
+    return msgs.map(m => ({
+      id: String(m.id),
+      content: m.content,
+      direction: m.sender_type === 'agent' ? 'outgoing' : 'incoming',
+      author_name: m.sender_type === 'agent' ? 'Agente' : contactName,
+      author_type: m.sender_type,
+      created_time: m.created_at,
+    }))
+  },
+
+  sendWaChatMessage: async (id: string, content: string): Promise<WhatsAppMessageDTO> => {
+    const response = await api.post(`/tickets/wa/${id}/messages`, { content })
+    const m = response.data
+    return {
+      id: String(m.id),
+      content: m.content,
+      direction: 'outgoing',
+      author_name: 'Agente',
+      author_type: 'agent',
+      created_time: m.created_at,
+    }
+  },
+
+  assignWaChat: async (id: string): Promise<void> => {
+    await api.patch(`/tickets/wa/${id}`, { action: 'claim' })
+  },
+
+  // Estado de la sesión WAHA (Conectado / Escanear QR / Desconectado).
+  getWahaStatus: async (): Promise<WahaStatus> => {
+    const response = await api.get('/tickets/waha/status')
+    return response.data
+  },
+
+  // Fuerza el (re)arranque de la sesión en WAHA y devuelve el estado/QR fresco.
+  forceWahaConnection: async (): Promise<WahaStatus> => {
+    const response = await api.post('/tickets/waha/start')
     return response.data
   },
 

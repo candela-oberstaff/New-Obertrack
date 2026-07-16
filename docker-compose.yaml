@@ -48,7 +48,27 @@ services:
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Obertrack}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-noreply@obertrack.com}
       BREVO_WEBHOOK_TOKEN: ${BREVO_WEBHOOK_TOKEN}
+      # WAHA (WhatsApp HTTP API): URL de la instancia, API key (X-Api-Key) y
+      # nombre de la sesión. Sin WAHA_API_URL el backend intenta localhost:3000.
+      # WAHA_SESSION debe coincidir con el nombre de la sesión creada en WAHA.
+      WAHA_API_URL: ${WAHA_API_URL:-http://localhost:3000}
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+      # HMAC compartido: firma los webhooks entrantes de WAHA (X-Webhook-Hmac).
+      # Debe ser idéntico al configurado en el webhook de la sesión en WAHA.
       WAHA_WEBHOOK_HMAC: ${WAHA_WEBHOOK_HMAC}
+      # Anti-baneo (envío saliente). WAHA es no oficial: WhatsApp banea números
+      # que se comportan como bots. Estos límites hacen que el tráfico parezca
+      # manual. Ajustables sin recompilar.
+      #  - MAX_MSGS_PER_MIN: tope duro por minuto (0 = sin tope).
+      #  - MIN_SEND_INTERVAL_MS: espaciado mínimo entre mensajes consecutivos.
+      #  - HUMAN_TYPING: enviar "visto" + "escribiendo…" con un delay proporcional.
+      WAHA_MAX_MSGS_PER_MIN: ${WAHA_MAX_MSGS_PER_MIN:-20}
+      WAHA_MIN_SEND_INTERVAL_MS: ${WAHA_MIN_SEND_INTERVAL_MS:-1500}
+      WAHA_HUMAN_TYPING: ${WAHA_HUMAN_TYPING:-true}
+      #  - REQUIRE_INBOUND: solo permite responder a contactos que escribieron
+      #    primero (bloquea outreach en frío, el mayor riesgo de baneo).
+      WAHA_REQUIRE_INBOUND: ${WAHA_REQUIRE_INBOUND:-true}
       ZOHO_CLIENT_ID: ${ZOHO_CLIENT_ID}
       ZOHO_CLIENT_SECRET: ${ZOHO_CLIENT_SECRET}
       ZOHO_REFRESH_TOKEN: ${ZOHO_REFRESH_TOKEN}

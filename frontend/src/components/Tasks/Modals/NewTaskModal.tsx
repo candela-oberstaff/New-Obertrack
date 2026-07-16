@@ -34,7 +34,7 @@ export function NewTaskModal({
       isOpen={isOpen}
       onClose={onClose}
       title="Crear nueva tarea"
-      size="lg"
+      size="xl"
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={isCreatingTask}>Cancelar</Button>

@@ -17,7 +17,7 @@ const MODULES: { key: string; label: string }[] = [
   { key: 'hours', label: 'Horas' },
   { key: 'reports', label: 'Reportes' },
   { key: 'chat', label: 'Chat' },
-  { key: 'tutorials', label: 'Tutoriales' },
+  { key: 'tutorials', label: 'Novedades' },
 ]
 
 const LEVEL_OPTIONS: { value: PermissionLevel; label: string }[] = [

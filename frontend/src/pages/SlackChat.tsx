@@ -27,6 +27,20 @@ import styles from './SlackChat.module.css'
 
 interface CompanyOption { id: number; company_name: string }
 
+const MEMBERSHIP_ERRORS: Record<string, string> = {
+  'unauthorized': 'No tienes permiso para gestionar los miembros de este canal.',
+  'professionals cannot add superadmins': 'No puedes añadir a un superadmin.',
+  'user belongs to a different tenant': 'Esa persona pertenece a otra empresa.',
+  'user is already a member': 'Esa persona ya es miembro del canal.',
+  'channel not found': 'El canal ya no existe.',
+  'user not found': 'No se encontró a esa persona.',
+}
+
+function membershipErrorMessage(e: any, fallback: string): string {
+  const raw = e?.response?.data?.error
+  return MEMBERSHIP_ERRORS[raw] || fallback
+}
+
 export default function SlackChat() {
   const { user } = useAuth()
   const confirm = useConfirm()
@@ -117,7 +131,8 @@ export default function SlackChat() {
     sendMessage, sendTypingIndicator, startRecording, stopRecording,
     editMessage, deleteMessage, pinMessage, unpinMessage, fetchChannels, fetchAllUsers,
     toggleReaction, starMessage, unstarMessage, starredMessages, starredIds, fetchStarredMessages,
-    userStatuses
+    userStatuses,
+    archivedChannels, fetchArchivedChannels,
   } = useSlackChat(user as any, isSuperadmin ? selectedCompanyId : null)
 
   const [showNewChannelModal, setShowNewChannelModal] = useState(false)
@@ -341,9 +356,12 @@ export default function SlackChat() {
   }
 
   const leaveChannel = async (id: number) => {
+    const isCreator = selectedChannel?.id === id && selectedChannel?.created_by === user?.id
     const ok = await confirm({
       title: 'Salir del canal',
-      message: '¿Seguro que quieres salir de este canal? Dejarás de ver sus mensajes.',
+      message: isCreator
+        ? 'Eres el creador. Al salir, la administración se transferirá a otro miembro (a un admin del canal si existe). ¿Continuar?'
+        : '¿Seguro que quieres salir de este canal? Dejarás de ver sus mensajes.',
       confirmLabel: 'Salir',
       variant: 'danger',
     })
@@ -352,13 +370,54 @@ export default function SlackChat() {
       await channelService.leaveChannel(id)
       if (selectedChannel?.id === id) setSelectedChannel(null)
       fetchChannels()
-    } catch (e) {
+      fetchArchivedChannels()
+    } catch (e: any) {
       console.error(e)
-      showError('No se pudo salir del canal. Intenta de nuevo.')
+      showError(e?.response?.data?.error || 'No se pudo salir del canal. Intenta de nuevo.')
     }
   }
-  const addMember = async (id: number) => { if (selectedChannel) try { await channelService.addMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
-  const removeMember = async (id: number) => { if (selectedChannel) try { await channelService.removeMember(selectedChannel.id, id); fetchChannelMembers(selectedChannel.id) } catch (e) { console.error(e) } }
+  const hideChannel = async (id: number) => {
+    try {
+      await channelService.hideChannel(id)
+      if (selectedChannel?.id === id) setSelectedChannel(null)
+      fetchChannels()
+      fetchArchivedChannels()
+    } catch (e: any) {
+      console.error(e)
+      showError(e?.response?.data?.error || 'No se pudo archivar el chat. Intenta de nuevo.')
+    }
+  }
+  const restoreChannel = async (id: number) => {
+    try {
+      await channelService.unhideChannel(id)
+      fetchChannels()
+      fetchArchivedChannels()
+    } catch (e: any) {
+      console.error(e)
+      showError(e?.response?.data?.error || 'No se pudo restaurar el chat. Intenta de nuevo.')
+    }
+  }
+  const isSelectedArchived = !!selectedChannel && archivedChannels.some(c => c.id === selectedChannel.id)
+  const addMember = async (id: number) => {
+    if (!selectedChannel) return
+    try {
+      await channelService.addMember(selectedChannel.id, id)
+      await fetchChannelMembers(selectedChannel.id)
+    } catch (e: any) {
+      showError(membershipErrorMessage(e, 'No se pudo añadir a la persona. Intenta de nuevo.'))
+      throw e
+    }
+  }
+  const removeMember = async (id: number) => {
+    if (!selectedChannel) return
+    try {
+      await channelService.removeMember(selectedChannel.id, id)
+      await fetchChannelMembers(selectedChannel.id)
+      showSuccess('Persona removida del canal')
+    } catch (e: any) {
+      showError(membershipErrorMessage(e, 'No se pudo remover a la persona. Intenta de nuevo.'))
+    }
+  }
   const handleUpdateChannel = async (id: number, updates: { name: string; description: string; type?: 'public' | 'private' }) => {
     try {
       const updated = await channelService.updateChannel(id, updates)
@@ -424,6 +483,17 @@ export default function SlackChat() {
   // SOPORTE tampoco: tienen su propio flujo (tomar/atender) y el agente que
   // atiende debe poder escribir, aunque sea private y no fuera miembro al abrir.
   const isSupervising = !!selectedChannel?.supervised && !!selectedChannel && !isSupportChannel(selectedChannel)
+
+  // Ticket de soporte activo atendido por OTRO agente: la conversación es suya.
+  // El agente que mira queda en modo observador (sin composer, sin gestionar) y
+  // su único camino es "Tomar" el ticket. No aplica al solicitante del ticket,
+  // que siempre puede escribir en su propia solicitud.
+  const supportInfo = selectedChannel && isSupportChannel(selectedChannel) ? (selectedChannel as any).support : null
+  const supportAttendedByOther = !!(
+    user && isSupportAgent && supportInfo && supportInfo.status !== 'resolved' &&
+    supportInfo.assigned_to && supportInfo.assigned_to !== user.id &&
+    supportInfo.requester_id !== user.id
+  )
 
   const handleJoinChannel = async () => {
     if (!selectedChannel) return
@@ -550,7 +620,14 @@ export default function SlackChat() {
     setShowSupportPanel(true)
   }, [selectedChannel?.id])
 
-  const supportTicketId = () => (selectedChannel as any)?.support?.ticket_id as number | undefined
+  // Lee el ticket_id del MISMO ticket que muestra el panel/sidebar (el que elige
+  // el dedup en la lista de canales), no de un selectedChannel posiblemente stale.
+  // Así reasignar/tomar/resolver actúa sobre el ticket visible, y tras la acción
+  // ese ticket queda como el más reciente → el panel refleja el nuevo responsable.
+  const supportTicketId = () => {
+    const fresh = channels.find(c => c.id === selectedChannel?.id) as any
+    return (fresh?.support?.ticket_id ?? (selectedChannel as any)?.support?.ticket_id) as number | undefined
+  }
   const handleClaimSupport = () => {
     const tid = supportTicketId(); if (!tid) return
     runSupportAction(() => channelService.claimSupport(tid), 'Tomaste el ticket.')
@@ -602,6 +679,7 @@ export default function SlackChat() {
         setShowAddMembers={setShowAddMembers}
         setShowChannelSettings={setShowChannelSettings}
         leaveChannel={leaveChannel}
+        hideChannel={hideChannel}
         onShowSearch={() => { setSearchQuery(''); setSearchResults([]); setShowSearchModal(true) }}
         onShowStarred={() => { fetchStarredMessages(); setShowStarredModal(true) }}
         recipientStatus={selectedChannel?.type === 'direct' && selectedChannel.recipient
@@ -622,6 +700,8 @@ export default function SlackChat() {
       <div className={styles['chat-body']}>
         <Sidebar
           channels={channels}
+          archivedChannels={archivedChannels}
+          onRestoreChannel={restoreChannel}
           selectedChannel={selectedChannel}
           setSelectedChannel={setSelectedChannel}
           showMobileChannels={showMobileChannels}
@@ -701,6 +781,31 @@ export default function SlackChat() {
                   <p style={{ margin: '4px 0 0', color: '#7c3aed', fontSize: 13 }}>
                     No eres participante, por eso no puedes escribir aquí.
                   </p>
+                </div>
+              ) : isSelectedArchived ? (
+                <div className={styles['join-banner']} style={{ background: 'rgba(100,116,139,0.08)', borderTop: '1px solid rgba(100,116,139,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <p style={{ margin: 0, color: '#475569', fontWeight: 600 }}>
+                    Este chat está archivado (solo lectura). Restáuralo para escribir.
+                  </p>
+                  <button
+                    onClick={() => selectedChannel && restoreChannel(selectedChannel.id)}
+                    style={{ border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer', width: 'auto' }}
+                  >
+                    Restaurar
+                  </button>
+                </div>
+              ) : supportAttendedByOther ? (
+                <div className={styles['join-banner']} style={{ background: 'rgba(124,58,237,0.08)', borderTop: '1px solid rgba(124,58,237,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <p style={{ margin: 0, color: '#6d28d9', fontWeight: 600 }}>
+                    🎧 Este ticket lo atiende {supportInfo?.assignee_name || 'otro agente'}. Tómalo para poder responder.
+                  </p>
+                  <button
+                    onClick={handleClaimSupport}
+                    disabled={supportBusy}
+                    style={{ border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 8, padding: '7px 14px', fontWeight: 700, fontSize: 13, cursor: supportBusy ? 'wait' : 'pointer', width: 'auto' }}
+                  >
+                    Tomar ticket
+                  </button>
                 </div>
               ) : (
                 <MessageInput

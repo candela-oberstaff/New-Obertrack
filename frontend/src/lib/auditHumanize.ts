@@ -20,7 +20,7 @@ const ENTITY_ES: Record<string, string> = {
   message_reactions: 'reacción',
   surveys: 'encuesta',
   survey_responses: 'respuesta de encuesta',
-  tutorials: 'tutorial',
+  tutorials: 'novedad',
   contacts: 'contacto',
   auth: 'sesión',
   admin: 'administración',
@@ -41,7 +41,7 @@ const MODULE_ES: Record<string, string> = {
   channel_messages: 'Chat',
   auth: 'Autenticación',
   surveys: 'Encuestas',
-  tutorials: 'Tutoriales',
+  tutorials: 'Novedades',
   email: 'Email',
 }
 

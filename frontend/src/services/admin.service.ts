@@ -1,5 +1,23 @@
 import api from './client'
 
+export interface TrashItem {
+  type: string
+  type_label: string
+  id: number
+  title: string
+  subtitle: string
+  deleted_at: string | null
+}
+export interface TrashTypeInfo {
+  key: string
+  label: string
+}
+export interface TrashFailure {
+  type: string
+  id: number
+  error: string
+}
+
 export interface ProfessionalLocation {
   id: number
   name: string
@@ -205,6 +223,24 @@ export const adminService = {
   // Asigna (o desasigna si managerId es null) un manager a varios profesionales.
   bulkAssignManager: async (professionalIds: number[], managerId: number | null) => {
     const { data } = await api.post('/admin/bulk-assign-manager', { professional_ids: professionalIds, manager_id: managerId })
+    return data
+  },
+  bulkDeleteUsers: async (userIds: number[]) => {
+    const { data } = await api.post<{ deleted: number; skipped: { id: number; name: string; reason: string }[] }>('/admin/bulk-delete-users', { user_ids: userIds })
+    return data
+  },
+  getTrash: async (types?: string[]) => {
+    const { data } = await api.get<{ items: TrashItem[]; types: TrashTypeInfo[] }>('/admin/trash', {
+      params: types && types.length ? { types: types.join(',') } : {},
+    })
+    return data
+  },
+  restoreTrash: async (items: { type: string; id: number }[]) => {
+    const { data } = await api.post<{ restored: number; failed: TrashFailure[] }>('/admin/trash/restore', { items })
+    return data
+  },
+  purgeTrash: async (items: { type: string; id: number }[]) => {
+    const { data } = await api.post<{ purged: number; failed: TrashFailure[] }>('/admin/trash/purge', { items })
     return data
   },
   // ── Expediente laboral (resumen + evaluaciones/notas + documentos) ──────────

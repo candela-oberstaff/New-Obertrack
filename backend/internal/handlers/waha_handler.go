@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -49,8 +50,11 @@ func (h *WahaHandler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
-	// Only process incoming text messages.
-	if payload.Event != "message" || payload.Payload.FromMe {
+	from := payload.Payload.From
+	if payload.Event != "message" ||
+		payload.Payload.FromMe ||
+		strings.Contains(from, "status@broadcast") ||
+		strings.TrimSpace(payload.Payload.Body) == "" {
 		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
 		return
 	}

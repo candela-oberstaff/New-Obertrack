@@ -4,6 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './context/AuthContext'
 import { NotificationProvider } from './context/NotificationContext'
 import { ConfirmProvider } from './components/ui/ConfirmProvider'
+import { PromptProvider } from './components/ui/PromptProvider'
 import Toast from './components/Toast'
 import App from './App'
 import { queryClient } from './config/queryClient'
@@ -15,8 +16,10 @@ createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <NotificationProvider>
           <ConfirmProvider>
-            <Toast />
-            <App />
+            <PromptProvider>
+              <Toast />
+              <App />
+            </PromptProvider>
           </ConfirmProvider>
         </NotificationProvider>
       </AuthProvider>
