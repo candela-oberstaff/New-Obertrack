@@ -2,16 +2,30 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { notificationService, type Notification } from '../services/api'
 import { useAuth } from '../context/AuthContext'
-import { 
-  Bell, 
-  ClipboardList, 
+import {
+  desktopPermission,
+  requestDesktopPermission,
+  showDesktopNotification,
+  type DesktopPermission,
+} from '../lib/desktopNotifications'
+import {
+  isNotificationSoundEnabled,
+  setNotificationSoundEnabled,
+  playNotificationSound,
+} from '../lib/notificationSound'
+import {
+  Bell,
+  BellRing,
+  ClipboardList,
   CheckCircle2, 
   XCircle, 
   MessageSquare,
   AtSign,
   Mail,
   UserPlus,
-  LogOut
+  LogOut,
+  Volume2,
+  VolumeX
 } from 'lucide-react'
 import styles from './Notifications.module.css'
 
@@ -30,41 +44,81 @@ const LIVE_NOTIFICATION_TYPES = new Set([
   'board_member_left',
 ])
 
+const ALERT_NOTIFICATION_TYPES = new Set([
+  'task_assigned',
+  'mention',
+  'board_invitation',
+])
+
+const RECONNECT_BASE_DELAY = 1000
+const RECONNECT_MAX_DELAY = 30000
+
+function parseNotificationLink(data: Notification['data']): string | null {
+  if (!data) return null
+  try {
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data
+    const link = (parsed as { link?: unknown })?.link
+    return typeof link === 'string' ? link : null
+  } catch {
+    return null
+  }
+}
+
 export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
   const [_isLoading, _setIsLoading] = useState(false)
+  const [permission, setPermission] = useState<DesktopPermission>(() => desktopPermission())
+  const [soundEnabled, setSoundEnabled] = useState(() => isNotificationSoundEnabled())
   const navigate = useNavigate()
   const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimerRef = useRef<number | null>(null)
+  const reconnectAttemptsRef = useRef(0)
+  const closingRef = useRef(false)
   const { user } = useAuth()
+  const navigateRef = useRef(navigate)
+  navigateRef.current = navigate
 
   useEffect(() => {
     fetchNotifications()
     const interval = setInterval(fetchUnreadCount, 30000)
-    return () => {
-      clearInterval(interval)
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
-    }
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
     if (!user) return
 
-    // Auth travels via the httpOnly cookie on the same-origin WS handshake.
+    closingRef.current = false
+    reconnectAttemptsRef.current = 0
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${protocol}//${window.location.host}/ws/notifications`
 
-    const connect = () => {
-      wsRef.current = new WebSocket(wsUrl)
+    const scheduleReconnect = () => {
+      if (closingRef.current || reconnectTimerRef.current !== null) return
+      const attempt = reconnectAttemptsRef.current
+      const delay = Math.min(RECONNECT_BASE_DELAY * 2 ** attempt, RECONNECT_MAX_DELAY)
+      reconnectAttemptsRef.current = attempt + 1
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null
+        connect()
+      }, delay + Math.random() * 1000)
+    }
 
-      wsRef.current.onopen = () => {
-        console.log('Notifications WebSocket connected')
+    const connect = () => {
+      if (closingRef.current) return
+
+      const ws = new WebSocket(wsUrl)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        const wasReconnect = reconnectAttemptsRef.current > 0
+        reconnectAttemptsRef.current = 0
+        if (wasReconnect) fetchNotifications()
       }
 
-      wsRef.current.onmessage = (event) => {
+      ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data)
           if (LIVE_NOTIFICATION_TYPES.has(message.type)) {
@@ -74,15 +128,25 @@ export default function Notifications() {
               type: message.type,
               title: message.data?.title || 'Nueva notificación',
               message: message.data?.message || '',
-              // Keep the payload (carries the deep link) so clicking a
-              // just-arrived notification navigates without a reload.
               data: message.data?.data,
               read_at: undefined,
               created_at: new Date().toISOString(),
             }
             setNotifications(prev => [newNotification, ...prev])
             setUnreadCount(prev => prev + 1)
-            
+
+            if (ALERT_NOTIFICATION_TYPES.has(message.type)) {
+              playNotificationSound()
+
+              const link = parseNotificationLink(newNotification.data)
+              showDesktopNotification({
+                title: newNotification.title,
+                body: newNotification.message,
+                tag: `obertrack-${message.type}-${newNotification.id}`,
+                onClick: link ? () => navigateRef.current(link) : undefined,
+              })
+            }
+
             if (
               message.type === 'task_assigned' ||
               message.type === 'task_created' ||
@@ -97,21 +161,41 @@ export default function Notifications() {
         }
       }
 
-      wsRef.current.onclose = () => {
-        console.log('Notifications WebSocket disconnected')
+      ws.onclose = () => {
+        scheduleReconnect()
       }
 
-      wsRef.current.onerror = (error) => {
-        console.error('Notifications WebSocket error:', error)
+      ws.onerror = () => {
+        ws.close()
       }
     }
 
     connect()
 
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close()
+    const handleVisibility = () => {
+      if (document.hidden) return
+      fetchUnreadCount()
+      const ws = wsRef.current
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        reconnectAttemptsRef.current = 0
+        if (reconnectTimerRef.current !== null) {
+          clearTimeout(reconnectTimerRef.current)
+          reconnectTimerRef.current = null
+        }
+        connect()
       }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      closingRef.current = true
+      document.removeEventListener('visibilitychange', handleVisibility)
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+      wsRef.current?.close()
+      wsRef.current = null
     }
   }, [user])
 
@@ -148,21 +232,25 @@ export default function Notifications() {
     // Close dropdown
     setIsOpen(false)
 
-    // Handle navigation
-    if (notification.data) {
-      try {
-        let dataObj = notification.data;
-        if (typeof dataObj === 'string') {
-          dataObj = JSON.parse(dataObj);
-        }
-        
-        if ((dataObj as any).link) {
-          navigate((dataObj as any).link);
-        }
-      } catch (e) {
-        console.error("Error parsing notification data", e);
-      }
-    }
+    const link = parseNotificationLink(notification.data)
+    if (link) navigate(link)
+  }
+
+  const handleToggleOpen = () => {
+    const next = !isOpen
+    setIsOpen(next)
+    if (next) fetchNotifications()
+  }
+
+  const handleEnableDesktop = async () => {
+    setPermission(await requestDesktopPermission())
+  }
+
+  const handleToggleSound = () => {
+    const next = !soundEnabled
+    setSoundEnabled(next)
+    setNotificationSoundEnabled(next)
+    if (next) playNotificationSound()
   }
 
   const handleMarkAsRead = async (id: number) => {
@@ -225,7 +313,7 @@ export default function Notifications() {
 
   return (
     <div className={styles['notifications-container']}>
-      <button className={styles['notification-bell']} onClick={() => setIsOpen(!isOpen)} title="Notificaciones">
+      <button className={styles['notification-bell']} onClick={handleToggleOpen} title="Notificaciones">
         <Bell size={20} />
         {unreadCount > 0 && (
           <span className={styles['notification-badge']}>{unreadCount > 9 ? '9+' : unreadCount}</span>
@@ -236,12 +324,30 @@ export default function Notifications() {
         <div className={styles['notifications-dropdown']}>
           <div className={styles['notifications-header']}>
             <h3>Notificaciones</h3>
-            {unreadCount > 0 && (
-              <button className={styles['mark-all-read']} onClick={handleMarkAllAsRead}>
-                Marcar todas como leídas
+            <div className={styles['notifications-header-actions']}>
+              {unreadCount > 0 && (
+                <button className={styles['mark-all-read']} onClick={handleMarkAllAsRead}>
+                  Marcar todas como leídas
+                </button>
+              )}
+              <button
+                className={styles['sound-toggle']}
+                onClick={handleToggleSound}
+                title={soundEnabled ? 'Silenciar notificaciones' : 'Activar sonido'}
+                aria-label={soundEnabled ? 'Silenciar notificaciones' : 'Activar sonido'}
+                aria-pressed={soundEnabled}
+              >
+                {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
               </button>
-            )}
+            </div>
           </div>
+
+          {permission === 'default' && (
+            <button className={styles['enable-desktop']} onClick={handleEnableDesktop}>
+              <BellRing size={14} />
+              Avisarme en el escritorio cuando me asignen una tarea
+            </button>
+          )}
 
           <div className={styles['notifications-list']}>
             {notifications.length === 0 ? (
