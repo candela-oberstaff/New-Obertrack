@@ -105,6 +105,10 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc, employmentRepo)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
 	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
+	// Al asignar/cambiar/completar una tarea, además de la campanita se publica un
+	// DM del bot "Obertrack" en el chat interno (como Slack). channelSvc ya está
+	// construido arriba, así que se apunta directamente su PostSystemDM.
+	taskSvc.SetSystemDM(channelSvc.PostSystemDM)
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo, brevoSvc)
 	boardSvc := service.NewBoardService(boardRepo, userRepo, notifSvc)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)

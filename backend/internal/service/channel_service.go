@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -121,6 +122,10 @@ type ChannelService interface {
 	GetStarredMessages(userID uint) ([]models.ChannelMessage, error)
 	SearchMessages(channelID, userID uint, query string) ([]models.ChannelMessage, error)
 	CreateDirectMessage(userID, recipientID uint, tenantOverride uint) (*DirectMessageResponse, error)
+	// PostSystemDM publica un DM del usuario de sistema "Obertrack" a recipientID
+	// y lo difunde en vivo. Best-effort: no devuelve error (el aviso principal es
+	// la notificación de campanita, que se crea aparte).
+	PostSystemDM(recipientID uint, content string)
 	ContactSupport(userID uint, subject, message, priority, module string, forceNew bool) (*ChannelWithUnread, error)
 	ReopenSupportTicket(ticketID, actorID uint) (*models.SupportTicket, error)
 	ListSupportAgents() ([]models.User, error)
@@ -227,6 +232,11 @@ type channelService struct {
 	// tests. NUNCA se llama en el path de envío de mensajes (no degradar el caché).
 	onMembershipChange func(channelID uint)
 	supportNtfy        *SupportNotifier
+	// botID cachea el ID del usuario de sistema "Obertrack" (resuelto por email
+	// una sola vez). El bot se crea en una migración de arranque, así que existe
+	// antes de servir peticiones. botMu protege la resolución perezosa.
+	botID uint
+	botMu sync.Mutex
 }
 
 func NewChannelService(repo repository.ChannelRepository, userRepo repository.UserRepository, notifSvc NotificationService) ChannelService {

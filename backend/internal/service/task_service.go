@@ -23,6 +23,12 @@ type TaskService interface {
 	AddComment(id uint, tenantID uint, userID uint, content string, isSuperadmin bool) (*models.Comment, error)
 	AddAttachment(taskID uint, tenantID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint, isSuperadmin bool) (*models.TaskAttachment, error)
 	DeleteAttachment(attachmentID uint, tenantID uint, isSuperadmin bool) error
+
+	// SetSystemDM cablea el emisor de DMs de sistema al chat interno (lo apunta a
+	// channelService.PostSystemDM en deps.go). Callback inyectado para no acoplar
+	// taskService→channelService, mismo patrón que ChannelService.SetBroadcaster.
+	// Puede quedar sin cablear (nil): en ese caso no se envían DMs.
+	SetSystemDM(fn func(recipientID uint, content string))
 }
 
 type taskService struct {
@@ -30,6 +36,30 @@ type taskService struct {
 	userRepo  repository.UserRepository
 	boardRepo repository.BoardRepository
 	notifSvc  NotificationService
+	// postSystemDM publica un DM del bot "Obertrack" en el chat interno. Inyectado
+	// por SetSystemDM; nil = sin DMs (p. ej. en tests que no lo cablean).
+	postSystemDM func(recipientID uint, content string)
+}
+
+func (s *taskService) SetSystemDM(fn func(recipientID uint, content string)) {
+	s.postSystemDM = fn
+}
+
+// sendSystemDM envía un DM del bot si el emisor está cableado. Best-effort: el
+// aviso principal es la notificación de campanita.
+func (s *taskService) sendSystemDM(recipientID uint, content string) {
+	if s.postSystemDM != nil {
+		s.postSystemDM(recipientID, content)
+	}
+}
+
+// taskDueSuffix devuelve " · vence DD/MM/AAAA" si la tarea tiene fecha límite, o
+// "" si no. Se anexa al DM de asignación para dar contexto sin otra línea.
+func taskDueSuffix(t *models.Task) string {
+	if t != nil && t.EndDate != nil {
+		return " · vence " + t.EndDate.Format("02/01/2006")
+	}
+	return ""
 }
 
 func (s *taskService) authorizeBoardTenant(boardID, tenantID uint, isSuperadmin bool) error {
@@ -330,6 +360,7 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, tenantID uint, titl
 			log.Printf("[TaskService] Error creating internal notification for user %d: %v", assignee.ID, err)
 		}
 
+		s.sendSystemDM(assignee.ID, fmt.Sprintf("📋 Se te asignó la tarea: %s%s", task.Title, taskDueSuffix(finalTask)))
 	}
 
 	// Notify employer/company
@@ -389,6 +420,14 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 		currentAssigneeIDs[a.ID] = true
 	}
 
+	// Fecha límite ANTES del update. El frontend reenvía end_date en CADA edición
+	// (aunque solo cambies la prioridad), así que la presencia de la clave en
+	// reqData no significa que la fecha cambió: hay que comparar el valor real.
+	var oldEndDate string
+	if task.EndDate != nil {
+		oldEndDate = task.EndDate.Format("2006-01-02")
+	}
+
 	if len(reqData) > 0 {
 		if err := s.repo.Update(task, reqData); err != nil {
 			return nil, nil, err
@@ -430,6 +469,16 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 	}
 	task = finalTask
 
+	// ¿Cambió la fecha límite DE VERDAD? Comparamos el valor viejo con el nuevo
+	// (recargado en task/finalTask), no la mera presencia de end_date en reqData.
+	// Sirve para avisar por DM solo a los asignados que ya estaban (los nuevos
+	// reciben el DM de asignación, más completo).
+	var newEndDate string
+	if task.EndDate != nil {
+		newEndDate = task.EndDate.Format("2006-01-02")
+	}
+	deadlineChanged := oldEndDate != newEndDate
+
 	// Notify new assignees (only if assignees changed)
 	if assignees != nil {
 		for _, u := range task.Assignees {
@@ -443,6 +492,7 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 					log.Printf("[TaskService] Error creating internal notification for user %d: %v", u.ID, err)
 				}
 
+				s.sendSystemDM(u.ID, fmt.Sprintf("📋 Se te asignó la tarea: %s%s", task.Title, taskDueSuffix(task)))
 			}
 		}
 	}
@@ -507,6 +557,15 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 			log.Printf("[TaskService] Error creating task_updated notification for assignee %d: %v", assignee.ID, err)
 		}
 
+		if deadlineChanged {
+			var dueMsg string
+			if task.EndDate != nil {
+				dueMsg = fmt.Sprintf("📅 Cambió la fecha de \"%s\": ahora vence %s", task.Title, task.EndDate.Format("02/01/2006"))
+			} else {
+				dueMsg = fmt.Sprintf("📅 La tarea \"%s\" ya no tiene fecha límite", task.Title)
+			}
+			s.sendSystemDM(assignee.ID, dueMsg)
+		}
 	}
 
 	return task, task.Assignees, nil
@@ -621,6 +680,11 @@ func (s *taskService) ToggleCompletion(id uint, tenantID uint, updaterUserID uin
 			log.Printf("[TaskService] Error creating ToggleCompletion notification for assignee %d: %v", assignee.ID, err)
 		}
 
+		// Solo al completar (no al reabrir): el DM de "✅ completada" es señal de
+		// cierre; reabrir es un cambio menor que no amerita un mensaje.
+		if completed {
+			s.sendSystemDM(assignee.ID, fmt.Sprintf("✅ Se completó la tarea: %s", task.Title))
+		}
 	}
 
 	return task, nil
