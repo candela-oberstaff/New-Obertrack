@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { LifeBuoy, CheckCircle2, MessageCircle, Clock, Plus, Inbox, RotateCcw } from 'lucide-react'
 import { channelService } from '../services/api'
@@ -22,6 +22,7 @@ const MODULE_OPTIONS = [
   { value: 'Profesionales/Empresas', label: 'Profesionales / Empresas' },
   { value: 'Perfil', label: 'Perfil' },
   { value: 'Tutoriales', label: 'Tutoriales' },
+  { value: 'Wallet', label: 'Wallet' },
   { value: 'Otro', label: 'Otro' },
 ]
 
@@ -69,6 +70,28 @@ export default function Soporte() {
 
   const resolvedModule = module === 'Otro' ? moduleOther.trim() : module
   const moduleValid = module !== '' && (module !== 'Otro' || moduleOther.trim() !== '')
+
+  // Prellenado desde query params (p.ej. "¿Dudas con este pago?" de la Wallet
+  // enlaza a /soporte?asunto=...&mensaje=...&modulo=Wallet).
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const asunto = searchParams.get('asunto')
+    const mensaje = searchParams.get('mensaje')
+    const modulo = searchParams.get('modulo')
+    if (!asunto && !mensaje && !modulo) return
+    if (asunto) setSubject(asunto)
+    if (mensaje) setDescription(mensaje)
+    if (modulo) {
+      if (MODULE_OPTIONS.some((o) => o.value === modulo)) setModule(modulo)
+      else {
+        setModule('Otro')
+        setModuleOther(modulo)
+      }
+    }
+    setShowForm(true)
+    // Solo al montar: seed inicial desde la URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const { data: tickets = [], isLoading } = useQuery({
     queryKey: ['my-support-tickets'],

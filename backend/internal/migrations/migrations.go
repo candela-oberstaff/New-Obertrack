@@ -1274,6 +1274,19 @@ func Run(db *gorm.DB) error {
 				return tx.Where("email = ?", models.SystemBotEmail).Delete(&models.User{}).Error
 			},
 		},
+		{
+			ID: "202607221200_add_wallet_paylists",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating wallet_paylists and wallet_payments tables...")
+				return tx.AutoMigrate(&models.WalletPaylist{}, &models.WalletPayment{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					&models.WalletPayment{},
+					&models.WalletPaylist{},
+				)
+			},
+		},
 		// Future migrations go here
 	})
 

@@ -43,6 +43,7 @@ type deps struct {
 	audit         *handlers.AuditHandler
 	audience      *handlers.AudienceHandler
 	incident      *handlers.IncidentHandler
+	wallet        *handlers.WalletHandler
 	emergencyTpl  *handlers.EmergencyTemplateHandler
 	profileChange *handlers.ProfileChangeHandler
 	trash         *handlers.TrashHandler
@@ -117,6 +118,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	employmentSvc.SetChannelCleaner(channelSvc.RemoveUserFromCompanyChannels)
 	auditSvc := service.NewAuditService(auditRepo)
 	incidentSvc := service.NewIncidentService(incidentRepo, userRepo, brevoSvc)
+	ontopSvc := service.NewOntopService(cfg)
+	walletSvc := service.NewWalletService(ontopSvc)
 	emergencyTplSvc := service.NewEmergencyTemplateService(emergencyTplRepo)
 	profileChangeSvc := service.NewProfileChangeService(profileChangeRepo, userRepo, channelRepo, channelSvc, notifSvc)
 
@@ -200,6 +203,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		audit:         handlers.NewAuditHandler(auditSvc),
 		audience:      handlers.NewAudienceHandler(audienceRepo),
 		incident:      handlers.NewIncidentHandler(incidentSvc),
+		wallet:        handlers.NewWalletHandler(walletSvc),
 		emergencyTpl:  handlers.NewEmergencyTemplateHandler(emergencyTplSvc),
 		profileChange: handlers.NewProfileChangeHandler(profileChangeSvc),
 		trash:         handlers.NewTrashHandler(service.NewTrashService(db)),
