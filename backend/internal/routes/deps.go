@@ -48,6 +48,7 @@ type deps struct {
 	profileChange *handlers.ProfileChangeHandler
 	trash         *handlers.TrashHandler
 	reportSched   *handlers.ReportScheduleHandler
+	onboarding    *handlers.OnboardingHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -122,6 +123,9 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	walletSvc := service.NewWalletService(ontopSvc)
 	emergencyTplSvc := service.NewEmergencyTemplateService(emergencyTplRepo)
 	profileChangeSvc := service.NewProfileChangeService(profileChangeRepo, userRepo, channelRepo, channelSvc, notifSvc)
+	// Puente Obersuite (captación) → Obertrack (gestión): materializa la
+	// contratación de un candidato como profesional + empleo activo.
+	onboardingSvc := service.NewOnboardingService(userRepo, employmentRepo, employmentSvc, uploadSvc, authSvc)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})
@@ -208,6 +212,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		profileChange: handlers.NewProfileChangeHandler(profileChangeSvc),
 		trash:         handlers.NewTrashHandler(service.NewTrashService(db)),
 		reportSched:   handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
+		onboarding:    handlers.NewOnboardingHandler(onboardingSvc),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,
