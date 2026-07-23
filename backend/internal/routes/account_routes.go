@@ -105,6 +105,10 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	api.GET("/me/cv", d.auth.MyCV)
 	api.GET("/me/cv/pdf", d.auth.MyCVPDF)
 	api.GET("/me/employments", d.auth.MyEmployments)
+	// Mi Wallet: cada usuario consulta SOLO sus propios pagos (self-service, solo
+	// lectura). El filtrado por email vive en el servicio; la empresa no ve las
+	// ganancias individuales.
+	api.GET("/me/wallet", d.wallet.MyWallet)
 	api.GET("/me/employments/:empId/expediente", d.auth.MyExpediente)
 	api.GET("/me/employments/:empId/documents/:docId/download", d.upload.DownloadMyExpedienteDoc)
 

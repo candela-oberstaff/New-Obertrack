@@ -1,9 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTasksPageState } from '../components/Tasks/hooks/useTasksPageState'
 import { canEditModule } from '../lib/permissions'
 
 import { TasksBoard } from '../components/Tasks/components/TasksBoard'
+import { TaskScopeToggle, type TaskScope } from '../components/Tasks/components/TaskScopeToggle'
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
 import { TaskDetailPanel } from '../components/Tasks/TaskDetailPanel'
@@ -116,6 +117,26 @@ export default function Tasks() {
   // Permiso del rol sobre el módulo Tareas: con "Ver" se ocultan las acciones
   // de creación/edición (el backend igual las bloquea con 403).
   const canEditTasks = canEditModule(user, 'tasks')
+
+  const [taskScope, setTaskScope] = useState<TaskScope>(
+    () => (localStorage.getItem('tasks_scope') === 'mine' ? 'mine' : 'all')
+  )
+
+  useEffect(() => {
+    localStorage.setItem('tasks_scope', taskScope)
+  }, [taskScope])
+
+  const boardTasks = useMemo(
+    () => tasks.filter((t) => t.board_id === selectedBoard?.id),
+    [tasks, selectedBoard]
+  )
+
+  const myTasks = useMemo(
+    () => boardTasks.filter((t) => t.assignees?.some((a) => a.id === user?.id)),
+    [boardTasks, user]
+  )
+
+  const visibleTasks = taskScope === 'mine' ? myTasks : boardTasks
 
   // Deep-link from other pages (e.g. Dashboard "Próximas tareas"):
   // /tasks?company=X&board=Y&task=Z → pick the company (superadmin), open the
@@ -433,15 +454,25 @@ export default function Tasks() {
             )}
           </div>
         </div>
-        {canEditTasks ? (
-          <button className={styles['btn-primary']} onClick={handleOpenNewTaskModal} data-tour="tasks-new-task">
-            + Nueva Tarea
-          </button>
-        ) : (
-          <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 600, alignSelf: 'center' }}>
-            Tu rol tiene acceso de solo lectura en Tareas
-          </span>
-        )}
+        <div className={styles['header-right']}>
+          {selectedBoard && (
+            <TaskScopeToggle
+              scope={taskScope}
+              onChange={setTaskScope}
+              allCount={boardTasks.length}
+              mineCount={myTasks.length}
+            />
+          )}
+          {canEditTasks ? (
+            <button className={styles['btn-primary']} onClick={handleOpenNewTaskModal} data-tour="tasks-new-task">
+              + Nueva Tarea
+            </button>
+          ) : (
+            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 600, alignSelf: 'center' }}>
+              Tu rol tiene acceso de solo lectura en Tareas
+            </span>
+          )}
+        </div>
       </div>
 
       {!selectedBoard ? (
@@ -573,7 +604,7 @@ export default function Tasks() {
         )
       ) : (
         <TasksBoard
-          tasks={tasks}
+          tasks={visibleTasks}
           selectedBoard={selectedBoard}
           onTaskClick={setSelectedTask}
           onUpdateTask={handleUpdateTask}

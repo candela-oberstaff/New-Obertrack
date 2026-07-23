@@ -56,6 +56,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  /* El header de superadmin suma el selector de empresa + tablero + botones de
+     gestión, y desbordaba empujando "+ Nueva Tarea" fuera de pantalla. Con
+     flex-wrap la zona izquierda envuelve sus botones en otra línea y las
+     acciones de la derecha siguen siempre visibles. */
+  flex-wrap: wrap;
   padding: 20px 24px;
   background: white;
   border-bottom: 1px solid #e2e8f0;
@@ -71,12 +77,75 @@
 .header-left {
   display: flex;
   align-items: center;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  /* Toma el espacio sobrante y puede encogerse por debajo de su contenido
+     (min-width:0) para que sus hijos envuelvan en vez de empujar la fila. */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.scope-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.scope-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.scope-toggle-btn:hover {
+  color: #334155;
+}
+
+.scope-toggle-btn-active {
+  background: white;
+  color: #6d28d9;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.scope-toggle-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.scope-toggle-btn-active .scope-toggle-count {
+  background: #f5f3ff;
+  color: #6d28d9;
 }
 
 .board-selector {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 

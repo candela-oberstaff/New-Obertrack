@@ -4,6 +4,7 @@ import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
 import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, EmployerRoute, SupportRoute, SupportInboxRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
+import { WALLET_ENABLED } from '../config/features'
 
 const Login = lazy(() => import('../pages/Login'))
 const Register = lazy(() => import('../pages/Register'))
@@ -37,6 +38,7 @@ const EmailCampaigns = lazy(() => import('../pages/Email/EmailCampaigns'))
 const EmpresaEmployees = lazy(() => import('../pages/Empresa/EmpresaEmployees'))
 const ProfessionalsMap = lazy(() => import('../pages/ProfessionalsMap'))
 const Incidents = lazy(() => import('../pages/Incidents'))
+const Wallet = lazy(() => import('../pages/Wallet'))
 const EmpresaEmployeeDetail = lazy(() => import('../pages/Empresa/EmployeeDetail'))
 const Soporte = lazy(() => import('../pages/Soporte'))
 const Papelera = lazy(() => import('../pages/Papelera'))
@@ -76,6 +78,7 @@ export function AppRoutes() {
           <Route path="admin/email" element={<CustomerSuccessRoute><EmailCampaigns /></CustomerSuccessRoute>} />
           <Route path="admin/mapa" element={<AdminRoute><ProfessionalsMap /></AdminRoute>} />
           <Route path="admin/incidentes" element={<AdminRoute><Incidents /></AdminRoute>} />
+          {WALLET_ENABLED && <Route path="wallet" element={<Wallet />} />}
           <Route path="admin/metrics" element={<PlatformTechRoute><Metrics /></PlatformTechRoute>} />
           <Route path="admin/audit" element={<PlatformTechRoute><AuditLogs /></PlatformTechRoute>} />
           <Route path="admin/settings" element={<AdminRoute><AppSettings /></AdminRoute>} />

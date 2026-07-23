@@ -29,6 +29,16 @@ type Config struct {
 	// (employment_managers) con semántica "cualquier manager" (Fase 2).
 	// Default false: comportamiento actual (puntero employments.manager_id).
 	MultiManagerReads bool
+
+	// --- Integración Ontop (módulo Wallet) ---
+	// Credenciales de la cuenta Ontop usadas por el backend como proxy. NUNCA se
+	// exponen al frontend/móvil: todas las llamadas a Ontop salen del servidor.
+	OntopAPIURL   string
+	OntopEmail    string
+	OntopPassword string
+	// OntopClientID es el ID de cliente de la billetera Ontop (usado en los
+	// endpoints /client-wallet y en el payload de las paylists).
+	OntopClientID string
 }
 
 func LoadConfig() *Config {
@@ -44,6 +54,13 @@ func LoadConfig() *Config {
 		SupportEmail: getEnv("SUPPORT_EMAIL", ""),
 		// Feature flag Fase 2: OFF por defecto; "true"/"1" lo activan.
 		MultiManagerReads: getBoolEnv("MULTI_MANAGER_READS", false),
+
+		// Ontop (Wallet). Default a sandbox/staging; las credenciales se inyectan
+		// por entorno (nunca se hardcodean).
+		OntopAPIURL:   getEnv("ONTOP_API_URL", "https://api.stg.getontop.com"),
+		OntopEmail:    getEnv("ONTOP_EMAIL", ""),
+		OntopPassword: getEnv("ONTOP_PASSWORD", ""),
+		OntopClientID: getEnv("ONTOP_CLIENT_ID", ""),
 	}
 
 	// Fail fast on an insecure JWT secret. An empty, default, or short secret

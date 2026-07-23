@@ -30,6 +30,7 @@ import {
   Shield,
   UserCog,
   AlertTriangle,
+  Wallet,
   LifeBuoy,
   Trash2,
   SlidersHorizontal,
@@ -46,6 +47,7 @@ const MODULE_BY_PATH: Record<string, string> = {
 }
 import Avatar from '../Common/Avatar'
 import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
+import { WALLET_ENABLED } from '../../config/features'
 import styles from './Layout.module.css'
 
 // Module-level flag prevents the auto-tour from firing more than once per
@@ -133,13 +135,15 @@ export default function Layout() {
   const isCS = !isSuper && user?.user_type === 'customer_success'
   const isIT = !isSuper && user?.user_type === 'analista_it'
   const isEmployerType = user?.user_type === 'empleador'
-  const isEndUser = isEmployerType || user?.user_type === 'profesional'
+  const isProfessional = user?.user_type === 'profesional'
+  const isEndUser = isEmployerType || isProfessional
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, show: !isIT },
     { path: '/empresa', label: 'Profesionales', icon: <Users size={20} />, show: isEmployerType },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} />, show: !isIT },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} />, show: !isIT },
+    { path: '/wallet', label: 'Wallet', icon: <Wallet size={20} />, show: WALLET_ENABLED && isProfessional },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, show: isSuper || isEmployerType },
     // Roles y Grupos: oculto para empresas en esta versión (solo superadmin).
     { path: '/roles-grupos', label: 'Roles y Grupos', icon: <UserCog size={20} />, show: isSuper },

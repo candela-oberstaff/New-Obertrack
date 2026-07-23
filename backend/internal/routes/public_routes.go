@@ -38,6 +38,19 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 		middleware.WahaHMACAuth(),
 		d.waha.HandleWebhook)
 
+	// Integración Obersuite (captación) → Obertrack (gestión). Protegida con un
+	// token de servicio estático compartido (OBERSUITE_SERVICE_TOKEN, header
+	// X-Service-Token), no con sesión de usuario. Fail-closed si el token no
+	// está configurado (mismo patrón que los webhooks de arriba).
+	obersuite := api.Group("/integrations/obersuite")
+	obersuite.Use(middleware.SharedSecretAuth("OBERSUITE_SERVICE_TOKEN", "X-Service-Token"))
+	{
+		// Lista de empresas para el dropdown de contratación en Obersuite.
+		obersuite.GET("/companies", d.onboarding.ListCompanies)
+		// Webhook de contratación: crea/actualiza el profesional y abre su empleo.
+		obersuite.POST("/hire", d.onboarding.Hire)
+	}
+
 	// Administrative seed routes — bootstrap only. Require BOTH a non-release
 	// build AND a secret bootstrap token (audit finding C-01).
 	if os.Getenv("GIN_MODE") != "release" {

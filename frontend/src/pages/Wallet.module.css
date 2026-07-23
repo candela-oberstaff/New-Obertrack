@@ -1,0 +1,755 @@
+/* Mi Wallet — reutiliza el lenguaje visual del Dashboard: tarjetas glass,
+   íconos en tiles de color, secciones con card-header y filas tipo lista.
+   Todo sobre los tokens de marca de index.css (--primary orquídea, --accent
+   neon-ice, --glass-bg, --radius-lg, --shadow, Plus Jakarta Sans). */
+
+.wallet {
+  min-height: 100%;
+  background: transparent;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 36px 32px 8px;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--black);
+}
+
+.title svg {
+  color: var(--primary);
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--gray-400);
+  margin: 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 20px 32px 36px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Aviso de verificación (KYC) */
+.kyc {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.04));
+  box-shadow: var(--shadow);
+}
+
+.kycIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fffbeb;
+  color: #d97706;
+  flex: none;
+}
+
+.kycText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.kycText strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--black);
+}
+
+.kycText span {
+  font-size: 13px;
+  color: var(--gray-500);
+}
+
+/* Próximo pago (strip destacado) */
+.nextPay {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 22px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(204, 51, 204, 0.22);
+  background: linear-gradient(120deg, rgba(21, 244, 238, 0.1), rgba(204, 51, 204, 0.1));
+  box-shadow: var(--shadow);
+}
+
+.nextPayIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: var(--primary);
+  flex: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.nextPayText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.nextPayLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--primary-dark);
+}
+
+.nextPayDesc {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--black);
+}
+
+.nextPayAmount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.nextPayValue {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+}
+
+.nextPayDate {
+  font-size: 12px;
+  color: var(--gray-500);
+}
+
+/* Tendencia (comparativa) */
+.trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.trendUp {
+  color: #059669;
+}
+
+.trendDown {
+  color: var(--danger);
+}
+
+/* Fila gráfico + desglose */
+.chartsRow {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+/* Desglose por tipo */
+.breakdown {
+  padding: 20px 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.breakdownBar {
+  display: flex;
+  width: 100%;
+  height: 14px;
+  border-radius: 100px;
+  overflow: hidden;
+  background: var(--gray-100);
+}
+
+.breakdownSeg {
+  height: 100%;
+}
+
+.breakdownSeg + .breakdownSeg {
+  border-left: 2px solid var(--white);
+}
+
+.breakdownLegend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.legendLabel {
+  color: var(--gray-500);
+  flex: 1;
+}
+
+.legendValue {
+  font-weight: 700;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+}
+
+.legendPct {
+  color: var(--gray-400);
+  font-size: 12px;
+  min-width: 34px;
+  text-align: right;
+}
+
+/* Acciones del detalle (footer del modal) */
+.detailActions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+/* Aviso neutro (no disponible / error) */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  color: var(--gray-500);
+}
+
+.notice svg {
+  color: var(--primary);
+  flex: none;
+}
+
+/* Resumen: stat cards glass */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 24px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stat:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.statIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.statIcon.green {
+  background: #ecfdf5;
+  color: #10b981;
+}
+.statIcon.orange {
+  background: #fffbeb;
+  color: #f59e0b;
+}
+.statIcon.purple {
+  background: #faf0fb;
+  color: var(--primary);
+}
+
+.statContent {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.statLabel {
+  font-size: 13px;
+  color: var(--gray-400);
+  font-weight: 500;
+}
+
+.statValue {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--black);
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.statSub {
+  font-size: 12px;
+  color: var(--gray-400);
+}
+
+/* Sección "Mis pagos" */
+.card {
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(6, 11, 35, 0.06);
+}
+
+.cardHeader h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--black);
+  margin: 0;
+}
+
+.cardSubtitle {
+  font-size: 13px;
+  color: var(--gray-400);
+}
+
+/* Gráfico mensual (barras estilo Dashboard) */
+.chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  height: 170px;
+  padding: 24px 28px 18px;
+}
+
+.chartCol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+}
+
+.chartBarWrap {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  position: relative;
+}
+
+.chartBar {
+  width: 60%;
+  max-width: 42px;
+  min-height: 4px;
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(180deg, var(--accent) 0%, var(--primary) 120%);
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chartBar[data-empty='true'] {
+  background: var(--gray-200);
+}
+
+.chartValue {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.chartLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--gray-400);
+  text-transform: capitalize;
+}
+
+/* Toolbar: filtros + búsqueda */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(6, 11, 35, 0.06);
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 100px;
+  border: 1px solid rgba(6, 11, 35, 0.1);
+  background: transparent;
+  color: var(--gray-500);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.chipActive {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.chipCount {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 100px;
+  background: rgba(6, 11, 35, 0.06);
+  color: inherit;
+}
+
+.chipActive .chipCount {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(6, 11, 35, 0.12);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--gray-400);
+  min-width: 200px;
+}
+
+.searchBox:focus-within {
+  border-color: var(--primary);
+}
+
+.searchInput {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13.5px;
+  color: var(--black);
+  width: 100%;
+  font-family: inherit;
+}
+
+/* Lista de pagos (filas tipo Dashboard) */
+.list {
+  padding: 10px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  transition: background 0.2s ease;
+}
+
+.row:hover {
+  background: rgba(6, 11, 35, 0.03);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.rowIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.dot-ok {
+  background: #ecfdf5;
+  color: #10b981;
+}
+.dot-wait {
+  background: #eff6ff;
+  color: #3b82f6;
+}
+.dot-bad {
+  background: #fef2f2;
+  color: var(--danger);
+}
+
+.rowDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--black);
+}
+
+.rowMeta {
+  font-size: 12.5px;
+  color: var(--gray-400);
+}
+
+.rowCause {
+  color: var(--danger);
+}
+
+.rowAmount {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Píldoras de estado (semántica de la app) */
+.pill {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 4px 11px;
+  border-radius: 100px;
+  white-space: nowrap;
+  min-width: 92px;
+  text-align: center;
+}
+
+.pill-ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+.pill-wait {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+.pill-bad {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+}
+
+/* Vacío */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  color: var(--gray-400);
+}
+
+.empty svg {
+  color: var(--gray-300);
+}
+
+.empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Detalle (dentro del Modal compartido) */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.detailAmount {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detailValue {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--black);
+  font-variant-numeric: tabular-nums;
+}
+
+.detailRows {
+  display: flex;
+  flex-direction: column;
+}
+
+.detailRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(6, 11, 35, 0.07);
+}
+
+.detailLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--gray-400);
+  font-weight: 500;
+  flex: none;
+}
+
+.detailData {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--black);
+  text-align: right;
+}
+
+.detailCause {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.spin {
+  animation: spin-wallet 1s linear infinite;
+}
+
+@keyframes spin-wallet {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+/* Responsivo */
+@media (max-width: 900px) {
+  .chartsRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+  .nextPay {
+    flex-wrap: wrap;
+  }
+  .header,
+  .body {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .pill {
+    min-width: auto;
+  }
+}

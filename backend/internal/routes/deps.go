@@ -43,10 +43,12 @@ type deps struct {
 	audit         *handlers.AuditHandler
 	audience      *handlers.AudienceHandler
 	incident      *handlers.IncidentHandler
+	wallet        *handlers.WalletHandler
 	emergencyTpl  *handlers.EmergencyTemplateHandler
 	profileChange *handlers.ProfileChangeHandler
 	trash         *handlers.TrashHandler
 	reportSched   *handlers.ReportScheduleHandler
+	onboarding    *handlers.OnboardingHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -105,6 +107,10 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc, employmentRepo)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
 	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
+	// Al asignar/cambiar/completar una tarea, además de la campanita se publica un
+	// DM del bot "Obertrack" en el chat interno (como Slack). channelSvc ya está
+	// construido arriba, así que se apunta directamente su PostSystemDM.
+	taskSvc.SetSystemDM(channelSvc.PostSystemDM)
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo, brevoSvc)
 	boardSvc := service.NewBoardService(boardRepo, userRepo, notifSvc)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
@@ -113,8 +119,13 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	employmentSvc.SetChannelCleaner(channelSvc.RemoveUserFromCompanyChannels)
 	auditSvc := service.NewAuditService(auditRepo)
 	incidentSvc := service.NewIncidentService(incidentRepo, userRepo, brevoSvc)
+	ontopSvc := service.NewOntopService(cfg)
+	walletSvc := service.NewWalletService(ontopSvc)
 	emergencyTplSvc := service.NewEmergencyTemplateService(emergencyTplRepo)
 	profileChangeSvc := service.NewProfileChangeService(profileChangeRepo, userRepo, channelRepo, channelSvc, notifSvc)
+	// Puente Obersuite (captación) → Obertrack (gestión): materializa la
+	// contratación de un candidato como profesional + empleo activo.
+	onboardingSvc := service.NewOnboardingService(userRepo, employmentRepo, employmentSvc, uploadSvc, authSvc)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})
@@ -196,10 +207,12 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		audit:         handlers.NewAuditHandler(auditSvc),
 		audience:      handlers.NewAudienceHandler(audienceRepo),
 		incident:      handlers.NewIncidentHandler(incidentSvc),
+		wallet:        handlers.NewWalletHandler(walletSvc),
 		emergencyTpl:  handlers.NewEmergencyTemplateHandler(emergencyTplSvc),
 		profileChange: handlers.NewProfileChangeHandler(profileChangeSvc),
 		trash:         handlers.NewTrashHandler(service.NewTrashService(db)),
 		reportSched:   handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
+		onboarding:    handlers.NewOnboardingHandler(onboardingSvc),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,

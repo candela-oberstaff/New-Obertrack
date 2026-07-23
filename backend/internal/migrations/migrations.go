@@ -1,11 +1,14 @@
 package migrations
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 
 	"github.com/go-gormigrate/gormigrate/v2"
 	"github.com/obertrack/backend/internal/models"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -1227,6 +1230,61 @@ func Run(db *gorm.DB) error {
 			},
 			Rollback: func(tx *gorm.DB) error {
 				return tx.Exec(`DROP INDEX IF EXISTS idx_ticket_messages_external_id`).Error
+			},
+		},
+		{
+			// Crea el usuario de sistema "Obertrack" que publica DMs automáticos
+			// (tarea asignada / fecha cambiada / completada) en el chat interno.
+			// Es superadmin para auto-excluirse del selector de chat, del auto-join
+			// de canales públicos (GetActiveUsers) y de las listas de asignables y
+			// menciones del frontend. Idempotente: no hace nada si ya existe.
+			ID: "202607141200_create_system_bot_user",
+			Migrate: func(tx *gorm.DB) error {
+				var count int64
+				if err := tx.Model(&models.User{}).Where("email = ?", models.SystemBotEmail).Count(&count).Error; err != nil {
+					return err
+				}
+				if count > 0 {
+					return nil
+				}
+				log.Println("Creating the Obertrack system bot user...")
+				// Contraseña aleatoria no usable: el bot nunca inicia sesión, así
+				// que ningún bcrypt.CompareHashAndPassword puede coincidir. Se
+				// hex-encodea para no meter bytes nulos en la entrada de bcrypt.
+				raw := make([]byte, 32)
+				if _, err := rand.Read(raw); err != nil {
+					return err
+				}
+				hash, err := bcrypt.GenerateFromPassword([]byte(hex.EncodeToString(raw)), bcrypt.DefaultCost)
+				if err != nil {
+					return err
+				}
+				bot := &models.User{
+					Name:         models.SystemBotName,
+					Email:        models.SystemBotEmail,
+					Password:     string(hash),
+					UserType:     models.UserTypeSuperadmin,
+					IsSuperadmin: true,
+					IsActive:     true,
+					Avatar:       "/logos/Isotipo_Color.png",
+				}
+				return tx.Create(bot).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Where("email = ?", models.SystemBotEmail).Delete(&models.User{}).Error
+			},
+		},
+		{
+			ID: "202607221200_add_wallet_paylists",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating wallet_paylists and wallet_payments tables...")
+				return tx.AutoMigrate(&models.WalletPaylist{}, &models.WalletPayment{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					&models.WalletPayment{},
+					&models.WalletPaylist{},
+				)
 			},
 		},
 		// Future migrations go here

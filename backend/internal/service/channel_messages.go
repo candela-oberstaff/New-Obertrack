@@ -882,6 +882,64 @@ func (s *channelService) userName(userID uint) string {
 	return ""
 }
 
+// systemBotID resuelve (perezosamente y una sola vez) el ID del usuario de
+// sistema "Obertrack" por su email fijo. Devuelve 0 si no existe todavía (no se
+// corrió la migración), en cuyo caso PostSystemDM se salta sin romper nada.
+func (s *channelService) systemBotID() uint {
+	s.botMu.Lock()
+	defer s.botMu.Unlock()
+	if s.botID != 0 {
+		return s.botID
+	}
+	bot, err := s.userRepo.GetByEmail(models.SystemBotEmail)
+	if err != nil || bot == nil {
+		return 0
+	}
+	s.botID = bot.ID
+	return s.botID
+}
+
+// PostSystemDM abre (o reusa) el DM entre el bot "Obertrack" y recipientID,
+// postea content y lo difunde en vivo, reusando la misma fontanería que los
+// mensajes de sistema de soporte. Best-effort: todo fallo se loguea y se traga
+// —el aviso principal es la notificación de campanita, creada por separado—.
+func (s *channelService) PostSystemDM(recipientID uint, content string) {
+	botID := s.systemBotID()
+	if botID == 0 {
+		log.Printf("[system-dm] usuario bot no encontrado; se omite el DM a %d", recipientID)
+		return
+	}
+	if recipientID == 0 || recipientID == botID {
+		return
+	}
+
+	recipient, err := s.userRepo.GetByID(recipientID)
+	if err != nil || recipient == nil {
+		return
+	}
+	// El DM vive en el tenant del destinatario. Un superadmin (tenant 0) no tiene
+	// un DM tenant-scoped donde recibirlo, así que se salta.
+	tenant := models.TenantForUser(recipient)
+	if tenant == 0 {
+		return
+	}
+
+	dm, err := s.CreateDirectMessage(botID, recipientID, tenant)
+	if err != nil {
+		log.Printf("[system-dm] no se pudo abrir el DM bot→%d: %v", recipientID, err)
+		return
+	}
+
+	message, _, err := s.SendMessage(dm.ID, botID, content, "", "", 0, "")
+	if err != nil {
+		log.Printf("[system-dm] no se pudo enviar el DM a %d: %v", recipientID, err)
+		return
+	}
+	if s.broadcast != nil && message != nil {
+		s.broadcast(dm.ID, message)
+	}
+}
+
 // postSupportSystemMessage persiste un mensaje de sistema (🛟 tomó / asignó /
 // ✅ resuelto) y lo difunde en vivo por WebSocket. A diferencia de los mensajes
 // normales de usuario —que difunde el handler HTTP SendMessage— estos se
