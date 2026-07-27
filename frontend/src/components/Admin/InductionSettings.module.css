@@ -1,0 +1,545 @@
+/* Panel de configuración de la inducción, montado al final de Novedades.
+   Sigue el lenguaje visual de esa página (tarjeta blanca radius 16, chip con
+   degradado rosa/púrpura, botones negros y acento var(--primary)) en vez de
+   depender de Admin.module.css, cuyo .form-group solo aplica dentro de .modal
+   (fuera de un modal los inputs quedaban sin caja). */
+
+/* Todo el panel usa border-box: sin esto, el padding se suma al 100% de ancho
+   de los campos y el contenido se sale de su contenedor. */
+.panel,
+.panel * {
+  box-sizing: border-box;
+}
+
+.panel {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 28px;
+  /* Ancho de lectura acotado: sin esto, en pantallas anchas el bloque se estira
+     de borde a borde y los campos quedan desproporcionados frente al resto de
+     la página. Sin margin-top: .tutorials-page ya separa con gap: 32px. */
+  width: 100%;
+  max-width: 1040px;
+  min-width: 0;
+}
+
+/* --- Encabezado, con el mismo chip de icono que las tarjetas de novedad --- */
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(244, 114, 182, 0.12), rgba(168, 85, 247, 0.12));
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--black, #0f172a);
+  letter-spacing: -0.3px;
+}
+
+.intro {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 78ch;
+}
+
+/* --- Avisos --- */
+
+.warn,
+.danger,
+.ok {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  margin-bottom: 20px;
+  line-height: 1.55;
+}
+
+.warn {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.danger {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.ok {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  font-weight: 600;
+}
+
+/* --- Interruptor de activación --- */
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 18px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.toggleLabel {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--black, #0f172a);
+}
+
+.toggleHint {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.toggleRow input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggleRow input[type='checkbox']:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* --- Campos --- */
+
+.grid {
+  display: grid;
+  /* auto-fill (no auto-fit): las columnas conservan su ancho en lugar de
+     estirarse para rellenar la fila cuando sobra espacio. */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 240px));
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.field label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.field input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--black, #0f172a);
+  background: white;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.field input:hover {
+  border-color: #cbd5e1;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* --- Botones: mismo tratamiento que "Nueva novedad" de esta página --- */
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.saveBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--black, #0f172a);
+  color: white;
+  border: 1px solid var(--black, #0f172a);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+}
+
+.saveBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: #1f2937;
+  border-color: var(--primary);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+}
+
+.saveBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* --- Clave de respuestas --- */
+
+.keySection {
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.keyTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--black, #0f172a);
+  letter-spacing: -0.2px;
+}
+
+/* Cabecera plegable de la sección del cuestionario. */
+.sectionToggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  color: #64748b;
+  flex-wrap: wrap;
+}
+
+.sectionToggle:hover .keyTitle {
+  color: var(--primary);
+}
+
+.questionList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.questionCard {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  transition: border-color 0.25s ease;
+}
+
+.questionCard:hover {
+  border-color: var(--primary);
+}
+
+/* --- Selector / creación del cuestionario --- */
+
+.quizPicker {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  /* El selector no debe estirarse a todo el ancho del panel. */
+  max-width: 640px;
+}
+
+/* --- Constructor de preguntas --- */
+
+.questionTop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Cabecera plegable: ocupa todo el ancho disponible y actúa como botón. */
+.disclosure {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  color: #64748b;
+}
+
+.summaryText,
+.summaryEmpty {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summaryText {
+  color: var(--black, #0f172a);
+}
+
+.summaryEmpty {
+  color: #94a3b8;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.tag,
+.tagOk,
+.tagWarn {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tag {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.tagOk {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.tagWarn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Al desplegarse, el enunciado editable se separa de la cabecera. */
+.questionCard > .questionInput {
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.questionNum {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--primary-soft, #f3e8ff);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.questionInput {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--black, #0f172a);
+  background: white;
+  transition: border-color 0.2s ease;
+}
+
+.questionInput:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.optionsBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.optionRow input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--black, #0f172a);
+  background: white;
+}
+
+.optionRow input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.smallLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: white;
+  color: #94a3b8;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.iconBtn:hover:not(:disabled) {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.iconBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ghostBtn,
+.ghostBtnSm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: white;
+  color: #475569;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.ghostBtn {
+  padding: 11px 18px;
+  font-size: 14px;
+}
+
+.ghostBtnSm {
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: 999px;
+  align-self: flex-start;
+}
+
+.ghostBtn:hover:not(:disabled),
+.ghostBtnSm:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--black, #0f172a);
+}
+
+.ghostBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.addRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.questionGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 16px;
+  max-width: 620px;
+}
+
+.hint {
+  margin: 12px 0 0;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.muted {
+  color: #94a3b8;
+  font-size: 14px;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .panel {
+    padding: 22px;
+  }
+
+  .questionGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .toggleRow {
+    align-items: flex-start;
+  }
+}

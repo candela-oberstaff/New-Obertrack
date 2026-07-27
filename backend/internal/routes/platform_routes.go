@@ -74,6 +74,22 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		surveys.POST("/:id/responses", d.survey.SubmitResponse)
 	}
 
+	// Inducción del profesional recién contratado (video de Novedades +
+	// cuestionario calificado de Encuestas). La configuración global es solo de
+	// superadmin; consultar el detalle y reiniciar los intentos es la acción de
+	// Soporte tras contactar a quien no aprobó.
+	//
+	// El prefijo es "/inductions" (plural) para no chocar con el comodín de la
+	// landing pública, que vive en /api/induction/:token.
+	inductions := api.Group("/inductions")
+	inductions.Use(requireSupportInboxAccess())
+	{
+		inductions.GET("/config", d.induction.GetConfig)
+		inductions.PUT("/config", middleware.RequireSuperadmin(), d.induction.SaveConfig)
+		inductions.GET("/users/:userId", d.induction.Status)
+		inductions.POST("/users/:userId/reset", d.induction.Reset)
+	}
+
 	// Módulo "tutorials": ver requiere al menos "view"; la gestión sigue siendo
 	// solo de superadmins (que no se restringen por roles).
 	tutorialsView := handlers.RequirePermission(d.rbacSvc, "tutorials", models.PermissionView)

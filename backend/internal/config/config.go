@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/obertrack/backend/internal/utils"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -16,14 +17,14 @@ import (
 const weakDefaultJWTSecret = "your-super-secret-jwt-key-change-in-production"
 
 type Config struct {
-	DBHost     string
-	DBPort     string
-	DBUser     string
-	DBPassword string
-	DBName     string
-	JWTSecret  string
-	ServerPort string
-	DBSSLMode  string
+	DBHost       string
+	DBPort       string
+	DBUser       string
+	DBPassword   string
+	DBName       string
+	JWTSecret    string
+	ServerPort   string
+	DBSSLMode    string
 	SupportEmail string
 	// MultiManagerReads activa las lecturas de manager via tabla N-a-N
 	// (employment_managers) con semántica "cualquier manager" (Fase 2).
@@ -39,6 +40,27 @@ type Config struct {
 	// OntopClientID es el ID de cliente de la billetera Ontop (usado en los
 	// endpoints /client-wallet y en el payload de las paylists).
 	OntopClientID string
+
+	// --- Integración Google Calendar ---
+	// Vínculo PERSONAL de cada usuario con su cuenta de Google. La pantalla de
+	// consentimiento es de tipo "External", así que sirve cualquier cuenta
+	// (gmail.com o dominio propio como los de Oberstaff) sin configuración extra
+	// por dominio.
+	GoogleCalendarEnabled bool
+	GoogleClientID        string
+	GoogleClientSecret    string
+	// GoogleRedirectURI debe coincidir EXACTAMENTE con uno de los redirect URIs
+	// registrados en la credencial OAuth de Google Cloud, o el canje falla con
+	// redirect_uri_mismatch.
+	GoogleRedirectURI string
+	// GoogleTokenEncKey es la clave AES-256 (32 bytes en base64) con la que se
+	// cifran los tokens de OAuth antes de guardarlos. Generar con:
+	// openssl rand -base64 32
+	GoogleTokenEncKey string
+
+	// FrontendURL es la base a la que redirige el callback de OAuth al terminar
+	// (el flujo vuelve al navegador, no a una respuesta JSON).
+	FrontendURL string
 }
 
 func LoadConfig() *Config {
@@ -61,6 +83,16 @@ func LoadConfig() *Config {
 		OntopEmail:    getEnv("ONTOP_EMAIL", ""),
 		OntopPassword: getEnv("ONTOP_PASSWORD", ""),
 		OntopClientID: getEnv("ONTOP_CLIENT_ID", ""),
+
+		// Google Calendar. Apagado por defecto: sin el flag el módulo no se
+		// construye y las rutas responden 503.
+		GoogleCalendarEnabled: getBoolEnv("GOOGLE_CALENDAR_ENABLED", false),
+		GoogleClientID:        getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret:    getEnv("GOOGLE_CLIENT_SECRET", ""),
+		GoogleRedirectURI:     getEnv("GOOGLE_REDIRECT_URI", ""),
+		GoogleTokenEncKey:     getEnv("GOOGLE_TOKEN_ENC_KEY", ""),
+
+		FrontendURL: strings.TrimRight(getEnv("FRONTEND_URL", ""), "/"),
 	}
 
 	// Fail fast on an insecure JWT secret. An empty, default, or short secret
@@ -70,7 +102,49 @@ func LoadConfig() *Config {
 			"Generate a strong secret, e.g.: openssl rand -base64 48")
 	}
 
+	cfg.validateGoogleCalendar()
+
 	return cfg
+}
+
+// validateGoogleCalendar aborta el arranque si la integración se declaró activa
+// pero le falta configuración. Es deliberadamente fail-fast: un botón "Conectar
+// con Google" que falla en mitad del consentimiento —dejando al usuario en una
+// pantalla de error de Google— es peor que un contenedor que no levanta.
+// Con el flag apagado no valida nada: el módulo simplemente no se construye.
+func (c *Config) validateGoogleCalendar() {
+	if !c.GoogleCalendarEnabled {
+		return
+	}
+
+	var missing []string
+	if c.GoogleClientID == "" {
+		missing = append(missing, "GOOGLE_CLIENT_ID")
+	}
+	if c.GoogleClientSecret == "" {
+		missing = append(missing, "GOOGLE_CLIENT_SECRET")
+	}
+	if c.GoogleRedirectURI == "" {
+		missing = append(missing, "GOOGLE_REDIRECT_URI")
+	}
+	if c.GoogleTokenEncKey == "" {
+		missing = append(missing, "GOOGLE_TOKEN_ENC_KEY")
+	}
+	if len(missing) > 0 {
+		log.Fatalf("FATAL: GOOGLE_CALENDAR_ENABLED=true pero faltan variables: %s. "+
+			"Configúralas o apaga el flag.", strings.Join(missing, ", "))
+	}
+
+	// La clave se valida aquí (y no al primer vínculo) para que un error de
+	// formato salte en el despliegue y no cuando un usuario pulse "Conectar".
+	if _, err := utils.NewSecretSealer(c.GoogleTokenEncKey); err != nil {
+		log.Fatalf("FATAL: GOOGLE_TOKEN_ENC_KEY inválida: %v. "+
+			"Genera una con: openssl rand -base64 32", err)
+	}
+
+	if c.FrontendURL == "" {
+		log.Println("WARN: FRONTEND_URL vacío — el callback de Google redirigirá a rutas relativas")
+	}
 }
 
 func (c *Config) GetDSN() string {

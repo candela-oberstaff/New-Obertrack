@@ -17,6 +17,11 @@ export { tutorialService } from './tutorial.service'
 export { profileChangeService } from './profileChange.service'
 export { settingsService } from './settings.service'
 export type { ReportSchedule, ReportRun, ReportFrequency, RunNowResult } from './settings.service'
+export { googleCalendarService } from './google-calendar.service'
+export type {
+  GoogleCalendarStatus,
+  GoogleCalendarAccount,
+} from './google-calendar.service'
 
 // Re-export Notification type for Notifications.tsx (import { type Notification } from '../services/api')
 export type { Notification } from '../types'

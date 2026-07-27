@@ -13,7 +13,10 @@ const api = axios.create({
 let refreshing: Promise<void> | null = null
 let isRedirecting = false
 
-const publicAuthPaths = ['/login', '/register', '/forgot-password', '/reset-password']
+// Rutas que se navegan SIN sesión: si una petición falla con 401 estando aquí,
+// no se debe expulsar al usuario a /login. La inducción entra en este grupo
+// porque el profesional aún no tiene cuenta activa.
+const publicAuthPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/induccion']
 
 function isPublicAuthPath(pathname: string) {
   return publicAuthPaths.some((path) => pathname === path || pathname.startsWith(`${path}?`))

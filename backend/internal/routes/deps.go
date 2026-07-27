@@ -49,6 +49,9 @@ type deps struct {
 	trash         *handlers.TrashHandler
 	reportSched   *handlers.ReportScheduleHandler
 	onboarding    *handlers.OnboardingHandler
+	induction     *handlers.InductionHandler
+	emailPreview  *handlers.EmailPreviewHandler
+	googleCal     *handlers.GoogleCalendarHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -87,6 +90,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	incidentRepo := repository.NewIncidentRepository(db)
 	emergencyTplRepo := repository.NewEmergencyTemplateRepository(db)
 	profileChangeRepo := repository.NewProfileChangeRequestRepository(db)
+	inductionRepo := repository.NewInductionRepository(db)
+	googleCalRepo := repository.NewGoogleCalendarRepository(db)
 
 	// Integrations
 	brevoSvc := service.NewBrevoService()
@@ -111,6 +116,15 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// DM del bot "Obertrack" en el chat interno (como Slack). channelSvc ya está
 	// construido arriba, así que se apunta directamente su PostSystemDM.
 	taskSvc.SetSystemDM(channelSvc.PostSystemDM)
+	// Google Calendar. Fase 1: vinculación de la cuenta personal (servicio inerte
+	// si el flag está apagado). Fase 2: worker que sincroniza tareas → eventos;
+	// se construye aquí para poder cablear su enganche al taskService.
+	googleCalSvc := service.NewGoogleCalendarService(googleCalRepo, cfg)
+	calendarSyncRepo := repository.NewCalendarSyncRepository(db)
+	calendarSyncSvc := service.NewCalendarSyncService(calendarSyncRepo, googleCalRepo, taskRepo, googleCalSvc)
+	// Enganche de Google Calendar: al crear/editar/completar/borrar una tarea se
+	// encola la sincronización (el worker la aplica en segundo plano).
+	taskSvc.SetCalendarSync(calendarSyncSvc.OnTaskChanged, calendarSyncSvc.OnTaskDeleted)
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo, brevoSvc)
 	boardSvc := service.NewBoardService(boardRepo, userRepo, notifSvc)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
@@ -123,9 +137,13 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	walletSvc := service.NewWalletService(ontopSvc)
 	emergencyTplSvc := service.NewEmergencyTemplateService(emergencyTplRepo)
 	profileChangeSvc := service.NewProfileChangeService(profileChangeRepo, userRepo, channelRepo, channelSvc, notifSvc)
+	// Inducción del profesional recién contratado: video (Novedades) +
+	// cuestionario calificado (Encuestas) en una landing pública que decide su
+	// acceso. Si no está configurada, no interfiere con el alta.
+	inductionSvc := service.NewInductionService(inductionRepo, userRepo, brevoSvc, authSvc, ticketSvc, cfg.FrontendURL)
 	// Puente Obersuite (captación) → Obertrack (gestión): materializa la
 	// contratación de un candidato como profesional + empleo activo.
-	onboardingSvc := service.NewOnboardingService(userRepo, employmentRepo, employmentSvc, uploadSvc, authSvc)
+	onboardingSvc := service.NewOnboardingService(userRepo, employmentRepo, employmentSvc, uploadSvc, authSvc, inductionSvc)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})
@@ -175,6 +193,11 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	reportWatcher := service.NewReportMailWatcher(reportScheduleRepo, userRepo, workHourSvc)
 	reportWatcher.Start()
 
+	// Worker de sincronización con Google Calendar (Fase 2): procesa la cola de
+	// jobs que dejan las mutaciones de tareas. No-op si la integración está
+	// apagada.
+	calendarSyncSvc.Start()
+
 	// Watcher de WhatsApp: cuando la sesión WAHA queda conectada (WORKING),
 	// importa las conversaciones existentes del número como tickets (una vez por
 	// conexión; la re-importación es idempotente por el índice de external_id).
@@ -213,6 +236,9 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		trash:         handlers.NewTrashHandler(service.NewTrashService(db)),
 		reportSched:   handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
 		onboarding:    handlers.NewOnboardingHandler(onboardingSvc),
+		induction:     handlers.NewInductionHandler(inductionSvc),
+		emailPreview:  handlers.NewEmailPreviewHandler(),
+		googleCal:     handlers.NewGoogleCalendarHandler(googleCalSvc, cfg.FrontendURL),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,

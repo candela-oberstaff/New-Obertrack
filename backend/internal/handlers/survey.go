@@ -123,6 +123,11 @@ func (h *SurveyHandler) GetSurvey(c *gin.Context) {
 			return
 		}
 		survey.Responses = nil
+		// Quien responde nunca debe ver la respuesta esperada ni la ponderación
+		// de un cuestionario calificado (inducción).
+		for i := range survey.Questions {
+			survey.Questions[i].CorrectAnswer = ""
+		}
 	}
 
 	c.JSON(http.StatusOK, survey)

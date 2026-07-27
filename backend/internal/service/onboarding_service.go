@@ -68,6 +68,9 @@ type HireResult struct {
 	Status     string `json:"status"`
 	CVAttached bool   `json:"cv_attached"`
 	CVWarning  string `json:"cv_warning,omitempty"`
+	// InductionPending indica que el profesional quedó sin acceso hasta aprobar
+	// la inducción (se le envió el enlace a la landing en vez de las credenciales).
+	InductionPending bool `json:"induction_pending"`
 }
 
 type onboardingService struct {
@@ -76,6 +79,7 @@ type onboardingService struct {
 	employmentSvc  EmploymentService
 	uploadSvc      UploadService
 	authSvc        AuthService
+	inductionSvc   InductionService
 }
 
 func NewOnboardingService(
@@ -84,6 +88,7 @@ func NewOnboardingService(
 	employmentSvc EmploymentService,
 	uploadSvc UploadService,
 	authSvc AuthService,
+	inductionSvc InductionService,
 ) OnboardingService {
 	return &onboardingService{
 		userRepo:       userRepo,
@@ -91,6 +96,7 @@ func NewOnboardingService(
 		employmentSvc:  employmentSvc,
 		uploadSvc:      uploadSvc,
 		authSvc:        authSvc,
+		inductionSvc:   inductionSvc,
 	}
 }
 
@@ -150,10 +156,26 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		if err := s.userRepo.Create(user); err != nil {
 			return nil, err
 		}
-		// Correo de bienvenida / establecer contraseña (best-effort).
-		if err := s.authSvc.ForgotPassword(email); err != nil {
-			log.Printf("[Onboarding] welcome email failed for %s: %v", email, err)
+		// Si la inducción está encendida, el profesional queda SIN acceso y
+		// recibe el enlace a la landing. Si está apagada, se le da acceso
+		// directo como antes (el puente con Obersuite no se rompe nunca por
+		// una inducción sin configurar).
+		invited := false
+		if s.inductionSvc != nil {
+			var ierr error
+			invited, ierr = s.inductionSvc.InviteIfEnabled(user)
+			if ierr != nil {
+				log.Printf("[Onboarding] no se pudo emitir la inducción de %s: %v", email, ierr)
+				invited = false
+			}
 		}
+		if !invited {
+			// Correo de bienvenida / establecer contraseña (best-effort).
+			if err := s.authSvc.ForgotPassword(email); err != nil {
+				log.Printf("[Onboarding] welcome email failed for %s: %v", email, err)
+			}
+		}
+		result.InductionPending = invited
 		result.Status = "created"
 	} else {
 		// Ya existe. Solo un profesional puede recibir un empleo por esta vía;

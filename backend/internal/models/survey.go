@@ -14,9 +14,15 @@ const (
 	SurveyStatusActive SurveyStatus = "active"
 	SurveyStatusClosed SurveyStatus = "closed"
 
-	QuestionTypeText     QuestionType = "text"
-	QuestionTypeRating   QuestionType = "rating"
-	QuestionTypeChoice   QuestionType = "choice"
+	QuestionTypeText   QuestionType = "text"
+	QuestionTypeRating QuestionType = "rating"
+	QuestionTypeChoice QuestionType = "choice"
+
+	// Tipo de encuesta. Una encuesta normal solo recolecta opiniones; una de
+	// inducción se CALIFICA (respuesta correcta + ponderación) y decide el
+	// acceso del profesional recién contratado.
+	SurveyKindFeedback  = "feedback"
+	SurveyKindInduction = "induction"
 )
 
 type Survey struct {
@@ -31,7 +37,14 @@ type Survey struct {
 	SendByEmail    bool           `gorm:"default:false" json:"send_by_email"`
 	SendByInApp    bool           `gorm:"default:true" json:"send_by_inapp"`
 	RecipientList  string         `gorm:"type:text" json:"recipient_list"` // JSON array of user IDs
-	
+
+	// Kind distingue una encuesta de opinión de un cuestionario de inducción
+	// calificable. Por defecto 'feedback': las encuestas existentes no cambian.
+	Kind string `gorm:"size:20;not null;default:'feedback';index" json:"kind"`
+	// PassingScore es el mínimo aprobatorio en porcentaje. Solo aplica a las de
+	// tipo induction.
+	PassingScore int `gorm:"not null;default:70" json:"passing_score"`
+
 	Questions      []SurveyQuestion `gorm:"foreignKey:SurveyID;constraint:OnDelete:CASCADE;" json:"questions"`
 	Responses      []SurveyResponse `gorm:"foreignKey:SurveyID;constraint:OnDelete:CASCADE;" json:"responses"`
 }
@@ -44,6 +57,22 @@ type SurveyQuestion struct {
 	Options     string       `gorm:"type:text" json:"options"` // JSON array of strings for 'choice' type
 	IsRequired  bool         `gorm:"default:true" json:"is_required"`
 	OrderIndex  int          `json:"order_index"`
+
+	// --- Calificación (solo cuestionarios de inducción) ---
+	// CorrectAnswer es la respuesta esperada. Vacío = la pregunta no puntúa.
+	//
+	// Se serializa para que el editor (superadmin) pueda cargarla y releerla,
+	// pero NUNCA debe llegar a quien responde: la landing pública arma su propio
+	// DTO sin este campo, y GetSurvey lo borra para los no-superadmin. El
+	// puntaje se calcula siempre en el servidor.
+	CorrectAnswer string `gorm:"type:text" json:"correct_answer,omitempty"`
+	// Weight es la ponderación de la pregunta dentro del cuestionario.
+	Weight int `gorm:"not null;default:1" json:"weight"`
+}
+
+// IsScorable indica si la pregunta participa en el puntaje.
+func (q *SurveyQuestion) IsScorable() bool {
+	return q != nil && q.Weight > 0 && q.CorrectAnswer != ""
 }
 
 type SurveyResponse struct {

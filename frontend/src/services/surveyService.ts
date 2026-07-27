@@ -7,6 +7,13 @@ export interface SurveyQuestion {
   options?: string; // JSON string of choices
   is_required: boolean;
   order_index: number;
+  /**
+   * Clave de respuesta de un cuestionario de inducción. Solo la recibe el
+   * superadmin: el backend la borra para quien responde. Vacío = no puntúa.
+   */
+  correct_answer?: string;
+  /** Ponderación de la pregunta dentro del puntaje. */
+  weight?: number;
 }
 
 export interface Survey {
@@ -20,6 +27,10 @@ export interface Survey {
   created_at?: string;
   questions?: SurveyQuestion[];
   responses?: any[];
+  /** 'feedback' (opinión) o 'induction' (calificado, decide el acceso). */
+  kind?: 'feedback' | 'induction';
+  /** Mínimo aprobatorio en porcentaje. Solo aplica a las de tipo induction. */
+  passing_score?: number;
 }
 
 export const surveyService = {

@@ -60,6 +60,10 @@ type User struct {
 	// tokens for this user (logout-all, password change, suspension) — audit A-04.
 	TokenVersion int    `gorm:"not null;default:0" json:"-"`
 	ZohoAgentID  string `gorm:"size:255" json:"zoho_agent_id"`
+	// OnboardingStatus controla el portero de inducción en el login. Por defecto
+	// 'not_required': toda cuenta existente (y las que no pasan por inducción)
+	// entra con normalidad. Ver models/induction.go.
+	OnboardingStatus string `gorm:"size:20;not null;default:'not_required';index" json:"onboarding_status"`
 	// Permissions son los permisos efectivos por módulo derivados de los roles
 	// asignados (campo transitorio: solo viaja en /auth/me y /auth/login).
 	// Ausente = sin roles = comportamiento histórico del tipo de cuenta.

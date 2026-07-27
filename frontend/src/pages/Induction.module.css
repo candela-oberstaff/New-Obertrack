@@ -1,0 +1,716 @@
+/* Landing pública de inducción — wizard de dos paneles.
+   Se renderiza fuera del Layout autenticado, así que trae su propia tipografía
+   y usa los tokens de marca de Obertrack (orquídea #cc33cc, índigo #512868,
+   navy #060b23). */
+
+.page {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  box-sizing: border-box;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  /* Fondo lavanda con un halo de marca, para que la tarjeta no flote sobre blanco. */
+  background:
+    radial-gradient(1000px 500px at 15% -10%, rgba(204, 51, 204, 0.14), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(81, 40, 104, 0.16), transparent 55%),
+    #f5f2fb;
+}
+
+.shell {
+  display: flex;
+  width: 100%;
+  max-width: 980px;
+  min-height: 560px;
+  background: #ffffff;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 30px 60px -20px rgba(6, 11, 35, 0.35), 0 12px 24px -12px rgba(6, 11, 35, 0.2);
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===================== Panel de marca (izquierda) ===================== */
+
+.brand {
+  width: 320px;
+  flex-shrink: 0;
+  padding: 34px 30px;
+  display: flex;
+  flex-direction: column;
+  color: #ffffff;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, #060b23 0%, #2a1245 48%, #7a1f7a 100%);
+}
+
+/* Textura sutil de puntos para que el degradado no se vea plano. */
+.brand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.brandTop,
+.brandBody,
+.brandFoot {
+  position: relative;
+  z-index: 1;
+}
+
+.logo {
+  height: 34px;
+  width: auto;
+  display: block;
+}
+
+.brandBody {
+  margin-top: 44px;
+  flex: 1;
+}
+
+.brandKicker {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.brandName {
+  margin: 8px 0 0;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  word-break: break-word;
+}
+
+.brandText {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Stepper vertical. */
+.stepper {
+  list-style: none;
+  margin: 34px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step_todo,
+.step_active,
+.step_done {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stepDot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: all 0.25s ease;
+}
+
+.step_todo {
+  color: rgba(255, 255, 255, 0.45);
+}
+.step_todo .stepDot {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.step_active {
+  color: #ffffff;
+}
+.step_active .stepDot {
+  background: #ffffff;
+  color: #7a1f7a;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.16);
+}
+
+.step_done {
+  color: rgba(255, 255, 255, 0.85);
+}
+.step_done .stepDot {
+  background: #cc33cc;
+  color: #ffffff;
+}
+
+.stepLabel {
+  min-width: 0;
+}
+
+.brandFoot {
+  position: relative;
+  z-index: 1;
+  margin: 24px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ===================== Panel de contenido (derecha) ===================== */
+
+.content {
+  flex: 1;
+  min-width: 0;
+  padding: 40px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.paneHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.paneTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #060b23;
+  letter-spacing: -0.4px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f5f2fb;
+  color: #7a1f7a;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 11px;
+  border-radius: 999px;
+}
+
+.note {
+  margin: 0 0 20px;
+  color: #5c5680;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.note a {
+  color: #cc33cc;
+  font-weight: 600;
+}
+
+/* --- Meta (mínimo / intentos) --- */
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 20px;
+  background: #faf8fe;
+  border: 1px solid #ece7f6;
+  border-radius: 14px;
+  margin-bottom: 24px;
+}
+
+.metaItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 16px;
+  color: #060b23;
+}
+
+.metaLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8880a8;
+}
+
+.metaDivider {
+  width: 1px;
+  height: 32px;
+  background: #e6e0f2;
+}
+
+/* --- Video --- */
+
+.videoWrap {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #060b23;
+  box-shadow: 0 10px 30px -12px rgba(6, 11, 35, 0.4);
+}
+
+.videoWrap iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* --- Formulario --- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.question {
+  padding: 22px;
+  border-radius: 16px;
+  border: 1px solid #ece7f6;
+  background: #ffffff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.question:focus-within {
+  border-color: #cc33cc;
+  box-shadow: 0 6px 20px -10px rgba(204, 51, 204, 0.4);
+}
+
+.questionLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #060b23;
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
+
+.questionNumber {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #f5f2fb;
+  color: #cc33cc;
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.required {
+  color: #cc33cc;
+  margin-left: 4px;
+}
+
+.textInput {
+  width: 100%;
+  min-height: 96px;
+  padding: 12px 14px;
+  border: 1px solid #ddd6ec;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 15px;
+  color: #060b23;
+  background: #faf8fe;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.textInput:focus {
+  outline: none;
+  border-color: #cc33cc;
+  background: #ffffff;
+}
+
+/* --- Opciones (radio custom) --- */
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  border: 1px solid #ece7f6;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 15px;
+  color: #2a2440;
+  background: #ffffff;
+  transition: all 0.18s ease;
+}
+
+.option:hover {
+  border-color: #d6a8e0;
+  background: #fefaff;
+}
+
+.option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #cbb8e0;
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.18s ease;
+}
+
+.optionSel {
+  border-color: #cc33cc;
+  background: #fdf2fd;
+  color: #060b23;
+  font-weight: 600;
+}
+
+.optionSel .radio {
+  border-color: #cc33cc;
+}
+
+.optionSel .radio::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: #cc33cc;
+}
+
+/* --- Rating 1-5 --- */
+
+.ratingRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rating {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  border: 1px solid #ece7f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #5c5680;
+  cursor: pointer;
+  background: #ffffff;
+  transition: all 0.18s ease;
+}
+
+.rating:hover {
+  border-color: #d6a8e0;
+}
+
+.rating input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ratingSel {
+  border-color: #cc33cc;
+  background: linear-gradient(135deg, #cc33cc, #8a2be2);
+  color: #ffffff;
+  box-shadow: 0 6px 16px -6px rgba(204, 51, 204, 0.5);
+}
+
+/* --- Acciones y botones --- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 28px;
+}
+
+.primaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #cc33cc 0%, #8a2be2 100%);
+  color: #ffffff;
+  border: 0;
+  border-radius: 12px;
+  padding: 13px 26px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 8px 20px -8px rgba(204, 51, 204, 0.55);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px -8px rgba(204, 51, 204, 0.6);
+}
+
+.primaryBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secondaryBtn {
+  background: #ffffff;
+  color: #5c5680;
+  border: 1px solid #ddd6ec;
+  border-radius: 12px;
+  padding: 13px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.18s ease;
+}
+
+.secondaryBtn:hover {
+  border-color: #b9a6d4;
+}
+
+/* ===================== Estados y resultado ===================== */
+
+.state,
+.result {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 20px 0;
+}
+
+.stateIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.iconOk {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.iconWarn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.iconNeutral {
+  background: #f5f2fb;
+  color: #7a1f7a;
+}
+
+.stateTitle {
+  margin: 8px 0 6px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #060b23;
+  letter-spacing: -0.4px;
+}
+
+.stateText {
+  margin: 0 auto;
+  max-width: 42ch;
+  color: #5c5680;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.state .primaryBtn,
+.result .primaryBtn {
+  margin-top: 22px;
+}
+
+/* Anillo de puntaje (conic-gradient según --pct). */
+.scoreRing {
+  --pct: 0;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0 4px;
+  background: conic-gradient(var(--ring-color) calc(var(--pct) * 1%), #ece7f6 0);
+}
+
+.ring_ok {
+  --ring-color: #22c55e;
+}
+
+.ring_warn {
+  --ring-color: #f59e0b;
+}
+
+.scoreInner {
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.scoreNum {
+  font-size: 30px;
+  font-weight: 800;
+  color: #060b23;
+  letter-spacing: -1px;
+}
+
+.scoreMin {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8880a8;
+}
+
+.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+/* Spinner de carga. */
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid #ece7f6;
+  border-top-color: #cc33cc;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ===================== Responsive ===================== */
+
+@media (max-width: 720px) {
+  .page {
+    padding: 0;
+  }
+
+  .shell {
+    flex-direction: column;
+    max-width: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+  }
+
+  .brand {
+    width: auto;
+    padding: 24px 22px;
+  }
+
+  .brandBody {
+    margin-top: 20px;
+  }
+
+  .brandName {
+    font-size: 23px;
+  }
+
+  /* En móvil el stepper va horizontal para no ocupar tanto alto. */
+  .stepper {
+    flex-direction: row;
+    gap: 8px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  .stepLabel {
+    display: none;
+  }
+
+  .brandFoot {
+    display: none;
+  }
+
+  .content {
+    padding: 26px 22px 36px;
+  }
+
+  .actions {
+    justify-content: stretch;
+  }
+
+  .actions .primaryBtn,
+  .actions .secondaryBtn {
+    flex: 1;
+  }
+}

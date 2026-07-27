@@ -8,6 +8,9 @@ export default function ResetPassword() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const token = searchParams.get('token') || ''
+  // setup=1 llega desde el correo de alta (profesional que aprobó su inducción):
+  // esa persona nunca tuvo contraseña, así que hablar de "restablecer" confunde.
+  const isSetup = searchParams.get('setup') === '1'
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -58,7 +61,7 @@ export default function ResetPassword() {
   }
 
   return (
-    <AuthLayout title="Nueva Contraseña">
+    <AuthLayout title={isSetup ? 'Crea tu Contraseña' : 'Nueva Contraseña'}>
       {success ? (
         <div style={{ textAlign: 'center', marginTop: '16px' }}>
           <div
@@ -77,7 +80,9 @@ export default function ResetPassword() {
             ✓
           </div>
           <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '15px', lineHeight: '1.6', marginBottom: '16px' }}>
-            Tu contraseña ha sido actualizada exitosamente.
+            {isSetup
+              ? '¡Listo! Tu contraseña quedó creada. Ya puedes entrar a Obertrack.'
+              : 'Tu contraseña ha sido actualizada exitosamente.'}
           </p>
           <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px' }}>
             Serás redirigido al inicio de sesión en unos segundos...
@@ -102,14 +107,16 @@ export default function ResetPassword() {
           {token && (
             <>
               <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', textAlign: 'center', marginBottom: '20px' }}>
-                Ingresa tu nueva contraseña para completar el proceso.
+                {isSetup
+                  ? 'Elige la contraseña con la que entrarás a Obertrack.'
+                  : 'Ingresa tu nueva contraseña para completar el proceso.'}
               </p>
 
               {error && <div className={styles['error-message']}>{error}</div>}
 
               <form onSubmit={handleSubmit}>
                 <div className={styles['form-group']}>
-                  <label htmlFor="password">Nueva Contraseña</label>
+                  <label htmlFor="password">{isSetup ? 'Contraseña' : 'Nueva Contraseña'}</label>
                   <input
                     id="password"
                     type="password"
@@ -135,7 +142,7 @@ export default function ResetPassword() {
                 </div>
 
                 <button type="submit" disabled={isLoading}>
-                  {isLoading ? 'Actualizando...' : 'Restablecer Contraseña'}
+                  {isLoading ? 'Guardando...' : isSetup ? 'Crear Contraseña' : 'Restablecer Contraseña'}
                 </button>
               </form>
 

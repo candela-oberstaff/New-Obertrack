@@ -23,6 +23,11 @@
 * Validaciones robustas de direcciones de correo electrónico en el backend.
 * Gestión de alertas de error en tiempo real en la UI del agente.
 
+### 📅 [Integración con Google Calendar](features/google-calendar-integration.md)
+* Vínculo personal por usuario vía OAuth 2.0 con consent screen *External*: sirve cualquier cuenta de Gmail o de dominio propio.
+* Tokens cifrados en reposo (AES-256-GCM) y `state` firmado con clave derivada, separada de la de sesión.
+* Fases 1 y 2 completas: vinculación de la cuenta + sincronización de tareas con fecha → eventos all-day en el calendario de cada asignado, vía cola durable con reintentos.
+
 ---
 
 ## 🛠️ Guía de Buenas Prácticas de Desarrollo

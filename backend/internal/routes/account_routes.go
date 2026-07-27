@@ -109,6 +109,17 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	// lectura). El filtrado por email vive en el servicio; la empresa no ve las
 	// ganancias individuales.
 	api.GET("/me/wallet", d.wallet.MyWallet)
+	// Google Calendar: vínculo PERSONAL con la cuenta de Google del usuario
+	// (self-service, como Wallet). Todas operan sobre la sesión y no reciben un
+	// user_id, así que nadie puede tocar el vínculo de otro. El callback del
+	// consentimiento vive en public_routes: lo invoca Google, no el frontend.
+	google := api.Group("/me/integrations/google")
+	{
+		google.GET("/status", d.googleCal.Status)
+		google.POST("/connect", d.googleCal.Connect)
+		google.DELETE("", d.googleCal.Disconnect)
+	}
+
 	api.GET("/me/employments/:empId/expediente", d.auth.MyExpediente)
 	api.GET("/me/employments/:empId/documents/:docId/download", d.upload.DownloadMyExpedienteDoc)
 

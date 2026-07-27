@@ -73,6 +73,27 @@ services:
       ZOHO_CLIENT_SECRET: ${ZOHO_CLIENT_SECRET}
       ZOHO_REFRESH_TOKEN: ${ZOHO_REFRESH_TOKEN}
       ZOHO_REDIRECT_URI: ${ZOHO_REDIRECT_URI}
+      # Google Calendar (vínculo personal de cada usuario con su cuenta Google).
+      # Apagado por defecto. Con el flag en true el backend NO arranca si falta
+      # alguna de las cuatro variables siguientes: es preferible a que el botón
+      # "Conectar" falle en mitad del consentimiento.
+      #  - GOOGLE_REDIRECT_URI debe coincidir EXACTAMENTE con uno de los redirect
+      #    URIs registrados en la credencial OAuth de Google Cloud.
+      #  - GOOGLE_TOKEN_ENC_KEY cifra los tokens en la BD (AES-256, 32 bytes en
+      #    base64: openssl rand -base64 32). Si se rota, todos los usuarios
+      #    tienen que volver a vincular su cuenta.
+      GOOGLE_CALENDAR_ENABLED: ${GOOGLE_CALENDAR_ENABLED:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      GOOGLE_TOKEN_ENC_KEY: ${GOOGLE_TOKEN_ENC_KEY:-}
+      # Puente Obersuite (captación) → Obertrack (gestión). Token de servicio
+      # compartido con el backend de Obersuite; viaja en el header
+      # X-Service-Token. Sin él, /api/integrations/obersuite/* responde 503.
+      OBERSUITE_SERVICE_TOKEN: ${OBERSUITE_SERVICE_TOKEN:-}
+      # Base a la que vuelve el navegador tras el consentimiento de Google y a la
+      # que apunta el enlace de la landing de inducción que se envía por correo.
+      FRONTEND_URL: ${FRONTEND_URL:-}
       UPLOAD_PATH: "/app/uploads"
     # Backend not published directly; traffic flows through the frontend proxy.
     expose:

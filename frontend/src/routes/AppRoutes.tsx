@@ -42,6 +42,7 @@ const EmpresaEmployeeDetail = lazy(() => import('../pages/Empresa/EmployeeDetail
 const Soporte = lazy(() => import('../pages/Soporte'))
 const Papelera = lazy(() => import('../pages/Papelera'))
 const AppSettings = lazy(() => import('../pages/AppSettings'))
+const Induction = lazy(() => import('../pages/Induction'))
 
 export function AppRoutes() {
   return (
@@ -50,6 +51,10 @@ export function AppRoutes() {
         <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
         <Route path="/forgot-password" element={<AuthRoute><ForgotPassword /></AuthRoute>} />
         <Route path="/reset-password" element={<AuthRoute><ResetPassword /></AuthRoute>} />
+        {/* Inducción del profesional recién contratado. Va SIN guard: quien llega
+            aquí todavía no tiene cuenta activa y su credencial es el token del
+            enlace que recibió por correo. */}
+        <Route path="/induccion/:token" element={<Induction />} />
         <Route
           path="/"
           element={

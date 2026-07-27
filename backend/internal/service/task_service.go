@@ -29,6 +29,12 @@ type TaskService interface {
 	// taskService→channelService, mismo patrón que ChannelService.SetBroadcaster.
 	// Puede quedar sin cablear (nil): en ese caso no se envían DMs.
 	SetSystemDM(fn func(recipientID uint, content string))
+
+	// SetCalendarSync cablea los enganches de Google Calendar (Fase 2). Mismo
+	// patrón inyectado que SetSystemDM para no acoplar taskService→calendarSync.
+	// onChanged se llama tras crear/editar/completar; onDeleted tras eliminar.
+	// Sin cablear (nil): la sincronización simplemente no ocurre.
+	SetCalendarSync(onChanged, onDeleted func(taskID uint))
 }
 
 type taskService struct {
@@ -39,10 +45,33 @@ type taskService struct {
 	// postSystemDM publica un DM del bot "Obertrack" en el chat interno. Inyectado
 	// por SetSystemDM; nil = sin DMs (p. ej. en tests que no lo cablean).
 	postSystemDM func(recipientID uint, content string)
+	// calendarChanged/calendarDeleted enganchan la sincronización con Google
+	// Calendar. Inyectados por SetCalendarSync; nil = sin sincronización.
+	calendarChanged func(taskID uint)
+	calendarDeleted func(taskID uint)
 }
 
 func (s *taskService) SetSystemDM(fn func(recipientID uint, content string)) {
 	s.postSystemDM = fn
+}
+
+func (s *taskService) SetCalendarSync(onChanged, onDeleted func(taskID uint)) {
+	s.calendarChanged = onChanged
+	s.calendarDeleted = onDeleted
+}
+
+// syncCalendarChanged/Deleted disparan el enganche si está cableado. Best-effort:
+// el enganche solo encola (no llama a Google en el request), así que es barato.
+func (s *taskService) syncCalendarChanged(taskID uint) {
+	if s.calendarChanged != nil {
+		s.calendarChanged(taskID)
+	}
+}
+
+func (s *taskService) syncCalendarDeleted(taskID uint) {
+	if s.calendarDeleted != nil {
+		s.calendarDeleted(taskID)
+	}
 }
 
 // sendSystemDM envía un DM del bot si el emisor está cableado. Best-effort: el
@@ -385,12 +414,12 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, tenantID uint, titl
 		if empID == userID {
 			continue
 		}
-		
+
 		creatorName := "Alguien"
 		if creator != nil {
 			creatorName = creator.Name
 		}
-		
+
 		err := s.notifSvc.CreateNotification(empID, "task_created", "Nueva tarea creada", fmt.Sprintf("%s creó la tarea: %s", creatorName, task.Title), map[string]interface{}{
 			"task_id":  task.ID,
 			"board_id": task.BoardID,
@@ -400,6 +429,10 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, tenantID uint, titl
 			log.Printf("[TaskService] Error creating task_created notification for employer %d: %v", empID, err)
 		}
 	}
+
+	// Google Calendar: crea el evento en el calendario de cada asignado conectado
+	// (si tiene fecha). Solo encola; el worker lo aplica en segundo plano.
+	s.syncCalendarChanged(finalTask.ID)
 
 	return finalTask, finalTask.Assignees, nil
 }
@@ -568,6 +601,11 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 		}
 	}
 
+	// Google Calendar: reconcilia eventos (cambios de fecha, reasignaciones y
+	// desasignaciones se resuelven dentro del enganche comparando asignados
+	// actuales contra los enlaces existentes).
+	s.syncCalendarChanged(task.ID)
+
 	return task, task.Assignees, nil
 }
 
@@ -581,7 +619,12 @@ func (s *taskService) Delete(id uint, tenantID uint, userID uint, role string, i
 	}
 	// Delete related notifications
 	_ = s.notifSvc.DeleteByTaskID(id)
-	return s.repo.Delete(id)
+	if err := s.repo.Delete(id); err != nil {
+		return err
+	}
+	// Google Calendar: borra los eventos de la tarea en todos los calendarios.
+	s.syncCalendarDeleted(id)
+	return nil
 }
 
 func (s *taskService) ToggleCompletion(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool) (*models.Task, error) {
@@ -686,6 +729,10 @@ func (s *taskService) ToggleCompletion(id uint, tenantID uint, updaterUserID uin
 			s.sendSystemDM(assignee.ID, fmt.Sprintf("✅ Se completó la tarea: %s", task.Title))
 		}
 	}
+
+	// Google Calendar: refleja el ✓ (o lo quita al reabrir) en el título del
+	// evento de cada asignado conectado.
+	s.syncCalendarChanged(task.ID)
 
 	return task, nil
 }

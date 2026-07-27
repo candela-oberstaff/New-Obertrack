@@ -1287,6 +1287,78 @@ func Run(db *gorm.DB) error {
 				)
 			},
 		},
+		{
+			// Vínculo personal usuario ↔ cuenta de Google (Fase 1 de la
+			// integración con Calendar). Una fila por usuario, no por empresa.
+			ID: "202607231200_add_google_calendar_accounts",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating google_calendar_accounts table...")
+				return tx.AutoMigrate(&models.GoogleCalendarAccount{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.GoogleCalendarAccount{})
+			},
+		},
+		{
+			// Fase 2 de Google Calendar: enlaces tarea↔evento y la bandeja de
+			// salida (outbox) que sincroniza tareas con el calendario de cada
+			// asignado en segundo plano.
+			ID: "202607231600_add_calendar_sync",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating calendar_event_links and calendar_sync_jobs tables...")
+				return tx.AutoMigrate(&models.CalendarEventLink{}, &models.CalendarSyncJob{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.CalendarSyncJob{}, &models.CalendarEventLink{})
+			},
+		},
+		{
+			// Inducción del profesional recién contratado (puente Obersuite):
+			// video + cuestionario calificado en una landing pública que decide
+			// si se le habilita el acceso a Obertrack.
+			ID: "202607241000_add_induction",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating induction tables and scoring columns...")
+				if err := tx.AutoMigrate(
+					&models.InductionConfig{},
+					&models.InductionInvite{},
+					&models.InductionAttempt{},
+				); err != nil {
+					return err
+				}
+				// Columnas de calificación en encuestas + estado de inducción en
+				// usuarios. AutoMigrate añade las columnas con su default.
+				if err := tx.AutoMigrate(&models.Survey{}, &models.SurveyQuestion{}, &models.User{}); err != nil {
+					return err
+				}
+				// Backfill explícito: ninguna cuenta existente debe quedar con el
+				// estado vacío, o el portero del login la dejaría fuera.
+				if err := tx.Exec(`
+					UPDATE users SET onboarding_status = 'not_required'
+					WHERE onboarding_status IS NULL OR onboarding_status = ''
+				`).Error; err != nil {
+					return err
+				}
+				if err := tx.Exec(`
+					UPDATE surveys SET kind = 'feedback' WHERE kind IS NULL OR kind = ''
+				`).Error; err != nil {
+					return err
+				}
+				// Fila única de configuración (apagada hasta que se configure).
+				return tx.Exec(`
+					INSERT INTO induction_configs (id, passing_score, max_attempts, invite_ttl_days, is_active, updated_at)
+					VALUES (1, 70, 3, 30, false, NOW())
+					ON CONFLICT (id) DO NOTHING
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					&models.InductionAttempt{},
+					&models.InductionInvite{},
+					&models.InductionConfig{},
+				)
+			},
+		},
 		// Future migrations go here
 	})
 

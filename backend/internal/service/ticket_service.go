@@ -43,6 +43,10 @@ type TicketService interface {
 	// CreateWorkHourRejectionAlert opens an internal support alert when a
 	// professional's work hours are rejected.
 	CreateWorkHourRejectionAlert(in RejectionAlertInput) error
+	// CreateInductionFailureAlert abre una alerta interna cuando un profesional
+	// recién contratado agota sus intentos de inducción sin aprobar, para que
+	// Soporte lo contacte.
+	CreateInductionFailureAlert(in InductionAlertInput) error
 	// UpdateInternal changes the stage/status of an internal alert ticket
 	// (e.g. mark as resolved). It never touches Zoho.
 	UpdateInternal(id uint, stage models.TicketStage, status string) (*models.Ticket, error)
@@ -73,6 +77,20 @@ type RejectionAlertInput struct {
 	RejectedByName    string
 	Dates             string
 	Reason            string
+}
+
+// InductionAlertInput lleva los datos de un profesional que no aprobó la
+// inducción, denormalizados sobre la alerta para que Soporte pueda contactarlo
+// sin buscar en otras pantallas.
+type InductionAlertInput struct {
+	ProfessionalID    uint
+	ProfessionalName  string
+	ProfessionalEmail string
+	ProfessionalPhone string
+	CompanyName       string
+	Score             float64
+	PassingScore      int
+	Attempts          int
 }
 
 type ticketService struct {
@@ -693,6 +711,39 @@ func (s *ticketService) CreateWorkHourRejectionAlert(in RejectionAlertInput) err
 			Subject:     ticket.Title,
 			Description: ticket.Description,
 			Reason:      in.Reason,
+			Link:        fmt.Sprintf("/tickets/internal/%d", ticket.ID),
+		})
+	}
+	return nil
+}
+
+func (s *ticketService) CreateInductionFailureAlert(in InductionAlertInput) error {
+	pid := in.ProfessionalID
+	reason := fmt.Sprintf("Obtuvo %.0f%% y el mínimo aprobatorio es %d%%. Agotó sus %d intentos.",
+		in.Score, in.PassingScore, in.Attempts)
+	ticket := &models.Ticket{
+		Origin:            models.OriginInternal,
+		UserID:            &pid,
+		Title:             "Inducción no aprobada: " + in.ProfessionalName,
+		Description:       "El profesional no alcanzó el mínimo aprobatorio de la inducción y su acceso quedó bloqueado. " + reason + " Contactar para acompañarlo y, si corresponde, reiniciar sus intentos.",
+		ProfessionalEmail: in.ProfessionalEmail,
+		ProfessionalPhone: in.ProfessionalPhone,
+		CompanyName:       in.CompanyName,
+		Reason:            reason,
+		Stage:             models.StageNew,
+		Status:            "open",
+	}
+	if err := s.repo.CreateTicket(ticket); err != nil {
+		return err
+	}
+	if s.supportNtfy != nil {
+		s.supportNtfy.Notify(SupportTicketInfo{
+			Type:        "Inducción no aprobada",
+			Requester:   in.ProfessionalName,
+			Company:     in.CompanyName,
+			Subject:     ticket.Title,
+			Description: ticket.Description,
+			Reason:      reason,
 			Link:        fmt.Sprintf("/tickets/internal/%d", ticket.ID),
 		})
 	}

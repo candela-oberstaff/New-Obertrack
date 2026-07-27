@@ -14,6 +14,7 @@ import { Skeleton } from '../components/ui'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { ExpedienteModal } from '../components/Admin/ExpedienteModal'
 import { ProfileChangeReviewPanel } from '../components/Admin/ProfileChangeReviewPanel'
+import { InductionStatusPanel } from '../components/Admin/InductionStatusPanel'
 import EmploymentManagersEditor from '../components/Admin/EmploymentManagersEditor'
 import styles from './AdminUserDetail.module.css'
 
@@ -642,6 +643,15 @@ export default function AdminUserDetail() {
           user={user}
           canReview={canReviewProfileChange}
           onApplied={load}
+        />
+      )}
+
+      {/* Inducción: solo aparece si el profesional pasó por ella. Reiniciar
+          intentos lo permite el backend a superadmin y customer success. */}
+      {user.user_type === 'profesional' && (
+        <InductionStatusPanel
+          userId={user.id}
+          canReset={!!viewer?.is_superadmin || viewer?.user_type === 'customer_success'}
         />
       )}
 

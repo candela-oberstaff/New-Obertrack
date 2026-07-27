@@ -51,6 +51,13 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 		obersuite.POST("/hire", d.onboarding.Hire)
 	}
 
+	// Callback de OAuth de Google (integración con Calendar). Público a
+	// propósito: llega como navegación del navegador desde accounts.google.com,
+	// y la identidad NO sale de la sesión sino del state firmado. Así el flujo
+	// funciona aunque el access token del usuario haya expirado durante el
+	// consentimiento, y sirve igual para el deep link de la app móvil.
+	api.GET("/integrations/google/callback", d.googleCal.Callback)
+
 	// Administrative seed routes — bootstrap only. Require BOTH a non-release
 	// build AND a secret bootstrap token (audit finding C-01).
 	if os.Getenv("GIN_MODE") != "release" {
@@ -61,6 +68,28 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 			seed.POST("/reset-superadmin", d.admin.ResetSuperAdmin)
 			seed.POST("/make-superadmin/:email", d.admin.MakeSuperAdmin)
 			seed.POST("/create-superadmin", d.admin.CreateSuperAdminForced)
+		}
+	}
+
+	// Inducción del profesional recién contratado. Es PÚBLICA a propósito: la
+	// persona todavía no tiene cuenta activa, su única credencial es el token
+	// del enlace que recibió por correo. Se limita la tasa para que el token no
+	// sea adivinable por fuerza bruta.
+	induction := api.Group("/induction")
+	induction.Use(middleware.AuthRateLimitMiddleware())
+	{
+		induction.GET("/:token", d.induction.Landing)
+		induction.POST("/:token/submit", d.induction.Submit)
+	}
+
+	// Vista previa de plantillas de correo — SOLO en desarrollo. Permite iterar
+	// el diseño de los correos sin enviarlos. En release no se registra: expone
+	// la estructura de correos internos.
+	if os.Getenv("GIN_MODE") != "release" {
+		devPreview := api.Group("/dev/email-preview")
+		{
+			devPreview.GET("", d.emailPreview.Index)
+			devPreview.GET("/:slug", d.emailPreview.Show)
 		}
 	}
 

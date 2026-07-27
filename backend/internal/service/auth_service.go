@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 	"unicode"
 
@@ -58,6 +59,11 @@ type AuthService interface {
 	IssueTokens(user *models.User) (string, string, error)
 	GetPublicCompanies() ([]map[string]interface{}, error)
 	ForgotPassword(email string) error
+	// SendPasswordSetupEmail invita a CREAR la contraseña por primera vez (alta
+	// de un profesional que aprobó su inducción). Usa el mismo mecanismo seguro
+	// de token que ForgotPassword, pero con el mensaje correcto: quien lo recibe
+	// nunca tuvo contraseña, así que "restablecer" no aplica.
+	SendPasswordSetupEmail(email string) error
 	ResetPassword(token, newPassword string) error
 }
 
@@ -169,6 +175,16 @@ func (s *authService) Login(email, password string) (*models.User, string, strin
 		return nil, "", "", errors.New("Tu cuenta ha sido suspendida. Contacta al administrador.")
 	}
 
+	// Portero de inducción: el profesional recién contratado no entra hasta
+	// aprobar. Las cuentas existentes están en 'not_required' y no se ven
+	// afectadas (ver models/induction.go).
+	switch user.OnboardingStatus {
+	case models.OnboardingPending:
+		return nil, "", "", errors.New("Aún no completas tu inducción. Revisa el enlace que enviamos a tu correo.")
+	case models.OnboardingBlocked:
+		return nil, "", "", errors.New("Tu acceso está en revisión. Nuestro equipo de soporte se pondrá en contacto contigo.")
+	}
+
 	if user.UserType == models.UserTypeProfessional && user.EmpleadorID != nil {
 		if employer, err := s.userRepo.GetByID(*user.EmpleadorID); err == nil && !employer.IsActive {
 			return nil, "", "", errors.New("El acceso de tu empresa ha sido suspendido. Contacta al administrador.")
@@ -253,6 +269,38 @@ func (s *authService) GetPublicCompanies() ([]map[string]interface{}, error) {
 	return companies, nil
 }
 
+// issueResetToken genera un token de un solo uso, guarda solo su HASH en el
+// usuario (audit finding M-09) y devuelve el token en claro para el enlace.
+// Lo comparten el flujo de recuperación y el de alta de contraseña.
+func (s *authService) issueResetToken(user *models.User, ttl time.Duration) (string, error) {
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", errors.New("failed to generate reset token")
+	}
+	token := hex.EncodeToString(tokenBytes)
+
+	expiry := time.Now().Add(ttl)
+	user.ResetToken = hashResetToken(token)
+	user.ResetTokenExpiry = &expiry
+
+	if err := s.userRepo.Save(user); err != nil {
+		return "", errors.New("failed to save reset token")
+	}
+	return token, nil
+}
+
+// frontendBaseURL resuelve la base pública del frontend para los enlaces.
+func frontendBaseURL() string {
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = os.Getenv("SERVICE_URL_FRONTEND")
+	}
+	if frontendURL == "" {
+		frontendURL = "https://obertrack.com"
+	}
+	return strings.TrimRight(frontendURL, "/")
+}
+
 func (s *authService) ForgotPassword(email string) error {
 	user, err := s.userRepo.GetByEmail(email)
 	if err != nil {
@@ -261,81 +309,13 @@ func (s *authService) ForgotPassword(email string) error {
 		return nil
 	}
 
-	// Generate secure random token
-	tokenBytes := make([]byte, 32)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return errors.New("failed to generate reset token")
+	token, err := s.issueResetToken(user, 1*time.Hour)
+	if err != nil {
+		return err
 	}
-	token := hex.EncodeToString(tokenBytes)
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", frontendBaseURL(), token)
 
-	// Set token with 1-hour expiry. Store only the HASH; the raw token is sent
-	// in the email link (audit finding M-09).
-	expiry := time.Now().Add(1 * time.Hour)
-	user.ResetToken = hashResetToken(token)
-	user.ResetTokenExpiry = &expiry
-
-	if err := s.userRepo.Save(user); err != nil {
-		return errors.New("failed to save reset token")
-	}
-
-	// Build reset URL
-	frontendURL := os.Getenv("FRONTEND_URL")
-	if frontendURL == "" {
-		frontendURL = os.Getenv("SERVICE_URL_FRONTEND")
-	}
-	if frontendURL == "" {
-		if os.Getenv("GIN_MODE") == "release" {
-			frontendURL = "https://obertrack.com"
-		} else {
-			frontendURL = "https://obertrack.com" // Always default to obertrack.com as requested by user
-		}
-	}
-	resetLink := fmt.Sprintf("%s/reset-password?token=%s", frontendURL, token)
-
-	// Send branded email
-	htmlContent := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head>
-	<meta charset="utf-8">
-</head>
-<body style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f2fb; margin: 0; padding: 20px; color: #060b23;">
-	<div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(6, 11, 35, 0.1), 0 4px 6px -2px rgba(6, 11, 35, 0.05); border: 1px solid #ddd9ef;">
-
-		<!-- Banner con Logo -->
-		<div style="background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; color: #ffffff; text-align: center;">
-			<img src="https://obertrack.com/logos/Horizontal_Blanco.png" alt="Obertrack Logo" height="40" style="display: block; margin: 0 auto 12px auto; height: 40px; border: 0; outline: none;" />
-			<h1 style="font-size: 20px; font-weight: 700; opacity: 0.95; margin: 0; color: #ffffff; font-family: sans-serif;">Recuperar Contraseña</h1>
-		</div>
-
-		<!-- Contenido -->
-		<div style="padding: 32px 24px;">
-			<p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px; color: #060b23; font-family: sans-serif;">Hola <strong>%s</strong>,</p>
-			<p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #5c5680; font-family: sans-serif;">Recibimos una solicitud para restablecer la contraseña de tu cuenta. Haz clic en el botón de abajo para crear una nueva contraseña.</p>
-
-			<!-- Botón CTA -->
-			<div style="text-align: center; margin: 32px 0;">
-				<a href="%s" style="display: inline-block; background: linear-gradient(135deg, #cc33cc 0%%, #8a2be2 100%%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 12px; font-size: 15px; font-weight: 700; font-family: sans-serif; box-shadow: 0 4px 16px rgba(204, 51, 204, 0.35);">Restablecer Contraseña</a>
-			</div>
-
-			<p style="font-size: 13px; line-height: 1.6; color: #8880a8; font-family: sans-serif;">Si no solicitaste este cambio, puedes ignorar este correo. Tu contraseña actual seguirá siendo la misma.</p>
-			<p style="font-size: 13px; line-height: 1.6; color: #8880a8; font-family: sans-serif;">Este enlace expirará en <strong>1 hora</strong>.</p>
-
-			<!-- Link alternativo -->
-			<div style="background: #f5f2fb; border: 1px solid #ddd9ef; border-radius: 12px; padding: 16px; margin-top: 24px;">
-				<p style="font-size: 12px; color: #8880a8; margin: 0 0 8px 0; font-family: sans-serif;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
-				<p style="font-size: 12px; color: #8a2be2; word-break: break-all; margin: 0; font-family: sans-serif;">%s</p>
-			</div>
-		</div>
-
-		<!-- Footer -->
-		<div style="background: #f5f2fb; padding: 24px; text-align: center; font-size: 12px; color: #8880a8; border-top: 1px solid #ddd9ef; font-family: sans-serif;">
-			Este es un correo automático generado de forma segura por <strong>Obertrack</strong>.<br>
-			&copy; 2026 Obertrack. Todos los derechos reservados.
-		</div>
-	</div>
-</body>
-</html>`, user.Name, resetLink, resetLink)
+	htmlContent := BuildPasswordResetHTML(user.Name, resetLink)
 
 	if err := s.brevoSvc.SendEmail(user.Email, user.Name, "Obertrack - Recuperar Contraseña", htmlContent); err != nil {
 		log.Printf("[Auth] Failed to send reset email to %s: %v", user.Email, err)
@@ -343,6 +323,38 @@ func (s *authService) ForgotPassword(email string) error {
 	}
 
 	log.Printf("[Auth] Password reset email sent to %s", user.Email)
+	return nil
+}
+
+// SendPasswordSetupEmail avisa a un profesional recién aprobado que ya tiene
+// acceso y lo invita a CREAR su contraseña. Nunca viaja una clave en claro: se
+// usa el mismo token de un solo uso del flujo de recuperación.
+//
+// La vigencia es de 24 h (no 1 h como la recuperación): esto llega al terminar
+// la inducción y la persona puede no atenderlo de inmediato. Si vence, siempre
+// queda "¿Olvidaste tu contraseña?" como salida.
+func (s *authService) SendPasswordSetupEmail(email string) error {
+	user, err := s.userRepo.GetByEmail(email)
+	if err != nil {
+		log.Printf("[Auth] SendPasswordSetupEmail for unknown email: %s", email)
+		return nil
+	}
+
+	token, err := s.issueResetToken(user, 24*time.Hour)
+	if err != nil {
+		return err
+	}
+	// setup=1 hace que la pantalla hable de "crear" y no de "restablecer".
+	setupLink := fmt.Sprintf("%s/reset-password?token=%s&setup=1", frontendBaseURL(), token)
+
+	htmlContent := BuildPasswordSetupHTML(user.Name, user.Email, setupLink)
+
+	if err := s.brevoSvc.SendEmail(user.Email, user.Name, "Obertrack - Crea tu contraseña", htmlContent); err != nil {
+		log.Printf("[Auth] Failed to send setup email to %s: %v", user.Email, err)
+		return errors.New("failed to send setup email")
+	}
+
+	log.Printf("[Auth] Password setup email sent to %s", user.Email)
 	return nil
 }
 

@@ -7,6 +7,7 @@ import { ProfileChangeRequestModal } from '../components/Profile/ProfileChangeRe
 import { PasswordModal } from '../components/Profile/PasswordModal'
 import type { ProfileChangeRequest } from '../types'
 import { MiCV } from '../components/Profile/MiCV'
+import { IntegracionesPanel } from '../components/Profile/IntegracionesPanel'
 import Avatar from '../components/Common/Avatar'
 import Tooltip from '../components/Common/Tooltip'
 import styles from './Profile.module.css'
@@ -199,6 +200,8 @@ export default function Profile() {
               )}
             </div>
           </div>
+
+          <IntegracionesPanel />
 
           <div className={styles['sidebar-card']} data-tour="profile-stats">
             <h3>

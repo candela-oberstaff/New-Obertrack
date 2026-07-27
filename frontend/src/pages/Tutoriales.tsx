@@ -1,4 +1,5 @@
-import { Plus, BookOpen, Search, Compass } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, BookOpen, Search, Compass, GraduationCap } from 'lucide-react'
 import { startCurrentPageTour } from '../lib/tour'
 import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
@@ -7,6 +8,7 @@ import { TutorialCard } from '../components/Tutorials/TutorialCard'
 import { TutorialPlayerModal } from '../components/Tutorials/Modals/TutorialPlayerModal'
 import { TutorialFormModal } from '../components/Tutorials/Modals/TutorialFormModal'
 import { useAuth } from '../context/AuthContext'
+import InductionSettings from '../components/Admin/InductionSettings'
 import { Skeleton } from '../components/ui'
 import styles from './Tutoriales.module.css'
 
@@ -45,6 +47,11 @@ export default function Tutoriales() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   )
+
+  // Pestaña principal. La de inducción solo existe para superadmin, así que
+  // para el resto la página se comporta exactamente como antes.
+  const [mainTab, setMainTab] = useState<'novedades' | 'induccion'>('novedades')
+  const showNovedades = !isAdmin || mainTab === 'novedades'
 
   const canReorder = isAdmin && categoryFilter === ALL_CATEGORIES && audienceFilter === ALL_AUDIENCES && !searchQuery.trim()
 
@@ -96,7 +103,7 @@ export default function Tutoriales() {
           <button type="button" className={styles['tutorials-tour-btn']} onClick={() => startCurrentPageTour('/novedades')} data-tour="tutoriales-current-tour">
             <Compass size={18} /> Recorrido guiado
           </button>
-          {isAdmin && (
+          {isAdmin && showNovedades && (
             <button type="button" className={styles['tutorials-create-btn']} onClick={openCreate} data-tour="tutoriales-create">
               <Plus size={18} /> Nueva novedad
             </button>
@@ -104,7 +111,31 @@ export default function Tutoriales() {
         </div>
       </header>
 
-      {tutorials.length > 0 && (
+      {/* Pestañas principales: separan el contenido para el equipo de la
+          configuración de la inducción, que solo toca el superadmin. */}
+      {isAdmin && (
+        <div className={styles['tutorials-tabs']}>
+          <button
+            type="button"
+            className={`${styles['tutorials-tab']} ${mainTab === 'novedades' ? styles['active'] : ''}`}
+            onClick={() => setMainTab('novedades')}
+          >
+            <BookOpen size={16} /> Novedades
+            <span className={styles['tutorials-tab-count']}>{tutorials.length}</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles['tutorials-tab']} ${mainTab === 'induccion' ? styles['active'] : ''}`}
+            onClick={() => setMainTab('induccion')}
+          >
+            <GraduationCap size={16} /> Inducción
+          </button>
+        </div>
+      )}
+
+      {isAdmin && mainTab === 'induccion' && <InductionSettings />}
+
+      {showNovedades && tutorials.length > 0 && (
         <div className={styles['tutorials-toolbar']}>
           <div className={styles['tutorials-tabs']} data-tour="tutoriales-tabs">
             <button
@@ -157,7 +188,7 @@ export default function Tutoriales() {
         </div>
       )}
 
-      {isLoading ? (
+      {!showNovedades ? null : isLoading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={180} radius={16} />)}
         </div>
