@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Clock, AlertCircle } from 'lucide-react'
 import { Select } from '../../ui/Select'
+import { useDirtySnapshot } from '../../ui/useCloseGuard'
 import { Modal, Button } from '../../ui'
 import styles from '../../../pages/WorkHours.module.css'
 
@@ -44,6 +45,8 @@ export function RecoverHoursModal({
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot([date, hours, comments])}
       isOpen={isOpen}
       onClose={onClose}
       title="Recuperar Horas"

@@ -3,6 +3,7 @@ import { Shield, UsersRound, Plus, Pencil, Trash2, UserPlus, X, Building2 } from
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
 import { useConfirm } from '../components/ui/ConfirmProvider'
+import { useCloseGuard } from '../components/ui/useCloseGuard'
 import { rbacService } from '../services/rbac.service'
 import { authService, channelService } from '../services/api'
 import { Modal, Button, Skeleton } from '../components/ui'
@@ -15,6 +16,7 @@ import styles from './Tenants/Tenants.module.css'
 const MODULES: { key: string; label: string }[] = [
   { key: 'tasks', label: 'Tareas' },
   { key: 'hours', label: 'Horas' },
+  { key: 'meetings', label: 'Sesiones' },
   { key: 'reports', label: 'Reportes' },
   { key: 'chat', label: 'Chat' },
   { key: 'tutorials', label: 'Novedades' },
@@ -98,6 +100,55 @@ export default function RolesGroups() {
   const [memberCtx, setMemberCtx] = useState<MemberCtx | null>(null)
   const [assigned, setAssigned] = useState<User[]>([])
   const [pickedIds, setPickedIds] = useState<Set<number>>(new Set())
+
+  // ── Protección contra cierres accidentales ─────────────────────────────────
+  // Un rol mal cerrado se pierde entero: nombre, descripción y la matriz de
+  // permisos módulo a módulo. Se compara contra el estado con el que se abrió,
+  // así crear y editar usan la misma regla.
+  const roleSnapshot = (name: string, description: string, perms: Record<string, PermissionLevel>) =>
+    JSON.stringify([name.trim(), description.trim(), MODULES.map(m => perms[m.key] ?? 'none')])
+
+  const roleBaseline = useMemo(
+    () => roleSnapshot(
+      editingRole?.name ?? '',
+      editingRole?.description ?? '',
+      editingRole ? parsePermissions(editingRole.permissions) : EMPTY_PERMS(),
+    ),
+    [editingRole],
+  )
+
+  const requestCloseRole = useCloseGuard(
+    () => roleSnapshot(roleName, roleDescription, rolePerms) !== roleBaseline,
+    () => setShowRoleModal(false),
+    {
+      title: '¿Descartar este rol?',
+      message: 'Tiene cambios sin guardar, incluidos los permisos por módulo.',
+    },
+  )
+
+  const groupBaseline = useMemo(
+    () => JSON.stringify([editingGroup?.name ?? '', editingGroup?.description ?? '']),
+    [editingGroup],
+  )
+
+  const requestCloseGroup = useCloseGuard(
+    () => JSON.stringify([groupName.trim(), groupDescription.trim()]) !== groupBaseline,
+    () => setShowGroupModal(false),
+    {
+      title: '¿Descartar este grupo?',
+      message: 'Tiene cambios sin guardar.',
+    },
+  )
+
+  // Los usuarios marcados no se asignan hasta pulsar "Agregar".
+  const requestCloseMembers = useCloseGuard(
+    () => pickedIds.size > 0,
+    () => setMemberCtx(null),
+    {
+      title: '¿Descartar la selección?',
+      message: 'Marcaste usuarios que todavía no has agregado.',
+    },
+  )
   const [memberSearch, setMemberSearch] = useState('')
   const [memberBusy, setMemberBusy] = useState(false)
 
@@ -480,7 +531,7 @@ export default function RolesGroups() {
       {/* Modal de rol */}
       <Modal
         isOpen={showRoleModal}
-        onClose={() => setShowRoleModal(false)}
+        onClose={requestCloseRole}
         title={editingRole ? 'Editar rol' : 'Nuevo rol'}
         size="md"
         footer={
@@ -524,7 +575,7 @@ export default function RolesGroups() {
       {/* Modal de grupo */}
       <Modal
         isOpen={showGroupModal}
-        onClose={() => setShowGroupModal(false)}
+        onClose={requestCloseGroup}
         title={editingGroup ? 'Editar grupo' : 'Nuevo grupo'}
         size="sm"
         footer={
@@ -547,7 +598,7 @@ export default function RolesGroups() {
       {/* Modal de miembros / usuarios asignados */}
       <Modal
         isOpen={!!memberCtx}
-        onClose={() => setMemberCtx(null)}
+        onClose={requestCloseMembers}
         title={memberCtx ? (memberCtx.kind === 'role' ? `Usuarios con el rol — ${memberCtx.name}` : `Miembros — ${memberCtx.name}`) : ''}
         size="md"
         footer={<Button variant="secondary" onClick={() => setMemberCtx(null)}>Cerrar</Button>}

@@ -15,4 +15,6 @@ export interface WhatsAppMessageDTO {
   author_name: string
   author_type: string
   created_time: string
+  // Estado de entrega del outbox; vacío/ausente = ya entregado (histórico).
+  delivery_status?: '' | 'pending' | 'sent' | 'failed'
 }

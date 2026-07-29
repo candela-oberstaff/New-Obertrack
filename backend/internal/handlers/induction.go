@@ -112,6 +112,21 @@ func (h *InductionHandler) Status(c *gin.Context) {
 	c.JSON(http.StatusOK, view)
 }
 
+// Invite emite la inducción a un profesional que ya existe (alta manual, alta
+// desde la empresa o importación), que de otro modo nunca pasaría por ella.
+func (h *InductionHandler) Invite(c *gin.Context) {
+	userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Usuario inválido"})
+		return
+	}
+	if err := h.svc.Invite(uint(userID)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Inducción enviada. El profesional recibirá el enlace por correo."})
+}
+
 // Reset desbloquea al profesional, le devuelve sus intentos y le reenvía el
 // enlace. Es la acción que ejecuta Soporte tras contactarlo.
 func (h *InductionHandler) Reset(c *gin.Context) {

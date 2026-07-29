@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { useCloseGuard } from './useCloseGuard'
 import './Modal.css'
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl'
@@ -16,6 +17,13 @@ export interface ModalProps {
   /** Hide the default close (X) button. */
   hideCloseButton?: boolean
   ariaLabel?: string
+  /**
+   * Hay trabajo sin guardar. Cuando es true, cerrar pide confirmación antes de
+   * descartar: aplica al clic fuera, a Escape y a la X, que son los gestos que
+   * se hacen sin querer. Un botón "Cancelar" del pie llama a onClose y no pasa
+   * por aquí: ahí el usuario ya dijo explícitamente que descarta.
+   */
+  isDirty?: boolean
 }
 
 const FOCUSABLE =
@@ -36,15 +44,20 @@ export function Modal({
   closeOnOverlayClick = true,
   hideCloseButton = false,
   ariaLabel,
+  isDirty = false,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const previouslyFocused = useRef<HTMLElement | null>(null)
 
+  // Cierre "accidental" (fuera del panel o Escape): pide confirmación si hay
+  // algo que perder. Sin isDirty se comporta igual que siempre.
+  const requestClose = useCloseGuard(isDirty, onClose)
+
   // Keep the latest onClose without making the focus-trap effect depend on it.
   // Otherwise a parent passing an inline onClose re-runs the effect on every
   // render (e.g. each keystroke), stealing focus back to the first element.
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  const onCloseRef = useRef(requestClose)
+  onCloseRef.current = requestClose
 
   useEffect(() => {
     if (!isOpen) return
@@ -101,7 +114,7 @@ export function Modal({
   if (!isOpen) return null
 
   return (
-    <div className="ui-modal__overlay" onClick={() => closeOnOverlayClick && onClose()}>
+    <div className="ui-modal__overlay" onClick={() => closeOnOverlayClick && requestClose()}>
       <div
         ref={panelRef}
         className={`ui-modal__panel ui-modal__panel--${size}`}
@@ -115,7 +128,7 @@ export function Modal({
           <div className="ui-modal__header">
             {title ? <h2 className="ui-modal__title">{title}</h2> : <span />}
             {!hideCloseButton && (
-              <button type="button" className="ui-modal__close" onClick={onClose} aria-label="Cerrar">
+              <button type="button" className="ui-modal__close" onClick={requestClose} aria-label="Cerrar">
                 <X size={18} />
               </button>
             )}

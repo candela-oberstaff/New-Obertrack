@@ -410,7 +410,6 @@ func (s *boardService) ReorderPhases(boardID, tenantID, userID uint, role string
 	return s.repo.GetByID(boardID)
 }
 
-
 func (s *boardService) InviteMembers(boardID, tenantID, userID uint, role string, isManager, isSuperadmin bool, targetIDs []uint) ([]models.BoardInvitation, error) {
 	board, err := s.authorizeBoardTenant(boardID, tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {

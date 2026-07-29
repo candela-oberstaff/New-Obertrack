@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"time"
 
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
@@ -18,16 +19,26 @@ type CalendarSyncRepository interface {
 	ListLinksForTask(taskID uint) ([]models.CalendarEventLink, error)
 	UpsertLink(link *models.CalendarEventLink) error
 	DeleteLink(taskID, userID uint) error
+	// DeleteLinksForUser borra todos los enlaces de un usuario. Se usa al
+	// desvincular su cuenta: sin cuenta no hay credencial con la que tocar esos
+	// eventos, así que el enlace deja de significar nada.
+	DeleteLinksForUser(userID uint) error
 
 	// --- Outbox de jobs ---
 	EnqueueJob(job *models.CalendarSyncJob) error
-	// ClaimPendingJobs devuelve hasta `limit` jobs pendientes (o fallidos con
-	// reintentos disponibles), del más antiguo al más nuevo.
-	ClaimPendingJobs(limit int) ([]models.CalendarSyncJob, error)
+	// ClaimPendingJobs devuelve hasta `limit` jobs en estado 'pending' YA VENCIDOS
+	// (next_attempt_at nulo o <= now), del más antiguo al más nuevo. Un job que
+	// falló con reintentos disponibles vuelve a 'pending' con su próxima fecha
+	// (lo hace MarkJobFailed), así que reaparece por aquí cuando toca; los
+	// agotados quedan en 'failed' y ya no se seleccionan.
+	ClaimPendingJobs(limit int, now time.Time) ([]models.CalendarSyncJob, error)
 	MarkJobDone(jobID uint) error
-	// MarkJobFailed incrementa el intento y guarda el error; si se agotaron los
-	// reintentos, deja el job en estado 'failed' (no se reejecuta).
-	MarkJobFailed(jobID uint, attempts int, errMsg string, exhausted bool) error
+	// MarkJobFailed incrementa el intento y guarda el error. retryAt es cuándo
+	// puede volver a intentarse; nil significa que se agotó y el job queda en
+	// 'failed' (no se reejecuta). Que la decisión viaje como fecha —y no como un
+	// booleano aparte— hace imposible dejar un job 'pending' sin fecha de
+	// reintento, o uno 'failed' con ella.
+	MarkJobFailed(jobID uint, attempts int, errMsg string, retryAt *time.Time) error
 	// SupersedePendingJobs marca como 'done' los jobs pendientes previos de la
 	// misma (tarea, usuario): si una tarea se editó tres veces antes de que el
 	// worker corriera, solo interesa el último estado, no reproducir cada cambio.
@@ -84,17 +95,28 @@ func (r *calendarSyncRepository) DeleteLink(taskID, userID uint) error {
 		Delete(&models.CalendarEventLink{}).Error
 }
 
+func (r *calendarSyncRepository) DeleteLinksForUser(userID uint) error {
+	return r.db.Where("user_id = ?", userID).
+		Delete(&models.CalendarEventLink{}).Error
+}
+
 func (r *calendarSyncRepository) EnqueueJob(job *models.CalendarSyncJob) error {
 	return r.db.Create(job).Error
 }
 
-// ClaimPendingJobs selecciona jobs procesables: pendientes, o con intentos aún
-// por debajo del tope. El worker es único (una goroutine), así que no hace falta
-// SELECT ... FOR UPDATE; el orden por id garantiza FIFO.
-func (r *calendarSyncRepository) ClaimPendingJobs(limit int) ([]models.CalendarSyncJob, error) {
+// ClaimPendingJobs selecciona los jobs procesables: pendientes y ya vencidos.
+// El tope de intentos no hace falta repetirlo aquí porque MarkJobFailed ya deja
+// en 'pending' lo que tiene reintentos y en 'failed' lo agotado. El worker es
+// único (una goroutine), así que no hace falta SELECT ... FOR UPDATE; el orden por
+// id garantiza FIFO.
+//
+// Un job esperando su backoff no bloquea la cola: el filtro lo deja fuera de la
+// selección, así que los demás siguen procesándose con normalidad.
+func (r *calendarSyncRepository) ClaimPendingJobs(limit int, now time.Time) ([]models.CalendarSyncJob, error) {
 	var jobs []models.CalendarSyncJob
 	err := r.db.
 		Where("status = ?", models.CalendarSyncStatusPending).
+		Where("next_attempt_at IS NULL OR next_attempt_at <= ?", now).
 		Order("id ASC").
 		Limit(limit).
 		Find(&jobs).Error
@@ -105,22 +127,27 @@ func (r *calendarSyncRepository) MarkJobDone(jobID uint) error {
 	return r.db.Model(&models.CalendarSyncJob{}).
 		Where("id = ?", jobID).
 		Updates(map[string]interface{}{
-			"status":     models.CalendarSyncStatusDone,
-			"last_error": "",
+			"status":          models.CalendarSyncStatusDone,
+			"next_attempt_at": nil,
+			"last_error":      "",
 		}).Error
 }
 
-func (r *calendarSyncRepository) MarkJobFailed(jobID uint, attempts int, errMsg string, exhausted bool) error {
+func (r *calendarSyncRepository) MarkJobFailed(jobID uint, attempts int, errMsg string, retryAt *time.Time) error {
 	status := models.CalendarSyncStatusPending
-	if exhausted {
+	if retryAt == nil {
 		status = models.CalendarSyncStatusFailed
 	}
 	return r.db.Model(&models.CalendarSyncJob{}).
 		Where("id = ?", jobID).
 		Updates(map[string]interface{}{
-			"status":     status,
-			"attempts":   attempts,
-			"last_error": errMsg,
+			"status": status,
+			// next_attempt_at se escribe siempre, incluido el nil de un job
+			// agotado: dejar la fecha del intento anterior en una fila 'failed'
+			// solo confundiría al leer la tabla para diagnosticar.
+			"next_attempt_at": retryAt,
+			"attempts":        attempts,
+			"last_error":      errMsg,
 		}).Error
 }
 

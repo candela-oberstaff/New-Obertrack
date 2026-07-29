@@ -68,3 +68,12 @@ export function useConfirm(): ConfirmFn {
   }
   return ctx
 }
+
+/**
+ * Igual que useConfirm pero devuelve null en vez de lanzar cuando no hay
+ * proveedor. Para componentes de bajo nivel (p. ej. Modal) que pueden montarse
+ * aislados en tests y no deben exigir el árbol completo de la app.
+ */
+export function useConfirmOptional(): ConfirmFn | null {
+  return useContext(ConfirmContext)
+}

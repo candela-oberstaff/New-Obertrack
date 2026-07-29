@@ -33,6 +33,14 @@ export function NewTaskModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      // Un clic fuera no debe llevarse la tarea a medio escribir.
+      isDirty={
+        !!newTaskData?.title?.trim()
+        || !!newTaskData?.description?.trim()
+        || !!newTaskData?.end_date
+        || (newTaskData?.assignees?.length ?? 0) > 0
+        || (newTaskData?.attachments?.length ?? 0) > 0
+      }
       title="Crear nueva tarea"
       size="xl"
       footer={

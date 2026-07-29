@@ -5,6 +5,7 @@ import { parseLocalDate } from '../utils'
 import { sanitizeHtml } from '../../../utils/sanitize'
 import { formatHours } from '../../../utils/formatHours'
 import { absenceReasonLabel } from '../../../utils/absenceReasons'
+import { useDirtySnapshot } from '../../ui/useCloseGuard'
 import { Modal, Button } from '../../ui'
 import styles from '../../../pages/WorkHours.module.css'
 
@@ -87,7 +88,7 @@ export function WorkHourDetailModal({
   const hasActions = showEdit || showRejectOpen || showRejectConfirm || showApprove
 
   return (
-    <Modal
+    <Modal isDirty={useDirtySnapshot(showRejectForm ? rejectionReason : null)}
       isOpen
       onClose={onClose}
       title="Detalle de Registro"

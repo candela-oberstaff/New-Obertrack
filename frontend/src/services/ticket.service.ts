@@ -17,6 +17,8 @@ export interface TicketMessage {
   channel: 'whatsapp' | 'email' | 'note';
   content: string;
   created_at: string;
+  // Vacío = no aplica (entrantes, notas y el histórico previo al outbox).
+  delivery_status?: '' | 'pending' | 'sent' | 'failed';
 }
 
 export interface SupportAgent {
@@ -129,6 +131,7 @@ export interface WhatsAppMessageDTO {
   author_name: string
   author_type: string
   created_time: string
+  delivery_status?: '' | 'pending' | 'sent' | 'failed'
 }
 
 export interface WahaStatus {
@@ -265,6 +268,7 @@ export const ticketService = {
       author_name: m.sender_type === 'agent' ? 'Agente' : contactName,
       author_type: m.sender_type,
       created_time: m.created_at,
+      delivery_status: m.delivery_status,
     }))
   },
 
@@ -278,6 +282,7 @@ export const ticketService = {
       author_name: 'Agente',
       author_type: 'agent',
       created_time: m.created_at,
+      delivery_status: m.delivery_status,
     }
   },
 

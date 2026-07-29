@@ -52,6 +52,7 @@ type deps struct {
 	induction     *handlers.InductionHandler
 	emailPreview  *handlers.EmailPreviewHandler
 	googleCal     *handlers.GoogleCalendarHandler
+	meeting       *handlers.MeetingHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -107,7 +108,12 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	chatSvc := service.NewChatService(chatRepo)
 	channelSvc := service.NewChannelService(channelRepo, userRepo, notifSvc)
 	channelSvc.SetSupportNotifier(supportNtfy)
-	ticketSvc := service.NewTicketService(ticketRepo, userRepo, notifSvc, wahaSvc, brevoSvc, supportNtfy)
+	// Bandeja de salida de WhatsApp: el envío a WAHA ocurre en un worker, no en el
+	// request, para que un reinicio o una caída de WAHA no pierda la respuesta.
+	whatsappOutbox := service.NewWhatsAppOutbox(ticketRepo, wahaSvc)
+	whatsappOutbox.Start()
+
+	ticketSvc := service.NewTicketService(ticketRepo, userRepo, notifSvc, wahaSvc, brevoSvc, supportNtfy, whatsappOutbox)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, brevoSvc)
 	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc, employmentRepo)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
@@ -125,7 +131,17 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// Enganche de Google Calendar: al crear/editar/completar/borrar una tarea se
 	// encola la sincronización (el worker la aplica en segundo plano).
 	taskSvc.SetCalendarSync(calendarSyncSvc.OnTaskChanged, calendarSyncSvc.OnTaskDeleted)
-	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo, brevoSvc)
+	// Enganche inverso: al desvincular la cuenta hay que soltar los enlaces
+	// tarea↔evento, que sin credencial detrás ya no se pueden mantener.
+	googleCalSvc.SetDisconnectHook(calendarSyncSvc.OnAccountDisconnected)
+	// Sesiones: reuniones con Google Meet sobre el calendario del organizador.
+	// A diferencia de la sincronización de tareas, habla con Google DENTRO del
+	// request (quien convoca necesita el enlace en el momento).
+	meetingSvc := service.NewMeetingService(
+		repository.NewMeetingRepository(db), userRepo, googleCalRepo, googleCalSvc, notifSvc,
+	)
+	meetingSvc.SetSystemDM(channelSvc.PostSystemDM)
+	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo, brevoSvc, authSvc)
 	boardSvc := service.NewBoardService(boardRepo, userRepo, notifSvc)
 	tutorialSvc := service.NewTutorialService(tutorialRepo)
 	rbacSvc := service.NewRBACService(rbacRepo, userRepo)
@@ -225,7 +241,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		rbac:          handlers.NewRBACHandler(rbacSvc),
 		ticket:        handlers.NewTicketHandler(db, zohoSvc, ticketSvc, channelSvc),
 		whatsapp:      handlers.NewWhatsAppHandler(db, zohoSvc),
-		waha:          handlers.NewWahaHandler(ticketSvc),
+		waha:          handlers.NewWahaHandler(ticketSvc, wahaSvc),
 		brevoInbound:  handlers.NewBrevoInboundHandler(ticketSvc),
 		audit:         handlers.NewAuditHandler(auditSvc),
 		audience:      handlers.NewAudienceHandler(audienceRepo),
@@ -239,6 +255,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		induction:     handlers.NewInductionHandler(inductionSvc),
 		emailPreview:  handlers.NewEmailPreviewHandler(),
 		googleCal:     handlers.NewGoogleCalendarHandler(googleCalSvc, cfg.FrontendURL),
+		meeting:       handlers.NewMeetingHandler(meetingSvc),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,

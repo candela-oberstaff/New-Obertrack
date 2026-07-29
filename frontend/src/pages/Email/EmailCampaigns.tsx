@@ -6,6 +6,7 @@ import {
 import { emailService, EmailCampaign, EmailTemplate } from '../../services/emailService'
 import EmailBuilder, { EmailBlock, blocksToJSON } from './EmailBuilder'
 import RecipientSelector, { RecipientValue } from './RecipientSelector'
+import { useCloseGuard, useDirtySnapshot } from '../../components/ui/useCloseGuard'
 import styles from './EmailCampaigns.module.css'
 
 // ─── Toast ─────────────────────────────────────────────────────────────────
@@ -49,6 +50,12 @@ function TemplateModal({ initial, onSave, onClose, saving }: TemplateModalProps)
     } catch { return [] }
   })
 
+  const templateDirty = useDirtySnapshot([title, subject, type, blocksToJSON(blocks)])
+  const requestCloseTemplate = useCloseGuard(templateDirty, onClose, {
+    title: '¿Descartar esta plantilla?',
+    message: 'Tiene cambios sin guardar. Se perderá el diseño.',
+  })
+
   const handleSave = async () => {
     await onSave({ title, subject, type, content: blocksToJSON(blocks), is_active: true })
   }
@@ -58,7 +65,7 @@ function TemplateModal({ initial, onSave, onClose, saving }: TemplateModalProps)
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
           <h2 className={styles.modalTitle}>{initial ? 'Editar Plantilla' : 'Nueva Plantilla'}</h2>
-          <button className={styles.modalClose} onClick={onClose}><X size={16} /></button>
+          <button className={styles.modalClose} onClick={requestCloseTemplate}><X size={16} /></button>
         </div>
         <div className={styles.steps}>
           <div className={`${styles.step} ${step === 'meta' ? styles.activeStep : styles.doneStep}`}>1. Datos</div>
@@ -147,6 +154,12 @@ function CampaignModal({ initial, templates, onSave, onSend, onClose, saving }: 
     onClose()
   }
 
+  const campaignDirty = useDirtySnapshot([title, subject, templateId, recipients])
+  const requestCloseCampaign = useCloseGuard(campaignDirty, onClose, {
+    title: '¿Descartar esta campaña?',
+    message: 'Tiene cambios sin guardar.',
+  })
+
   const selectedTemplate = templates.find(t => t.id === templateId)
 
   return (
@@ -154,7 +167,7 @@ function CampaignModal({ initial, templates, onSave, onSend, onClose, saving }: 
       <div className={styles.modal} style={{ maxWidth: 680 }}>
         <div className={styles.modalHeader}>
           <h2 className={styles.modalTitle}>{initial ? 'Editar Campaña' : 'Nueva Campaña'}</h2>
-          <button className={styles.modalClose} onClick={onClose}><X size={16} /></button>
+          <button className={styles.modalClose} onClick={requestCloseCampaign}><X size={16} /></button>
         </div>
         <div className={styles.steps}>
           <div className={`${styles.step} ${step === 'setup' ? styles.activeStep : styles.doneStep}`}>1. Configurar</div>

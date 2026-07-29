@@ -30,7 +30,7 @@ func (r *dmTaskRepo) Create(task *models.Task) error {
 	task.ID = 100
 	return nil
 }
-func (r *dmTaskRepo) SyncAssignees(_ *models.Task, _ []uint) error         { return nil }
+func (r *dmTaskRepo) SyncAssignees(_ *models.Task, _ []uint) error          { return nil }
 func (r *dmTaskRepo) Update(_ *models.Task, _ map[string]interface{}) error { return nil }
 func (r *dmTaskRepo) GetByID(_ uint) (*models.Task, error) {
 	r.getCalls++
@@ -48,7 +48,7 @@ type dmBoardRepo struct {
 	board *models.Board
 }
 
-func (r *dmBoardRepo) GetByID(_ uint) (*models.Board, error)      { return r.board, nil }
+func (r *dmBoardRepo) GetByID(_ uint) (*models.Board, error)           { return r.board, nil }
 func (r *dmBoardRepo) AddMember(_ *models.Board, _ *models.User) error { return nil }
 
 type dmUserRepo struct {

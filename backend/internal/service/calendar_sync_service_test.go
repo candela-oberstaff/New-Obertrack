@@ -1,10 +1,13 @@
 package service
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
+	"github.com/obertrack/backend/internal/repository"
 )
 
 func dateP(y int, m time.Month, d int) *time.Time {
@@ -126,5 +129,275 @@ func TestCalendarEventsURL(t *testing.T) {
 	want := "https://www.googleapis.com/calendar/v3/calendars/user@example.com/events"
 	if got != want {
 		t.Errorf("URL = %q, se esperaba %q", got, want)
+	}
+}
+
+// --- Dobles de prueba del worker ---
+
+// fakeSyncRepo registra las llamadas que importan para comprobar la limpieza de
+// enlaces; el resto de métodos son inertes.
+type fakeSyncRepo struct {
+	deletedLinks     [][2]uint
+	deletedForUser   []uint
+	deleteLinksErr   error
+	deleteForUserErr error
+
+	doneJobs   []uint
+	failedJobs []failedJob
+}
+
+// failedJob captura lo que el worker decidió al fallar: cuántos intentos lleva y
+// cuándo (o si) se reintenta.
+type failedJob struct {
+	attempts int
+	errMsg   string
+	retryAt  *time.Time
+}
+
+func (f *fakeSyncRepo) GetLink(taskID, userID uint) (*models.CalendarEventLink, error) {
+	return nil, repository.ErrCalendarLinkNotFound
+}
+func (f *fakeSyncRepo) ListLinksForTask(uint) ([]models.CalendarEventLink, error) { return nil, nil }
+func (f *fakeSyncRepo) UpsertLink(*models.CalendarEventLink) error                { return nil }
+func (f *fakeSyncRepo) DeleteLink(taskID, userID uint) error {
+	f.deletedLinks = append(f.deletedLinks, [2]uint{taskID, userID})
+	return f.deleteLinksErr
+}
+func (f *fakeSyncRepo) DeleteLinksForUser(userID uint) error {
+	f.deletedForUser = append(f.deletedForUser, userID)
+	return f.deleteForUserErr
+}
+func (f *fakeSyncRepo) EnqueueJob(*models.CalendarSyncJob) error { return nil }
+func (f *fakeSyncRepo) ClaimPendingJobs(int, time.Time) ([]models.CalendarSyncJob, error) {
+	return nil, nil
+}
+func (f *fakeSyncRepo) MarkJobDone(jobID uint) error {
+	f.doneJobs = append(f.doneJobs, jobID)
+	return nil
+}
+func (f *fakeSyncRepo) MarkJobFailed(jobID uint, attempts int, errMsg string, retryAt *time.Time) error {
+	f.failedJobs = append(f.failedJobs, failedJob{attempts: attempts, errMsg: errMsg, retryAt: retryAt})
+	return nil
+}
+func (f *fakeSyncRepo) SupersedePendingJobs(uint, uint, uint) error { return nil }
+
+// fakeGoogle simula el cliente de Google. Los campos van con valor cero por
+// defecto (crear funciona, borrar funciona), y cada test inyecta solo la rama
+// que quiere ejercitar.
+type fakeGoogle struct {
+	deleteErr   error
+	deleteCalls int
+
+	createResult *CalendarEvent
+	createErr    error
+	updateErr    error
+	getResult    *CalendarEvent
+	presence     *MeetPresence
+	presenceErr  error
+	// lastCreateInput deja ver qué se le pidió a Google sin llamar a Google.
+	lastCreateInput CalendarEventInput
+	createCalls     int
+}
+
+func (f *fakeGoogle) Enabled() bool                        { return true }
+func (f *fakeGoogle) AuthURL(uint, string) (string, error) { return "", nil }
+func (f *fakeGoogle) HandleCallback(string, string) (*models.GoogleCalendarAccount, string, error) {
+	return nil, "", nil
+}
+func (f *fakeGoogle) Status(uint) (*models.GoogleCalendarAccount, error) { return nil, nil }
+func (f *fakeGoogle) Disconnect(uint) error                              { return nil }
+func (f *fakeGoogle) SetDisconnectHook(func(uint))                       {}
+func (f *fakeGoogle) AccessToken(uint) (string, error)                   { return "token", nil }
+func (f *fakeGoogle) CreateEvent(_ uint, _ string, in CalendarEventInput) (*CalendarEvent, error) {
+	f.createCalls++
+	f.lastCreateInput = in
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+	if f.createResult != nil {
+		return f.createResult, nil
+	}
+	return &CalendarEvent{ID: "evt"}, nil
+}
+func (f *fakeGoogle) UpdateEvent(uint, string, string, CalendarEventInput) error {
+	return f.updateErr
+}
+func (f *fakeGoogle) GetEvent(uint, string, string) (*CalendarEvent, error) {
+	if f.getResult != nil {
+		return f.getResult, nil
+	}
+	return &CalendarEvent{ID: "evt"}, nil
+}
+func (f *fakeGoogle) MeetPresence(uint, string) (*MeetPresence, error) {
+	if f.presenceErr != nil {
+		return nil, f.presenceErr
+	}
+	if f.presence != nil {
+		return f.presence, nil
+	}
+	return &MeetPresence{}, nil
+}
+func (f *fakeGoogle) DeleteEvent(uint, string, string) error {
+	f.deleteCalls++
+	return f.deleteErr
+}
+
+func deleteJob() *models.CalendarSyncJob {
+	return &models.CalendarSyncJob{
+		ID: 1, TaskID: 7, UserID: 42,
+		Action:        models.CalendarSyncActionDelete,
+		GoogleEventID: "evt-1",
+		CalendarID:    "primary",
+	}
+}
+
+// Un usuario que desvinculó su cuenta no tiene credencial con la que borrar el
+// evento, y no la va a tener por reintentar. El job debe darse por hecho y el
+// enlace limpiarse igual; si no, cada edición posterior de esa tarea gastaba
+// cinco intentos y dejaba el enlace vivo para repetirlo en la siguiente.
+func TestProcessDeleteWithoutAccountCleansLink(t *testing.T) {
+	repo := &fakeSyncRepo{}
+	svc := NewCalendarSyncService(repo, nil, nil, &fakeGoogle{
+		deleteErr: repository.ErrGoogleAccountNotFound,
+	})
+
+	if err := svc.processDelete(deleteJob()); err != nil {
+		t.Fatalf("processDelete devolvió error con cuenta desvinculada: %v", err)
+	}
+	if len(repo.deletedLinks) != 1 || repo.deletedLinks[0] != [2]uint{7, 42} {
+		t.Errorf("el enlace no se limpió: %v", repo.deletedLinks)
+	}
+}
+
+// En cambio un fallo transitorio de Google SÍ debe propagarse: el enlace se
+// conserva para que el reintento vuelva a intentar el borrado del evento.
+func TestProcessDeleteKeepsLinkOnTransientError(t *testing.T) {
+	repo := &fakeSyncRepo{}
+	boom := errors.New("Google respondió 503")
+	svc := NewCalendarSyncService(repo, nil, nil, &fakeGoogle{deleteErr: boom})
+
+	if err := svc.processDelete(deleteJob()); !errors.Is(err, boom) {
+		t.Fatalf("processDelete devolvió %v, se esperaba el error de Google", err)
+	}
+	if len(repo.deletedLinks) != 0 {
+		t.Errorf("el enlace se borró pese al fallo transitorio: %v", repo.deletedLinks)
+	}
+}
+
+// --- Backoff de reintentos ---
+
+// La tabla de espera debe crecer y saturarse en el último escalón, para que subir
+// CalendarSyncMaxAttempts nunca la desborde.
+func TestCalendarSyncRetryDelayEscalatesAndSaturates(t *testing.T) {
+	prev := time.Duration(0)
+	for attempts := 1; attempts <= models.CalendarSyncMaxAttempts+3; attempts++ {
+		d := models.CalendarSyncRetryDelay(attempts)
+		if d <= 0 {
+			t.Fatalf("espera no positiva en el intento %d: %s", attempts, d)
+		}
+		if d < prev {
+			t.Errorf("la espera bajó en el intento %d: %s tras %s", attempts, d, prev)
+		}
+		prev = d
+	}
+	// Por debajo de 1 no se indexa fuera de rango.
+	if got := models.CalendarSyncRetryDelay(0); got != models.CalendarSyncRetryDelay(1) {
+		t.Errorf("intento 0 = %s, se esperaba igual que el primero", got)
+	}
+}
+
+// Un fallo transitorio programa el reintento en el futuro en vez de dejar el job
+// listo para reintentarse de inmediato (que era lo que quemaba los intentos en
+// dos minutos ante una caída de Google).
+func TestProcessJobSchedulesBackoffOnTransientError(t *testing.T) {
+	repo := &fakeSyncRepo{}
+	svc := NewCalendarSyncService(repo, nil, nil, &fakeGoogle{
+		deleteErr: errors.New("Google respondió 503 Service Unavailable"),
+	})
+
+	before := time.Now()
+	svc.processJob(deleteJob())
+
+	if len(repo.failedJobs) != 1 {
+		t.Fatalf("se esperaba un job fallido, hubo %d", len(repo.failedJobs))
+	}
+	got := repo.failedJobs[0]
+	if got.attempts != 1 {
+		t.Errorf("intentos = %d, se esperaba 1", got.attempts)
+	}
+	if got.retryAt == nil {
+		t.Fatal("un 503 debe reintentarse, no agotarse")
+	}
+	if !got.retryAt.After(before) {
+		t.Errorf("el reintento quedó en el pasado (%s): no habría espera", got.retryAt)
+	}
+}
+
+// El último intento disponible no programa otro: el job queda agotado.
+func TestProcessJobExhaustsAtMaxAttempts(t *testing.T) {
+	repo := &fakeSyncRepo{}
+	svc := NewCalendarSyncService(repo, nil, nil, &fakeGoogle{
+		deleteErr: errors.New("Google respondió 503 Service Unavailable"),
+	})
+
+	job := deleteJob()
+	job.Attempts = models.CalendarSyncMaxAttempts - 1
+	svc.processJob(job)
+
+	if len(repo.failedJobs) != 1 || repo.failedJobs[0].retryAt != nil {
+		t.Errorf("el job debía agotarse en el intento %d: %+v", models.CalendarSyncMaxAttempts, repo.failedJobs)
+	}
+}
+
+// Los fallos que no mejoran esperando no gastan la ventana de reintentos.
+func TestProcessJobDoesNotRetryPermanentFailures(t *testing.T) {
+	cases := map[string]error{
+		"needs_reauth": ErrNeedsReauth,
+		"rechazo permanente de Google": fmt.Errorf("%w (400 Bad Request): datos inválidos",
+			ErrGooglePermanent),
+	}
+	for name, failure := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := &fakeSyncRepo{}
+			svc := NewCalendarSyncService(repo, nil, nil, &fakeGoogle{deleteErr: failure})
+
+			svc.processJob(deleteJob())
+
+			if len(repo.failedJobs) != 1 {
+				t.Fatalf("se esperaba un job fallido, hubo %d", len(repo.failedJobs))
+			}
+			if repo.failedJobs[0].retryAt != nil {
+				t.Errorf("no debía programarse reintento, se programó para %s", repo.failedJobs[0].retryAt)
+			}
+		})
+	}
+}
+
+// La clasificación decide si se gasta la ventana de reintentos, así que conviene
+// fijarla: cuota e incidentes esperan; el resto de 4xx no.
+func TestIsTransientStatus(t *testing.T) {
+	transient := []int{408, 429, 500, 502, 503, 504}
+	permanent := []int{400, 403, 404, 409, 422}
+
+	for _, code := range transient {
+		if !isTransientStatus(code) {
+			t.Errorf("%d debería reintentarse", code)
+		}
+	}
+	for _, code := range permanent {
+		if isTransientStatus(code) {
+			t.Errorf("%d no debería gastar reintentos", code)
+		}
+	}
+}
+
+func TestOnAccountDisconnectedDropsLinks(t *testing.T) {
+	repo := &fakeSyncRepo{}
+	svc := NewCalendarSyncService(repo, nil, nil, &fakeGoogle{})
+
+	svc.OnAccountDisconnected(42)
+
+	if len(repo.deletedForUser) != 1 || repo.deletedForUser[0] != 42 {
+		t.Errorf("no se borraron los enlaces del usuario: %v", repo.deletedForUser)
 	}
 }

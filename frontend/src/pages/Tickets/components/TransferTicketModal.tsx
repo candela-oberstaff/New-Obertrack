@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ArrowRightLeft } from 'lucide-react'
 import { Select } from '../../../components/ui/Select'
+import { useDirtySnapshot } from '../../../components/ui/useCloseGuard'
 import { Modal, Button } from '../../../components/ui'
 
 export interface TransferOption {
@@ -36,6 +37,8 @@ export default function TransferTicketModal({ options, onClose, onTransfer }: Tr
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot([target, reason])}
       isOpen
       onClose={onClose}
       size="sm"

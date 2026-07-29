@@ -21,6 +21,7 @@ import {
 } from '../services/admin.service'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../components/Auth/countries'
 import { Select } from '../components/ui/Select'
+import { useCloseGuard } from '../components/ui/useCloseGuard'
 import { buildTemplateOptions } from '../lib/emergencyTemplates'
 import { EmergencyTemplatesModal } from '../components/Admin/EmergencyTemplatesModal'
 import styles from './Incidents.module.css'
@@ -177,17 +178,25 @@ function CreateIncidentModal({ onClose, onCreated, initial }: { onClose: () => v
 
   const stateOptions = [{ value: '', label: 'Sin estado / provincia' }, ...getStatesForCountry(country)]
 
+  // El detalle del incidente no se protege: solo muestra y ejecuta acciones que
+  // guardan al momento. Aquí sí hay un formulario que se perdería entero.
+  const requestClose = useCloseGuard(
+    () => [title, country, state, description].some(v => v.trim() !== '') || kind !== 'Sismo',
+    onClose,
+    { title: '¿Descartar este incidente?', message: 'Todavía no se ha creado. Se perderá lo que escribiste.' },
+  )
+
   const mutation = useMutation({
     mutationFn: () => adminService.createIncident({ title, kind, country, state, description }),
     onSuccess: onCreated,
   })
 
   return (
-    <div className={styles['modal-overlay']} onClick={onClose}>
+    <div className={styles['modal-overlay']} onClick={requestClose}>
       <div className={styles['modal']} onClick={(e) => e.stopPropagation()}>
         <div className={styles['modal-head']}>
           <h3><Siren size={18} /> Crear incidente</h3>
-          <button type="button" className={styles['icon-btn']} onClick={onClose}><X size={18} /></button>
+          <button type="button" className={styles['icon-btn']} onClick={requestClose}><X size={18} /></button>
         </div>
         <div className={styles['modal-body']}>
           <label className={styles['field-label']}>Título</label>

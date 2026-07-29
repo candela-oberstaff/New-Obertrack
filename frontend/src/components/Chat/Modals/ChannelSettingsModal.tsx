@@ -3,6 +3,7 @@ import { Channel, ChannelMember } from '../../../types/chat'
 import { User } from '../../../types'
 import styles from '../../../pages/SlackChat.module.css'
 import { getUserColor, isSupportChannel } from '../ChatUtils'
+import { useDirtySnapshot } from '../../ui/useCloseGuard'
 import { Modal, Button } from '../../ui'
 import { channelService } from '../../../services/channel.service'
 import { useNotification } from '../../../context/NotificationContext'
@@ -91,6 +92,8 @@ export function ChannelSettingsModal({
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot(isEditing ? [editName, editDescription, editType] : null)}
       isOpen
       onClose={onClose}
       size="md"

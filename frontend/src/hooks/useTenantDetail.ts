@@ -2,18 +2,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminService } from '../services/api'
 import type { Tenant, EmployeeSummary } from '../types'
 
-interface TenantActivity {
-  type: string
-  user: string
-  company: string
-  details: string
-  timestamp: string
-}
-
 interface UseTenantDetailReturn {
   tenant: Tenant | null
   employees: EmployeeSummary[]
-  activity: TenantActivity[]
   isLoading: boolean
   error: string | null
   refresh: () => Promise<void>
@@ -29,11 +20,12 @@ export function useTenantDetail(id: number): UseTenantDetailReturn {
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey,
+    // El expediente NO viaja aquí: se pagina y se filtra aparte (useTenantActivity),
+    // así cambiar de página no vuelve a pedir la empresa ni su plantilla.
     queryFn: async () => {
-      const [tenantData, employeesData, activityData] = await Promise.allSettled([
+      const [tenantData, employeesData] = await Promise.allSettled([
         adminService.getTenant(id),
         adminService.getTenantEmployees(id),
-        adminService.getTenantActivity(id),
       ])
       if (tenantData.status !== 'fulfilled') {
         throw new Error('No se pudo cargar la empresa')
@@ -41,7 +33,6 @@ export function useTenantDetail(id: number): UseTenantDetailReturn {
       return {
         tenant: (tenantData.value as Tenant) ?? null,
         employees: employeesData.status === 'fulfilled' && Array.isArray(employeesData.value) ? employeesData.value : [],
-        activity: activityData.status === 'fulfilled' && Array.isArray(activityData.value) ? activityData.value : [],
       }
     },
     enabled: !!id,
@@ -62,7 +53,6 @@ export function useTenantDetail(id: number): UseTenantDetailReturn {
   return {
     tenant: data?.tenant ?? null,
     employees: data?.employees ?? [],
-    activity: data?.activity ?? [],
     isLoading,
     error: error ? 'No se pudo cargar la empresa' : null,
     refresh: async () => { await refetch() },

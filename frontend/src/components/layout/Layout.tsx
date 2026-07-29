@@ -34,12 +34,14 @@ import {
   LifeBuoy,
   Trash2,
   SlidersHorizontal,
+  Video,
 } from 'lucide-react'
 
 // Módulo de permisos (roles) que gobierna cada entrada del sidebar.
 const MODULE_BY_PATH: Record<string, string> = {
   '/tasks': 'tasks',
   '/work-hours': 'hours',
+  '/sesiones': 'meetings',
   '/reports': 'reports',
   '/chat': 'chat',
   '/tickets': 'tickets',
@@ -143,6 +145,7 @@ export default function Layout() {
     { path: '/empresa', label: 'Profesionales', icon: <Users size={20} />, show: isEmployerType },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} />, show: !isIT },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} />, show: !isIT },
+    { path: '/sesiones', label: 'Sesiones', icon: <Video size={20} />, show: !isIT },
     { path: '/wallet', label: 'Wallet', icon: <Wallet size={20} />, show: WALLET_ENABLED && isProfessional },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, show: isSuper || isEmployerType },
     // Roles y Grupos: oculto para empresas en esta versión (solo superadmin).

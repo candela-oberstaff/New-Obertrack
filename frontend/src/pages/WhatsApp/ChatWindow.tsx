@@ -1,7 +1,19 @@
 import React from 'react'
-import { Send, CheckCheck, UserRoundPlus } from 'lucide-react'
+import { Send, CheckCheck, Clock, AlertCircle, UserRoundPlus } from 'lucide-react'
 import { WhatsAppMessageDTO } from '../../services/ticket.service'
 import styles from '../WhatsApp.module.css'
+
+// Estado de entrega de un mensaje propio. Los mensajes previos al outbox llegan
+// sin delivery_status, así que la ausencia de valor se trata como entregado.
+function DeliveryIcon({ status }: { status?: string }) {
+  if (status === 'pending') {
+    return <Clock size={13} className={styles.msgCheck} aria-label="Enviando…" />
+  }
+  if (status === 'failed') {
+    return <AlertCircle size={13} className={styles.msgCheck} color="#B91C1C" aria-label="No entregado" />
+  }
+  return <CheckCheck size={14} className={`${styles.msgCheck} ${styles.msgCheckRead}`} aria-label="Entregado" />
+}
 
 interface ChatWindowProps {
   activeTicket: {
@@ -130,10 +142,13 @@ export default function ChatWindow({
                   <p className={styles.msgText}>{msg.content}</p>
                   <div className={styles.msgMeta}>
                     <span className={styles.msgTime}>{formatTime(msg.created_time)}</span>
-                    {isOwn && (
-                      <CheckCheck size={14} className={`${styles.msgCheck} ${styles.msgCheckRead}`} />
-                    )}
+                    {isOwn && <DeliveryIcon status={msg.delivery_status} />}
                   </div>
+                  {isOwn && msg.delivery_status === 'failed' && (
+                    <p style={{ fontSize: '11px', color: '#B91C1C', margin: '4px 0 0 0' }}>
+                      No se pudo entregar. Reenvialo cuando WhatsApp esté disponible.
+                    </p>
+                  )}
                 </div>
               </div>
             )

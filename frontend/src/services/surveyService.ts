@@ -53,6 +53,16 @@ export const surveyService = {
     const response = await api.post(`/surveys/${id}/send`, {});
     return response.data;
   },
+  /**
+   * Envía la encuesta a otros destinatarios sin tocar la lista guardada.
+   * recipientIds es un array plano de IDs de usuario.
+   */
+  sendSurveyToRecipients: async (id: number, recipientIds: number[]) => {
+    const response = await api.post(`/surveys/${id}/send`, {
+      recipient_list: JSON.stringify(recipientIds),
+    });
+    return response.data;
+  },
 
   submitResponse: async (id: number, answers: any[]) => {
     const response = await api.post(`/surveys/${id}/responses`, { answers });

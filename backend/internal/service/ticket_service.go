@@ -1,7 +1,6 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -98,12 +97,13 @@ type ticketService struct {
 	userRepo    repository.UserRepository
 	notifSvc    NotificationService
 	wahaSvc     *WahaService
+	outbox      *WhatsAppOutbox
 	brevoSvc    *BrevoService
 	supportNtfy *SupportNotifier
 }
 
-func NewTicketService(repo repository.TicketRepository, userRepo repository.UserRepository, notifSvc NotificationService, wahaSvc *WahaService, brevoSvc *BrevoService, supportNtfy *SupportNotifier) TicketService {
-	return &ticketService{repo: repo, userRepo: userRepo, notifSvc: notifSvc, wahaSvc: wahaSvc, brevoSvc: brevoSvc, supportNtfy: supportNtfy}
+func NewTicketService(repo repository.TicketRepository, userRepo repository.UserRepository, notifSvc NotificationService, wahaSvc *WahaService, brevoSvc *BrevoService, supportNtfy *SupportNotifier, outbox *WhatsAppOutbox) TicketService {
+	return &ticketService{repo: repo, userRepo: userRepo, notifSvc: notifSvc, wahaSvc: wahaSvc, brevoSvc: brevoSvc, supportNtfy: supportNtfy, outbox: outbox}
 }
 
 // TransferInput describes a ticket reassignment to be audited.
@@ -226,25 +226,20 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 	}
 
 	// Send the outbound message via the appropriate integration.
+	var deliveryStatus string
 	switch channel {
 	case models.ChannelWhatsApp:
 		if ticket.Contact == nil {
 			return nil, apperrors.ErrExternalSend
 		}
+		// La comprobación de cold-outreach sigue siendo síncrona: es una consulta
+		// local y barata, y el agente tiene que enterarse en el acto de que no
+		// puede escribir primero a ese contacto.
 		if err := s.ensureCanColdOutreach(ticket.ID); err != nil {
 			return nil, err
 		}
-		dest := ticket.Contact.WaID
-		if dest == "" {
-			dest = ticket.Contact.Phone
-		}
-		session := s.wahaSvc.GetSession()
-		if err := s.wahaSvc.SendMessage(session, dest, content); err != nil {
-			if errors.Is(err, apperrors.ErrRateLimited) {
-				return nil, apperrors.ErrRateLimited
-			}
-			return nil, apperrors.ErrExternalSend
-		}
+		// El envío a WAHA lo hace el outbox: aquí solo se persiste la intención.
+		deliveryStatus = models.DeliveryPending
 	case models.ChannelEmail:
 		if ticket.Contact == nil {
 			return nil, apperrors.ErrExternalSend
@@ -255,14 +250,21 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 	}
 
 	msg := &models.TicketMessage{
-		TicketID:   ticket.ID,
-		SenderType: models.SenderTypeAgent,
-		SenderID:   &agentID,
-		Channel:    channel,
-		Content:    content,
+		TicketID:       ticket.ID,
+		SenderType:     models.SenderTypeAgent,
+		SenderID:       &agentID,
+		Channel:        channel,
+		Content:        content,
+		DeliveryStatus: deliveryStatus,
 	}
 	if err := s.repo.CreateMessage(msg); err != nil {
 		return nil, err
+	}
+	// Con el mensaje ya a salvo en la BD se despierta al worker. Si esta señal se
+	// perdiera, el tick periódico lo recogería igual: es una optimización de
+	// latencia, no parte de la garantía de entrega.
+	if deliveryStatus == models.DeliveryPending && s.outbox != nil {
+		s.outbox.Signal()
 	}
 	return msg, nil
 }
@@ -511,19 +513,33 @@ func (s *ticketService) ImportWhatsAppHistory() (int, error) {
 
 	imported := 0
 	for _, chat := range chats {
-		// Solo chats individuales (los grupos terminan en @g.us).
-		if !strings.HasSuffix(chat.ID, "@c.us") {
+		// Solo chats individuales. Hoy WhatsApp identifica las conversaciones 1:1
+		// por LID (@lid) y no por número (@c.us); filtrar únicamente por @c.us
+		// descartaba todos los chats reales. Los grupos (@g.us) sí se omiten.
+		if !IsIndividualChat(chat.ID) {
 			continue
 		}
+
+		// El prefijo de un @lid NO es un teléfono, así que se resuelve contra WAHA:
+		// GET /api/contacts?contactId=<lid> devuelve el JID real en `id`.
 		phone := chat.ID
 		if i := strings.IndexByte(chat.ID, '@'); i >= 0 {
 			phone = chat.ID[:i]
+		}
+		resolvedName := strings.TrimSpace(chat.Name)
+		if resolved, rerr := s.wahaSvc.GetContact(session, chat.ID); rerr == nil && resolved != nil {
+			if realPhone := resolved.RealPhone(); realPhone != "" {
+				phone = realPhone
+			}
+			if name := resolved.BestName(); name != "" {
+				resolvedName = name
+			}
 		}
 
 		// Resolver/crear contacto.
 		contact, cerr := s.repo.GetContactByPhone(phone)
 		if cerr != nil {
-			name := strings.TrimSpace(chat.Name)
+			name := resolvedName
 			if name == "" {
 				name = "WA User " + phone
 			}
@@ -531,6 +547,10 @@ func (s *ticketService) ImportWhatsAppHistory() (int, error) {
 			if err := s.repo.CreateContact(contact); err != nil {
 				continue
 			}
+		} else if contact.WaID == "" && chat.ID != "" {
+			// Backfill del JID para poder responder a este chat.
+			contact.WaID = chat.ID
+			_ = s.repo.SaveContact(contact)
 		}
 
 		// Un ticket por contacto: reutiliza el abierto o crea uno.
@@ -558,7 +578,12 @@ func (s *ticketService) ImportWhatsAppHistory() (int, error) {
 			m := msgs[i]
 			body := strings.TrimSpace(m.Body)
 			if body == "" {
-				continue // ignora no-texto/vacíos (multimedia se aborda aparte)
+				// Adjunto sin texto: se guarda un marcador para que la conversación
+				// refleje que llegó algo, en vez de descartarlo en silencio.
+				body = MediaPlaceholder(m.Type, m.MimeType(), m.HasMedia)
+			}
+			if body == "" {
+				continue // evento sin contenido representable
 			}
 			sender := models.SenderTypeContact
 			if m.FromMe {
@@ -577,6 +602,13 @@ func (s *ticketService) ImportWhatsAppHistory() (int, error) {
 			if inserted, err := s.repo.CreateMessageIfNew(tm); err == nil && inserted {
 				imported++
 			}
+		}
+
+		// Sin esto el ticket conserva el updated_at del momento del import, de modo
+		// que la lista de chats muestra la misma hora en todas las conversaciones y
+		// las ordena por cuándo se importaron y no por su última actividad real.
+		if err := s.repo.SyncTicketActivity(ticket.ID); err != nil {
+			log.Printf("[ChatImport] no se pudo alinear la actividad del ticket %d: %v", ticket.ID, err)
 		}
 	}
 	return imported, nil
@@ -612,29 +644,25 @@ func (s *ticketService) SendWhatsAppReply(id, agentID uint, content string) (*mo
 	if err := s.ensureCanColdOutreach(ticket.ID); err != nil {
 		return nil, err
 	}
-	dest := ticket.Contact.WaID
-	if dest == "" {
-		dest = ticket.Contact.Phone
-	}
-	if err := s.wahaSvc.SendMessage(s.wahaSvc.GetSession(), dest, content); err != nil {
-		if errors.Is(err, apperrors.ErrRateLimited) {
-			return nil, apperrors.ErrRateLimited
-		}
-		return nil, apperrors.ErrExternalSend
-	}
-
+	// El mensaje se encola en vez de enviarse aquí: el worker lo entrega con
+	// reintentos y el agente lo ve en el chat en el acto, marcado como pendiente,
+	// sin esperar los ~6s del espaciado antibaneo.
 	msg := &models.TicketMessage{
-		TicketID:   ticket.ID,
-		SenderType: models.SenderTypeAgent,
-		SenderID:   &agentID,
-		Channel:    models.ChannelWhatsApp,
-		Content:    content,
+		TicketID:       ticket.ID,
+		SenderType:     models.SenderTypeAgent,
+		SenderID:       &agentID,
+		Channel:        models.ChannelWhatsApp,
+		Content:        content,
+		DeliveryStatus: models.DeliveryPending,
 	}
 	if err := s.repo.CreateMessage(msg); err != nil {
 		return nil, err
 	}
 	_ = s.repo.TouchTicket(ticket)
 	broadcastTicketMessage(ticket.ID, msg)
+	if s.outbox != nil {
+		s.outbox.Signal()
+	}
 	return msg, nil
 }
 

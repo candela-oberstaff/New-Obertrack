@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { userService } from '../../services/api'
 import styles from '../../pages/Profile.module.css'
+import { useDirtySnapshot } from '../ui/useCloseGuard'
 import { Modal, Button } from '../ui'
 
 interface PasswordModalProps {
@@ -41,6 +42,8 @@ export function PasswordModal({ isOpen, onClose, userId }: PasswordModalProps) {
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot(passwordData)}
       isOpen={isOpen}
       onClose={onClose}
       title="Cambiar Contraseña"

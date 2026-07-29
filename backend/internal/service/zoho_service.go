@@ -231,27 +231,27 @@ type ZohoTicketContact struct {
 
 // ZohoTicket represents a ticket item mapped from Zoho Desk API
 type ZohoTicket struct {
-	ID           string    `json:"id"`
-	TicketNumber string    `json:"ticketNumber"`
-	Subject      string    `json:"subject"`
-	Status       string    `json:"status"`
-	StatusType   string    `json:"statusType"` // open, closed, etc.
-	CreatedTime  time.Time `json:"createdTime"`
-	ModifiedTime time.Time `json:"modifiedTime"`
-	ContactID    string    `json:"contactId"`
-	ContactName  string    `json:"contactName"`
-	AssigneeID   string    `json:"assigneeId"`
-	DepartmentID string    `json:"departmentId"`
-	Priority     string    `json:"priority"`
-	Channel      string    `json:"channel"`
-	Category     string    `json:"category"`
-	Description  string    `json:"description"`
-	Phone        string    `json:"phone,omitempty"`
-	Email        string    `json:"email,omitempty"`
-	Sentiment    string    `json:"sentiment,omitempty"`
-	CustomerTone string    `json:"customerTone,omitempty"`
-	IsEscalated  bool      `json:"isEscalated,omitempty"`
-	WebURL       string    `json:"webUrl,omitempty"`
+	ID           string             `json:"id"`
+	TicketNumber string             `json:"ticketNumber"`
+	Subject      string             `json:"subject"`
+	Status       string             `json:"status"`
+	StatusType   string             `json:"statusType"` // open, closed, etc.
+	CreatedTime  time.Time          `json:"createdTime"`
+	ModifiedTime time.Time          `json:"modifiedTime"`
+	ContactID    string             `json:"contactId"`
+	ContactName  string             `json:"contactName"`
+	AssigneeID   string             `json:"assigneeId"`
+	DepartmentID string             `json:"departmentId"`
+	Priority     string             `json:"priority"`
+	Channel      string             `json:"channel"`
+	Category     string             `json:"category"`
+	Description  string             `json:"description"`
+	Phone        string             `json:"phone,omitempty"`
+	Email        string             `json:"email,omitempty"`
+	Sentiment    string             `json:"sentiment,omitempty"`
+	CustomerTone string             `json:"customerTone,omitempty"`
+	IsEscalated  bool               `json:"isEscalated,omitempty"`
+	WebURL       string             `json:"webUrl,omitempty"`
 	ContactInfo  *ZohoTicketContact `json:"contact,omitempty"`
 	// Contact details fetched separately
 	ContactPhone string `json:"-"`
@@ -1611,4 +1611,3 @@ func (s *ZohoService) SendWhatsAppTemplate(channelID string, phone string, templ
 
 	return msgResp.ID, nil
 }
-

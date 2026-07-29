@@ -82,6 +82,14 @@ func (s *ContactSyncService) Sync() {
 				byNumber[numPart] = c
 			}
 		}
+		// `number` may carry the LID instead of the phone (WAHA returns the phone
+		// JID in `id` and the LID in `number`). Indexing it too lets contacts that
+		// were stored keyed by LID find their match.
+		if c.Number != "" && c.Number != numPart {
+			if _, exists := byNumber[c.Number]; !exists {
+				byNumber[c.Number] = c
+			}
+		}
 	}
 
 	updated := 0

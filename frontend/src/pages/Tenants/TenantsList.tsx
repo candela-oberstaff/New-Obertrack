@@ -8,6 +8,9 @@ import type { Tenant, User } from '../../types'
 import Avatar from '../../components/Common/Avatar'
 import { Modal, Button, Skeleton } from '../../components/ui'
 import { Select } from '../../components/ui/Select'
+import { useCloseGuard } from '../../components/ui/useCloseGuard'
+import { useConfirm } from '../../components/ui/ConfirmProvider'
+import { setRecordNav } from '../../lib/recordNav'
 import { emailService } from '../../services/emailService'
 import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
 import styles from './Tenants.module.css'
@@ -18,6 +21,7 @@ export default function TenantsList() {
   // CS entra en modo consulta: sin crear ni suspender empresas.
   const canManage = !!viewer?.is_superadmin
   const { tenants, isLoading, error, createTenant, suspendTenant, activateTenant } = useTenants()
+  const confirm = useConfirm()
 
   const [search, setSearch] = useState('')
   const [industryFilter, setIndustryFilter] = useState('')
@@ -107,6 +111,19 @@ export default function TenantsList() {
         u.user_type !== 'empleador'
       ).slice(0, 6)
 
+  // Un clic fuera no debe tirar la empresa a medio dar de alta.
+  const requestCloseCreate = useCloseGuard(
+    () => companyName.trim() !== '' || responsableQuery.trim() !== '' || selectedUser !== null,
+    () => closeCreate(),
+    { title: '¿Descartar esta empresa?', message: 'Todavía no se ha creado. Se perderá lo que escribiste.' },
+  )
+
+  const requestCloseComm = useCloseGuard(
+    () => !!commModal.message?.trim(),
+    () => setCommModal(prev => ({ ...prev, isOpen: false })),
+    { title: '¿Descartar el mensaje?', message: 'Todavía no se ha enviado.' },
+  )
+
   const closeCreate = () => {
     setShowCreate(false)
     setCompanyName('')
@@ -129,12 +146,34 @@ export default function TenantsList() {
     }
   }
 
+  // Abrir una ficha se lleva consigo el orden que hay en pantalla (ya filtrado y
+  // alfabético, y con TODAS las páginas, no solo la visible) para que desde el
+  // detalle se pueda seguir a la siguiente empresa sin volver aquí.
+  const openTenant = (tenantId: number) => {
+    setRecordNav('tenants', filtered.map(t => t.id))
+    navigate(`/admin/tenants/${tenantId}`)
+  }
+
+  // El botón vive pegado al chevron de la fila: sin confirmación es demasiado
+  // fácil dejar a una empresa entera fuera de un clic despistado.
   const handleToggle = async (e: React.MouseEvent, t: Tenant) => {
     e.stopPropagation()
     if (t.is_active) {
-      await suspendTenant(t.id)
+      const ok = await confirm({
+        title: `¿Suspender el acceso de ${t.company_name}?`,
+        message: `La empresa y sus ${t.user_count} profesional(es) quedarán fuera de la plataforma de inmediato: se cierran las sesiones abiertas y no podrán volver a entrar hasta que se reactive.`,
+        confirmLabel: 'Suspender acceso',
+        variant: 'danger',
+      })
+      if (ok) await suspendTenant(t.id)
     } else {
-      await activateTenant(t.id)
+      const ok = await confirm({
+        title: `¿Reactivar el acceso de ${t.company_name}?`,
+        message: 'La empresa y sus profesionales podrán volver a entrar a la plataforma.',
+        confirmLabel: 'Reactivar acceso',
+        variant: 'primary',
+      })
+      if (ok) await activateTenant(t.id)
     }
   }
 
@@ -393,7 +432,7 @@ export default function TenantsList() {
             </thead>
             <tbody>
               {paginated.map(t => (
-                <tr key={t.id} className={styles.row} onClick={() => navigate(`/admin/tenants/${t.id}`)}>
+                <tr key={t.id} className={styles.row} onClick={() => openTenant(t.id)}>
                   <td style={{ paddingRight: 0 }} onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
@@ -455,7 +494,7 @@ export default function TenantsList() {
                           {t.is_active ? <Ban size={16} /> : <CheckCircle2 size={16} />}
                         </button>
                       )}
-                      <ChevronRight size={18} className={styles.chevron} onClick={() => navigate(`/admin/tenants/${t.id}`)} />
+                      <ChevronRight size={18} className={styles.chevron} onClick={() => openTenant(t.id)} />
                     </div>
                   </td>
                 </tr>
@@ -501,7 +540,7 @@ export default function TenantsList() {
       {/* Modal de simulación de comunicación */}
       <Modal
         isOpen={commModal.isOpen}
-        onClose={() => setCommModal(prev => ({ ...prev, isOpen: false }))}
+        onClose={requestCloseComm}
         title={commModal.type === 'email' ? 'Enviar Correo (Simulación)' : 'Enviar WhatsApp (Simulación)'}
         size="md"
         footer={
@@ -552,7 +591,7 @@ export default function TenantsList() {
 
       <Modal
         isOpen={showCreate}
-        onClose={closeCreate}
+        onClose={requestCloseCreate}
         title="Nueva empresa"
         size="md"
         footer={

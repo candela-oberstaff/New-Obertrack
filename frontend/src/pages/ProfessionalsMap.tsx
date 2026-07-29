@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { adminService, type ProfessionalLocation } from '../services/admin.service'
+import { useCloseGuard, useDirtySnapshot } from '../components/ui/useCloseGuard'
 import { buildTemplateOptions } from '../lib/emergencyTemplates'
 import { EmergencyTemplatesModal } from '../components/Admin/EmergencyTemplatesModal'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../components/Auth/countries'
@@ -817,6 +818,15 @@ function ContactModal({
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<{ sent: number; failed: { id: number; email: string; error: string }[] } | null>(null)
 
+  // Asunto y cuerpo vienen precargados de la plantilla: solo cuenta como
+  // trabajo propio lo que se haya cambiado, y no una vez enviado.
+  const contactDirty = useDirtySnapshot([subject, body])
+  const requestClose = useCloseGuard(
+    () => !result && contactDirty,
+    onClose,
+    { title: '¿Descartar este mensaje?', message: 'Todavía no se ha enviado. Se perderá lo que escribiste.' },
+  )
+
   const applyTemplate = (value: string) => {
     setTemplateValue(value)
     const opt = templateOptions.find((o) => o.value === value)
@@ -844,11 +854,11 @@ function ContactModal({
 
   return (
     <>
-    <div className={styles['modal-overlay']} onClick={onClose}>
+    <div className={styles['modal-overlay']} onClick={requestClose}>
       <div className={styles['modal']} onClick={(e) => e.stopPropagation()}>
         <div className={styles['modal-head']}>
           <h3>Contactar {professionals.length} profesional{professionals.length === 1 ? '' : 'es'}</h3>
-          <button type="button" className={styles['icon-btn']} onClick={onClose}>
+          <button type="button" className={styles['icon-btn']} onClick={requestClose}>
             <X size={18} />
           </button>
         </div>

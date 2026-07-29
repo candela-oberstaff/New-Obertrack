@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Clock, CheckSquare, CalendarClock, Ban, CheckCircle2, RefreshCw, User as UserIcon } from 'lucide-react'
 import { useEmployeeTracking } from '../../hooks'
 import Avatar from '../../components/Common/Avatar'
+import { RecordPager } from '../../components/ui'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
 import { formatDateOnly } from '../../utils/date'
 import styles from './Tenants.module.css'
@@ -61,9 +62,17 @@ export default function EmployeeDetail() {
 
   return (
     <div className={styles.page}>
-      <button className={styles.backBtn} onClick={() => navigate(`/admin/tenants/${id}`)}>
-        <ArrowLeft size={18} /> Profesionales
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+        <button className={styles.backBtn} style={{ marginBottom: 0 }} onClick={() => navigate(`/admin/tenants/${id}`)}>
+          <ArrowLeft size={18} /> Profesionales
+        </button>
+        <RecordPager
+          scope={`tenant-employees:${Number(id)}`}
+          currentId={employeeId}
+          toPath={eid => `/admin/tenants/${id}/employees/${eid}`}
+          noun="profesional"
+        />
+      </div>
 
       <div className={styles.detailHeader}>
         <div className={styles.detailIdentity}>

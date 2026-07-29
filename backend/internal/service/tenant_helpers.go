@@ -57,10 +57,14 @@ func syncPrimaryManager(empRepo repository.EmploymentRepository, employmentID ui
 }
 
 // ensureValidManager valida que el manager destino sea apto: que tenga el flag
-// de manager, esté activo y (si se indica empresa) pertenezca a ella. Devuelve
-// errores con el prefijo "Manager inválido:" para que los handlers los mapeen
-// a 400 Bad Request.
-func ensureValidManager(empRepo repository.EmploymentRepository, manager *models.User, companyID uint) error {
+// de manager, esté activo, (si se indica empresa) pertenezca a ella y que la
+// asignación no cierre un ciclo en la cadena de mando. Devuelve errores con el
+// prefijo "Manager inválido:" para que los handlers los mapeen a 400 Bad Request.
+//
+// subordinateID es el profesional que va a reportar a manager; pasar 0 cuando
+// todavía no existe (alta) y por lo tanto no puede formar parte de ninguna
+// cadena.
+func ensureValidManager(userRepo repository.UserRepository, empRepo repository.EmploymentRepository, manager *models.User, subordinateID, companyID uint) error {
 	if !manager.IsManager {
 		return errors.New("Manager inválido: el usuario seleccionado no es manager")
 	}
@@ -71,6 +75,81 @@ func ensureValidManager(empRepo repository.EmploymentRepository, manager *models
 		if _, err := empRepo.GetActive(manager.ID, companyID); err != nil {
 			return errors.New("Manager inválido: el manager no pertenece a la empresa del profesional")
 		}
+	}
+	return ensureNoManagerCycle(userRepo, empRepo, manager.ID, subordinateID, companyID)
+}
+
+// maxManagerChainDepth acota el recorrido hacia arriba de la cadena de mando.
+// Es una red de seguridad: si datos previos ya contienen un ciclo, la búsqueda
+// termina igual en vez de colgarse.
+const maxManagerChainDepth = 64
+
+// ensureNoManagerCycle rechaza asignar managerID a subordinateID cuando eso
+// cerraría un círculo (A reporta a B y B a A, directa o indirectamente).
+// Sustituye a la vieja defensa "un manager no puede tener manager", que evitaba
+// los ciclos a costa de impedir cualquier organigrama de más de dos niveles.
+//
+// Sube por la cadena desde managerID: si en el camino aparece subordinateID, la
+// asignación lo pondría por encima de sí mismo. Recorre en anchura porque con
+// multi-manager (employment_managers) un empleo puede tener varios superiores y
+// el ciclo puede estar en cualquiera de las ramas.
+func ensureNoManagerCycle(userRepo repository.UserRepository, empRepo repository.EmploymentRepository, managerID, subordinateID, companyID uint) error {
+	if subordinateID == 0 || managerID == 0 {
+		return nil
+	}
+	if managerID == subordinateID {
+		return errors.New("Manager inválido: un profesional no puede ser su propio manager")
+	}
+
+	visited := map[uint]bool{managerID: true}
+	frontier := []uint{managerID}
+
+	for depth := 0; depth < maxManagerChainDepth && len(frontier) > 0; depth++ {
+		next := []uint{}
+		for _, id := range frontier {
+			for _, sup := range managersOf(userRepo, empRepo, id, companyID) {
+				if sup == subordinateID {
+					return errors.New("Manager inválido: la asignación crearía un ciclo en la cadena de mando")
+				}
+				if !visited[sup] {
+					visited[sup] = true
+					next = append(next, sup)
+				}
+			}
+		}
+		frontier = next
+	}
+	return nil
+}
+
+// managersOf devuelve los superiores directos de userID. Dentro de una empresa
+// usa la membresía de esa empresa (los vínculos N-a-N si las lecturas
+// multi-manager están activas, si no el puntero principal); sin empresa cae al
+// canónico users.manager_id. Best-effort: ante un error devuelve lo que pudo
+// resolver, porque el guard que lo llama ya validó lo demás.
+func managersOf(userRepo repository.UserRepository, empRepo repository.EmploymentRepository, userID, companyID uint) []uint {
+	if companyID > 0 {
+		if emp, err := empRepo.GetActive(userID, companyID); err == nil && emp != nil {
+			if MultiManagerReadsEnabled() {
+				if links, err := empRepo.ListEmploymentManagers(emp.ID); err == nil {
+					out := make([]uint, 0, len(links))
+					for _, l := range links {
+						if l.ManagerID > 0 {
+							out = append(out, l.ManagerID)
+						}
+					}
+					return out
+				}
+			}
+			if emp.ManagerID != nil && *emp.ManagerID > 0 {
+				return []uint{*emp.ManagerID}
+			}
+			// Sin manager en la membresía: puede ser un espejo aún no
+			// sincronizado, así que se comprueba igual el canónico de abajo.
+		}
+	}
+	if u, err := userRepo.GetByID(userID); err == nil && u.ManagerID != nil && *u.ManagerID > 0 {
+		return []uint{*u.ManagerID}
 	}
 	return nil
 }

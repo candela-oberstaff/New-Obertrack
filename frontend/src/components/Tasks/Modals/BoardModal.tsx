@@ -73,6 +73,14 @@ export function BoardModal(props: BoardModalProps) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
+      // Las fases traen valores por defecto al abrir, así que solo cuentan si
+      // se les puso nombre o se añadió alguna de más.
+      isDirty={
+        !!newBoardData.name.trim()
+        || !!newBoardData.description.trim()
+        || newBoardData.member_ids.length > 0
+        || newBoardData.phases.some(p => p.name.trim() !== '')
+      }
       title="Crear Tablero"
       size="md"
       footer={

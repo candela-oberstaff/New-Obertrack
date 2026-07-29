@@ -161,6 +161,8 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.POST("/trash/purge", d.trash.Purge)
 		admin.GET("/professionals/locations", d.admin.GetProfessionalLocations)
 		admin.POST("/professionals/bulk-email", d.admin.BulkEmailProfessionals)
+		// Entrega de acceso a la plataforma (enlace de alta o clave temporal).
+		admin.POST("/users/send-access", d.admin.SendAccessEmails)
 		admin.GET("/import/template", d.admin.DownloadImportTemplate)
 		admin.POST("/import/preview", d.admin.ImportPreview)
 		admin.POST("/import/execute", d.admin.ImportExecute)
@@ -223,6 +225,14 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/tenants/:id", d.admin.GetTenant)
 		admin.GET("/tenants/:id/employees", d.admin.GetTenantEmployees)
 		admin.GET("/tenants/:id/activity", d.admin.GetTenantActivity)
+		admin.GET("/tenants/:id/activity/people", d.admin.GetTenantActivityPeople)
+		// Notas del expediente: las escribe, edita, fija y borra el superadmin
+		// (requireAdminPanel deja a CS solo los GET).
+		admin.GET("/tenants/:id/notes/pinned", d.admin.GetTenantPinnedNotes)
+		admin.POST("/tenants/:id/notes", d.admin.AddTenantNote)
+		admin.PUT("/tenants/:id/notes/:noteId", d.admin.UpdateTenantNote)
+		admin.PUT("/tenants/:id/notes/:noteId/pin", d.admin.SetTenantNotePinned)
+		admin.DELETE("/tenants/:id/notes/:noteId", d.admin.DeleteTenantNote)
 		admin.GET("/tenants/:id/archived", d.admin.GetTenantArchived)
 		admin.POST("/tenants/:id/suspend", d.admin.SuspendTenant)
 		admin.POST("/tenants/:id/activate", d.admin.ActivateTenant)

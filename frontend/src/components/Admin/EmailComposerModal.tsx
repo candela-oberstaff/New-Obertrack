@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FileText, PenLine, ChevronLeft, Send, Mail, Loader2, Inbox } from 'lucide-react'
+import { useDirtySnapshot } from '../ui/useCloseGuard'
 import { Modal, Button } from '../ui'
 import { emailService, type EmailTemplate } from '../../services/emailService'
 import { adminService } from '../../services/api'
@@ -193,7 +194,7 @@ export function EmailComposerModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} size="md" footer={footer}>
+    <Modal isDirty={useDirtySnapshot([subject, body])} isOpen={isOpen} onClose={onClose} title={title} size="md" footer={footer}>
       <style>{`@keyframes ecm-spin { to { transform: rotate(360deg); } }`}</style>
       {/* Paso 1: elegir cómo redactar */}
       {step === 'choose' && (

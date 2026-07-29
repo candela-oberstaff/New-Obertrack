@@ -58,7 +58,7 @@ type connectGoogleRequest struct {
 // sale por XHR: un redirect ahí lo seguiría axios, no el navegador.
 func (h *GoogleCalendarHandler) Connect(c *gin.Context) {
 	if !h.service.Enabled() {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "La integración con Google Calendar no está disponible"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "La integración con Google no está disponible"})
 		return
 	}
 
@@ -170,7 +170,7 @@ func (h *GoogleCalendarHandler) Disconnect(c *gin.Context) {
 func (h *GoogleCalendarHandler) respondError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrGoogleDisabled):
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "La integración con Google Calendar no está disponible"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "La integración con Google no está disponible"})
 	case errors.Is(err, repository.ErrGoogleAccountNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "No tienes una cuenta de Google vinculada"})
 	case errors.Is(err, service.ErrNeedsReauth):

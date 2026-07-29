@@ -5,7 +5,7 @@ import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, 
 import { userService, adminService, authService } from '../services/api'
 import { rbacService } from '../services/rbac.service'
 import { useAuth } from '../context/AuthContext'
-import { Modal, Button } from '../components/ui'
+import { Modal, Button, RecordPager } from '../components/ui'
 import { useConfirm } from '../components/ui/ConfirmProvider'
 import { Select } from '../components/ui/Select'
 import type { User, CompanyRole, CompanyGroup } from '../types'
@@ -148,6 +148,14 @@ export default function AdminUserDetail() {
   }, [id, loadRBAC, loadEmployments])
 
   useEffect(() => { load() }, [load])
+
+  // El aviso de la última acción pertenece al usuario sobre el que se hizo: al
+  // pasar al siguiente con el paginador se limpia, para no leer "contraseña
+  // reseteada" en la ficha de otro.
+  useEffect(() => {
+    setActionMsg(null)
+    setActionErr(false)
+  }, [id])
 
   // Carga el flag de features (multi-manager) una vez al montar.
   useEffect(() => {
@@ -507,8 +515,11 @@ export default function AdminUserDetail() {
     opacity: rbacBusy ? 0.6 : 1,
   })
 
-  // Fields common to every user type.
+  // Fields common to every user type. El cargo lo tiene cualquier cuenta, no
+  // solo los profesionales: en una empresa es el puesto de quien la gestiona, y
+  // además alimenta la variable {{cargo}} de los correos.
   const common: { label: string; value: React.ReactNode }[] = [
+    { label: 'Cargo', value: user.job_title || '—' },
     { label: 'Teléfono', value: user.phone_number || '—' },
     { label: 'País', value: user.country || '—' },
     { label: 'Estado / Provincia', value: user.state || '—' },
@@ -528,7 +539,6 @@ export default function AdminUserDetail() {
     specific = [{ label: 'Empresa', value: user.company_name || '—' }]
   } else if (user.user_type === 'profesional') {
     specific = [
-      { label: 'Cargo', value: user.job_title || '—' },
       { label: 'Empresa', value: empresaName || '—' },
       {
         label: multiManager && activeEmployment ? 'Managers' : 'Manager',
@@ -566,9 +576,17 @@ export default function AdminUserDetail() {
 
   return (
     <div className={styles.page}>
-      <button className={styles.backBtn} onClick={() => navigate('/admin')}>
-        <ArrowLeft size={18} /> Usuarios
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
+        <button className={styles.backBtn} style={{ marginBottom: 0 }} onClick={() => navigate('/admin')}>
+          <ArrowLeft size={18} /> Usuarios
+        </button>
+        <RecordPager
+          scope="admin-users"
+          currentId={Number(id)}
+          toPath={uid => `/admin/users/${uid}`}
+          noun="usuario"
+        />
+      </div>
 
       <div className={styles.header}>
         <Avatar src={user.avatar} name={user.name} size="xl" />
@@ -646,11 +664,13 @@ export default function AdminUserDetail() {
         />
       )}
 
-      {/* Inducción: solo aparece si el profesional pasó por ella. Reiniciar
-          intentos lo permite el backend a superadmin y customer success. */}
+      {/* Inducción: el estado si pasó por ella, o la acción de enviársela si no
+          (alta manual / importación). Ambas las permite el backend a superadmin
+          y customer success. */}
       {user.user_type === 'profesional' && (
         <InductionStatusPanel
           userId={user.id}
+          isProfessional
           canReset={!!viewer?.is_superadmin || viewer?.user_type === 'customer_success'}
         />
       )}
@@ -857,6 +877,7 @@ export default function AdminUserDetail() {
 
       <Modal
         isOpen={showAddEmp}
+        isDirty={addCompanyId !== '' || addJobTitle.trim() !== '' || addStartReason.trim() !== ''}
         onClose={() => setShowAddEmp(false)}
         title="Agregar empresa"
         size="sm"
@@ -897,6 +918,7 @@ export default function AdminUserDetail() {
 
       <Modal
         isOpen={!!endingEmp}
+        isDirty={endReason.trim() !== ''}
         onClose={() => setEndingEmp(null)}
         title="Finalizar empleo"
         size="sm"
@@ -948,6 +970,7 @@ export default function AdminUserDetail() {
 
       <Modal
         isOpen={showReassign}
+        isDirty={reassignTo !== ''}
         onClose={() => setShowReassign(false)}
         title="Reasignar equipo"
         size="sm"

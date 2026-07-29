@@ -25,7 +25,7 @@ func AnalyzeSentiment(text string) string {
 	// 1. Obtener credenciales de las variables de entorno de Coolify
 	apiURL := os.Getenv("OLLAMA_API_URL") // Ej: https://api.ollama.com/v1 o la de tu proveedor
 	apiKey := os.Getenv("OLLAMA_API_KEY")
-	model := os.Getenv("OLLAMA_MODEL")   // Ej: llama3, mistral, etc.
+	model := os.Getenv("OLLAMA_MODEL") // Ej: llama3, mistral, etc.
 
 	if apiURL == "" {
 		apiURL = "https://api.ollama.com" // URL base por defecto de respaldo
@@ -37,8 +37,8 @@ func AnalyzeSentiment(text string) string {
 	// 2. Crear un prompt estricto para evitar respuestas largas o alucinaciones
 	prompt := fmt.Sprintf(
 		"Analiza el sentimiento del siguiente ticket de soporte de manera objetiva. "+
-		"Responde ÚNICAMENTE con una de estas opciones en mayúsculas: POSITIVO, NEUTRAL, NEGATIVO o URGENTE. "+
-		"No incluyas saludos, explicaciones, ni signos de puntuación. Texto: \"%s\"", 
+			"Responde ÚNICAMENTE con una de estas opciones en mayúsculas: POSITIVO, NEUTRAL, NEGATIVO o URGENTE. "+
+			"No incluyas saludos, explicaciones, ni signos de puntuación. Texto: \"%s\"",
 		text,
 	)
 

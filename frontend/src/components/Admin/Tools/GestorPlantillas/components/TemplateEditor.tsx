@@ -1,8 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { X, Save, ChevronLeft } from 'lucide-react';
-import { EmailTemplate } from '../../../../../services/emailService';
+import { EmailTemplate, EmailVariable } from '../../../../../services/emailService';
 import { blocksFromJSON, blocksToJSON, EmailBlock } from '../../Common/emailTypes';
 import { uploadService } from '../../../../../services/upload.service';
+import { VariableMenu, useEmailVariables, FieldBinder } from '../../Common/VariableMenu';
+import { useCloseGuard } from '../../../../ui/useCloseGuard';
+import { renderWithExamples } from '../../Common/emailVariables';
 import styles from './TemplateEditor.module.css';
 
 type TemplateStep = 'meta' | 'builder';
@@ -21,6 +24,37 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ initial, onSave, onClos
     return blocksFromJSON(initial?.content ?? '[]');
   });
   const [saving, setSaving] = useState(false);
+
+  // Las variables viven a nivel del modal para que la misma barra sirva en el
+  // paso de Datos (asunto) y en el de Diseño (bloques y HTML).
+  const {
+    variables, bindField, insertVariable, activeFieldLabel, findUnknown,
+    dragging, dragSourceProps, dropZone,
+  } = useEmailVariables();
+  const unknownVars = useMemo(
+    () => findUnknown(`${subject}\n${blocksToJSON(blocks)}`),
+    [subject, blocks, findUnknown]
+  );
+
+  // Se considera que hay trabajo en riesgo si el contenido difiere de como se
+  // abrió: crear algo desde cero, o editar una plantilla existente.
+  const initialSnapshot = useRef(JSON.stringify({
+    title: initial?.title ?? '',
+    subject: initial?.subject ?? '',
+    content: blocksToJSON(blocksFromJSON(initial?.content ?? '[]')),
+  }));
+  const isDirty = JSON.stringify({ title, subject, content: blocksToJSON(blocks) }) !== initialSnapshot.current;
+
+  const requestClose = useCloseGuard(isDirty, onClose, {
+    title: '¿Descartar esta plantilla?',
+    message: 'Tiene cambios sin guardar. Si cierras ahora se perderá el diseño.',
+  });
+
+  const testPayload = () => {
+    const content = blocksToJSON(blocks);
+    if (!subject.trim() || content === '[]') return null;
+    return { subject, blocks: content };
+  };
 
   const handleSave = async () => {
     if (!title || !subject) return;
@@ -53,7 +87,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ initial, onSave, onClos
               {initial ? 'Editar Plantilla' : 'Nueva Plantilla'}
             </h2>
           </div>
-          <button className={styles.iconBtn} onClick={onClose}>
+          <button className={styles.iconBtn} onClick={requestClose}>
             <X size={18} />
           </button>
         </div>
@@ -86,18 +120,52 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ initial, onSave, onClos
                 />
               </div>
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Asunto del email *</label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <label className={styles.formLabel}>Asunto del email *</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <TestSendButton size="sm" getPayload={testPayload} disabled={!subject.trim()} />
+                    <VariableMenu
+                      size="sm"
+                      variables={variables}
+                      onInsert={insertVariable}
+                      activeFieldLabel={activeFieldLabel}
+                      dragSourceProps={dragSourceProps}
+                      unknown={unknownVars}
+                    />
+                  </div>
+                </div>
                 <input
                   className={styles.formInput}
                   value={subject}
                   onChange={e => setSubject(e.target.value)}
                   placeholder="Ej: ¡Novedades de este mes!"
+                  {...bindField(setSubject, 'Asunto del email')}
                 />
               </div>
             </div>
           ) : (
             <div className={styles.builderContainer}>
-              <TemplateBlockEditor blocks={blocks} onChange={setBlocks} />
+              <TemplateBlockEditor
+                blocks={blocks}
+                onChange={setBlocks}
+                bindField={bindField}
+                variables={variables}
+                dragging={dragging}
+                dropZone={dropZone}
+                variableMenu={
+                  <>
+                    <TestSendButton size="sm" getPayload={testPayload} disabled={!subject.trim()} />
+                    <VariableMenu
+                      size="sm"
+                      variables={variables}
+                      onInsert={insertVariable}
+                      activeFieldLabel={activeFieldLabel}
+                      dragSourceProps={dragSourceProps}
+                      unknown={unknownVars}
+                    />
+                  </>
+                }
+              />
             </div>
           )}
         </div>
@@ -138,12 +206,22 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ initial, onSave, onClos
 
 // ─── Inline Editor for Template Blocks ──────────────────────────────────────
 import { Type, Code, Eye, Image, Minus, AlignJustify, Share2, MousePointerClick, Trash2, ChevronUp, ChevronDown, Laptop, Smartphone } from 'lucide-react';
-import { compileBlocksToHTML, uid, defaultBlock, PALETTE } from '../../Common/emailTypes';
+import { templateToHTML, uid, defaultBlock, PALETTE } from '../../Common/emailTypes';
+import { CodeEditor } from '../../Common/CodeEditor';
+import { TestSendButton } from '../../Common/TestSendButton';
 
 type EditorMode = 'blocks' | 'code' | 'preview';
 type PreviewDevice = 'desktop' | 'mobile';
 
-function TemplateBlockEditor({ blocks, onChange }: { blocks: EmailBlock[]; onChange: (b: EmailBlock[]) => void }) {
+function TemplateBlockEditor({ blocks, onChange, bindField, variables, variableMenu, dragging, dropZone }: {
+  blocks: EmailBlock[];
+  onChange: (b: EmailBlock[]) => void;
+  bindField: FieldBinder;
+  variables: EmailVariable[];
+  variableMenu: React.ReactNode;
+  dragging: boolean;
+  dropZone: (text: string, apply: (value: string) => void) => React.HTMLAttributes<HTMLElement>;
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<EditorMode>('blocks');
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('desktop');
@@ -177,7 +255,10 @@ function TemplateBlockEditor({ blocks, onChange }: { blocks: EmailBlock[]; onCha
   }, [blocks, onChange]);
 
   const handleSwitchToCode = () => {
-    setRawHTML(compileBlocksToHTML(blocks));
+    // templateToHTML y no compileBlocksToHTML: una plantilla escrita a mano ya
+    // ES el correo. Recompilarla la envolvía en el marco del editor visual, y
+    // el primer carácter que se escribiera guardaba esa versión envuelta.
+    setRawHTML(templateToHTML(blocks));
     setMode('code');
   };
 
@@ -186,10 +267,11 @@ function TemplateBlockEditor({ blocks, onChange }: { blocks: EmailBlock[]; onCha
     onChange([{ id: 'raw_code', type: 'text', content: val, style: { raw: 'true' } }]);
   };
 
+  // El preview resuelve las variables con los valores de ejemplo del catálogo,
+  // igual que el backend las resolverá con los datos reales al enviar.
   const previewContent = React.useMemo(() => {
-    if (blocks[0]?.style?.raw === 'true') return blocks[0].content;
-    return compileBlocksToHTML(blocks);
-  }, [blocks]);
+    return renderWithExamples(templateToHTML(blocks), variables);
+  }, [blocks, variables]);
 
   const srcDoc = React.useMemo(() => `<!DOCTYPE html>
 <html><head>
@@ -224,10 +306,13 @@ function TemplateBlockEditor({ blocks, onChange }: { blocks: EmailBlock[]; onCha
     <div style={s.root}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: '#fff', borderBottom: '1px solid #e2e8f0' }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Editor Visual</span>
-        <div style={s.tabBar}>
-          <button style={s.tab(mode === 'blocks')} onClick={() => setMode('blocks')}><Type size={12} /> Visual</button>
-          <button style={s.tab(mode === 'code')} onClick={handleSwitchToCode}><Code size={12} /> HTML</button>
-          <button style={s.tab(mode === 'preview')} onClick={() => setMode('preview')}><Eye size={12} /> Preview</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={s.tabBar}>
+            <button style={s.tab(mode === 'blocks')} onClick={() => setMode('blocks')}><Type size={12} /> Visual</button>
+            <button style={s.tab(mode === 'code')} onClick={handleSwitchToCode}><Code size={12} /> HTML</button>
+            <button style={s.tab(mode === 'preview')} onClick={() => setMode('preview')}><Eye size={12} /> Preview</button>
+          </div>
+          {mode !== 'preview' && variableMenu}
         </div>
         {mode === 'preview' && (
           <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 4, borderRadius: 8 }}>
@@ -269,9 +354,20 @@ function TemplateBlockEditor({ blocks, onChange }: { blocks: EmailBlock[]; onCha
                       <p style={{ margin: 0 }}>Agregá bloques para diseñar tu plantilla</p>
                     </div>
                   ) : (
-                    blocks.filter(b => b.style?.raw !== 'true').map(b => (
+                    blocks.filter(b => b.style?.raw !== 'true').map(b => {
+                      // Solo los bloques con texto pueden recibir una variable.
+                      const acceptsVariable = b.type === 'text' || b.type === 'button';
+                      return (
                       <div key={b.id} onClick={() => setSelectedId(b.id)}
-                        style={{ position: 'relative', margin: '8px 12px', padding: '4px', borderRadius: 8, border: selectedId === b.id ? '2px solid #7c3aed' : '1px dashed #e2e8f0', cursor: 'pointer', transition: 'all 0.15s' }}>
+                        {...(acceptsVariable ? dropZone(b.content, v => updateBlock({ ...b, content: v })) : {})}
+                        style={{
+                          position: 'relative', margin: '8px 12px', padding: '4px', borderRadius: 8,
+                          background: dragging && acceptsVariable ? '#faf8ff' : undefined,
+                          border: dragging && acceptsVariable
+                            ? '2px dashed #a78bfa'
+                            : selectedId === b.id ? '2px solid #7c3aed' : '1px dashed #e2e8f0',
+                          cursor: 'pointer', transition: 'all 0.15s',
+                        }}>
                         <BlockPreviewContent block={b} />
                         {selectedId === b.id && (
                           <div style={{ position: 'absolute', top: -12, right: 12, display: 'flex', gap: 4, zIndex: 10 }} onClick={e => e.stopPropagation()}>
@@ -281,7 +377,8 @@ function TemplateBlockEditor({ blocks, onChange }: { blocks: EmailBlock[]; onCha
                           </div>
                         )}
                       </div>
-                    ))
+                      );
+                    })
                   )}
                   <div style={{ background: '#f8fafc', padding: '12px 20px', textAlign: 'center', fontSize: 10, color: '#94a3b8', borderTop: '1px solid #e2e8f0' }}>© 2026 Obertrack</div>
                 </div>
@@ -291,7 +388,7 @@ function TemplateBlockEditor({ blocks, onChange }: { blocks: EmailBlock[]; onCha
             <div style={s.inspector}>
               <div style={{ padding: '10px 14px', fontSize: 9, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>Propiedades</div>
               {selectedBlock && selectedBlock.style?.raw !== 'true' ? (
-                <InspectorPanel block={selectedBlock} onChange={updateBlock} />
+                <InspectorPanel block={selectedBlock} onChange={updateBlock} bindField={bindField} />
               ) : (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 11, textAlign: 'center', padding: 16 }}>Seleccioná un bloque</div>
               )}
@@ -301,11 +398,13 @@ function TemplateBlockEditor({ blocks, onChange }: { blocks: EmailBlock[]; onCha
 
         {mode === 'code' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <textarea
-              value={rawHTML || (blocks.length === 1 && blocks[0].style?.raw === 'true' ? blocks[0].content : compileBlocksToHTML(blocks))}
-              onChange={e => handleRawHTMLChange(e.target.value)}
-              style={{ flex: 1, width: '100%', background: '#0f172a', color: '#e2e8f0', fontFamily: 'monospace', fontSize: 12, padding: 16, outline: 'none', border: 'none', resize: 'none', lineHeight: 1.6 }}
+            <CodeEditor
+              value={rawHTML || templateToHTML(blocks)}
+              onChange={handleRawHTMLChange}
+              variables={variables}
+              background="#0f172a"
               placeholder="<!-- Escribe tu HTML aquí... -->"
+              textareaProps={bindField(handleRawHTMLChange, 'Editor de código', { isDefault: true })}
             />
           </div>
         )}
@@ -367,7 +466,7 @@ function BlockPreviewContent({ block }: { block: EmailBlock }) {
 }
 
 // ─── Inspector ──────────────────────────────────────────────────────────────
-function InspectorPanel({ block, onChange }: { block: EmailBlock; onChange: (b: EmailBlock) => void }) {
+function InspectorPanel({ block, onChange, bindField }: { block: EmailBlock; onChange: (b: EmailBlock) => void; bindField: FieldBinder }) {
   const set = (key: string, val: string) =>
     onChange({ ...block, content: key === 'content' ? val : block.content, style: key === 'content' ? block.style : { ...block.style, [key]: val } });
 
@@ -379,7 +478,8 @@ function InspectorPanel({ block, onChange }: { block: EmailBlock; onChange: (b: 
     <div>
       {block.type === 'text' && (
         <>
-          <div style={fieldStyle}><label style={labelStyle}>Contenido</label><textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 64, fontFamily: 'inherit' }} value={block.content} onChange={e => set('content', e.target.value)} rows={3} /></div>
+          <div style={fieldStyle}><label style={labelStyle}>Contenido</label><textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 64, fontFamily: 'inherit' }} value={block.content} onChange={e => set('content', e.target.value)} rows={3}
+            {...bindField(v => set('content', v), 'Contenido del texto')} /></div>
           <div style={fieldStyle}>
             <label style={labelStyle}>Tamaño</label>
             <select style={inputStyle} value={block.style.fontSize || '16px'} onChange={e => set('fontSize', e.target.value)}>
@@ -397,8 +497,10 @@ function InspectorPanel({ block, onChange }: { block: EmailBlock; onChange: (b: 
       )}
       {block.type === 'button' && (
         <>
-          <div style={fieldStyle}><label style={labelStyle}>Texto</label><input style={inputStyle} value={block.content} onChange={e => set('content', e.target.value)} /></div>
-          <div style={fieldStyle}><label style={labelStyle}>URL</label><input style={inputStyle} placeholder="https://..." value={block.style.linkUrl || ''} onChange={e => set('linkUrl', e.target.value)} /></div>
+          <div style={fieldStyle}><label style={labelStyle}>Texto</label><input style={inputStyle} value={block.content} onChange={e => set('content', e.target.value)}
+            {...bindField(v => set('content', v), 'Texto del botón')} /></div>
+          <div style={fieldStyle}><label style={labelStyle}>URL</label><input style={inputStyle} placeholder="https://..." value={block.style.linkUrl || ''} onChange={e => set('linkUrl', e.target.value)}
+            {...bindField(v => set('linkUrl', v), 'URL del botón')} /></div>
           <div style={fieldStyle}>
             <label style={labelStyle}>Fondo</label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

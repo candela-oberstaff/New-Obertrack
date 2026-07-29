@@ -4,7 +4,8 @@ import { ArrowLeft, UserX, Shield, Users, Eye, FileText, Building2, Pencil, Tras
 import { userService, employerService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
-import { Modal, Button, Skeleton } from '../../components/ui'
+import { Modal, Button, Skeleton, RecordPager } from '../../components/ui'
+import { setRecordNav, removeFromRecordNav } from '../../lib/recordNav'
 import { Select } from '../../components/ui/Select'
 import Avatar from '../../components/Common/Avatar'
 import { ExpedienteModal } from '../../components/Admin/ExpedienteModal'
@@ -165,6 +166,8 @@ export default function EmployeeDetail() {
     setBusy(true); setActionMsg(null); setActionErr(false)
     try {
       await employerService.deleteEmployee(Number(id))
+      // Fuera de la secuencia del paginador: ya no hay ficha a la que saltar.
+      removeFromRecordNav('empresa-employees', Number(id))
       navigate('/empresa')
     } catch (err: any) {
       setActionErr(true)
@@ -198,6 +201,13 @@ export default function EmployeeDetail() {
   }, [id, loadManagedTeam])
 
   useEffect(() => { load() }, [load])
+
+  // Igual que en el detalle de admin: el aviso de la última acción es de la
+  // ficha en la que se hizo, no de la siguiente.
+  useEffect(() => {
+    setActionMsg(null)
+    setActionErr(false)
+  }, [id])
 
   // Flag de features (una vez al montar).
   useEffect(() => {
@@ -356,9 +366,17 @@ export default function EmployeeDetail() {
 
   return (
     <div className={styles.page}>
-      <button className={styles.backBtn} onClick={() => navigate('/empresa')}>
-        <ArrowLeft size={18} /> Empleados
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
+        <button className={styles.backBtn} style={{ marginBottom: 0 }} onClick={() => navigate('/empresa')}>
+          <ArrowLeft size={18} /> Empleados
+        </button>
+        <RecordPager
+          scope="empresa-employees"
+          currentId={Number(id)}
+          toPath={uid => `/empresa/employees/${uid}`}
+          noun="profesional"
+        />
+      </div>
 
       <div className={styles.header}>
         <Avatar src={user.avatar} name={user.name} size="xl" />
@@ -470,7 +488,13 @@ export default function EmployeeDetail() {
                     </div>
                   </div>
                   <button
-                    onClick={() => navigate(`/empresa/employees/${m.id}`)}
+                    onClick={() => {
+                      // Saltar al equipo a cargo cambia la secuencia: a partir de
+                      // aquí el paginador recorre ese equipo, que es la lista que
+                      // el usuario tiene delante.
+                      setRecordNav('empresa-employees', managedTeam.map((x: any) => x.id))
+                      navigate(`/empresa/employees/${m.id}`)
+                    }}
                     title="Ver detalle"
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)', background: '#fff', color: '#334155', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', flexShrink: 0 }}
                   >
@@ -536,6 +560,7 @@ export default function EmployeeDetail() {
       {resetPwd && (
         <Modal
           isOpen
+          isDirty={!!resetPwd}
           onClose={() => setResetPwd(null)}
           title="Contraseña restablecida"
           size="md"

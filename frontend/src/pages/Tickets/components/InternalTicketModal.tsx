@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CheckCircle2, AlertCircle, Calendar, Mail, Building2, UserX, FileText, Send } from 'lucide-react'
 import { Ticket, ticketService } from '../../../services/ticket.service'
+import { useDirtySnapshot } from '../../../components/ui/useCloseGuard'
 import { Modal, Button } from '../../../components/ui'
 
 interface InternalTicketModalProps {
@@ -65,6 +66,8 @@ export default function InternalTicketModal({ ticket, onClose, onChanged }: Inte
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot(note)}
       isOpen
       onClose={onClose}
       size="sm"

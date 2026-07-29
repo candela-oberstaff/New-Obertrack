@@ -101,6 +101,30 @@ func BuildPasswordSetupHTML(name, userEmail, setupLink string) string {
 	return brandedEmailShell("¡Aprobaste tu inducción!", body)
 }
 
+// BuildCredentialsHTML: entrega de una contraseña temporal recién generada.
+//
+// Es la alternativa explícita a BuildPasswordSetupHTML para cuando se decide
+// mandar la clave en vez del enlace. La contraseña queda en la bandeja del
+// destinatario para siempre, así que el correo insiste en cambiarla al entrar.
+func BuildCredentialsHTML(name, userEmail, tempPassword, loginLink string) string {
+	body := emailGreeting(name) +
+		emailParagraph("Tu cuenta en Obertrack ya está creada. Estos son tus datos para entrar por primera vez:") +
+		`<table style="width:100%;border-collapse:collapse;margin:0 0 16px 0;font-family:sans-serif;font-size:14px;">
+			<tr>
+				<td style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px 8px 0 0;color:#64748b;">Usuario</td>
+				<td style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-left:0;border-radius:0 8px 0 0;color:#0f172a;font-weight:600;">` + userEmail + `</td>
+			</tr>
+			<tr>
+				<td style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-top:0;border-radius:0 0 0 8px;color:#64748b;">Contraseña temporal</td>
+				<td style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-top:0;border-left:0;border-radius:0 0 8px 0;color:#0f172a;font-weight:700;font-family:monospace;">` + tempPassword + `</td>
+			</tr>
+		</table>` +
+		emailButton("Entrar a Obertrack", loginLink) +
+		emailNote("Por seguridad, <strong>cambia esta contraseña</strong> la primera vez que entres: este correo queda guardado en tu bandeja.") +
+		emailFallbackLink(loginLink)
+	return brandedEmailShell("Tus datos de acceso", body)
+}
+
 // BuildInductionInviteHTML: invitación a la landing pública de inducción. Es lo
 // primero que recibe alguien contratado desde Obersuite.
 func BuildInductionInviteHTML(name, landingLink string) string {

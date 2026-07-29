@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Check, AlertCircle, PlayCircle, HardDrive } from 'lucide-react'
 import { TUTORIAL_ICON_NAMES, TutorialIcon } from '../icons'
 import { parseVideoUrl, getProviderLabel } from '../utils'
+import { useDirtySnapshot } from '../../ui/useCloseGuard'
 import { Modal, Button } from '../../ui'
 import type { CreateTutorialInput, TutorialAudience } from '../../../types'
 import styles from '../../../pages/Tutoriales.module.css'
@@ -33,6 +34,8 @@ export function TutorialFormModal({
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot(formData)}
       isOpen={isOpen}
       onClose={onClose}
       title={isEditing ? 'Editar novedad' : 'Nueva novedad'}

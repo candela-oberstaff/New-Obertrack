@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { FileText, Star, Trash2, Upload, Lock, Eye, Clock3, CheckSquare, CalendarDays, CalendarX, ClipboardList, Send, Snowflake, Download, Pencil, CalendarClock } from 'lucide-react'
 import { adminService, authService, employerService, uploadService } from '../../services/api'
+import { useDirtySnapshot } from '../ui/useCloseGuard'
 import { Modal, Button } from '../ui'
 
 interface ExpedienteModalProps {
@@ -236,7 +237,7 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
   const frozen = !!s?.frozen_at
 
   return (
-    <Modal
+    <Modal isDirty={useDirtySnapshot([content, rating, docTitle])}
       isOpen
       onClose={onClose}
       size="lg"

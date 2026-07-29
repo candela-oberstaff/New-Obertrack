@@ -317,7 +317,7 @@ func (s *userService) AssignToManager(professionalID, managerID, requesterID, te
 		if professional.EmpleadorID != nil {
 			companyID = *professional.EmpleadorID
 		}
-		if err := ensureValidManager(s.employmentRepo, manager, companyID); err != nil {
+		if err := ensureValidManager(s.repo, s.employmentRepo, manager, professionalID, companyID); err != nil {
 			return nil, err
 		}
 		professional.ManagerID = &managerID
@@ -370,7 +370,10 @@ func (s *userService) ReassignTeam(oldManagerID uint, newManagerID *uint, reques
 		if err != nil {
 			return 0, errors.New("Manager inválido: manager no encontrado")
 		}
-		if err := ensureValidManager(s.employmentRepo, newManager, companyID); err != nil {
+		// Todo el equipo de oldManager pasa a newManager: se cierra un ciclo si
+		// newManager cuelga de oldManager (sería uno de los reportes que se
+		// mueven, o descendiente de alguno), así que se valida contra él.
+		if err := ensureValidManager(s.repo, s.employmentRepo, newManager, oldManagerID, companyID); err != nil {
 			return 0, err
 		}
 	}

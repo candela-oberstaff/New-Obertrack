@@ -72,6 +72,71 @@ Para asegurar un desarrollo limpio, escalable y mantenible bajo buenas práctica
 
 ---
 
+## 3.bis Notas operativas de la API de WAHA
+
+Detalles verificados contra la instancia (WAHA `2026.7.1`, engine `WEBJS`) que no son evidentes leyendo la documentación:
+
+### Forma de las URLs (no es uniforme)
+| Recurso | Forma correcta |
+|---|---|
+| Contactos | `/api/contacts?session=X`, `/api/contacts/all?session=X` (**query param**) |
+| Chats | `/api/{session}/chats/overview`, `/api/{session}/chats/{chatId}/messages` (**path**) |
+| Sesiones | `/api/sessions/{session}`, `/api/sessions/{session}/start` |
+| Envío | `/api/sendText` (la sesión va en el body) |
+
+Usar la forma de path para contactos (`/api/{session}/contacts/all`) devuelve **HTTP 500**.
+
+### Identificadores: `@lid` vs `@c.us`
+WhatsApp ya no identifica las conversaciones 1:1 por número. En esta instancia **26 de 26** chats individuales usan LID (`112828824473809@lid`) y ninguno `@c.us`. Filtrar por `@c.us` descarta todas las conversaciones reales.
+
+El teléfono real se resuelve pidiendo el contacto por su LID:
+
+```
+GET /api/contacts?session=session_1&contactId=112828824473809%40lid
+→ {"id":"17873491050@c.us","number":"112828824473809","name":"Edgardo Vázquez"}
+```
+
+Es decir: **`id` trae el JID con el teléfono; `number` trae el LID**. `WahaContactResponse.RealPhone()` lee el prefijo de `id`.
+
+### Multimedia
+El endpoint de historial devuelve `type: null` en el engine WEBJS. La única señal fiable de adjunto es el booleano **`hasMedia`** (y, si viene, `media.mimetype`). Los mensajes sin texto se guardan con un marcador (`📷 Imagen recibida`, `📄 Documento recibido`, …) vía `service.MediaPlaceholder`.
+
+### Requisitos de configuración
+- `WAHA_SESSION` debe coincidir **exactamente** con el nombre en `GET /api/sessions?all=true`. Si no existe, toda llamada responde `422 Session "X" does not exist` y el módulo queda inerte sin error visible en la UI.
+- La sesión debe tener el webhook registrado apuntando a `POST /api/webhooks/waha` con HMAC-SHA512 y el mismo secreto que `WAHA_WEBHOOK_HMAC`. Sin webhook (`"webhooks": []`) no entra ningún mensaje.
+- El webhook descarta los eventos cuyo campo `session` no coincida con `WAHA_SESSION`: el HMAC es compartido entre todas las sesiones de la instancia.
+
+### Envío saliente: bandeja de salida (outbox)
+
+El envío **no ocurre dentro del request**. `SendWhatsAppReply` valida, persiste el mensaje con `delivery_status='pending'` y devuelve al instante; `WhatsAppOutbox` (worker, [whatsapp_outbox.go](../../backend/internal/service/whatsapp_outbox.go)) lo entrega en segundo plano.
+
+Motivo: antes una caída de WAHA o un reinicio del backend perdía la respuesta del agente sin dejar rastro, y el request cargaba con los ~6s del antibaneo, así que dos agentes respondiendo a la vez se hacían cola.
+
+El estado vive en la propia fila de `ticket_messages` (no en una tabla de jobs) porque el chat necesita mostrarlo por mensaje:
+
+| Columna | Significado |
+|---|---|
+| `delivery_status` | `pending` / `sent` / `failed`. **Vacío = no aplica**: entrantes, notas internas y todo el histórico previo al outbox |
+| `delivery_attempts` | intentos consumidos (tope `DeliveryMaxAttempts` = 6) |
+| `next_attempt_at` | a partir de cuándo puede retomarse; NULL = ya. Sobrevive al reinicio, que es lo que hace real al backoff |
+| `delivery_error` | último error, para diagnóstico |
+
+Backoff: 15s → 1m → 5m → 15m → 1h (satura en el último escalón).
+
+Reglas del worker:
+- **Éxito** → `sent` + se guarda el ID de WAHA como `external_id`, que es lo que evita que el import de historial duplique las respuestas ya enviadas.
+- **Límite antibaneo** (`ErrRateLimited`) → se pospone 5s **sin gastar intento**: la cola no falló, solo va a su ritmo. Contarlo agotaría los reintentos de una ráfaga legítima sin haber tocado WAHA.
+- **Ticket sin contacto** → se agota de inmediato; esperar no lo arregla.
+- **Resto** (red, 5xx) → reintento con backoff hasta agotar.
+
+Dentro de cada intento, `WahaService.SendMessage` reserva turno (`reserveSlot`) según `WAHA_MAX_MSGS_PER_MIN` y `WAHA_MIN_SEND_INTERVAL_MS`, espera **fuera** del mutex, simula tecleo y reintenta hasta 3 veces ante fallos transitorios. Un 4xx como el 422 no se reintenta.
+
+El chequeo de cold-outreach sigue siendo síncrono: es una consulta local y el agente debe enterarse en el acto de que no puede escribir primero.
+
+En el chat, un mensaje propio muestra reloj (pendiente), doble check (entregado) o aviso en rojo (no entregado).
+
+---
+
 ## 4. Diseño Adaptable y Responsivo
 
 El diseño está optimizado para todo tipo de pantallas (Móviles, Tablets y Escritorios):

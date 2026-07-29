@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Clock, Send } from 'lucide-react';
+import { useDirtySnapshot } from '../../../../ui/useCloseGuard'
 import { Modal, Button } from '../../../../ui';
 import styles from '../Builder.module.css';
 import AudienceSelector, { AudienceSelection } from '../../Common/AudienceSelector';
@@ -52,6 +53,8 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot([scheduleDate, scheduleTime, selectedAudience])}
       isOpen
       onClose={onClose}
       size="md"

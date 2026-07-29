@@ -1,6 +1,7 @@
 import { Check, AlertCircle } from 'lucide-react'
 import { RichTextEditor } from '../../Tasks/RichTextEditor'
 import { Select } from '../../ui/Select'
+import { useDirtySnapshot } from '../../ui/useCloseGuard'
 import { Modal, Button } from '../../ui'
 import { htmlToText } from '../../../utils/sanitize'
 import { formatHours } from '../../../utils/formatHours'
@@ -54,6 +55,8 @@ export function RegisterDayModal({
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot(formData)}
       isOpen={isOpen}
       onClose={onClose}
       title="Registrar Día"

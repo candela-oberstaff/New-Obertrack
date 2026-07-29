@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { UserPlus, X } from 'lucide-react'
 import { Select } from '../../ui/Select'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../Auth/countries'
+import { useCloseGuard } from '../../ui/useCloseGuard'
 import styles from '../Admin.module.css'
 
 export interface CreateUserForm {
@@ -46,10 +47,21 @@ export function CreateUserModal({
   form, setForm, onClose, onSubmit, loading = false, error,
   publicCompanies, managers = [], employerMode = false,
 }: CreateUserModalProps) {
+  // Con el formulario en blanco cierra directo; en cuanto hay algo escrito,
+  // un clic fuera o la X piden confirmación antes de tirarlo.
+  const requestClose = useCloseGuard(
+    () => Object.values(form).some(v => typeof v === 'string' && v.trim() !== ''),
+    onClose,
+    {
+      title: '¿Descartar este usuario?',
+      message: 'El formulario tiene datos sin guardar. Si cierras ahora se perderán.',
+    }
+  )
+
   return (
     <div
       className={styles['modal-overlay']}
-      onClick={onClose}
+      onClick={requestClose}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
     >
       <div
@@ -72,7 +84,7 @@ export function CreateUserModal({
               <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Completa todos los campos requeridos</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4 }}>
+          <button onClick={requestClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4 }}>
             <X size={22} />
           </button>
         </div>

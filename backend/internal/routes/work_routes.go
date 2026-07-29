@@ -77,4 +77,23 @@ func registerWorkRoutes(api *gin.RouterGroup, d *deps) {
 		workHours.GET("/report/pdf", hoursView, d.workHour.DownloadPDF)
 		workHours.GET("/report/excel", hoursView, d.workHour.DownloadExcel)
 	}
+
+	// Sesiones (reuniones con Google Meet). Módulo "meetings": ver la agenda
+	// exige "view", convocar y editar exigen "edit". Ninguna ruta recibe un
+	// organizer_id —quien convoca sale de la sesión— y el servicio comprueba
+	// además que solo el organizador pueda editar o cancelar.
+	meetingsView := handlers.RequirePermission(d.rbacSvc, "meetings", models.PermissionView)
+	meetingsEdit := handlers.RequirePermission(d.rbacSvc, "meetings", models.PermissionEdit)
+
+	meetings := api.Group("/meetings")
+	meetings.Use(meetingsView)
+	{
+		meetings.GET("", d.meeting.List)
+		meetings.GET("/upcoming", d.meeting.Upcoming)
+		meetings.GET("/:id", d.meeting.Get)
+		meetings.GET("/:id/presence", d.meeting.Presence)
+		meetings.POST("", meetingsEdit, d.meeting.Create)
+		meetings.PUT("/:id", meetingsEdit, d.meeting.Update)
+		meetings.DELETE("/:id", meetingsEdit, d.meeting.Cancel)
+	}
 }

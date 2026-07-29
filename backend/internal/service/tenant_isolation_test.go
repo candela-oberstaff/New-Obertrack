@@ -39,8 +39,8 @@ func TestAuthorizeUserTenant_CrossTenantDenied(t *testing.T) {
 	// Target belongs to tenant 99; requester is in tenant 1.
 	target := &models.User{ID: 500, UserType: models.UserTypeProfessional, EmpleadorID: uptr(99)}
 
-	err := s.authorizeUserTenant(target, /*requesterID*/ 1, /*tenantID*/ 1,
-		/*isSuperadmin*/ false, /*requireManage*/ false, "", false)
+	err := s.authorizeUserTenant(target /*requesterID*/, 1 /*tenantID*/, 1,
+		/*isSuperadmin*/ false /*requireManage*/, false, "", false)
 	if err == nil {
 		t.Fatal("expected cross-tenant access to be denied, got nil")
 	}
@@ -82,8 +82,8 @@ func TestAuthorizeUserTenant_RequireManage_DeniesPlainProfessional(t *testing.T)
 	// escalation guard).
 	target := &models.User{ID: 501, UserType: models.UserTypeProfessional, EmpleadorID: uptr(7)}
 
-	err := s.authorizeUserTenant(target, /*requesterID*/ 200, /*tenantID*/ 7,
-		false, /*requireManage*/ true, "profesional", /*isManager*/ false)
+	err := s.authorizeUserTenant(target /*requesterID*/, 200 /*tenantID*/, 7,
+		false /*requireManage*/, true, "profesional" /*isManager*/, false)
 	if err == nil {
 		t.Fatal("plain professional must not manage other users, got nil")
 	}
@@ -115,11 +115,11 @@ func TestValidatePasswordStrength(t *testing.T) {
 		pw    string
 		valid bool
 	}{
-		{"short1", false},     // too short
-		{"abcdefgh", false},   // no digit
-		{"12345678", false},   // no letter
-		{"abcd1234", true},    // ok
-		{"Str0ngPass", true},  // ok
+		{"short1", false},    // too short
+		{"abcdefgh", false},  // no digit
+		{"12345678", false},  // no letter
+		{"abcd1234", true},   // ok
+		{"Str0ngPass", true}, // ok
 	}
 	for _, c := range cases {
 		err := ValidatePasswordStrength(c.pw)

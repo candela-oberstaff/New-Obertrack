@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { Upload, FileCheck2, Eye, Loader2 } from 'lucide-react'
+import { useDirtySnapshot } from '../ui/useCloseGuard'
 import { Modal, Button } from '../ui'
 import { Select } from '../ui/Select'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../Auth/countries'
@@ -72,6 +73,8 @@ export function ProfileChangeRequestModal({ user, isOpen, onClose, onSubmitted }
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot([form, note])}
       isOpen={isOpen}
       onClose={onClose}
       title="Solicitar actualización de datos"

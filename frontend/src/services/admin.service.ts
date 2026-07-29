@@ -305,6 +305,21 @@ export const adminService = {
     const { data } = await api.post('/admin/professionals/bulk-email', payload)
     return data
   },
+  /**
+   * Entrega el acceso a la plataforma. 'invite' manda un enlace para crear la
+   * contraseña; 'password' genera una clave temporal nueva y la envía en claro.
+   *
+   * La contraseña que genera la importación masiva no se puede reenviar: se
+   * guarda hasheada. Esto emite un acceso nuevo, no reenvía el anterior.
+   */
+  sendAccessEmails: async (payload: { user_ids: number[]; mode: 'invite' | 'password' }): Promise<{
+    sent: number
+    total: number
+    failed: { id: number; email: string; error: string }[]
+  }> => {
+    const { data } = await api.post('/admin/users/send-access', payload)
+    return data
+  },
   getTenant: async (id: number) => {
     const { data } = await api.get(`/admin/tenants/${id}`)
     return data
@@ -317,9 +332,44 @@ export const adminService = {
     const { data } = await api.get(`/admin/employees/${id}/tracking`)
     return data
   },
-  getTenantActivity: async (id: number) => {
-    const { data } = await api.get(`/admin/tenants/${id}/activity`)
+  // Expediente de la empresa: paginado y filtrable por categoría y por persona.
+  getTenantActivity: async (id: number, params?: { category?: string; user_id?: number; page?: number; limit?: number }) => {
+    const { data } = await api.get(`/admin/tenants/${id}/activity`, { params })
+    return data as {
+      data: any[]
+      total: number
+      page: number
+      limit: number
+      counts: Record<string, number>
+    }
+  },
+  // Quién aparece en el expediente (sale de los propios movimientos, no de la
+  // plantilla actual), para ofrecerlo como filtro.
+  getTenantActivityPeople: async (id: number) => {
+    const { data } = await api.get<{ data: { user_id: number; name: string }[] }>(
+      `/admin/tenants/${id}/activity/people`,
+    )
+    return data.data || []
+  },
+  addTenantNote: async (id: number, detail: string) => {
+    const { data } = await api.post(`/admin/tenants/${id}/notes`, { detail })
     return data
+  },
+  updateTenantNote: async (id: number, noteId: number, detail: string) => {
+    const { data } = await api.put(`/admin/tenants/${id}/notes/${noteId}`, { detail })
+    return data
+  },
+  setTenantNotePinned: async (id: number, noteId: number, pinned: boolean) => {
+    const { data } = await api.put(`/admin/tenants/${id}/notes/${noteId}/pin`, { pinned })
+    return data
+  },
+  deleteTenantNote: async (id: number, noteId: number) => {
+    await api.delete(`/admin/tenants/${id}/notes/${noteId}`)
+  },
+  // Notas fijadas: van en la cabecera del expediente, fuera de la cronología.
+  getTenantPinnedNotes: async (id: number) => {
+    const { data } = await api.get<{ data: any[] }>(`/admin/tenants/${id}/notes/pinned`)
+    return data.data || []
   },
   createTenant: async (tenantData: { company_name: string; user_id?: number; name?: string; email?: string; password?: string }) => {
     const { data } = await api.post('/admin/tenants', tenantData)

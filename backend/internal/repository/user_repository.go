@@ -15,6 +15,13 @@ type UserRepository interface {
 	Create(user *models.User) error
 	Update(user *models.User, updates map[string]interface{}) error
 	Delete(id uint) error
+	// RevokeSessionsByEmployer sube el token_version de todos los profesionales
+	// de una empresa, lo que invalida sus sesiones vivas en el siguiente
+	// request (el middleware compara la versión del JWT con la de la BD).
+	// Se usa al suspender la empresa: el portero del login solo actúa en la
+	// siguiente entrada, así que sin esto quien ya estaba dentro seguía
+	// operando con normalidad. Devuelve cuántos usuarios se vieron afectados.
+	RevokeSessionsByEmployer(employerID uint) (int64, error)
 	GetEmployees(employerID uint) ([]models.User, error)
 	GetTeam(managerID uint) ([]models.User, error)
 	CountActiveSuperadminsExcluding(excludeID uint) (int64, error)
@@ -156,6 +163,16 @@ func (r *userRepository) Create(user *models.User) error {
 
 func (r *userRepository) Update(user *models.User, updates map[string]interface{}) error {
 	return r.db.Model(user).Updates(updates).Error
+}
+
+// RevokeSessionsByEmployer usa UpdateColumn (no Update) a propósito: el bump de
+// token_version es contabilidad de sesión, no un cambio de datos del perfil, y
+// no debe mover el updated_at de media plantilla. El soft delete lo filtra GORM.
+func (r *userRepository) RevokeSessionsByEmployer(employerID uint) (int64, error) {
+	res := r.db.Model(&models.User{}).
+		Where("empleador_id = ?", employerID).
+		UpdateColumn("token_version", gorm.Expr("token_version + 1"))
+	return res.RowsAffected, res.Error
 }
 
 func (r *userRepository) Delete(id uint) error {

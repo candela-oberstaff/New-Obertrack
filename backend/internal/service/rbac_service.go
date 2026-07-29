@@ -209,22 +209,22 @@ var defaultRolePresets = []struct {
 	{
 		Name:        "Colaborador",
 		Description: "Operación diaria: gestiona sus tareas, registra horas y participa en el chat.",
-		Permissions: `{"tasks":"edit","hours":"edit","chat":"edit","tutorials":"view","reports":"none","tickets":"none"}`,
+		Permissions: `{"tasks":"edit","hours":"edit","chat":"edit","tutorials":"view","reports":"none","tickets":"none","meetings":"edit"}`,
 	},
 	{
 		Name:        "Supervisor",
 		Description: "Coordina al equipo: todo lo del colaborador más visibilidad de reportes. Para aprobar horas, combinar con el flag de manager.",
-		Permissions: `{"tasks":"edit","hours":"edit","chat":"edit","tutorials":"view","reports":"view","tickets":"none"}`,
+		Permissions: `{"tasks":"edit","hours":"edit","chat":"edit","tutorials":"view","reports":"view","tickets":"none","meetings":"edit"}`,
 	},
 	{
 		Name:        "Solo lectura",
 		Description: "Auditoría / consulta: ve tareas, horas y chat sin poder modificar nada.",
-		Permissions: `{"tasks":"view","hours":"view","chat":"view","tutorials":"view","reports":"view","tickets":"none"}`,
+		Permissions: `{"tasks":"view","hours":"view","chat":"view","tutorials":"view","reports":"view","tickets":"none","meetings":"view"}`,
 	},
 	{
 		Name:        "Soporte",
 		Description: "Customer success asignado a la empresa: gestiona tickets y chat, consulta tareas.",
-		Permissions: `{"tasks":"view","hours":"none","chat":"edit","tutorials":"view","reports":"none","tickets":"edit"}`,
+		Permissions: `{"tasks":"view","hours":"none","chat":"edit","tutorials":"view","reports":"none","tickets":"edit","meetings":"edit"}`,
 	},
 }
 

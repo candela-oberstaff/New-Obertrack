@@ -119,4 +119,14 @@ export const inductionService = {
     const { data } = await api.post<{ message: string }>(`/inductions/users/${userId}/reset`, {})
     return data
   },
+
+  /**
+   * Envía la inducción a un profesional que ya existe. Es la vía para los que
+   * no llegaron por el puente de Obersuite (alta manual, alta desde la empresa
+   * o importación), que de otro modo nunca pasarían por ella.
+   */
+  inviteUser: async (userId: number) => {
+    const { data } = await api.post<{ message: string }>(`/inductions/users/${userId}/invite`, {})
+    return data
+  },
 }

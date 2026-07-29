@@ -1036,7 +1036,7 @@ func (s *employmentService) UpdateEmploymentManager(userID, employmentID uint, m
 		if err != nil {
 			return errors.New("Manager inválido: manager no encontrado")
 		}
-		if err := ensureValidManager(s.repo, manager, target.CompanyID); err != nil {
+		if err := ensureValidManager(s.userRepo, s.repo, manager, userID, target.CompanyID); err != nil {
 			return err
 		}
 	}
@@ -1108,7 +1108,7 @@ func (s *employmentService) AddEmploymentManager(userID, employmentID, managerID
 	if err != nil {
 		return errors.New("Manager inválido: manager no encontrado")
 	}
-	if err := ensureValidManager(s.repo, manager, target.CompanyID); err != nil {
+	if err := ensureValidManager(s.userRepo, s.repo, manager, userID, target.CompanyID); err != nil {
 		return err
 	}
 	// Manager ADICIONAL: no toca el principal ni el espejo employments.manager_id.

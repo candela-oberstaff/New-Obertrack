@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -30,9 +31,9 @@ type WahaService struct {
 	// funnel through a single serialized gate that (a) enforces a minimum spacing
 	// between consecutive messages and (b) caps the number of messages per rolling
 	// minute. Combined with the human-typing sequence it makes traffic look manual.
-	sendMu      sync.Mutex
-	lastSendAt  time.Time
-	sendWindow  []time.Time   // timestamps of sends in the last minute (sliding window)
+	sendMu         sync.Mutex
+	lastSendAt     time.Time
+	sendWindow     []time.Time   // timestamps of sends in the last minute (sliding window)
 	maxPerMin      int           // hard ceiling per rolling minute
 	minInterval    time.Duration // minimum gap between two consecutive sends
 	humanTyping    bool          // send "seen" + "typing…" with a proportional delay before sending
@@ -87,16 +88,23 @@ type WahaSendTextRequest struct {
 	Session string `json:"session"`
 }
 
-func (s *WahaService) SendMessage(session string, to string, text string) error {
+// SendMessage delivers a text message and returns the WAHA message ID assigned to
+// it. That ID is persisted as the message's external_id so a later history import
+// recognises our own outbound message instead of inserting it a second time.
+func (s *WahaService) SendMessage(session string, to string, text string) (string, error) {
 	chatID := to
 	if !strings.Contains(chatID, "@") {
 		chatID = fmt.Sprintf("%s@c.us", chatID)
 	}
 
-	// 1) Anti-ban gate: rejects when over the per-minute cap, otherwise blocks just
-	// long enough to honor the minimum spacing between messages.
-	if err := s.throttleGate(); err != nil {
-		return err
+	// 1) Anti-ban gate: rejects when over the per-minute cap, otherwise reserves
+	// the next free slot that honors the minimum spacing between messages.
+	sendAt, err := s.reserveSlot()
+	if err != nil {
+		return "", err
+	}
+	if wait := time.Until(sendAt); wait > 0 {
+		time.Sleep(wait)
 	}
 
 	// 2) Human-like pre-send: mark the chat as seen and show "typing…" for a delay
@@ -108,15 +116,19 @@ func (s *WahaService) SendMessage(session string, to string, text string) error 
 		s.stopTyping(session, chatID)
 	}
 
-	// 3) Actual send.
-	return s.postSendText(session, chatID, text)
+	// 3) Actual send, retrying transient failures so a blip in the WAHA container
+	// doesn't silently drop an agent's reply.
+	return s.postSendTextWithRetry(session, chatID, text)
 }
 
-// throttleGate serializes all outbound sends. It enforces a rolling per-minute
-// cap (returning apperrors.ErrRateLimited when exceeded) and a minimum spacing
-// between consecutive messages (sleeping while holding the lock, which naturally
-// prevents parallel bursts).
-func (s *WahaService) throttleGate() error {
+// reserveSlot books the timestamp at which the caller is allowed to send. It
+// enforces a rolling per-minute cap (returning apperrors.ErrRateLimited when
+// exceeded) and a minimum spacing between consecutive messages.
+//
+// The reservation is made under the lock but the waiting happens outside of it:
+// concurrent senders each get their own slot and queue up in parallel instead of
+// serializing whole HTTP handlers behind a mutex held during a sleep.
+func (s *WahaService) reserveSlot() (time.Time, error) {
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
 
@@ -132,19 +144,21 @@ func (s *WahaService) throttleGate() error {
 
 	if s.maxPerMin > 0 && len(s.sendWindow) >= s.maxPerMin {
 		log.Printf("[WAHA] outbound rate limit hit (%d/min) — rejecting send", s.maxPerMin)
-		return apperrors.ErrRateLimited
+		return time.Time{}, apperrors.ErrRateLimited
 	}
 
+	// The slot is the later of "now" and "one interval after the last reserved
+	// slot", so a burst of callers spreads out instead of stacking on the clock.
+	sendAt := now
 	if s.minInterval > 0 && !s.lastSendAt.IsZero() {
-		if gap := now.Sub(s.lastSendAt); gap < s.minInterval {
-			time.Sleep(s.minInterval - gap)
-			now = time.Now()
+		if earliest := s.lastSendAt.Add(s.minInterval); earliest.After(sendAt) {
+			sendAt = earliest
 		}
 	}
 
-	s.lastSendAt = now
-	s.sendWindow = append(s.sendWindow, now)
-	return nil
+	s.lastSendAt = sendAt
+	s.sendWindow = append(s.sendWindow, sendAt)
+	return sendAt, nil
 }
 
 // typingDelay returns a human-like "typing…" duration: a base plus time
@@ -157,18 +171,62 @@ func typingDelay(text string) time.Duration {
 	return d + time.Duration(rand.Intn(700))*time.Millisecond
 }
 
-// postSendText performs the raw sendText call to WAHA.
-func (s *WahaService) postSendText(session, chatID, text string) error {
+// wahaHTTPError is a non-2xx response from WAHA. It carries the status code so
+// the retry logic can tell a transient server-side failure from a permanent one.
+type wahaHTTPError struct{ status int }
+
+func (e *wahaHTTPError) Error() string { return fmt.Sprintf("waha API error: status %d", e.status) }
+
+// isRetryableSendErr reports whether a failed send is worth repeating: transport
+// errors (WAHA restarting, connection reset) and 5xx/429 responses. A 4xx such as
+// 422 "session does not exist" is permanent — retrying only delays the error.
+func isRetryableSendErr(err error) bool {
+	var httpErr *wahaHTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.status >= 500 || httpErr.status == http.StatusTooManyRequests
+	}
+	return true // transport-level failure
+}
+
+const sendMaxAttempts = 3
+
+// postSendTextWithRetry sends the message, retrying transient failures with a
+// short backoff. Attempts are deliberately few and quick: the caller is an HTTP
+// handler with an agent waiting on the response.
+func (s *WahaService) postSendTextWithRetry(session, chatID, text string) (string, error) {
+	backoff := 500 * time.Millisecond
+	var lastErr error
+	for attempt := 1; attempt <= sendMaxAttempts; attempt++ {
+		msgID, err := s.postSendText(session, chatID, text)
+		if err == nil {
+			return msgID, nil
+		}
+		if !isRetryableSendErr(err) {
+			return "", err
+		}
+		lastErr = err
+		log.Printf("[WAHA] send attempt %d/%d failed: %v", attempt, sendMaxAttempts, err)
+		if attempt < sendMaxAttempts {
+			time.Sleep(backoff)
+			backoff *= 3
+		}
+	}
+	return "", lastErr
+}
+
+// postSendText performs the raw sendText call to WAHA and returns the ID WAHA
+// assigned to the message (empty if the response carries none).
+func (s *WahaService) postSendText(session, chatID, text string) (string, error) {
 	payload := WahaSendTextRequest{ChatID: chatID, Text: text, Session: session}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("failed to marshal waha payload: %w", err)
+		return "", fmt.Errorf("failed to marshal waha payload: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/api/sendText", s.apiURL)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("accept", "application/json")
@@ -179,14 +237,46 @@ func (s *WahaService) postSendText(session, chatID, text string) error {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request to WAHA: %w", err)
+		return "", fmt.Errorf("failed to send request to WAHA: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("waha API error: status %d", resp.StatusCode)
+		return "", &wahaHTTPError{status: resp.StatusCode}
 	}
-	return nil
+
+	// The message ID is best-effort: a send that succeeded must not be reported as
+	// failed just because the response shape was unexpected.
+	var sent wahaSendResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sent); err != nil {
+		log.Printf("[WAHA] could not decode sendText response (message was sent): %v", err)
+		return "", nil
+	}
+	return sent.messageID(), nil
+}
+
+// wahaSendResponse captures the sendText reply. Depending on the engine, `id` is
+// either a plain string ("true_1234@c.us_ABC") or an object whose `_serialized`
+// field holds that same string, so it is decoded lazily.
+type wahaSendResponse struct {
+	ID json.RawMessage `json:"id"`
+}
+
+func (r *wahaSendResponse) messageID() string {
+	if len(r.ID) == 0 {
+		return ""
+	}
+	var asString string
+	if json.Unmarshal(r.ID, &asString) == nil {
+		return asString
+	}
+	var asObject struct {
+		Serialized string `json:"_serialized"`
+	}
+	if json.Unmarshal(r.ID, &asObject) == nil {
+		return asObject.Serialized
+	}
+	return ""
 }
 
 // postChatAction fires a best-effort presence/read action (sendSeen, startTyping,
@@ -213,9 +303,13 @@ func (s *WahaService) postChatAction(endpoint, session, chatID string) {
 	resp.Body.Close()
 }
 
-func (s *WahaService) sendSeen(session, chatID string)    { s.postChatAction("sendSeen", session, chatID) }
-func (s *WahaService) startTyping(session, chatID string) { s.postChatAction("startTyping", session, chatID) }
-func (s *WahaService) stopTyping(session, chatID string)  { s.postChatAction("stopTyping", session, chatID) }
+func (s *WahaService) sendSeen(session, chatID string) { s.postChatAction("sendSeen", session, chatID) }
+func (s *WahaService) startTyping(session, chatID string) {
+	s.postChatAction("startTyping", session, chatID)
+}
+func (s *WahaService) stopTyping(session, chatID string) {
+	s.postChatAction("stopTyping", session, chatID)
+}
 
 type WahaContactResponse struct {
 	ID        string `json:"id"`
@@ -285,34 +379,18 @@ func (s *WahaService) GetContact(session string, contactID string) (*WahaContact
 	return nil, fmt.Errorf("contact not found")
 }
 
+// GetAllContacts returns the full contact book of a session.
+//
+// Note the URL shape: WAHA exposes the *contacts* endpoints with the session as a
+// query parameter (/api/contacts/all?session=X), unlike the *chats* endpoints
+// which take it in the path (/api/{session}/chats/...). Using the path form here
+// returns HTTP 500 and made ContactSync fail silently.
 func (s *WahaService) GetAllContacts(session string) ([]WahaContactResponse, error) {
-	url := fmt.Sprintf("%s/api/%s/contacts/all", s.apiURL, session)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("accept", "application/json")
-	if s.apiKey != "" {
-		req.Header.Set("X-Api-Key", s.apiKey)
-	}
-
-	client := s.client
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch contacts from WAHA: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("waha API error: status %d", resp.StatusCode)
-	}
-
+	reqURL := fmt.Sprintf("%s/api/contacts/all?session=%s", s.apiURL, url.QueryEscape(session))
 	var contacts []WahaContactResponse
-	if err := json.NewDecoder(resp.Body).Decode(&contacts); err != nil {
-		return nil, fmt.Errorf("failed to decode contacts: %w", err)
+	if err := s.getJSON(reqURL, &contacts); err != nil {
+		return nil, err
 	}
-
 	return contacts, nil
 }
 
@@ -396,6 +474,62 @@ type WahaChatMessage struct {
 	FromMe    bool   `json:"fromMe"`
 	Type      string `json:"type"`
 	From      string `json:"from"`
+	// HasMedia is the only reliable media signal on this endpoint: the WEBJS
+	// engine returns `type: null` for history messages, so Type is often empty.
+	HasMedia bool `json:"hasMedia"`
+	Media    *struct {
+		Mimetype string `json:"mimetype"`
+	} `json:"media"`
+}
+
+// MimeType returns the message's media mimetype when WAHA provided one.
+func (m *WahaChatMessage) MimeType() string {
+	if m.Media == nil {
+		return ""
+	}
+	return m.Media.Mimetype
+}
+
+// IsGroupChat reports whether a chat/JID belongs to a group conversation.
+func IsGroupChat(chatID string) bool { return strings.HasSuffix(chatID, "@g.us") }
+
+// IsIndividualChat reports whether a chat/JID is a 1:1 conversation.
+//
+// WhatsApp now addresses individual chats by LID ("1128288...@lid") rather than
+// by phone JID ("17873491050@c.us"), and both forms appear side by side. Matching
+// only "@c.us" — as the history import used to — skips every modern chat.
+func IsIndividualChat(chatID string) bool {
+	return strings.HasSuffix(chatID, "@c.us") || strings.HasSuffix(chatID, "@lid")
+}
+
+// MediaPlaceholder returns the text stored for a message that carries an
+// attachment instead of text, so the conversation shows that *something* arrived
+// rather than dropping it silently. Returns "" when the message is not media.
+func MediaPlaceholder(msgType, mimetype string, hasMedia bool) string {
+	kind := strings.ToLower(strings.TrimSpace(msgType))
+	if kind == "" && mimetype != "" {
+		kind, _, _ = strings.Cut(mimetype, "/")
+	}
+	switch kind {
+	case "image":
+		return "📷 Imagen recibida"
+	case "video":
+		return "🎥 Video recibido"
+	case "audio", "ptt", "voice":
+		return "🎤 Nota de voz recibida"
+	case "document", "application":
+		return "📄 Documento recibido"
+	case "sticker":
+		return "🏷️ Sticker recibido"
+	case "location":
+		return "📍 Ubicación recibida"
+	case "vcard", "contact_card", "contact":
+		return "👤 Contacto recibido"
+	}
+	if hasMedia {
+		return "📎 Archivo adjunto recibido"
+	}
+	return ""
 }
 
 // GetChatsOverview returns the most recent chats of a session (with their last
@@ -472,4 +606,3 @@ func (s *WahaService) StartSession(session string) error {
 	}
 	return nil
 }
-

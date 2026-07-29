@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, Plus, Trash2, Users, UserMinus, UserPlus, Search } from 'lucide-react';
 import { audienceService, AudienceGroup } from '../../../../services/audienceService';
 import { emailService } from '../../../../services/emailService';
+import { useCloseGuard } from '../../../ui/useCloseGuard';
 import styles from './GroupManager.module.css';
 
 interface GroupManagerProps {
@@ -26,6 +27,14 @@ const GroupManager: React.FC<GroupManagerProps> = ({ onClose }) => {
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [userSearch, setUserSearch] = useState('');
   const [userTypeFilter, setUserTypeFilter] = useState('all');
+
+  // Los cambios de miembros se guardan al momento; lo que se perdería es el
+  // grupo que se estaba escribiendo pero aún no se creó.
+  const requestClose = useCloseGuard(
+    () => newGroupName.trim() !== '' || newGroupDesc.trim() !== '',
+    onClose,
+    { title: '¿Descartar el grupo nuevo?', message: 'Escribiste un grupo que todavía no has creado.' },
+  );
 
   const { data: groups = [] } = useQuery<AudienceGroup[]>({
     queryKey: ['audienceGroups'],
@@ -107,7 +116,7 @@ const GroupManager: React.FC<GroupManagerProps> = ({ onClose }) => {
       <div className={styles.modalContainer}>
         <header className={styles.modalHeader}>
           <h3><Users size={20} /> Gestor de Grupos de Audiencia</h3>
-          <button className={styles.closeBtn} onClick={onClose}><X size={20} /></button>
+          <button className={styles.closeBtn} onClick={requestClose}><X size={20} /></button>
         </header>
 
         <div className={styles.modalBody}>

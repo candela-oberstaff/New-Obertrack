@@ -604,6 +604,263 @@
 
 .activityMeta { font-size: 12px; color: #94a3b8; }
 
+/* ── Expediente: línea de tiempo ─────────────────────────────────────────────
+   Los movimientos se agrupan por día y cuelgan de un carril vertical, para que
+   se lea como una cronología y no como una lista de tarjetas sueltas. */
+
+.timeline { display: flex; flex-direction: column; }
+
+.timelineDay { display: flex; flex-direction: column; }
+
+/* Cabecera del día: se queda pegada arriba al hacer scroll (el contenedor que
+   scrollea es el outlet, así que se ancla justo bajo la barra superior), para
+   saber siempre qué día se está mirando en un expediente largo. */
+/* La fila en sí no pinta nada ni intercepta clics: solo posiciona la píldora.
+   Una banda a todo el ancho tendría que igualar el color del panel, que es
+   translúcido sobre un degradado, así que cualquier color fijo se notaría. */
+.timelineDayLabel {
+  position: sticky;
+  top: 0;
+  /* Por encima de los nodos del carril (z-index: 1): con el mismo valor ganaba
+     el nodo por ir después en el DOM y se pintaba sobre la cabecera. */
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  padding: 10px 0 12px;
+  pointer-events: none;
+}
+
+/* Píldora opaca: lo que pasa por detrás al hacer scroll queda tapado, sin
+   depender del fondo (antes, al 82% de opacidad, se transparentaba el texto). */
+.timelineDayChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 13px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  box-shadow: var(--shadow-sm);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: capitalize;
+}
+
+.timelineDayCount {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: none;
+}
+
+.timelineItem {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  padding: 0 0 18px 0;
+}
+
+/* El carril: una línea continua que une los nodos del mismo día. Se corta en
+   el último para que no quede colgando. */
+.timelineItem::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 32px;
+  bottom: 0;
+  width: 2px;
+  background: var(--glass-border, #e2e8f0);
+}
+
+.timelineItem:last-child::before { display: none; }
+
+.timelineNode {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid currentColor;
+  flex-shrink: 0;
+}
+
+.timelineCard {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.timelineCard:hover {
+  border-color: #cbd5e1;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Las notas las escribe una persona, no las deriva el sistema: se presentan
+   como un bloque con cabecera propia, no como una línea más del historial. */
+.timelineCard.isNote {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  border-left: 3px solid #0891b2;
+  background: rgba(8, 145, 178, 0.05);
+}
+
+.noteHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.noteTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #0e7490;
+}
+
+/* Deja claro que la nota es del equipo de la plataforma: la empresa no la ve. */
+.noteScope {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.noteEdited {
+  font-size: 11.5px;
+  font-style: italic;
+  color: #94a3b8;
+}
+
+.noteBody {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: #0f172a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Bloque de notas fijadas, encima de la cronología. */
+.pinnedBox {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  border: 1px solid rgba(8, 145, 178, 0.35);
+  border-radius: var(--radius);
+  background: rgba(8, 145, 178, 0.06);
+}
+
+.pinnedTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #0e7490;
+}
+
+.pinnedItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--glass-border, #e2e8f0);
+}
+
+/* Contador dentro del chip de categoría. */
+.chipCount {
+  margin-left: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Últimas notas en la pestaña Resumen. */
+.notesSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notesSummaryItem {
+  padding: 10px 14px;
+  border-left: 3px solid #0891b2;
+  border-radius: 0 10px 10px 0;
+  background: rgba(8, 145, 178, 0.05);
+}
+
+.notesSummaryItem p {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: #334155;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.timelineText {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.45;
+}
+
+.timelineCard.isNote .timelineText { white-space: pre-wrap; }
+
+.timelineMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.timelineTag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.1);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.timelineTime {
+  font-variant-numeric: tabular-nums;
+}
+
+/* La acción de borrar aparece al posarse encima: en una auditoría el foco es
+   leer, no borrar. Se mantiene visible al enfocar por teclado y en táctil. */
+.timelineActions { opacity: 0; transition: opacity 0.15s ease; }
+.timelineCard:hover .timelineActions,
+.timelineActions:focus-within { opacity: 1; }
+
+@media (hover: none) {
+  .timelineActions { opacity: 1; }
+}
+
 @media (max-width: 768px) {
   .page { padding: 20px; }
   .header { flex-direction: column; }

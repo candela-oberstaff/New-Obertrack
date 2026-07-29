@@ -92,6 +92,17 @@ export function compileBlocksToHTML(blocks: EmailBlock[]): string {
 </div>`;
 }
 
+/**
+ * HTML de una plantilla guardada, venga del editor visual o del de código.
+ * Una plantilla escrita a mano se guarda como un único bloque marcado `raw`:
+ * ese contenido ya ES el correo y no debe recompilarse.
+ */
+export function templateToHTML(blocks: EmailBlock[]): string {
+  const content = blocks.filter(b => b.type !== 'settings');
+  if (content.length === 1 && content[0].style?.raw === 'true') return content[0].content;
+  return compileBlocksToHTML(blocks);
+}
+
 // ─── JSON serialization ─────────────────────────────────────────────────────
 export function blocksToJSON(blocks: EmailBlock[]): string {
   return JSON.stringify(blocks.map(({ id: _id, ...rest }) => rest));

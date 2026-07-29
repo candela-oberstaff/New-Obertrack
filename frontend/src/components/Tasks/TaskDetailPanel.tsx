@@ -6,6 +6,7 @@ import styles from '../../pages/Tasks.module.css'
 import { X } from 'lucide-react'
 import { TaskDetailEditForm } from './components/TaskDetailEditForm'
 import { TaskDetailView } from './components/TaskDetailView'
+import { useCloseGuard } from '../ui/useCloseGuard'
 
 interface TaskDetailPanelProps {
   task: Task | null
@@ -23,6 +24,15 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
   const [taskComments, setTaskComments] = useState<any[]>([])
   const [attachments, setAttachments] = useState<TaskAttachment[]>([])
   const [isLoadingComments, setIsLoadingComments] = useState(false)
+
+  // El panel se cierra solo con la X, pero hacerlo en modo edición tira el
+  // formulario. Se pregunta mientras se está editando: el detalle de qué campos
+  // cambiaron vive dentro del formulario y no llega hasta aquí.
+  const requestClose = useCloseGuard(() => isEditing, onClose, {
+    title: '¿Salir sin guardar la tarea?',
+    message: 'Estás editando la tarea. Si cierras ahora se perderán los cambios.',
+    confirmLabel: 'Salir sin guardar',
+  })
 
   const refreshTask = async () => {
     if (!task) return
@@ -85,7 +95,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
     <div className={styles['task-detail-panel']}>
       <div className={styles['panel-header']}>
         <h2>{isEditing ? 'Editar Tarea' : 'Detalles de la tarea'}</h2>
-        <button className={styles['close-btn']} onClick={onClose}><X size={20} /></button>
+        <button className={styles['close-btn']} onClick={requestClose}><X size={20} /></button>
       </div>
 
       <div className={styles['panel-content']}>

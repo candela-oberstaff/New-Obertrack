@@ -32,6 +32,13 @@ type InductionService interface {
 	// el alta del profesional siga el flujo directo de acceso de siempre.
 	InviteIfEnabled(user *models.User) (bool, error)
 
+	// Invite emite la inducción a un profesional que YA existe, a petición de
+	// Soporte. Es la puerta para los que no llegaron por el puente de Obersuite
+	// (alta manual, alta desde la empresa, importación), que hasta ahora no
+	// tenían forma de pasar por la inducción. A diferencia de InviteIfEnabled,
+	// aquí una inducción apagada sí es un error: es una acción explícita.
+	Invite(userID uint) error
+
 	// Landing devuelve el contenido público de la invitación (video +
 	// preguntas SIN las respuestas correctas).
 	Landing(token string) (*LandingView, error)
@@ -206,6 +213,35 @@ func (s *inductionService) InviteIfEnabled(user *models.User) (bool, error) {
 	return true, nil
 }
 
+func (s *inductionService) Invite(userID uint) error {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil {
+		return errors.New("usuario no encontrado")
+	}
+	// Solo los profesionales pasan por inducción: invitar a una cuenta empresa,
+	// a soporte o a un superadmin les cortaría el acceso sin motivo.
+	if user.UserType != models.UserTypeProfessional {
+		return errors.New("solo los profesionales pasan por la inducción")
+	}
+	if !s.Enabled() {
+		return errors.New("la inducción está apagada o sin cuestionario configurado")
+	}
+	// Reenviar a quien ya aprobó le quitaría el acceso que se ganó. Si hace
+	// falta repetirla, primero se reinicia desde el mismo panel.
+	if user.OnboardingStatus == models.OnboardingPassed {
+		return errors.New("este profesional ya aprobó la inducción")
+	}
+
+	invited, err := s.InviteIfEnabled(user)
+	if err != nil {
+		return err
+	}
+	if !invited {
+		return errors.New("la inducción está apagada o sin cuestionario configurado")
+	}
+	return nil
+}
+
 func (s *inductionService) Landing(token string) (*LandingView, error) {
 	invite, err := s.loadInvite(token)
 	if err != nil {
@@ -344,10 +380,24 @@ func (s *inductionService) Reset(userID uint) error {
 	if err != nil {
 		return errors.New("usuario no encontrado")
 	}
+
+	// Enlace NUEVO, no el de antes. Dos motivos:
+	//  1. Sin renovar la vigencia, reiniciar una invitación ya vencida reenviaba
+	//     un enlace muerto — y quien lleva semanas parado es justo el caso
+	//     típico de este botón.
+	//  2. Rotar el token invalida el enlace viejo, que pudo quedar reenviado o
+	//     en un correo compartido.
+	token, err := generateInductionToken()
+	if err != nil {
+		return err
+	}
+
 	if err := s.repo.UpdateInvite(invite, map[string]interface{}{
 		"attempts":     0,
 		"status":       models.InductionPending,
 		"completed_at": nil,
+		"token":        token,
+		"expires_at":   time.Now().AddDate(0, 0, s.inviteTTLDays()),
 	}); err != nil {
 		return err
 	}
@@ -356,8 +406,18 @@ func (s *inductionService) Reset(userID uint) error {
 	}); err != nil {
 		return err
 	}
-	s.sendInviteEmail(user, invite.Token)
+	s.sendInviteEmail(user, token)
 	return nil
+}
+
+// inviteTTLDays es la vigencia configurada, con un valor de respaldo sensato:
+// una configuración a medias no debe emitir un enlace ya vencido.
+func (s *inductionService) inviteTTLDays() int {
+	cfg, err := s.repo.GetConfig()
+	if err != nil || cfg == nil || cfg.InviteTTLDays < 1 {
+		return 30
+	}
+	return cfg.InviteTTLDays
 }
 
 func (s *inductionService) Status(userID uint) (*InductionStatusView, error) {

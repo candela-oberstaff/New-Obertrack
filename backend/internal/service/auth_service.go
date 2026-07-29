@@ -222,6 +222,15 @@ func (s *authService) Refresh(refreshToken string) (*models.User, string, string
 		return nil, "", "", errors.New("session expired")
 	}
 
+	// El acceso de la empresa manda sobre la sesión del profesional, igual que
+	// en el login: si suspendieron a la empresa por cualquier vía, la sesión no
+	// se renueva aunque la cuenta individual siga activa.
+	if user.UserType == models.UserTypeProfessional && user.EmpleadorID != nil {
+		if employer, err := s.userRepo.GetByID(*user.EmpleadorID); err == nil && !employer.IsActive {
+			return nil, "", "", errors.New("session expired")
+		}
+	}
+
 	access, refresh, err := s.generateTokenPair(user)
 	if err != nil {
 		return nil, "", "", errors.New("Failed to generate token")

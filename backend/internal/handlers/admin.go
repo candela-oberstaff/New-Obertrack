@@ -1,11 +1,9 @@
 package handlers
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,23 +17,10 @@ import (
 	"github.com/obertrack/backend/internal/service"
 )
 
-// tempPasswordAlphabet excluye caracteres ambiguos (0/O, 1/l/I) para que la
-// contraseña temporal sea fácil de dictar/transcribir.
-const tempPasswordAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
-
-// generateTempPassword genera una contraseña temporal alfanumérica de n
-// caracteres usando crypto/rand (sin caracteres ambiguos).
+// generateTempPassword delega en el servicio para que el alta por importación y
+// el reenvío de accesos generen el mismo tipo de clave.
 func generateTempPassword(n int) (string, error) {
-	b := make([]byte, n)
-	max := big.NewInt(int64(len(tempPasswordAlphabet)))
-	for i := range b {
-		idx, err := rand.Int(rand.Reader, max)
-		if err != nil {
-			return "", err
-		}
-		b[i] = tempPasswordAlphabet[idx.Int64()]
-	}
-	return string(b), nil
+	return service.GenerateTempPassword(n)
 }
 
 type AdminHandler struct {
@@ -167,6 +152,39 @@ func (h *AdminHandler) BulkEmailProfessionals(c *gin.Context) {
 
 	result := h.service.BulkEmailProfessionals(req.UserIDs, req.Subject, req.Body)
 	c.JSON(http.StatusOK, gin.H{"sent": result.Sent, "failed": result.Failed})
+}
+
+// SendAccessEmails entrega el acceso a la plataforma a los usuarios indicados.
+//
+// Existe porque la contraseña temporal que genera la importación masiva NO se
+// puede reenviar: se guarda hasheada y su versión en claro solo vive en aquella
+// respuesta. Aquí se emite un acceso nuevo, y quien lo dispara decide cuándo,
+// a quién y de qué forma.
+func (h *AdminHandler) SendAccessEmails(c *gin.Context) {
+	if !middleware.IsSuperadmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin"})
+		return
+	}
+
+	var req struct {
+		UserIDs []uint `json:"user_ids" binding:"required"`
+		Mode    string `json:"mode" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No hay destinatarios seleccionados"})
+		return
+	}
+	if !service.IsValidAccessMode(req.Mode) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Modo inválido: usa 'invite' o 'password'"})
+		return
+	}
+
+	result := h.service.SendAccessEmails(req.UserIDs, req.Mode)
+	c.JSON(http.StatusOK, gin.H{"sent": result.Sent, "failed": result.Failed, "total": len(req.UserIDs)})
 }
 
 func (h *AdminHandler) CreateUser(c *gin.Context) {
@@ -826,6 +844,9 @@ func (h *AdminHandler) GetEmployeeTracking(c *gin.Context) {
 	c.JSON(http.StatusOK, tracking)
 }
 
+// GetTenantActivity devuelve una página del expediente. Admite ?category= para
+// quedarse con un tipo de movimiento y ?page/?limit para paginar; el total
+// viaja aparte para poder pintar "de N" sin traer el expediente entero.
 func (h *AdminHandler) GetTenantActivity(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -833,12 +854,197 @@ func (h *AdminHandler) GetTenantActivity(c *gin.Context) {
 		return
 	}
 
-	activities, err := h.service.GetTenantActivities(uint(id))
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+
+	// ?user_id= acota a una persona (0 o ausente = todas).
+	userID, _ := strconv.ParseUint(c.DefaultQuery("user_id", "0"), 10, 32)
+
+	activities, total, err := h.service.GetTenantActivities(uint(id), c.Query("category"), uint(userID), (page-1)*limit, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tenant activity"})
 		return
 	}
-	c.JSON(http.StatusOK, activities)
+	if activities == nil {
+		activities = []repository.TenantActivity{}
+	}
+
+	// Contadores por categoría con el MISMO filtro de persona: si no, un chip
+	// prometería más movimientos de los que enseña al pulsarlo.
+	counts, err := h.service.GetTenantActivityCounts(uint(id), uint(userID))
+	if err != nil {
+		counts = map[string]int64{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": activities, "total": total, "page": page, "limit": limit, "counts": counts,
+	})
+}
+
+// GetTenantPinnedNotes devuelve las notas fijadas en la cabecera del expediente.
+func (h *AdminHandler) GetTenantPinnedNotes(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	notes, err := h.service.GetTenantPinnedNotes(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar las notas fijadas"})
+		return
+	}
+	if notes == nil {
+		notes = []repository.TenantActivity{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": notes})
+}
+
+// UpdateTenantNote corrige el texto de una nota ya escrita.
+func (h *AdminHandler) UpdateTenantNote(c *gin.Context) {
+	id, noteID, ok := parseTenantNoteParams(c)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		Detail string `json:"detail"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.UpdateTenantNote(id, noteID, req.Detail); err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "Nota no encontrada" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Nota actualizada"})
+}
+
+// SetTenantNotePinned fija o desfija una nota en la cabecera del expediente.
+func (h *AdminHandler) SetTenantNotePinned(c *gin.Context) {
+	id, noteID, ok := parseTenantNoteParams(c)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		Pinned bool `json:"pinned"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.SetTenantNotePinned(id, noteID, req.Pinned); err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Nota no encontrada" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Nota actualizada"})
+}
+
+// parseTenantNoteParams saca empresa y nota de la ruta, respondiendo el 400 si
+// alguno no es válido. Devuelve ok=false cuando ya se escribió la respuesta.
+func parseTenantNoteParams(c *gin.Context) (tenantID, noteID uint, ok bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return 0, 0, false
+	}
+	note, err := strconv.ParseUint(c.Param("noteId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid note ID"})
+		return 0, 0, false
+	}
+	return uint(id), uint(note), true
+}
+
+// GetTenantActivityPeople lista quién aparece en el expediente, para poder
+// ofrecerlo como filtro.
+func (h *AdminHandler) GetTenantActivityPeople(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	people, err := h.service.GetTenantActivityPeople(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar las personas del expediente"})
+		return
+	}
+	if people == nil {
+		people = []repository.TenantActivityPerson{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": people})
+}
+
+// AddTenantNote anota un hito a mano en el expediente de la empresa.
+func (h *AdminHandler) AddTenantNote(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	var req struct {
+		Detail string `json:"detail"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	event, err := h.service.AddTenantNote(uint(id), middleware.GetUserID(c), req.Detail)
+	if err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "Tenant not found" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, event)
+}
+
+// DeleteTenantNote borra una anotación manual (solo notas: el resto del
+// expediente es historial).
+func (h *AdminHandler) DeleteTenantNote(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+	noteID, err := strconv.ParseUint(c.Param("noteId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid note ID"})
+		return
+	}
+
+	if err := h.service.DeleteTenantNote(uint(id), uint(noteID)); err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Nota no encontrada" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Nota eliminada"})
 }
 
 func (h *AdminHandler) SetTenantStatus(c *gin.Context, active bool) {

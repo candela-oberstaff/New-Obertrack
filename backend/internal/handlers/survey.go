@@ -178,6 +178,16 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 
 
 
+	// El cuerpo puede traer una lista de destinatarios que reemplaza a la
+	// guardada en la encuesta (p. ej. el envío masivo desde el panel de
+	// usuarios). No se persiste: solo aplica a este envío.
+	var body struct {
+		RecipientList *string `json:"recipient_list"`
+	}
+	if err := c.ShouldBindJSON(&body); err == nil && body.RecipientList != nil {
+		survey.RecipientList = *body.RecipientList
+	}
+
 	// Parse recipient IDs
 	var recipientIDs []int
 	if survey.RecipientList != "" {

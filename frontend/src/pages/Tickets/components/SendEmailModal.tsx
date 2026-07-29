@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Mail } from 'lucide-react';
+import { useDirtySnapshot } from '../../../components/ui/useCloseGuard'
 import { Modal, Button } from '../../../components/ui';
 
 interface SendEmailModalProps {
@@ -29,6 +30,8 @@ export default function SendEmailModal({ contactEmail, onClose, onSend }: SendEm
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot(content)}
       isOpen
       onClose={onClose}
       size="sm"

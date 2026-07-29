@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { X, GripVertical, Plus } from 'lucide-react'
 import type { Board } from '../../../types'
+import { useCloseGuard } from '../../ui/useCloseGuard'
 import styles from '../../../pages/Tasks.module.css'
 
 const DEFAULT_PHASE_COLOR = '#6b7280'
@@ -37,6 +38,13 @@ export function PhasesModal({
   const [newPhaseName, setNewPhaseName] = useState('')
   const [newPhaseColor, setNewPhaseColor] = useState(DEFAULT_PHASE_COLOR)
 
+  // Añadir y quitar fases guarda al momento; lo único en riesgo es la fase que
+  // se está escribiendo. El hook va antes del return condicional.
+  const requestClose = useCloseGuard(() => newPhaseName.trim() !== '', onClose, {
+    title: '¿Descartar la fase nueva?',
+    message: 'Escribiste el nombre de una fase que todavía no has añadido.',
+  })
+
   if (!isOpen || !selectedBoard) return null
 
   const colorForInput = (color: string) =>
@@ -50,11 +58,11 @@ export function PhasesModal({
   }
 
   return (
-    <div className={styles['modal-overlay']} onClick={onClose} onMouseUp={handlePhaseDragEnd}>
+    <div className={styles['modal-overlay']} onClick={requestClose} onMouseUp={handlePhaseDragEnd}>
       <div className={`${styles['modal']} ${styles['board-modal']} ${styles['phases-modal'] || 'phases-modal'}`} onClick={(e) => e.stopPropagation()} onMouseUp={handlePhaseDragEnd}>
         <div className={styles['board-modal-header'] || 'board-modal-header'}>
           <h2>Gestionar Fases</h2>
-          <button className={styles['close-btn']} onClick={onClose}><X size={20} /></button>
+          <button className={styles['close-btn']} onClick={requestClose}><X size={20} /></button>
         </div>
         <p className={styles['board-subtitle'] || 'board-subtitle'}>{selectedBoard.name}</p>
 

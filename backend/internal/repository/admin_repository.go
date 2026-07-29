@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -36,6 +37,52 @@ type Activity struct {
 	Company   string    `json:"company"`
 	Details   string    `json:"details"`
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// Categorías del expediente de empresa. Agrupan los tipos de evento en las
+// cuatro preguntas que se le hacen a la ficha: qué pasó con el acceso, quién
+// entró o salió, cuánta actividad hay y qué ha hecho el equipo con la cuenta.
+const (
+	TenantActivityLifecycle  = "lifecycle"  // alta, suspensión, reactivación
+	TenantActivityStaff      = "staff"      // altas y bajas de profesionales
+	TenantActivityWork       = "work"       // registros de jornada y ausencias
+	TenantActivityManagement = "management" // gestiones de customer success
+	// TenantActivityNote va aparte de las gestiones: es lo único que escribe
+	// una persona a mano, y quien busca "qué anotamos de esta empresa" no
+	// quiere que se lo mezclen con los seguimientos automáticos de CS.
+	TenantActivityNote = "note"
+)
+
+// TenantActivityPerson es una persona que aparece en el expediente, para
+// poder ofrecerla como filtro.
+type TenantActivityPerson struct {
+	UserID uint   `json:"user_id"`
+	Name   string `json:"name"`
+}
+
+// TenantActivity es una entrada del expediente, ya clasificada.
+type TenantActivity struct {
+	Type      string    `json:"type"`
+	Category  string    `json:"category"`
+	User      string    `json:"user"`
+	UserID    uint      `json:"user_id"`
+	Company   string    `json:"company"`
+	Details   string    `json:"details"`
+	Timestamp time.Time `json:"timestamp"`
+	// EventID apunta a la fila de company_events cuando la entrada nace de una
+	// (notas, suspensiones). Es 0 en las derivadas de otras tablas, que no se
+	// gestionan desde el expediente.
+	EventID uint `json:"event_id"`
+	// Solo tienen sentido en las notas; en el resto son siempre false/nil.
+	Pinned   bool       `json:"pinned"`
+	EditedAt *time.Time `json:"edited_at,omitempty"`
+}
+
+// TenantActivityCount es cuántos movimientos hay de una categoría, con el
+// filtro de persona ya aplicado.
+type TenantActivityCount struct {
+	Category string `json:"category"`
+	Count    int64  `json:"count"`
 }
 
 type AbsenceReportItem struct {
@@ -177,7 +224,17 @@ type AdminRepository interface {
 
 	GetTenants() ([]TenantSummary, error)
 	GetTenantByID(id uint) (*TenantSummary, error)
-	GetTenantActivities(tenantID uint) ([]Activity, error)
+	// GetTenantActivities devuelve una página del expediente y el total que
+	// cumple el filtro (para poder paginar sin una segunda consulta).
+	// category vacía = todas; userID 0 = todas las personas.
+	GetTenantActivities(tenantID uint, category string, userID uint, offset, limit int) ([]TenantActivity, int64, error)
+	// GetTenantActivityPeople lista las personas que aparecen en el expediente.
+	GetTenantActivityPeople(tenantID uint) ([]TenantActivityPerson, error)
+	// GetTenantActivityCounts cuenta por categoría (con el filtro de persona
+	// aplicado), para los contadores de los chips.
+	GetTenantActivityCounts(tenantID uint, userID uint) ([]TenantActivityCount, error)
+	// GetTenantPinnedNotes trae las notas fijadas en la cabecera.
+	GetTenantPinnedNotes(tenantID uint) ([]TenantActivity, error)
 
 	GetTenantEmployees(tenantID uint) ([]EmployeeSummary, error)
 	GetEmployeeSummary(userID uint) (*EmployeeSummary, error)
@@ -197,6 +254,14 @@ type AdminRepository interface {
 
 	// Eventos del ciclo de vida de una empresa (expediente).
 	CreateCompanyEvent(event *models.CompanyEvent) error
+	// DeleteCompanyNote borra una anotación manual. Acotado a la empresa y al
+	// tipo "note": el resto del expediente es historial y no se toca. Devuelve
+	// cuántas filas se borraron (0 = no existe o no era una nota).
+	DeleteCompanyNote(companyID, noteID uint) (int64, error)
+	// UpdateCompanyNote corrige el texto y marca la nota como editada.
+	UpdateCompanyNote(companyID, noteID uint, detail string, editedAt time.Time) (int64, error)
+	// SetCompanyNotePinned fija o desfija una nota en la cabecera.
+	SetCompanyNotePinned(companyID, noteID uint, pinned bool) (int64, error)
 
 	// Archivados: bajas de empleo + cuentas desactivadas. tenantID=0 = global.
 	GetArchived(tenantID uint) ([]ArchivedEntry, error)
@@ -677,84 +742,281 @@ func (r *adminRepository) GetEmployeeTasks(userID uint, limit int) ([]EmployeeTa
 //  3) Bajas de empleados (employments finalizados).
 //  4) Registros de horas (work_hours).
 //  5) Gestiones de CS (follow_ups, acotadas vía employments).
-//  6) Suspensiones / reactivaciones de la empresa (company_events).
-func (r *adminRepository) GetTenantActivities(tenantID uint) ([]Activity, error) {
-	var activities []Activity
+//  6) Suspensiones, reactivaciones y notas del equipo (company_events).
+//
+// Cada rama declara su categoría, para poder filtrar la línea de tiempo sin
+// que el frontend tenga que saberse la lista de tipos. El total sale con una
+// window function sobre el conjunto ya filtrado: se pagina sin una segunda
+// consulta y sin traerse el expediente entero para contarlo.
+//
+// La columna se llama "user" (entre comillas) porque es palabra reservada en
+// Postgres; dentro del CTE viaja como "actor" para no tener que escaparla en
+// cada rama de la unión.
+// tenantEventsCTE es la unión que arma el expediente. Vive en una constante
+// porque la consumen dos consultas —la línea de tiempo y la lista de personas
+// que aparecen en ella—, y deben ver exactamente los mismos movimientos: si se
+// duplicara, un filtro por persona podría ofrecer a alguien sin resultados.
+//
+// Espera el parámetro @tid. Cada rama aporta también quién protagoniza el
+// movimiento (actor_id) para poder filtrar por persona sin cruzar por nombre,
+// que ni identifica ni sobrevive a dos empleados homónimos.
+var tenantEventsCTE = `
+	SELECT 'company_created' as type, ` + quoted(TenantActivityLifecycle) + ` as category,
+		owner.name as actor, owner.id as actor_id,
+		COALESCE(owner.company_name, '-') as company,
+		'Empresa registrada en la plataforma' as details,
+		owner.created_at as timestamp, 0 as event_id,
+		false as pinned, NULL::timestamptz as edited_at
+	FROM users owner WHERE owner.id = @tid
+
+	UNION ALL
+
+	SELECT 'employee_joined' as type, ` + quoted(TenantActivityStaff) + ` as category,
+		u.name as actor, u.id as actor_id,
+		COALESCE(owner.company_name, '-') as company,
+		'Se incorporó' ||
+			(CASE WHEN COALESCE(emp.job_title, '') <> '' THEN ' como ' || emp.job_title ELSE '' END) ||
+			(CASE WHEN COALESCE(emp.start_reason, '') <> '' THEN ' — ' || emp.start_reason ELSE '' END) as details,
+		emp.started_at as timestamp, 0 as event_id,
+		false as pinned, NULL::timestamptz as edited_at
+	FROM employments emp
+	JOIN users u ON u.id = emp.user_id
+	JOIN users owner ON owner.id = @tid
+	WHERE emp.company_id = @tid AND emp.deleted_at IS NULL
+
+	UNION ALL
+
+	SELECT 'employee_left' as type, ` + quoted(TenantActivityStaff) + ` as category,
+		u.name as actor, u.id as actor_id,
+		COALESCE(owner.company_name, '-') as company,
+		'Finalizó su empleo' ||
+			(CASE WHEN COALESCE(emp.end_reason, '') <> '' THEN ' — ' || emp.end_reason ELSE '' END) as details,
+		emp.ended_at as timestamp, 0 as event_id,
+		false as pinned, NULL::timestamptz as edited_at
+	FROM employments emp
+	JOIN users u ON u.id = emp.user_id
+	JOIN users owner ON owner.id = @tid
+	WHERE emp.company_id = @tid AND emp.deleted_at IS NULL
+		AND emp.status = 'ended' AND emp.ended_at IS NOT NULL
+
+	UNION ALL
+
+	SELECT 'work_hour' as type, ` + quoted(TenantActivityWork) + ` as category,
+		u.name as actor, u.id as actor_id,
+		COALESCE(e.company_name, '-') as company,
+		CASE WHEN wh.work_type = 'complete' THEN 'Registró jornada completa' ELSE 'Registró ausencia' END as details,
+		wh.created_at as timestamp, 0 as event_id,
+		false as pinned, NULL::timestamptz as edited_at
+	FROM work_hours wh
+	JOIN users u ON u.id = wh.user_id
+	LEFT JOIN users e ON e.id = u.empleador_id
+	WHERE wh.tenant_id = @tid
+
+	UNION ALL
+
+	SELECT 'follow_up' as type, ` + quoted(TenantActivityManagement) + ` as category,
+		u.name as actor, u.id as actor_id,
+		COALESCE(c.company_name, '-') as company,
+		'Gestión de ' ||
+			(CASE f.kind WHEN 'inactivity' THEN 'inactividad' WHEN 'absence' THEN 'ausencia' ELSE f.kind END) ||
+			': ' ||
+			(CASE f.status WHEN 'contacted' THEN 'Contactado' WHEN 'justified' THEN 'Justificado' WHEN 'escalated' THEN 'Escalado' ELSE f.status END) ||
+			(CASE WHEN COALESCE(f.note, '') <> '' THEN ' — ' || f.note ELSE '' END) as details,
+		f.created_at as timestamp, 0 as event_id,
+		false as pinned, NULL::timestamptz as edited_at
+	FROM follow_ups f
+	JOIN users u ON u.id = f.user_id
+	LEFT JOIN users c ON c.id = @tid
+	WHERE EXISTS (
+		SELECT 1 FROM employments emp
+		WHERE emp.user_id = f.user_id AND emp.company_id = @tid AND emp.deleted_at IS NULL
+	)
+
+	UNION ALL
+
+	SELECT 'company_' || ce.type as type,
+		(CASE WHEN ce.type = 'note' THEN ` + quoted(TenantActivityNote) + `
+			ELSE ` + quoted(TenantActivityLifecycle) + ` END) as category,
+		COALESCE(actor.name, '') as actor, COALESCE(actor.id, 0) as actor_id,
+		COALESCE(owner.company_name, '-') as company,
+		(CASE ce.type
+			WHEN 'suspended' THEN 'Acceso suspendido'
+			WHEN 'reactivated' THEN 'Acceso reactivado'
+			WHEN 'note' THEN COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido')
+			ELSE ce.type END) as details,
+		ce.created_at as timestamp, ce.id as event_id,
+		ce.pinned, ce.edited_at
+	FROM company_events ce
+	JOIN users owner ON owner.id = ce.company_id
+	LEFT JOIN users actor ON actor.id = ce.by_user_id
+	WHERE ce.company_id = @tid
+`
+
+func (r *adminRepository) GetTenantActivities(tenantID uint, category string, userID uint, offset, limit int) ([]TenantActivity, int64, error) {
+	// Fila plana (y no un struct con TenantActivity embebido) para no depender
+	// de cómo promociona GORM los campos anónimos al escanear un Raw.
+	rows := []struct {
+		Type      string
+		Category  string
+		User      string
+		UserID    uint
+		Company   string
+		Details   string
+		Timestamp time.Time
+		EventID   uint
+		Pinned    bool
+		EditedAt  *time.Time
+		Total     int64
+	}{}
+
 	err := r.db.Raw(`
-		SELECT 'company_created' as type, owner.name as user,
-			COALESCE(owner.company_name, '-') as company,
-			'Empresa registrada en la plataforma' as details,
-			owner.created_at as timestamp
-		FROM users owner WHERE owner.id = @tid
-
-		UNION ALL
-
-		SELECT 'employee_joined' as type, u.name as user,
-			COALESCE(owner.company_name, '-') as company,
-			'Se incorporó' ||
-				(CASE WHEN COALESCE(emp.job_title, '') <> '' THEN ' como ' || emp.job_title ELSE '' END) ||
-				(CASE WHEN COALESCE(emp.start_reason, '') <> '' THEN ' — ' || emp.start_reason ELSE '' END) as details,
-			emp.started_at as timestamp
-		FROM employments emp
-		JOIN users u ON u.id = emp.user_id
-		JOIN users owner ON owner.id = @tid
-		WHERE emp.company_id = @tid AND emp.deleted_at IS NULL
-
-		UNION ALL
-
-		SELECT 'employee_left' as type, u.name as user,
-			COALESCE(owner.company_name, '-') as company,
-			'Finalizó su empleo' ||
-				(CASE WHEN COALESCE(emp.end_reason, '') <> '' THEN ' — ' || emp.end_reason ELSE '' END) as details,
-			emp.ended_at as timestamp
-		FROM employments emp
-		JOIN users u ON u.id = emp.user_id
-		JOIN users owner ON owner.id = @tid
-		WHERE emp.company_id = @tid AND emp.deleted_at IS NULL
-			AND emp.status = 'ended' AND emp.ended_at IS NOT NULL
-
-		UNION ALL
-
-		SELECT 'work_hour' as type, u.name as user,
-			COALESCE(e.company_name, '-') as company,
-			CASE WHEN wh.work_type = 'complete' THEN 'Registró jornada completa' ELSE 'Registró ausencia' END as details,
-			wh.created_at as timestamp
-		FROM work_hours wh
-		JOIN users u ON u.id = wh.user_id
-		LEFT JOIN users e ON e.id = u.empleador_id
-		WHERE wh.tenant_id = @tid
-
-		UNION ALL
-
-		SELECT 'follow_up' as type, u.name as user,
-			COALESCE(c.company_name, '-') as company,
-			'Gestión de ' ||
-				(CASE f.kind WHEN 'inactivity' THEN 'inactividad' WHEN 'absence' THEN 'ausencia' ELSE f.kind END) ||
-				': ' ||
-				(CASE f.status WHEN 'contacted' THEN 'Contactado' WHEN 'justified' THEN 'Justificado' WHEN 'escalated' THEN 'Escalado' ELSE f.status END) ||
-				(CASE WHEN COALESCE(f.note, '') <> '' THEN ' — ' || f.note ELSE '' END) as details,
-			f.created_at as timestamp
-		FROM follow_ups f
-		JOIN users u ON u.id = f.user_id
-		LEFT JOIN users c ON c.id = @tid
-		WHERE EXISTS (
-			SELECT 1 FROM employments emp
-			WHERE emp.user_id = f.user_id AND emp.company_id = @tid AND emp.deleted_at IS NULL
-		)
-
-		UNION ALL
-
-		SELECT 'company_' || ce.type as type, COALESCE(actor.name, '') as user,
-			COALESCE(owner.company_name, '-') as company,
-			(CASE ce.type WHEN 'suspended' THEN 'Acceso suspendido' WHEN 'reactivated' THEN 'Acceso reactivado' ELSE ce.type END) as details,
-			ce.created_at as timestamp
-		FROM company_events ce
-		JOIN users owner ON owner.id = ce.company_id
-		LEFT JOIN users actor ON actor.id = ce.by_user_id
-		WHERE ce.company_id = @tid
-
+		WITH events AS (`+tenantEventsCTE+`)
+		SELECT type, category, actor AS "user", actor_id AS user_id, company, details, timestamp, event_id,
+			pinned, edited_at,
+			COUNT(*) OVER() AS total
+		FROM events
+		WHERE (@cat = '' OR category = @cat)
+			AND (@uid = 0 OR actor_id = @uid)
 		ORDER BY timestamp DESC
-		LIMIT 100
-	`, sql.Named("tid", tenantID)).Scan(&activities).Error
-	return activities, err
+		LIMIT @limit OFFSET @offset
+	`,
+		sql.Named("tid", tenantID),
+		sql.Named("cat", category),
+		sql.Named("uid", userID),
+		sql.Named("limit", limit),
+		sql.Named("offset", offset),
+	).Scan(&rows).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	activities := make([]TenantActivity, 0, len(rows))
+	for _, row := range rows {
+		activities = append(activities, TenantActivity{
+			Type:      row.Type,
+			Category:  row.Category,
+			User:      row.User,
+			UserID:    row.UserID,
+			Company:   row.Company,
+			Details:   row.Details,
+			Timestamp: row.Timestamp,
+			EventID:   row.EventID,
+			Pinned:    row.Pinned,
+			EditedAt:  row.EditedAt,
+		})
+	}
+	// Sin filas no hay ventana de la que leer el total; en la última página
+	// vacía (p. ej. tras borrar una nota) el total real es el que diga el
+	// siguiente refresco, así que 0 es la respuesta honesta aquí.
+	var total int64
+	if len(rows) > 0 {
+		total = rows[0].Total
+	}
+	return activities, total, nil
+}
+
+// quoted embebe un literal de texto en el SQL. Solo se usa con las constantes
+// de categoría de este mismo archivo (nunca con entrada del usuario): las
+// ramas de la unión necesitan el literal en el SELECT y repetir un parámetro
+// con nombre por rama enturbiaría la consulta.
+func quoted(literal string) string {
+	return "'" + strings.ReplaceAll(literal, "'", "''") + "'"
+}
+
+// GetTenantActivityPeople lista quién aparece en el expediente. Sale de la
+// MISMA unión que la línea de tiempo (y no de la plantilla actual) para que el
+// desplegable ofrezca exactamente a quien tiene algo que enseñar: incluye a
+// quien ya causó baja y deja fuera a quien acaba de entrar y todavía no ha
+// hecho nada.
+func (r *adminRepository) GetTenantActivityPeople(tenantID uint) ([]TenantActivityPerson, error) {
+	var people []TenantActivityPerson
+	err := r.db.Raw(`
+		WITH events AS (`+tenantEventsCTE+`)
+		SELECT actor_id AS user_id, MAX(actor) AS name
+		FROM events
+		WHERE actor_id > 0 AND COALESCE(actor, '') <> ''
+		GROUP BY actor_id
+		ORDER BY LOWER(MAX(actor)) ASC
+	`, sql.Named("tid", tenantID)).Scan(&people).Error
+	return people, err
+}
+
+// GetTenantActivityCounts cuenta los movimientos por categoría con el filtro de
+// persona ya aplicado, para que los contadores de los chips coincidan siempre
+// con lo que se ve al pulsarlos.
+func (r *adminRepository) GetTenantActivityCounts(tenantID uint, userID uint) ([]TenantActivityCount, error) {
+	var counts []TenantActivityCount
+	err := r.db.Raw(`
+		WITH events AS (`+tenantEventsCTE+`)
+		SELECT category, COUNT(*) AS count
+		FROM events
+		WHERE (@uid = 0 OR actor_id = @uid)
+		GROUP BY category
+	`, sql.Named("tid", tenantID), sql.Named("uid", userID)).Scan(&counts).Error
+	return counts, err
+}
+
+// GetTenantPinnedNotes trae las notas fijadas, que van fuera de la cronología
+// (arriba del expediente) porque son avisos vigentes, no historia.
+func (r *adminRepository) GetTenantPinnedNotes(tenantID uint) ([]TenantActivity, error) {
+	rows := []struct {
+		User      string
+		UserID    uint
+		Details   string
+		Timestamp time.Time
+		EventID   uint
+		EditedAt  *time.Time
+	}{}
+	err := r.db.Raw(`
+		SELECT COALESCE(actor.name, '') AS "user", COALESCE(actor.id, 0) AS user_id,
+			COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido') AS details,
+			ce.created_at AS timestamp, ce.id AS event_id, ce.edited_at
+		FROM company_events ce
+		LEFT JOIN users actor ON actor.id = ce.by_user_id
+		WHERE ce.company_id = ? AND ce.type = ? AND ce.pinned = true
+		ORDER BY ce.created_at DESC
+	`, tenantID, models.CompanyEventNote).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	notes := make([]TenantActivity, 0, len(rows))
+	for _, row := range rows {
+		notes = append(notes, TenantActivity{
+			Type:      "company_" + models.CompanyEventNote,
+			Category:  TenantActivityNote,
+			User:      row.User,
+			UserID:    row.UserID,
+			Details:   row.Details,
+			Timestamp: row.Timestamp,
+			EventID:   row.EventID,
+			Pinned:    true,
+			EditedAt:  row.EditedAt,
+		})
+	}
+	return notes, nil
+}
+
+func (r *adminRepository) DeleteCompanyNote(companyID, noteID uint) (int64, error) {
+	res := r.db.Where("id = ? AND company_id = ? AND type = ?", noteID, companyID, models.CompanyEventNote).
+		Delete(&models.CompanyEvent{})
+	return res.RowsAffected, res.Error
+}
+
+// UpdateCompanyNote corrige el texto de una nota y deja constancia de que se
+// editó. Acotado a la empresa y al tipo "note", igual que el borrado.
+func (r *adminRepository) UpdateCompanyNote(companyID, noteID uint, detail string, editedAt time.Time) (int64, error) {
+	res := r.db.Model(&models.CompanyEvent{}).
+		Where("id = ? AND company_id = ? AND type = ?", noteID, companyID, models.CompanyEventNote).
+		Updates(map[string]interface{}{"detail": detail, "edited_at": editedAt})
+	return res.RowsAffected, res.Error
+}
+
+// SetCompanyNotePinned fija o desfija una nota. No toca edited_at: cambiar de
+// sitio una nota no es reescribirla.
+func (r *adminRepository) SetCompanyNotePinned(companyID, noteID uint, pinned bool) (int64, error) {
+	res := r.db.Model(&models.CompanyEvent{}).
+		Where("id = ? AND company_id = ? AND type = ?", noteID, companyID, models.CompanyEventNote).
+		Update("pinned", pinned)
+	return res.RowsAffected, res.Error
 }

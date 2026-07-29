@@ -23,6 +23,12 @@ type TicketRepository interface {
 	CreateTicket(t *models.Ticket) error
 	SaveTicket(t *models.Ticket) error
 	TouchTicket(t *models.Ticket) error
+	// SyncTicketActivity realinea updated_at con la fecha del mensaje más reciente
+	// del ticket. TouchTicket no sirve para esto porque fuerza time.Now(): al
+	// importar historial todos los tickets quedarían sellados con el instante del
+	// import, que es justo lo que hace que la lista de chats muestre la misma hora
+	// en todas las conversaciones y las ordene mal.
+	SyncTicketActivity(ticketID uint) error
 
 	GetByID(id uint) (*models.Ticket, error)
 	GetWithContact(id uint) (*models.Ticket, error)
@@ -43,6 +49,17 @@ type TicketRepository interface {
 	// Returns true when a row was actually inserted, false when it was a
 	// duplicate. This is the race-safe backstop for concurrent webhook deliveries.
 	CreateMessageIfNew(m *models.TicketMessage) (bool, error)
+
+	// --- Bandeja de salida de WhatsApp ---
+	// ClaimPendingOutbound devuelve los mensajes salientes listos para entregar.
+	ClaimPendingOutbound(limit int, now time.Time) ([]models.TicketMessage, error)
+	// MarkMessageSent cierra el envío guardando el ID que asignó WAHA.
+	MarkMessageSent(msgID uint, externalID string) error
+	// MarkMessageFailed registra el intento fallido; retryAt nil = agotado.
+	MarkMessageFailed(msgID uint, attempts int, errMsg string, retryAt *time.Time) error
+	// RescheduleMessage pospone un envío SIN gastar un intento. Es el caso del
+	// límite antibaneo: la cola no falló, solo va a su ritmo.
+	RescheduleMessage(msgID uint, at time.Time) error
 
 	CreateTransfer(t *models.TicketTransfer) error
 	ListTransfers(origin, ref string) ([]models.TicketTransfer, error)
@@ -116,6 +133,20 @@ func (r *ticketRepository) SaveTicket(t *models.Ticket) error {
 
 func (r *ticketRepository) TouchTicket(t *models.Ticket) error {
 	return r.db.Model(t).Update("updated_at", time.Now()).Error
+}
+
+// SyncTicketActivity fija updated_at en la fecha del último mensaje del ticket.
+//
+// Se resuelve en una sola sentencia SQL en vez de leer los mensajes en memoria: el
+// COALESCE deja el valor actual intacto si el ticket todavía no tiene mensajes, y
+// se filtra por id con un modelo limpio para no arrastrar asociaciones precargadas.
+func (r *ticketRepository) SyncTicketActivity(ticketID uint) error {
+	return r.db.Model(&models.Ticket{}).
+		Where("id = ?", ticketID).
+		Update("updated_at", gorm.Expr(
+			`COALESCE((SELECT MAX(created_at) FROM ticket_messages
+			   WHERE ticket_id = ? AND deleted_at IS NULL), updated_at)`, ticketID,
+		)).Error
 }
 
 func (r *ticketRepository) GetByID(id uint) (*models.Ticket, error) {
@@ -197,6 +228,59 @@ func (r *ticketRepository) CreateMessageIfNew(m *models.TicketMessage) (bool, er
 		return false, res.Error
 	}
 	return res.RowsAffected > 0, nil
+}
+
+// ClaimPendingOutbound selecciona los mensajes salientes procesables: pendientes
+// y ya vencidos. El worker es único (una goroutine), así que no hace falta
+// SELECT ... FOR UPDATE; el orden por id garantiza FIFO, que es lo que preserva
+// el orden de la conversación tal como lo escribió el agente.
+//
+// Un mensaje esperando su backoff no bloquea la cola: queda fuera de la selección
+// y los demás siguen entregándose.
+func (r *ticketRepository) ClaimPendingOutbound(limit int, now time.Time) ([]models.TicketMessage, error) {
+	var msgs []models.TicketMessage
+	err := r.db.
+		Where("delivery_status = ?", models.DeliveryPending).
+		Where("next_attempt_at IS NULL OR next_attempt_at <= ?", now).
+		Order("id ASC").
+		Limit(limit).
+		Find(&msgs).Error
+	return msgs, err
+}
+
+func (r *ticketRepository) MarkMessageSent(msgID uint, externalID string) error {
+	return r.db.Model(&models.TicketMessage{}).
+		Where("id = ?", msgID).
+		Updates(map[string]interface{}{
+			"delivery_status": models.DeliverySent,
+			"external_id":     externalID,
+			"next_attempt_at": nil,
+			"delivery_error":  "",
+		}).Error
+}
+
+func (r *ticketRepository) MarkMessageFailed(msgID uint, attempts int, errMsg string, retryAt *time.Time) error {
+	status := models.DeliveryPending
+	if retryAt == nil {
+		status = models.DeliveryFailed
+	}
+	return r.db.Model(&models.TicketMessage{}).
+		Where("id = ?", msgID).
+		Updates(map[string]interface{}{
+			"delivery_status": status,
+			// next_attempt_at se escribe siempre, incluido el nil de un mensaje
+			// agotado: dejar la fecha del intento anterior en una fila 'failed' solo
+			// confundiría al leer la tabla para diagnosticar.
+			"next_attempt_at":   retryAt,
+			"delivery_attempts": attempts,
+			"delivery_error":    errMsg,
+		}).Error
+}
+
+func (r *ticketRepository) RescheduleMessage(msgID uint, at time.Time) error {
+	return r.db.Model(&models.TicketMessage{}).
+		Where("id = ?", msgID).
+		Update("next_attempt_at", at).Error
 }
 
 func (r *ticketRepository) CreateTransfer(t *models.TicketTransfer) error {

@@ -33,12 +33,14 @@ import { UserModal } from '../components/Admin/Modals/UserModal'
 import { CreateUserModal } from '../components/Admin/Modals/CreateUserModal'
 import { ImportUsersModal } from '../components/Admin/Modals/ImportUsersModal'
 import { ExportUsersModal } from '../components/Admin/Modals/ExportUsersModal'
+import SendEmailModal from '../components/Admin/Modals/SendEmailModal'
 import { EmailComposerModal, type ComposerRecipient } from '../components/Admin/EmailComposerModal'
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
 import { ActivityFeed } from '../components/Admin/ActivityFeed'
 import { ArchivedList } from '../components/Admin/ArchivedList'
 import { authService, adminService } from '../services/api'
+import { setRecordNav } from '../lib/recordNav'
 import { useAuth } from '../context/AuthContext'
 import styles from '../components/Admin/Admin.module.css'
 
@@ -145,6 +147,7 @@ export default function Admin() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
+  const [showSendEmailModal, setShowSendEmailModal] = useState(false)
   const [showActionsMenu, setShowActionsMenu] = useState(false)
   const [createForm, setCreateForm] = useState({ ...EMPTY_CREATE_FORM })
   const [createError, setCreateError] = useState('')
@@ -292,6 +295,14 @@ export default function Admin() {
   const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE))
   const currentUsersPage = Math.min(usersPage, totalUserPages)
   const paginatedUsers = filteredUsers.slice((currentUsersPage - 1) * USERS_PER_PAGE, currentUsersPage * USERS_PER_PAGE)
+
+  // Este panel abre la misma ficha desde varias tablas (usuarios, antigüedad,
+  // inactividad, ausencias...). Cada una anota SU orden al entrar, para que el
+  // "siguiente" del detalle recorra la lista de la que venías y no otra.
+  const openUser = (userId: number, sequence: number[]) => {
+    setRecordNav('admin-users', sequence)
+    navigate(`/admin/users/${userId}`)
+  }
 
   const isBulkSelectable = (u: any) => !u.is_superadmin && u.id !== viewer?.id
   const selectableIds: number[] = filteredUsers.filter(isBulkSelectable).map((u: any) => u.id)
@@ -877,7 +888,7 @@ export default function Admin() {
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {topAbsentees.map((g, i) => (
-                        <div key={g.user_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }} onClick={() => navigate(`/admin/users/${g.user_id}`)} title="Ver detalle">
+                        <div key={g.user_id} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }} onClick={() => openUser(g.user_id, topAbsentees.map((x: any) => x.user_id))} title="Ver detalle">
                           <span style={{ width: 18, fontSize: '12px', fontWeight: 800, color: '#94a3b8' }}>{i + 1}</span>
                           <Avatar src={g.avatar} name={g.name} size="sm" />
                           <div style={{ flex: 1, minWidth: 0 }}>
@@ -964,7 +975,7 @@ export default function Admin() {
                         </thead>
                         <tbody>
                           {seniorityPaginated.map((s, idx) => (
-                            <tr key={s.user_id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/admin/users/${s.user_id}`)} title="Ver detalle del profesional">
+                            <tr key={s.user_id} style={{ cursor: 'pointer' }} onClick={() => openUser(s.user_id, seniorityFiltered.map(x => x.user_id))} title="Ver detalle del profesional">
                               <td style={{ fontWeight: 800, color: '#94a3b8' }}>{(csCurrentPage - 1) * CS_PER_PAGE + idx + 1}</td>
                               <td>
                                 <div className={styles['user-cell']}>
@@ -1117,6 +1128,28 @@ export default function Admin() {
               )}
               {canManage && (
               <button
+                onClick={() => setShowSendEmailModal(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 16px',
+                  background: '#fff',
+                  color: '#6d28d9',
+                  border: '1px solid #ddd6fe',
+                  borderRadius: '12px',
+                  fontWeight: 700,
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Enviar un correo masivo con las plantillas y variables de Tools"
+              >
+                <Mail size={16} /> Enviar correo
+              </button>
+              )}
+              {canManage && (
+              <button
                 onClick={openCreateModal}
                 style={{
                   display: 'flex',
@@ -1244,7 +1277,7 @@ export default function Admin() {
                         <div className={styles['action-buttons']} data-tour="admin-user-actions">
                           <button
                             className={styles['btn-icon']}
-                            onClick={() => navigate(`/admin/users/${u.id}`)}
+                            onClick={() => openUser(u.id, filteredUsers.map((x: any) => x.id))}
                             title="Ver detalles"
                           >
                             <Eye size={16} />
@@ -1378,7 +1411,7 @@ export default function Admin() {
                         return (
                           <tr key={u.id} style={{ background: isRed ? 'rgba(239,68,68,0.07)' : 'rgba(245,158,11,0.07)' }}>
                             <td>
-                              <div className={styles['user-cell']} style={{ cursor: 'pointer' }} onClick={() => navigate(`/admin/users/${u.id}`)} title="Ver detalle del profesional">
+                              <div className={styles['user-cell']} style={{ cursor: 'pointer' }} onClick={() => openUser(u.id, teamFiltered.map(x => x.id))} title="Ver detalle del profesional">
                                 <Avatar src={u.avatar} name={u.name} size="sm" />
                                 <div>
                                   <span style={{ display: 'block' }}>{u.name}</span>
@@ -1443,7 +1476,7 @@ export default function Admin() {
                                 </button>
                                 <button
                                   className={styles['btn-icon']}
-                                  onClick={() => navigate(`/admin/users/${u.id}`)}
+                                  onClick={() => openUser(u.id, teamFiltered.map(x => x.id))}
                                   title="Ver detalle"
                                 >
                                   <Eye size={16} />
@@ -1577,7 +1610,7 @@ export default function Admin() {
                                   <button className={styles['btn-icon']} onClick={() => { adminService.logContact(g.user_id, 'chat'); navigate(`/chat?userId=${g.user_id}`) }} title="Chat interno" style={{ color: '#7c3aed' }}>
                                     <MessageSquare size={16} />
                                   </button>
-                                  <button className={styles['btn-icon']} onClick={() => navigate(`/admin/users/${g.user_id}`)} title="Ver detalle del profesional">
+                                  <button className={styles['btn-icon']} onClick={() => openUser(g.user_id, absFiltered.map(x => x.user_id))} title="Ver detalle del profesional">
                                     <Eye size={16} />
                                   </button>
                                 </div>
@@ -1838,7 +1871,16 @@ export default function Admin() {
           filtered={!!(searchQuery.trim() || roleFilter || companyFilter !== '')}
           onClose={() => setShowExportModal(false)}
         />
-      )}    </div>
+      )}
+
+      {showSendEmailModal && (
+        <SendEmailModal
+          selected={filteredUsers.filter((u: any) => selectedIds.has(u.id)).map((u: any) => ({ id: u.id, name: u.name, email: u.email }))}
+          filtered={filteredUsers.map((u: any) => ({ id: u.id, name: u.name, email: u.email }))}
+          onClose={() => setShowSendEmailModal(false)}
+        />
+      )}
+    </div>
   )
 }
 

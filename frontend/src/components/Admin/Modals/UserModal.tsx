@@ -1,5 +1,6 @@
 import { User } from '../../../types'
 import { Select } from '../../ui/Select'
+import { useDirtySnapshot } from '../../ui/useCloseGuard'
 import { Modal, Button } from '../../ui'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../Auth/countries'
 import styles from '../Admin.module.css'
@@ -43,10 +44,15 @@ export function UserModal({
   submitLabel,
   busy = false,
 }: UserModalProps) {
+  // Se compara contra el formulario tal y como se abrió: al editar, cerrar sin
+  // haber tocado nada no molesta con la confirmación.
+  const isDirty = useDirtySnapshot(form)
+
   return (
     <Modal
       isOpen
       onClose={onClose}
+      isDirty={isDirty}
       title={title}
       size="md"
       footer={

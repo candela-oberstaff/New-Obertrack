@@ -26,6 +26,17 @@ export interface EmailCampaign {
   template?: EmailTemplate;
 }
 
+/** Variable de personalización ({{nombre}}, {{empresa}}, ...). El catálogo lo
+ *  define el backend en utils/email_vars.go — no lo dupliques aquí. */
+export interface EmailVariable {
+  key: string;
+  label: string;
+  description: string;
+  example: string;
+  fallback: string;
+  group: string;
+}
+
 export interface QuickEmailPayload {
   to_email: string;
   to_name?: string;
@@ -34,12 +45,45 @@ export interface QuickEmailPayload {
 }
 
 export interface BulkEmailPayload {
-  recipients: Array<{ name: string; email: string }>;
+  /** Contactos sueltos que no son usuarios: solo se personaliza nombre y correo. */
+  recipients?: Array<{ name: string; email: string }>;
+  /**
+   * Formato híbrido JSON ({userIds, groupIds, expressContacts}). El backend lo
+   * resuelve contra la base de datos, así que habilita TODAS las variables.
+   */
+  recipient_list?: string;
   subject: string;
   html_content: string;
 }
 
+/**
+ * Prueba de un correo antes de enviarlo de verdad. Solo llega a la dirección de
+ * quien la pide; el backend ignora cualquier otro destinatario.
+ *
+ * `blocks` y `template_id` se componen con el MISMO renderizador del envío
+ * real, así que el resultado es fiel; `html_content` es para el texto suelto.
+ */
+export interface TestEmailPayload {
+  subject: string;
+  template_id?: number;
+  blocks?: string;
+  html_content?: string;
+  /** Usuario cuyos datos resuelven las variables. Sin él, valores de ejemplo. */
+  as_user_id?: number;
+}
+
 export const emailService = {
+  sendTestEmail: async (payload: TestEmailPayload): Promise<{ to: string; viewed_as: string }> => {
+    const response = await api.post('/email/test-send', payload);
+    return response.data;
+  },
+
+  // Variables de personalización
+  getVariables: async (): Promise<EmailVariable[]> => {
+    const response = await api.get('/email/variables');
+    return response.data?.variables || [];
+  },
+
   // Templates
   getTemplates: async (): Promise<EmailTemplate[]> => {
     const response = await api.get('/email/templates');

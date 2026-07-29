@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { UploadCloud, X, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { UploadCloud, X, FileSpreadsheet, Download, AlertCircle, CheckCircle2, Loader2, ChevronLeft, ChevronRight, ChevronDown, Network } from 'lucide-react'
 import { adminService, employerService } from '../../../services/api'
+import { useCloseGuard } from '../../ui/useCloseGuard'
 
 type ImportStatus = 'ok' | 'error' | 'conflict'
 interface ImportRow {
@@ -9,6 +10,9 @@ interface ImportRow {
   status: ImportStatus
   message?: string
   existing?: { id: number; name: string; email: string }
+  // Aviso informativo: la fila se importa igual (p.ej. se la marca como manager
+  // porque otra fila la puso en reporta_a).
+  warning?: string
 }
 interface PreviewData {
   companies?: ImportRow[]
@@ -23,6 +27,7 @@ interface Cred { name: string; email: string; company: string; temp_password: st
 interface ExecResult {
   companies?: { created: number; updated: number; skipped: number; errors: { email: string; error: string }[] }
   professionals: { created: number; updated: number; skipped: number; errors: { email: string; error: string }[] }
+  managers: { assigned: number; errors: { email: string; error: string }[] }
   credentials: Cred[]
 }
 
@@ -42,9 +47,6 @@ function StatusPill({ row }: { row: ImportRow }) {
 }
 const pill: React.CSSProperties = { display: 'inline-block', padding: '2px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700 }
 
-const isManagerValue = (v?: string) =>
-  ['si', 'sí', 'yes', 'y', 'true', '1', 'x', 'verdadero'].includes((v ?? '').trim().toLowerCase())
-
 const downloadCSV = (rows: string[][], filename: string) => {
   const csv = '﻿' + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -63,6 +65,27 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
   const [preview, setPreview] = useState<PreviewData | null>(null)
   const [decisions, setDecisions] = useState<Record<string, Action>>({})
   const [result, setResult] = useState<ExecResult | null>(null)
+
+  // Cerrar a mitad de una importación tira el trabajo. El caso grave es el paso
+  // final: las contraseñas temporales solo se muestran ahí y no se pueden
+  // recuperar después, así que el aviso lo dice explícitamente.
+  const requestClose = useCloseGuard(
+    () => step !== 'upload',
+    onClose,
+    step === 'result' && (result?.credentials?.length ?? 0) > 0
+      ? {
+          title: '¿Cerrar sin descargar las credenciales?',
+          message: 'Las contraseñas temporales solo se muestran aquí y no se podrán recuperar. Descarga el CSV antes de cerrar.',
+          confirmLabel: 'Cerrar de todos modos',
+          cancelLabel: 'Volver',
+        }
+      : {
+          title: '¿Cancelar la importación?',
+          message: 'Se perderá el archivo cargado y las decisiones que tomaste.',
+          confirmLabel: 'Cancelar importación',
+          cancelLabel: 'Seguir',
+        }
+  )
 
   const handleFile = async (file: File) => {
     setBusy(true); setError(null)
@@ -166,6 +189,10 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
       const res: ExecResult = {
         companies: norm(raw.companies),
         professionals: norm(raw.professionals) ?? { created: 0, updated: 0, skipped: 0, errors: [] },
+        managers: {
+          assigned: raw.managers?.assigned ?? 0,
+          errors: Array.isArray(raw.managers?.errors) ? raw.managers.errors : [],
+        },
         credentials: Array.isArray(raw.credentials) ? raw.credentials : [],
       }
       setResult(res)
@@ -229,7 +256,7 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
   )
 
   return (
-    <div style={overlay} onClick={onClose}>
+    <div style={overlay} onClick={requestClose}>
       <div style={panel} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -241,7 +268,7 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
               <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>{employerMode ? 'A tu empresa, desde un Excel' : 'Empresas y profesionales'}</p>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={22} /></button>
+          <button onClick={requestClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={22} /></button>
         </div>
 
         {error && (
@@ -302,6 +329,10 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
                 setDecision={(row, a) => setDecisions(d => ({ ...d, [`emp-${row}`]: a }))}
               />
             )}
+            {/* El árbol usa TODAS las filas, no solo las importables: si el
+                manager de alguien viene con error hay que poder verlo acá. */}
+            <OrgChartPreview rows={preview.professionals ?? []} showCompany={!employerMode} />
+
             <PreviewTable
               title="Profesionales"
               entity="pro"
@@ -370,11 +401,17 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
               <ResultCard title="Profesionales" r={result.professionals} omitted={omitted.professionals} />
             </div>
 
-            {((result.companies?.errors?.length ?? 0) > 0 || (result.professionals.errors?.length ?? 0) > 0) && (
+            {result.managers.assigned > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 12, background: '#f5f3ff', color: '#6d28d9', fontSize: 13, fontWeight: 600, marginBottom: 16 }}>
+                🧭 Organigrama: <strong>{result.managers.assigned}</strong> profesional(es) quedaron asignados a su manager.
+              </div>
+            )}
+
+            {((result.companies?.errors?.length ?? 0) > 0 || (result.professionals.errors?.length ?? 0) > 0 || result.managers.errors.length > 0) && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ ...labelStyle, marginBottom: 6, color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 6 }}><AlertCircle size={15} /> Errores</div>
                 <div style={{ maxHeight: 140, overflowY: 'auto', border: '1px solid #fee2e2', borderRadius: 10, padding: 10 }}>
-                  {[...(result.companies?.errors ?? []), ...(result.professionals.errors ?? [])].map((e, i) => (
+                  {[...(result.companies?.errors ?? []), ...(result.professionals.errors ?? []), ...result.managers.errors].map((e, i) => (
                     <div key={i} style={{ fontSize: 12.5, color: '#475569' }}><strong>{e.email}</strong>: {e.error}</div>
                   ))}
                 </div>
@@ -476,6 +513,191 @@ function Pager({ page, pageCount, setPage, from, shown, total }: { page: number;
   )
 }
 
+const emailOf = (r: ImportRow) => (r.data.email ?? '').trim().toLowerCase()
+const managerOf = (r: ImportRow) => (r.data.reporta_a ?? '').trim().toLowerCase()
+
+// Índice email → nombre de las filas del archivo, para poder mostrar "Martín
+// Salas" donde el Excel dice un correo.
+function buildNameIndex(rows: ImportRow[]) {
+  const m = new Map<string, string>()
+  rows.forEach(r => {
+    const e = emailOf(r)
+    if (e && !m.has(e)) m.set(e, (r.data.nombre ?? '').trim())
+  })
+  return m
+}
+
+interface OrgGroup {
+  company: string
+  /** Filas de esta empresa: el árbol solo puede colgar gente de acá dentro. */
+  list: ImportRow[]
+  /** Raíces del árbol: sin manager, o con un manager que ya existe en el sistema. */
+  roots: { label: string | null; rows: ImportRow[] }[]
+  /** Su manager está en el archivo pero en otra empresa (el import lo rechaza). */
+  crossCompany: ImportRow[]
+  /** Filas que no cuelgan de ninguna raíz (quedaron dentro de un círculo). */
+  orphans: ImportRow[]
+}
+
+// Arma el organigrama que describe el archivo. Se construye acá y no en el
+// backend porque es solo una ayuda visual sobre lo que el usuario acaba de
+// subir; el vínculo real lo resuelve la segunda pasada del import.
+export function buildOrgGroups(rows: ImportRow[], showCompany: boolean): OrgGroup[] {
+  const companyOf = (r: ImportRow) => (showCompany ? (r.data.empresa ?? '').trim() || '(sin empresa)' : '')
+
+  // Índice GLOBAL email → empresa: hace falta para distinguir "el manager no
+  // está en el archivo" de "está, pero en otra empresa", que son dos problemas
+  // distintos y se ven igual si solo se mira la empresa de a una.
+  const companyByEmail = new Map<string, string>()
+  rows.forEach(r => {
+    const e = emailOf(r)
+    if (e && !companyByEmail.has(e)) companyByEmail.set(e, companyOf(r))
+  })
+
+  const byCompany = new Map<string, ImportRow[]>()
+  rows.forEach(r => byCompany.set(companyOf(r), [...(byCompany.get(companyOf(r)) ?? []), r]))
+
+  return [...byCompany.entries()].map(([company, list]) => {
+    const noManager: ImportRow[] = []
+    // Managers que ya existían en el sistema: agrupan a sus reportes bajo un
+    // encabezado propio, porque su fila no está en el archivo.
+    const external = new Map<string, ImportRow[]>()
+    const crossCompany: ImportRow[] = []
+
+    list.forEach(r => {
+      const mgr = managerOf(r)
+      if (!mgr) { noManager.push(r); return }
+      const mgrCompany = companyByEmail.get(mgr)
+      if (mgrCompany === undefined) external.set(mgr, [...(external.get(mgr) ?? []), r])
+      else if (mgrCompany !== company) crossCompany.push(r)
+      // Si es de la misma empresa, ya se dibuja colgando de su manager.
+    })
+
+    const roots = [
+      ...(noManager.length ? [{ label: null, rows: noManager }] : []),
+      ...[...external.entries()].map(([email, rs]) => ({ label: email, rows: rs })),
+    ]
+
+    // Se recorre por número de fila y no por email: hay filas sin email (las
+    // que vienen incompletas) y aun así tienen que contarse como alcanzadas.
+    const reachable = new Set<number>()
+    const walk = (r: ImportRow) => {
+      if (reachable.has(r.row)) return
+      reachable.add(r.row)
+      const e = emailOf(r)
+      if (e) list.filter(c => managerOf(c) === e).forEach(walk)
+    }
+    roots.forEach(g => g.rows.forEach(walk))
+
+    const crossRows = new Set(crossCompany.map(r => r.row))
+    const orphans = list.filter(r => !reachable.has(r.row) && !crossRows.has(r.row))
+
+    return { company, list, roots, crossCompany, orphans }
+  })
+}
+
+function OrgNode({ row, all, depth, seen }: { row: ImportRow; all: ImportRow[]; depth: number; seen: Set<number> }) {
+  const email = emailOf(row)
+  // Corta la recursión si el archivo trae un círculo: la fila ya se pintó.
+  if (seen.has(row.row)) return null
+  const nextSeen = new Set(seen).add(row.row)
+  const reports = email === '' ? [] : all.filter(r => managerOf(r) === email)
+  const failed = row.status === 'error'
+
+  return (
+    <div style={{ marginLeft: depth === 0 ? 0 : 18, borderLeft: depth === 0 ? 'none' : '1px solid #e2e8f0', paddingLeft: depth === 0 ? 0 : 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: depth === 0 ? 700 : 600, color: failed ? '#94a3b8' : '#0f172a', fontSize: 13, textDecoration: failed ? 'line-through' : 'none' }}>
+          {row.data.nombre || row.data.email || '—'}
+        </span>
+        {row.data.cargo && <span style={{ fontSize: 12, color: '#64748b' }}>{row.data.cargo}</span>}
+        {reports.length > 0 && (
+          <span style={{ ...pill, background: '#ede9fe', color: '#6d28d9', fontSize: 10 }}>
+            {reports.length} a cargo
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: '#cbd5e1' }}>fila {row.row}</span>
+        {failed && <span style={{ fontSize: 11, color: '#dc2626' }}>no se importa</span>}
+      </div>
+      {reports.map(r => (
+        <OrgNode key={r.row} row={r} all={all} depth={depth + 1} seen={nextSeen} />
+      ))}
+    </div>
+  )
+}
+
+// Vista de árbol del organigrama que describe el archivo. Sin esto, la columna
+// "Reporta a" es una lista de correos y no se ve de un vistazo quién tiene
+// gente a cargo.
+function OrgChartPreview({ rows, showCompany }: { rows: ImportRow[]; showCompany: boolean }) {
+  const [open, setOpen] = useState(true)
+  const links = rows.filter(r => managerOf(r) !== '').length
+  const groups = useMemo(() => buildOrgGroups(rows, showCompany), [rows, showCompany])
+  if (links === 0) return null
+
+  return (
+    <div style={{ marginBottom: 18, border: '1px solid #ddd6fe', borderRadius: 12, overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#f5f3ff', border: 'none', cursor: 'pointer', color: '#5b21b6', fontWeight: 700, fontSize: 13 }}
+      >
+        <Network size={16} />
+        Organigrama detectado ({links} {links === 1 ? 'vínculo' : 'vínculos'})
+        <ChevronDown size={16} style={{ marginLeft: 'auto', transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+      </button>
+
+      {open && (
+        <div style={{ padding: '12px 14px', maxHeight: 300, overflowY: 'auto' }}>
+          {groups.map(g => (
+            <div key={g.company} style={{ marginBottom: 12 }}>
+              {showCompany && (
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>{g.company}</div>
+              )}
+              {g.roots.map((root, i) => (
+                <div key={i} style={{ marginBottom: 8 }}>
+                  {root.label && (
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 2 }}>
+                      Bajo <strong style={{ color: '#475569' }}>{root.label}</strong> (ya existe en el sistema):
+                    </div>
+                  )}
+                  {root.rows.map(r => (
+                    <OrgNode key={r.row} row={r} all={g.list} depth={0} seen={new Set<number>()} />
+                  ))}
+                </div>
+              ))}
+              {g.crossCompany.length > 0 && (
+                <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: '#fffbeb' }}>
+                  <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, marginBottom: 4 }}>
+                    Su manager está en el archivo pero en otra empresa:
+                  </div>
+                  {g.crossCompany.map(r => (
+                    <div key={r.row} style={{ fontSize: 12.5, color: '#92400e' }}>
+                      fila {r.row}: {r.data.nombre || r.data.email} → {r.data.reporta_a}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {g.orphans.length > 0 && (
+                <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 8, background: '#fef2f2' }}>
+                  <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 700, marginBottom: 4 }}>
+                    Sin ubicar — forman un círculo entre ellos:
+                  </div>
+                  {g.orphans.map(r => (
+                    <div key={r.row} style={{ fontSize: 12.5, color: '#7f1d1d' }}>
+                      fila {r.row}: {r.data.nombre || r.data.email} → reporta a {r.data.reporta_a}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PreviewTable({
   title, entity, rows, nameKey, companyKey, showCompany, decisions, setDecision,
 }: {
@@ -489,6 +711,9 @@ function PreviewTable({
   setDecision: (row: number, a: Action) => void
 }) {
   const { visible, page, pageCount, setPage, from } = usePagedRows(rows)
+  // La columna reporta_a solo existe en la hoja de profesionales.
+  const showManager = entity === 'pro' && rows.some(r => managerOf(r) !== '')
+  const nameIndex = useMemo(() => buildNameIndex(rows), [rows])
   if (rows.length === 0) return null
   return (
     <div style={{ marginBottom: 18 }}>
@@ -497,25 +722,35 @@ function PreviewTable({
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
           <thead>
             <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
-              <th style={th}>Fila</th><th style={th}>Nombre</th><th style={th}>Email</th>{showCompany && <th style={th}>Empresa</th>}<th style={th}>Estado</th><th style={th}>Acción</th>
+              <th style={th}>Fila</th><th style={th}>Nombre</th><th style={th}>Email</th>{showCompany && <th style={th}>Empresa</th>}{showManager && <th style={th}>Reporta a</th>}<th style={th}>Estado</th><th style={th}>Acción</th>
             </tr>
           </thead>
           <tbody>
             {visible.map(r => (
               <tr key={r.row} style={{ borderTop: '1px solid #f1f5f9' }}>
                 <td style={td}>{r.row}</td>
-                <td style={td}>
-                  {r.data[nameKey] || '—'}
-                  {isManagerValue(r.data.es_manager) && (
-                    <span style={{ ...pill, marginLeft: 6, background: '#ede9fe', color: '#6d28d9', fontSize: 10 }}>Manager</span>
-                  )}
-                </td>
+                {/* Sin badge de manager: quién manda a quién se lee en el
+                    organigrama de arriba, y acá solo agregaba ruido. */}
+                <td style={td}>{r.data[nameKey] || '—'}</td>
                 <td style={td}>{r.data.email || '—'}</td>
                 {showCompany && <td style={td}>{r.data[companyKey] || '—'}</td>}
+                {showManager && (
+                  <td style={td}>
+                    {managerOf(r)
+                      // El nombre se lee mucho mejor que el correo; el correo
+                      // queda debajo porque es lo que hay que corregir en el Excel.
+                      ? <>
+                          <div style={{ color: '#475569' }}>{nameIndex.get(managerOf(r)) || r.data.reporta_a}</div>
+                          {nameIndex.get(managerOf(r)) && <div style={{ fontSize: 11, color: '#94a3b8' }}>{r.data.reporta_a}</div>}
+                        </>
+                      : <span style={{ color: '#cbd5e1' }}>—</span>}
+                  </td>
+                )}
                 <td style={td}>
                   <StatusPill row={r} />
                   {r.status === 'conflict' && r.existing && <div style={{ fontSize: 11, color: '#94a3b8' }}>de {r.existing.name}</div>}
                   {r.status === 'conflict' && !r.existing && r.message && <div style={{ fontSize: 11, color: '#b45309' }}>{r.message}</div>}
+                  {r.warning && <div style={{ fontSize: 11, color: '#6d28d9' }}>{r.warning}</div>}
                 </td>
                 <td style={td}>
                   {r.status === 'ok' && <span style={{ color: '#059669', fontWeight: 600 }}>Crear</span>}

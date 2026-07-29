@@ -88,6 +88,25 @@ func (s *CalendarSyncService) OnTaskDeleted(taskID uint) {
 	}
 }
 
+// OnAccountDisconnected limpia los enlaces de un usuario que acaba de desvincular
+// su cuenta. Lo llama googleCalendarService.Disconnect por callback inyectado.
+//
+// Los eventos ya escritos SE QUEDAN en el calendario del usuario: la desconexión
+// revoca el permiso primero, así que a partir de ese momento no hay credencial
+// con la que borrarlos. Lo que sí desaparece es el enlace, que sin cuenta detrás
+// solo afirma algo que ya no se puede comprobar ni mantener. La contrapartida es
+// que si el usuario vuelve a conectar la MISMA cuenta, las tareas que se editen
+// después generan un evento nuevo junto al que quedó huérfano; se prefiere eso a
+// arrastrar enlaces que apuntan a credenciales que ya no existen.
+func (s *CalendarSyncService) OnAccountDisconnected(userID uint) {
+	if !s.Enabled() {
+		return
+	}
+	if err := s.syncRepo.DeleteLinksForUser(userID); err != nil {
+		log.Printf("Calendar sync: no se pudieron borrar los enlaces del usuario %d al desvincular: %v", userID, err)
+	}
+}
+
 // enqueueReconcile calcula y encola la diferencia entre el estado deseado y los
 // enlaces actuales de la tarea.
 func (s *CalendarSyncService) enqueueReconcile(taskID uint) error {
@@ -200,9 +219,11 @@ func (s *CalendarSyncService) signal() {
 	}
 }
 
-// processBatch toma un lote de jobs pendientes y los procesa uno a uno.
+// processBatch toma un lote de jobs pendientes ya vencidos y los procesa uno a
+// uno. Los que están esperando su backoff quedan fuera de la selección y no
+// frenan al resto.
 func (s *CalendarSyncService) processBatch() {
-	jobs, err := s.syncRepo.ClaimPendingJobs(50)
+	jobs, err := s.syncRepo.ClaimPendingJobs(50, time.Now())
 	if err != nil {
 		log.Printf("Calendar sync: no se pudieron leer jobs pendientes: %v", err)
 		return
@@ -230,15 +251,40 @@ func (s *CalendarSyncService) processJob(job *models.CalendarSyncJob) {
 		return
 	}
 
-	// needs_reauth no es reintentable: el usuario tiene que reconectar. Se marca
-	// el job como fallido de una vez en lugar de gastar reintentos.
-	exhausted := errors.Is(err, ErrNeedsReauth) || job.Attempts+1 >= models.CalendarSyncMaxAttempts
-	if merr := s.syncRepo.MarkJobFailed(job.ID, job.Attempts+1, err.Error(), exhausted); merr != nil {
+	attempts := job.Attempts + 1
+	retryAt := retryAfterFailure(err, attempts)
+
+	if merr := s.syncRepo.MarkJobFailed(job.ID, attempts, err.Error(), retryAt); merr != nil {
 		log.Printf("Calendar sync: no se pudo marcar job %d como fallido: %v", job.ID, merr)
 	}
-	if exhausted {
-		log.Printf("Calendar sync: job %d (tarea %d, usuario %d) agotado: %v", job.ID, job.TaskID, job.UserID, err)
+	if retryAt == nil {
+		log.Printf("Calendar sync: job %d (tarea %d, usuario %d) agotado tras %d intentos: %v",
+			job.ID, job.TaskID, job.UserID, attempts, err)
+		return
 	}
+	log.Printf("Calendar sync: job %d (tarea %d, usuario %d) falló en el intento %d, reintento en %s: %v",
+		job.ID, job.TaskID, job.UserID, attempts, models.CalendarSyncRetryDelay(attempts), err)
+}
+
+// retryAfterFailure decide cuándo —o si— se reintenta un job. Devuelve nil para
+// los fallos que no mejoran esperando, de forma que no gasten la ventana de
+// reintentos ni cuota de la API:
+//
+//   - needs_reauth: hace falta que el usuario reconecte, no tiempo.
+//   - rechazo permanente de Google (4xx que no sea 408/429): datos inválidos o
+//     permiso denegado; repetir la misma petición da la misma respuesta.
+//
+// El resto —cortes de red, 429 por cuota, 5xx— son transitorios y sí escalan por
+// la tabla de backoff hasta agotar CalendarSyncMaxAttempts.
+func retryAfterFailure(err error, attempts int) *time.Time {
+	if errors.Is(err, ErrNeedsReauth) || errors.Is(err, ErrGooglePermanent) {
+		return nil
+	}
+	if attempts >= models.CalendarSyncMaxAttempts {
+		return nil
+	}
+	at := time.Now().Add(models.CalendarSyncRetryDelay(attempts))
+	return &at
 }
 
 func (s *CalendarSyncService) processUpsert(job *models.CalendarSyncJob) error {
@@ -283,21 +329,28 @@ func (s *CalendarSyncService) processUpsert(job *models.CalendarSyncJob) error {
 }
 
 func (s *CalendarSyncService) createAndLink(taskID, userID uint, calendarID string, input CalendarEventInput) error {
-	eventID, err := s.google.CreateEvent(userID, calendarID, input)
+	event, err := s.google.CreateEvent(userID, calendarID, input)
 	if err != nil {
 		return err
 	}
 	return s.syncRepo.UpsertLink(&models.CalendarEventLink{
 		TaskID:        taskID,
 		UserID:        userID,
-		GoogleEventID: eventID,
+		GoogleEventID: event.ID,
 		CalendarID:    calendarID,
 	})
 }
 
 func (s *CalendarSyncService) processDelete(job *models.CalendarSyncJob) error {
 	if job.GoogleEventID != "" {
-		if err := s.google.DeleteEvent(job.UserID, job.CalendarID, job.GoogleEventID); err != nil {
+		err := s.google.DeleteEvent(job.UserID, job.CalendarID, job.GoogleEventID)
+		// Sin cuenta vinculada no hay credencial con la que borrar nada en Google,
+		// y no la va a haber por reintentar: el usuario desvinculó. Se sigue
+		// adelante para limpiar el enlace. Sin esto, cada edición posterior de una
+		// tarea que ese usuario tuvo sincronizada encolaba un delete que gastaba
+		// sus cinco intentos y dejaba el enlace vivo para repetirlo en la
+		// siguiente edición, para siempre.
+		if err != nil && !errors.Is(err, repository.ErrGoogleAccountNotFound) {
 			return err
 		}
 	}

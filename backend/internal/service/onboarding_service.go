@@ -61,8 +61,8 @@ type HireRequest struct {
 
 // HireResult resume qué pasó, para que Obersuite lo registre.
 type HireResult struct {
-	UserID       uint   `json:"user_id"`
-	EmploymentID uint   `json:"employment_id"`
+	UserID       uint `json:"user_id"`
+	EmploymentID uint `json:"employment_id"`
 	// Status: created (profesional nuevo), rehired (ya existía, nuevo empleo),
 	// already_active (ya tenía empleo activo en esa empresa: no-op idempotente).
 	Status     string `json:"status"`

@@ -37,6 +37,7 @@ const EmailCampaigns = lazy(() => import('../pages/Email/EmailCampaigns'))
 const EmpresaEmployees = lazy(() => import('../pages/Empresa/EmpresaEmployees'))
 const ProfessionalsMap = lazy(() => import('../pages/ProfessionalsMap'))
 const Incidents = lazy(() => import('../pages/Incidents'))
+const Meetings = lazy(() => import('../pages/Meetings'))
 const Wallet = lazy(() => import('../pages/Wallet'))
 const EmpresaEmployeeDetail = lazy(() => import('../pages/Empresa/EmployeeDetail'))
 const Soporte = lazy(() => import('../pages/Soporte'))
@@ -67,6 +68,9 @@ export function AppRoutes() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="work-hours" element={<WorkHours />} />
+          {/* Sesiones: sin guard de rol propio. El permiso del módulo "meetings"
+              lo aplican el backend y el sidebar, igual que Tareas u Horas. */}
+          <Route path="sesiones" element={<Meetings />} />
           <Route path="chat" element={<SlackChat />} />
           <Route path="whatsapp" element={<AdminRoute><WhatsApp /></AdminRoute>} />
           <Route path="profile" element={<Profile />} />

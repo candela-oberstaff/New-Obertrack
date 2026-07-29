@@ -12,6 +12,7 @@ import { Select } from '../../components/ui/Select'
 import { CreateUserModal, type CreateUserForm } from '../../components/Admin/Modals/CreateUserModal'
 import { ImportUsersModal } from '../../components/Admin/Modals/ImportUsersModal'
 import { ExportUsersModal } from '../../components/Admin/Modals/ExportUsersModal'
+import { setRecordNav } from '../../lib/recordNav'
 import styles from '../../components/Admin/Admin.module.css'
 
 const EMPTY_CREATE_FORM: CreateUserForm = {
@@ -135,6 +136,13 @@ export default function EmpresaEmployees() {
       return u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
     })
   }, [employees, search, roleFilter])
+
+  // La ficha hereda el orden filtrado de esta tabla, para poder ir al siguiente
+  // profesional sin volver aquí (ver lib/recordNav).
+  const openEmployee = (employeeId: number) => {
+    setRecordNav('empresa-employees', filtered.map((u) => u.id))
+    navigate(`/empresa/employees/${employeeId}`)
+  }
 
   // ── Selección masiva ────────────────────────────────────────────────────────
   const isBulkSelectable = (u: { id: number; is_superadmin?: boolean }) =>
@@ -406,7 +414,7 @@ export default function EmpresaEmployees() {
                   <td>
                     <button
                       type="button"
-                      onClick={() => navigate(`/empresa/employees/${u.id}`)}
+                      onClick={() => openEmployee(u.id)}
                       title="Ver detalle"
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.45rem 0.9rem', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#334155', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}
                     >
@@ -454,6 +462,7 @@ export default function EmpresaEmployees() {
       {tempPassword && (
         <Modal
           isOpen
+          isDirty={!!tempPassword}
           onClose={() => { setShowCreate(false); setTempPassword(null) }}
           title="Profesional creado"
           size="md"

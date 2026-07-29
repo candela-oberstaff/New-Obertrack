@@ -103,7 +103,63 @@ type TicketMessage struct {
 	UpdatedAt  time.Time      `json:"updated_at"`
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 
+	// --- Bandeja de salida (solo mensajes salientes de WhatsApp) ---
+	//
+	// Un envío a WAHA no ocurre dentro del request: el mensaje se guarda como
+	// 'pending' y un worker lo entrega con reintentos. Así un reinicio del backend
+	// —o una caída de WAHA— no pierde la respuesta del agente, y el request no
+	// queda bloqueado los ~6s que tardan el espaciado antibaneo y el tecleo.
+	//
+	// Vacío = no aplica: mensajes entrantes, notas internas y todo el histórico
+	// anterior al outbox, que se consideran ya entregados.
+	DeliveryStatus   string     `gorm:"size:20;index:idx_msg_delivery" json:"delivery_status,omitempty"`
+	DeliveryAttempts int        `gorm:"not null;default:0" json:"delivery_attempts,omitempty"`
+	// NextAttemptAt es el instante a partir del cual el worker puede retomar el
+	// envío. NULL = "ya". Sobrevive al reinicio, que es lo que hace que el backoff
+	// sea real y no un sleep en memoria.
+	NextAttemptAt *time.Time `gorm:"index:idx_msg_delivery" json:"next_attempt_at,omitempty"`
+	DeliveryError string     `gorm:"type:text" json:"delivery_error,omitempty"`
+
 	Sender *User `gorm:"foreignKey:SenderID" json:"sender,omitempty"`
+}
+
+const (
+	// DeliveryPending: encolado, todavía no aceptado por WAHA.
+	DeliveryPending = "pending"
+	// DeliverySent: WAHA lo aceptó y devolvió su ID.
+	DeliverySent = "sent"
+	// DeliveryFailed: agotados los reintentos. No vuelve a intentarse solo; queda
+	// visible en el chat para que el agente decida reenviarlo.
+	DeliveryFailed = "failed"
+
+	// DeliveryMaxAttempts acota los reintentos de un mensaje saliente.
+	DeliveryMaxAttempts = 6
+)
+
+// whatsappDeliveryBackoff es la espera ANTES de cada reintento; la posición i es
+// lo que se espera tras el intento i+1. Se escalona porque los fallos reales de
+// WAHA (contenedor reiniciándose, sesión caída que hay que revincular) duran
+// minutos, no segundos: reintentar cada 15s solo gasta los seis intentos antes de
+// que nadie haya podido reaccionar.
+var whatsappDeliveryBackoff = []time.Duration{
+	15 * time.Second,
+	1 * time.Minute,
+	5 * time.Minute,
+	15 * time.Minute,
+	1 * time.Hour,
+}
+
+// DeliveryRetryDelay devuelve cuánto esperar tras `attempts` intentos fallidos.
+// Se satura en el último escalón, así que subir DeliveryMaxAttempts nunca
+// desborda la tabla.
+func DeliveryRetryDelay(attempts int) time.Duration {
+	if attempts < 1 {
+		attempts = 1
+	}
+	if attempts > len(whatsappDeliveryBackoff) {
+		attempts = len(whatsappDeliveryBackoff)
+	}
+	return whatsappDeliveryBackoff[attempts-1]
 }
 
 func (TicketMessage) TableName() string {

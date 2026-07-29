@@ -355,12 +355,12 @@ func generateExcelReport(workHours []models.WorkHour, periodLabel string) ([]byt
 		if wh.User.ID != 0 {
 			userLabel = wh.User.Name
 		}
-		
+
 		workTypeLabel := "Día Completo"
 		if wh.WorkType == models.WorkTypeAbsence {
 			workTypeLabel = "Ausencia"
 		}
-		
+
 		statusLabel := "Pendiente"
 		if wh.Approved {
 			statusLabel = "Aprobado"
@@ -401,7 +401,7 @@ func generateExcelReport(workHours []models.WorkHour, periodLabel string) ([]byt
 				WrapText: true,
 			},
 		})
-		
+
 		// Status-specific cell styling for cell H
 		var statusFontColor, statusBgColor string
 		if wh.Approved {
@@ -488,7 +488,7 @@ func generatePDFReport(workHours []models.WorkHour, periodLabel string) ([]byte,
 	// Banner Superior con Degradado de Obertrack (Prussian Blue)
 	pdf.SetFillColor(6, 11, 35) // #060b23 (Prussian Blue)
 	pdf.Rect(0, 0, 297, 30, "F")
-	
+
 	if logoPath != "" {
 		pdf.Image(logoPath, 15, 7, 45, 0, false, "", 0, "")
 	} else {
@@ -496,7 +496,7 @@ func generatePDFReport(workHours []models.WorkHour, periodLabel string) ([]byte,
 		pdf.SetFont("Arial", "B", 18)
 		pdf.Text(15, 18, "OBERTRACK")
 	}
-	
+
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFont("Arial", "B", 14)
 	pdf.Text(155, 14, "REPORTE MENSUAL DE JORNADAS")
@@ -527,7 +527,7 @@ func generatePDFReport(workHours []models.WorkHour, periodLabel string) ([]byte,
 	pdf.RoundedRect(15, 38, 80, 22, 3.0, "1234", "FD")
 	pdf.RoundedRect(105, 38, 80, 22, 3.0, "1234", "FD")
 	pdf.RoundedRect(195, 38, 87, 22, 3.0, "1234", "FD")
-	
+
 	// Textos tarjetas
 	pdf.SetTextColor(136, 128, 168) // Gray 400
 	pdf.SetFont("Arial", "B", 8)

@@ -23,6 +23,12 @@ const formatTime = (iso: string) => {
 const getInitials = (name: string) =>
   name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 
+// Huella del chat para decidir si el polling debe re-renderizar. Incluye el
+// estado de entrega, no solo los ids, porque un mensaje del outbox cambia de
+// pendiente a enviado sin que varíe la lista.
+const chatSignature = (msgs: WhatsAppMessageDTO[]) =>
+  msgs.map(m => `${m.id}:${m.delivery_status ?? ''}`).join('|')
+
 const displayName = (ticket: WhatsAppChatTicket) =>
   ticket.contact_name.trim() || ticket.subject || ticket.contact_phone || 'Sin nombre'
 
@@ -77,11 +83,12 @@ export default function WhatsApp() {
     const pollMessages = async () => {
       try {
         const msgs = await ticketService.getWaChatMessages(activeTicket.zoho_id)
-        // Only update if length changed or something simple for now
-        // A better approach would be checking last message ID
         setActiveMessages(prev => {
-          if (msgs.length !== prev.length) return msgs
-          return prev
+          // Comparar solo la cantidad dejaba la vista congelada ante cualquier
+          // cambio sobre un mensaje ya presente: en particular la transición
+          // pendiente → enviado/fallido del outbox, que no altera el total.
+          if (chatSignature(msgs) === chatSignature(prev)) return prev
+          return msgs
         })
       } catch (err) {
         console.error('Error polling messages:', err)

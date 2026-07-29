@@ -23,15 +23,27 @@ type WahaWebhookPayload struct {
 		Type      string `json:"type"`
 		FromMe    bool   `json:"fromMe"`
 		Timestamp int64  `json:"timestamp"`
+		HasMedia  bool   `json:"hasMedia"`
+		Media     *struct {
+			Mimetype string `json:"mimetype"`
+		} `json:"media"`
 	} `json:"payload"`
+}
+
+func (p *WahaWebhookPayload) mimeType() string {
+	if p.Payload.Media == nil {
+		return ""
+	}
+	return p.Payload.Media.Mimetype
 }
 
 type WahaHandler struct {
 	ticketSvc service.TicketService
+	wahaSvc   *service.WahaService
 }
 
-func NewWahaHandler(ticketSvc service.TicketService) *WahaHandler {
-	return &WahaHandler{ticketSvc: ticketSvc}
+func NewWahaHandler(ticketSvc service.TicketService, wahaSvc *service.WahaService) *WahaHandler {
+	return &WahaHandler{ticketSvc: ticketSvc, wahaSvc: wahaSvc}
 }
 
 func (h *WahaHandler) HandleWebhook(c *gin.Context) {
@@ -50,16 +62,36 @@ func (h *WahaHandler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
-	from := payload.Payload.From
-	if payload.Event != "message" ||
-		payload.Payload.FromMe ||
-		strings.Contains(from, "status@broadcast") ||
-		strings.TrimSpace(payload.Payload.Body) == "" {
+	// La instancia de WAHA puede alojar varias sesiones y el HMAC es compartido
+	// entre todas: sin este filtro, los mensajes de una sesión ajena entrarían al
+	// mismo buzón de tickets.
+	if expected := h.wahaSvc.GetSession(); payload.Session != expected {
+		log.Printf("WAHA webhook: sesión inesperada %q (configurada: %q) — ignorado", payload.Session, expected)
 		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
 		return
 	}
 
-	if err := h.ticketSvc.IngestWhatsApp(payload.Session, payload.Payload.From, payload.Payload.Body, payload.Payload.ID); err != nil {
+	from := payload.Payload.From
+	if payload.Event != "message" ||
+		payload.Payload.FromMe ||
+		strings.Contains(from, "status@broadcast") {
+		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+		return
+	}
+
+	// Un adjunto sin texto llega con body vacío. En vez de descartarlo (el operador
+	// nunca se enteraría de que el contacto mandó una foto o un documento), se
+	// ingesta con un marcador legible.
+	body := strings.TrimSpace(payload.Payload.Body)
+	if body == "" {
+		body = service.MediaPlaceholder(payload.Payload.Type, payload.mimeType(), payload.Payload.HasMedia)
+	}
+	if body == "" {
+		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+		return
+	}
+
+	if err := h.ticketSvc.IngestWhatsApp(payload.Session, payload.Payload.From, body, payload.Payload.ID); err != nil {
 		log.Printf("WAHA ingest error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process message"})
 		return

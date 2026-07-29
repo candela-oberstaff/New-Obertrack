@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { GraduationCap, RotateCcw } from 'lucide-react'
+import { GraduationCap, RotateCcw, Send } from 'lucide-react'
 
 import { Button } from '../ui'
 import { useConfirm } from '../ui/ConfirmProvider'
@@ -8,8 +8,13 @@ import { inductionService, type InductionUserStatus } from '../../services/induc
 
 interface Props {
   userId: number
-  /** Solo Soporte/superadmin pueden reiniciar los intentos. */
+  /** Solo Soporte/superadmin pueden reiniciar los intentos o enviar la inducción. */
   canReset?: boolean
+  /**
+   * Solo los profesionales pasan por inducción. Sin esto, el panel de "enviar"
+   * aparecería en la ficha de empresas, soporte y superadmins.
+   */
+  isProfessional?: boolean
 }
 
 const STATUS_LABEL: Record<string, { text: string; bg: string; fg: string }> = {
@@ -23,16 +28,22 @@ const STATUS_LABEL: Record<string, { text: string; bg: string; fg: string }> = {
  * que necesita antes de contactar a quien no aprobó (puntajes por intento) y la
  * acción para devolverle sus intentos.
  *
- * No se renderiza si el profesional nunca tuvo inducción, para no ensuciar la
- * ficha de las cuentas anteriores a esta funcionalidad.
+ * Si el profesional no tiene inducción registrada, ofrece enviársela: es la vía
+ * para quienes no llegaron por el puente de Obersuite (alta manual, alta desde
+ * la empresa o importación). Ese caso solo se pinta con la inducción encendida,
+ * para no ensuciar la ficha de las cuentas anteriores a esta funcionalidad.
  */
-export function InductionStatusPanel({ userId, canReset = false }: Props) {
+export function InductionStatusPanel({ userId, canReset = false, isProfessional = false }: Props) {
   const { success, error: showError } = useNotification()
   const confirm = useConfirm()
 
   const [status, setStatus] = useState<InductionUserStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [resetting, setResetting] = useState(false)
+  const [inviting, setInviting] = useState(false)
+  // Si la inducción está apagada no hay nada que enviar: sin esto, el panel
+  // ofrecería una acción que el backend rechazaría.
+  const [enabled, setEnabled] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -44,6 +55,13 @@ export function InductionStatusPanel({ userId, canReset = false }: Props) {
       setLoading(false)
     }
   }, [userId])
+
+  useEffect(() => {
+    inductionService
+      .getConfig()
+      .then(cfg => setEnabled(!!cfg?.is_active && !!cfg?.survey_id))
+      .catch(() => setEnabled(false))
+  }, [])
 
   useEffect(() => {
     void load()
@@ -70,7 +88,51 @@ export function InductionStatusPanel({ userId, canReset = false }: Props) {
     }
   }
 
-  if (loading || !status) return null
+  const handleInvite = async () => {
+    const ok = await confirm({
+      title: 'Enviar inducción',
+      message:
+        'Se le enviará el enlace por correo y su acceso quedará bloqueado hasta que apruebe. Úsalo con profesionales que no pasaron por la inducción al ser dados de alta.',
+      confirmLabel: 'Enviar inducción',
+    })
+    if (!ok) return
+
+    setInviting(true)
+    try {
+      await inductionService.inviteUser(userId)
+      success('Inducción enviada. El profesional recibirá el enlace por correo.')
+      await load()
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo enviar la inducción.')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  if (loading) return null
+
+  // Sin inducción registrada: solo se ofrece enviarla, y solo a un profesional
+  // cuando está encendida y quien mira puede ejecutarla.
+  if (!status) {
+    if (!isProfessional || !enabled || !canReset) return null
+    return (
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 24, marginTop: '1rem' }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <GraduationCap size={18} /> Inducción
+          <span style={{ background: '#f1f5f9', color: '#64748b', fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 999 }}>
+            Sin registrar
+          </span>
+        </h3>
+        <p style={{ margin: '0 0 16px', fontSize: 13.5, color: '#64748b' }}>
+          Este profesional no pasó por la inducción: la hacen automáticamente los contratados desde Obersuite,
+          no las altas manuales ni las importaciones.
+        </p>
+        <Button variant="secondary" leftIcon={<Send size={16} />} loading={inviting} onClick={handleInvite}>
+          Enviar inducción
+        </Button>
+      </div>
+    )
+  }
 
   const badge = STATUS_LABEL[status.status] ?? STATUS_LABEL.pending
 

@@ -1,0 +1,547 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.4rem;
+  margin: 0;
+  flex: 1;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.tab {
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab-active {
+  color: var(--primary, #cc33cc);
+  border-bottom-color: var(--primary, #cc33cc);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--bg-card, #fff);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.card-cancelled {
+  opacity: 0.65;
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.card-title {
+  font-weight: 700;
+  font-size: 0.98rem;
+  flex: 1;
+  margin: 0;
+  cursor: pointer;
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.badge-soon {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.badge-recurring {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.badge-cancelled {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.card-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.avatars {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:hover {
+  background: #1d4ed8;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-join {
+  background: #16a34a;
+}
+
+.btn-join:hover {
+  background: #15803d;
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  background: transparent;
+  color: var(--text-secondary, #475569);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-sm {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
+.btn-danger {
+  background: #dc2626;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+}
+
+.state-msg {
+  font-size: 0.9rem;
+  color: var(--text-secondary, #64748b);
+  padding: 20px 0;
+}
+
+/* Estado vacío del gate de Google: la pantalla que ve quien todavía no ha
+   conectado su cuenta. Es lo primero que encuentra la mayoría, así que explica
+   el módulo en vez de limitarse a un error. */
+.connect-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  max-width: 520px;
+  margin: 40px auto;
+  padding: 28px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 16px;
+  background: var(--bg-card, #fff);
+}
+
+.connect-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.connect-card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.connect-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-secondary, #64748b);
+  line-height: 1.5;
+}
+
+.banner {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.84rem;
+  border: 1px solid transparent;
+}
+
+.banner-success {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.banner-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.banner-warning {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modal {
+  width: min(620px, 96vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  background: var(--bg-card, #fff);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-input, #fff);
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: #f1f5f9;
+}
+
+.field-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+  margin-top: 4px;
+}
+
+.field-input,
+.field-textarea,
+.field-select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-input, #fff);
+  color: inherit;
+  font-size: 0.88rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hint {
+  font-size: 0.74rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.chip-external {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.chip button {
+  display: inline-flex;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.picker {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+}
+
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  font-size: 0.84rem;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.picker-item:hover {
+  background: #f1f5f9;
+}
+
+.picker-email {
+  font-size: 0.74rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.error-text {
+  font-size: 0.82rem;
+  color: #b91c1c;
+}
+
+/* Enlace de Meet visible en la tarjeta. Se muestra escrito —y no solo detrás de
+   los botones— porque la gente lo lee para comprobar que es el correcto antes de
+   pegarlo en otro sitio. */
+.meet-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.meet-link a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--primary, #cc33cc);
+  text-decoration: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.meet-link a:hover {
+  text-decoration: underline;
+}
+
+.link-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* readOnly, no disabled: así el texto sigue siendo seleccionable con el ratón
+   para quien prefiera copiar a mano. */
+.link-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-muted, #f8fafc);
+  color: inherit;
+  font-size: 0.82rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.link-input::placeholder {
+  font-family: inherit;
+  font-style: italic;
+}
+
+/* Presencia en vivo. Solo aparece cuando la sesión está en curso o a punto, así
+   que el punto verde pulsante no compite con nada: si se ve, es que hay gente. */
+.presence-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #047857;
+}
+
+.presence-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: presence-pulse 2s ease-in-out infinite;
+}
+
+@keyframes presence-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Respeta a quien pidió menos movimiento en el sistema. */
+@media (prefers-reduced-motion: reduce) {
+  .presence-dot {
+    animation: none;
+  }
+}
+
+.presence-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.presence-reconnect {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 0.76rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #b45309;
+  cursor: pointer;
+  text-align: left;
+}
+
+.presence-reconnect:hover {
+  text-decoration: underline;
+}

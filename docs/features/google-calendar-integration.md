@@ -3,10 +3,12 @@
 Vínculo **personal** entre cada usuario de Obertrack y su cuenta de Google, para
 llevar la agenda de trabajo a su calendario.
 
-**Estado: Fases 1 y 2 completas.**
+**Estado: Fases 1, 2 y 3 completas.**
 - **Fase 1** — vinculación de la cuenta personal y desconexión.
 - **Fase 2** — sincronización de tareas → eventos en el calendario de cada
   asignado conectado (crear, actualizar, completar, reasignar, borrar).
+- **Fase 3** — módulo de **Sesiones**: reuniones con sala de Google Meet
+  convocadas desde Obertrack. Ver [sesiones-google-meet.md](sesiones-google-meet.md).
 
 ---
 
@@ -84,7 +86,7 @@ Perfil → "Conectar"
          ├─ canje del code en oauth2.googleapis.com/token
          ├─ 'sub' y 'email' del id_token
          ├─ tokens cifrados (AES-256-GCM) → upsert en google_calendar_accounts
-         └─ 302 → {FRONTEND_URL}/perfil?google=ok
+         └─ 302 → {FRONTEND_URL}/profile?google=ok
 ```
 
 ### Endpoints
@@ -94,9 +96,12 @@ Perfil → "Conectar"
 | `GET` | `/api/integrations/google/callback` | Pública (state firmado) |
 | `GET` | `/api/me/integrations/google/status` | Sesión |
 | `POST` | `/api/me/integrations/google/connect` | Sesión |
-| `GET` | `/api/me/integrations/google/calendars` | Sesión |
-| `PUT` | `/api/me/integrations/google/calendar` | Sesión |
 | `DELETE` | `/api/me/integrations/google` | Sesión |
+
+No hay endpoints para listar o elegir calendario: el scope es el mínimo
+(`calendar.events`), que no permite enumerar calendarios, y los eventos van
+siempre al principal (`primary`). Es una contrapartida deliberada para
+simplificar la verificación de Google.
 
 Ninguna ruta autenticada recibe un `user_id`: todas operan sobre la sesión, así
 que no hay forma de tocar el vínculo de otra persona.
@@ -174,11 +179,49 @@ pierde ni bloquea la operación del usuario. Mismo principio que `report_runs`.
 
 - Hay **un job por (tarea, usuario)**: el fallo de un asignado que revocó el
   acceso no frena la sincronización de los demás.
-- El worker reintenta hasta `CalendarSyncMaxAttempts` (5); `needs_reauth` no se
-  reintenta (requiere acción del usuario) y marca el job `failed` de una vez.
 - Jobs pendientes anteriores de la misma (tarea, usuario) se descartan
   (`SupersedePendingJobs`): si una tarea se editó tres veces antes de correr el
   worker, solo importa el último estado.
+
+### Reintentos: backoff exponencial y errores que no se reintentan
+
+El worker corre cada 20 s, pero **un job fallido no se reintenta en el siguiente
+tick**: `next_attempt_at` marca cuándo vuelve a ser elegible, y la espera escala
+por `CalendarSyncMaxAttempts` (6) intentos:
+
+| Tras el intento | Espera |
+|---|---|
+| 1 | 30 s |
+| 2 | 2 min |
+| 3 | 8 min |
+| 4 | 30 min |
+| 5 | 2 h |
+| 6 | *(agotado → `failed`)* |
+
+Ventana total de recuperación ≈ **2 h 40 min**. Antes eran reintentos cada 20 s,
+así que los intentos se gastaban en unos dos minutos: una caída de la API de
+Google o un pico de cuota algo más largo dejaba los jobs en `failed`, y un
+`failed` **no se reejecuta nunca** — el evento quedaba sin crear hasta que
+alguien volviera a editar la tarea.
+
+Un job esperando su backoff **no bloquea la cola**: el filtro de
+`ClaimPendingJobs` lo deja fuera y el resto sigue procesándose. Y como la fecha
+vive en la BD, el backoff sobrevive a un reinicio del backend.
+
+No todos los fallos merecen esa ventana. `retryAfterFailure` la niega a los que
+no mejoran esperando, para no quemar cuota ni intentos:
+
+| Error | ¿Reintenta? |
+|---|---|
+| Corte de red, `429` (cuota), `5xx` | Sí, con backoff |
+| `408` (timeout del lado de Google) | Sí, con backoff |
+| `401` → `needs_reauth` | No: lo arregla el usuario reconectando |
+| Resto de `4xx` → `ErrGooglePermanent` | No: la petición está mal, repetirla da lo mismo |
+
+La clasificación vive en `classifyEventError` / `isTransientStatus`. Cubierta por
+`TestIsTransientStatus`, `TestProcessJobSchedulesBackoffOnTransientError`,
+`TestProcessJobExhaustsAtMaxAttempts` y
+`TestProcessJobDoesNotRetryPermanentFailures`.
 
 ### Ciclo de vida (enganchado en `taskService` vía callback inyectado)
 
@@ -200,6 +243,28 @@ Google, el siguiente update lo detecta (`ErrEventGone`) y lo re-crea.
 
 `calendar_event_links` mapea `(task_id, user_id) → google_event_id` (único por
 par). Sin esta tabla solo se sabría crear, y cada guardado duplicaría el evento.
+
+### Qué pasa al desconectar
+
+Desconectar borra la fila de `google_calendar_accounts` **y los enlaces de ese
+usuario** (`OnAccountDisconnected`, cableado como hook en `deps.go`).
+
+Los eventos ya escritos **se quedan** en el calendario del usuario: la
+desconexión revoca el permiso en Google antes de borrar nada, así que a partir
+de ahí no hay credencial con la que eliminarlos. El usuario puede borrarlos a
+mano. La contrapartida es que, si vuelve a conectar la misma cuenta, las tareas
+que se editen después crean un evento nuevo junto al que quedó huérfano.
+
+> Este era el origen de un bug: al no limpiar los enlaces, cada edición
+> posterior de una tarea que ese usuario tuvo sincronizada encolaba un `delete`
+> que fallaba con `ErrGoogleAccountNotFound`, gastaba sus cinco intentos y
+> dejaba el enlace vivo para repetirlo en la edición siguiente. `processDelete`
+> trata ahora ese error como "no hay dónde borrar" y limpia el enlace igual.
+> Cubierto por `TestProcessDeleteWithoutAccountCleansLink`.
+
+Reconectar tras `needs_reauth` **no** pasa por aquí: usa el mismo flujo de
+conexión, `Upsert` conserva la fila y los enlaces siguen intactos, así que los
+eventos existentes se actualizan en vez de duplicarse.
 
 ---
 
@@ -224,6 +289,16 @@ par). Sin esta tabla solo se sabría crear, y cada guardado duplicaría el event
 - **Backfill al conectar**: hoy solo se sincronizan tareas que se mutan DESPUÉS
   de conectar la cuenta. Al vincular, encolar upserts de las tareas con fecha ya
   asignadas al usuario.
+- **Recuperar los jobs agotados**: un job en `failed` no se reejecuta nunca. Con
+  la ventana de 2 h 40 min hace falta un incidente muy largo para llegar ahí,
+  pero cuando pasa el evento queda sin crear hasta que alguien edite la tarea.
+  Falta o bien un reintento manual desde admin, o bien un barrido periódico que
+  reconcilie las tareas con fecha contra sus enlaces.
+- **`Retry-After` en los 429**: hoy un 429 entra en la tabla de backoff genérica
+  e ignora la cabecera con la que Google dice exactamente cuánto esperar.
+- **El worker asume una sola réplica**: `ClaimPendingJobs` no bloquea filas
+  porque solo hay una goroutine procesando. Si se escala horizontalmente hace
+  falta `SELECT … FOR UPDATE SKIP LOCKED`.
 - Jornadas aprobadas e incidentes → eventos. Ojo: `WorkHour` guarda fecha y hora
   en columnas separadas y sin timezone; hay que resolver la zona del usuario
   antes de mandar eventos con hora (los de tarea son all-day y no aplican).

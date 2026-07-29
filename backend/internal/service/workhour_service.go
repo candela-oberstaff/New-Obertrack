@@ -132,7 +132,7 @@ var (
 	ErrInvalidDateFormat = errors.New("Invalid date format")
 	ErrFutureWorkDate    = errors.New("No puedes registrar horas en fechas futuras")
 	ErrDuplicateWorkDay  = errors.New("Ya existe una jornada para esta fecha en esta empresa. Solo puedes registrar una jornada por día.")
-	ErrDuplicateRecover = errors.New("Ya existe una recuperación para esta fecha en esta empresa. Solo puedes registrar una recuperación por día.")
+	ErrDuplicateRecover  = errors.New("Ya existe una recuperación para esta fecha en esta empresa. Solo puedes registrar una recuperación por día.")
 )
 
 const standardWorkDay = 8.0

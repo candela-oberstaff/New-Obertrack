@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +36,10 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 	email := api.Group("/email")
 	email.Use(requireSupportInboxAccess())
 	{
+		// Catálogo de variables de personalización ({{nombre}}, {{empresa}}, ...).
+		email.GET("/variables", d.email.GetVariables)
+		// Copia de prueba a uno mismo, por el mismo camino que el envío real.
+		email.POST("/test-send", d.email.SendTestEmail)
 		email.GET("/templates", d.email.GetTemplates)
 		email.POST("/templates", d.email.CreateTemplate)
 		email.PUT("/templates/:id", d.email.UpdateTemplate)
@@ -88,6 +93,9 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		inductions.PUT("/config", middleware.RequireSuperadmin(), d.induction.SaveConfig)
 		inductions.GET("/users/:userId", d.induction.Status)
 		inductions.POST("/users/:userId/reset", d.induction.Reset)
+		// Enviar la inducción a un profesional que ya existe (alta manual,
+		// alta desde la empresa o importación).
+		inductions.POST("/users/:userId/invite", d.induction.Invite)
 	}
 
 	// Módulo "tutorials": ver requiere al menos "view"; la gestión sigue siendo
@@ -138,7 +146,10 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		tickets.GET("/waha/status", func(c *gin.Context) {
 			status, err := d.wahaSvc.GetSessionStatusAndQR(d.wahaSvc.GetSession())
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				// El error interno se registra pero no se devuelve: incluye la URL
+				// interna de la instancia de WAHA.
+				log.Printf("[WAHA] status check failed: %v", err)
+				c.JSON(http.StatusBadGateway, gin.H{"error": "no se pudo consultar el estado de WhatsApp"})
 				return
 			}
 			c.JSON(http.StatusOK, status)
@@ -149,12 +160,14 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		tickets.POST("/waha/start", func(c *gin.Context) {
 			session := d.wahaSvc.GetSession()
 			if err := d.wahaSvc.StartSession(session); err != nil {
-				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				log.Printf("[WAHA] session start failed: %v", err)
+				c.JSON(http.StatusBadGateway, gin.H{"error": "no se pudo iniciar la sesión de WhatsApp"})
 				return
 			}
 			status, err := d.wahaSvc.GetSessionStatusAndQR(session)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				log.Printf("[WAHA] status check after start failed: %v", err)
+				c.JSON(http.StatusBadGateway, gin.H{"error": "no se pudo consultar el estado de WhatsApp"})
 				return
 			}
 			c.JSON(http.StatusOK, status)

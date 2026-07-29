@@ -1,94 +1,32 @@
-import { useState, useEffect, useCallback } from 'react'
-import { CalendarDays, AlertTriangle, Check, Link2, Unlink } from 'lucide-react'
-import {
-  googleCalendarService,
-  type GoogleCalendarStatus,
-} from '../../services/google-calendar.service'
+import { Plug, AlertTriangle, Check, Link2, Unlink } from 'lucide-react'
+import { googleCalendarService } from '../../services/google-calendar.service'
+import { useGoogleConnection } from '../../hooks/useGoogleConnection'
 import { useConfirm } from '../ui/ConfirmProvider'
 import styles from '../../pages/Profile.module.css'
 
 /** Ruta a la que vuelve el navegador tras el consentimiento de Google. */
 const RETURN_TO = '/profile'
 
-// Motivos que devuelve el callback del backend en ?reason=. Los que no estén
-// aquí caen a un mensaje genérico: son fallos técnicos que el usuario no puede
-// accionar y no ayuda mostrarle el código crudo.
-const ERROR_MESSAGES: Record<string, string> = {
-  access_denied: 'Cancelaste la conexión con Google.',
-  expired: 'El enlace de conexión expiró. Vuelve a intentarlo.',
-  disabled: 'La integración con Google Calendar no está disponible ahora mismo.',
-  invalid_request: 'La respuesta de Google no llegó completa. Vuelve a intentarlo.',
-}
-
-type Banner = { type: 'success' | 'error'; text: string } | null
-
 export function IntegracionesPanel() {
-  const [status, setStatus] = useState<GoogleCalendarStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const [banner, setBanner] = useState<Banner>(null)
+  // El estado del vínculo y el retorno del consentimiento viven en el hook: la
+  // página de Sesiones necesita exactamente lo mismo, y tener dos copias de
+  // esta lógica garantizaba que una de las dos se quedara atrás.
+  const {
+    status, account, loading, busy, setBusy, banner, setBanner, reload, connect, needsReauth,
+  } = useGoogleConnection(RETURN_TO)
   const confirm = useConfirm()
 
-  const account = status?.account
-  const needsReauth = account?.status === 'needs_reauth'
-
-  const loadStatus = useCallback(async () => {
-    try {
-      const data = await googleCalendarService.getStatus()
-      setStatus(data)
-      return data
-    } catch {
-      setStatus({ enabled: false, connected: false })
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  // Resultado de la vinculación: el callback del backend redirige aquí con
-  // ?google=ok|error. Se limpia de la URL para que un refresco no repita el
-  // aviso y para no dejar el parámetro en el historial.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const result = params.get('google')
-    if (!result) return
-
-    if (result === 'ok') {
-      setBanner({ type: 'success', text: 'Tu cuenta de Google quedó conectada.' })
-    } else {
-      const reason = params.get('reason') || ''
-      setBanner({
-        type: 'error',
-        text: ERROR_MESSAGES[reason] || 'No se pudo conectar tu cuenta de Google. Vuelve a intentarlo.',
-      })
-    }
-
-    params.delete('google')
-    params.delete('reason')
-    const query = params.toString()
-    window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''))
-  }, [])
-
-  useEffect(() => {
-    loadStatus()
-  }, [loadStatus])
-
-  const handleConnect = async () => {
-    setBusy(true)
-    setBanner(null)
-    try {
-      window.location.href = await googleCalendarService.getAuthUrl(RETURN_TO)
-    } catch {
-      setBanner({ type: 'error', text: 'No se pudo iniciar la conexión con Google.' })
-      setBusy(false)
-    }
-    // Sin setBusy(false) en el camino feliz: la página está navegando a Google.
-  }
+  const handleConnect = connect
 
   const handleDisconnect = async () => {
     const ok = await confirm({
-      title: 'Desconectar Google Calendar',
-      message: 'Obertrack dejará de tener acceso a tu calendario. Podrás volver a conectarlo cuando quieras.',
+      title: 'Desconectar cuenta de Google',
+      // Se enumera lo que deja de funcionar —no solo "el calendario"— porque la
+      // cuenta alimenta dos cosas y perder las sesiones sorprendería a quien
+      // creyera estar desconectando solo la sincronización de tareas.
+      message:
+        'Tus tareas dejarán de sincronizarse con el calendario y no podrás convocar sesiones de Meet. ' +
+        'Las reuniones ya creadas seguirán existiendo en Google. Podrás volver a conectarla cuando quieras.',
       confirmLabel: 'Desconectar',
       cancelLabel: 'Cancelar',
       variant: 'danger',
@@ -99,7 +37,7 @@ export function IntegracionesPanel() {
     try {
       await googleCalendarService.disconnect()
       setBanner({ type: 'success', text: 'Cuenta de Google desconectada.' })
-      await loadStatus()
+      await reload()
     } catch {
       setBanner({ type: 'error', text: 'No se pudo desconectar la cuenta.' })
     } finally {
@@ -114,7 +52,8 @@ export function IntegracionesPanel() {
   return (
     <div className={styles['sidebar-card']} style={{ marginBottom: '16px' }}>
       <h3 style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <CalendarDays size={16} />
+        {/* Icono neutro y no un calendario: el vínculo dejó de ser solo Calendar. */}
+        <Plug size={16} />
         Integraciones
       </h3>
 
@@ -137,8 +76,9 @@ export function IntegracionesPanel() {
       {!status.connected ? (
         <>
           <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #6b7280)', marginBottom: '12px' }}>
-            Conecta tu cuenta de Google para llevar tu agenda de Obertrack a tu calendario.
-            Funciona con cualquier correo de Gmail o de dominio propio.
+            Asocia tu cuenta de Google para llevar tus tareas al calendario y convocar
+            sesiones con Google Meet. Funciona con cualquier correo de Gmail o de
+            dominio propio.
           </p>
           <button
             className={styles['btn-primary']}
@@ -147,7 +87,7 @@ export function IntegracionesPanel() {
             disabled={busy}
           >
             <Link2 size={15} />
-            {busy ? 'Conectando…' : 'Conectar con Google Calendar'}
+            {busy ? 'Conectando…' : 'Conectar cuenta de Google'}
           </button>
         </>
       ) : (
@@ -166,7 +106,8 @@ export function IntegracionesPanel() {
             >
               <AlertTriangle size={16} color="#b45309" style={{ flexShrink: 0, marginTop: '1px' }} />
               <div style={{ fontSize: '0.82rem', color: '#92400e' }}>
-                Perdimos el acceso a tu calendario. Vuelve a conectar tu cuenta para reactivarlo.
+                Perdimos el acceso a tu cuenta de Google. Vuelve a conectarla para
+                reactivar la sincronización y las sesiones.
               </div>
             </div>
           )}
@@ -192,10 +133,17 @@ export function IntegracionesPanel() {
             </div>
           )}
 
+          {/* Qué habilita la cuenta, en vez del antiguo "Sincroniza con: tu
+              calendario principal": desde el módulo de Sesiones el vínculo hace
+              dos cosas, y quien mira este panel debería saber cuáles. */}
           {!needsReauth && (
             <div className={styles['stat-item']}>
-              <span className={styles['stat-label']}>Sincroniza con</span>
-              <span className={styles['stat-value']}>Tu calendario principal</span>
+              <span className={styles['stat-label']}>Activa</span>
+              <span className={styles['stat-value']} style={{ textAlign: 'right' }}>
+                Tareas en tu calendario
+                <br />
+                Sesiones con Meet
+              </span>
             </div>
           )}
 

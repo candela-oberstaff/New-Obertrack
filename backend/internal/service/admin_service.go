@@ -83,12 +83,22 @@ type AdminService interface {
 
 	GetSeniorityRanking() ([]repository.SeniorityItem, error)
 	BulkEmailProfessionals(userIDs []uint, subject, body string) BulkEmailResult
+	// SendAccessEmails entrega el acceso a la plataforma: enlace para crear la
+	// contraseña (AccessModeInvite) o una clave temporal nueva (AccessModePassword).
+	SendAccessEmails(userIDs []uint, mode string) BulkEmailResult
 	GetLatestFollowUps(kind string) ([]repository.FollowUpInfo, error)
 	CreateFollowUp(userID, createdBy uint, kind, status, note string) (*models.FollowUp, error)
 	GetTenants() ([]repository.TenantSummary, error)
 	GetTenant(id uint) (*repository.TenantSummary, error)
 	GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error)
-	GetTenantActivities(id uint) ([]repository.Activity, error)
+	GetTenantActivities(id uint, category string, userID uint, offset, limit int) ([]repository.TenantActivity, int64, error)
+	GetTenantActivityPeople(id uint) ([]repository.TenantActivityPerson, error)
+	GetTenantActivityCounts(id uint, userID uint) (map[string]int64, error)
+	GetTenantPinnedNotes(id uint) ([]repository.TenantActivity, error)
+	AddTenantNote(companyID, byUserID uint, text string) (*models.CompanyEvent, error)
+	UpdateTenantNote(companyID, noteID uint, text string) error
+	SetTenantNotePinned(companyID, noteID uint, pinned bool) error
+	DeleteTenantNote(companyID, noteID uint) error
 	// GetArchived lista profesionales archivados (bajas + desactivados).
 	// tenantID=0 = global; si no, los de esa empresa.
 	GetArchived(tenantID uint) ([]repository.ArchivedEntry, error)
@@ -109,6 +119,7 @@ type adminService struct {
 	workHourRepo   repository.WorkHourRepository
 	employmentRepo repository.EmploymentRepository
 	brevoSvc       *BrevoService
+	authSvc        AuthService
 }
 
 func NewAdminService(
@@ -118,6 +129,7 @@ func NewAdminService(
 	workHourRepo repository.WorkHourRepository,
 	employmentRepo repository.EmploymentRepository,
 	brevoSvc *BrevoService,
+	authSvc AuthService,
 ) AdminService {
 	return &adminService{
 		repo:           repo,
@@ -126,6 +138,7 @@ func NewAdminService(
 		workHourRepo:   workHourRepo,
 		employmentRepo: employmentRepo,
 		brevoSvc:       brevoSvc,
+		authSvc:        authSvc,
 	}
 }
 
@@ -275,17 +288,22 @@ func (s *adminService) GetManagerReports(managerID uint) ([]models.User, error) 
 }
 
 func (s *adminService) BulkAssignManager(professionalIDs []uint, managerID *uint) (int, int, error) {
+	// Se resuelve una sola vez: lo que descalifica al manager en sí (no existe,
+	// no es manager, está inactivo) falla toda la operación, mientras que lo que
+	// depende de cada profesional se revisa fila por fila y solo la omite.
+	var manager *models.User
 	if managerID != nil {
-		manager, err := s.userRepo.GetByID(*managerID)
+		m, err := s.userRepo.GetByID(*managerID)
 		if err != nil {
 			return 0, 0, errors.New("Manager inválido: manager no encontrado")
 		}
-		if !manager.IsManager {
+		if !m.IsManager {
 			return 0, 0, errors.New("Manager inválido: el usuario seleccionado no es manager")
 		}
-		if !manager.IsActive {
+		if !m.IsActive {
 			return 0, 0, errors.New("Manager inválido: el manager seleccionado está inactivo")
 		}
+		manager = m
 	}
 	assigned, skipped := 0, 0
 	for _, pid := range professionalIDs {
@@ -294,22 +312,19 @@ func (s *adminService) BulkAssignManager(professionalIDs []uint, managerID *uint
 			skipped++
 			continue
 		}
-		// Defensa: en el lote no se asigna un manager a otro manager (evita ciclos).
-		if managerID != nil && prof.IsManager {
-			skipped++
-			continue
-		}
 		companyID := uint(0)
 		if prof.EmpleadorID != nil {
 			companyID = *prof.EmpleadorID
 		}
 		if managerID != nil {
-			// El manager debe pertenecer a la empresa del profesional y no ser él mismo.
-			if companyID == 0 || *managerID == pid {
+			// Un manager SÍ puede tener manager (organigrama de varios niveles);
+			// lo que se rechaza es cerrar un ciclo. El guard compartido cubre
+			// eso además de empresa, rol y estado del destino.
+			if companyID == 0 {
 				skipped++
 				continue
 			}
-			if _, err := s.employmentRepo.GetActive(*managerID, companyID); err != nil {
+			if err := ensureValidManager(s.userRepo, s.employmentRepo, manager, pid, companyID); err != nil {
 				skipped++
 				continue
 			}
@@ -338,20 +353,22 @@ func (s *adminService) BulkAssignManagerScoped(professionalIDs []uint, managerID
 	if tenantID == 0 {
 		return 0, 0, errors.New("Empresa no válida")
 	}
+	var manager *models.User
 	if managerID != nil {
-		manager, err := s.userRepo.GetByID(*managerID)
+		m, err := s.userRepo.GetByID(*managerID)
 		if err != nil {
 			return 0, 0, errors.New("Manager inválido: manager no encontrado")
 		}
-		if tenantForUser(manager) != tenantID {
+		if tenantForUser(m) != tenantID {
 			return 0, 0, errors.New("Manager inválido: no pertenece a tu empresa")
 		}
-		if !manager.IsManager {
+		if !m.IsManager {
 			return 0, 0, errors.New("Manager inválido: el usuario seleccionado no es manager")
 		}
-		if !manager.IsActive {
+		if !m.IsActive {
 			return 0, 0, errors.New("Manager inválido: el manager seleccionado está inactivo")
 		}
+		manager = m
 	}
 	assigned, skipped := 0, 0
 	for _, pid := range professionalIDs {
@@ -365,21 +382,18 @@ func (s *adminService) BulkAssignManagerScoped(professionalIDs []uint, managerID
 			skipped++
 			continue
 		}
-		// Defensa: en el lote no se asigna un manager a otro manager (evita ciclos).
-		if managerID != nil && prof.IsManager {
-			skipped++
-			continue
-		}
 		companyID := uint(0)
 		if prof.EmpleadorID != nil {
 			companyID = *prof.EmpleadorID
 		}
 		if managerID != nil {
-			if companyID == 0 || *managerID == pid {
+			// Igual que en BulkAssignManager: se permite encadenar managers y
+			// solo se rechaza el ciclo, vía el guard compartido.
+			if companyID == 0 {
 				skipped++
 				continue
 			}
-			if _, err := s.employmentRepo.GetActive(*managerID, companyID); err != nil {
+			if err := ensureValidManager(s.userRepo, s.employmentRepo, manager, pid, companyID); err != nil {
 				skipped++
 				continue
 			}
@@ -471,7 +485,9 @@ func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, err
 			} else if e, ok := req["empleador_id"].(uint); ok {
 				companyID = e
 			}
-			if err := ensureValidManager(s.employmentRepo, manager, companyID); err != nil {
+			// Alta: el profesional aún no existe, así que no puede formar parte
+			// de ninguna cadena de mando (subordinado 0).
+			if err := ensureValidManager(s.userRepo, s.employmentRepo, manager, 0, companyID); err != nil {
 				return nil, err
 			}
 			managerID := v
@@ -608,7 +624,7 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 					companyID = uint(v)
 				}
 			}
-			if err := ensureValidManager(s.employmentRepo, manager, companyID); err != nil {
+			if err := ensureValidManager(s.userRepo, s.employmentRepo, manager, user.ID, companyID); err != nil {
 				return nil, err
 			}
 		}
@@ -856,6 +872,78 @@ func (s *adminService) BulkEmailProfessionals(userIDs []uint, subject, body stri
 	return result
 }
 
+// Modos de entrega del acceso a la plataforma.
+const (
+	// AccessModeInvite manda un enlace de un solo uso para que la persona CREE
+	// su contraseña. No viaja ninguna clave por correo.
+	AccessModeInvite = "invite"
+	// AccessModePassword genera una contraseña temporal NUEVA y la manda en
+	// claro. La anterior (la del import, por ejemplo) deja de servir.
+	AccessModePassword = "password"
+)
+
+func IsValidAccessMode(mode string) bool {
+	return mode == AccessModeInvite || mode == AccessModePassword
+}
+
+// SendAccessEmails entrega el acceso a la plataforma a los usuarios indicados.
+//
+// La contraseña temporal que se genera al importar NO se puede reenviar: se
+// guarda hasheada y su versión en claro solo existe durante aquella respuesta.
+// Por eso este envío no reenvía nada, sino que emite un acceso nuevo, y quien
+// lo dispara elige de qué forma.
+func (s *adminService) SendAccessEmails(userIDs []uint, mode string) BulkEmailResult {
+	result := BulkEmailResult{Failed: []BulkEmailFailure{}}
+	if !IsValidAccessMode(mode) {
+		return result
+	}
+
+	loginLink := frontendBaseURL() + "/login"
+
+	for _, id := range userIDs {
+		user, err := s.userRepo.GetByID(id)
+		if err != nil || user == nil {
+			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Error: "Usuario no encontrado"})
+			continue
+		}
+		if user.Email == "" {
+			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Error: "El usuario no tiene correo"})
+			continue
+		}
+
+		if mode == AccessModeInvite {
+			if err := s.authSvc.SendPasswordSetupEmail(user.Email); err != nil {
+				result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Email: user.Email, Error: err.Error()})
+				continue
+			}
+			result.Sent++
+			continue
+		}
+
+		temp, err := GenerateTempPassword(12)
+		if err != nil {
+			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Email: user.Email, Error: "No se pudo generar la contraseña temporal"})
+			continue
+		}
+		// La clave se guarda ANTES de enviarla: si el correo falla, el usuario
+		// queda con una contraseña que nadie conoce, y se puede reintentar. Al
+		// revés se enviaría una clave que no funciona.
+		if err := s.ResetPassword(id, temp); err != nil {
+			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Email: user.Email, Error: err.Error()})
+			continue
+		}
+
+		html := BuildCredentialsHTML(user.Name, user.Email, temp, loginLink)
+		if err := s.brevoSvc.SendEmail(user.Email, user.Name, "Obertrack - Tus datos de acceso", html); err != nil {
+			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Email: user.Email, Error: err.Error()})
+			continue
+		}
+		result.Sent++
+	}
+
+	return result
+}
+
 func (s *adminService) GetLatestFollowUps(kind string) ([]repository.FollowUpInfo, error) {
 	if !models.IsValidFollowUpKind(kind) {
 		return nil, errors.New("Tipo de seguimiento inválido: usa 'inactivity', 'absence' o 'emergencia'")
@@ -937,8 +1025,143 @@ func (s *adminService) GetEmployeeTracking(userID uint) (map[string]interface{},
 	}, nil
 }
 
-func (s *adminService) GetTenantActivities(id uint) ([]repository.Activity, error) {
-	return s.repo.GetTenantActivities(id)
+// Categorías admitidas en el filtro del expediente. Se valida contra esta lista
+// para que un parámetro inventado devuelva el expediente completo en vez de una
+// página vacía sin explicación.
+var tenantActivityCategories = map[string]bool{
+	repository.TenantActivityLifecycle:  true,
+	repository.TenantActivityStaff:      true,
+	repository.TenantActivityWork:       true,
+	repository.TenantActivityManagement: true,
+	repository.TenantActivityNote:       true,
+}
+
+func (s *adminService) GetTenantActivities(id uint, category string, userID uint, offset, limit int) ([]repository.TenantActivity, int64, error) {
+	category = strings.TrimSpace(category)
+	if !tenantActivityCategories[category] {
+		category = ""
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return s.repo.GetTenantActivities(id, category, userID, offset, limit)
+}
+
+func (s *adminService) GetTenantActivityPeople(id uint) ([]repository.TenantActivityPerson, error) {
+	return s.repo.GetTenantActivityPeople(id)
+}
+
+// validateNoteText aplica las mismas reglas al crear y al editar: una nota
+// corregida no puede quedar vacía ni pasarse de largo por el hecho de venir
+// por otro camino.
+func validateNoteText(text string) (string, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", errors.New("La nota no puede estar vacía")
+	}
+	if len([]rune(text)) > models.MaxCompanyNoteLength {
+		return "", fmt.Errorf("La nota no puede superar los %d caracteres", models.MaxCompanyNoteLength)
+	}
+	return text, nil
+}
+
+// AddTenantNote anota a mano un hito en el expediente de la empresa (una
+// llamada, un acuerdo, un aviso): lo que el sistema no puede deducir de
+// ninguna tabla y hasta ahora acababa fuera de la herramienta.
+func (s *adminService) AddTenantNote(companyID, byUserID uint, text string) (*models.CompanyEvent, error) {
+	company, err := s.userRepo.GetByID(companyID)
+	if err != nil {
+		return nil, errors.New("Tenant not found")
+	}
+	if company.UserType != models.UserTypeEmployer {
+		return nil, errors.New("El usuario indicado no es una empresa")
+	}
+
+	text, err = validateNoteText(text)
+	if err != nil {
+		return nil, err
+	}
+
+	event := &models.CompanyEvent{
+		CompanyID: companyID,
+		Type:      models.CompanyEventNote,
+		Detail:    text,
+		ByUserID:  byUserID,
+	}
+	if err := s.repo.CreateCompanyEvent(event); err != nil {
+		return nil, err
+	}
+	return event, nil
+}
+
+// DeleteTenantNote borra una anotación manual. El resto del expediente no se
+// toca: es historial derivado de lo que pasó de verdad.
+func (s *adminService) DeleteTenantNote(companyID, noteID uint) error {
+	rows, err := s.repo.DeleteCompanyNote(companyID, noteID)
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return errors.New("Nota no encontrada")
+	}
+	return nil
+}
+
+// UpdateTenantNote corrige el texto de una nota conservando su fecha original:
+// una errata no debería obligar a borrar y reescribir, que movería el hito de
+// sitio en la cronología.
+func (s *adminService) UpdateTenantNote(companyID, noteID uint, text string) error {
+	text, err := validateNoteText(text)
+	if err != nil {
+		return err
+	}
+	rows, err := s.repo.UpdateCompanyNote(companyID, noteID, text, time.Now())
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return errors.New("Nota no encontrada")
+	}
+	return nil
+}
+
+// SetTenantNotePinned sube (o baja) una nota de la cabecera del expediente.
+func (s *adminService) SetTenantNotePinned(companyID, noteID uint, pinned bool) error {
+	rows, err := s.repo.SetCompanyNotePinned(companyID, noteID, pinned)
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return errors.New("Nota no encontrada")
+	}
+	return nil
+}
+
+func (s *adminService) GetTenantPinnedNotes(id uint) ([]repository.TenantActivity, error) {
+	return s.repo.GetTenantPinnedNotes(id)
+}
+
+// GetTenantActivityCounts devuelve el número de movimientos por categoría con
+// el mismo filtro de persona que la línea de tiempo, para que los contadores
+// de los chips no prometan más de lo que luego se ve.
+func (s *adminService) GetTenantActivityCounts(id uint, userID uint) (map[string]int64, error) {
+	rows, err := s.repo.GetTenantActivityCounts(id, userID)
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int64, len(rows)+1)
+	var total int64
+	for _, row := range rows {
+		counts[row.Category] = row.Count
+		total += row.Count
+	}
+	// "" es la clave del chip "Todo": así el frontend lee todos los
+	// contadores de la misma forma, sin sumar por su cuenta.
+	counts[""] = total
+	return counts, nil
 }
 
 func (s *adminService) SetTenantStatus(id uint, active bool, byUserID uint) (*models.User, error) {
@@ -949,7 +1172,22 @@ func (s *adminService) SetTenantStatus(id uint, active bool, byUserID uint) (*mo
 	if user.UserType != models.UserTypeEmployer {
 		return nil, errors.New("El usuario indicado no es una empresa")
 	}
-	if err := s.userRepo.Update(user, map[string]interface{}{"is_active": active}); err != nil {
+
+	updates := map[string]interface{}{"is_active": active}
+	if !active {
+		// Suspender tiene que cortar el acceso YA, no en la próxima entrada: el
+		// login bloquea a la empresa y a sus profesionales, pero quien ya tenía
+		// sesión seguía trabajando con su token vigente. Subir token_version los
+		// echa en el siguiente request (middleware.AuthMiddleware lo compara).
+		updates["token_version"] = user.TokenVersion + 1
+		// Los profesionales primero: si esto falla, la empresa sigue activa y el
+		// admin reintenta sobre un estado coherente (en vez de quedar suspendida
+		// con la plantilla dentro).
+		if _, err := s.userRepo.RevokeSessionsByEmployer(id); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.userRepo.Update(user, updates); err != nil {
 		return nil, err
 	}
 	// Registra el hito en el expediente de la empresa (best-effort).

@@ -11,9 +11,9 @@ import (
 
 // BrevoService handles email dispatch via the Brevo (Sendinblue) Transactional API.
 type BrevoService struct {
-	apiKey  string
-	apiURL  string
-	from    BrevoContact
+	apiKey string
+	apiURL string
+	from   BrevoContact
 }
 
 type BrevoContact struct {

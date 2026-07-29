@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useDirtySnapshot } from '../../ui/useCloseGuard'
 import { Modal, Button } from '../../ui'
 import { Select } from '../../ui/Select'
 import { User } from '../../../types'
@@ -60,6 +61,8 @@ export function NewChannelModal({
 
   return (
     <Modal
+
+      isDirty={useDirtySnapshot(newChannel)}
       isOpen
       onClose={onClose}
       title="Crear canal"

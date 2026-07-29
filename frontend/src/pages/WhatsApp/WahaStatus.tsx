@@ -64,7 +64,10 @@ export default function WahaStatus() {
 
   const kind = classify(status?.status)
   const meta = META[kind]
-  const qr = kind === 'scan' ? qrSrc(status?.qr?.image) : null
+  // El backend adjunta el QR en cualquier estado no conectado (SCAN_QR, FAILED,
+  // STOPPED…). Mostrarlo solo en SCAN dejaba al operador sin forma de re-vincular
+  // tras una caída, aun teniendo el código disponible.
+  const qr = kind === 'connected' ? null : qrSrc(status?.qr?.image)
 
   return (
     <div style={{

@@ -8,6 +8,11 @@ import { EmailBuilderProps } from './types';
 import RecipientSelector from '../../../../pages/Email/RecipientSelector';
 import { emailService, EmailTemplate } from '../../../../services/emailService';
 import { uploadService } from '../../../../services/upload.service';
+import { renderWithExamples } from '../Common/emailVariables';
+import { VariableMenu, useEmailVariables, FieldBinder } from '../Common/VariableMenu';
+import { useCloseGuard, useDirtySnapshot } from '../../../ui/useCloseGuard';
+import { CodeEditor } from '../Common/CodeEditor';
+import { TestSendButton } from '../Common/TestSendButton';
 
 // ─── Local block types ────────────────────────────────────────────────────────
 type BlockType = 'text' | 'button' | 'image' | 'divider' | 'spacer' | 'social' | 'settings';
@@ -140,7 +145,7 @@ function BlockPreview({ block }: { block: EmailBlock }) {
 }
 
 // ─── Inspector panel ─────────────────────────────────────────────────────────
-function Inspector({ block, onChange }: { block: EmailBlock; onChange: (b: EmailBlock) => void }) {
+function Inspector({ block, onChange, bindField }: { block: EmailBlock; onChange: (b: EmailBlock) => void; bindField: FieldBinder }) {
   const set = (key: string, val: string) =>
     onChange({ ...block, content: key === 'content' ? val : block.content, style: key === 'content' ? block.style : { ...block.style, [key]: val } });
 
@@ -155,7 +160,8 @@ function Inspector({ block, onChange }: { block: EmailBlock; onChange: (b: Email
         <>
           <div style={fieldStyle}>
             <label style={labelStyle}>Contenido</label>
-            <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 72 }} value={block.content} onChange={e => set('content', e.target.value)} rows={3} />
+            <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 72 }} value={block.content} onChange={e => set('content', e.target.value)} rows={3}
+              {...bindField(v => set('content', v), 'Contenido del texto')} />
           </div>
           <div style={fieldStyle}>
             <label style={labelStyle}>Tamaño de fuente</label>
@@ -174,8 +180,10 @@ function Inspector({ block, onChange }: { block: EmailBlock; onChange: (b: Email
       )}
       {block.type === 'button' && (
         <>
-          <div style={fieldStyle}><label style={labelStyle}>Texto</label><input style={inputStyle} value={block.content} onChange={e => set('content', e.target.value)} /></div>
-          <div style={fieldStyle}><label style={labelStyle}>URL destino</label><input style={inputStyle} placeholder="https://..." value={block.style.linkUrl || ''} onChange={e => set('linkUrl', e.target.value)} /></div>
+          <div style={fieldStyle}><label style={labelStyle}>Texto</label><input style={inputStyle} value={block.content} onChange={e => set('content', e.target.value)}
+            {...bindField(v => set('content', v), 'Texto del botón')} /></div>
+          <div style={fieldStyle}><label style={labelStyle}>URL destino</label><input style={inputStyle} placeholder="https://..." value={block.style.linkUrl || ''} onChange={e => set('linkUrl', e.target.value)}
+            {...bindField(v => set('linkUrl', v), 'URL del botón')} /></div>
           <div style={fieldStyle}>
             <label style={labelStyle}>Color de fondo</label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -267,15 +275,22 @@ function SendModal({ onClose, onConfirm, onSchedule, initialRecipientIds, initia
   const [scheduleDate, setScheduleDate] = useState(initialScheduledAt || '');
   const total = recipients.userIds.length + (recipients.groupIds?.length ?? 0) + (recipients.expressContacts?.length ?? 0);
 
+  // Elegir destinatarios cuesta trabajo: no se debe perder por un clic fuera.
+  const recipientsDirty = useDirtySnapshot([recipients, scheduleDate]);
+  const requestClose = useCloseGuard(recipientsDirty, onClose, {
+    title: '¿Descartar los destinatarios?',
+    message: 'Seleccionaste destinatarios que aún no has enviado ni programado.',
+  });
+
   const overlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 };
   const modalStyle: React.CSSProperties = { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' };
 
   return (
-    <div style={overlayStyle} onClick={onClose}>
+    <div style={overlayStyle} onClick={requestClose}>
       <div style={modalStyle} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1e293b' }}>Destinatarios y envío</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 20, lineHeight: 1 }}>×</button>
+          <button onClick={requestClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 20, lineHeight: 1 }}>×</button>
         </div>
         <div style={{ padding: 24, flex: 1 }}>
           <RecipientSelector value={recipients} onChange={setRecipients} />
@@ -324,6 +339,10 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
   const [rawHTML, setRawHTML] = useState('');
   const [showSendModal, setShowSendModal] = useState(false);
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const {
+    variables, bindField, insertVariable, activeFieldLabel, findUnknown,
+    dragging, dragSourceProps, dropZone,
+  } = useEmailVariables();
 
   useEffect(() => {
     emailService.getTemplates()
@@ -422,8 +441,14 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
     });
   }, []);
 
+  // Una plantilla escrita a mano ya ES el correo: recompilarla la envolvía en
+  // el marco del editor visual, y el primer carácter que se escribiera guardaba
+  // esa versión envuelta, reventando el diseño.
+  const currentHTML = () =>
+    blocks[0]?.style?.raw === 'true' ? blocks[0].content : compileBlocksToHTML(blocks);
+
   const handleSwitchToCode = () => {
-    setRawHTML(compileBlocksToHTML(blocks));
+    setRawHTML(currentHTML());
     setMode('code');
   };
 
@@ -432,10 +457,22 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
     setBlocks([{ id: 'raw_code', type: 'text', content: val, style: { raw: 'true' } }]);
   };
 
-  const previewContent = useMemo(() => {
+  const rawContent = useMemo(() => {
     if (blocks[0]?.style?.raw === 'true') return blocks[0].content;
     return compileBlocksToHTML(blocks);
   }, [blocks]);
+
+  // El preview resuelve las variables con los valores de ejemplo del catálogo,
+  // igual que el backend las resolverá con los datos reales al enviar.
+  const previewContent = useMemo(
+    () => renderWithExamples(rawContent, variables),
+    [rawContent, variables]
+  );
+
+  const unknownVars = useMemo(
+    () => findUnknown(`${subject}\n${rawContent}`),
+    [subject, rawContent, findUnknown]
+  );
 
   // Tailwind CDN is required so that class-based styles render in the preview.
   // allow-scripts is included in the sandbox so the CDN can execute.
@@ -506,6 +543,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 value={subject}
                 onChange={e => setSubject(e.target.value)}
                 placeholder="Escribe el asunto del email..."
+                {...bindField(setSubject, 'Asunto del correo')}
               />
             </div>
           </div>
@@ -518,6 +556,23 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
         </div>
 
         <div style={s.headerActions}>
+          <TestSendButton
+            size="sm"
+            getPayload={() => (subject.trim() && blocks.length > 0
+              ? { subject, blocks: JSON.stringify(blocks.map(({ id: _id, ...rest }) => rest)) }
+              : null)}
+            disabled={!subject.trim()}
+          />
+          {mode !== 'preview' && (
+            <VariableMenu
+              size="sm"
+              variables={variables}
+              onInsert={insertVariable}
+              activeFieldLabel={activeFieldLabel}
+              dragSourceProps={dragSourceProps}
+              unknown={unknownVars}
+            />
+          )}
           {mode === 'preview' && (
             <div style={s.deviceBar}>
               <button style={s.deviceBtn(previewDevice === 'desktop')} onClick={() => setPreviewDevice('desktop')} title="Escritorio"><Laptop size={14} /></button>
@@ -640,21 +695,27 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                     </div>
                   )
                 ) : (
-                  contentBlocks.map(b => (
+                  contentBlocks.map(b => {
+                    // Solo los bloques con texto pueden recibir una variable.
+                    const acceptsVariable = b.type === 'text' || b.type === 'button';
+                    return (
                     <div key={b.id} onClick={() => setSelectedId(b.id)}
+                      {...(acceptsVariable ? dropZone(b.content, v => updateBlock({ ...b, content: v })) : {})}
                       style={{
                         position: 'relative',
                         margin: '12px 16px',
                         padding: '4px',
                         borderRadius: '8px',
-                        background: '#ffffff',
-                        border: selectedId === b.id ? '2px solid #7c3aed' : '1px dashed #e2e8f0',
+                        background: dragging && acceptsVariable ? '#faf8ff' : '#ffffff',
+                        border: dragging && acceptsVariable
+                          ? '2px dashed #a78bfa'
+                          : selectedId === b.id ? '2px solid #7c3aed' : '1px dashed #e2e8f0',
                         cursor: 'pointer',
                         transition: 'all 0.15s',
                         boxShadow: selectedId === b.id ? '0 4px 12px rgba(124,58,237,0.1)' : '0 1px 3px rgba(0,0,0,0.02)'
                       }}
-                      onMouseEnter={e => { if (selectedId !== b.id) (e.currentTarget as HTMLElement).style.borderColor = '#7c3aed'; }}
-                      onMouseLeave={e => { if (selectedId !== b.id) (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0'; }}>
+                      onMouseEnter={e => { if (selectedId !== b.id && !dragging) (e.currentTarget as HTMLElement).style.borderColor = '#7c3aed'; }}
+                      onMouseLeave={e => { if (selectedId !== b.id && !dragging) (e.currentTarget as HTMLElement).style.borderColor = '#e2e8f0'; }}>
                       <BlockPreview block={b} />
                       {selectedId === b.id && (
                         <div style={{ position: 'absolute', top: -12, right: 12, display: 'flex', gap: 4, zIndex: 10 }}
@@ -665,7 +726,8 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                         </div>
                       )}
                     </div>
-                  ))
+                  );
+                  })
                 )}
                 {settings.showFooter && (
                   <div style={{ background: settings.footerBg, padding: '12px 20px', textAlign: 'center', fontSize: 10, color: '#94a3b8', borderTop: '1px solid #e2e8f0' }}>
@@ -680,7 +742,7 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
             <div style={s.inspector}>
               <div style={s.inspectorLabel}>{selectedBlock ? 'Propiedades' : 'Ajustes de Plantilla'}</div>
               {selectedBlock && selectedBlock.style?.raw !== 'true' ? (
-                <Inspector block={selectedBlock} onChange={updateBlock} />
+                <Inspector block={selectedBlock} onChange={updateBlock} bindField={bindField} />
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 12, color: '#334155', padding: '16px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -775,13 +837,14 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
               <span style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Code size={12} style={{ color: '#a78bfa' }} /> Editor de código HTML / Tailwind
               </span>
-              <span style={{ fontSize: 10, color: '#334155' }}>Soporte completo para HTML, CSS inline y Tailwind</span>
+              <span style={{ fontSize: 10, color: '#334155' }}>HTML, CSS inline, Tailwind y variables {'{{...}}'}</span>
             </div>
-            <textarea
-              value={rawHTML || (blocks.length === 1 && blocks[0].style?.raw === 'true' ? blocks[0].content : compileBlocksToHTML(blocks))}
-              onChange={e => handleRawHTMLChange(e.target.value)}
-              style={{ flex: 1, width: '100%', background: '#020617', color: '#e2e8f0', fontFamily: 'monospace', fontSize: 12, padding: 16, outline: 'none', border: 'none', resize: 'none', lineHeight: 1.6 }}
+            <CodeEditor
+              value={rawHTML || currentHTML()}
+              onChange={handleRawHTMLChange}
+              variables={variables}
               placeholder="<!-- Escribe tu HTML aquí... -->"
+              textareaProps={bindField(handleRawHTMLChange, 'Editor de código', { isDefault: true })}
             />
           </div>
         )}
@@ -796,7 +859,13 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
             }}>
               <div style={{ padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: '#94a3b8' }}>
                 <span>Dispositivo: {previewDevice === 'desktop' ? 'Escritorio (650px)' : 'Móvil (375px)'}</span>
-                <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 8px', borderRadius: 20, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>iframe aislado</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ background: '#f5f3ff', color: '#7c3aed', padding: '2px 8px', borderRadius: 20, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                    title="Cada destinatario recibirá el correo con sus propios datos.">
+                    variables de ejemplo
+                  </span>
+                  <span style={{ background: '#f0fdf4', color: '#16a34a', padding: '2px 8px', borderRadius: 20, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>iframe aislado</span>
+                </div>
               </div>
               <iframe title="Email Preview" srcDoc={srcDoc} style={{ flex: 1, width: '100%', border: 'none' }} sandbox="allow-scripts allow-popups" />
             </div>

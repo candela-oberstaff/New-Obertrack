@@ -37,7 +37,17 @@ const (
 	// calendarios): mantener el scope mínimo simplifica la verificación de
 	// Google. Como contrapartida, los eventos siempre van al calendario
 	// principal del usuario ('primary'); no hay selector de calendario destino.
-	googleScopes = "openid email https://www.googleapis.com/auth/calendar.events"
+	//
+	// meetings.space.readonly lee quién está conectado a una sala. Es el scope
+	// correcto —y no meetings.space.created— porque ese último solo alcanza a las
+	// salas que la app creó A TRAVÉS de la API de Meet, y las nuestras las crea
+	// Calendar con conferenceData.createRequest.
+	//
+	// OJO: es un scope SENSIBLE. En modo testing funciona con los usuarios de
+	// prueba, pero publicar la app exigirá pasar la verificación de Google.
+	googleScopes = "openid email " +
+		"https://www.googleapis.com/auth/calendar.events " +
+		"https://www.googleapis.com/auth/meetings.space.readonly"
 
 	// stateTTL acota la ventana en la que un state robado sirve de algo. El
 	// consentimiento de Google rara vez pasa de un minuto.
@@ -61,42 +71,99 @@ type GoogleCalendarService interface {
 	Status(userID uint) (*models.GoogleCalendarAccount, error)
 	// Disconnect revoca el permiso en Google y borra el vínculo local.
 	Disconnect(userID uint) error
+	// SetDisconnectHook cablea la limpieza que otros módulos necesitan al
+	// desvincular una cuenta (hoy: borrar los enlaces tarea↔evento de la Fase 2).
+	// Es un callback inyectado —mismo patrón que taskService.SetCalendarSync—
+	// porque la dependencia ya va calendarSync→googleCalendar y llamarlo al revés
+	// crearía un ciclo. Sin cablear (nil): no se limpia nada.
+	SetDisconnectHook(fn func(userID uint))
 	// AccessToken devuelve un access token vigente, refrescándolo si hace falta.
 	// Lo consumirá la Fase 2 (creación de eventos); se expone ya porque es donde
 	// vive el manejo de needs_reauth.
 	AccessToken(userID uint) (string, error)
 
-	// --- Eventos (Fase 2) ---
-	// CreateEvent crea un evento de día completo y devuelve su id en Google.
-	CreateEvent(userID uint, calendarID string, ev CalendarEventInput) (string, error)
+	// --- Eventos ---
+	// CreateEvent crea el evento y devuelve lo que Google respondió (id, enlace
+	// y, si se pidió, la sala de Meet).
+	CreateEvent(userID uint, calendarID string, ev CalendarEventInput) (*CalendarEvent, error)
 	// UpdateEvent sobrescribe un evento existente. Devuelve ErrEventGone si el
 	// usuario ya lo borró a mano en Google (el que llama debe re-crearlo).
 	UpdateEvent(userID uint, calendarID, eventID string, ev CalendarEventInput) error
+	// GetEvent consulta un evento. Se usa sobre todo para resolver el enlace de
+	// Meet cuando la conferencia quedó ConferencePending al crear.
+	GetEvent(userID uint, calendarID, eventID string) (*CalendarEvent, error)
 	// DeleteEvent borra un evento. Es idempotente: si ya no existe, no es error.
 	DeleteEvent(userID uint, calendarID, eventID string) error
+
+	// --- Meet ---
+	// MeetPresence dice cuánta gente hay AHORA en la sala de un enlace de Meet.
+	// Usa la API de Meet (otra API, misma credencial) y exige el scope
+	// meetings.space.readonly: con un token emitido antes de pedirlo devuelve
+	// ErrMeetScopeMissing.
+	MeetPresence(userID uint, meetURL string) (*MeetPresence, error)
 }
 
-// CalendarEventInput describe un evento de DÍA COMPLETO. Se usa día completo (y
-// no horas) a propósito: las tareas de Obertrack tienen fecha sin hora, así que
-// esto esquiva por completo la zona horaria. StartDate y EndDate son días
-// inclusivos tal como los ve el usuario; la conversión al 'end' exclusivo que
-// exige Google ocurre dentro del servicio.
+// CalendarEventInput describe un evento a crear o actualizar. Soporta las dos
+// formas que necesita Obertrack, y el par de campos que se rellene decide cuál:
+//
+//   - DÍA COMPLETO (tareas): StartDate/EndDate. Son días inclusivos tal como los
+//     ve el usuario; la conversión al 'end' exclusivo que exige Google ocurre en
+//     buildEventPayload. Al no llevar hora, esquiva por completo la zona horaria.
+//   - CON HORA (sesiones de Meet): StartAt/EndAt + TimeZone.
+//
+// Rellenar los dos pares es un error de programación: gana el de hora.
 type CalendarEventInput struct {
 	Summary     string
 	Description string
-	StartDate   time.Time
-	EndDate     time.Time
+
+	// Día completo.
+	StartDate time.Time
+	EndDate   time.Time
+
+	// Con hora. TimeZone es obligatorio si StartAt no es cero, y debe ser un
+	// identificador IANA ("America/Bogota"), NO un offset: en un evento
+	// recurrente el offset se rompe con el horario de verano y toda la serie se
+	// desplaza una hora.
+	StartAt  time.Time
+	EndAt    time.Time
+	TimeZone string
+
+	// Attendees son los correos invitados. Cuando hay al menos uno, Google manda
+	// las invitaciones por correo (sendUpdates=all).
+	Attendees []string
+	// CreateConference pide a Google que genere una sala de Meet para el evento.
+	// Solo tiene efecto al crear: en las actualizaciones la conferencia existente
+	// se conserva (ver UpdateEvent).
+	CreateConference bool
+	// Recurrence son reglas RRULE de la serie. Vacío = evento único.
+	Recurrence []string
+}
+
+// CalendarEvent es lo que Google devuelve tras crear o consultar un evento.
+type CalendarEvent struct {
+	ID       string
+	HTMLLink string
+	// MeetURL es el enlace de la videollamada. Vacío si el evento no tiene
+	// conferencia o si Google todavía la está creando (ver ConferencePending).
+	MeetURL string
+	// ConferencePending: Google aceptó el evento pero aún no terminó de crear la
+	// sala. Hay que volver a consultar el evento para obtener el enlace.
+	ConferencePending bool
 }
 
 var (
-	ErrGoogleDisabled = errors.New("la integración con Google Calendar no está configurada")
+	ErrGoogleDisabled = errors.New("la integración con Google no está configurada")
 	// ErrNeedsReauth: Google rechazó el refresh token. El usuario debe volver a
 	// pasar por el consentimiento; no es un error que se pueda reintentar.
-	ErrNeedsReauth  = errors.New("el acceso a Google Calendar fue revocado: vuelve a conectar la cuenta")
+	ErrNeedsReauth  = errors.New("el acceso a tu cuenta de Google fue revocado: vuelve a conectarla")
 	ErrInvalidState = errors.New("el enlace de conexión expiró o no es válido")
 	// ErrEventGone: el evento ya no existe en Google (el usuario lo borró a
 	// mano). En un update, el que llama debe volver a crearlo.
 	ErrEventGone = errors.New("el evento ya no existe en Google Calendar")
+	// ErrGooglePermanent envuelve un rechazo que no mejora esperando (datos
+	// inválidos, permiso denegado). El worker lo usa para no gastar la ventana de
+	// reintentos en algo que va a fallar igual dentro de dos horas.
+	ErrGooglePermanent = errors.New("Google rechazó la petición de forma permanente")
 )
 
 type googleCalendarService struct {
@@ -114,6 +181,13 @@ type googleCalendarService struct {
 	// concurrentes del mismo usuario pedirían dos tokens a Google y la segunda
 	// escritura pisaría a la primera.
 	refreshLocks sync.Map // uint -> *sync.Mutex
+
+	// onDisconnect lo inyecta SetDisconnectHook; nil = sin limpieza extra.
+	onDisconnect func(userID uint)
+}
+
+func (s *googleCalendarService) SetDisconnectHook(fn func(userID uint)) {
+	s.onDisconnect = fn
 }
 
 // NewGoogleCalendarService construye el servicio. Si el flag está apagado
@@ -459,33 +533,92 @@ func (s *googleCalendarService) markNeedsReauth(userID uint, reason string) {
 	}
 }
 
-// googleEventPayload es el cuerpo JSON de un evento de día completo. Las fechas
-// van en el campo `date` (no `dateTime`), que es lo que hace que Google lo trate
-// como all-day y sin zona horaria.
+// googleEventPayload es el cuerpo JSON de un evento.
 type googleEventPayload struct {
-	Summary     string          `json:"summary"`
-	Description string          `json:"description,omitempty"`
-	Start       googleEventDate `json:"start"`
-	End         googleEventDate `json:"end"`
-	// Source enlaza el evento de vuelta a Obertrack desde la UI de Google.
-	Source *googleEventSource `json:"source,omitempty"`
+	Summary     string           `json:"summary"`
+	Description string           `json:"description,omitempty"`
+	Start       googleEventTime  `json:"start"`
+	End         googleEventTime  `json:"end"`
+	Attendees   []googleAttendee `json:"attendees,omitempty"`
+	Recurrence  []string         `json:"recurrence,omitempty"`
+	// ConferenceData solo viaja al crear, y solo si se pidió sala. Google exige
+	// además conferenceDataVersion=1 en la query para tenerlo en cuenta.
+	ConferenceData *googleConferenceData `json:"conferenceData,omitempty"`
 }
 
-type googleEventDate struct {
-	Date string `json:"date"`
+// googleEventTime cubre las dos formas de fechar un evento. Ambos campos llevan
+// omitempty porque Google RECHAZA un evento que traiga `date` y `dateTime` a la
+// vez: exactamente uno de los dos debe estar presente.
+type googleEventTime struct {
+	// Date lo usa el evento de día completo (sin zona horaria).
+	Date string `json:"date,omitempty"`
+	// DateTime es RFC3339 y va acompañado de TimeZone.
+	DateTime string `json:"dateTime,omitempty"`
+	TimeZone string `json:"timeZone,omitempty"`
 }
 
-type googleEventSource struct {
-	Title string `json:"title"`
-	URL   string `json:"url"`
+type googleAttendee struct {
+	Email string `json:"email"`
 }
 
-const googleEventDateLayout = "2006-01-02"
+type googleConferenceData struct {
+	CreateRequest *googleConferenceCreateRequest `json:"createRequest,omitempty"`
+}
 
-// buildEventPayload traduce el input a la forma que espera Google. El `end.date`
-// de un evento all-day es EXCLUSIVO: una tarea de un solo día (start==end) va de
-// ese día al siguiente. Si no hay EndDate, dura un día desde StartDate.
+type googleConferenceCreateRequest struct {
+	// RequestID identifica la petición: Google deduplica por él, así que dos
+	// llamadas con el mismo id no generan dos salas.
+	RequestID             string                      `json:"requestId"`
+	ConferenceSolutionKey googleConferenceSolutionKey `json:"conferenceSolutionKey"`
+}
+
+type googleConferenceSolutionKey struct {
+	Type string `json:"type"`
+}
+
+const (
+	googleEventDateLayout = "2006-01-02"
+	// hangoutsMeet es el tipo de conferencia de Google Meet. Es el único que se
+	// puede crear con el scope calendar.events.
+	hangoutsMeet = "hangoutsMeet"
+)
+
+// buildEventPayload traduce el input a la forma que espera Google.
+//
+// Con hora (sesiones): `dateTime` RFC3339 + `timeZone` IANA, y el fin es el
+// instante real de fin. Con día completo (tareas): `date`, y el fin es
+// EXCLUSIVO, así que una tarea de un solo día (start==end) va de ese día al
+// siguiente. Si no hay EndDate, dura un día desde StartDate.
 func buildEventPayload(ev CalendarEventInput) googleEventPayload {
+	payload := googleEventPayload{
+		Summary:     ev.Summary,
+		Description: ev.Description,
+		Recurrence:  ev.Recurrence,
+	}
+	for _, email := range ev.Attendees {
+		payload.Attendees = append(payload.Attendees, googleAttendee{Email: email})
+	}
+	if ev.CreateConference {
+		payload.ConferenceData = &googleConferenceData{
+			CreateRequest: &googleConferenceCreateRequest{
+				RequestID:             newConferenceRequestID(),
+				ConferenceSolutionKey: googleConferenceSolutionKey{Type: hangoutsMeet},
+			},
+		}
+	}
+
+	if !ev.StartAt.IsZero() {
+		end := ev.EndAt
+		if end.IsZero() || !end.After(ev.StartAt) {
+			// Un fin inválido produciría un 400 de Google; una hora es un valor
+			// por defecto razonable para una reunión.
+			end = ev.StartAt.Add(time.Hour)
+		}
+		payload.Start = googleEventTime{DateTime: ev.StartAt.Format(time.RFC3339), TimeZone: ev.TimeZone}
+		payload.End = googleEventTime{DateTime: end.Format(time.RFC3339), TimeZone: ev.TimeZone}
+		return payload
+	}
+
 	start := ev.StartDate
 	end := ev.EndDate
 	if end.IsZero() || end.Before(start) {
@@ -493,13 +626,73 @@ func buildEventPayload(ev CalendarEventInput) googleEventPayload {
 	}
 	// +1 día para el fin exclusivo de Google.
 	endExclusive := end.AddDate(0, 0, 1)
+	payload.Start = googleEventTime{Date: start.Format(googleEventDateLayout)}
+	payload.End = googleEventTime{Date: endExclusive.Format(googleEventDateLayout)}
+	return payload
+}
 
-	return googleEventPayload{
-		Summary:     ev.Summary,
-		Description: ev.Description,
-		Start:       googleEventDate{Date: start.Format(googleEventDateLayout)},
-		End:         googleEventDate{Date: endExclusive.Format(googleEventDateLayout)},
+// newConferenceRequestID genera el id que deduplica la creación de la sala. No
+// hace falta que sea criptográfico, pero sí único por petición; si rand falla se
+// cae a una marca de tiempo antes que devolver un id vacío (que Google rechaza).
+func newConferenceRequestID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("obertrack-%d", time.Now().UnixNano())
 	}
+	return "obertrack-" + base64.RawURLEncoding.EncodeToString(buf)
+}
+
+// googleEventResponse es la parte de un evento que nos interesa al leerlo.
+type googleEventResponse struct {
+	ID       string `json:"id"`
+	HTMLLink string `json:"htmlLink"`
+	// HangoutLink es el atajo que Google rellena con la URL de Meet.
+	HangoutLink    string                        `json:"hangoutLink"`
+	ConferenceData *googleConferenceDataResponse `json:"conferenceData"`
+}
+
+type googleConferenceDataResponse struct {
+	EntryPoints   []googleEntryPoint             `json:"entryPoints"`
+	CreateRequest *googleCreateRequestStatusWrap `json:"createRequest"`
+}
+
+// googleEntryPoint es cada forma de entrar a la conferencia: el enlace de vídeo,
+// el teléfono de marcación, etc.
+type googleEntryPoint struct {
+	EntryPointType string `json:"entryPointType"`
+	URI            string `json:"uri"`
+}
+
+type googleCreateRequestStatusWrap struct {
+	Status googleCreateRequestStatus `json:"status"`
+}
+
+type googleCreateRequestStatus struct {
+	StatusCode string `json:"statusCode"`
+}
+
+// toCalendarEvent normaliza la respuesta. El enlace de Meet se busca primero en
+// hangoutLink (que Google rellena en el caso normal) y si no en los entryPoints
+// de vídeo, que es donde vive cuando la conferencia se creó con createRequest.
+func (r *googleEventResponse) toCalendarEvent() *CalendarEvent {
+	ev := &CalendarEvent{ID: r.ID, HTMLLink: r.HTMLLink, MeetURL: r.HangoutLink}
+	if r.ConferenceData == nil {
+		return ev
+	}
+	if ev.MeetURL == "" {
+		for _, ep := range r.ConferenceData.EntryPoints {
+			if ep.EntryPointType == "video" && ep.URI != "" {
+				ev.MeetURL = ep.URI
+				break
+			}
+		}
+	}
+	// 'pending' significa que Google todavía está creando la sala: el enlace no
+	// existe aún y hay que volver a consultar el evento.
+	if cr := r.ConferenceData.CreateRequest; cr != nil && cr.Status.StatusCode == "pending" {
+		ev.ConferencePending = true
+	}
+	return ev
 }
 
 func calendarEventsURL(calendarID string) string {
@@ -509,36 +702,57 @@ func calendarEventsURL(calendarID string) string {
 	return "https://www.googleapis.com/calendar/v3/calendars/" + url.PathEscape(calendarID) + "/events"
 }
 
-func (s *googleCalendarService) CreateEvent(userID uint, calendarID string, ev CalendarEventInput) (string, error) {
+// eventQuery arma los parámetros comunes. sendUpdates=all solo se pide cuando
+// hay invitados: es lo que hace que Google les mande el correo de invitación (y
+// sin invitados no tendría a quién notificar).
+func eventQuery(hasAttendees, withConference bool) string {
+	q := url.Values{}
+	if hasAttendees {
+		q.Set("sendUpdates", "all")
+	}
+	if withConference {
+		q.Set("conferenceDataVersion", "1")
+	}
+	if len(q) == 0 {
+		return ""
+	}
+	return "?" + q.Encode()
+}
+
+func (s *googleCalendarService) CreateEvent(userID uint, calendarID string, ev CalendarEventInput) (*CalendarEvent, error) {
 	if !s.enabled {
-		return "", ErrGoogleDisabled
+		return nil, ErrGoogleDisabled
 	}
 	body, err := json.Marshal(buildEventPayload(ev))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	resp, err := s.doEventRequest(userID, http.MethodPost, calendarEventsURL(calendarID), body)
+	eventsURL := calendarEventsURL(calendarID) + eventQuery(len(ev.Attendees) > 0, ev.CreateConference)
+	resp, err := s.doGoogleRequest(userID, http.MethodPost, eventsURL, body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", s.classifyEventError(userID, resp)
+		return nil, s.classifyEventError(userID, resp)
 	}
-	var created struct {
-		ID string `json:"id"`
-	}
+	var created googleEventResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&created); err != nil {
-		return "", err
+		return nil, err
 	}
 	if created.ID == "" {
-		return "", errors.New("Google no devolvió el id del evento creado")
+		return nil, errors.New("Google no devolvió el id del evento creado")
 	}
-	return created.ID, nil
+	return created.toCalendarEvent(), nil
 }
 
+// UpdateEvent reemplaza el evento (PUT). Deliberadamente NO manda
+// conferenceDataVersion=1: con la versión 0 Google ignora la conferencia del
+// cuerpo y CONSERVA la que ya tenía el evento, que es justo lo que queremos —el
+// enlace de Meet de una sesión no debe cambiar al mover la hora—. Pedir la
+// versión 1 sin incluir la conferencia en el cuerpo la borraría.
 func (s *googleCalendarService) UpdateEvent(userID uint, calendarID, eventID string, ev CalendarEventInput) error {
 	if !s.enabled {
 		return ErrGoogleDisabled
@@ -548,8 +762,9 @@ func (s *googleCalendarService) UpdateEvent(userID uint, calendarID, eventID str
 		return err
 	}
 
-	eventURL := calendarEventsURL(calendarID) + "/" + url.PathEscape(eventID)
-	resp, err := s.doEventRequest(userID, http.MethodPut, eventURL, body)
+	eventURL := calendarEventsURL(calendarID) + "/" + url.PathEscape(eventID) +
+		eventQuery(len(ev.Attendees) > 0, false)
+	resp, err := s.doGoogleRequest(userID, http.MethodPut, eventURL, body)
 	if err != nil {
 		return err
 	}
@@ -566,12 +781,38 @@ func (s *googleCalendarService) UpdateEvent(userID uint, calendarID, eventID str
 	return nil
 }
 
+func (s *googleCalendarService) GetEvent(userID uint, calendarID, eventID string) (*CalendarEvent, error) {
+	if !s.enabled {
+		return nil, ErrGoogleDisabled
+	}
+	eventURL := calendarEventsURL(calendarID) + "/" + url.PathEscape(eventID)
+	resp, err := s.doGoogleRequest(userID, http.MethodGet, eventURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return nil, ErrEventGone
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, s.classifyEventError(userID, resp)
+	}
+	var event googleEventResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&event); err != nil {
+		return nil, err
+	}
+	return event.toCalendarEvent(), nil
+}
+
 func (s *googleCalendarService) DeleteEvent(userID uint, calendarID, eventID string) error {
 	if !s.enabled {
 		return ErrGoogleDisabled
 	}
-	eventURL := calendarEventsURL(calendarID) + "/" + url.PathEscape(eventID)
-	resp, err := s.doEventRequest(userID, http.MethodDelete, eventURL, nil)
+	// sendUpdates=all para que Google avise a los invitados de que la reunión se
+	// canceló. En los eventos de tarea no hay invitados, así que no cambia nada.
+	eventURL := calendarEventsURL(calendarID) + "/" + url.PathEscape(eventID) + "?sendUpdates=all"
+	resp, err := s.doGoogleRequest(userID, http.MethodDelete, eventURL, nil)
 	if err != nil {
 		return err
 	}
@@ -586,9 +827,11 @@ func (s *googleCalendarService) DeleteEvent(userID uint, calendarID, eventID str
 	return s.classifyEventError(userID, resp)
 }
 
-// doEventRequest resuelve el token, hace la llamada y la reintenta una vez si el
-// access token acababa de expirar (401 con token recién refrescado en carrera).
-func (s *googleCalendarService) doEventRequest(userID uint, method, urlStr string, body []byte) (*http.Response, error) {
+// doGoogleRequest resuelve el token y hace la llamada. No reintenta: AccessToken
+// renueva con 60s de margen (accessTokenSkew), así que un 401 aquí no es un token
+// recién caducado sino una credencial revocada, y repetirla daría otro 401.
+// classifyEventError lo traduce a needs_reauth.
+func (s *googleCalendarService) doGoogleRequest(userID uint, method, urlStr string, body []byte) (*http.Response, error) {
 	token, err := s.AccessToken(userID)
 	if err != nil {
 		return nil, err
@@ -615,15 +858,32 @@ func (s *googleCalendarService) doEventRequest(userID uint, method, urlStr strin
 }
 
 // classifyEventError traduce un status de error de la API de eventos a un error
-// tipado. Un 401 significa credencial inválida → needs_reauth (no reintentable);
-// el resto se devuelve como error genérico que el worker sí reintenta.
+// tipado, para que el worker sepa si tiene sentido reintentar:
+//   - 401 → needs_reauth: credencial inválida, la arregla el usuario reconectando.
+//   - 4xx que no sea 408/429 → ErrGooglePermanent: la petición está mal (datos
+//     inválidos, permiso denegado) y repetirla da la misma respuesta.
+//   - el resto → error genérico, que el worker reintenta con backoff.
 func (s *googleCalendarService) classifyEventError(userID uint, resp *http.Response) error {
 	if resp.StatusCode == http.StatusUnauthorized {
 		s.markNeedsReauth(userID, "Google rechazó la credencial al sincronizar un evento")
 		return ErrNeedsReauth
 	}
 	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-	return fmt.Errorf("Google respondió %s al sincronizar el evento: %s", resp.Status, string(snippet))
+	if isTransientStatus(resp.StatusCode) {
+		return fmt.Errorf("Google respondió %s al sincronizar el evento: %s", resp.Status, string(snippet))
+	}
+	return fmt.Errorf("%w (%s): %s", ErrGooglePermanent, resp.Status, string(snippet))
+}
+
+// isTransientStatus distingue lo que se arregla solo con el tiempo. 429 es cuota
+// agotada (el caso más probable en esta integración: la API de Calendar limita
+// por usuario y minuto) y 5xx es un incidente del lado de Google; ambos se
+// resuelven esperando. 408 es un timeout que Google se atribuye. Cualquier otro
+// 4xx es un problema de la petición, y reintentarlo solo quema cuota.
+func isTransientStatus(code int) bool {
+	return code == http.StatusTooManyRequests ||
+		code == http.StatusRequestTimeout ||
+		code >= 500
 }
 
 func (s *googleCalendarService) Disconnect(userID uint) error {
@@ -650,5 +910,15 @@ func (s *googleCalendarService) Disconnect(userID uint) error {
 	}
 
 	s.refreshLocks.Delete(userID)
-	return s.repo.DeleteByUser(userID)
+	if err := s.repo.DeleteByUser(userID); err != nil {
+		return err
+	}
+
+	// Limpieza de los módulos que colgaban del vínculo (Fase 2: los enlaces
+	// tarea↔evento). Va DESPUÉS de borrar la fila para que un fallo aquí no deje
+	// al usuario conectado a medias: lo que pidió —desvincular— ya ocurrió.
+	if s.onDisconnect != nil {
+		s.onDisconnect(userID)
+	}
+	return nil
 }

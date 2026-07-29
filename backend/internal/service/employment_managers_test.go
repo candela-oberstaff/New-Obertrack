@@ -20,7 +20,7 @@ type emCall struct{ emp, mgr uint }
 
 type fakeEMRepo struct {
 	repository.EmploymentRepository
-	byUser map[uint][]models.Employment       // ListByUser
+	byUser map[uint][]models.Employment        // ListByUser
 	links  map[uint][]models.EmploymentManager // ListEmploymentManagers (estado simulado)
 	active map[[2]uint]bool                    // (managerID, companyID) -> tiene empleo activo
 
@@ -30,7 +30,9 @@ type fakeEMRepo struct {
 	empUpd  []map[string]interface{}
 }
 
-func (f *fakeEMRepo) ListByUser(userID uint) ([]models.Employment, error) { return f.byUser[userID], nil }
+func (f *fakeEMRepo) ListByUser(userID uint) ([]models.Employment, error) {
+	return f.byUser[userID], nil
+}
 func (f *fakeEMRepo) ListEmploymentManagers(empID uint) ([]models.EmploymentManager, error) {
 	return f.links[empID], nil
 }

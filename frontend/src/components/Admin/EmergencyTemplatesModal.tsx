@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Trash2, Plus } from 'lucide-react'
+import { useDirtySnapshot } from '../ui/useCloseGuard'
 import { Modal, Button } from '../ui'
 import { adminService, type EmergencyTemplate } from '../../services/admin.service'
 import styles from './EmergencyTemplatesModal.module.css'
@@ -67,7 +68,7 @@ export function EmergencyTemplatesModal({ isOpen, onClose }: Props) {
   const canSave = form.title.trim() && form.subject.trim() && form.body.trim()
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Gestionar plantillas" size="md">
+    <Modal isDirty={useDirtySnapshot(form)} isOpen={isOpen} onClose={onClose} title="Gestionar plantillas" size="md">
       <div className={styles.wrap}>
         <div className={styles.list}>
           {isLoading ? (

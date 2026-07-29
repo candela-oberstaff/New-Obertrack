@@ -1359,6 +1359,186 @@ func Run(db *gorm.DB) error {
 				)
 			},
 		},
+		{
+			// Backoff en la cola de Google Calendar. Sin next_attempt_at el worker
+			// reintentaba cada 20s y agotaba los intentos en ~100s: una caída de
+			// la API de Google de dos minutos dejaba los jobs en 'failed' para
+			// siempre. La columna es nullable y NULL = "procesable ya", así que
+			// los jobs pendientes que existan al migrar siguen su curso sin
+			// backfill.
+			ID: "202607281000_add_calendar_sync_backoff",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding next_attempt_at to calendar_sync_jobs...")
+				return tx.AutoMigrate(&models.CalendarSyncJob{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.CalendarSyncJob{}, "next_attempt_at")
+			},
+		},
+		{
+			// Módulo de Sesiones: reuniones con sala de Google Meet convocadas
+			// desde Obertrack, sobre el calendario personal del organizador.
+			ID: "202607281400_add_meetings",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating meeting_sessions and meeting_attendees tables...")
+				return tx.AutoMigrate(&models.MeetingSession{}, &models.MeetingAttendee{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.MeetingAttendee{}, &models.MeetingSession{})
+			},
+		},
+		{
+			// Backfill del permiso 'meetings' en los roles YA existentes.
+			//
+			// Sin esto el módulo nace invisible: EffectivePermissions lee una clave
+			// ausente como "none", así que toda empresa con roles ya configurados
+			// se quedaría fuera de Sesiones el día del despliegue —y el síntoma
+			// (una entrada del menú que no aparece) no apunta a su causa—.
+			//
+			// El criterio es heredar de 'tasks', que es el módulo más parecido en
+			// naturaleza: quien puede crear tareas puede convocar reuniones.
+			ID: "202607281410_backfill_meetings_permission",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Backfilling 'meetings' permission on existing roles...")
+				// permissions es texto con un JSON dentro, así que se castea a jsonb,
+				// se inserta la clave y se vuelve a serializar.
+				//
+				// El filtro usa ->>'meetings' IS NULL y NO el operador jsonb `?`:
+				// GORM interpretaría ese signo como un placeholder de parámetro y
+				// la consulta reventaría. El LIKE '{%}' evita que una fila con el
+				// texto corrupto haga fallar el cast y aborte toda la migración.
+				return tx.Exec(`
+					UPDATE roles
+					SET permissions = (
+						jsonb_set(
+							permissions::jsonb,
+							'{meetings}',
+							CASE WHEN permissions::jsonb->>'tasks' = 'edit'
+								THEN '"edit"'::jsonb
+								ELSE '"view"'::jsonb
+							END
+						)
+					)::text
+					WHERE permissions LIKE '{%}'
+					  AND permissions::jsonb->>'meetings' IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					UPDATE roles
+					SET permissions = (permissions::jsonb - 'meetings')::text
+					WHERE permissions LIKE '{%}'
+				`).Error
+			},
+		},
+		{
+			// Fin de serie de las sesiones recurrentes. Sin esta columna el
+			// listado filtraba por end_at —que solo describe la PRIMERA
+			// ocurrencia—, así que una sesión diaria desaparecía de "próximas"
+			// en cuanto terminaba su primer día. NULL = la serie no termina, que
+			// es el valor correcto para las series ya creadas sin fecha de fin.
+			ID: "202607281600_add_meeting_series_end",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding series_ends_at to meeting_sessions...")
+				if err := tx.AutoMigrate(&models.MeetingSession{}); err != nil {
+					return err
+				}
+				// Backfill de las sesiones NO recurrentes: su serie termina
+				// cuando termina la única ocurrencia.
+				return tx.Exec(`
+					UPDATE meeting_sessions
+					SET series_ends_at = end_at
+					WHERE (recurrence_rule IS NULL OR recurrence_rule = '')
+					  AND series_ends_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.MeetingSession{}, "series_ends_at")
+			},
+		},
+		{
+			// Realinea updated_at de los tickets de WhatsApp con la fecha de su
+			// último mensaje.
+			//
+			// El import de historial creaba todos los tickets en la misma pasada, así
+			// que quedaban sellados con el instante del import: la lista de chats
+			// mostraba la misma hora en las 50+ conversaciones y las ordenaba por
+			// cuándo se importaron en lugar de por su última actividad. El import ya
+			// llama a SyncTicketActivity, pero solo alcanza a los 30 chats más
+			// recientes que devuelve WAHA; este backfill corrige los que quedaron
+			// fuera de esa ventana.
+			//
+			// Solo toca origin='whatsapp' y tickets con mensajes: no hay razón para
+			// reescribir la actividad de los tickets internos o de correo.
+			ID: "202607281800_fix_whatsapp_ticket_activity",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Realigning WhatsApp ticket activity with last message date...")
+				return tx.Exec(`
+					UPDATE tickets t
+					SET updated_at = m.last_message_at
+					FROM (
+						SELECT ticket_id, MAX(created_at) AS last_message_at
+						FROM ticket_messages
+						WHERE deleted_at IS NULL
+						GROUP BY ticket_id
+					) m
+					WHERE m.ticket_id = t.id
+					  AND t.origin = 'whatsapp'
+					  AND t.deleted_at IS NULL
+					  AND t.updated_at IS DISTINCT FROM m.last_message_at
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// Irreversible por naturaleza: el updated_at anterior era el instante
+				// del import y no se conservó en ninguna parte. Revertir no aportaría
+				// nada —el valor viejo era justamente el dato incorrecto—.
+				return nil
+			},
+		},
+		{
+			// Bandeja de salida de WhatsApp sobre ticket_messages.
+			//
+			// El estado de entrega vive en la propia fila del mensaje y no en una
+			// tabla de jobs aparte: el chat necesita mostrarlo por mensaje, así que
+			// una tabla separada solo añadiría un join y duplicaría el contenido.
+			//
+			// No hace falta backfill: delivery_status vacío significa "no aplica"
+			// (entrantes, notas internas y todo el histórico previo), que es
+			// exactamente lo que corresponde a las filas ya existentes.
+			ID: "202607281900_add_whatsapp_outbox",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding WhatsApp outbox columns to ticket_messages...")
+				return tx.AutoMigrate(&models.TicketMessage{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, col := range []string{"delivery_status", "delivery_attempts", "next_attempt_at", "delivery_error"} {
+					if err := tx.Migrator().DropColumn(&models.TicketMessage{}, col); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
+		{
+			// Notas del expediente de empresa: fijar y marcar edición.
+			//
+			// Sin backfill: las notas existentes quedan sin fijar (default false)
+			// y con edited_at NULL, que es justo lo que son —nadie las ha
+			// editado ni fijado todavía—.
+			ID: "202607291500_company_note_pin_edit",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Añadiendo pinned/edited_at a company_events...")
+				return tx.AutoMigrate(&models.CompanyEvent{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, col := range []string{"pinned", "edited_at"} {
+					if err := tx.Migrator().DropColumn(&models.CompanyEvent{}, col); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
 		// Future migrations go here
 	})
 
