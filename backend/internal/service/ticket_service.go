@@ -22,7 +22,7 @@ type TicketService interface {
 	Update(id, requesterID uint, userType string, stage models.TicketStage, status string, assignedTo *uint) (*models.Ticket, error)
 	SendAgentMessage(id, agentID uint, userType string, content string, channel models.MessageChannel) (*models.TicketMessage, error)
 
-	IngestWhatsApp(session, from, body, externalID string) error
+	IngestWhatsApp(session, peer, body, externalID string, fromMe bool) error
 	IngestEmail(fromEmail, fromName, subject, textBody, messageID string) error
 
 	// ListInternal returns Obertrack-generated alert tickets (origin = internal).
@@ -269,10 +269,15 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 	return msg, nil
 }
 
-// IngestWhatsApp handles an inbound WhatsApp message: resolve/create the contact,
-// attach it to a recent open ticket (or open a new one), persist the message and
-// broadcast it.
-func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) error {
+// IngestWhatsApp handles a WhatsApp message: resolve/create the contact, attach
+// it to the contact's open ticket (or open a new one), persist and broadcast it.
+//
+// `peer` es SIEMPRE el JID del contacto del otro lado, nunca el de la cuenta
+// propia: en un mensaje saliente el llamador debe pasar el destinatario.
+// `fromMe` distingue lo que se escribió desde el teléfono —que se guarda como
+// mensaje de agente— de lo que escribió el contacto.
+func (s *ticketService) IngestWhatsApp(session, peer, body, externalID string, fromMe bool) error {
+	from := peer
 	// Idempotencia: si el webhook se reintenta, el mismo external_id ya fue
 	// procesado. Cortamos temprano para no recrear contacto/ticket ni redifundir.
 	if externalID != "" {
@@ -317,11 +322,18 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 		}
 	}
 
-	ticket, err := s.repo.GetOpenTicketByContactSince(contact.ID, time.Now().Add(-1*time.Hour))
+	// Un chat de WhatsApp es una conversación continua, no un caso que se reabre:
+	// se reutiliza el ticket abierto del contacto sin ventana temporal. Con la
+	// ventana de 1h que había antes, un contacto que escribía tras dos días de
+	// silencio estrenaba ticket, y la interfaz —que muestra un hilo por ticket—
+	// partía la conversación en dos, dejando las respuestas en el hilo viejo.
+	// Cuando alguien resuelve el ticket, el siguiente mensaje sí abre uno nuevo.
+	ticket, err := s.repo.GetOpenTicketByContact(contact.ID, session)
 	if err != nil {
 		ticket = &models.Ticket{
 			ContactID: &contact.ID,
 			Origin:    string(models.ChannelWhatsApp),
+			Session:   session,
 			Title:     "WA: " + phone,
 			Stage:     models.StageNew,
 			Status:    "open",
@@ -329,7 +341,9 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 		if err := s.repo.CreateTicket(ticket); err != nil {
 			return err
 		}
-		if s.supportNtfy != nil {
+		// Solo se avisa a soporte cuando escribe el contacto: un mensaje que salió
+		// del propio teléfono no es una solicitud que haya que atender.
+		if s.supportNtfy != nil && !fromMe {
 			s.supportNtfy.Notify(SupportTicketInfo{
 				Type:        "WhatsApp",
 				Requester:   resolvedName,
@@ -340,12 +354,20 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 		}
 	}
 
+	// Lo escrito desde el teléfono se registra como mensaje de agente, igual que
+	// hace el import del historial, para que el hilo muestre los dos lados.
+	sender := models.SenderTypeContact
+	if fromMe {
+		sender = models.SenderTypeAgent
+	}
 	msg := &models.TicketMessage{
 		TicketID:   ticket.ID,
-		SenderType: models.SenderTypeContact,
+		SenderType: sender,
 		Channel:    models.ChannelWhatsApp,
 		Content:    body,
 		ExternalID: externalID,
+		// Ya está entregado: lo mandó WhatsApp, no nuestra bandeja de salida.
+		DeliveryStatus: deliveryStatusFor(fromMe),
 	}
 	// Insert idempotente: si una entrega concurrente ya guardó este external_id,
 	// no se inserta de nuevo y evitamos redifundir un mensaje duplicado.
@@ -360,6 +382,17 @@ func (s *ticketService) IngestWhatsApp(session, from, body, externalID string) e
 
 	broadcastTicketMessage(ticket.ID, msg)
 	return nil
+}
+
+// deliveryStatusFor devuelve el estado de entrega de un mensaje ingerido. Los
+// salientes que llegan por webhook ya fueron entregados por WhatsApp, así que se
+// marcan como 'sent' y el worker del outbox no los toca; los entrantes no tienen
+// estado de entrega (vacío = no aplica).
+func deliveryStatusFor(fromMe bool) string {
+	if fromMe {
+		return models.DeliverySent
+	}
+	return ""
 }
 
 // IngestEmail handles an inbound email: resolve/create the contact, attach to an
@@ -388,7 +421,8 @@ func (s *ticketService) IngestEmail(fromEmail, fromName, subject, textBody, mess
 		}
 	}
 
-	ticket, err := s.repo.GetOpenTicketByContact(contact.ID)
+	// Los tickets de correo no pertenecen a ninguna sesión de WhatsApp.
+	ticket, err := s.repo.GetOpenTicketByContact(contact.ID, "")
 	if err != nil {
 		title := subject
 		if title == "" {
@@ -447,8 +481,11 @@ func (s *ticketService) ListInternal() ([]models.Ticket, error) {
 	return tickets, nil
 }
 
+// ListWhatsApp devuelve SOLO las conversaciones de la sesión activa. Al cambiar
+// el número conectado, los chats de la cuenta anterior siguen en la base pero
+// desaparecen de la bandeja: mezclarlos era el problema.
 func (s *ticketService) ListWhatsApp() ([]models.Ticket, error) {
-	return s.repo.ListByOrigin(string(models.ChannelWhatsApp))
+	return s.repo.ListByOriginAndSession(string(models.ChannelWhatsApp), s.wahaSvc.GetSession())
 }
 
 func (s *ticketService) GetWhatsAppTicket(id uint) (*models.Ticket, error) {
@@ -457,6 +494,11 @@ func (s *ticketService) GetWhatsAppTicket(id uint) (*models.Ticket, error) {
 		return nil, apperrors.ErrNotFound
 	}
 	if ticket.Origin != string(models.ChannelWhatsApp) {
+		return nil, apperrors.ErrNotFound
+	}
+	// El detalle se acota igual que el listado: si no, un enlace directo seguiría
+	// abriendo conversaciones de la cuenta anterior.
+	if ticket.Session != s.wahaSvc.GetSession() {
 		return nil, apperrors.ErrNotFound
 	}
 
@@ -554,11 +596,12 @@ func (s *ticketService) ImportWhatsAppHistory() (int, error) {
 		}
 
 		// Un ticket por contacto: reutiliza el abierto o crea uno.
-		ticket, terr := s.repo.GetOpenTicketByContact(contact.ID)
+		ticket, terr := s.repo.GetOpenTicketByContact(contact.ID, session)
 		if terr != nil {
 			ticket = &models.Ticket{
 				ContactID: &contact.ID,
 				Origin:    string(models.ChannelWhatsApp),
+				Session:   session,
 				Title:     "WA: " + phone,
 				Stage:     models.StageNew,
 				Status:    "open",

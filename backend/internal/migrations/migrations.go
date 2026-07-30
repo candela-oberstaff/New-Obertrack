@@ -1539,6 +1539,158 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			// Restaura el índice ÚNICO PARCIAL de external_id.
+			//
+			// La migración 202607281900 llamó a AutoMigrate(&TicketMessage{}) para
+			// añadir las columnas del outbox, y GORM —viendo la etiqueta `index` del
+			// modelo— sustituyó el único parcial de 202607131200 por un índice
+			// normal. Al perderse la unicidad, el ON CONFLICT DO NOTHING de
+			// CreateMessageIfNew dejó de deduplicar y cada reimportación del
+			// historial (una por reinicio del backend) volvió a insertar los mismos
+			// mensajes.
+			//
+			// La etiqueta `index` ya se quitó del modelo para que AutoMigrate no
+			// vuelva a pisarlo.
+			ID: "202607301200_restore_external_id_unique",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Deduping ticket_messages and restoring partial unique index on external_id...")
+				// 1) Se conserva la copia de menor id, que es la original.
+				if err := tx.Exec(`
+					DELETE FROM ticket_messages a
+					USING ticket_messages b
+					WHERE a.external_id = b.external_id
+					  AND a.external_id <> ''
+					  AND a.deleted_at IS NULL
+					  AND b.deleted_at IS NULL
+					  AND a.id > b.id
+				`).Error; err != nil {
+					return err
+				}
+				// 2) Fuera el índice normal que dejó AutoMigrate.
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_ticket_messages_external_id`).Error; err != nil {
+					return err
+				}
+				// 3) Y vuelve el único parcial: solo external_id no vacío y filas
+				// vivas (las respuestas de agente sin ID de proveedor y las notas
+				// internas van con external_id vacío y no deben chocar entre sí).
+				return tx.Exec(`
+					CREATE UNIQUE INDEX idx_ticket_messages_external_id
+					ON ticket_messages (external_id)
+					WHERE external_id <> '' AND deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`DROP INDEX IF EXISTS idx_ticket_messages_external_id`).Error
+			},
+		},
+		{
+			// Fusiona las conversaciones de WhatsApp partidas en varios tickets.
+			//
+			// La ingesta buscaba un ticket abierto del contacto con actividad en la
+			// última hora; pasado ese plazo estrenaba ticket. Como la interfaz de
+			// chat muestra un hilo por ticket, un contacto que escribía tras días de
+			// silencio aparecía con la conversación cortada: los mensajes nuevos en
+			// un hilo y todas las respuestas anteriores en otro. La ingesta ya no usa
+			// ventana temporal; esto repara lo que quedó dividido.
+			//
+			// Sobrevive el ticket más antiguo, que es el que conserva el historial.
+			ID: "202607301300_merge_split_whatsapp_tickets",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Merging split WhatsApp conversations into a single ticket per contact...")
+				// 1) Los mensajes pasan al ticket superviviente de cada contacto.
+				if err := tx.Exec(`
+					UPDATE ticket_messages m
+					SET ticket_id = k.keep_id
+					FROM (
+						SELECT id, MIN(id) OVER (PARTITION BY contact_id) AS keep_id
+						FROM tickets
+						WHERE origin = 'whatsapp' AND status = 'open'
+						  AND deleted_at IS NULL AND contact_id IS NOT NULL
+					) k
+					WHERE m.ticket_id = k.id AND k.id <> k.keep_id
+				`).Error; err != nil {
+					return err
+				}
+				// 2) Si el superviviente no tenía responsable pero un hilo fusionado
+				// sí, se conserva: perderlo dejaría el chat sin dueño.
+				if err := tx.Exec(`
+					UPDATE tickets t
+					SET assigned_to = src.assigned_to
+					FROM (
+						SELECT DISTINCT ON (contact_id)
+						       contact_id, MIN(id) OVER (PARTITION BY contact_id) AS keep_id, assigned_to
+						FROM tickets
+						WHERE origin = 'whatsapp' AND status = 'open' AND deleted_at IS NULL
+						  AND contact_id IS NOT NULL AND assigned_to IS NOT NULL
+						ORDER BY contact_id, id
+					) src
+					WHERE t.id = src.keep_id AND t.assigned_to IS NULL
+				`).Error; err != nil {
+					return err
+				}
+				// 3) Los hilos vacíos se retiran (borrado lógico: quedan auditables).
+				if err := tx.Exec(`
+					UPDATE tickets t
+					SET deleted_at = now()
+					FROM (
+						SELECT id, MIN(id) OVER (PARTITION BY contact_id) AS keep_id
+						FROM tickets
+						WHERE origin = 'whatsapp' AND status = 'open'
+						  AND deleted_at IS NULL AND contact_id IS NOT NULL
+					) k
+					WHERE t.id = k.id AND k.id <> k.keep_id
+				`).Error; err != nil {
+					return err
+				}
+				// 4) Y la hora del chat vuelve a reflejar su último mensaje.
+				return tx.Exec(`
+					UPDATE tickets t
+					SET updated_at = m.last_message_at
+					FROM (
+						SELECT ticket_id, MAX(created_at) AS last_message_at
+						FROM ticket_messages WHERE deleted_at IS NULL GROUP BY ticket_id
+					) m
+					WHERE m.ticket_id = t.id AND t.origin = 'whatsapp'
+					  AND t.deleted_at IS NULL
+					  AND t.updated_at IS DISTINCT FROM m.last_message_at
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// No se puede deshacer: los mensajes ya no recuerdan de qué hilo
+				// venían, y ese reparto era precisamente el dato incorrecto.
+				return nil
+			},
+		},
+		{
+			// Marca cada conversación de WhatsApp con la sesión (el número) de la que
+			// proviene.
+			//
+			// Sin esta columna, cambiar el número conectado dejaba los chats de la
+			// cuenta anterior mezclados en la bandeja, sin ninguna forma de
+			// separarlos: se veían conversaciones personales de un número junto a las
+			// de la línea de soporte.
+			//
+			// Los tickets existentes se atribuyen a 'session_1' porque es la única
+			// sesión que llegó a producir datos antes de que se registrara la
+			// procedencia. Se deja explícito en vez de leerlo del entorno: la variable
+			// ya apunta a otra sesión y reclamaría como suyo un historial ajeno.
+			ID: "202607301400_add_ticket_session",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding session column to tickets and attributing existing WhatsApp chats...")
+				if err := tx.AutoMigrate(&models.Ticket{}); err != nil {
+					return err
+				}
+				return tx.Exec(`
+					UPDATE tickets
+					SET session = 'session_1'
+					WHERE origin = 'whatsapp' AND (session IS NULL OR session = '')
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.Ticket{}, "session")
+			},
+		},
 		// Future migrations go here
 	})
 

@@ -151,6 +151,10 @@ export function EmailComposerModal({
     }
   }
 
+  // Antes del return temprano: si se llama más abajo, el número de hooks cambia
+  // según haya destinatario o no y React aborta el render (error #310).
+  const isDirty = useDirtySnapshot([subject, body])
+
   if (!recipient) return null
 
   const title =
@@ -194,7 +198,7 @@ export function EmailComposerModal({
   }
 
   return (
-    <Modal isDirty={useDirtySnapshot([subject, body])} isOpen={isOpen} onClose={onClose} title={title} size="md" footer={footer}>
+    <Modal isDirty={isDirty} isOpen={isOpen} onClose={onClose} title={title} size="md" footer={footer}>
       <style>{`@keyframes ecm-spin { to { transform: rotate(360deg); } }`}</style>
       {/* Paso 1: elegir cómo redactar */}
       {step === 'choose' && (

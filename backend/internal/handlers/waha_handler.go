@@ -71,10 +71,20 @@ func (h *WahaHandler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
-	from := payload.Payload.From
-	if payload.Event != "message" ||
-		payload.Payload.FromMe ||
-		strings.Contains(from, "status@broadcast") {
+	// Se aceptan tanto 'message' (entrantes) como 'message.any', que además trae lo
+	// enviado desde el teléfono. Sin esto el hilo quedaba a media conversación: se
+	// veía lo que escribía el contacto pero no las respuestas dadas desde el móvil.
+	if payload.Event != "message" && payload.Event != "message.any" {
+		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+		return
+	}
+
+	// El interlocutor es el contacto del otro lado: en un saliente, el destinatario.
+	peer := payload.Payload.From
+	if payload.Payload.FromMe {
+		peer = payload.Payload.To
+	}
+	if peer == "" || strings.Contains(peer, "status@broadcast") || strings.HasSuffix(peer, "@g.us") {
 		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
 		return
 	}
@@ -91,7 +101,7 @@ func (h *WahaHandler) HandleWebhook(c *gin.Context) {
 		return
 	}
 
-	if err := h.ticketSvc.IngestWhatsApp(payload.Session, payload.Payload.From, body, payload.Payload.ID); err != nil {
+	if err := h.ticketSvc.IngestWhatsApp(payload.Session, peer, body, payload.Payload.ID, payload.Payload.FromMe); err != nil {
 		log.Printf("WAHA ingest error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process message"})
 		return

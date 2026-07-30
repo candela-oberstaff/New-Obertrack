@@ -49,7 +49,7 @@ const MODULE_BY_PATH: Record<string, string> = {
 }
 import Avatar from '../Common/Avatar'
 import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
-import { WALLET_ENABLED } from '../../config/features'
+import { WALLET_ENABLED, GOOGLE_INTEGRATIONS_ENABLED } from '../../config/features'
 import styles from './Layout.module.css'
 
 // Module-level flag prevents the auto-tour from firing more than once per
@@ -145,7 +145,7 @@ export default function Layout() {
     { path: '/empresa', label: 'Profesionales', icon: <Users size={20} />, show: isEmployerType },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} />, show: !isIT },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} />, show: !isIT },
-    { path: '/sesiones', label: 'Sesiones', icon: <Video size={20} />, show: !isIT },
+    { path: '/sesiones', label: 'Sesiones', icon: <Video size={20} />, show: GOOGLE_INTEGRATIONS_ENABLED && !isIT },
     { path: '/wallet', label: 'Wallet', icon: <Wallet size={20} />, show: WALLET_ENABLED && isProfessional },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, show: isSuper || isEmployerType },
     // Roles y Grupos: oculto para empresas en esta versión (solo superadmin).

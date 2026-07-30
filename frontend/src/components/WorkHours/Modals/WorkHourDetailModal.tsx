@@ -45,6 +45,12 @@ export function WorkHourDetailModal({
     setRejectionReason('')
   }, [workHour?.id])
 
+  // Se calcula ANTES del return temprano: es un hook, y llamarlo más abajo (o
+  // dentro del JSX) hacía que el número de hooks cambiara según hubiera registro
+  // o no. React aborta el render en ese caso —error #310— y la pantalla quedaba
+  // en blanco al abrir el detalle para aprobar o rechazar.
+  const isDirty = useDirtySnapshot(showRejectForm ? rejectionReason : null)
+
   if (!workHour) return null
 
   const statusClass = workHour.approved ? 'approved' : workHour.rejected ? 'rejected' : 'pending'
@@ -88,7 +94,7 @@ export function WorkHourDetailModal({
   const hasActions = showEdit || showRejectOpen || showRejectConfirm || showApprove
 
   return (
-    <Modal isDirty={useDirtySnapshot(showRejectForm ? rejectionReason : null)}
+    <Modal isDirty={isDirty}
       isOpen
       onClose={onClose}
       title="Detalle de Registro"

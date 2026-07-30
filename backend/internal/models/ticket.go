@@ -47,6 +47,11 @@ type Ticket struct {
 	Contact     *Contact       `gorm:"foreignKey:ContactID" json:"contact,omitempty"`
 	UserID      *uint          `gorm:"index" json:"user_id,omitempty"` // Professional referenced by an internal alert
 	Origin      string         `gorm:"size:20;index" json:"origin"` // "internal" = Obertrack alert; channel-tagged otherwise
+	// Session es la sesión de WAHA (el número de WhatsApp) de la que proviene la
+	// conversación. Sin esto, cambiar de sesión dejaba los chats de la cuenta
+	// anterior mezclados en la bandeja, sin manera de separarlos. Vacío en los
+	// tickets que no son de WhatsApp.
+	Session string `gorm:"size:100;index" json:"session,omitempty"`
 	Title       string         `gorm:"size:255" json:"title"`
 	Description string         `gorm:"type:text" json:"description,omitempty"` // Internal alert body (reason/dates)
 
@@ -98,7 +103,13 @@ type TicketMessage struct {
 	SenderID   *uint          `json:"sender_id,omitempty"` // UserID if SenderType == agent
 	Channel    MessageChannel `gorm:"type:varchar(20);not null" json:"channel"`
 	Content    string         `gorm:"type:text" json:"content"`
-	ExternalID string         `gorm:"size:255;index" json:"external_id"` // WAHA ID or Brevo Message-ID
+	// ExternalID NO lleva etiqueta `index`: el índice de esta columna es un ÚNICO
+	// PARCIAL creado a mano por migración (`idx_ticket_messages_external_id`, solo
+	// para external_id no vacío y filas vivas). Si se declara aquí, AutoMigrate lo
+	// reemplaza por un índice normal y se pierde la unicidad —que es lo que hace
+	// que el ON CONFLICT de CreateMessageIfNew deduplique—, con el resultado de que
+	// cada reimportación del historial duplica los mensajes.
+	ExternalID string `gorm:"size:255" json:"external_id"` // WAHA ID or Brevo Message-ID
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`

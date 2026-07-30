@@ -9,14 +9,19 @@ import { authService, channelService } from '../services/api'
 import { Modal, Button, Skeleton } from '../components/ui'
 import { Select } from '../components/ui/Select'
 import type { CompanyRole, CompanyGroup, User, PermissionLevel } from '../types'
+import { GOOGLE_INTEGRATIONS_ENABLED } from '../config/features'
 import styles from './Tenants/Tenants.module.css'
 
 // Módulos de la app sobre los que un rol define permisos. La aplicación de
 // estos permisos en cada módulo se conecta gradualmente.
+//
+// Sesiones queda fuera mientras la integración con Google esté escondida: dar
+// permisos sobre un módulo que nadie ve solo confunde. Los permisos ya
+// guardados no se tocan, así que reaparecen tal cual al reactivar el flag.
 const MODULES: { key: string; label: string }[] = [
   { key: 'tasks', label: 'Tareas' },
   { key: 'hours', label: 'Horas' },
-  { key: 'meetings', label: 'Sesiones' },
+  ...(GOOGLE_INTEGRATIONS_ENABLED ? [{ key: 'meetings', label: 'Sesiones' }] : []),
   { key: 'reports', label: 'Reportes' },
   { key: 'chat', label: 'Chat' },
   { key: 'tutorials', label: 'Novedades' },

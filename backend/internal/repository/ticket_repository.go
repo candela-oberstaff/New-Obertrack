@@ -19,7 +19,12 @@ type TicketRepository interface {
 	SaveContact(c *models.Contact) error
 
 	GetOpenTicketByContactSince(contactID uint, since time.Time) (*models.Ticket, error)
-	GetOpenTicketByContact(contactID uint) (*models.Ticket, error)
+	// GetOpenTicketByContact busca el hilo abierto del contacto DENTRO de una
+	// sesión: el mismo teléfono escribiendo a dos números de la empresa son dos
+	// conversaciones distintas y no deben compartir ticket.
+	GetOpenTicketByContact(contactID uint, session string) (*models.Ticket, error)
+	// ListByOriginAndSession lista los tickets de un canal acotados a una sesión.
+	ListByOriginAndSession(origin, session string) ([]models.Ticket, error)
 	CreateTicket(t *models.Ticket) error
 	SaveTicket(t *models.Ticket) error
 	TouchTicket(t *models.Ticket) error
@@ -115,9 +120,9 @@ func (r *ticketRepository) GetOpenTicketByContactSince(contactID uint, since tim
 	return &t, nil
 }
 
-func (r *ticketRepository) GetOpenTicketByContact(contactID uint) (*models.Ticket, error) {
+func (r *ticketRepository) GetOpenTicketByContact(contactID uint, session string) (*models.Ticket, error) {
 	var t models.Ticket
-	if err := r.db.Where("contact_id = ? AND status = ?", contactID, "open").First(&t).Error; err != nil {
+	if err := r.db.Where("contact_id = ? AND status = ? AND session = ?", contactID, "open", session).First(&t).Error; err != nil {
 		return nil, err
 	}
 	return &t, nil
@@ -172,6 +177,16 @@ func (r *ticketRepository) List(assignedTo *uint) ([]models.Ticket, error) {
 		q = q.Where("assigned_to = ?", *assignedTo)
 	}
 	if err := q.Find(&tickets).Error; err != nil {
+		return nil, err
+	}
+	return tickets, nil
+}
+
+func (r *ticketRepository) ListByOriginAndSession(origin, session string) ([]models.Ticket, error) {
+	var tickets []models.Ticket
+	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages").
+		Where("origin = ? AND session = ?", origin, session).
+		Order("updated_at desc").Find(&tickets).Error; err != nil {
 		return nil, err
 	}
 	return tickets, nil

@@ -4,7 +4,7 @@ import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
 import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, EmployerRoute, SupportRoute, SupportInboxRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
-import { WALLET_ENABLED } from '../config/features'
+import { WALLET_ENABLED, GOOGLE_INTEGRATIONS_ENABLED } from '../config/features'
 
 const Login = lazy(() => import('../pages/Login'))
 const ForgotPassword = lazy(() => import('../pages/ForgotPassword'))
@@ -69,8 +69,15 @@ export function AppRoutes() {
           <Route path="tasks" element={<Tasks />} />
           <Route path="work-hours" element={<WorkHours />} />
           {/* Sesiones: sin guard de rol propio. El permiso del módulo "meetings"
-              lo aplican el backend y el sidebar, igual que Tareas u Horas. */}
-          <Route path="sesiones" element={<Meetings />} />
+              lo aplican el backend y el sidebar, igual que Tareas u Horas.
+              Depende del consentimiento de Google (salas de Meet), así que
+              queda escondida tras GOOGLE_INTEGRATIONS_ENABLED hasta pasar la
+              verificación. */}
+          {GOOGLE_INTEGRATIONS_ENABLED
+            ? <Route path="sesiones" element={<Meetings />} />
+            // Sin ruta comodín en la app, un enlace guardado a Sesiones dejaría
+            // el área de contenido en blanco. Mejor devolverlo al dashboard.
+            : <Route path="sesiones" element={<Navigate to={ROUTES.dashboard} replace />} />}
           <Route path="chat" element={<SlackChat />} />
           <Route path="whatsapp" element={<AdminRoute><WhatsApp /></AdminRoute>} />
           <Route path="profile" element={<Profile />} />
