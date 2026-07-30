@@ -1,0 +1,19 @@
+{
+  "$comment": [
+    "Excepciones de npm audit, con motivo y fecha de revisión. Cada entrada es una",
+    "vulnerabilidad alta que NO bloquea el despliegue porque no aplica a esta app.",
+    "Cualquier alerta que no esté aquí sigue rompiendo CI.",
+    "Al pasar la fecha de 'revisar_antes', el candado vuelve a fallar a propósito:",
+    "una excepción sin caducidad se convierte en permanente sin que nadie lo decida."
+  ],
+  "excepciones": [
+    {
+      "advisory": "GHSA-qwww-vcr4-c8h2",
+      "paquete": "react-router",
+      "titulo": "RSC Mode CSRF Bypass Allows Action Execution Before 400 Response",
+      "motivo": "Solo afecta al modo RSC (React Server Components) de react-router, que necesita renderizado en servidor. Esta app es una SPA de cliente: monta BrowserRouter en el navegador, no tiene entrada de servidor, ni SSR, ni framework mode, así que el código vulnerable nunca se ejecuta. npm no ofrece arreglo hacia delante en la línea 7 (su única propuesta es BAJAR a 7.11.0, que reintroduce las otras cuatro alertas ya corregidas al subir a 7.18.2).",
+      "arreglo_real": "Migrar a react-router 8.3.0, donde está corregido. Implica mover los imports de 'react-router-dom' a 'react-router' en ~39 ficheros y validar el cambio de versión mayor.",
+      "revisar_antes": "2026-10-31"
+    }
+  ]
+}
