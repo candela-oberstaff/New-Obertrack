@@ -26,6 +26,13 @@ interface EmailComposerModalProps {
    * Para destinatarios que no son usuarios (ej. responsables de empresa) pásalo como false.
    */
   logContact?: boolean
+  /**
+   * Id de la EMPRESA a cuyo expediente se apunta el envío. Es la vía paralela a
+   * logContact: cuando se escribe al responsable de una empresa, el
+   * destinatario no es un profesional y el contacto pertenece a la ficha de la
+   * empresa, no a la de una persona.
+   */
+  logTenantId?: number
 }
 
 type Step = 'choose' | 'pick-template' | 'compose'
@@ -79,6 +86,7 @@ export function EmailComposerModal({
   defaultSubject = 'Seguimiento de actividad en Obertrack',
   defaultBody = '',
   logContact = true,
+  logTenantId,
 }: EmailComposerModalProps) {
   const notify = useNotification()
   const [step, setStep] = useState<Step>('choose')
@@ -140,6 +148,9 @@ export function EmailComposerModal({
         html_content: bodyToHTML(body.trim()),
       })
       if (logContact) adminService.logContact(recipient.id, 'email').catch(() => {})
+      // El asunto va al expediente de la empresa: sin él, "correo enviado" no
+      // le dice nada al que abra la ficha la semana que viene.
+      if (logTenantId) adminService.logTenantContact(logTenantId, 'email', subject.trim()).catch(() => {})
       notify.success(`Correo enviado a ${recipient.name}.`)
       onClose()
     } catch (err: any) {

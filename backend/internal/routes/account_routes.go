@@ -29,6 +29,28 @@ func requireAdminPanel() gin.HandlerFunc {
 	}
 }
 
+// requireSupportWrite: escribir en el EXPEDIENTE de una empresa (notas y
+// contactos) lo pueden hacer también los customer success, no solo el
+// superadmin.
+//
+// Es la excepción deliberada a requireAdminPanel, y la justifica el propósito
+// del expediente: es material de seguimiento del área de soporte. Si la única
+// gente que atiende a los clientes no puede anotar lo que habla con ellos, el
+// expediente se queda a medias y el seguimiento acaba en un canal aparte.
+//
+// Sigue sin abrirles nada que cambie la cuenta: suspender, editar, crear o
+// tocar profesionales continúa siendo exclusivo del superadmin.
+func requireSupportWrite() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if middleware.IsSuperadmin(c) || middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess) {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin o customer success"})
+		c.Abort()
+	}
+}
+
 // requireManageUsers: las acciones de gestión de usuarios (activar/desactivar,
 // promover/quitar manager, asignar/reasignar equipo) solo las hace el dueño de
 // la empresa (empleador) o un superadmin. Defensa en profundidad a nivel de
@@ -224,15 +246,10 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.POST("/tenants", d.admin.CreateTenant)
 		admin.GET("/tenants/:id", d.admin.GetTenant)
 		admin.GET("/tenants/:id/employees", d.admin.GetTenantEmployees)
+		admin.GET("/tenants/:id/tickets", d.admin.GetTenantTickets)
 		admin.GET("/tenants/:id/activity", d.admin.GetTenantActivity)
 		admin.GET("/tenants/:id/activity/people", d.admin.GetTenantActivityPeople)
-		// Notas del expediente: las escribe, edita, fija y borra el superadmin
-		// (requireAdminPanel deja a CS solo los GET).
 		admin.GET("/tenants/:id/notes/pinned", d.admin.GetTenantPinnedNotes)
-		admin.POST("/tenants/:id/notes", d.admin.AddTenantNote)
-		admin.PUT("/tenants/:id/notes/:noteId", d.admin.UpdateTenantNote)
-		admin.PUT("/tenants/:id/notes/:noteId/pin", d.admin.SetTenantNotePinned)
-		admin.DELETE("/tenants/:id/notes/:noteId", d.admin.DeleteTenantNote)
 		admin.GET("/tenants/:id/archived", d.admin.GetTenantArchived)
 		admin.POST("/tenants/:id/suspend", d.admin.SuspendTenant)
 		admin.POST("/tenants/:id/activate", d.admin.ActivateTenant)
@@ -249,6 +266,33 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.POST("/emergency-templates", d.emergencyTpl.Create)
 		admin.PUT("/emergency-templates/:id", d.emergencyTpl.Update)
 		admin.DELETE("/emergency-templates/:id", d.emergencyTpl.Delete)
+	}
+
+	// Escritura en el expediente de empresa. Va en un grupo aparte del panel de
+	// admin porque es la única mutación que también hace customer success: son
+	// quienes atienden a los clientes y quienes tienen algo que anotar.
+	support := api.Group("/admin")
+	support.Use(requireSupportWrite())
+	{
+		support.POST("/tenants/:id/notes", d.admin.AddTenantNote)
+		support.PUT("/tenants/:id/notes/:noteId", d.admin.UpdateTenantNote)
+		support.PUT("/tenants/:id/notes/:noteId/pin", d.admin.SetTenantNotePinned)
+		support.DELETE("/tenants/:id/notes/:noteId", d.admin.DeleteTenantNote)
+		// Contactos con la empresa: los de correo y WhatsApp los registra la
+		// plataforma al enviar; los de llamada y reunión se anotan a mano.
+		support.POST("/tenants/:id/contacts", d.admin.AddTenantContact)
+
+		// Hilo de cada entrada del expediente: comentarios y archivos. El
+		// binario sube por /api/uploads; aquí solo se registra a qué entrada
+		// pertenece y quién lo colgó.
+		support.POST("/tenants/:id/events/:eventId/comments", d.companyThread.AddComment)
+		support.PUT("/tenants/:id/comments/:commentId", d.companyThread.UpdateComment)
+		support.DELETE("/tenants/:id/comments/:commentId", d.companyThread.DeleteComment)
+		support.POST("/tenants/:id/events/:eventId/attachments", d.companyThread.AddAttachment)
+		support.DELETE("/tenants/:id/attachments/:attId", d.companyThread.DeleteAttachment)
+		// La descarga también vive aquí (y no en el grupo de solo lectura) para
+		// que la vea el mismo público que puede escribir: superadmin y CS.
+		support.GET("/tenants/:id/attachments/:attId/download", d.companyThread.DownloadAttachment)
 	}
 
 	// Gestión del expediente por el EMPLEADOR (solo su empresa). Reusa los

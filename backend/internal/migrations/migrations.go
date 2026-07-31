@@ -1691,6 +1691,39 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropColumn(&models.Ticket{}, "session")
 			},
 		},
+		{
+			// Contactos con la empresa en el expediente: añade el canal.
+			//
+			// Sin backfill: hasta ahora no se registraba ningún contacto, así que
+			// no hay filas que clasificar. Las que existen (notas, suspensiones)
+			// se quedan con canal vacío, que es lo que les corresponde.
+			ID: "202607311000_company_event_channel",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Añadiendo channel a company_events...")
+				return tx.AutoMigrate(&models.CompanyEvent{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.CompanyEvent{}, "channel")
+			},
+		},
+		{
+			// Hilo del expediente de empresa: comentarios y adjuntos colgando de
+			// cada entrada.
+			//
+			// Tablas nuevas, sin backfill posible ni necesario: hasta ahora una
+			// nota era solo texto.
+			ID: "202607311600_company_event_thread",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creando company_event_comments y company_event_attachments...")
+				return tx.AutoMigrate(&models.CompanyEventComment{}, &models.CompanyEventAttachment{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropTable(&models.CompanyEventAttachment{}); err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.CompanyEventComment{})
+			},
+		},
 		// Future migrations go here
 	})
 

@@ -53,6 +53,39 @@ func TestRequireAdminPanel(t *testing.T) {
 	}
 }
 
+// Escritura en el expediente de empresa: es la excepción a requireAdminPanel.
+// Customer success SÍ puede anotar (notas y contactos) porque es el área que
+// atiende a las empresas; el resto de roles sigue fuera.
+func TestRequireSupportWrite(t *testing.T) {
+	cs := string(models.UserTypeCustomerSuccess)
+	cases := []struct {
+		name      string
+		method    string
+		role      string
+		isSuper   bool
+		wantAllow bool
+	}{
+		{"superadmin escribe", http.MethodPost, "superadmin", true, true},
+		{"superadmin borra", http.MethodDelete, "superadmin", true, true},
+		{"customer success escribe", http.MethodPost, cs, false, true},
+		{"customer success edita", http.MethodPut, cs, false, true},
+		{"customer success borra", http.MethodDelete, cs, false, true},
+		{"profesional no", http.MethodPost, string(models.UserTypeProfessional), false, false},
+		{"empresa no escribe en su propio expediente de plataforma", http.MethodPost, string(models.UserTypeEmployer), false, false},
+		{"analista de IT no", http.MethodPost, string(models.UserTypeITAnalyst), false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, w := accessCtx(tc.method, tc.role, tc.isSuper, false)
+			requireSupportWrite()(c)
+			allowed := !c.IsAborted()
+			if allowed != tc.wantAllow {
+				t.Fatalf("allowed = %v (status %d), esperaba %v", allowed, w.Code, tc.wantAllow)
+			}
+		})
+	}
+}
+
 // Gestión de usuarios (promover/asignar/reasignar manager, activar/desactivar):
 // solo el dueño de la empresa (empleador) o superadmin. Un manager (is_manager)
 // NO puede, aunque el flag esté activo: defensa en profundidad sobre el servicio.

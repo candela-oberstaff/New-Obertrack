@@ -39,6 +39,27 @@ type BrevoErrorResponse struct {
 	Message string `json:"message"`
 }
 
+// recipient arma el destinatario para Brevo, que RECHAZA la petición entera con
+// "missing_parameter - name is missing in to" si el nombre va vacío.
+//
+// No es hipotético: hay destinatarios sin nombre por toda la base (contactos de
+// WhatsApp recién creados, importaciones a medias, direcciones que se escriben a
+// mano). Antes reventaba el envío; ahora se cae a la parte local de la dirección,
+// que es fea pero llega. El nombre aquí es solo lo que se ve en el "Para" del
+// buzón: el saludo del correo lo resuelven las variables {{nombre}}, así que
+// esto no cambia el contenido.
+func recipient(email, name string) BrevoContact {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		if at := strings.Index(email, "@"); at > 0 {
+			name = email[:at]
+		} else {
+			name = email
+		}
+	}
+	return BrevoContact{Name: name, Email: email}
+}
+
 func NewBrevoService() *BrevoService {
 	return &BrevoService{
 		apiKey: os.Getenv("BREVO_API_KEY"),
@@ -88,10 +109,8 @@ func (s *BrevoService) SendEmail(toEmail, toName, subject, htmlContent string) e
 	}
 
 	payload := BrevoEmailRequest{
-		Sender: s.from,
-		To: []BrevoContact{
-			{Name: toName, Email: toEmail},
-		},
+		Sender:      s.from,
+		To:          []BrevoContact{recipient(toEmail, toName)},
 		Subject:     subject,
 		HTMLContent: wrappedHTML,
 	}
@@ -132,10 +151,8 @@ func (s *BrevoService) SendEmailWithAttachments(toEmail, toName, subject, htmlCo
 	}
 
 	payload := BrevoEmailRequest{
-		Sender: s.from,
-		To: []BrevoContact{
-			{Name: toName, Email: toEmail},
-		},
+		Sender:      s.from,
+		To:          []BrevoContact{recipient(toEmail, toName)},
 		Subject:     subject,
 		HTMLContent: htmlContent,
 		Attachment:  attachments,

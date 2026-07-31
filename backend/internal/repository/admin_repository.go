@@ -51,6 +51,11 @@ const (
 	// una persona a mano, y quien busca "qué anotamos de esta empresa" no
 	// quiere que se lo mezclen con los seguimientos automáticos de CS.
 	TenantActivityNote = "note"
+	// TenantActivityContact son los contactos del equipo HACIA la empresa
+	// (correo, WhatsApp, llamada, reunión). Categoría propia porque responde a
+	// la pregunta que más se hace soporte al abrir una ficha —"¿ya hablamos con
+	// ellos?"— y mezclarla con las notas la volvería a esconder.
+	TenantActivityContact = "contact"
 )
 
 // TenantActivityPerson es una persona que aparece en el expediente, para
@@ -76,6 +81,10 @@ type TenantActivity struct {
 	// Solo tienen sentido en las notas; en el resto son siempre false/nil.
 	Pinned   bool       `json:"pinned"`
 	EditedAt *time.Time `json:"edited_at,omitempty"`
+	// Channel solo viene en los contactos (email, whatsapp, call, meeting) y
+	// va aparte del texto para que la interfaz pueda distinguirlos de un
+	// vistazo sin leer el detalle.
+	Channel string `json:"channel,omitempty"`
 }
 
 // TenantActivityCount es cuántos movimientos hay de una categoría, con el
@@ -156,6 +165,27 @@ type TenantSummary struct {
 	RejectedCount  int64     `json:"rejected_count"`
 	OpenTickets    int       `json:"open_tickets"`
 	CreatedAt      time.Time `json:"created_at"`
+	// Señales de salud de la cuenta. Nulos cuando nunca ha pasado: "todavía no
+	// la hemos contactado" y "nunca la hemos contactado" se ven igual, y es la
+	// respuesta honesta en ambos casos.
+	LastContactAt  *time.Time `json:"last_contact_at,omitempty"`
+	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
+}
+
+// TenantTicket es un ticket visto desde la ficha de la empresa. Aplana lo justo
+// para la tabla: de quién va y quién lo lleva, sin arrastrar el hilo entero.
+type TenantTicket struct {
+	ID     uint   `json:"id"`
+	Origin string `json:"origin"` // internal | whatsapp | zoho
+	Title  string `json:"title"`
+	Stage  string `json:"stage"`
+	Status string `json:"status"`
+	// About es sobre quién va: el contacto de WhatsApp o el profesional de la
+	// alerta interna. Vacío si el ticket no apunta a ninguno.
+	About     string    `json:"about"`
+	Assignee  string    `json:"assignee"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // FollowUpInfo es el estado vigente de gestión de un profesional (la entrada
@@ -237,6 +267,9 @@ type AdminRepository interface {
 	GetTenantPinnedNotes(tenantID uint) ([]TenantActivity, error)
 
 	GetTenantEmployees(tenantID uint) ([]EmployeeSummary, error)
+	// GetTenantTickets lista los tickets de la empresa (alertas internas sobre
+	// su gente + conversaciones de WhatsApp de su número).
+	GetTenantTickets(tenantID uint) ([]TenantTicket, error)
 	GetEmployeeSummary(userID uint) (*EmployeeSummary, error)
 	GetEmployeeWorkHours(userID uint, limit int) ([]EmployeeWorkHour, error)
 	GetEmployeeTasks(userID uint, limit int) ([]EmployeeTask, error)
@@ -610,6 +643,47 @@ func (r *adminRepository) DeleteSuperadmins() error {
 	return r.db.Where("user_type = ?", "superadmin").Delete(&models.User{}).Error
 }
 
+// companyPhoneDigits normaliza dentro de SQL el teléfono de la empresa igual que
+// utils.NormalizePhoneDigits en Go: solo dígitos y sin el prefijo internacional
+// "00". Espera el usuario-empresa con el alias `u`.
+const companyPhoneDigits = `regexp_replace(regexp_replace(COALESCE(u.phone_number, ''), '\D', '', 'g'), '^00(.)', '\1')`
+
+// tenantTicketScope acota qué tickets son de una empresa. Espera los alias `tk`
+// (tickets) y `u` (el usuario-empresa).
+//
+// Son tres fuentes distintas, y hasta ahora solo se contaba la primera —por eso
+// el KPI "Tickets abiertos" se quedaba corto—:
+//
+//  1. Alertas internas sobre sus profesionales (rechazos de horas), que apuntan
+//     al profesional por user_id.
+//  2. Alertas internas sobre el propio responsable de la empresa.
+//  3. Conversaciones de WhatsApp/Zoho, que NO tienen user_id: van por contacto,
+//     así que se cruzan por teléfono. El contacto guarda el número como lo da
+//     WAHA y la ficha como lo tecleó una persona, de ahí la normalización a
+//     ambos lados.
+//
+// El guardia del NULLIF es lo que evita el fallo silencioso: sin él, una empresa
+// sin teléfono normaliza a cadena vacía y se adjudicaría todos los contactos que
+// tampoco tienen número.
+const tenantTicketScope = `
+	tk.deleted_at IS NULL
+	AND (
+		tk.user_id IN (SELECT pu.id FROM users pu WHERE pu.empleador_id = u.id AND pu.deleted_at IS NULL)
+		OR tk.user_id = u.id
+		OR (
+			NULLIF(` + companyPhoneDigits + `, '') IS NOT NULL
+			AND EXISTS (
+				SELECT 1 FROM contacts ct
+				WHERE ct.id = tk.contact_id AND ct.deleted_at IS NULL
+				AND (
+					regexp_replace(COALESCE(ct.phone, ''), '\D', '', 'g') = ` + companyPhoneDigits + `
+					OR regexp_replace(COALESCE(ct.wa_id, ''), '\D', '', 'g') = ` + companyPhoneDigits + `
+				)
+			)
+		)
+	)
+`
+
 const tenantSelect = `
 	SELECT
 		u.id,
@@ -641,8 +715,22 @@ const tenantSelect = `
 			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
 			AND wh.rejected = true) as rejected_count,
 		(SELECT COUNT(*) FROM tickets tk
-			WHERE tk.deleted_at IS NULL AND tk.status = 'open'
-			AND tk.user_id IN (SELECT pu.id FROM users pu WHERE pu.empleador_id = u.id AND pu.deleted_at IS NULL)) as open_tickets
+			WHERE tk.status = 'open' AND ` + tenantTicketScope + `) as open_tickets,
+		-- Última vez que NOSOTROS contactamos con la empresa. Es la pregunta que
+		-- más se hace soporte al abrir una ficha, y hasta ahora había que
+		-- deducirla leyendo el expediente entero.
+		(SELECT MAX(ce.created_at) FROM company_events ce
+			WHERE ce.company_id = u.id AND ce.type = 'contact') as last_contact_at,
+		-- Última señal de vida de ELLOS: la jornada o la tarea más reciente. No
+		-- se mezcla con lo anterior a propósito —una empresa a la que llamamos
+		-- ayer pero que no entra hace dos meses es justo el caso que hay que
+		-- ver, y un solo campo lo escondería—.
+		GREATEST(
+			(SELECT MAX(wh.created_at) FROM work_hours wh
+				WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL),
+			(SELECT MAX(t2.created_at) FROM tasks t2
+				WHERE t2.tenant_id = u.id AND t2.deleted_at IS NULL)
+		) as last_activity_at
 	FROM users u
 	LEFT JOIN users m ON m.empleador_id = u.id AND m.deleted_at IS NULL
 	LEFT JOIN boards b ON b.tenant_id = u.id AND b.deleted_at IS NULL
@@ -672,6 +760,38 @@ func (r *adminRepository) GetTenantByID(id uint) (*TenantSummary, error) {
 		return nil, gorm.ErrRecordNotFound
 	}
 	return &tenant, nil
+}
+
+// GetTenantTickets lista los tickets de una empresa: las alertas internas sobre
+// su gente y las conversaciones de WhatsApp de su número, en la misma tabla.
+// Usa el mismo criterio que el KPI (tenantTicketScope), así que el contador de
+// la cabecera y la lista nunca se contradicen.
+//
+// Los abiertos van primero: quien abre esta pestaña viene a ver qué hay
+// pendiente, no a leer el archivo.
+func (r *adminRepository) GetTenantTickets(tenantID uint) ([]TenantTicket, error) {
+	var tickets []TenantTicket
+	err := r.db.Raw(`
+		SELECT
+			tk.id,
+			tk.origin,
+			COALESCE(tk.title, '') as title,
+			COALESCE(tk.stage, '') as stage,
+			COALESCE(tk.status, '') as status,
+			COALESCE(NULLIF(ct.name, ''), NULLIF(pu.name, ''), '') as about,
+			COALESCE(ag.name, '') as assignee,
+			tk.created_at,
+			tk.updated_at
+		FROM tickets tk
+		JOIN users u ON u.id = ?
+		LEFT JOIN contacts ct ON ct.id = tk.contact_id AND ct.deleted_at IS NULL
+		LEFT JOIN users pu ON pu.id = tk.user_id
+		LEFT JOIN users ag ON ag.id = tk.assigned_to
+		WHERE `+tenantTicketScope+`
+		ORDER BY CASE WHEN tk.status = 'open' THEN 0 ELSE 1 END, tk.updated_at DESC
+		LIMIT 200
+	`, tenantID).Scan(&tickets).Error
+	return tickets, err
 }
 
 const employeeMetrics = `
@@ -766,7 +886,7 @@ var tenantEventsCTE = `
 		COALESCE(owner.company_name, '-') as company,
 		'Empresa registrada en la plataforma' as details,
 		owner.created_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at
+		false as pinned, NULL::timestamptz as edited_at, '' as channel
 	FROM users owner WHERE owner.id = @tid
 
 	UNION ALL
@@ -778,7 +898,7 @@ var tenantEventsCTE = `
 			(CASE WHEN COALESCE(emp.job_title, '') <> '' THEN ' como ' || emp.job_title ELSE '' END) ||
 			(CASE WHEN COALESCE(emp.start_reason, '') <> '' THEN ' — ' || emp.start_reason ELSE '' END) as details,
 		emp.started_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at
+		false as pinned, NULL::timestamptz as edited_at, '' as channel
 	FROM employments emp
 	JOIN users u ON u.id = emp.user_id
 	JOIN users owner ON owner.id = @tid
@@ -792,7 +912,7 @@ var tenantEventsCTE = `
 		'Finalizó su empleo' ||
 			(CASE WHEN COALESCE(emp.end_reason, '') <> '' THEN ' — ' || emp.end_reason ELSE '' END) as details,
 		emp.ended_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at
+		false as pinned, NULL::timestamptz as edited_at, '' as channel
 	FROM employments emp
 	JOIN users u ON u.id = emp.user_id
 	JOIN users owner ON owner.id = @tid
@@ -806,7 +926,7 @@ var tenantEventsCTE = `
 		COALESCE(e.company_name, '-') as company,
 		CASE WHEN wh.work_type = 'complete' THEN 'Registró jornada completa' ELSE 'Registró ausencia' END as details,
 		wh.created_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at
+		false as pinned, NULL::timestamptz as edited_at, '' as channel
 	FROM work_hours wh
 	JOIN users u ON u.id = wh.user_id
 	LEFT JOIN users e ON e.id = u.empleador_id
@@ -823,7 +943,7 @@ var tenantEventsCTE = `
 			(CASE f.status WHEN 'contacted' THEN 'Contactado' WHEN 'justified' THEN 'Justificado' WHEN 'escalated' THEN 'Escalado' ELSE f.status END) ||
 			(CASE WHEN COALESCE(f.note, '') <> '' THEN ' — ' || f.note ELSE '' END) as details,
 		f.created_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at
+		false as pinned, NULL::timestamptz as edited_at, '' as channel
 	FROM follow_ups f
 	JOIN users u ON u.id = f.user_id
 	LEFT JOIN users c ON c.id = @tid
@@ -835,7 +955,9 @@ var tenantEventsCTE = `
 	UNION ALL
 
 	SELECT 'company_' || ce.type as type,
-		(CASE WHEN ce.type = 'note' THEN ` + quoted(TenantActivityNote) + `
+		(CASE ce.type
+			WHEN 'note' THEN ` + quoted(TenantActivityNote) + `
+			WHEN 'contact' THEN ` + quoted(TenantActivityContact) + `
 			ELSE ` + quoted(TenantActivityLifecycle) + ` END) as category,
 		COALESCE(actor.name, '') as actor, COALESCE(actor.id, 0) as actor_id,
 		COALESCE(owner.company_name, '-') as company,
@@ -843,9 +965,17 @@ var tenantEventsCTE = `
 			WHEN 'suspended' THEN 'Acceso suspendido'
 			WHEN 'reactivated' THEN 'Acceso reactivado'
 			WHEN 'note' THEN COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido')
+			WHEN 'contact' THEN
+				(CASE ce.channel
+					WHEN 'email' THEN 'Correo enviado a la empresa'
+					WHEN 'whatsapp' THEN 'WhatsApp enviado a la empresa'
+					WHEN 'call' THEN 'Llamada telefónica'
+					WHEN 'meeting' THEN 'Reunión con la empresa'
+					ELSE 'Contacto con la empresa' END)
+				|| (CASE WHEN COALESCE(ce.detail, '') <> '' THEN ' — ' || ce.detail ELSE '' END)
 			ELSE ce.type END) as details,
 		ce.created_at as timestamp, ce.id as event_id,
-		ce.pinned, ce.edited_at
+		ce.pinned, ce.edited_at, COALESCE(ce.channel, '') as channel
 	FROM company_events ce
 	JOIN users owner ON owner.id = ce.company_id
 	LEFT JOIN users actor ON actor.id = ce.by_user_id
@@ -866,13 +996,14 @@ func (r *adminRepository) GetTenantActivities(tenantID uint, category string, us
 		EventID   uint
 		Pinned    bool
 		EditedAt  *time.Time
+		Channel   string
 		Total     int64
 	}{}
 
 	err := r.db.Raw(`
 		WITH events AS (`+tenantEventsCTE+`)
 		SELECT type, category, actor AS "user", actor_id AS user_id, company, details, timestamp, event_id,
-			pinned, edited_at,
+			pinned, edited_at, channel,
 			COUNT(*) OVER() AS total
 		FROM events
 		WHERE (@cat = '' OR category = @cat)
@@ -903,6 +1034,7 @@ func (r *adminRepository) GetTenantActivities(tenantID uint, category string, us
 			EventID:   row.EventID,
 			Pinned:    row.Pinned,
 			EditedAt:  row.EditedAt,
+			Channel:   row.Channel,
 		})
 	}
 	// Sin filas no hay ventana de la que leer el total; en la última página

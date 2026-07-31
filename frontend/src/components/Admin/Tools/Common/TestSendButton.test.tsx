@@ -29,18 +29,94 @@ const openPanel = async () => {
 beforeEach(() => {
   // Sin esto las llamadas se acumulan entre casos y "no fue llamado" nunca pasa.
   vi.clearAllMocks();
+  // La dirección de prueba se recuerda entre sesiones: sin limpiarla, un caso
+  // arrastraría la que dejó el anterior.
+  localStorage.clear();
   vi.mocked(emailService.getAvailableRecipients).mockResolvedValue(PEOPLE as never);
   vi.mocked(emailService.sendTestEmail).mockResolvedValue({ to: 'yo@obertrack.com', viewed_as: 'datos de ejemplo' });
 });
 
+const editTo = async (value: string) => {
+  fireEvent.click(screen.getByRole('button', { name: /cambiar la dirección/i }));
+  const input = await screen.findByLabelText(/dirección donde llegará la prueba/i);
+  fireEvent.change(input, { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: /^usar$/i }));
+  return input;
+};
+
 describe('TestSendButton', () => {
-  it('deja claro que la prueba solo llega a uno mismo', async () => {
+  it('por defecto la prueba va al correo propio', async () => {
     render(<TestSendButton getPayload={payload} />);
     await openPanel();
 
     expect(screen.getByText('yo@obertrack.com')).toBeInTheDocument();
-    // No hay campo para escribir otra dirección: es una decisión de seguridad.
-    expect(screen.queryByPlaceholderText(/correo/i)).not.toBeInTheDocument();
+    // Sin dirección propia elegida no se ofrece "volver a mi correo": sería un
+    // botón que no hace nada.
+    expect(screen.queryByRole('button', { name: /volver a mi propio correo/i })).not.toBeInTheDocument();
+  });
+
+  it('permite cambiar la dirección y la envía a esa', async () => {
+    render(<TestSendButton getPayload={payload} />);
+    await openPanel();
+    await editTo('marketing@empresa.com');
+
+    expect(await screen.findByText('marketing@empresa.com')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /enviar la prueba/i }));
+
+    await waitFor(() => expect(emailService.sendTestEmail).toHaveBeenCalledWith({
+      subject: 'Hola {{nombre}}',
+      blocks: '[{"type":"text"}]',
+      as_user_id: undefined,
+      to_email: 'marketing@empresa.com',
+    }));
+  });
+
+  it('rechaza una dirección que no lo parece y no la guarda', async () => {
+    render(<TestSendButton getPayload={payload} />);
+    await openPanel();
+    await editTo('esto-no-es-un-correo');
+
+    expect(await screen.findByText(/no parece válida/i)).toBeInTheDocument();
+    // Sigue en edición: no se traga el valor malo ni cierra como si valiera.
+    expect(screen.getByLabelText(/dirección donde llegará la prueba/i)).toBeInTheDocument();
+    expect(localStorage.getItem('obertrack.testSend.lastTo')).toBeNull();
+  });
+
+  // Quien revisa plantillas lo hace muchas veces seguidas: volver a teclear la
+  // dirección corporativa cada vez es la fricción que se venía a quitar.
+  it('recuerda la última dirección usada', async () => {
+    const { unmount } = render(<TestSendButton getPayload={payload} />);
+    await openPanel();
+    await editTo('marketing@empresa.com');
+    await screen.findByText('marketing@empresa.com');
+    unmount();
+
+    render(<TestSendButton getPayload={payload} />);
+    fireEvent.click(screen.getByRole('button', { name: /enviar prueba/i }));
+
+    expect(await screen.findByText('marketing@empresa.com')).toBeInTheDocument();
+  });
+
+  it('se puede volver al correo propio', async () => {
+    render(<TestSendButton getPayload={payload} />);
+    await openPanel();
+    await editTo('marketing@empresa.com');
+    await screen.findByText('marketing@empresa.com');
+
+    fireEvent.click(screen.getByRole('button', { name: /volver a mi propio correo/i }));
+
+    expect(await screen.findByText('yo@obertrack.com')).toBeInTheDocument();
+    expect(localStorage.getItem('obertrack.testSend.lastTo')).toBeNull();
+  });
+
+  // Mandar a una dirección ajena es fácil de hacer sin querer al cambiar de
+  // plantilla, así que la ficha lo dice en vez de dejarlo en un campo discreto.
+  it('avisa cuando el destino no es el correo propio', async () => {
+    render(<TestSendButton getPayload={payload} />);
+    await openPanel();
+    await editTo('marketing@empresa.com');
+
+    expect(await screen.findByText(/no es tu correo/i)).toBeInTheDocument();
   });
 
   // Regresión: el menú del Select se renderiza en un portal fuera del panel, y
@@ -79,6 +155,7 @@ describe('TestSendButton', () => {
       subject: 'Hola {{nombre}}',
       blocks: '[{"type":"text"}]',
       as_user_id: 10,
+      to_email: undefined,
     }));
   });
 
@@ -92,6 +169,7 @@ describe('TestSendButton', () => {
       subject: 'Hola {{nombre}}',
       blocks: '[{"type":"text"}]',
       as_user_id: undefined,
+      to_email: undefined,
     }));
   });
 

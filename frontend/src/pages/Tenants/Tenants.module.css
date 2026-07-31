@@ -56,13 +56,17 @@
 .successBtn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 10px 18px;
   border-radius: var(--radius);
   font-size: 14px;
-  font-weight: 700;
+  /* Peso y borde iguales a los de .ui-btn (Button del sistema de diseño): estos
+     conviven con ellos en la misma fila, y sin el borde transparente medían 2px
+     menos de alto, que es lo que descuadraba la cabecera. */
+  font-weight: 600;
+  border: 1px solid transparent;
   cursor: pointer;
-  border: none;
   transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
   white-space: nowrap;
 }
@@ -472,11 +476,31 @@
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 28px;
+  /* Con el nombre largo y cuatro acciones no siempre caben en una línea; que el
+     bloque entero baje es más legible que comprimir los botones. */
+  flex-wrap: wrap;
 }
 
-.detailIdentity { display: flex; gap: 18px; align-items: center; }
+/* Cede espacio a los botones en vez de empujarlos: la línea de datos (correo,
+   alta, último contacto, última actividad) es larga y, si el bloque no puede
+   encogerse, estrangula las acciones y las parte por la mitad. */
+.detailIdentity { display: flex; gap: 18px; align-items: center; flex: 1 1 320px; min-width: 0; }
 
-.headerActions { display: flex; gap: 10px; align-items: center; }
+.headerActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  /* Pegados a la derecha también al envolverse: si no, el botón que baja de
+     línea se alinea a la izquierda del bloque —debajo del primero— y parece un
+     fallo de maquetación en vez de una segunda fila. */
+  justify-content: flex-end;
+  margin-left: auto;
+  /* El grupo no se comprime: o cabe entero a la derecha, o baja entero a su
+     propia línea (gracias al flex-wrap del contenedor). Partir 3 botones arriba
+     y 1 abajo era el peor de los tres resultados. */
+  flex: 0 0 auto;
+}
 
 .infoGrid {
   display: grid;
@@ -539,13 +563,21 @@
 .detailMeta {
   display: flex;
   flex-wrap: wrap;
-  gap: 18px;
+  /* Cuatro datos ya no caben en una línea en pantallas normales. El hueco entre
+     filas es menor que el de las columnas para que al envolverse siga leyéndose
+     como un bloque y no como dos párrafos sueltos. */
+  gap: 6px 16px;
   margin-top: 8px;
   color: #64748b;
   font-size: 13px;
 }
 
 .detailMeta span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Señales de seguimiento (último contacto / última actividad). Comparten la
+   línea entre ellas y se separan del resto con un poco menos de aire arriba,
+   para que se lean como un par y no como una tercera fila de datos sueltos. */
+.detailHealth { margin-top: 5px; }
 
 .subTabs {
   display: flex;
@@ -870,3 +902,279 @@
   .table th:nth-child(5),
   .table td:nth-child(5) { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Hilo de una entrada del expediente: sus archivos y su conversación.
+
+   Se apoya en el borde izquierdo para que se lea como algo que CUELGA del
+   movimiento y no como otro movimiento más de la cronología.
+   --------------------------------------------------------------------------- */
+
+.thread { margin-top: 10px; }
+
+.threadToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border: none;
+  background: none;
+  color: #64748b;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.threadToggle:hover { color: var(--primary); }
+
+.threadBody {
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--glass-border, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.threadEmpty { margin: 0; font-size: 13px; color: #94a3b8; }
+
+/* --- Adjuntos --- */
+
+.attachmentGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--glass-bg, #fff);
+}
+
+.attachmentLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Tamaño fijo: con miniaturas de altura variable la fila de adjuntos queda
+   dentada y cuesta recorrerla con la vista. */
+.attachmentThumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 7px;
+  background: #f1f5f9;
+  flex-shrink: 0;
+}
+
+.attachmentIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 7px;
+  background: #f1f5f9;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.attachmentMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* El nombre se corta en una línea: los archivos subidos desde el móvil traen
+   nombres larguísimos que romperían la rejilla. El completo está en el title. */
+.attachmentName {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentSize { font-size: 11px; color: #94a3b8; }
+
+.attachmentActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* --- Comentarios --- */
+
+/* Avatar a un lado y contenido al otro, como cualquier conversación. Antes era
+   nombre, fecha y texto apilados y no se leía como un hilo sino como notas
+   sueltas una debajo de otra. */
+.comment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.commentMain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.commentHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.commentHead strong { color: #334155; font-weight: 600; font-size: 12.5px; }
+
+.commentActions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+/* Los botones aparecen al acercarse, pero NUNCA se ocultan al navegar con
+   teclado: si no, quien no usa raton no puede editar ni borrar nada. */
+.comment:hover .commentActions,
+.commentActions:focus-within { opacity: 1; }
+
+/* Burbuja: da cuerpo al mensaje y lo separa del de al lado sin necesidad de
+   lineas divisorias. La esquina superior izquierda va a ras para que apunte al
+   avatar de quien escribe. */
+.commentBody {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 4px 12px 12px 12px;
+  background: var(--gray-100, #f5f3fb);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #334155;
+  white-space: pre-wrap;
+  word-break: break-word;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.commentEdit { display: flex; flex-direction: column; gap: 8px; }
+
+.commentEdit textarea,
+.commentComposer textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  border-radius: var(--radius, 12px);
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+  background: #fff;
+}
+
+.commentEdit textarea:focus,
+.commentComposer textarea:focus { border-color: var(--primary); }
+
+.commentEditActions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Archivos de la ENTRADA, no de un comentario. Etiquetados para que se entienda
+   por que estan sueltos y no dentro de un mensaje. */
+.looseFiles { display: flex; flex-direction: column; gap: 6px; }
+
+.looseFilesLabel {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+/* --- Redactar --- */
+
+.commentComposer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  border-radius: var(--radius, 12px);
+  background: var(--glass-bg, #fff);
+}
+
+/* Los archivos en cola van DENTRO del cuadro de redaccion y con su propio
+   fondo: es lo que deja claro que se publican con el mensaje y no por su
+   cuenta. */
+.pendingBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px dashed var(--primary);
+  border-radius: 10px;
+  background: rgba(204, 51, 204, 0.04);
+}
+
+.pendingLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.attachmentPending { background: #fff; }
+
+.composerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.composerAttach {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  background: transparent;
+  color: #64748b;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.composerAttach:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.composerAttach:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.composerHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+/* El boton de enviar se va a la derecha, separado de lo de adjuntar. */
+.composerActions > :last-child { margin-left: auto; }
+
+.spin { animation: spin 0.8s linear infinite; }

@@ -68,6 +68,10 @@ export interface Tenant {
   pending_hours: number
   open_tickets: number
   created_at: string
+  /** Última vez que el equipo contactó con la empresa. Ausente si nunca. */
+  last_contact_at?: string | null
+  /** Última señal de vida de la empresa (jornada o tarea). Ausente si nunca. */
+  last_activity_at?: string | null
 }
 
 export interface EmployeeSummary {

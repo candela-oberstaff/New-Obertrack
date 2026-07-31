@@ -281,11 +281,20 @@ func (h *EmailHandler) dispatchPersonalized(recipients map[string]utils.EmailRec
 // premailer. Esta prueba recorre exactamente el mismo camino que un envío de
 // verdad, así que es la única forma de ver el resultado final.
 //
-// Solo puede enviarse a la dirección de quien la solicita: una prueba nunca
-// debe poder convertirse en un envío masivo por descuido.
+// El destinatario por defecto es quien la pide, y se puede cambiar a otra
+// dirección (la corporativa, la de un compañero que revisa el diseño). Lo que
+// NO cambia es que va a UNA sola dirección por petición y que el asunto sale
+// marcado con [PRUEBA]: eso es lo que impide que esto se convierta en un envío
+// masivo por descuido, que era el motivo original de atarlo a uno mismo.
+//
+// La ruta ya está limitada a superadmin y customer success, que pueden lanzar
+// campañas reales de todas formas; obligarles a usar su correo personal para
+// ver cómo queda una plantilla no protegía de nada.
 func (h *EmailHandler) SendTestEmail(c *gin.Context) {
 	var req struct {
 		Subject string `json:"subject" binding:"required"`
+		// ToEmail cambia el destinatario de la prueba. Vacío = uno mismo.
+		ToEmail string `json:"to_email"`
 		// Origen del contenido, por orden de preferencia. Los dos primeros
 		// pasan por el renderizador real; html_content es para el texto suelto.
 		TemplateID  uint   `json:"template_id"`
@@ -304,6 +313,19 @@ func (h *EmailHandler) SendTestEmail(c *gin.Context) {
 	if len(me) == 0 || me[0].Email == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Tu usuario no tiene un correo donde recibir la prueba"})
 		return
+	}
+
+	// Destinatario: el propio salvo que se indique otro. Para una dirección
+	// ajena no se manda nombre —no se sabe de quién es el buzón— y BrevoService
+	// se encarga de poner uno a partir de la propia dirección. El saludo del
+	// correo no depende de esto: lo resuelven las variables {{nombre}}.
+	toEmail, toName := me[0].Email, me[0].Name
+	if custom := strings.TrimSpace(req.ToEmail); custom != "" && !strings.EqualFold(custom, me[0].Email) {
+		if !validEmail(custom) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "La dirección de prueba no es válida"})
+			return
+		}
+		toEmail, toName = custom, ""
 	}
 
 	backendURL := resolveBackendURL(c)
@@ -345,12 +367,12 @@ func (h *EmailHandler) SendTestEmail(c *gin.Context) {
 	subject := "[PRUEBA] " + utils.RenderVariablesText(req.Subject, data)
 	body := utils.RenderVariablesHTML(html, data)
 
-	if sendErr := h.brevoSvc.SendEmail(me[0].Email, me[0].Name, subject, body); sendErr != nil {
+	if sendErr := h.brevoSvc.SendEmail(toEmail, toName, subject, body); sendErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo enviar la prueba: " + sendErr.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"to": me[0].Email, "viewed_as": viewedAs})
+	c.JSON(http.StatusOK, gin.H{"to": toEmail, "viewed_as": viewedAs})
 }
 
 // GetVariables expone el catálogo de variables de personalización. El editor

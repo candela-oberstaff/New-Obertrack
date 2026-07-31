@@ -91,11 +91,13 @@ type AdminService interface {
 	GetTenants() ([]repository.TenantSummary, error)
 	GetTenant(id uint) (*repository.TenantSummary, error)
 	GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error)
+	GetTenantTickets(id uint) ([]repository.TenantTicket, error)
 	GetTenantActivities(id uint, category string, userID uint, offset, limit int) ([]repository.TenantActivity, int64, error)
 	GetTenantActivityPeople(id uint) ([]repository.TenantActivityPerson, error)
 	GetTenantActivityCounts(id uint, userID uint) (map[string]int64, error)
 	GetTenantPinnedNotes(id uint) ([]repository.TenantActivity, error)
 	AddTenantNote(companyID, byUserID uint, text string) (*models.CompanyEvent, error)
+	AddTenantContact(companyID, byUserID uint, channel, detail string) (*models.CompanyEvent, error)
 	UpdateTenantNote(companyID, noteID uint, text string) error
 	SetTenantNotePinned(companyID, noteID uint, pinned bool) error
 	DeleteTenantNote(companyID, noteID uint) error
@@ -1034,6 +1036,11 @@ var tenantActivityCategories = map[string]bool{
 	repository.TenantActivityWork:       true,
 	repository.TenantActivityManagement: true,
 	repository.TenantActivityNote:       true,
+	repository.TenantActivityContact:    true,
+}
+
+func (s *adminService) GetTenantTickets(id uint) ([]repository.TenantTicket, error) {
+	return s.repo.GetTenantTickets(id)
 }
 
 func (s *adminService) GetTenantActivities(id uint, category string, userID uint, offset, limit int) ([]repository.TenantActivity, int64, error) {
@@ -1054,6 +1061,20 @@ func (s *adminService) GetTenantActivityPeople(id uint) ([]repository.TenantActi
 	return s.repo.GetTenantActivityPeople(id)
 }
 
+// assertEmployer comprueba que el id apunta a una empresa. Escribir en el
+// expediente de un id que resulta ser un profesional dejaría entradas huérfanas
+// que no se ven desde ninguna ficha.
+func (s *adminService) assertEmployer(companyID uint) error {
+	company, err := s.userRepo.GetByID(companyID)
+	if err != nil {
+		return errors.New("Tenant not found")
+	}
+	if company.UserType != models.UserTypeEmployer {
+		return errors.New("El usuario indicado no es una empresa")
+	}
+	return nil
+}
+
 // validateNoteText aplica las mismas reglas al crear y al editar: una nota
 // corregida no puede quedar vacía ni pasarse de largo por el hecho de venir
 // por otro camino.
@@ -1072,15 +1093,11 @@ func validateNoteText(text string) (string, error) {
 // llamada, un acuerdo, un aviso): lo que el sistema no puede deducir de
 // ninguna tabla y hasta ahora acababa fuera de la herramienta.
 func (s *adminService) AddTenantNote(companyID, byUserID uint, text string) (*models.CompanyEvent, error) {
-	company, err := s.userRepo.GetByID(companyID)
-	if err != nil {
-		return nil, errors.New("Tenant not found")
-	}
-	if company.UserType != models.UserTypeEmployer {
-		return nil, errors.New("El usuario indicado no es una empresa")
+	if err := s.assertEmployer(companyID); err != nil {
+		return nil, err
 	}
 
-	text, err = validateNoteText(text)
+	text, err := validateNoteText(text)
 	if err != nil {
 		return nil, err
 	}
@@ -1089,6 +1106,41 @@ func (s *adminService) AddTenantNote(companyID, byUserID uint, text string) (*mo
 		CompanyID: companyID,
 		Type:      models.CompanyEventNote,
 		Detail:    text,
+		ByUserID:  byUserID,
+	}
+	if err := s.repo.CreateCompanyEvent(event); err != nil {
+		return nil, err
+	}
+	return event, nil
+}
+
+// AddTenantContact deja constancia de que el equipo contactó con la empresa.
+// Los de email y WhatsApp los registra la propia plataforma al enviar; los de
+// llamada y reunión los anota una persona, porque pasan fuera de aquí.
+//
+// A diferencia de la nota, el detalle puede ir vacío: "se le llamó" ya es
+// información útil aunque no se resuma la conversación. Lo que no puede faltar
+// es el canal, que es lo que distingue un contacto de una nota suelta.
+func (s *adminService) AddTenantContact(companyID, byUserID uint, channel, detail string) (*models.CompanyEvent, error) {
+	if err := s.assertEmployer(companyID); err != nil {
+		return nil, err
+	}
+
+	channel = strings.TrimSpace(strings.ToLower(channel))
+	if !models.IsValidCompanyContactChannel(channel) {
+		return nil, errors.New("Canal de contacto no válido")
+	}
+
+	detail = strings.TrimSpace(detail)
+	if len([]rune(detail)) > models.MaxCompanyNoteLength {
+		return nil, fmt.Errorf("El detalle no puede superar los %d caracteres", models.MaxCompanyNoteLength)
+	}
+
+	event := &models.CompanyEvent{
+		CompanyID: companyID,
+		Type:      models.CompanyEventContact,
+		Channel:   channel,
+		Detail:    detail,
 		ByUserID:  byUserID,
 	}
 	if err := s.repo.CreateCompanyEvent(event); err != nil {

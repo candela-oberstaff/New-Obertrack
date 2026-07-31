@@ -183,6 +183,8 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		tickets.POST("/internal/:id/notes", d.ticket.AddInternalNote)
 		tickets.POST("/internal/:id/transfer", d.ticket.TransferInternalTicket)
 		tickets.GET("/wa", d.ticket.ListWhatsAppTickets)
+		// Estático antes que el paramétrico, igual que /internal/report.
+		tickets.GET("/wa/lookup", d.ticket.LookupWhatsAppChat)
 		tickets.GET("/wa/:id", d.ticket.GetWhatsAppTicket)
 		tickets.POST("/wa/:id/messages", d.ticket.SendWhatsAppMessage)
 		tickets.PATCH("/wa/:id", d.ticket.UpdateWhatsAppTicket)

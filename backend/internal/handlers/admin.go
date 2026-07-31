@@ -27,10 +27,13 @@ type AdminHandler struct {
 	service       service.AdminService
 	rbacSvc       service.RBACService
 	employmentSvc service.EmploymentService
+	// threadSvc acompaña al expediente: la página de movimientos viaja con sus
+	// comentarios y adjuntos para no pedir un hilo por entrada al pintarla.
+	threadSvc service.CompanyThreadService
 }
 
-func NewAdminHandler(s service.AdminService, rbacSvc service.RBACService, employmentSvc service.EmploymentService) *AdminHandler {
-	return &AdminHandler{service: s, rbacSvc: rbacSvc, employmentSvc: employmentSvc}
+func NewAdminHandler(s service.AdminService, rbacSvc service.RBACService, employmentSvc service.EmploymentService, threadSvc service.CompanyThreadService) *AdminHandler {
+	return &AdminHandler{service: s, rbacSvc: rbacSvc, employmentSvc: employmentSvc, threadSvc: threadSvc}
 }
 
 // seedTenantRoles siembra los roles preconfigurados de una empresa recién
@@ -825,6 +828,26 @@ func (h *AdminHandler) GetTenantEmployees(c *gin.Context) {
 	c.JSON(http.StatusOK, employees)
 }
 
+// GetTenantTickets lista los tickets de la empresa para la pestaña Tickets de
+// su ficha.
+func (h *AdminHandler) GetTenantTickets(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	tickets, err := h.service.GetTenantTickets(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar los tickets de la empresa"})
+		return
+	}
+	if tickets == nil {
+		tickets = []repository.TenantTicket{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": tickets})
+}
+
 func (h *AdminHandler) GetEmployeeTracking(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -882,8 +905,27 @@ func (h *AdminHandler) GetTenantActivity(c *gin.Context) {
 		counts = map[string]int64{}
 	}
 
+	// Comentarios y archivos de las entradas de ESTA página, en dos consultas y
+	// no dos por entrada. Solo las que son filas de company_events tienen id;
+	// las derivadas (jornadas, altas, gestiones) llegan con event_id 0 y no
+	// pueden tener hilo porque no existen como registro.
+	eventIDs := make([]uint, 0, len(activities))
+	for _, a := range activities {
+		if a.EventID > 0 {
+			eventIDs = append(eventIDs, a.EventID)
+		}
+	}
+	threads, err := h.threadSvc.LoadThreads(uint(id), eventIDs)
+	if err != nil {
+		// El expediente se sirve igual sin los hilos: perder los comentarios es
+		// peor que perder la cronología entera.
+		log.Printf("[admin] no se pudieron cargar los hilos del expediente del tenant %d: %v", id, err)
+		threads = map[uint]service.EventThread{}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"data": activities, "total": total, "page": page, "limit": limit, "counts": counts,
+		"threads": threads,
 	})
 }
 
@@ -1022,6 +1064,36 @@ func (h *AdminHandler) AddTenantNote(c *gin.Context) {
 	c.JSON(http.StatusCreated, event)
 }
 
+// AddTenantContact registra un contacto del equipo con la empresa (correo,
+// WhatsApp, llamada o reunión) en su expediente.
+func (h *AdminHandler) AddTenantContact(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	var req struct {
+		Channel string `json:"channel"`
+		Detail  string `json:"detail"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	event, err := h.service.AddTenantContact(uint(id), middleware.GetUserID(c), req.Channel, req.Detail)
+	if err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "Tenant not found" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, event)
+}
+
 // DeleteTenantNote borra una anotación manual (solo notas: el resto del
 // expediente es historial).
 func (h *AdminHandler) DeleteTenantNote(c *gin.Context) {
@@ -1043,6 +1115,13 @@ func (h *AdminHandler) DeleteTenantNote(c *gin.Context) {
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
+	}
+	// El hilo se va con la nota: sin ella, los comentarios quedarían colgando de
+	// un hecho que ya no está y nadie sabría de qué hablaban. Va después del
+	// borrado y es best-effort —si falla, lo que queda son filas invisibles, no
+	// una nota a medio borrar—.
+	if err := h.threadSvc.DeleteThreadForEvent(uint(id), uint(noteID)); err != nil {
+		log.Printf("[admin] no se pudo limpiar el hilo de la nota %d: %v", noteID, err)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Nota eliminada"})
 }

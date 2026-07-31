@@ -1,15 +1,19 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/obertrack/backend/internal/apperrors"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
+	"github.com/obertrack/backend/internal/utils"
 	"github.com/obertrack/backend/internal/websocket"
 )
 
@@ -29,6 +33,9 @@ type TicketService interface {
 	ListInternal() ([]models.Ticket, error)
 	ListWhatsApp() ([]models.Ticket, error)
 	GetWhatsAppTicket(id uint) (*models.Ticket, error)
+	// LookupWhatsAppChat dice si un teléfono tiene ya conversación de WhatsApp
+	// con nosotros, para poder abrirla en vez de intentar escribir en frío.
+	LookupWhatsAppChat(phone string) (*WhatsAppChatLookup, error)
 	// ImportWhatsAppHistory pulls recent chats + messages from the connected WAHA
 	// session and imports them as tickets/messages (idempotent). Returns the count
 	// of newly imported messages.
@@ -486,6 +493,61 @@ func (s *ticketService) ListInternal() ([]models.Ticket, error) {
 // desaparecen de la bandeja: mezclarlos era el problema.
 func (s *ticketService) ListWhatsApp() ([]models.Ticket, error) {
 	return s.repo.ListByOriginAndSession(string(models.ChannelWhatsApp), s.wahaSvc.GetSession())
+}
+
+// WhatsAppChatLookup es la respuesta a "¿puedo escribirle por WhatsApp a este
+// número?". Existe porque la respuesta no es sí o no: depende de si ya hay
+// conversación y de si esa conversación la empezaron ellos.
+type WhatsAppChatLookup struct {
+	// Digits es el teléfono ya normalizado; vacío si no había número.
+	Digits string `json:"digits"`
+	// TicketID es la conversación existente, o 0 si no hay ninguna.
+	TicketID uint `json:"ticket_id"`
+	// CanReply indica si se puede responder desde la bandeja. Es false cuando
+	// no hay hilo, y también cuando lo hay pero nadie ha escrito desde el otro
+	// lado: la guarda de contacto en frío rechazaría el envío igualmente, y es
+	// mejor decirlo antes que enseñar un cuadro de texto que va a dar 403.
+	CanReply bool `json:"can_reply"`
+}
+
+// LookupWhatsAppChat busca la conversación de WhatsApp de un teléfono dentro de
+// la sesión activa.
+//
+// No crea nada: iniciar una conversación con quien no nos ha escrito es
+// exactamente lo que impide ensureCanColdOutreach para no exponer la línea
+// oficial a un bloqueo de Meta. Esto solo informa de lo que ya existe.
+func (s *ticketService) LookupWhatsAppChat(phone string) (*WhatsAppChatLookup, error) {
+	digits := utils.NormalizePhoneDigits(phone)
+	out := &WhatsAppChatLookup{Digits: digits}
+	if digits == "" {
+		return out, nil
+	}
+
+	ticket, err := s.repo.FindWhatsAppTicketByPhoneDigits(digits, s.wahaSvc.GetSession())
+	if err != nil {
+		// Sin conversación no es un error: es la respuesta más común.
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return out, nil
+		}
+		return nil, err
+	}
+	out.TicketID = ticket.ID
+
+	// Solo se puede responder si escribieron ellos primero. Si la guarda está
+	// desactivada por configuración, cualquier hilo existente vale.
+	if !s.wahaSvc.RequireInboundBeforeSend() {
+		out.CanReply = true
+		return out, nil
+	}
+	inbound, err := s.repo.HasInboundMessage(ticket.ID)
+	if err != nil {
+		// Igual que ensureCanColdOutreach: ante un fallo de base se deja pasar,
+		// y el envío real vuelve a comprobarlo antes de salir a WAHA.
+		out.CanReply = true
+		return out, nil
+	}
+	out.CanReply = inbound
+	return out, nil
 }
 
 func (s *ticketService) GetWhatsAppTicket(id uint) (*models.Ticket, error) {

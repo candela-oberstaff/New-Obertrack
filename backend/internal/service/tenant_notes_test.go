@@ -170,6 +170,91 @@ func TestAddTenantNote_RechazaEmpresaInexistente(t *testing.T) {
 	}
 }
 
+// --- AddTenantContact -------------------------------------------------------
+
+func TestAddTenantContact_GuardaCanalYFirma(t *testing.T) {
+	svc, repo := newNotesSvc(company(7))
+
+	event, err := svc.AddTenantContact(7 /*companyID*/, 42 /*byUserID*/, "Email", "  Aviso de renovación  ")
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	// El canal se normaliza: quien lo manda desde el front no debería tener que
+	// acordarse de si va en mayúsculas.
+	if event.Channel != models.CompanyContactEmail {
+		t.Fatalf("channel: want %q, got %q", models.CompanyContactEmail, event.Channel)
+	}
+	if event.Type != models.CompanyEventContact {
+		t.Fatalf("type: want %q, got %q", models.CompanyEventContact, event.Type)
+	}
+	if event.Detail != "Aviso de renovación" {
+		t.Fatalf("detail: got %q", event.Detail)
+	}
+	if event.CompanyID != 7 || event.ByUserID != 42 {
+		t.Fatalf("firma: company=%d by=%d", event.CompanyID, event.ByUserID)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("se esperaba una escritura, got %d", len(repo.created))
+	}
+}
+
+// Un contacto sin resumen sigue siendo información: "se le llamó el martes"
+// vale aunque nadie escriba de qué se habló.
+func TestAddTenantContact_AdmiteDetalleVacio(t *testing.T) {
+	svc, repo := newNotesSvc(company(7))
+
+	event, err := svc.AddTenantContact(7, 42, models.CompanyContactCall, "   ")
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if event.Detail != "" {
+		t.Fatalf("detail: got %q", event.Detail)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("se esperaba una escritura, got %d", len(repo.created))
+	}
+}
+
+func TestAddTenantContact_RechazaCanalDesconocido(t *testing.T) {
+	svc, repo := newNotesSvc(company(7))
+
+	for _, ch := range []string{"", "paloma", "chat", "sms"} {
+		if _, err := svc.AddTenantContact(7, 42, ch, "hola"); err == nil {
+			t.Fatalf("se esperaba error con el canal %q", ch)
+		}
+	}
+	if len(repo.created) != 0 {
+		t.Fatal("no debería escribirse nada")
+	}
+}
+
+func TestAddTenantContact_RechazaUsuarioQueNoEsEmpresa(t *testing.T) {
+	pro := &models.User{ID: 7, UserType: models.UserTypeProfessional}
+	svc, repo := newNotesSvc(pro)
+
+	if _, err := svc.AddTenantContact(7, 42, models.CompanyContactEmail, "hola"); err == nil {
+		t.Fatal("se esperaba error sobre un no-empleador")
+	}
+	if len(repo.created) != 0 {
+		t.Fatal("no debería escribirse nada")
+	}
+}
+
+func TestAddTenantContact_RechazaDetalleDemasiadoLargo(t *testing.T) {
+	svc, repo := newNotesSvc(company(7))
+
+	justo := strings.Repeat("á", models.MaxCompanyNoteLength)
+	if _, err := svc.AddTenantContact(7, 42, models.CompanyContactMeeting, justo); err != nil {
+		t.Fatalf("el detalle en el límite debería entrar: %v", err)
+	}
+	if _, err := svc.AddTenantContact(7, 42, models.CompanyContactMeeting, justo+"á"); err == nil {
+		t.Fatal("se esperaba error al pasarse del límite")
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("solo debería guardarse el válido, got %d", len(repo.created))
+	}
+}
+
 // --- DeleteTenantNote -------------------------------------------------------
 
 func TestDeleteTenantNote_AcotaElBorradoALaEmpresa(t *testing.T) {

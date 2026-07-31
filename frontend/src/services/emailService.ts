@@ -70,6 +70,11 @@ export interface TestEmailPayload {
   html_content?: string;
   /** Usuario cuyos datos resuelven las variables. Sin él, valores de ejemplo. */
   as_user_id?: number;
+  /**
+   * Dónde llega la prueba. Vacío = tu propio correo. Va a UNA sola dirección
+   * por petición y siempre con [PRUEBA] en el asunto.
+   */
+  to_email?: string;
 }
 
 export const emailService = {

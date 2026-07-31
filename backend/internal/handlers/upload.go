@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -51,7 +52,11 @@ func (h *UploadHandler) UploadFile(c *gin.Context) {
 		return
 	}
 
-	filename := fmt.Sprintf("%d_%d_%s%s", userID, file.Size, sanitizeFilename(file.Filename), ext)
+	// El nombre lleva marca de tiempo porque sin ella dos subidas del mismo
+	// usuario con el mismo nombre y el mismo tamaño se pisaban en silencio.
+	// Antes era improbable; al pegar imágenes deja de serlo, porque el navegador
+	// llama "image.png" a todas las capturas del portapapeles.
+	filename := fmt.Sprintf("%d_%d_%s%s", userID, time.Now().UnixNano(), sanitizeFilename(file.Filename), ext)
 	filePath := filepath.Join(h.uploadPath, filename)
 
 	if err := os.MkdirAll(h.uploadPath, 0755); err != nil {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Beaker, Loader2, CheckCircle2, AlertTriangle, User as UserIcon } from 'lucide-react';
+import { Beaker, Loader2, CheckCircle2, AlertTriangle, User as UserIcon, Pencil, RotateCcw } from 'lucide-react';
 import { emailService, TestEmailPayload } from '../../../../services/emailService';
 import { useAuth } from '../../../../context/AuthContext';
 import { Select } from '../../../ui/Select';
@@ -14,7 +14,23 @@ import { Select } from '../../../ui/Select';
  *
  * Con "Ver como" se eligen los datos de una persona real, así la prueba también
  * valida que sus campos existan y se lean bien, no solo que el diseño aguante.
+ *
+ * El destinatario por defecto es uno mismo, pero se puede cambiar: la cuenta con
+ * la que se trabaja no tiene por qué ser donde uno quiere ver la prueba, y
+ * obligar a usar el correo personal para revisar una plantilla no protegía de
+ * nada. Lo que se mantiene es que va a UNA dirección y con [PRUEBA] en el
+ * asunto, que es lo que evita que esto se use como envío masivo.
  */
+
+/** Dónde se recuerda la última dirección de prueba usada. */
+const LAST_TO_KEY = 'obertrack.testSend.lastTo';
+
+/** Misma comprobación que el backend (handlers/import.go validEmail). */
+function looksLikeEmail(e: string): boolean {
+  const v = e.trim();
+  const at = v.indexOf('@');
+  return at > 0 && v.slice(at).includes('.') && !/\s/.test(v);
+}
 
 interface TestSendButtonProps {
   /** Se lee al pulsar, no al montar: el contenido cambia mientras se edita. */
@@ -33,6 +49,54 @@ export function TestSendButton({ getPayload, disabled, size = 'md', align = 'rig
   const [asUserId, setAsUserId] = useState<number | ''>('');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Destinatario de la prueba. Se recuerda entre sesiones porque quien revisa
+  // plantillas lo hace muchas veces seguidas y volver a teclear la dirección
+  // corporativa cada vez es exactamente la fricción que se venía a quitar.
+  const [toEmail, setToEmail] = useState('');
+  const [editingTo, setEditingTo] = useState(false);
+  const [toDraft, setToDraft] = useState('');
+  const toInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LAST_TO_KEY);
+      if (saved && looksLikeEmail(saved)) setToEmail(saved);
+    } catch { /* sin localStorage se usa el correo propio, que es el defecto */ }
+  }, []);
+
+  // El destino efectivo: el guardado si lo hay, si no el de la cuenta.
+  const effectiveTo = toEmail || user?.email || '';
+  const isCustomTo = !!toEmail && toEmail.toLowerCase() !== (user?.email ?? '').toLowerCase();
+
+  const startEditTo = () => {
+    setToDraft(effectiveTo);
+    setEditingTo(true);
+    // El foco va tras el render, cuando el input ya existe.
+    setTimeout(() => toInputRef.current?.select(), 0);
+  };
+
+  const commitTo = () => {
+    const v = toDraft.trim();
+    if (v && !looksLikeEmail(v)) {
+      setStatus({ kind: 'error', message: 'Esa dirección no parece válida.' });
+      return;
+    }
+    setToEmail(v);
+    setEditingTo(false);
+    setStatus({ kind: 'idle' });
+    try {
+      if (v) localStorage.setItem(LAST_TO_KEY, v);
+      else localStorage.removeItem(LAST_TO_KEY);
+    } catch { /* recordar es una comodidad, no un requisito */ }
+  };
+
+  const resetTo = () => {
+    setToEmail('');
+    setEditingTo(false);
+    setStatus({ kind: 'idle' });
+    try { localStorage.removeItem(LAST_TO_KEY); } catch { /* noop */ }
+  };
 
   useEffect(() => {
     if (!open || people.length > 0) return;
@@ -80,6 +144,7 @@ export function TestSendButton({ getPayload, disabled, size = 'md', align = 'rig
       const res = await emailService.sendTestEmail({
         ...payload,
         as_user_id: asUserId === '' ? undefined : asUserId,
+        to_email: toEmail || undefined,
       });
       setStatus({ kind: 'sent', to: res.to, as: res.viewed_as });
     } catch (e: any) {
@@ -130,11 +195,85 @@ export function TestSendButton({ getPayload, disabled, size = 'md', align = 'rig
         } as React.CSSProperties}>
           <div>
             <p style={{ margin: 0, fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>
-              Se enviará <strong style={{ color: '#334155' }}>solo a ti</strong>:
+              Se enviará a <strong style={{ color: '#334155' }}>una sola dirección</strong>:
             </p>
-            <p style={{ margin: '2px 0 0', fontSize: 12, fontWeight: 700, color: '#0e7490', wordBreak: 'break-all' }}>
-              {user?.email ?? '—'}
-            </p>
+
+            {editingTo ? (
+              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                <input
+                  ref={toInputRef}
+                  type="email"
+                  value={toDraft}
+                  onChange={e => setToDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitTo(); }
+                    if (e.key === 'Escape') { e.preventDefault(); setEditingTo(false); }
+                  }}
+                  placeholder={user?.email ?? 'tu@empresa.com'}
+                  aria-label="Dirección donde llegará la prueba"
+                  style={{
+                    flex: 1, minWidth: 0, padding: '6px 9px', borderRadius: 7,
+                    border: '1px solid #0891b2', outline: 'none',
+                    fontSize: 12, fontFamily: 'inherit', color: '#334155',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={commitTo}
+                  style={{
+                    padding: '6px 10px', borderRadius: 7, border: 'none',
+                    background: '#0891b2', color: '#fff', fontSize: 11.5,
+                    fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  Usar
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#0e7490', wordBreak: 'break-all', minWidth: 0 }}>
+                  {effectiveTo || '—'}
+                </span>
+                <button
+                  type="button"
+                  onClick={startEditTo}
+                  title="Cambiar la dirección de la prueba"
+                  aria-label="Cambiar la dirección donde llegará la prueba"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 22, height: 22, flexShrink: 0, padding: 0,
+                    borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff',
+                    color: '#64748b', cursor: 'pointer',
+                  }}
+                >
+                  <Pencil size={11} />
+                </button>
+                {/* Volver al propio correo solo se ofrece cuando hay algo a lo
+                    que volver: si no, es un botón que no hace nada. */}
+                {isCustomTo && (
+                  <button
+                    type="button"
+                    onClick={resetTo}
+                    title={`Volver a mi correo (${user?.email ?? ''})`}
+                    aria-label="Volver a mi propio correo"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 22, height: 22, flexShrink: 0, padding: 0,
+                      borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff',
+                      color: '#64748b', cursor: 'pointer',
+                    }}
+                  >
+                    <RotateCcw size={11} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {isCustomTo && !editingTo && (
+              <p style={{ margin: '4px 0 0', fontSize: 10, color: '#b45309', lineHeight: 1.5 }}>
+                No es tu correo. Comprueba que puedes acceder a ese buzón.
+              </p>
+            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -192,7 +331,7 @@ export function TestSendButton({ getPayload, disabled, size = 'md', align = 'rig
           >
             {sending
               ? <><Loader2 size={13} style={{ animation: 'obt-test-spin 0.9s linear infinite' }} /> Enviando...</>
-              : <><Beaker size={13} /> Enviarme la prueba</>}
+              : <><Beaker size={13} /> {isCustomTo ? 'Enviar la prueba' : 'Enviarme la prueba'}</>}
           </button>
           <style>{'@keyframes obt-test-spin { to { transform: rotate(360deg) } }'}</style>
         </div>

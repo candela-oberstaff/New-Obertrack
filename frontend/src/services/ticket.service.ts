@@ -134,6 +134,20 @@ export interface WhatsAppMessageDTO {
   delivery_status?: '' | 'pending' | 'sent' | 'failed'
 }
 
+/** Respuesta de /tickets/wa/lookup: qué se puede hacer con un teléfono. */
+export interface WaChatLookup {
+  /** Teléfono ya normalizado a dígitos; vacío si no había número. */
+  digits: string
+  /** Conversación existente, o 0 si no hay ninguna. */
+  ticket_id: number
+  /**
+   * Si se puede responder desde la bandeja. False cuando no hay hilo y también
+   * cuando lo hay pero nadie escribió desde el otro lado: la guarda de contacto
+   * en frío rechazaría el envío.
+   */
+  can_reply: boolean
+}
+
 export interface WahaStatus {
   name: string
   status: string // "WORKING" | "SCAN_QR_CODE" | "STARTING" | "STOPPED" | "FAILED" ...
@@ -284,6 +298,14 @@ export const ticketService = {
       created_time: m.created_at,
       delivery_status: m.delivery_status,
     }
+  },
+
+  // ¿Este teléfono ya tiene conversación de WhatsApp con nosotros? Lo consulta
+  // la ficha de empresa para decidir entre llevar a la bandeja o abrir wa.me:
+  // escribir en frío desde la línea oficial está bloqueado a propósito.
+  lookupWaChat: async (phone: string): Promise<WaChatLookup> => {
+    const { data } = await api.get<WaChatLookup>('/tickets/wa/lookup', { params: { phone } })
+    return data
   },
 
   assignWaChat: async (id: string): Promise<void> => {

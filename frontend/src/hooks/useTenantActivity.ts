@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { adminService } from '../services/api'
+import type { TenantContactChannel, EventThread } from '../services/admin.service'
 
 /** Categorías del expediente, en el mismo orden en que se ofrecen como filtro. */
 export const ACTIVITY_CATEGORIES = [
@@ -8,6 +9,9 @@ export const ACTIVITY_CATEGORIES = [
   { value: 'staff', label: 'Plantilla' },
   { value: 'work', label: 'Jornadas' },
   { value: 'management', label: 'Gestión CS' },
+  // Contactos antes que notas: es lo primero que se mira al abrir una ficha
+  // ("¿ya hablamos con ellos?"), y las notas son el detalle de eso.
+  { value: 'contact', label: 'Contactos' },
   { value: 'note', label: 'Notas' },
 ] as const
 
@@ -24,6 +28,8 @@ export interface TenantActivity {
   /** Solo en notas: fijada en la cabecera y fecha de la última corrección. */
   pinned?: boolean
   edited_at?: string
+  /** Solo en contactos: por qué vía se contactó con la empresa. */
+  channel?: TenantContactChannel
 }
 
 export interface TenantActivityPerson {
@@ -40,12 +46,27 @@ interface UseTenantActivityReturn {
   people: TenantActivityPerson[]
   /** Notas fijadas, que van arriba y fuera de la cronología. */
   pinnedNotes: TenantActivity[]
+  /**
+   * Comentarios y archivos de las entradas de ESTA página, indexados por
+   * event_id. Solo las entradas que son filas de company_events (notas,
+   * contactos, suspensiones) pueden tener hilo; las derivadas de otras tablas
+   * llegan con event_id 0 y no existen como registro al que colgar nada.
+   */
+  threads: Record<number, EventThread>
   isLoading: boolean
   /** Hay una página nueva en camino (se sigue mostrando la anterior). */
   isFetching: boolean
   error: string | null
   addNote: (detail: string) => Promise<void>
+  /** Deja constancia de un contacto con la empresa en su expediente. */
+  logContact: (channel: TenantContactChannel, detail?: string) => Promise<void>
   updateNote: (eventId: number, detail: string) => Promise<void>
+  addComment: (eventId: number, content: string) => Promise<number>
+  updateComment: (commentId: number, content: string) => Promise<void>
+  deleteComment: (commentId: number) => Promise<void>
+  /** Sube el archivo y lo cuelga de la entrada (o de uno de sus comentarios). */
+  addAttachment: (eventId: number, file: File, commentId?: number) => Promise<void>
+  deleteAttachment: (attachmentId: number) => Promise<void>
   setNotePinned: (eventId: number, pinned: boolean) => Promise<void>
   deleteNote: (eventId: number) => Promise<void>
 }
@@ -106,6 +127,43 @@ export function useTenantActivity(
     onSuccess: invalidate,
   })
 
+  // Comentarios y adjuntos invalidan lo mismo que las notas: el hilo viaja
+  // dentro de la página del expediente, así que tocar uno deja obsoleta la
+  // página entera.
+  const addCommentMut = useMutation({
+    mutationFn: ({ eventId, content }: { eventId: number; content: string }) =>
+      adminService.addTenantComment(tenantId, eventId, content),
+    onSuccess: invalidate,
+  })
+
+  const updateCommentMut = useMutation({
+    mutationFn: ({ commentId, content }: { commentId: number; content: string }) =>
+      adminService.updateTenantComment(tenantId, commentId, content),
+    onSuccess: invalidate,
+  })
+
+  const deleteCommentMut = useMutation({
+    mutationFn: (commentId: number) => adminService.deleteTenantComment(tenantId, commentId),
+    onSuccess: invalidate,
+  })
+
+  const addAttachmentMut = useMutation({
+    mutationFn: ({ eventId, file, commentId }: { eventId: number; file: File; commentId?: number }) =>
+      adminService.addTenantAttachment(tenantId, eventId, file, commentId),
+    onSuccess: invalidate,
+  })
+
+  const deleteAttachmentMut = useMutation({
+    mutationFn: (attachmentId: number) => adminService.deleteTenantAttachment(tenantId, attachmentId),
+    onSuccess: invalidate,
+  })
+
+  const contactMut = useMutation({
+    mutationFn: ({ channel, detail }: { channel: TenantContactChannel; detail?: string }) =>
+      adminService.logTenantContact(tenantId, channel, detail),
+    onSuccess: invalidate,
+  })
+
   const updateMut = useMutation({
     mutationFn: ({ eventId, detail }: { eventId: number; detail: string }) =>
       adminService.updateTenantNote(tenantId, eventId, detail),
@@ -129,11 +187,20 @@ export function useTenantActivity(
     counts: (data?.counts ?? {}) as Record<string, number>,
     people: peopleQ.data ?? [],
     pinnedNotes: (pinnedQ.data ?? []) as TenantActivity[],
+    threads: (data?.threads ?? {}) as Record<number, EventThread>,
     isLoading,
     isFetching,
     error: error ? 'No se pudo cargar el expediente' : null,
     addNote: async (detail) => { await addMut.mutateAsync(detail) },
+    logContact: async (channel, detail) => { await contactMut.mutateAsync({ channel, detail }) },
     updateNote: async (eventId, detail) => { await updateMut.mutateAsync({ eventId, detail }) },
+    // Devuelve el id para poder colgarle los archivos que se pegaron mientras
+    // se escribía: el comentario tiene que existir antes de que nada apunte a él.
+    addComment: async (eventId, content) => (await addCommentMut.mutateAsync({ eventId, content })).id,
+    updateComment: async (commentId, content) => { await updateCommentMut.mutateAsync({ commentId, content }) },
+    deleteComment: async (commentId) => { await deleteCommentMut.mutateAsync(commentId) },
+    addAttachment: async (eventId, file, commentId) => { await addAttachmentMut.mutateAsync({ eventId, file, commentId }) },
+    deleteAttachment: async (attachmentId) => { await deleteAttachmentMut.mutateAsync(attachmentId) },
     setNotePinned: async (eventId, pinned) => { await pinMut.mutateAsync({ eventId, pinned }) },
     deleteNote: async (eventId) => { await deleteMut.mutateAsync(eventId) },
   }

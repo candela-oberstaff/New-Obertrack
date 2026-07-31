@@ -23,6 +23,11 @@ type TicketRepository interface {
 	// sesión: el mismo teléfono escribiendo a dos números de la empresa son dos
 	// conversaciones distintas y no deben compartir ticket.
 	GetOpenTicketByContact(contactID uint, session string) (*models.Ticket, error)
+	// FindWhatsAppTicketByPhoneDigits busca la conversación de WhatsApp de un
+	// teléfono comparando solo dígitos, porque el número guardado en el contacto
+	// viene de WAHA y el que se teclea en una ficha viene con "+", espacios o
+	// guiones. Prefiere el hilo abierto y, entre varios, el más reciente.
+	FindWhatsAppTicketByPhoneDigits(digits, session string) (*models.Ticket, error)
 	// ListByOriginAndSession lista los tickets de un canal acotados a una sesión.
 	ListByOriginAndSession(origin, session string) ([]models.Ticket, error)
 	CreateTicket(t *models.Ticket) error
@@ -123,6 +128,33 @@ func (r *ticketRepository) GetOpenTicketByContactSince(contactID uint, since tim
 func (r *ticketRepository) GetOpenTicketByContact(contactID uint, session string) (*models.Ticket, error) {
 	var t models.Ticket
 	if err := r.db.Where("contact_id = ? AND status = ? AND session = ?", contactID, "open", session).First(&t).Error; err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// FindWhatsAppTicketByPhoneDigits cruza el teléfono contra contacts comparando
+// dígitos a ambos lados (regexp_replace en la columna, ya normalizado en el
+// parámetro). Se mira también wa_id porque en los contactos importados el
+// número real vive ahí y phone puede venir vacío.
+//
+// El orden prioriza el hilo abierto y, dentro de eso, la actividad más
+// reciente: si una empresa escribió hace un año y volvió ayer, soporte quiere
+// la conversación de ayer.
+func (r *ticketRepository) FindWhatsAppTicketByPhoneDigits(digits, session string) (*models.Ticket, error) {
+	if digits == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var t models.Ticket
+	err := r.db.
+		Joins("JOIN contacts c ON c.id = tickets.contact_id AND c.deleted_at IS NULL").
+		Where("tickets.origin = ? AND tickets.session = ? AND tickets.deleted_at IS NULL", string(models.ChannelWhatsApp), session).
+		Where(`regexp_replace(COALESCE(c.phone, ''), '\D', '', 'g') = ?
+			OR regexp_replace(COALESCE(c.wa_id, ''), '\D', '', 'g') = ?`, digits, digits).
+		Order("CASE WHEN tickets.status = 'open' THEN 0 ELSE 1 END, tickets.updated_at DESC").
+		Preload("Contact").
+		First(&t).Error
+	if err != nil {
 		return nil, err
 	}
 	return &t, nil

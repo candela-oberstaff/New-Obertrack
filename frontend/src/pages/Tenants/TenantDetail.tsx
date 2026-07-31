@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, ClipboardList, UserPlus, UserMinus, Sparkles, MessageSquare, CreditCard, Link, ShieldCheck, StickyNote, Plus, Trash2, Pin, PinOff } from 'lucide-react'
+import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, ClipboardList, UserPlus, UserMinus, Sparkles, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone } from 'lucide-react'
+import type { TenantContactChannel } from '../../services/admin.service'
 
 // Icono y color por tipo de evento del expediente de la empresa.
 const ACTIVITY_STYLE: Record<string, { icon: typeof Activity; color: string }> = {
@@ -12,7 +13,25 @@ const ACTIVITY_STYLE: Record<string, { icon: typeof Activity; color: string }> =
   company_suspended: { icon: Ban, color: '#dc2626' },
   company_reactivated: { icon: CheckCircle2, color: '#059669' },
   company_note: { icon: StickyNote, color: '#0891b2' },
+  company_contact: { icon: Send, color: '#4f46e5' },
 }
+
+// Icono y etiqueta por canal de contacto. El canal viaja aparte del texto para
+// poder distinguir de un vistazo un correo de una llamada, sin leer el detalle.
+const CONTACT_STYLE: Record<string, { icon: typeof Activity; label: string }> = {
+  email: { icon: Mail, label: 'Correo' },
+  whatsapp: { icon: MessageSquare, label: 'WhatsApp' },
+  call: { icon: Phone, label: 'Llamada' },
+  meeting: { icon: Users, label: 'Reunión' },
+}
+
+// Canales que se anotan a mano porque ocurren fuera de la plataforma. El correo
+// y el WhatsApp no están aquí: los registra el sistema al enviarlos, y ofrecer
+// anotarlos a mano invitaría a duplicarlos.
+const MANUAL_CONTACT_CHANNELS: { value: TenantContactChannel; label: string }[] = [
+  { value: 'call', label: 'Llamada telefónica' },
+  { value: 'meeting', label: 'Reunión' },
+]
 
 // Etiqueta corta del movimiento, para leer el expediente de un vistazo sin
 // tener que deducir el tipo por el icono.
@@ -25,13 +44,42 @@ const ACTIVITY_LABEL: Record<string, string> = {
   company_suspended: 'Suspensión',
   company_reactivated: 'Reactivación',
   company_note: 'Nota',
+  company_contact: 'Contacto',
 }
 
 const ACTIVITY_PER_PAGE = 20
 const NOTE_MAX_LENGTH = 2000
 
+// De dónde sale cada ticket. "internal" son alertas que genera la propia
+// plataforma (rechazos de horas); el resto son conversaciones con el cliente.
+const TICKET_ORIGIN: Record<string, { label: string; color: string; icon: typeof Activity }> = {
+  internal: { label: 'Alerta interna', color: '#f97316', icon: ClipboardList },
+  whatsapp: { label: 'WhatsApp', color: '#059669', icon: MessageSquare },
+  zoho: { label: 'Zoho Desk', color: '#2563eb', icon: Inbox },
+}
+
+const TICKET_STAGE: Record<string, string> = {
+  new: 'Nuevo',
+  in_progress: 'En curso',
+  waiting: 'En espera',
+  closed: 'Cerrado',
+}
+
+// Cada origen tiene su propia pantalla de detalle: es donde se responde el
+// WhatsApp o se gestiona la alerta, y llevar a la genérica perdería el hilo.
+function ticketPath(t: { id: number; origin: string }): string {
+  if (t.origin === 'whatsapp') return `/tickets/wa/${t.id}`
+  if (t.origin === 'internal') return `/tickets/internal/${t.id}`
+  return `/tickets/${t.id}`
+}
+
+import { useQuery } from '@tanstack/react-query'
 import { useTenantDetail, useTenantActivity, ACTIVITY_CATEGORIES } from '../../hooks'
+import { ticketService } from '../../services/ticket.service'
+import { useNotification } from '../../context/NotificationContext'
 import { groupByDay } from './activityGrouping'
+import { healthSignal, HEALTH_COLOR } from './accountHealth'
+import { EventThread } from './EventThread'
 import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import type { EmployeeSummary } from '../../types'
@@ -74,9 +122,14 @@ export default function TenantDetail() {
   const { user: viewer } = useAuth()
   // CS entra en modo consulta: sin editar, suspender ni tocar profesionales.
   const canManage = !!viewer?.is_superadmin
+  // Anotar el expediente (notas y contactos) sí lo hace también Customer
+  // Success: es el área que atiende a estas empresas, y un expediente que solo
+  // puede alimentar el superadmin no sirve de material de seguimiento.
+  const canAnnotate = canManage || viewer?.user_type === 'customer_success'
   const tenantId = Number(id)
   const { tenant, employees, isLoading, error, refresh, suspendTenant, activateTenant, toggleEmployeeStatus, resetEmployeePassword } = useTenantDetail(tenantId)
   const confirm = useConfirm()
+  const notify = useNotification()
 
   // Expediente: filtros (categoría y persona) + paginación, todo de servidor.
   const [actCategory, setActCategory] = useState('')
@@ -88,13 +141,20 @@ export default function TenantDetail() {
     counts: actCounts,
     people: actPeople,
     pinnedNotes,
+    threads,
     isLoading: actLoading,
     isFetching: actFetching,
     error: actError,
     addNote,
+    logContact,
     updateNote,
     setNotePinned,
     deleteNote,
+    addComment,
+    updateComment,
+    deleteComment,
+    addAttachment,
+    deleteAttachment,
   } = useTenantActivity(tenantId, actCategory, actPerson, actPage, ACTIVITY_PER_PAGE)
 
   // Últimas notas para el Resumen. Consulta propia (categoría "note", 3 por
@@ -110,17 +170,26 @@ export default function TenantDetail() {
   // Id de la nota que se está corrigiendo; null = se está escribiendo una nueva.
   const [noteEditingId, setNoteEditingId] = useState<number | null>(null)
 
-  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'actividad' | 'archivados' | 'zoho'>('resumen')
+  // Registro manual de un contacto que pasó fuera de la plataforma.
+  const [contactOpen, setContactOpen] = useState(false)
+  const [contactChannel, setContactChannel] = useState<TenantContactChannel>('call')
+  const [contactDetail, setContactDetail] = useState('')
+  const [contactSaving, setContactSaving] = useState(false)
+  const [contactError, setContactError] = useState<string | null>(null)
+
+  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'actividad' | 'tickets' | 'archivados'>('resumen')
 
   // Archivados de esta empresa (bajas + cuentas desactivadas).
-  const [archived, setArchived] = useState<any[]>([])
-  const loadArchived = async () => {
-    try { setArchived(await adminService.getTenantArchived(tenantId)) } catch { /* noop */ }
-  }
-  // También al cambiar de empresa: con el paginador se salta de ficha sin
-  // desmontar la página, y quedarse con los archivados de la anterior sería
-  // enseñar datos de otra empresa.
-  useEffect(() => { if (tab === 'archivados') loadArchived() }, [tab, tenantId]) // eslint-disable-line react-hooks/exhaustive-deps
+  //
+  // Por React Query como el resto: la carga a mano se tragaba el error en
+  // silencio, así que un fallo del servidor se veía igual que "no hay
+  // archivados". La clave incluye tenantId, que además resuelve lo de saltar de
+  // ficha con el paginador sin desmontar la página.
+  const { data: archived = [], isLoading: archivedLoading, error: archivedError } = useQuery({
+    queryKey: ['tenant-archived', tenantId],
+    queryFn: () => adminService.getTenantArchived(tenantId),
+    enabled: !!tenantId && tab === 'archivados',
+  })
 
   // Edición de la empresa
   const [showEdit, setShowEdit] = useState(false)
@@ -147,27 +216,37 @@ export default function TenantDetail() {
   const [empStatus, setEmpStatus] = useState('')
   const [empPage, setEmpPage] = useState(1)
 
-  // Modales de comunicación
+  // Redacción de correo. El WhatsApp no pasa por aquí: o lleva a la
+  // conversación real de la bandeja, o abre wa.me.
   const [commModal, setCommModal] = useState<{
     isOpen: boolean
-    type: 'email' | 'whatsapp'
     subject: string
     message: string
   }>({
     isOpen: false,
-    type: 'email',
     subject: 'Contacto de soporte Oberstaff',
     message: ''
   })
 
-  // Simulación Zoho Billing
-  const [zohoStatus, setZohoStatus] = useState<'unlinked' | 'connecting' | 'linked'>('unlinked')
-  const [zohoCredentials, setZohoCredentials] = useState({
-    clientId: '',
-    clientSecret: '',
-    orgId: ''
+  // ¿Hay conversación de WhatsApp con el teléfono de esta empresa? De la
+  // respuesta depende si el botón lleva a la bandeja o abre wa.me. Se consulta
+  // aparte de la empresa para no retrasar la carga de la ficha por ello.
+  const { data: waLookup } = useQuery({
+    queryKey: ['tenant-wa-lookup', tenantId, tenant?.phone_number],
+    queryFn: () => ticketService.lookupWaChat(tenant!.phone_number!),
+    enabled: !!tenant?.phone_number,
+    // Si la bandeja no está disponible se cae al enlace wa.me, que siempre
+    // funciona: no tiene sentido reintentar y dejar el botón en el limbo.
+    retry: false,
   })
-  const [zohoBills, setZohoBills] = useState<any[]>([])
+
+  // Tickets de la empresa. Mismo criterio que el KPI de la cabecera, así que el
+  // número y la lista no se contradicen nunca.
+  const { data: tickets = [], isLoading: ticketsLoading, error: ticketsError } = useQuery({
+    queryKey: ['tenant-tickets', tenantId],
+    queryFn: () => adminService.getTenantTickets(tenantId),
+    enabled: !!tenantId && tab === 'tickets',
+  })
 
   useEffect(() => {
     setEmpPage(1)
@@ -237,14 +316,52 @@ export default function TenantDetail() {
     }
   }
 
+  const openContact = () => {
+    setContactChannel('call')
+    setContactDetail('')
+    setContactError(null)
+    setContactOpen(true)
+  }
+
+  const handleSaveContact = async () => {
+    setContactSaving(true)
+    setContactError(null)
+    try {
+      await logContact(contactChannel, contactDetail.trim())
+      // El contacto recién registrado es lo más reciente: se ve en la primera
+      // página del expediente.
+      setActPage(1)
+      setContactOpen(false)
+      setContactDetail('')
+    } catch (err: any) {
+      setContactError(err?.response?.data?.error || 'No se pudo registrar el contacto')
+    } finally {
+      setContactSaving(false)
+    }
+  }
+
   const handleTogglePin = async (note: { event_id: number; pinned?: boolean }) => {
     await setNotePinned(note.event_id, !note.pinned)
   }
 
   const handleDeleteNote = async (eventId: number) => {
+    // Se dice qué más se lleva por delante ANTES de borrar. Una nota con la
+    // conversación y las capturas de una incidencia no es "una nota", y quien
+    // pulsa el botón tiene que saber qué está tirando.
+    const thread = threads[eventId]
+    const nComments = thread?.comments?.length ?? 0
+    const nFiles = (thread?.attachments?.length ?? 0) +
+      (thread?.comments ?? []).reduce((sum, c) => sum + (c.attachments?.length ?? 0), 0)
+    const extras = [
+      nComments > 0 ? `${nComments} ${nComments === 1 ? 'comentario' : 'comentarios'}` : '',
+      nFiles > 0 ? `${nFiles} ${nFiles === 1 ? 'archivo' : 'archivos'}` : '',
+    ].filter(Boolean).join(' y ')
+
     const ok = await confirm({
       title: '¿Eliminar esta nota?',
-      message: 'Desaparecerá del expediente. El resto de movimientos no se puede borrar.',
+      message: extras
+        ? `Se eliminarán también ${extras}. El resto de movimientos no se puede borrar.`
+        : 'Desaparecerá del expediente. El resto de movimientos no se puede borrar.',
       confirmLabel: 'Eliminar nota',
       variant: 'danger',
     })
@@ -366,64 +483,60 @@ export default function TenantDetail() {
     }
   }
 
-  const openComm = (type: 'email' | 'whatsapp') => {
-    setCommModal({
-      isOpen: true,
-      type,
-      subject: type === 'email' ? 'Contacto oficial Oberstaff' : '',
-      message: ''
-    })
+  const openComm = () => {
+    if (!tenant?.owner_email) {
+      notify.warning('Esta empresa no tiene un correo de contacto asociado.')
+      return
+    }
+    setCommModal({ isOpen: true, subject: 'Contacto oficial Oberstaff', message: '' })
   }
 
   const sendCommMessage = async () => {
-    if (commModal.type === 'email') {
-      if (!tenant?.owner_email) {
-        alert('Esta empresa no tiene un correo de contacto asociado.')
-        return
-      }
-      try {
-        await emailService.sendQuickEmail({
-          to_email: tenant.owner_email,
-          to_name: tenant.owner_name || tenant.company_name,
-          subject: commModal.subject || 'Contacto oficial Oberstaff',
-          html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
-        })
-        alert(`¡Correo enviado con éxito a ${tenant.owner_email}!`)
-      } catch (err) {
-        console.error(err)
-        alert('Error al enviar el correo. Por favor, intente de nuevo.')
-      }
-    } else {
-      console.log(`[SIMULACIÓN] Enviando ${commModal.type.toUpperCase()} a ${tenant?.company_name}:`, {
-        subject: commModal.subject,
-        message: commModal.message
+    if (!tenant?.owner_email) return
+    try {
+      await emailService.sendQuickEmail({
+        to_email: tenant.owner_email,
+        to_name: tenant.owner_name || tenant.company_name,
+        subject: commModal.subject || 'Contacto oficial Oberstaff',
+        html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
       })
-      alert(`¡Mensaje (${commModal.type.toUpperCase()}) enviado con éxito a ${tenant?.company_name}! (Simulado)`)
+      // El envío queda en el expediente con el asunto, para que el siguiente
+      // que abra la ficha sepa que ya se les escribió y de qué. Best-effort:
+      // el correo ya salió, y fallar aquí no debe parecer que no salió.
+      try { await logContact('email', commModal.subject) } catch { /* no bloquear */ }
+      notify.success(`Correo enviado a ${tenant.owner_email}.`)
+      setCommModal(prev => ({ ...prev, isOpen: false }))
+    } catch (err: any) {
+      console.error(err)
+      const serverMsg = err?.response?.data?.error
+      notify.error(serverMsg ? `No se pudo enviar: ${serverMsg}` : 'No se pudo enviar el correo. Inténtalo de nuevo.')
     }
-    setCommModal(prev => ({ ...prev, isOpen: false }))
   }
 
-  const handleZohoConnect = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!zohoCredentials.clientId || !zohoCredentials.clientSecret || !zohoCredentials.orgId) {
-      alert('Por favor, rellene todos los campos obligatorios.')
+  // WhatsApp. NO se puede escribir en frío desde la línea oficial: el backend
+  // lo rechaza (ensureCanColdOutreach) para no exponer el número a un bloqueo
+  // de Meta. Así que hay dos caminos reales:
+  //
+  //  - Ya hay conversación y escribieron ellos → se abre en la bandeja, donde
+  //    el envío sale por WAHA con estado de entrega.
+  //  - No hay conversación → wa.me en una pestaña, que es lo que ya hacen
+  //    Admin, Incidentes y el Mapa. Lo manda la persona desde su WhatsApp, y
+  //    aquí queda registrado el contacto.
+  const handleWhatsApp = () => {
+    if (!tenant?.phone_number?.trim()) {
+      notify.warning('Esta empresa no tiene un teléfono registrado.')
       return
     }
-    setZohoStatus('connecting')
-    setTimeout(() => {
-      setZohoStatus('linked')
-      setZohoBills([
-        { id: 'ZB-2026-001', plan: 'Plan Premium', amount: '€149.00', status: 'Pagado', date: '2026-06-01' },
-        { id: 'ZB-2026-002', plan: 'Plan Premium', amount: '€149.00', status: 'Pagado', date: '2026-05-01' },
-        { id: 'ZB-2026-003', plan: 'Plan Premium', amount: '€149.00', status: 'Pendiente', date: '2026-07-01' },
-      ])
-    }, 1500)
-  }
-
-  const handleZohoDisconnect = () => {
-    setZohoStatus('unlinked')
-    setZohoBills([])
-    setZohoCredentials({ clientId: '', clientSecret: '', orgId: '' })
+    if (waLookup?.ticket_id && waLookup.can_reply) {
+      navigate(`/tickets/wa/${waLookup.ticket_id}`)
+      return
+    }
+    const digits = tenant.phone_number.replace(/\D/g, '')
+    window.open(`https://wa.me/${digits}`, '_blank', 'noopener,noreferrer')
+    // El clic ES el contacto: igual que el registro de contactos de
+    // profesionales, refleja el intento, no la entrega (el mensaje lo escribe
+    // la persona en su WhatsApp y aquí no se puede confirmar que salió).
+    logContact('whatsapp', 'Abierto desde la ficha (WhatsApp Web)').catch(() => {})
   }
 
   if (isLoading) {
@@ -453,6 +566,8 @@ export default function TenantDetail() {
 
   const createdLabel = tenant.created_at ? new Date(tenant.created_at).toLocaleDateString('es-ES') : '-'
   const editStates = getStatesForCountry(editForm.country)
+  const contactHealth = healthSignal(tenant.last_contact_at)
+  const activityHealth = healthSignal(tenant.last_activity_at)
 
   // Iconos en estilo "suave": fondo pastel + icono del mismo tono (igual que las
   // tarjetas del panel admin), en vez de gradientes saturados.
@@ -462,7 +577,9 @@ export default function TenantDetail() {
     { value: tenant.task_count, label: 'Tareas', icon: <CheckSquare size={24} />, bg: '#f5f3ff', color: '#8b5cf6' },
     { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: '#ecfdf5', color: '#10b981' },
     { value: `${(tenant.pending_hours ?? 0).toFixed(1)} h`, label: 'Horas por aprobar', icon: <Hourglass size={24} />, bg: '#fff7ed', color: '#f97316' },
-    { value: tenant.open_tickets ?? 0, label: 'Tickets abiertos', icon: <Inbox size={24} />, bg: '#fef2f2', color: '#ef4444' },
+    // Este lleva a alguna parte: un contador de tickets sin forma de ver cuáles
+    // son obliga a buscarlos a mano en la bandeja.
+    { value: tenant.open_tickets ?? 0, label: 'Tickets abiertos', icon: <Inbox size={24} />, bg: '#fef2f2', color: '#ef4444', onClick: () => setTab('tickets') },
   ]
 
   const infoFields = [
@@ -505,14 +622,51 @@ export default function TenantDetail() {
               <span><Mail size={14} /> {tenant.owner_name} · {tenant.owner_email}</span>
               <span><Calendar size={14} /> Alta: {createdLabel}</span>
             </div>
+            {/* Las dos preguntas que se hace soporte al abrir una ficha, sin
+                tener que deducirlas leyendo el expediente entero.
+
+                Van en su propia línea y no mezcladas con el correo y el alta:
+                los cuatro datos no caben a lo ancho, y dejarlos juntos hacía que
+                "última actividad" cayera sola abajo como si fuera un descuadre.
+                Separadas entre sí a propósito: "la llamamos ayer" y "no entra
+                hace dos meses" son a la vez ciertas y significan cosas
+                distintas. */}
+            <div className={`${styles.detailMeta} ${styles.detailHealth}`}>
+              <span title={tenant.last_contact_at ? new Date(tenant.last_contact_at).toLocaleString('es-ES') : 'Nunca se ha registrado un contacto con esta empresa'}>
+                <Send size={14} /> Último contacto:{' '}
+                <strong style={{ color: HEALTH_COLOR[contactHealth.level], fontWeight: 600 }}>
+                  {contactHealth.label}
+                </strong>
+              </span>
+              <span title={tenant.last_activity_at ? new Date(tenant.last_activity_at).toLocaleString('es-ES') : 'Esta empresa no ha registrado jornadas ni tareas'}>
+                <Activity size={14} /> Última actividad:{' '}
+                <strong style={{ color: HEALTH_COLOR[activityHealth.level], fontWeight: 600 }}>
+                  {activityHealth.label}
+                </strong>
+              </span>
+            </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <Button variant="secondary" onClick={() => openComm('email')} leftIcon={<Mail size={16} />}>
+        <div className={styles.headerActions}>
+          <Button variant="secondary" onClick={openComm} leftIcon={<Mail size={16} />}>
             Enviar Correo
           </Button>
-          <Button variant="secondary" onClick={() => openComm('whatsapp')} leftIcon={<MessageSquare size={16} />}>
-            Enviar WhatsApp
+          {/* La etiqueta dice a dónde lleva de verdad: a la conversación que ya
+              existe, o a WhatsApp Web. Prometer "enviar" desde aquí sería
+              mentir, porque en frío el envío está bloqueado. */}
+          <Button
+            variant="secondary"
+            onClick={handleWhatsApp}
+            leftIcon={<MessageSquare size={16} />}
+            title={
+              !tenant.phone_number?.trim()
+                ? 'Esta empresa no tiene teléfono registrado'
+                : waLookup?.ticket_id && waLookup.can_reply
+                ? 'Abre la conversación en la bandeja de WhatsApp'
+                : 'Abre WhatsApp Web con el número de la empresa'
+            }
+          >
+            {waLookup?.ticket_id && waLookup.can_reply ? 'Ver conversación' : 'Abrir WhatsApp'}
           </Button>
           {canManage && (
             <>
@@ -537,35 +691,48 @@ export default function TenantDetail() {
         <button className={tab === 'resumen' ? styles.subTabActive : styles.subTab} onClick={() => setTab('resumen')}>Resumen</button>
         <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Profesionales ({employees.length})</button>
         <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Expediente</button>
+        <button className={tab === 'tickets' ? styles.subTabActive : styles.subTab} onClick={() => setTab('tickets')}>
+          Tickets{(tenant.open_tickets ?? 0) > 0 ? ` (${tenant.open_tickets})` : ''}
+        </button>
         <button className={tab === 'archivados' ? styles.subTabActive : styles.subTab} onClick={() => setTab('archivados')}>Archivados</button>
-        <button className={tab === 'zoho' ? styles.subTabActive : styles.subTab} onClick={() => setTab('zoho')}>Zoho</button>
       </div>
 
       {tab === 'resumen' && (
         <>
           <div className={styles.kpis}>
-            {kpis.map(kpi => (
-              <div key={kpi.label} className={styles.kpiCard}>
-                <div className={styles.kpiIcon} style={{ background: kpi.bg, color: kpi.color }}>
-                  {kpi.icon}
-                </div>
-                <div>
-                  <span className={styles.kpiValue}>{kpi.value}</span>
-                  <span className={styles.kpiLabel}>{kpi.label}</span>
-                </div>
-              </div>
-            ))}
+            {kpis.map(kpi => {
+              // Los que llevan a alguna parte son botones de verdad, para que
+              // también respondan al teclado y se anuncien como pulsables.
+              const Tag = kpi.onClick ? 'button' : 'div'
+              return (
+                <Tag
+                  key={kpi.label}
+                  className={styles.kpiCard}
+                  {...(kpi.onClick
+                    ? { type: 'button' as const, onClick: kpi.onClick, style: { cursor: 'pointer', textAlign: 'left' as const } }
+                    : {})}
+                >
+                  <div className={styles.kpiIcon} style={{ background: kpi.bg, color: kpi.color }}>
+                    {kpi.icon}
+                  </div>
+                  <div>
+                    <span className={styles.kpiValue}>{kpi.value}</span>
+                    <span className={styles.kpiLabel}>{kpi.label}</span>
+                  </div>
+                </Tag>
+              )
+            })}
           </div>
 
           {/* Últimas notas del equipo: lo que hay que saber de esta empresa al
               entrar, sin tener que ir al Expediente a buscarlo. */}
-          {(latestNotes.length > 0 || canManage) && (
+          {(latestNotes.length > 0 || canAnnotate) && (
             <div className={styles.infoCard}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
                   <StickyNote size={18} color="#0891b2" /> Notas del equipo
                 </h2>
-                {canManage && (
+                {canAnnotate && (
                   <Button size="sm" variant="secondary" leftIcon={<Plus size={14} />} onClick={openNewNote}>
                     Añadir nota
                   </Button>
@@ -822,15 +989,25 @@ export default function TenantDetail() {
                 options={actPeople.map(p => ({ value: p.user_id, label: p.name }))}
               />
             </div>
-            {canManage && (
-              <Button
-                size="sm"
-                variant="secondary"
-                leftIcon={<Plus size={14} />}
-                onClick={openNewNote}
-              >
-                Añadir nota
-              </Button>
+            {canAnnotate && (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={<Phone size={14} />}
+                  onClick={openContact}
+                >
+                  Registrar contacto
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={<Plus size={14} />}
+                  onClick={openNewNote}
+                >
+                  Añadir nota
+                </Button>
+              </>
             )}
           </div>
 
@@ -853,7 +1030,7 @@ export default function TenantDetail() {
                       {note.edited_at && <span className={styles.noteEdited}>editada</span>}
                     </span>
                   </div>
-                  {canManage && (
+                  {canAnnotate && (
                     <button
                       type="button"
                       className={styles.iconBtn}
@@ -933,7 +1110,7 @@ export default function TenantDetail() {
                                     </span>
                                   )}
                                   {a.edited_at && <span className={styles.noteEdited}>· editada</span>}
-                                  {canManage && (
+                                  {canAnnotate && (
                                     <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
                                       <button
                                         type="button"
@@ -980,6 +1157,15 @@ export default function TenantDetail() {
                                   <span className={styles.timelineTag} style={{ color: st.color }}>
                                     {ACTIVITY_LABEL[a.type] || a.type}
                                   </span>
+                                  {/* En un contacto, el canal es la mitad de la
+                                      información: no es lo mismo haberles
+                                      escrito que haberles llamado. */}
+                                  {a.channel && CONTACT_STYLE[a.channel] && (
+                                    <span className={styles.timelineTag} style={{ color: st.color, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                      {(() => { const CI = CONTACT_STYLE[a.channel!].icon; return <CI size={11} /> })()}
+                                      {CONTACT_STYLE[a.channel].label}
+                                    </span>
+                                  )}
                                   <strong style={{ color: '#64748b', fontWeight: 600 }}>{a.user || 'Sistema'}</strong>
                                   {/* La fecha vive en la cabecera del día: aquí
                                       basta la hora. */}
@@ -988,6 +1174,24 @@ export default function TenantDetail() {
                                   </span>
                                 </div>
                               </div>
+                            )}
+
+                            {/* Comentarios y archivos. Solo cuelgan de las
+                                entradas que existen como registro: las
+                                derivadas (jornadas, altas, gestiones de CS)
+                                llegan con event_id 0 y no hay a qué atarlas. */}
+                            {a.event_id > 0 && (
+                              <EventThread
+                                tenantId={tenantId}
+                                eventId={a.event_id}
+                                thread={threads[a.event_id]}
+                                canEdit={canAnnotate}
+                                addComment={addComment}
+                                updateComment={updateComment}
+                                deleteComment={deleteComment}
+                                addAttachment={addAttachment}
+                                deleteAttachment={deleteAttachment}
+                              />
                             )}
                           </div>
                         </div>
@@ -1033,133 +1237,97 @@ export default function TenantDetail() {
       )}
 
       {tab === 'archivados' && (
-        <ArchivedList entries={archived} showCompany={false} />
-      )}
-
-      {tab === 'zoho' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div className={styles.infoCard} style={{ margin: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-              <div>
-                <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                  <CreditCard size={20} color="var(--primary)" /> Integración Zoho Billing
-                </h2>
-                <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0' }}>Conecta este cliente con Zoho para sincronizar suscripciones y gestionar cobros.</p>
-              </div>
-              <div>
-                {zohoStatus === 'unlinked' && (
-                  <span className={styles.badge} style={{ background: '#f1f5f9', color: '#64748b' }}>No vinculado</span>
-                )}
-                {zohoStatus === 'connecting' && (
-                  <span className={styles.badge} style={{ background: '#fef3c7', color: '#d97706', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <RefreshCw size={12} className={styles.spinner} style={{ border: 'none', width: 'auto', height: 'auto', animation: 'spin 1s linear infinite' }} /> Conectando...
-                  </span>
-                )}
-                {zohoStatus === 'linked' && (
-                  <span className={styles.badge} style={{ background: '#dcfce7', color: '#15803d', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <ShieldCheck size={14} /> Vinculado con éxito
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {zohoStatus === 'unlinked' && (
-              <form onSubmit={handleZohoConnect} style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '500px' }}>
-                <div className={styles.field}>
-                  <label>Client ID *</label>
-                  <input
-                    type="text"
-                    required
-                    value={zohoCredentials.clientId}
-                    onChange={(e) => setZohoCredentials(prev => ({ ...prev, clientId: e.target.value }))}
-                    placeholder="Ej: 1000.XXXXXX..."
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label>Client Secret *</label>
-                  <input
-                    type="password"
-                    required
-                    value={zohoCredentials.clientSecret}
-                    onChange={(e) => setZohoCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
-                    placeholder="Clave privada del cliente API"
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label>Organization ID *</label>
-                  <input
-                    type="text"
-                    required
-                    value={zohoCredentials.orgId}
-                    onChange={(e) => setZohoCredentials(prev => ({ ...prev, orgId: e.target.value }))}
-                    placeholder="Ej: 712003..."
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <Button type="submit" leftIcon={<Link size={16} />}>Vincular cuenta Zoho</Button>
-                </div>
-              </form>
-            )}
-
-            {zohoStatus === 'connecting' && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0', gap: '12px' }}>
-                <RefreshCw size={36} className={styles.spinner} style={{ border: 'none', color: 'var(--primary)', width: 'auto', height: 'auto' }} />
-                <p style={{ fontSize: '14px', fontWeight: 600, color: '#334155' }}>Estableciendo conexión segura con la API de Zoho Billing...</p>
-              </div>
-            )}
-
-            {zohoStatus === 'linked' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
-                  <div style={{ fontSize: '13px', color: '#475569' }}>
-                    <strong>ID Organización:</strong> {zohoCredentials.orgId} · <strong>Cliente:</strong> {tenant.company_name}
-                  </div>
-                  <Button variant="secondary" size="sm" onClick={handleZohoDisconnect}>Desconectar Zoho</Button>
-                </div>
-
-                <div>
-                  <h3 style={{ fontSize: '15px', fontWeight: 700, margin: '0 0 12px' }}>Facturas Recientes Sincronizadas</h3>
-                  <div className={styles.tableWrap}>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>ID Factura</th>
-                          <th>Plan / Servicio</th>
-                          <th>Monto</th>
-                          <th>Fecha</th>
-                          <th>Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {zohoBills.map((bill) => (
-                          <tr key={bill.id}>
-                            <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{bill.id}</td>
-                            <td>{bill.plan}</td>
-                            <td>{bill.amount}</td>
-                            <td>{bill.date}</td>
-                            <td>
-                              <span className={bill.status === 'Pagado' ? styles.badgeActive : styles.badgePending}>
-                                {bill.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
+        archivedLoading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={56} radius={12} />)}
           </div>
-        </div>
+        ) : archivedError ? (
+          <p className={styles.errorMsg}>No se pudieron cargar los archivados de esta empresa.</p>
+        ) : (
+          <ArchivedList entries={archived} showCompany={false} />
+        )
       )}
 
-      {/* Modales de Comunicación en detalle */}
+      {/* Tickets de la empresa: las alertas que genera la plataforma sobre su
+          gente y las conversaciones de WhatsApp de su número, juntas. Cada fila
+          lleva a su detalle real, que es donde se trabaja el ticket. */}
+      {tab === 'tickets' && (
+        ticketsLoading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={56} radius={12} />)}
+          </div>
+        ) : ticketsError ? (
+          <p className={styles.errorMsg}>No se pudieron cargar los tickets de esta empresa.</p>
+        ) : tickets.length === 0 ? (
+          <div className={styles.empty}>
+            <Inbox size={40} />
+            <p>Esta empresa no tiene tickets</p>
+            <span style={{ fontSize: 13, color: '#94a3b8', maxWidth: 460, textAlign: 'center', marginTop: 6 }}>
+              Aparecerán aquí las alertas de la plataforma sobre sus profesionales
+              y las conversaciones de WhatsApp con {tenant.phone_number?.trim() || 'su teléfono'}.
+            </span>
+          </div>
+        ) : (
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Ticket</th>
+                  <th>Origen</th>
+                  <th>Sobre</th>
+                  <th>Responsable</th>
+                  <th>Últ. movimiento</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {tickets.map(tk => {
+                  const st = TICKET_ORIGIN[tk.origin] || { label: tk.origin || '—', color: '#64748b', icon: Inbox }
+                  const OriginIcon = st.icon
+                  const updated = new Date(tk.updated_at)
+                  const updatedValid = !isNaN(updated.getTime())
+                  const isOpen = tk.status === 'open'
+                  return (
+                    <tr key={tk.id} className={styles.row} onClick={() => navigate(ticketPath(tk))}>
+                      <td>
+                        <div className={styles.ownerCell}>
+                          <span>{tk.title?.trim() || `Ticket #${tk.id}`}</span>
+                          <small>#{tk.id}{tk.stage ? ` · ${TICKET_STAGE[tk.stage] || tk.stage}` : ''}</small>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={styles.timelineTag} style={{ color: st.color, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <OriginIcon size={13} /> {st.label}
+                        </span>
+                      </td>
+                      <td>{tk.about?.trim() || '—'}</td>
+                      <td>{tk.assignee?.trim() || <span style={{ color: '#94a3b8' }}>Sin asignar</span>}</td>
+                      <td>{updatedValid ? updated.toLocaleDateString('es-ES') : '—'}</td>
+                      <td>
+                        <span className={`${styles.badge} ${isOpen ? styles.badgeActive : styles.badgeSuspended}`}>
+                          {isOpen ? 'Abierto' : 'Cerrado'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className={styles.rowActions}>
+                          <ChevronRight size={18} className={styles.chevron} />
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
       <Modal
         isOpen={commModal.isOpen}
         isDirty={!!commModal.message?.trim()}
         onClose={() => setCommModal(prev => ({ ...prev, isOpen: false }))}
-        title={commModal.type === 'email' ? 'Enviar Correo (Simulado)' : 'Enviar WhatsApp (Simulado)'}
+        title="Enviar correo"
         size="md"
         footer={
           <>
@@ -1168,24 +1336,25 @@ export default function TenantDetail() {
           </>
         }
       >
-        <p className={styles.modalHint}>Escribe el mensaje directo para {tenant.company_name}.</p>
-        {commModal.type === 'email' && (
-          <div className={styles.field}>
-            <label>Asunto</label>
-            <input
-              type="text"
-              value={commModal.subject}
-              onChange={(e) => setCommModal(prev => ({ ...prev, subject: e.target.value }))}
-              placeholder="Asunto del correo"
-            />
-          </div>
-        )}
+        <p className={styles.modalHint}>
+          Va a {tenant.owner_name} · {tenant.owner_email}. Queda registrado en el
+          expediente de {tenant.company_name}.
+        </p>
+        <div className={styles.field}>
+          <label>Asunto</label>
+          <input
+            type="text"
+            value={commModal.subject}
+            onChange={(e) => setCommModal(prev => ({ ...prev, subject: e.target.value }))}
+            placeholder="Asunto del correo"
+          />
+        </div>
         <div className={styles.field}>
           <label>Mensaje</label>
           <textarea
             value={commModal.message}
             onChange={(e) => setCommModal(prev => ({ ...prev, message: e.target.value }))}
-            placeholder={commModal.type === 'email' ? 'Escribe el correo aquí...' : 'Escribe tu mensaje...'}
+            placeholder="Escribe el correo aquí..."
             rows={5}
             style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius)', fontSize: '14px', outline: 'none' }}
           />
@@ -1227,6 +1396,50 @@ export default function TenantDetail() {
           </span>
         </div>
         {noteError && <p className={styles.errorMsg}>{noteError}</p>}
+      </Modal>
+
+      <Modal
+        isOpen={contactOpen}
+        isDirty={contactDetail.trim() !== ''}
+        onClose={() => setContactOpen(false)}
+        title="Registrar contacto con la empresa"
+        size="md"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setContactOpen(false)} disabled={contactSaving}>Cancelar</Button>
+            <Button onClick={handleSaveContact} loading={contactSaving}>Registrar</Button>
+          </>
+        }
+      >
+        <p className={styles.modalHint}>
+          Para lo que pasa fuera de la plataforma. Los correos y los WhatsApp que
+          salen desde aquí se registran solos: esto es para dejar constancia de
+          una llamada o una reunión con {tenant.company_name}.
+        </p>
+        <div className={styles.field}>
+          <label>Vía</label>
+          <Select
+            fullWidth
+            value={contactChannel}
+            onChange={v => setContactChannel(String(v) as TenantContactChannel)}
+            options={MANUAL_CONTACT_CHANNELS.map(c => ({ value: c.value, label: c.label }))}
+          />
+        </div>
+        <div className={styles.field}>
+          <label>Resumen <span style={{ color: '#94a3b8', fontWeight: 400 }}>(opcional)</span></label>
+          <textarea
+            value={contactDetail}
+            onChange={(e) => setContactDetail(e.target.value.slice(0, NOTE_MAX_LENGTH))}
+            placeholder="Ej: Repasamos las horas pendientes de aprobar; lo revisan esta semana."
+            rows={4}
+            autoFocus
+            style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius)', fontSize: '14px', outline: 'none', resize: 'vertical' }}
+          />
+          <span style={{ display: 'block', marginTop: 4, textAlign: 'right', fontSize: '12px', color: contactDetail.length >= NOTE_MAX_LENGTH ? '#dc2626' : '#94a3b8' }}>
+            {contactDetail.length}/{NOTE_MAX_LENGTH}
+          </span>
+        </div>
+        {contactError && <p className={styles.errorMsg}>{contactError}</p>}
       </Modal>
 
       <Modal

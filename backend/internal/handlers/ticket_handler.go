@@ -272,6 +272,24 @@ func (h *TicketHandler) GetWhatsAppTicket(c *gin.Context) {
 	c.JSON(http.StatusOK, ticketDTOFromWhatsApp(*ticket))
 }
 
+// LookupWhatsAppChat responde si un teléfono ya tiene conversación de WhatsApp
+// abierta con nosotros. Lo consume la ficha de empresa para decidir entre
+// llevar a la bandeja o abrir wa.me, en vez de ofrecer un envío que la guarda
+// de contacto en frío va a rechazar.
+func (h *TicketHandler) LookupWhatsAppChat(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	phone := strings.TrimSpace(c.Query("phone"))
+	res, err := h.ticketSvc.LookupWhatsAppChat(phone)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo consultar la conversación"})
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
 func (h *TicketHandler) SendWhatsAppMessage(c *gin.Context) {
 	if !canUseSupportInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})

@@ -1,4 +1,68 @@
 import api from './client'
+import { uploadService } from './upload.service'
+
+/**
+ * Vías por las que el equipo contacta con una empresa. Email y WhatsApp los
+ * registra la plataforma al enviar; llamada y reunión ocurren fuera y las anota
+ * una persona. Debe coincidir con models.IsValidCompanyContactChannel.
+ */
+export type TenantContactChannel = 'email' | 'whatsapp' | 'call' | 'meeting'
+
+/** Archivo colgado de una entrada del expediente o de uno de sus comentarios. */
+export interface CompanyAttachment {
+  id: number
+  event_id: number
+  comment_id?: number | null
+  file_name: string
+  file_size: number
+  mime_type: string
+  author: string
+  created_at: string
+}
+
+/** Comentario sobre una entrada del expediente. */
+export interface CompanyComment {
+  id: number
+  event_id: number
+  content: string
+  author: string
+  created_at: string
+  edited_at?: string | null
+  attachments?: CompanyAttachment[]
+}
+
+/** Lo que cuelga de una entrada del expediente. */
+export interface EventThread {
+  comments: CompanyComment[]
+  attachments: CompanyAttachment[]
+}
+
+/**
+ * URL de descarga de un adjunto.
+ *
+ * Va por una ruta que comprueba permisos y no por /api/uploads/:filename, que
+ * solo exige estar autenticado: aquí hay capturas de incidencias y documentos
+ * internos que no puede ver ni la propia empresa. Sirve igual para <img src> y
+ * para un enlace, porque la sesión viaja en cookie.
+ */
+export function tenantAttachmentUrl(tenantId: number, attachmentId: number): string {
+  return `/api/admin/tenants/${tenantId}/attachments/${attachmentId}/download`
+}
+
+/** Un ticket visto desde la ficha de la empresa. */
+export interface TenantTicket {
+  id: number
+  /** internal = alerta de la plataforma; whatsapp/zoho = conversación. */
+  origin: string
+  title: string
+  stage: string
+  status: string
+  /** Sobre quién va: el contacto de WhatsApp o el profesional de la alerta. */
+  about: string
+  assignee: string
+  created_at: string
+  updated_at: string
+}
 
 export interface TrashItem {
   type: string
@@ -332,6 +396,12 @@ export const adminService = {
     const { data } = await api.get(`/admin/employees/${id}/tracking`)
     return data
   },
+  // Tickets de la empresa: alertas internas sobre su gente + conversaciones de
+  // WhatsApp de su número, con el mismo criterio que el KPI de la cabecera.
+  getTenantTickets: async (id: number) => {
+    const { data } = await api.get<{ data: TenantTicket[] }>(`/admin/tenants/${id}/tickets`)
+    return data.data || []
+  },
   // Expediente de la empresa: paginado y filtrable por categoría y por persona.
   getTenantActivity: async (id: number, params?: { category?: string; user_id?: number; page?: number; limit?: number }) => {
     const { data } = await api.get(`/admin/tenants/${id}/activity`, { params })
@@ -341,6 +411,8 @@ export const adminService = {
       page: number
       limit: number
       counts: Record<string, number>
+      /** Hilos de las entradas de esta página, por event_id. */
+      threads: Record<number, EventThread>
     }
   },
   // Quién aparece en el expediente (sale de los propios movimientos, no de la
@@ -365,6 +437,50 @@ export const adminService = {
   },
   deleteTenantNote: async (id: number, noteId: number) => {
     await api.delete(`/admin/tenants/${id}/notes/${noteId}`)
+  },
+  // Registra en el expediente que el equipo contactó con la empresa. El correo
+  // y el WhatsApp lo llaman solos tras enviar; la llamada y la reunión se
+  // anotan a mano desde la ficha.
+  logTenantContact: async (id: number, channel: TenantContactChannel, detail?: string) => {
+    const { data } = await api.post(`/admin/tenants/${id}/contacts`, { channel, detail: detail || '' })
+    return data
+  },
+  // --- Hilo de una entrada del expediente (comentarios y archivos) ---
+  addTenantComment: async (id: number, eventId: number, content: string) => {
+    const { data } = await api.post(`/admin/tenants/${id}/events/${eventId}/comments`, { content })
+    return data as CompanyComment
+  },
+  updateTenantComment: async (id: number, commentId: number, content: string) => {
+    await api.put(`/admin/tenants/${id}/comments/${commentId}`, { content })
+  },
+  deleteTenantComment: async (id: number, commentId: number) => {
+    await api.delete(`/admin/tenants/${id}/comments/${commentId}`)
+  },
+  /**
+   * Sube el archivo y lo cuelga de la entrada. Son dos pasos porque el binario
+   * va por el endpoint genérico de subidas y aquí solo se registra a qué
+   * entrada pertenece; `stored_name` es el nombre con el que quedó en disco.
+   */
+  addTenantAttachment: async (
+    id: number,
+    eventId: number,
+    file: File,
+    commentId?: number,
+  ): Promise<CompanyAttachment> => {
+    const up = await uploadService.upload(file)
+    const { data } = await api.post(`/admin/tenants/${id}/events/${eventId}/attachments`, {
+      stored_name: up.filename,
+      // El nombre visible es el original del archivo; el del disco lleva id de
+      // usuario y marca de tiempo y no le dice nada a nadie.
+      file_name: (file as File).name || up.filename,
+      file_size: up.size,
+      mime_type: up.type,
+      comment_id: commentId,
+    })
+    return data as CompanyAttachment
+  },
+  deleteTenantAttachment: async (id: number, attachmentId: number) => {
+    await api.delete(`/admin/tenants/${id}/attachments/${attachmentId}`)
   },
   // Notas fijadas: van en la cabecera del expediente, fuera de la cronología.
   getTenantPinnedNotes: async (id: number) => {

@@ -11,7 +11,10 @@ import { Select } from '../../components/ui/Select'
 import { useCloseGuard } from '../../components/ui/useCloseGuard'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
 import { setRecordNav } from '../../lib/recordNav'
+import { healthSignal, daysSince, HEALTH_COLOR } from './accountHealth'
 import { emailService } from '../../services/emailService'
+import { ticketService } from '../../services/ticket.service'
+import { useNotification } from '../../context/NotificationContext'
 import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
 import styles from './Tenants.module.css'
 
@@ -22,10 +25,14 @@ export default function TenantsList() {
   const canManage = !!viewer?.is_superadmin
   const { tenants, isLoading, error, createTenant, suspendTenant, activateTenant } = useTenants()
   const confirm = useConfirm()
+  const notify = useNotification()
 
   const [search, setSearch] = useState('')
   const [industryFilter, setIndustryFilter] = useState('')
   const [countryFilter, setCountryFilter] = useState('')
+  // Filtro de seguimiento: es la forma en que soporte prioriza de verdad
+  // ("¿a quién le toca?"), y hasta ahora no había manera de preguntarlo.
+  const [contactFilter, setContactFilter] = useState('')
   const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
   const [companyName, setCompanyName] = useState('')
@@ -39,15 +46,15 @@ export default function TenantsList() {
   const [selectedTenantIds, setSelectedTenantIds] = useState<number[]>([])
   // Modal de redacción de correo (plantillas de Tools / redacción nueva) para una empresa.
   const [composer, setComposer] = useState<ComposerRecipient | null>(null)
+  // Solo correo: el WhatsApp de cada fila abre la conversación o WhatsApp Web,
+  // no un cuadro de texto que simule un envío.
   const [commModal, setCommModal] = useState<{
     isOpen: boolean
-    type: 'email' | 'whatsapp'
     target: Tenant | 'bulk'
     subject: string
     message: string
   }>({
     isOpen: false,
-    type: 'email',
     target: 'bulk',
     subject: '',
     message: '',
@@ -63,9 +70,31 @@ export default function TenantsList() {
       if (q && !(t.company_name?.toLowerCase().includes(q) || t.owner_email?.toLowerCase().includes(q))) return false
       if (industryFilter && t.industry?.trim() !== industryFilter) return false
       if (countryFilter && t.country?.trim() !== countryFilter) return false
+      if (contactFilter) {
+        const days = daysSince(t.last_contact_at)
+        // "Nunca" cuenta como pendiente en los dos umbrales: es el caso más
+        // urgente, no el menos, y dejarlo fuera lo escondería justo de quien lo
+        // está buscando.
+        if (contactFilter === 'never' && days !== null) return false
+        if (contactFilter === 'stale' && days !== null && days < 30) return false
+        if (contactFilter === 'very-stale' && days !== null && days < 90) return false
+      }
       return true
     })
-    .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || '', 'es', { sensitivity: 'base' }))
+    // Con el filtro de seguimiento puesto se ordena por urgencia, no por
+    // alfabeto: quien pregunta "¿a quién no hemos llamado?" quiere el peor caso
+    // arriba. Sin filtro se mantiene el orden alfabético de siempre.
+    .sort((a, b) => {
+      if (contactFilter) {
+        const da = daysSince(a.last_contact_at)
+        const db = daysSince(b.last_contact_at)
+        // null (nunca) es lo más urgente: va primero.
+        if (da === null && db !== null) return -1
+        if (db === null && da !== null) return 1
+        if (da !== null && db !== null && da !== db) return db - da
+      }
+      return (a.company_name || '').localeCompare(b.company_name || '', 'es', { sensitivity: 'base' })
+    })
 
   const TENANTS_PER_PAGE = 10
   const totalPages = Math.max(1, Math.ceil(filtered.length / TENANTS_PER_PAGE))
@@ -74,13 +103,14 @@ export default function TenantsList() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, industryFilter, countryFilter])
+  }, [search, industryFilter, countryFilter, contactFilter])
 
-  const hasFilters = !!(search.trim() || industryFilter || countryFilter)
+  const hasFilters = !!(search.trim() || industryFilter || countryFilter || contactFilter)
   const clearFilters = () => {
     setSearch('')
     setIndustryFilter('')
     setCountryFilter('')
+    setContactFilter('')
   }
 
   const activeCount = tenants.filter(t => t.is_active).length
@@ -195,67 +225,86 @@ export default function TenantsList() {
     }
   }
 
-  const openCommModal = (e: React.MouseEvent, type: 'email' | 'whatsapp', target: Tenant | 'bulk') => {
+  const openCommModal = (e: React.MouseEvent, target: Tenant | 'bulk') => {
     e.stopPropagation()
     setCommModal({
       isOpen: true,
-      type,
       target,
-      subject: type === 'email' ? 'Contacto desde Oberstaff' : '',
+      subject: 'Contacto desde Oberstaff',
       message: ''
     })
   }
 
+  // WhatsApp de una fila: lleva a la conversación si ya existe, y si no abre
+  // WhatsApp Web con el número. Escribir en frío desde la línea oficial está
+  // bloqueado en el backend a propósito (protección anti-baneo).
+  const openWhatsApp = async (e: React.MouseEvent, t: Tenant) => {
+    e.stopPropagation()
+    if (!t.phone_number?.trim()) {
+      notify.warning(`${t.company_name} no tiene un teléfono registrado.`)
+      return
+    }
+    try {
+      const lookup = await ticketService.lookupWaChat(t.phone_number)
+      if (lookup.ticket_id && lookup.can_reply) {
+        navigate(`/tickets/wa/${lookup.ticket_id}`)
+        return
+      }
+    } catch { /* sin bandeja disponible se cae al enlace, que siempre funciona */ }
+    window.open(`https://wa.me/${t.phone_number.replace(/\D/g, '')}`, '_blank', 'noopener,noreferrer')
+    adminService.logTenantContact(t.id, 'whatsapp', 'Abierto desde el listado (WhatsApp Web)').catch(() => {})
+  }
+
   const handleSendComm = async () => {
     const isBulk = commModal.target === 'bulk'
-    
-    if (commModal.type === 'email') {
-      try {
-        if (isBulk) {
-          const targets = tenants.filter(t => selectedTenantIds.includes(t.id))
-          const recipients = targets
-            .map(t => ({ name: t.owner_name || t.company_name || '', email: t.owner_email || '' }))
-            .filter(r => r.email)
-          
-          if (recipients.length === 0) {
-            alert('Ninguna de las empresas seleccionadas tiene un correo electrónico válido.')
-            return
-          }
+    try {
+      if (isBulk) {
+        const targets = tenants.filter(t => selectedTenantIds.includes(t.id))
+        const recipients = targets
+          .map(t => ({ name: t.owner_name || t.company_name || '', email: t.owner_email || '' }))
+          .filter(r => r.email)
 
-          await emailService.sendQuickEmailBulk({
-            recipients,
-            subject: commModal.subject || 'Contacto masivo Oberstaff',
-            html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
-          })
-          alert(`¡Correo masivo enviado con éxito a ${recipients.length} destinatarios!`)
-        } else {
-          const target = commModal.target as Tenant
-          if (!target.owner_email) {
-            alert('Esta empresa no tiene un correo de contacto asociado.')
-            return
-          }
-          await emailService.sendQuickEmail({
-            to_email: target.owner_email,
-            to_name: target.owner_name || target.company_name,
-            subject: commModal.subject || 'Contacto oficial Oberstaff',
-            html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
-          })
-          alert(`¡Correo enviado con éxito a ${target.owner_email}!`)
+        if (recipients.length === 0) {
+          notify.warning('Ninguna de las empresas seleccionadas tiene un correo electrónico válido.')
+          return
         }
-      } catch (err) {
-        console.error(err)
-        alert('Error al enviar el correo. Por favor, intente de nuevo.')
-      }
-    } else {
-      const targetNames = isBulk
-        ? `${selectedTenantIds.length} empresas seleccionadas`
-        : (commModal.target as Tenant).company_name
 
-      console.log(`[SIMULACIÓN] Enviando ${commModal.type.toUpperCase()} a ${targetNames}:`, {
-        asunto: commModal.subject,
-        mensaje: commModal.message
-      })
-      alert(`¡Mensaje (${commModal.type.toUpperCase()}) enviado con éxito a ${targetNames}! (Simulado)`)
+        const subject = commModal.subject || 'Contacto masivo Oberstaff'
+        await emailService.sendQuickEmailBulk({
+          recipients,
+          subject,
+          html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
+        })
+        // Un envío masivo deja rastro en el expediente de CADA empresa: dentro
+        // de un mes nadie va a recordar quién entraba en aquella selección.
+        // Best-effort y en paralelo: el correo ya salió.
+        await Promise.allSettled(
+          targets
+            .filter(t => t.owner_email)
+            .map(t => adminService.logTenantContact(t.id, 'email', subject)),
+        )
+        notify.success(`Correo enviado a ${recipients.length} destinatario(s).`)
+      } else {
+        const target = commModal.target as Tenant
+        if (!target.owner_email) {
+          notify.warning('Esta empresa no tiene un correo de contacto asociado.')
+          return
+        }
+        const subject = commModal.subject || 'Contacto oficial Oberstaff'
+        await emailService.sendQuickEmail({
+          to_email: target.owner_email,
+          to_name: target.owner_name || target.company_name,
+          subject,
+          html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
+        })
+        await adminService.logTenantContact(target.id, 'email', subject).catch(() => {})
+        notify.success(`Correo enviado a ${target.owner_email}.`)
+      }
+    } catch (err: any) {
+      console.error(err)
+      const serverMsg = err?.response?.data?.error
+      notify.error(serverMsg ? `No se pudo enviar: ${serverMsg}` : 'No se pudo enviar el correo. Inténtalo de nuevo.')
+      return
     }
 
     setCommModal(prev => ({ ...prev, isOpen: false, message: '', subject: '' }))
@@ -365,6 +414,21 @@ export default function TenantsList() {
             options={countries.map(c => ({ value: c, label: c }))}
           />
         </div>
+        <div style={{ minWidth: 200 }}>
+          <Select
+            fullWidth
+            clearable
+            placeholder="Seguimiento"
+            value={contactFilter}
+            onChange={v => setContactFilter(v ? String(v) : '')}
+            ariaLabel="Filtrar por antigüedad del último contacto"
+            options={[
+              { value: 'never', label: 'Nunca contactadas' },
+              { value: 'stale', label: 'Sin contacto +30 días' },
+              { value: 'very-stale', label: 'Sin contacto +90 días' },
+            ]}
+          />
+        </div>
         {hasFilters && (
           <button
             type="button"
@@ -382,21 +446,16 @@ export default function TenantsList() {
             <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--primary)' }}>
               {selectedTenantIds.length} selec.
             </span>
+            {/* No hay equivalente en WhatsApp a propósito: mandar el mismo
+                mensaje a N empresas desde la línea oficial es contacto en frío
+                masivo, que es lo que hace que Meta tumbe un número. */}
             <Button
               size="sm"
               variant="secondary"
               leftIcon={<Mail size={14} />}
-              onClick={(e) => openCommModal(e, 'email', 'bulk')}
+              onClick={(e) => openCommModal(e, 'bulk')}
             >
               Email Masivo
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              leftIcon={<MessageSquare size={14} />}
-              onClick={(e) => openCommModal(e, 'whatsapp', 'bulk')}
-            >
-              WhatsApp Masivo
             </Button>
           </div>
         )}
@@ -426,6 +485,7 @@ export default function TenantsList() {
                 <th>Profesionales</th>
                 <th>Tableros</th>
                 <th>Tareas</th>
+                <th>Últ. contacto</th>
                 <th>Estado</th>
                 <th></th>
               </tr>
@@ -456,6 +516,19 @@ export default function TenantsList() {
                   <td>{t.board_count}</td>
                   <td>{t.task_count}</td>
                   <td>
+                    {(() => {
+                      const h = healthSignal(t.last_contact_at)
+                      return (
+                        <span
+                          style={{ color: HEALTH_COLOR[h.level], fontWeight: h.level === 'ok' ? 400 : 600, whiteSpace: 'nowrap' }}
+                          title={t.last_contact_at ? new Date(t.last_contact_at).toLocaleString('es-ES') : 'Nunca se ha registrado un contacto con esta empresa'}
+                        >
+                          {h.label}
+                        </span>
+                      )
+                    })()}
+                  </td>
+                  <td>
                     <span className={`${styles.badge} ${t.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
                       {t.is_active ? 'Activa' : 'Suspendida'}
                     </span>
@@ -468,7 +541,7 @@ export default function TenantsList() {
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!t.owner_email) {
-                            alert('Esta empresa no tiene un correo de contacto asociado.')
+                            notify.warning('Esta empresa no tiene un correo de contacto asociado.')
                             return
                           }
                           setComposer({ id: t.id, name: t.owner_name || t.company_name, email: t.owner_email })
@@ -480,8 +553,8 @@ export default function TenantsList() {
                       <button
                         className={styles.iconBtn}
                         style={{ color: '#25D366' }}
-                        onClick={(e) => openCommModal(e, 'whatsapp', t)}
-                        title="Enviar WhatsApp"
+                        onClick={(e) => openWhatsApp(e, t)}
+                        title="Abrir la conversación de WhatsApp (o WhatsApp Web si no existe)"
                       >
                         <MessageSquare size={16} />
                       </button>
@@ -537,18 +610,15 @@ export default function TenantsList() {
         </div>
       )}
 
-      {/* Modal de simulación de comunicación */}
       <Modal
         isOpen={commModal.isOpen}
         onClose={requestCloseComm}
-        title={commModal.type === 'email' ? 'Enviar Correo (Simulación)' : 'Enviar WhatsApp (Simulación)'}
+        title="Enviar correo"
         size="md"
         footer={
           <>
             <Button variant="secondary" onClick={() => setCommModal(prev => ({ ...prev, isOpen: false }))}>Cancelar</Button>
-            <Button onClick={handleSendComm} disabled={!commModal.message}>
-              {commModal.type === 'email' ? 'Enviar Email' : 'Enviar WhatsApp'}
-            </Button>
+            <Button onClick={handleSendComm} disabled={!commModal.message}>Enviar</Button>
           </>
         }
       >
@@ -558,23 +628,21 @@ export default function TenantsList() {
             : `Escribe el mensaje para ${(commModal.target as Tenant).company_name}.`
           }
         </p>
-        {commModal.type === 'email' && (
-          <div className={styles.field}>
-            <label>Asunto</label>
-            <input
-              type="text"
-              value={commModal.subject}
-              onChange={(e) => setCommModal(prev => ({ ...prev, subject: e.target.value }))}
-              placeholder="Asunto del correo"
-            />
-          </div>
-        )}
+        <div className={styles.field}>
+          <label>Asunto</label>
+          <input
+            type="text"
+            value={commModal.subject}
+            onChange={(e) => setCommModal(prev => ({ ...prev, subject: e.target.value }))}
+            placeholder="Asunto del correo"
+          />
+        </div>
         <div className={styles.field}>
           <label>Mensaje</label>
           <textarea
             value={commModal.message}
             onChange={(e) => setCommModal(prev => ({ ...prev, message: e.target.value }))}
-            placeholder={commModal.type === 'email' ? 'Escribe el cuerpo del correo aquí...' : 'Escribe tu mensaje de WhatsApp...'}
+            placeholder="Escribe el cuerpo del correo aquí..."
             rows={5}
             style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius)', fontSize: '14px', outline: 'none' }}
           />
@@ -586,7 +654,10 @@ export default function TenantsList() {
         onClose={() => setComposer(null)}
         recipient={composer}
         defaultSubject="Contacto oficial Oberstaff"
+        // El destinatario es el responsable de la empresa, no un profesional:
+        // el contacto pertenece al expediente de la empresa.
         logContact={false}
+        logTenantId={composer?.id}
       />
 
       <Modal

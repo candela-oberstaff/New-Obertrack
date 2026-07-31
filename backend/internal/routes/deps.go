@@ -30,6 +30,7 @@ type deps struct {
 	chat          *handlers.ChatHandler
 	channel       *handlers.ChannelHandler
 	upload        *handlers.UploadHandler
+	companyThread *handlers.CompanyThreadHandler
 	notification  *handlers.NotificationHandler
 	email         *handlers.EmailHandler
 	survey        *handlers.SurveyHandler
@@ -117,6 +118,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, brevoSvc)
 	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc, employmentRepo)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))
+	// Hilo del expediente de empresa (comentarios y adjuntos por entrada).
+	companyThreadSvc := service.NewCompanyThreadService(repository.NewCompanyThreadRepository(db))
 	taskSvc := service.NewTaskService(taskRepo, userRepo, boardRepo, notifSvc)
 	// Al asignar/cambiar/completar una tarea, además de la campanita se publica un
 	// DM del bot "Obertrack" en el chat interno (como Slack). channelSvc ya está
@@ -226,13 +229,14 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 
 		auth:          handlers.NewAuthHandler(authSvc, auditSvc, rbacSvc, employmentSvc),
 		user:          handlers.NewUserHandler(userSvc),
-		admin:         handlers.NewAdminHandler(adminSvc, rbacSvc, employmentSvc),
+		admin:         handlers.NewAdminHandler(adminSvc, rbacSvc, employmentSvc, companyThreadSvc),
 		board:         handlers.NewBoardHandler(boardSvc),
 		task:          handlers.NewTaskHandler(taskSvc),
 		workHour:      handlers.NewWorkHourHandler(workHourSvc),
 		chat:          handlers.NewChatHandler(chatSvc, chatHub),
 		channel:       handlers.NewChannelHandler(channelSvc, channelHub),
 		upload:        handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"), employmentSvc),
+		companyThread: handlers.NewCompanyThreadHandler(companyThreadSvc, os.Getenv("UPLOAD_PATH")),
 		notification:  handlers.NewNotificationHandler(notifSvc),
 		email:         handlers.NewEmailHandler(emailRepo, brevoSvc),
 		survey:        handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
