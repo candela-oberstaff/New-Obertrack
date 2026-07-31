@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -37,6 +38,30 @@ type BrevoEmailRequest struct {
 type BrevoErrorResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// BrevoSendResponse es lo que devuelve Brevo al aceptar un envío.
+type BrevoSendResponse struct {
+	MessageID string `json:"messageId"`
+}
+
+// logAccepted deja constancia de que Brevo ACEPTÓ el correo, con su messageId.
+//
+// Aceptar no es entregar: Brevo responde 201 y luego descarta en silencio los
+// envíos a contactos bloqueados (los que rebotaron antes, se dieron de baja o
+// marcaron spam). Sin este identificador, un "no me llegó el correo" no se
+// puede investigar —no hay forma de saber si salió, rebotó o se bloqueó— y era
+// justo lo que pasaba: la aplicación decía "enviado" y ahí se acababa el rastro.
+//
+// Con el messageId se busca el envío en el panel de Brevo (Transactional >
+// Logs) y se ve qué le pasó de verdad.
+func logAccepted(resp *http.Response, toEmail, subject string) {
+	var out BrevoSendResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || out.MessageID == "" {
+		log.Printf("[brevo] aceptado para %s (%q) pero sin messageId en la respuesta", toEmail, subject)
+		return
+	}
+	log.Printf("[brevo] aceptado para %s (%q) messageId=%s", toEmail, subject, out.MessageID)
 }
 
 // recipient arma el destinatario para Brevo, que RECHAZA la petición entera con
@@ -142,6 +167,7 @@ func (s *BrevoService) SendEmail(toEmail, toName, subject, htmlContent string) e
 		return fmt.Errorf("brevo API error [%d]: %s - %s", resp.StatusCode, brevoErr.Code, brevoErr.Message)
 	}
 
+	logAccepted(resp, toEmail, subject)
 	return nil
 }
 
@@ -185,6 +211,7 @@ func (s *BrevoService) SendEmailWithAttachments(toEmail, toName, subject, htmlCo
 		return fmt.Errorf("brevo API error [%d]: %s - %s", resp.StatusCode, brevoErr.Code, brevoErr.Message)
 	}
 
+	logAccepted(resp, toEmail, subject)
 	return nil
 }
 
