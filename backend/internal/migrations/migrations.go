@@ -1724,6 +1724,29 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.CompanyEventComment{})
 			},
 		},
+		{
+			ID: "202608031200_add_obersuite_id",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Añadiendo obersuite_id a users y employments...")
+				if err := tx.AutoMigrate(&models.User{}, &models.Employment{}); err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_users_obersuite_id
+					ON users (obersuite_id)
+					WHERE obersuite_id <> '' AND deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_users_obersuite_id`).Error; err != nil {
+					return err
+				}
+				if err := tx.Migrator().DropColumn(&models.Employment{}, "obersuite_id"); err != nil {
+					return err
+				}
+				return tx.Migrator().DropColumn(&models.User{}, "obersuite_id")
+			},
+		},
 		// Future migrations go here
 	})
 

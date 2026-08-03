@@ -11,6 +11,7 @@ type UserRepository interface {
 	CountCompanies() (int64, error)
 	GetByID(id uint) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
+	GetByObersuiteID(obersuiteID string) (*models.User, error)
 	GetByResetToken(token string) (*models.User, error)
 	Create(user *models.User) error
 	Update(user *models.User, updates map[string]interface{}) error
@@ -144,6 +145,16 @@ func (r *userRepository) GetByID(id uint) (*models.User, error) {
 func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 	var user models.User
 	if err := r.db.Where("email = ?", email).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) GetByObersuiteID(obersuiteID string) (*models.User, error) {
+	var user models.User
+	// El filtro de vacío es indispensable: sin él, un id ausente engancharía a
+	// cualquiera de los usuarios que no vienen del puente.
+	if err := r.db.Where("obersuite_id = ? AND obersuite_id != ''", obersuiteID).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil

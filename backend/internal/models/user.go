@@ -51,6 +51,7 @@ type User struct {
 	Location         string     `gorm:"type:text" json:"location"`
 	IdentityDocument string     `gorm:"size:500" json:"identity_document"`
 	Address          string     `gorm:"type:text" json:"address"`
+	ObersuiteID string `gorm:"size:64" json:"obersuite_id,omitempty"`
 	RememberToken    string     `gorm:"size:100" json:"-"`
 	EmailVerifiedAt  *time.Time `json:"email_verified_at,omitempty"`
 	ManagerID        *uint      `gorm:"index" json:"manager_id,omitempty"`

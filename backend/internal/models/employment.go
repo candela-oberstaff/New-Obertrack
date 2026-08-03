@@ -28,6 +28,7 @@ type Employment struct {
 	Status      string         `gorm:"size:20;not null;default:'active';index" json:"status"`
 	StartedAt   time.Time      `json:"started_at"`
 	StartReason string         `gorm:"type:text" json:"start_reason,omitempty"`
+	ObersuiteID string `gorm:"size:64;index" json:"obersuite_id,omitempty"`
 	EndedAt     *time.Time     `json:"ended_at,omitempty"`
 	EndReason   string         `gorm:"type:text" json:"end_reason,omitempty"`
 	// EndSummary guarda un snapshot inmutable al terminar el empleo (horas,

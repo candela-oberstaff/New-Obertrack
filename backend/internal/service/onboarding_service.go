@@ -63,6 +63,7 @@ type HireRequest struct {
 type HireResult struct {
 	UserID       uint `json:"user_id"`
 	EmploymentID uint `json:"employment_id"`
+	ObersuiteID  string `json:"obersuite_id,omitempty"`
 	// Status: created (profesional nuevo), rehired (ya existía, nuevo empleo),
 	// already_active (ya tenía empleo activo en esa empresa: no-op idempotente).
 	Status     string `json:"status"`
@@ -128,11 +129,18 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		return nil, errors.New("la empresa está suspendida")
 	}
 
-	result := &HireResult{}
+	externalID := strings.TrimSpace(req.ExternalID)
+	result := &HireResult{ObersuiteID: externalID}
 
-	// 3. Dedup por email: crea el profesional o reutiliza el existente.
-	user, err := s.userRepo.GetByEmail(email)
-	if err != nil {
+	// 3. Identidad: PRIMERO por el id de Obersuite, después por email.
+	//    El orden importa. El email solo identifica mientras nadie lo cambie;
+	//    en cuanto el candidato se registra con uno y el alta llega con otro,
+	//    resolver por email crea una segunda cuenta de la misma persona. El id
+	//    de Obersuite no tiene ese problema, así que manda cuando viene.
+	user := s.resolveProfessional(externalID, email)
+	isNew := user == nil
+
+	if isNew {
 		// No existe → alta de profesional. Contraseña aleatoria: el profesional
 		// la establece con el correo de bienvenida (flujo forgot-password).
 		hashed, herr := bcrypt.GenerateFromPassword([]byte(generateRandomPassword()), bcrypt.DefaultCost)
@@ -152,30 +160,11 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 			Address:          strings.TrimSpace(req.Address),
 			JobTitle:         strings.TrimSpace(req.JobTitle),
 			IdentityDocument: strings.TrimSpace(req.IdentityDocument),
+			ObersuiteID:      externalID,
 		}
 		if err := s.userRepo.Create(user); err != nil {
 			return nil, err
 		}
-		// Si la inducción está encendida, el profesional queda SIN acceso y
-		// recibe el enlace a la landing. Si está apagada, se le da acceso
-		// directo como antes (el puente con Obersuite no se rompe nunca por
-		// una inducción sin configurar).
-		invited := false
-		if s.inductionSvc != nil {
-			var ierr error
-			invited, ierr = s.inductionSvc.InviteIfEnabled(user)
-			if ierr != nil {
-				log.Printf("[Onboarding] no se pudo emitir la inducción de %s: %v", email, ierr)
-				invited = false
-			}
-		}
-		if !invited {
-			// Correo de bienvenida / establecer contraseña (best-effort).
-			if err := s.authSvc.ForgotPassword(email); err != nil {
-				log.Printf("[Onboarding] welcome email failed for %s: %v", email, err)
-			}
-		}
-		result.InductionPending = invited
 		result.Status = "created"
 	} else {
 		// Ya existe. Solo un profesional puede recibir un empleo por esta vía;
@@ -191,6 +180,12 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		if user.PhoneNumber == "" && strings.TrimSpace(req.PhoneNumber) != "" {
 			updates["phone_number"] = strings.TrimSpace(req.PhoneNumber)
 		}
+		// Vincula hacia atrás a quien ya estaba aquí antes de que existiera el
+		// id: la primera contratación que llega por el puente lo estampa y a
+		// partir de ahí esa persona queda identificada en los dos sistemas.
+		if externalID != "" && user.ObersuiteID == "" {
+			updates["obersuite_id"] = externalID
+		}
 		if len(updates) > 0 {
 			_ = s.userRepo.Update(user, updates)
 		}
@@ -198,9 +193,13 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 	result.UserID = user.ID
 
 	// 4. Empleo (idempotente): si ya tiene uno activo en esta empresa, no-op.
+	//    Aquí se corta el reintento del webhook, y por eso NO se manda ningún
+	//    correo desde esta rama: reenviar la inducción en cada reintento le
+	//    llenaría la bandeja al profesional con el mismo enlace.
 	if existing, gerr := s.employmentRepo.GetActive(user.ID, req.CompanyID); gerr == nil && existing != nil {
 		result.EmploymentID = existing.ID
 		result.Status = "already_active"
+		s.logHire(result, email, req.CompanyID)
 		return result, nil
 	}
 
@@ -213,12 +212,25 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		result.Status = "rehired"
 	}
 
-	// Honra la fecha de inicio si vino (AddEmployment usa "ahora" por defecto).
+	// Honra la fecha de inicio si vino (AddEmployment usa "ahora" por defecto)
+	// y deja el id de Obersuite en el empleo: identifica ESTA contratación.
+	empUpdates := map[string]interface{}{}
 	if req.StartedAt != nil {
-		_ = s.employmentRepo.Update(emp, map[string]interface{}{"started_at": *req.StartedAt})
+		empUpdates["started_at"] = *req.StartedAt
+	}
+	if externalID != "" {
+		empUpdates["obersuite_id"] = externalID
+	}
+	if len(empUpdates) > 0 {
+		_ = s.employmentRepo.Update(emp, empUpdates)
 	}
 
-	// 5. CV (best-effort): un fallo del CV NO revierte la contratación; se avisa.
+	// 5. Inducción / bienvenida. Va DESPUÉS del empleo a propósito: si la
+	//    contratación falla a mitad, nadie recibe un correo por un empleo que
+	//    no existe.
+	s.notifyHired(user, isNew, result)
+
+	// 6. CV (best-effort): un fallo del CV NO revierte la contratación; se avisa.
 	if req.CV != nil && strings.TrimSpace(req.CV.ContentBase64) != "" {
 		if warn := s.attachCV(emp.ID, req.CompanyID, req.CV); warn != "" {
 			result.CVWarning = warn
@@ -227,7 +239,94 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		}
 	}
 
+	s.logHire(result, email, req.CompanyID)
 	return result, nil
+}
+
+// resolveProfessional busca al profesional por el id de Obersuite y, si no lo
+// encuentra, por email. Devuelve nil si no existe en ninguno de los dos.
+//
+// Que el id mande sobre el email es justo lo que evita duplicar a una persona
+// que cambió de correo entre la postulación y la contratación.
+func (s *onboardingService) resolveProfessional(externalID, email string) *models.User {
+	if externalID != "" {
+		if user, err := s.userRepo.GetByObersuiteID(externalID); err == nil && user != nil {
+			return user
+		}
+	}
+	if user, err := s.userRepo.GetByEmail(email); err == nil && user != nil {
+		return user
+	}
+	return nil
+}
+
+// notifyHired decide qué correo recibe quien acaba de ser contratado desde
+// Obersuite: la inducción (si está encendida) o la bienvenida para establecer
+// contraseña.
+//
+// Se aplica tanto al alta nueva como a la re-contratación de alguien que ya
+// estaba: antes solo se emitía en el alta, así que un profesional que volvía a
+// ser contratado no recibía nunca la inducción.
+//
+// Dos casos quedan fuera a propósito, porque invitarlos les QUITARÍA el acceso
+// que ya tienen (InviteIfEnabled deja el estado en 'pending'):
+//   - quien ya aprobó la inducción;
+//   - quien nunca tuvo que hacerla ('not_required'): cuentas anteriores a la
+//     inducción y altas por otras vías, que hoy trabajan con normalidad.
+//
+// Si hace falta que uno de esos repita la inducción, Soporte lo emite a mano
+// desde el panel (InductionService.Invite / Reset), que es una decisión
+// explícita y no un efecto colateral de una contratación.
+func (s *onboardingService) notifyHired(user *models.User, isNew bool, result *HireResult) {
+	needsInduction := isNew ||
+		user.OnboardingStatus == models.OnboardingPending ||
+		user.OnboardingStatus == models.OnboardingBlocked
+
+	if !needsInduction {
+		log.Printf("[Onboarding] %s ya tiene acceso (onboarding=%s): no se le reenvía la inducción",
+			user.Email, user.OnboardingStatus)
+		return
+	}
+
+	invited := false
+	if s.inductionSvc != nil {
+		var ierr error
+		invited, ierr = s.inductionSvc.InviteIfEnabled(user)
+		if ierr != nil {
+			log.Printf("[Onboarding] no se pudo emitir la inducción de %s: %v", user.Email, ierr)
+			invited = false
+		}
+	}
+	result.InductionPending = invited
+
+	if invited {
+		log.Printf("[Onboarding] inducción emitida para %s", user.Email)
+		return
+	}
+
+	// La inducción está apagada o sin cuestionario: el profesional entra por el
+	// flujo directo de siempre. El puente nunca se rompe por una inducción sin
+	// configurar, pero sí se deja constancia de por qué no salió el correo.
+	log.Printf("[Onboarding] inducción no emitida para %s (apagada o sin cuestionario)", user.Email)
+	if isNew {
+		// Correo de bienvenida / establecer contraseña (best-effort). Solo al
+		// alta: quien ya existía tiene su contraseña y no necesita reponerla.
+		if err := s.authSvc.ForgotPassword(user.Email); err != nil {
+			log.Printf("[Onboarding] welcome email failed for %s: %v", user.Email, err)
+		}
+	}
+}
+
+// logHire deja una línea por contratación recibida. Es la bitácora del puente:
+// sin ella, un "¿llegó el hire de Fulano?" no se podía responder —el access log
+// solo dice que alguien llamó al endpoint, no a quién ni con qué resultado—.
+func (s *onboardingService) logHire(result *HireResult, email string, companyID uint) {
+	obersuiteID := result.ObersuiteID
+	if obersuiteID == "" {
+		obersuiteID = "(sin id)"
+	}
+	log.Printf("[Onboarding] hire obersuite_id=%s email=%s empresa=%d → %s (user=%d empleo=%d inducción_pendiente=%t)",
+		obersuiteID, email, companyID, result.Status, result.UserID, result.EmploymentID, result.InductionPending)
 }
 
 // attachCV decodifica el CV en base64, lo guarda en disco y lo adjunta al
