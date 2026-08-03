@@ -108,6 +108,9 @@ func BuildPasswordSetupHTML(name, userEmail, setupLink string) string {
 // destinatario para siempre, así que el correo insiste en cambiarla al entrar.
 func BuildCredentialsHTML(name, userEmail, tempPassword, loginLink string) string {
 	body := emailGreeting(name) +
+		emailParagraph("En Oberstaff, trabajamos de forma continua para que la gestión del talento remoto sea más simple, transparente y eficiente. Por eso queremos compartirle una novedad.") +
+		emailParagraph("Hemos desarrollado una herramienta pensada para darle visibilidad y control sobre el trabajo diario del equipo.") +
+		emailParagraph("&#10004; Esto no representa un costo adicional: se trata de un nuevo beneficio, incluido en su servicio con Oberstaff.") +
 		emailParagraph("Tu cuenta en Obertrack ya está creada. Estos son tus datos para entrar por primera vez:") +
 		`<table style="width:100%;border-collapse:collapse;margin:0 0 16px 0;font-family:sans-serif;font-size:14px;">
 			<tr>
