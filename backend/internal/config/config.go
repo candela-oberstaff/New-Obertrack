@@ -143,7 +143,8 @@ func (c *Config) validateGoogleCalendar() {
 	}
 
 	if c.FrontendURL == "" {
-		log.Println("WARN: FRONTEND_URL vacío — el callback de Google redirigirá a rutas relativas")
+		log.Println("WARN: FRONTEND_URL vacío — los enlaces de correo y el callback de Google " +
+			"caen al dominio por defecto de FrontendBaseURL(). Defínelo si este entorno no es producción.")
 	}
 }
 

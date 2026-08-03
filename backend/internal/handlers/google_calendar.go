@@ -29,7 +29,14 @@ type GoogleCalendarHandler struct {
 }
 
 func NewGoogleCalendarHandler(s service.GoogleCalendarService, frontendURL string) *GoogleCalendarHandler {
-	return &GoogleCalendarHandler{service: s, frontendURL: strings.TrimRight(frontendURL, "/")}
+	base := strings.TrimRight(frontendURL, "/")
+	// Sin FRONTEND_URL, el redirect quedaba relativo y el navegador lo resolvía
+	// contra el dominio de la API: el consentimiento terminaba en un 404 del
+	// backend en vez de volver al SPA.
+	if base == "" {
+		base = service.FrontendBaseURL()
+	}
+	return &GoogleCalendarHandler{service: s, frontendURL: base}
 }
 
 // safeReturnTo acota el destino post-consentimiento a una ruta interna. Sin

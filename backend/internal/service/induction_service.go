@@ -134,6 +134,16 @@ func NewInductionService(
 	}
 }
 
+// baseURL es el dominio para los enlaces del correo. Sin el respaldo, un
+// FRONTEND_URL vacío mandaba "/induccion/<token>": una ruta relativa que en un
+// correo no lleva a ninguna parte (el rastreo de clics de Brevo responde 404).
+func (s *inductionService) baseURL() string {
+	if s.frontendURL == "" {
+		return FrontendBaseURL()
+	}
+	return s.frontendURL
+}
+
 func (s *inductionService) Enabled() bool {
 	cfg, err := s.repo.GetConfig()
 	if err != nil {
@@ -525,7 +535,7 @@ func (s *inductionService) sendInviteEmail(user *models.User, token string) {
 	if s.brevoSvc == nil {
 		return
 	}
-	link := s.frontendURL + "/induccion/" + token
+	link := s.baseURL() + "/induccion/" + token
 	subject := "Bienvenido a Obertrack — completa tu inducción"
 	html := BuildInductionInviteHTML(user.Name, link)
 

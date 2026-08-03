@@ -299,7 +299,7 @@ func (s *authService) issueResetToken(user *models.User, ttl time.Duration) (str
 }
 
 // frontendBaseURL resuelve la base pública del frontend para los enlaces.
-func frontendBaseURL() string {
+func FrontendBaseURL() string {
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL == "" {
 		frontendURL = os.Getenv("SERVICE_URL_FRONTEND")
@@ -322,7 +322,7 @@ func (s *authService) ForgotPassword(email string) error {
 	if err != nil {
 		return err
 	}
-	resetLink := fmt.Sprintf("%s/reset-password?token=%s", frontendBaseURL(), token)
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", FrontendBaseURL(), token)
 
 	htmlContent := BuildPasswordResetHTML(user.Name, resetLink)
 
@@ -354,7 +354,7 @@ func (s *authService) SendPasswordSetupEmail(email string) error {
 		return err
 	}
 	// setup=1 hace que la pantalla hable de "crear" y no de "restablecer".
-	setupLink := fmt.Sprintf("%s/reset-password?token=%s&setup=1", frontendBaseURL(), token)
+	setupLink := fmt.Sprintf("%s/reset-password?token=%s&setup=1", FrontendBaseURL(), token)
 
 	htmlContent := BuildPasswordSetupHTML(user.Name, user.Email, setupLink)
 

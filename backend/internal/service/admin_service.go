@@ -901,7 +901,7 @@ func (s *adminService) SendAccessEmails(userIDs []uint, mode string) BulkEmailRe
 		return result
 	}
 
-	loginLink := frontendBaseURL() + "/login"
+	loginLink := FrontendBaseURL() + "/login"
 
 	for _, id := range userIDs {
 		user, err := s.userRepo.GetByID(id)
