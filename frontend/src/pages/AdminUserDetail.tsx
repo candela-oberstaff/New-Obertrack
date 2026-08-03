@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, Plus, LogOut, FileText, RotateCcw, Users, Eye } from 'lucide-react'
+import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, Plus, LogOut, FileText, RotateCcw, Users, Eye, MailCheck, GraduationCap } from 'lucide-react'
 import { userService, adminService, authService } from '../services/api'
 import { rbacService } from '../services/rbac.service'
+import { inductionService } from '../services/induction.service'
 import { useAuth } from '../context/AuthContext'
 import { Modal, Button, RecordPager } from '../components/ui'
 import { useConfirm } from '../components/ui/ConfirmProvider'
@@ -51,6 +52,17 @@ export default function AdminUserDetail() {
   const [busy, setBusy] = useState(false)
   const [actionMsg, setActionMsg] = useState<string | null>(null)
   const [actionErr, setActionErr] = useState(false)
+  // Envío del acceso desde el detalle: el correo del alta masiva a veces no
+  // llega y hay que poder reintentarlo persona por persona viendo el motivo
+  // exacto del fallo (rechazo del proveedor, correo inválido, etc.).
+  const [showAccess, setShowAccess] = useState(false)
+  const [accessMode, setAccessMode] = useState<'invite' | 'password'>('password')
+  const [accessBusy, setAccessBusy] = useState(false)
+  const [accessError, setAccessError] = useState<string | null>(null)
+  // Envío de la capacitación (inducción) desde la barra de acciones. El panel de
+  // abajo se remonta con esta llave para que refleje el envío sin recargar.
+  const [inductionBusy, setInductionBusy] = useState(false)
+  const [inductionKey, setInductionKey] = useState(0)
   const [empresaName, setEmpresaName] = useState('')
   const [managerName, setManagerName] = useState('')
   // Flag de features: si está activo, se gestiona el CONJUNTO de managers por empleo
@@ -310,6 +322,64 @@ export default function AdminUserDetail() {
       await adminService.resetPassword(user.id, temp)
       setActionMsg(`Contraseña reseteada. Temporal: ${temp} — compártela por un canal seguro, no volverá a mostrarse.`)
     } catch { setActionMsg('No se pudo resetear la contraseña.') } finally { setBusy(false) }
+  }
+
+  // Reenvía el acceso a esta persona. No reenvía la clave del import (se guarda
+  // hasheada): emite un acceso nuevo, igual que el envío masivo.
+  const sendAccess = async () => {
+    if (!user) return
+    setAccessBusy(true); setAccessError(null)
+    try {
+      const r = await adminService.sendAccessEmails({ user_ids: [user.id], mode: accessMode })
+      if (r.sent > 0) {
+        setShowAccess(false)
+        setActionErr(false)
+        setActionMsg(accessMode === 'invite'
+          ? `Enlace para crear la contraseña enviado a ${user.email}. Caduca en 24 horas.`
+          : `Contraseña nueva enviada a ${user.email}. La anterior dejó de funcionar.`)
+      } else {
+        // El backend devuelve el motivo real del fallo (rechazo del proveedor,
+        // correo inválido...): mostrarlo es el punto de este botón.
+        setAccessError(r.failed?.[0]?.error ?? 'El servidor no pudo enviar el correo.')
+      }
+    } catch (err: any) {
+      const status = err?.response?.status
+      setAccessError(
+        err?.response?.data?.error
+        ?? (status ? `El servidor respondió con un error ${status}.` : 'No hubo respuesta del servidor.')
+      )
+    } finally { setAccessBusy(false) }
+  }
+
+  // Manda (o remanda) el correo de la capacitación. El enlace viejo se invalida
+  // siempre: si el correo no llegó, reenviar el mismo token no resuelve nada, y
+  // rotarlo evita revivir un enlace que quedó circulando.
+  const sendInduction = async () => {
+    if (!user) return
+    const ok = await confirm({
+      title: 'Enviar capacitación',
+      message: `Se le enviará a ${user.email} el enlace a la capacitación, con sus intentos en cero. Su acceso queda bloqueado hasta que la apruebe.`,
+      confirmLabel: 'Enviar',
+    })
+    if (!ok) return
+
+    setInductionBusy(true); setActionMsg(null); setActionErr(false)
+    try {
+      // Con inducción ya registrada se reenvía sobre la misma (conserva el
+      // historial de intentos); sin ella hay que emitirla desde cero.
+      let registered = true
+      try { await inductionService.getUserStatus(user.id) } catch { registered = false }
+      if (registered) await inductionService.resetUser(user.id)
+      else await inductionService.inviteUser(user.id)
+      setActionMsg(`Capacitación enviada a ${user.email}.`)
+      setInductionKey(k => k + 1)
+      await load()
+    } catch (err: any) {
+      setActionErr(true)
+      // El backend explica por qué no se pudo (inducción apagada, sin
+      // cuestionario, ya aprobada): mostrarlo tal cual es el punto del botón.
+      setActionMsg(err?.response?.data?.error ?? 'No se pudo enviar la capacitación.')
+    } finally { setInductionBusy(false) }
   }
 
   const openAddEmp = async () => {
@@ -619,6 +689,18 @@ export default function AdminUserDetail() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
           <KeyRound size={15} /> Resetear contraseña
         </button>
+        {!!user.email && (
+          <button onClick={() => { setAccessError(null); setShowAccess(true) }} disabled={busy}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+            <MailCheck size={15} /> Enviar acceso por correo
+          </button>
+        )}
+        {user.user_type === 'profesional' && !!user.email && (
+          <button onClick={sendInduction} disabled={busy || inductionBusy}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+            <GraduationCap size={15} /> Enviar capacitación
+          </button>
+        )}
         {!user.is_superadmin && (
           <button onClick={() => (user.is_manager ? handleRemoveManagerClick() : setManagerRole(true))} disabled={busy || teamCheckBusy}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px solid var(--border, #cbd5e1)', background: 'var(--bg-primary, #fff)', fontWeight: 600, color: user.is_manager ? '#b91c1c' : undefined, cursor: 'pointer', fontSize: '0.85rem' }}>
@@ -669,6 +751,7 @@ export default function AdminUserDetail() {
           y customer success. */}
       {user.user_type === 'profesional' && (
         <InductionStatusPanel
+          key={inductionKey}
           userId={user.id}
           isProfessional
           canReset={!!viewer?.is_superadmin || viewer?.user_type === 'customer_success'}
@@ -874,6 +957,40 @@ export default function AdminUserDetail() {
           error={editError}
         />
       )}
+
+      <Modal
+        isOpen={showAccess}
+        onClose={() => setShowAccess(false)}
+        title="Enviar acceso por correo"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowAccess(false)} disabled={accessBusy}>Cancelar</Button>
+            <Button onClick={sendAccess} loading={accessBusy}>Enviar</Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 0 }}>
+          Se enviará a <strong>{user.email}</strong>. La contraseña generada al importar no se puede reenviar (se guarda cifrada), así que esto emite un acceso nuevo.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+          {([
+            { value: 'password', title: 'Contraseña temporal', hint: 'Genera una clave nueva y la manda en el correo. La anterior deja de servir.' },
+            { value: 'invite', title: 'Enlace para crear su contraseña', hint: 'No viaja ninguna clave. El enlace caduca en 24 horas.' },
+          ] as const).map(opt => (
+            <label key={opt.value}
+              style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', border: `1px solid ${accessMode === opt.value ? '#7c3aed' : 'var(--border, #e2e8f0)'}`, background: accessMode === opt.value ? '#f5f3ff' : 'transparent' }}>
+              <input type="radio" name="access-mode" value={opt.value} checked={accessMode === opt.value}
+                onChange={() => setAccessMode(opt.value)} disabled={accessBusy} style={{ marginTop: '3px' }} />
+              <span>
+                <span style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', color: '#334155' }}>{opt.title}</span>
+                <span style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8' }}>{opt.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {accessError && <p style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem', margin: 0 }}>{accessError}</p>}
+      </Modal>
 
       <Modal
         isOpen={showAddEmp}
