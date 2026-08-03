@@ -1,0 +1,58 @@
+/* Estilos propios del vistazo rápido. No reutiliza los de la cabecera de la
+   pantalla completa a propósito: aquellos están escritos para una fila
+   horizontal (llevan `flex: 1 1 320px`), y dentro de esta columna esos 320px
+   pasaban a ser ALTO y abrían un hueco enorme bajo el nombre. */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* El nombre ya lo dice la barra del modal: aquí van la cara, el correo y el
+   estado, que es lo que la barra no puede enseñar. */
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+}
+
+.identityMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.email {
+  overflow: hidden;
+  font-size: 14px;
+  color: #334155;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+/* Un botón entero o baja de línea entero. Sin esto se encogen por debajo de su
+   contenido cuando la fila va justa, y el resultado es un botón más alto que
+   los demás con la mitad del texto en una segunda línea. */
+.actions > * { flex: 0 0 auto; }

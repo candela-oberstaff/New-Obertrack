@@ -1,29 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, ClipboardList, UserPlus, UserMinus, Sparkles, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone } from 'lucide-react'
+import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone } from 'lucide-react'
 import type { TenantContactChannel } from '../../services/admin.service'
-
-// Icono y color por tipo de evento del expediente de la empresa.
-const ACTIVITY_STYLE: Record<string, { icon: typeof Activity; color: string }> = {
-  company_created: { icon: Sparkles, color: '#2563eb' },
-  employee_joined: { icon: UserPlus, color: '#059669' },
-  employee_left: { icon: UserMinus, color: '#b45309' },
-  work_hour: { icon: Clock, color: '#64748b' },
-  follow_up: { icon: ClipboardList, color: '#7c3aed' },
-  company_suspended: { icon: Ban, color: '#dc2626' },
-  company_reactivated: { icon: CheckCircle2, color: '#059669' },
-  company_note: { icon: StickyNote, color: '#0891b2' },
-  company_contact: { icon: Send, color: '#4f46e5' },
-}
-
-// Icono y etiqueta por canal de contacto. El canal viaja aparte del texto para
-// poder distinguir de un vistazo un correo de una llamada, sin leer el detalle.
-const CONTACT_STYLE: Record<string, { icon: typeof Activity; label: string }> = {
-  email: { icon: Mail, label: 'Correo' },
-  whatsapp: { icon: MessageSquare, label: 'WhatsApp' },
-  call: { icon: Phone, label: 'Llamada' },
-  meeting: { icon: Users, label: 'Reunión' },
-}
+import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
 
 // Canales que se anotan a mano porque ocurren fuera de la plataforma. El correo
 // y el WhatsApp no están aquí: los registra el sistema al enviarlos, y ofrecer
@@ -33,46 +12,11 @@ const MANUAL_CONTACT_CHANNELS: { value: TenantContactChannel; label: string }[] 
   { value: 'meeting', label: 'Reunión' },
 ]
 
-// Etiqueta corta del movimiento, para leer el expediente de un vistazo sin
-// tener que deducir el tipo por el icono.
-const ACTIVITY_LABEL: Record<string, string> = {
-  company_created: 'Alta',
-  employee_joined: 'Incorporación',
-  employee_left: 'Baja',
-  work_hour: 'Jornada',
-  follow_up: 'Gestión',
-  company_suspended: 'Suspensión',
-  company_reactivated: 'Reactivación',
-  company_note: 'Nota',
-  company_contact: 'Contacto',
-}
-
 const ACTIVITY_PER_PAGE = 20
 const NOTE_MAX_LENGTH = 2000
 
-// De dónde sale cada ticket. "internal" son alertas que genera la propia
-// plataforma (rechazos de horas); el resto son conversaciones con el cliente.
-const TICKET_ORIGIN: Record<string, { label: string; color: string; icon: typeof Activity }> = {
-  internal: { label: 'Alerta interna', color: '#f97316', icon: ClipboardList },
-  whatsapp: { label: 'WhatsApp', color: '#059669', icon: MessageSquare },
-  zoho: { label: 'Zoho Desk', color: '#2563eb', icon: Inbox },
-}
-
-const TICKET_STAGE: Record<string, string> = {
-  new: 'Nuevo',
-  in_progress: 'En curso',
-  waiting: 'En espera',
-  closed: 'Cerrado',
-}
-
-// Cada origen tiene su propia pantalla de detalle: es donde se responde el
-// WhatsApp o se gestiona la alerta, y llevar a la genérica perdería el hilo.
-function ticketPath(t: { id: number; origin: string }): string {
-  if (t.origin === 'whatsapp') return `/tickets/wa/${t.id}`
-  if (t.origin === 'internal') return `/tickets/internal/${t.id}`
-  return `/tickets/${t.id}`
-}
-
+import { ticketOrigin, TICKET_STAGE, ticketPath } from './ticketStyle'
+import { EmployeePeekModal } from './EmployeePeekModal'
 import { useQuery } from '@tanstack/react-query'
 import { useTenantDetail, useTenantActivity, ACTIVITY_CATEGORIES } from '../../hooks'
 import { ticketService } from '../../services/ticket.service'
@@ -215,6 +159,8 @@ export default function TenantDetail() {
   const [empRole, setEmpRole] = useState('')
   const [empStatus, setEmpStatus] = useState('')
   const [empPage, setEmpPage] = useState(1)
+  // Profesional del vistazo rápido (null = ninguno abierto).
+  const [peekEmployee, setPeekEmployee] = useState<number | null>(null)
 
   // Redacción de correo. El WhatsApp no pasa por aquí: o lleva a la
   // conversación real de la bandeja, o abre wa.me.
@@ -396,6 +342,11 @@ export default function TenantDetail() {
     setRecordNav(`tenant-employees:${tenantId}`, empFiltered.map(e => e.id))
     navigate(`/admin/tenants/${tenantId}/employees/${employeeId}`)
   }
+
+  // El pager de la ficha completa se siembra ANTES de navegar, también cuando
+  // se llega desde el vistazo rápido: si no, la ficha abierta desde el modal
+  // no sabría por qué plantilla se está recorriendo.
+  const seedEmployeeNav = () => setRecordNav(`tenant-employees:${tenantId}`, empFiltered.map(e => e.id))
 
   // Suspender tumba el acceso de toda la empresa y expulsa a quien esté dentro:
   // no es un botón que se pulse sin querer.
@@ -857,7 +808,7 @@ export default function TenantDetail() {
                       const last = emp.last_active ? new Date(emp.last_active) : null
                       const lastValid = last && !isNaN(last.getTime())
                       return (
-                        <tr key={emp.id} className={styles.row} onClick={() => openEmployee(emp.id)}>
+                        <tr key={emp.id} className={styles.row} onClick={() => setPeekEmployee(emp.id)} title="Ver un vistazo rápido">
                           <td>
                             <div className={styles.companyCell}>
                               <Avatar src={emp.avatar} name={emp.name} size="sm" />
@@ -895,7 +846,16 @@ export default function TenantDetail() {
                                   </button>
                                 </>
                               )}
-                              <ChevronRight size={18} className={styles.chevron} />
+                              {/* La fila abre el vistazo; el chevron se salta el
+                                  atajo y va directo a la ficha completa. */}
+                              <button
+                                className={styles.iconBtn}
+                                onClick={(e) => { e.stopPropagation(); openEmployee(emp.id) }}
+                                title="Abrir la ficha completa"
+                                aria-label={`Abrir la ficha completa de ${emp.name}`}
+                              >
+                                <ChevronRight size={18} className={styles.chevron} />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1086,7 +1046,7 @@ export default function TenantDetail() {
                     {group.items.map((a, i) => {
                       const date = new Date(a.timestamp)
                       const valid = !isNaN(date.getTime())
-                      const st = ACTIVITY_STYLE[a.type] || { icon: Activity, color: '#64748b' }
+                      const st = ACTIVITY_STYLE[a.type] || ACTIVITY_FALLBACK
                       const Icon = st.icon
                       const isNote = a.type === 'company_note'
                       return (
@@ -1161,7 +1121,7 @@ export default function TenantDetail() {
                                       información: no es lo mismo haberles
                                       escrito que haberles llamado. */}
                                   {a.channel && CONTACT_STYLE[a.channel] && (
-                                    <span className={styles.timelineTag} style={{ color: st.color, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    <span className={styles.timelineTag} style={{ color: st.color }}>
                                       {(() => { const CI = CONTACT_STYLE[a.channel!].icon; return <CI size={11} /> })()}
                                       {CONTACT_STYLE[a.channel].label}
                                     </span>
@@ -1283,7 +1243,7 @@ export default function TenantDetail() {
               </thead>
               <tbody>
                 {tickets.map(tk => {
-                  const st = TICKET_ORIGIN[tk.origin] || { label: tk.origin || '—', color: '#64748b', icon: Inbox }
+                  const st = ticketOrigin(tk.origin)
                   const OriginIcon = st.icon
                   const updated = new Date(tk.updated_at)
                   const updatedValid = !isNaN(updated.getTime())
@@ -1297,7 +1257,7 @@ export default function TenantDetail() {
                         </div>
                       </td>
                       <td>
-                        <span className={styles.timelineTag} style={{ color: st.color, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <span className={styles.timelineTag} style={{ color: st.color }}>
                           <OriginIcon size={13} /> {st.label}
                         </span>
                       </td>
@@ -1566,6 +1526,18 @@ export default function TenantDetail() {
         </div>
         {resetError && <p className={styles.errorMsg}>{resetError}</p>}
       </Modal>
+
+      {/* Vistazo rápido desde la plantilla: se abre al pulsar la fila y deja la
+          tabla, sus filtros y su página intactos detrás. */}
+      {peekEmployee !== null && (
+        <EmployeePeekModal
+          employeeId={peekEmployee}
+          tenantId={tenantId}
+          canManage={canManage}
+          onClose={() => setPeekEmployee(null)}
+          onOpenFull={seedEmployeeNav}
+        />
+      )}
     </div>
   )
 }

@@ -513,6 +513,11 @@
   margin-bottom: 28px;
 }
 
+/* .infoGrid y .kpis traen su propio margen inferior para separarse en la
+   pantalla. Dentro de un modal el espaciado lo pone el contenedor, y ese
+   margen se sumaba al gap. */
+.noMargin { margin-bottom: 0; }
+
 .infoItem {
   display: flex;
   flex-direction: column;
@@ -871,7 +876,13 @@
   color: #94a3b8;
 }
 
+/* inline-flex de serie: la mitad de estas etiquetas llevan un icono delante
+   (el canal de un contacto, el origen de un ticket) y sin esto cada sitio que
+   la usa tenía que reponer la alineación por su cuenta. */
 .timelineTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 1px 8px;
   border-radius: 999px;
   background: rgba(100, 116, 139, 0.1);
@@ -1178,3 +1189,172 @@
 .composerActions > :last-child { margin-left: auto; }
 
 .spin { animation: spin 0.8s linear infinite; }
+
+/* ── Ficha del profesional ─────────────────────────────────────────────────
+   Matices dentro de un dato de .infoItem. Van como clases y no como estilos
+   sueltos porque .infoItem span ya reclama los <span> de dentro para las
+   etiquetas: un valor secundario necesita su propia voz. */
+
+/* Un dato sin rellenar. Se dice en vez de esconderse —es información para
+   quien tiene que completar el expediente— pero en un gris que no compite
+   con los datos que sí tienen valor. */
+.fieldEmpty {
+  font-style: normal;
+  font-weight: 500;
+  color: #cbd5e1;
+}
+
+/* Apostilla de un dato: la antigüedad junto a la fecha de alta, el estado de
+   la inducción. Acompaña al valor, no lo sustituye. */
+.fieldNote {
+  font-style: normal;
+  font-weight: 500;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.fieldOk {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 13px;
+  color: #059669;
+}
+
+/* ── Secciones dentro de una pestaña ──────────────────────────────────── */
+
+.stack { display: flex; flex-direction: column; gap: 10px; }
+
+/* Entre secciones distintas de una misma pestaña (tickets / incidencias). */
+.stackSections { display: flex; flex-direction: column; gap: 28px; }
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sectionCount { color: #94a3b8; font-weight: 600; }
+
+/* Explicación bajo un estado vacío: qué aparecerá aquí cuando lo haya. Sin
+   esto, un vacío se lee como un fallo en vez de como un "todavía no". */
+.emptyHint {
+  max-width: 460px;
+  margin-top: -4px;
+  font-size: 13px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+/* ── Tarjeta de entrada (gestión, incidencia) ─────────────────────────────
+   El equivalente en lista a .timelineCard, para lo que no es cronología. */
+
+.entry {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 14px 16px;
+}
+
+.entryHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.entryTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Autoría y fecha: al final de la cabecera y en gris, porque se consultan
+   después de saber qué pasó, no antes. */
+.entryMeta {
+  margin-left: auto;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.entryBody {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #334155;
+  white-space: pre-wrap;
+}
+
+/* ── Pastillas de estado ──────────────────────────────────────────────────
+   .badge dice si algo está vivo o muerto (activo/suspendido); estas dicen en
+   qué punto está: contactado, justificado, sin respuesta. */
+
+/* font-style normal para poder colgarla de un <em>: dentro de .infoItem los
+   <span> ya están reclamados por la etiqueta del dato. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-style: normal;
+}
+
+.pillInfo { background: rgba(59, 130, 246, 0.12); color: #1d4ed8; }
+.pillSuccess { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.pillWarn { background: rgba(245, 158, 11, 0.14); color: #b45309; }
+.pillDanger { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+.pillNeutral { background: rgba(100, 116, 139, 0.12); color: #475569; }
+
+/* ── Formulario dentro de una pestaña ─────────────────────────────────── */
+
+.formRow {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.formLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: var(--white);
+  color: #0f172a;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.textarea:focus { outline: none; border-color: var(--primary); }
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}

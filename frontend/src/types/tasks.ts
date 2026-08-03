@@ -27,6 +27,11 @@ export interface User {
   updated_at: string
   password?: string
   zoho_agent_id?: string
+  /** Estado del portero de inducción: 'not_required' (entra normal), 'pending',
+   * 'passed' o 'blocked' (agotó los intentos y necesita soporte). */
+  onboarding_status?: string
+  /** Ausente mientras la cuenta no haya confirmado su correo. */
+  email_verified_at?: string | null
   /** Permisos efectivos por módulo derivados de los roles asignados.
    * Ausente = sin roles = comportamiento histórico del tipo de cuenta. */
   permissions?: Record<string, 'none' | 'view' | 'edit'>
@@ -95,6 +100,13 @@ export interface EmployeeWorkHour {
   hours_worked: number
   approved: boolean
   activities: string
+  /** Rechazada es un estado propio, no "no aprobada": sin esto una jornada
+   *  rechazada se leía como pendiente. */
+  rejected: boolean
+  rejection_reason: string
+  comments: string
+  absence_reason: string
+  absence_hours: number
 }
 
 export interface EmployeeTask {

@@ -71,6 +71,12 @@ interface UseTenantActivityReturn {
   deleteNote: (eventId: number) => Promise<void>
 }
 
+/** Clave de una página del expediente. Compartida por el expediente completo y
+ *  por la vista acotada a una persona, para que ambas lean de la misma caché y
+ *  una nota nueva no aparezca en una y falte en la otra. */
+const activityKey = (tenantId: number, category: string, userId: number, page: number, pageSize: number) =>
+  ['tenant-activity', tenantId, category, userId, page, pageSize]
+
 /**
  * Una página del expediente de la empresa. La paginación y los filtros son de
  * servidor: el expediente de una empresa con recorrido son miles de líneas y
@@ -84,7 +90,7 @@ export function useTenantActivity(
   pageSize = 20,
 ): UseTenantActivityReturn {
   const qc = useQueryClient()
-  const queryKey = ['tenant-activity', tenantId, category, userId, page, pageSize]
+  const queryKey = activityKey(tenantId, category, userId, page, pageSize)
 
   const { data, isLoading, isFetching, error } = useQuery({
     queryKey,
@@ -203,5 +209,29 @@ export function useTenantActivity(
     deleteAttachment: async (attachmentId) => { await deleteAttachmentMut.mutateAsync(attachmentId) },
     setNotePinned: async (eventId, pinned) => { await pinMut.mutateAsync({ eventId, pinned }) },
     deleteNote: async (eventId) => { await deleteMut.mutateAsync(eventId) },
+  }
+}
+
+/**
+ * Los movimientos de UNA persona dentro del expediente de su empresa, para la
+ * ficha del profesional. Es de solo lectura a propósito: las notas y contactos
+ * se escriben sobre la empresa, no sobre el individuo, y se gestionan desde su
+ * expediente. Por eso no arrastra las consultas de personas ni de notas fijadas
+ * (ambas son de la empresa entera y aquí no se enseñan).
+ */
+export function usePersonActivity(tenantId: number, userId: number, page: number, pageSize = 20) {
+  const { data, isLoading, isFetching, error } = useQuery({
+    queryKey: activityKey(tenantId, '', userId, page, pageSize),
+    queryFn: () => adminService.getTenantActivity(tenantId, { category: '', user_id: userId, page, limit: pageSize }),
+    enabled: !!tenantId && !!userId,
+    placeholderData: keepPreviousData,
+  })
+
+  return {
+    activity: (data?.data ?? []) as TenantActivity[],
+    total: data?.total ?? 0,
+    isLoading,
+    isFetching,
+    error: error ? 'No se pudo cargar la actividad de este profesional' : null,
   }
 }

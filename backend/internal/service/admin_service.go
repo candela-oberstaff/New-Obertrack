@@ -92,6 +92,7 @@ type AdminService interface {
 	GetTenant(id uint) (*repository.TenantSummary, error)
 	GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error)
 	GetTenantTickets(id uint) ([]repository.TenantTicket, error)
+	GetEmployeeTickets(userID uint) ([]repository.TenantTicket, error)
 	GetTenantActivities(id uint, category string, userID uint, offset, limit int) ([]repository.TenantActivity, int64, error)
 	GetTenantActivityPeople(id uint) ([]repository.TenantActivityPerson, error)
 	GetTenantActivityCounts(id uint, userID uint) (map[string]int64, error)
@@ -1041,6 +1042,10 @@ var tenantActivityCategories = map[string]bool{
 
 func (s *adminService) GetTenantTickets(id uint) ([]repository.TenantTicket, error) {
 	return s.repo.GetTenantTickets(id)
+}
+
+func (s *adminService) GetEmployeeTickets(userID uint) ([]repository.TenantTicket, error) {
+	return s.repo.GetEmployeeTickets(userID)
 }
 
 func (s *adminService) GetTenantActivities(id uint, category string, userID uint, offset, limit int) ([]repository.TenantActivity, int64, error) {

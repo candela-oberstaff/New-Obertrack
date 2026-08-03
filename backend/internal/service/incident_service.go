@@ -44,6 +44,7 @@ type IncidentProfessional struct {
 
 type IncidentService interface {
 	List() ([]IncidentSummary, error)
+	ListForUser(userID uint) ([]repository.UserIncident, error)
 	Create(title, description, kind, country, state string, createdBy uint) (*models.Incident, error)
 	GetByID(id uint) (*models.Incident, error)
 	Detail(id uint) (*models.Incident, []IncidentProfessional, error)
@@ -88,6 +89,13 @@ func (s *incidentService) affected(incident *models.Incident) ([]models.User, ma
 		}
 	}
 	return matched, companyByID, nil
+}
+
+// ListForUser son las incidencias que alcanzaron a un profesional. A diferencia
+// de List, no calcula recuentos: en la ficha de una persona la pregunta no es a
+// cuántos afectó sino cómo respondió ella.
+func (s *incidentService) ListForUser(userID uint) ([]repository.UserIncident, error) {
+	return s.repo.ListForUser(userID)
 }
 
 func (s *incidentService) List() ([]IncidentSummary, error) {

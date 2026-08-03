@@ -4,6 +4,7 @@ import Tooltip from '../Common/Tooltip'
 import type { WorkHour } from '../../types'
 import { MONTHS_ES, parseLocalDate, JORNADA_COMPLETA } from './utils'
 import { formatHours } from '../../utils/formatHours'
+import { htmlToText } from '../../utils/sanitize'
 import styles from '../../pages/WorkHours.module.css'
 
 interface WorkHourListProps {
@@ -84,7 +85,9 @@ export function WorkHourList({
                     ? `Recuperación (${wh.hours_worked}h)`
                     : `Ausencia (${formatHours(wh.absence_hours != null ? wh.absence_hours : 8 - wh.hours_worked)})`}
                 </span>
-                {wh.activities && <p className={styles['hours-comments']}>{wh.activities.replace(/<[^>]*>/g, '')}</p>}
+                {/* Quitar las etiquetas a secas pegaba la última palabra de un
+                    bloque con la primera del siguiente. */}
+                {wh.activities && <p className={styles['hours-comments']}>{htmlToText(wh.activities)}</p>}
               </div>
               <div className={styles['hour-status']}>
                 <span className={`${styles['status-pill']} ${styles[getStatus(wh).className]}`}>

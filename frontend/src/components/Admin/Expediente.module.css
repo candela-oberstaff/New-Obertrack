@@ -1,0 +1,500 @@
+/* Expediente laboral. Se lee desde cuatro sitios (ficha del tenant, ficha del
+   empleador, ficha global y "mi expediente" del profesional) y en dos envases:
+   dentro de un modal y empotrado en una pestaña. Por eso las superficies usan
+   los tokens de cristal del proyecto en vez de blanco fijo: así el mismo
+   componente se apoya sobre el fondo que le toque sin parecer pegado encima. */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Cada bloque es una tarjeta. Sin ellas, empotrado en una pestaña a pantalla
+   completa, los títulos y sus listas flotaban sueltos sobre el fondo y no se
+   veía dónde acababa una sección y empezaba la siguiente. */
+.section {
+  padding: 20px 22px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: var(--glass-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.loading {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+/* Un vacío centrado dentro de su tarjeta se lee como "todavía no hay nada";
+   la misma frase suelta a la izquierda parecía texto sin maquetar. */
+.emptyLine {
+  display: block;
+  padding: 14px 0 4px;
+  font-size: 13.5px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.error {
+  font-size: 14px;
+  color: #b91c1c;
+}
+
+.pdfRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -14px;
+}
+
+.pdfLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-bg);
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.pdfLink:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ── Secciones ─────────────────────────────────────────────────────────── */
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Subtítulo de sección: de dónde salen estos registros. Sube contra el margen
+   de .sectionHead porque explica el título, no es otra línea de contenido. */
+.sectionHint {
+  margin: -8px 0 14px;
+  font-size: 12.5px;
+  color: #94a3b8;
+}
+
+/* ── Resumen ───────────────────────────────────────────────────────────── */
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+/* Dentro de la tarjeta de sección: sin borde ni sombra propios, solo un tono
+   más claro. Una tarjeta dentro de otra tarjeta pesa el doble y no dice más. */
+.stat {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.statLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.statValue {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+/* ── Filas (ausencias, gestiones, contactos, documentos) ───────────────── */
+
+/* Lista separada por líneas, no por cajas: ya estamos dentro de la tarjeta de
+   la sección, y veinte recuadros ahí dentro compiten con ella en vez de
+   dejarse leer como una lista. */
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+}
+
+.row:first-child { padding-top: 2px; }
+.row:last-child { padding-bottom: 2px; border-bottom: none; }
+
+.rowIcon { flex-shrink: 0; }
+
+.rowMain {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.rowText {
+  font-size: 13.5px;
+  color: #475569;
+}
+
+/* Autoría y fecha: al final de la fila y en gris. Se consultan después de
+   saber qué pasó, no antes. */
+.rowMeta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.docLink {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  text-decoration: none;
+}
+
+.docLink:hover { color: var(--primary); text-decoration: underline; }
+
+/* ── Pastillas de estado ───────────────────────────────────────────────── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pillSuccess { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.pillWarn { background: rgba(245, 158, 11, 0.14); color: #b45309; }
+.pillDanger { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+.pillInfo { background: rgba(59, 130, 246, 0.12); color: #1d4ed8; }
+.pillNeutral { background: rgba(100, 116, 139, 0.12); color: #475569; }
+.pillFrozen { background: rgba(3, 105, 161, 0.1); color: #0369a1; }
+
+/* ── Formularios (nota nueva, subida de documento) ─────────────────────── */
+
+/* Las dos secciones que tienen formulario (notas y documentos) se parten en
+   dos columnas: a la izquierda se escribe, a la derecha está lo escrito. Un
+   formulario estirado a 1600 px no ayuda a nadie, pero dejarlo estrecho con la
+   lista debajo desperdiciaba media tarjeta. */
+.withForm {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) 1fr;
+  gap: 32px;
+  align-items: stretch;
+}
+
+@media (max-width: 1100px) {
+  .withForm { grid-template-columns: 1fr; }
+}
+
+/* Título del formulario. Sin él, la columna izquierda parecía un puñado de
+   controles sueltos en vez de "aquí se escribe una nota". */
+.formTitle {
+  margin: 0 0 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+/* El vacío de una columna se dice con un hueco reservado, no con una frase
+   suelta flotando en medio del aire: el borde punteado promete que ahí va a
+   aparecer algo, que es exactamente lo que pasa al guardar la primera nota. */
+.emptyBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 100%;
+  padding: 32px 24px;
+  border: 1px dashed rgba(100, 116, 139, 0.28);
+  border-radius: var(--radius);
+  color: #94a3b8;
+  text-align: center;
+}
+
+.emptyBoxTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.emptyBoxHint {
+  max-width: 340px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.composer {
+  padding: 16px 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+}
+
+.composerHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+/* En su columna, subir un documento es un formulario de tres pasos (título,
+   vencimiento, archivo), no una barra de botones: se apila. */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+}
+
+.toolbar .formTitle { margin: 0; }
+
+/* .input lleva `flex: 1 1 200px` para repartirse una fila. Dentro de .toolbar
+   el eje principal es vertical, así que esos 200px pasaban a ser ALTO y el
+   campo de título crecía hasta parecer un área de texto. */
+.toolbar .input { flex: 0 0 auto; width: 100%; }
+
+.toolbarRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* El archivo elegido y aún no subido. */
+.pendingFile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.pendingName {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pendingSize {
+  margin-left: auto;
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.input,
+.textarea,
+.dateInput {
+  padding: 8px 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: #0f172a;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.input { flex: 1 1 200px; min-width: 0; }
+.dateInput { font-size: 13px; }
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.input:focus,
+.textarea:focus,
+.dateInput:focus { outline: none; border-color: var(--primary); }
+
+.checkLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+}
+
+.formActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+/* ── Valoración por estrellas ──────────────────────────────────────────── */
+
+.stars { display: inline-flex; gap: 2px; }
+
+.star {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #cbd5e1;
+  line-height: 0;
+}
+
+.starOn { color: #f59e0b; }
+
+.starsRead {
+  display: inline-flex;
+  gap: 1px;
+  color: #f59e0b;
+}
+
+/* ── Notas y evaluaciones ──────────────────────────────────────────────── */
+
+.notes {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Misma lógica que .row: separadas por línea dentro de la tarjeta, con algo
+   más de aire porque cada una lleva un párrafo debajo de la cabecera. */
+.note {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+}
+
+.note:first-child { padding-top: 2px; }
+.note:last-child { padding-bottom: 2px; border-bottom: none; }
+
+.noteHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.noteKind {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.kindEvaluation { color: #7c3aed; }
+.kindNote { color: #0369a1; }
+
+.noteBody {
+  margin: 0;
+  font-size: 14px;
+  color: #0f172a;
+  white-space: pre-wrap;
+}
+
+/* ── Tendencia de evaluaciones ─────────────────────────────────────────── */
+
+.trend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 720px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.trendScore {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.trendAvg {
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.trendCount {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* Barras de la evolución: antiguas a la izquierda, recientes a la derecha. */
+.trendBars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 34px;
+  margin-left: auto;
+}
+
+.trendBar {
+  width: 7px;
+  min-height: 4px;
+  border-radius: 2px;
+}
+
+/* ── Acciones por fila ─────────────────────────────────────────────────── */
+
+/* Editar y borrar: sin caja, porque en una lista de veinte entradas veinte
+   botones enmarcados pesan más que el contenido. */
+.rowAction {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #475569;
+  line-height: 0;
+}
+
+.rowAction:hover { color: var(--primary); }
+.rowAction:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.rowActionDanger { color: #b91c1c; }
+.rowActionDanger:hover { color: #dc2626; }
+
+/* Documento en edición: se distingue del resto de la lista mientras dura. */
+.docEditing {
+  padding: 12px 14px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+}

@@ -6,6 +6,8 @@ import { useAuth } from '../context/AuthContext'
 import Avatar from '../components/Common/Avatar'
 import { useConfirm } from '../components/ui/ConfirmProvider'
 import { formatDateOnly } from '../utils/date'
+import { htmlToText } from '../utils/sanitize'
+import { WORK_TYPE } from '../utils/workHours'
 import styles from './Tenants/Tenants.module.css'
 
 export default function UserDetail() {
@@ -157,19 +159,24 @@ export default function UserDetail() {
                 <tr><th>Fecha</th><th>Tipo</th><th>Horas</th><th>Estado</th><th>Actividades</th></tr>
               </thead>
               <tbody>
-                {work_hours.map(wh => (
+                {work_hours.map(wh => {
+                  // Las actividades vienen del editor enriquecido: en una celda
+                  // hay que aplanarlas o se lee el markup en vez del texto.
+                  const activities = htmlToText(wh.activities)
+                  return (
                   <tr key={wh.id}>
                     <td>{wh.work_date ? new Date(wh.work_date).toLocaleDateString('es-ES') : '—'}</td>
-                    <td><span className={styles.typeBadge}>{wh.work_type === 'complete' ? 'Jornada' : 'Ausencia'}</span></td>
+                    <td><span className={styles.typeBadge}>{WORK_TYPE[wh.work_type] || wh.work_type}</span></td>
                     <td>{wh.hours_worked?.toFixed(1)} h</td>
                     <td>
                       <span className={`${styles.badge} ${getWorkHourStatus(wh).className}`}>
                         {getWorkHourStatus(wh).label}
                       </span>
                     </td>
-                    <td className={styles.truncate}>{wh.activities || '—'}</td>
+                    <td className={styles.truncate} title={activities || undefined}>{activities || '—'}</td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

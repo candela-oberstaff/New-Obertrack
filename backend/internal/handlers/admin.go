@@ -848,6 +848,27 @@ func (h *AdminHandler) GetTenantTickets(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": tickets})
 }
 
+// GetEmployeeTickets lista los tickets que van sobre un profesional concreto,
+// para su ficha. Los de la empresa se piden por otra ruta: aquí interesa lo que
+// le pasa a esta persona, no lo que le pasa a su tenant.
+func (h *AdminHandler) GetEmployeeTickets(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid employee ID"})
+		return
+	}
+
+	tickets, err := h.service.GetEmployeeTickets(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar los tickets del profesional"})
+		return
+	}
+	if tickets == nil {
+		tickets = []repository.TenantTicket{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": tickets})
+}
+
 func (h *AdminHandler) GetEmployeeTracking(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {

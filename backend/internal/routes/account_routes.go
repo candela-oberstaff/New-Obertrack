@@ -254,6 +254,11 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.POST("/tenants/:id/suspend", d.admin.SuspendTenant)
 		admin.POST("/tenants/:id/activate", d.admin.ActivateTenant)
 		admin.GET("/employees/:id/tracking", d.admin.GetEmployeeTracking)
+		// Soporte de UNA persona: lo que se le abrió y lo que le alcanzó. Van
+		// bajo /employees y no bajo /tenants porque son de la persona, no de su
+		// empresa (que puede haber cambiado desde que se abrió el ticket).
+		admin.GET("/employees/:id/tickets", d.admin.GetEmployeeTickets)
+		admin.GET("/employees/:id/incidents", d.incident.ListForUser)
 
 		admin.GET("/incidents", d.incident.List)
 		admin.POST("/incidents", d.incident.Create)

@@ -4,6 +4,7 @@ import { FileText, Clock, CheckCircle2, AlertCircle, XCircle } from 'lucide-reac
 import type { WorkHour, User } from '../../types'
 import CommonTooltip from '../Common/Tooltip'
 import { Modal } from '../ui'
+import { htmlToLines } from '../../utils/sanitize'
 import styles from '../../pages/Reports.module.css'
 
 interface ReportsChartsProps {
@@ -12,30 +13,12 @@ interface ReportsChartsProps {
   user: User | null
 }
 
-function decodeEntities(s: string) {
-  return s
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#0?39;|&apos;/gi, "'")
-}
-
-function toPlain(html?: string) {
-  if (!html) return ''
-  const withBreaks = html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '\n• ')
-    .replace(/<\/(p|div|li|h[1-6]|tr|ul|ol|blockquote)>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-  return decodeEntities(withBreaks)
-    .replace(/([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])/g, '$1 $2')
-    .replace(/[ \t\f\v]+/g, ' ')
-    .replace(/[ \t]*\n[ \t]*/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
+// El aplanado vive en utils/sanitize: es el mismo que necesitan las tablas de
+// jornadas. La copia que había aquí arrastraba un parche —meter un espacio
+// entre minúscula y mayúscula— para reparar las palabras que se pegaban al
+// quitar el markup; ese parche partía "WhatsApp" en "Whats App". Marcando los
+// saltos de bloque antes de limpiar, no hay nada que reparar.
+const toPlain = htmlToLines
 
 const typeLabel = (t: string) => (t === 'complete' ? 'Jornada Completa' : t === 'recover' ? 'Recuperación' : 'Ausencia')
 

@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/service"
 )
 
@@ -36,6 +37,27 @@ func (h *IncidentHandler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"incidents": incidents})
+}
+
+// ListForUser sirve las incidencias de un profesional para su ficha.
+func (h *IncidentHandler) ListForUser(c *gin.Context) {
+	if !h.guard(c) {
+		return
+	}
+	userID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Usuario inválido"})
+		return
+	}
+	incidents, err := h.service.ListForUser(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar las incidencias del profesional"})
+		return
+	}
+	if incidents == nil {
+		incidents = []repository.UserIncident{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": incidents})
 }
 
 func (h *IncidentHandler) Create(c *gin.Context) {

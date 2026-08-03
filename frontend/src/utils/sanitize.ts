@@ -104,17 +104,43 @@ export const compileAndSanitizeEmail = (rawHTML: string): Promise<string> => {
 }
 
 /**
- * htmlToText elimina todo el markup para generar texto plano.
+ * htmlToLines convierte HTML a texto plano CONSERVANDO los saltos de bloque.
+ * Para lo que se escribió en un editor enriquecido (actividades de una jornada,
+ * descripción de una tarea) y hay que enseñar sin markup.
+ */
+export function htmlToLines(html: string | null | undefined): string {
+  if (!html) return ''
+
+  // Los límites de bloque se marcan ANTES de quitar el markup. Sin este paso,
+  // "…y no podía ayer</div><div>Saber si…" se queda en "ayerSaber": el markup
+  // era lo único que separaba las dos frases.
+  const withBreaks = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '\n• ')
+    // 'li' NO va en la lista de cierres: su apertura ya abrió línea, y cerrarla
+    // otra vez dejaba un renglón en blanco entre viñeta y viñeta.
+    .replace(/<\/(p|div|h[1-6]|tr|ul|ol|blockquote)>/gi, '\n')
+
+  const clean = DOMPurify.sanitize(withBreaks, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
+  // textContent decodifica las entidades (&nbsp;, &amp;, &#39;…) sin tener que
+  // mantener a mano una tabla que siempre se queda corta.
+  const decoded = new DOMParser().parseFromString(clean, 'text/html').body.textContent || ''
+
+  return decoded
+    .replace(/[ \t]+/g, ' ')
+    .split('\n')
+    .map(line => line.trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * htmlToText es lo mismo en UNA línea, para previsualizaciones, celdas de tabla
+ * y comprobaciones de "¿escribió algo?".
  */
 export function htmlToText(html: string | null | undefined): string {
-  if (!html) return ''
-  const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
-  
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(clean, 'text/html')
-  const decoded = doc.body.textContent || ''
-  
-  return decoded.replace(/\s+/g, ' ').trim()
+  return htmlToLines(html).replace(/\s+/g, ' ').trim()
 }
 
 // Hook de defensa en profundidad para enlaces externos

@@ -68,6 +68,18 @@
   box-shadow: 0 6px 16px rgba(239, 68, 68, 0.3);
 }
 
+/* El par de danger: devolver un acceso, aprobar, reactivar. Existía suelto en
+   varios CSS de página (.successBtn) porque aquí faltaba, que es justo cómo se
+   desparraman los estilos. */
+.ui-btn--success {
+  background: var(--success, #10b981);
+  color: #fff;
+}
+.ui-btn--success:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
+}
+
 .ui-btn--ghost {
   background: transparent;
   color: var(--gray-500, #5c5680);

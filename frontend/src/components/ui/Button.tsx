@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import './Button.css'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'success' | 'ghost'
 export type ButtonSize = 'sm' | 'md'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

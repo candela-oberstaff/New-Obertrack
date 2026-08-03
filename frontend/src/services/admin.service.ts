@@ -64,6 +64,23 @@ export interface TenantTicket {
   updated_at: string
 }
 
+/** Una incidencia que alcanzó a un profesional, con SU respuesta. */
+export interface UserIncident {
+  id: number
+  title: string
+  description: string
+  kind: string
+  country: string
+  state: string
+  status: string
+  created_at: string
+  closed_at?: string | null
+  /** pendiente | contactado | ok | sin_respuesta */
+  response_status: string
+  response_note: string
+  responded_at?: string | null
+}
+
 export interface TrashItem {
   type: string
   type_label: string
@@ -395,6 +412,16 @@ export const adminService = {
   getEmployeeTracking: async (id: number) => {
     const { data } = await api.get(`/admin/employees/${id}/tracking`)
     return data
+  },
+  // Soporte de UNA persona: los tickets que van sobre ella y las incidencias en
+  // las que se la incluyó. Separado de los de la empresa a propósito.
+  getEmployeeTickets: async (id: number) => {
+    const { data } = await api.get<{ data: TenantTicket[] }>(`/admin/employees/${id}/tickets`)
+    return data.data || []
+  },
+  getEmployeeIncidents: async (id: number) => {
+    const { data } = await api.get<{ data: UserIncident[] }>(`/admin/employees/${id}/incidents`)
+    return data.data || []
   },
   // Tickets de la empresa: alertas internas sobre su gente + conversaciones de
   // WhatsApp de su número, con el mismo criterio que el KPI de la cabecera.

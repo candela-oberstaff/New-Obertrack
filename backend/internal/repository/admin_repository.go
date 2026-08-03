@@ -232,6 +232,14 @@ type EmployeeWorkHour struct {
 	HoursWorked float64   `json:"hours_worked"`
 	Approved    bool      `json:"approved"`
 	Activities  string    `json:"activities"`
+	// Rejected viaja aparte de Approved: sin él, la ficha del profesional
+	// pintaba como "Pendiente" una jornada que en realidad se rechazó, que es
+	// justo lo contrario de lo que hay que atender.
+	Rejected        bool    `json:"rejected"`
+	RejectionReason string  `json:"rejection_reason"`
+	Comments        string  `json:"comments"`
+	AbsenceReason   string  `json:"absence_reason"`
+	AbsenceHours    float64 `json:"absence_hours"`
 }
 
 type EmployeeTask struct {
@@ -270,6 +278,9 @@ type AdminRepository interface {
 	// GetTenantTickets lista los tickets de la empresa (alertas internas sobre
 	// su gente + conversaciones de WhatsApp de su número).
 	GetTenantTickets(tenantID uint) ([]TenantTicket, error)
+	// GetEmployeeTickets lista los tickets que apuntan a UN profesional, sin el
+	// rodeo de la empresa: los de su ficha son los suyos, no los de su tenant.
+	GetEmployeeTickets(userID uint) ([]TenantTicket, error)
 	GetEmployeeSummary(userID uint) (*EmployeeSummary, error)
 	GetEmployeeWorkHours(userID uint, limit int) ([]EmployeeWorkHour, error)
 	GetEmployeeTasks(userID uint, limit int) ([]EmployeeTask, error)
@@ -794,6 +805,33 @@ func (r *adminRepository) GetTenantTickets(tenantID uint) ([]TenantTicket, error
 	return tickets, err
 }
 
+// GetEmployeeTickets lista los tickets que van SOBRE un profesional. Solo por
+// user_id: las conversaciones de WhatsApp se cruzan por teléfono contra la
+// empresa (ver tenantTicketScope) y adjudicárselas a una persona por su número
+// mezclaría los tickets de quien comparte el móvil de la oficina.
+func (r *adminRepository) GetEmployeeTickets(userID uint) ([]TenantTicket, error) {
+	var tickets []TenantTicket
+	err := r.db.Raw(`
+		SELECT
+			tk.id,
+			tk.origin,
+			COALESCE(tk.title, '') as title,
+			COALESCE(tk.stage, '') as stage,
+			COALESCE(tk.status, '') as status,
+			COALESCE(NULLIF(pu.name, ''), '') as about,
+			COALESCE(ag.name, '') as assignee,
+			tk.created_at,
+			tk.updated_at
+		FROM tickets tk
+		LEFT JOIN users pu ON pu.id = tk.user_id
+		LEFT JOIN users ag ON ag.id = tk.assigned_to
+		WHERE tk.deleted_at IS NULL AND tk.user_id = ?
+		ORDER BY CASE WHEN tk.status = 'open' THEN 0 ELSE 1 END, tk.updated_at DESC
+		LIMIT 100
+	`, userID).Scan(&tickets).Error
+	return tickets, err
+}
+
 const employeeMetrics = `
 	u.id, u.name, u.email, u.avatar, u.user_type, u.is_active, u.is_manager,
 	COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh WHERE wh.user_id = u.id AND wh.deleted_at IS NULL AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
@@ -832,7 +870,11 @@ func (r *adminRepository) GetEmployeeSummary(userID uint) (*EmployeeSummary, err
 func (r *adminRepository) GetEmployeeWorkHours(userID uint, limit int) ([]EmployeeWorkHour, error) {
 	var hours []EmployeeWorkHour
 	err := r.db.Raw(`
-		SELECT id, work_date, work_type, hours_worked, approved, activities
+		SELECT id, work_date, work_type, hours_worked, approved, activities,
+			rejected, COALESCE(rejection_reason, '') as rejection_reason,
+			COALESCE(comments, '') as comments,
+			COALESCE(absence_reason, '') as absence_reason,
+			COALESCE(absence_hours, 0) as absence_hours
 		FROM work_hours
 		WHERE user_id = ? AND deleted_at IS NULL
 		ORDER BY work_date DESC
