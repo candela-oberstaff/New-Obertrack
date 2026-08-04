@@ -7,7 +7,9 @@ import styles from './Tickets.module.css';
 import {
   RefreshCw, LifeBuoy, Search, User as UserIcon, Filter, Hand, CheckCircle2,
   MessageSquare, AlertTriangle, Building2, Mail, Clock, UserX, Phone, Tag, RotateCcw, UserCog,
+  GraduationCap, ExternalLink,
 } from 'lucide-react';
+import { inductionService } from '../../services/induction.service';
 import { Modal, Button, Select } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
@@ -66,6 +68,10 @@ export default function SupportBoard() {
   const [search, setSearch] = useState('');
   const [stateFilter, setStateFilter] = useState<'all' | SupportState>('all');
   const [agentFilter, setAgentFilter] = useState<string>('all');
+  // Por dónde entró el ticket. En la misma bandeja conviven el chat interno de
+  // Obertrack, WhatsApp y las altas de Obersuite, que no se atienden igual: el
+  // chip de la tarjeta los distingue, pero solo de uno en uno.
+  const [originFilter, setOriginFilter] = useState<'all' | 'support' | 'whatsapp' | 'obersuite'>('all');
   const [onlyMine, setOnlyMine] = useState(false);
   const [onlyUnassigned, setOnlyUnassigned] = useState(false);
 
@@ -78,7 +84,12 @@ export default function SupportBoard() {
   const lastRefresh = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
   const error = queryError ? ((queryError as any)?.response?.data?.error ?? 'No se pudieron cargar los tickets.') : null;
 
-  const supportTickets = useMemo(() => tickets.filter(t => t.origin === 'support' || t.origin === 'whatsapp'), [tickets]);
+  // Las altas de Obersuite entran en esta bandeja (y no en el tablero de
+  // Tickets, que ni siquiera está en el menú): quien atiende trabaja aquí.
+  const supportTickets = useMemo(
+    () => tickets.filter(t => t.origin === 'support' || t.origin === 'whatsapp' || t.origin === 'obersuite'),
+    [tickets],
+  );
 
   const isSuperadmin = !!(user as any)?.is_superadmin;
 
@@ -125,11 +136,25 @@ export default function SupportBoard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supportTickets, user]);
 
+  // Cada canal con cuántos hay: el número contesta "¿queda algo de WhatsApp?"
+  // sin tener que filtrar para averiguarlo. Se cuenta sobre la bandeja entera,
+  // no sobre lo ya filtrado, porque es el selector que cambia ese filtro.
+  const originOptions = useMemo(() => {
+    const cuenta = (origen: string) => supportTickets.filter(t => (t.origin ?? 'support') === origen).length;
+    return [
+      { value: 'all', label: `Todos los canales (${supportTickets.length})` },
+      { value: 'support', label: `Chat de Obertrack (${cuenta('support')})` },
+      { value: 'whatsapp', label: `WhatsApp (${cuenta('whatsapp')})` },
+      { value: 'obersuite', label: `Altas de Obersuite (${cuenta('obersuite')})` },
+    ];
+  }, [supportTickets]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return supportTickets.filter(t => {
       const st = supportState(t);
       if (stateFilter !== 'all' && st !== stateFilter) return false;
+      if (originFilter !== 'all' && (t.origin ?? 'support') !== originFilter) return false;
       if (agentFilter !== 'all' && String(t.assigned_to ?? '') !== agentFilter) return false;
       if (onlyMine && !isMine(t)) return false;
       if (onlyUnassigned && t.assigned_to) return false;
@@ -143,7 +168,7 @@ export default function SupportBoard() {
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supportTickets, search, stateFilter, agentFilter, onlyMine, onlyUnassigned, user]);
+  }, [supportTickets, search, stateFilter, originFilter, agentFilter, onlyMine, onlyUnassigned, user]);
 
   const claimMutation = useMutation({
     mutationFn: (ticketId: number) => channelService.claimSupport(ticketId),
@@ -205,6 +230,16 @@ export default function SupportBoard() {
   const moveTicket = (ticket: Ticket, target: StageId) => {
     const current = (ticket.stage ?? 'new') as StageId;
     if (current === target) return;
+    // El alta de Obersuite solo tiene dos estados útiles: pendiente de acompañar
+    // o cerrada. Tomarla no significa nada porque no hay conversación que llevar.
+    if (isObersuite(ticket)) {
+      if (target === 'closed') resolveObersuiteMutation.mutate(ticket.id);
+      else if (target === 'new') ticketService.updateInternalTicket(ticket.id, { stage: 'new', status: 'open' })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['tickets'] }))
+        .catch((e: any) => showError(e?.response?.data?.error || 'No se pudo reabrir el ticket.'));
+      else showError('Una incorporación de Obersuite no se toma: abrí la ficha del profesional o ciérrala cuando esté acompañada.');
+      return;
+    }
     const isWa = ticket.origin === 'whatsapp';
     if (target === 'in_progress') {
       isWa ? waActionMutation.mutate({ ticketId: ticket.id, action: 'claim' }) : claimMutation.mutate(ticket.id);
@@ -228,6 +263,38 @@ export default function SupportBoard() {
   const openFicha = (t: Ticket) => {
     if (t.user_id) navigate(`/admin/users/${t.user_id}`);
   };
+
+  // Alta llegada desde Obersuite: no es una conversación que atender sino un
+  // aviso de que hay alguien nuevo. Su tarjeta lleva a la ficha y a reenviar la
+  // capacitación, que es todo lo que se hace con ella.
+  const isObersuite = (t: Ticket) => t.origin === 'obersuite';
+
+  // Reenvía la capacitación sin salir de la bandeja. Rota el enlace y pone los
+  // intentos a cero, igual que el botón de la ficha del profesional.
+  const inductionMutation = useMutation({
+    mutationFn: async (t: Ticket) => {
+      if (!t.user_id) throw new Error('El ticket no apunta a ningún profesional.');
+      // Con inducción ya registrada se reenvía sobre la misma (conserva el
+      // historial de intentos); sin ella hay que emitirla desde cero.
+      let registered = true;
+      try { await inductionService.getUserStatus(t.user_id); } catch { registered = false; }
+      if (registered) await inductionService.resetUser(t.user_id);
+      else await inductionService.inviteUser(t.user_id);
+    },
+    onSuccess: () => showSuccess('Capacitación reenviada. Su acceso queda bloqueado hasta que la apruebe.'),
+    onError: (e: any) => showError(e?.response?.data?.error || e?.message || 'No se pudo reenviar la capacitación.'),
+  });
+
+  // Los locales (alta de Obersuite) se cierran por su propio endpoint: no tienen
+  // canal de chat, que es lo que resuelve channelService.
+  const resolveObersuiteMutation = useMutation({
+    mutationFn: (ticketId: number) => ticketService.resolveInternalTicket(ticketId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      showSuccess('Incorporación cerrada.');
+    },
+    onError: (e: any) => showError(e?.response?.data?.error || 'No se pudo cerrar el ticket.'),
+  });
 
   const metricCards = [
     { label: 'Abiertos', value: metrics.open, color: '#b45309', bg: 'rgba(245,158,11,0.12)', icon: <LifeBuoy size={18} /> },
@@ -298,29 +365,46 @@ export default function SupportBoard() {
           />
         </div>
 
-        <select
-          value={stateFilter}
-          onChange={e => setStateFilter(e.target.value as any)}
-          className={styles.select}
-          style={{ padding: '0.6rem 0.85rem', minWidth: 150 }}
-        >
-          <option value="all">Todos los estados</option>
-          <option value="open">Abiertos</option>
-          <option value="assigned">Asignados</option>
-          <option value="resolved">Resueltos</option>
-        </select>
+        {/* El Select del sistema y no un <select> nativo: el resto de la app
+            (y el propio modal de este tablero) usa este, y el nativo se pintaba
+            con los colores del sistema operativo en medio de la barra. */}
+        <div style={{ minWidth: 150 }}>
+          <Select
+            fullWidth
+            value={stateFilter}
+            onChange={v => setStateFilter(String(v) as any)}
+            ariaLabel="Filtrar por estado"
+            options={[
+              { value: 'all', label: 'Todos los estados' },
+              { value: 'open', label: 'Abiertos' },
+              { value: 'assigned', label: 'Asignados' },
+              { value: 'resolved', label: 'Resueltos' },
+            ]}
+          />
+        </div>
 
-        <select
-          value={agentFilter}
-          onChange={e => setAgentFilter(e.target.value)}
-          className={styles.select}
-          style={{ padding: '0.6rem 0.85rem', minWidth: 160 }}
-        >
-          <option value="all">Todos los agentes</option>
-          {agents.map(a => (
-            <option key={a.id} value={String(a.id)}>{a.name}</option>
-          ))}
-        </select>
+        <div style={{ minWidth: 185 }}>
+          <Select
+            fullWidth
+            value={originFilter}
+            onChange={v => setOriginFilter(String(v) as typeof originFilter)}
+            ariaLabel="Filtrar por canal de entrada"
+            options={originOptions}
+          />
+        </div>
+
+        <div style={{ minWidth: 175 }}>
+          <Select
+            fullWidth
+            value={agentFilter}
+            onChange={v => setAgentFilter(String(v))}
+            ariaLabel="Filtrar por agente"
+            options={[
+              { value: 'all', label: 'Todos los agentes' },
+              ...agents.map(a => ({ value: String(a.id), label: a.name })),
+            ]}
+          />
+        </div>
 
         <button
           onClick={() => setOnlyMine(v => !v)}
@@ -400,11 +484,20 @@ export default function SupportBoard() {
                         onDragStart={() => setDragTicket(t)}
                         onDragEnd={() => { setDragTicket(null); setDragOverStage(null); }}
                         onClaim={() => t.origin === 'whatsapp' ? waActionMutation.mutate({ ticketId: t.id, action: 'claim' }) : claimMutation.mutate(t.id)}
-                        onResolve={() => t.origin === 'whatsapp' ? waActionMutation.mutate({ ticketId: t.id, action: 'resolve' }) : resolveMutation.mutate(t.id)}
+                        onResolve={() => {
+                          if (isObersuite(t)) { resolveObersuiteMutation.mutate(t.id); return; }
+                          t.origin === 'whatsapp' ? waActionMutation.mutate({ ticketId: t.id, action: 'resolve' }) : resolveMutation.mutate(t.id);
+                        }}
                         onOpenChat={() => openChat(t)}
-                        onOpenDetail={() => t.origin === 'whatsapp' ? openChat(t) : setDetailTicket(t)}
+                        onOpenDetail={() => {
+                          if (isObersuite(t)) { navigate(`/tickets/internal/${t.id}`); return; }
+                          t.origin === 'whatsapp' ? openChat(t) : setDetailTicket(t);
+                        }}
                         profileChange={isProfileChange(t)}
                         onApplyInFicha={() => openFicha(t)}
+                        obersuite={isObersuite(t)}
+                        onOpenFicha={() => openFicha(t)}
+                        onSendInduction={() => inductionMutation.mutate(t)}
                       />
                     ))
                   )}
@@ -579,9 +672,13 @@ interface SupportCardProps {
   onOpenDetail: () => void;
   profileChange: boolean;
   onApplyInFicha: () => void;
+  /** Alta llegada desde Obersuite: lleva a la ficha y a reenviar capacitación. */
+  obersuite: boolean;
+  onOpenFicha: () => void;
+  onSendInduction: () => void;
 }
 
-function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragEnd, onClaim, onResolve, onOpenChat, onOpenDetail, profileChange, onApplyInFicha }: SupportCardProps) {
+function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragEnd, onClaim, onResolve, onOpenChat, onOpenDetail, profileChange, onApplyInFicha, obersuite, onOpenFicha, onSendInduction }: SupportCardProps) {
   const st = supportState(ticket);
   const meta = STATE_META[st];
   const unassigned = !ticket.assigned_to;
@@ -657,6 +754,11 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
             <UserCog size={10} /> Datos de perfil
           </span>
         )}
+        {obersuite && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 700, color: '#7c3aed', background: 'rgba(124,58,237,0.1)', padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(124,58,237,0.25)' }}>
+            <GraduationCap size={10} /> Obersuite
+          </span>
+        )}
         {unassigned ? (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: '#b45309', background: 'rgba(245,158,11,0.12)', padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(245,158,11,0.2)' }}>
             <UserX size={10} /> Sin asignar
@@ -668,6 +770,41 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
         )}
       </div>
 
+      {/* La incorporación no se responde: se acompaña. Sus dos acciones son ir a
+          la ficha y reenviar la capacitación; cerrarla queda para cuando ya no
+          haga falta (si aprueba, se cierra sola). */}
+      {obersuite ? (
+        <div className={styles.cardFooter} style={{ borderTop: '1px solid var(--gray-100)', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenFicha(); }}
+            disabled={!ticket.user_id}
+            className={styles.channelBtn}
+            style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center', color: '#6d28d9', borderColor: 'rgba(124,58,237,0.3)' }}
+            title="Abrir la ficha del profesional"
+          >
+            <ExternalLink size={13} style={{ flexShrink: 0 }} /> Ver ficha
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onSendInduction(); }}
+            disabled={busy || !ticket.user_id}
+            className={styles.channelBtn}
+            style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center' }}
+            title="Reenviar la capacitación (rota el enlace y reinicia sus intentos)"
+          >
+            <GraduationCap size={13} style={{ flexShrink: 0 }} /> Capacitación
+          </button>
+          {st !== 'resolved' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onResolve(); }}
+              disabled={busy}
+              className={styles.channelBtn}
+              style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem', flex: '1 1 auto', minWidth: 0, justifyContent: 'center', color: '#15803d', borderColor: 'rgba(22,163,74,0.3)' }}
+            >
+              <CheckCircle2 size={13} style={{ flexShrink: 0 }} /> Resolver
+            </button>
+          )}
+        </div>
+      ) : (
       <div className={styles.cardFooter} style={{ borderTop: '1px solid var(--gray-100)', gap: 8, flexWrap: 'wrap' }}>
         {st !== 'resolved' && unassigned && (
           <button
@@ -709,6 +846,7 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
           <MessageSquare size={13} style={{ flexShrink: 0 }} /> Chat
         </button>
       </div>
+      )}
     </div>
   );
 }

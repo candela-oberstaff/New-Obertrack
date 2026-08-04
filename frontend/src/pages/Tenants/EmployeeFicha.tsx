@@ -85,12 +85,14 @@ export function EmployeeFicha({ user, managerName, compact = false }: { user: Us
   )
 }
 
-/** Los tres números de cabecera del profesional. */
+/** Los tres números de cabecera del profesional. Mismo estilo "suave" que las
+ *  tarjetas de la empresa (fondo pastel + icono del mismo tono): el modal y la
+ *  ficha se abren desde ahí y con gradientes saturados parecían otra pantalla. */
 export function EmployeeKpis({ summary, compact = false }: { summary?: EmployeeSummary | null; compact?: boolean }) {
   return (
     <div className={`${styles.kpis} ${compact ? styles.noMargin : ''}`}>
       <div className={styles.kpiCard}>
-        <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}>
+        <div className={styles.kpiIcon} style={{ background: '#faf5ff', color: 'var(--primary)' }}>
           <Clock size={24} />
         </div>
         <div>
@@ -99,7 +101,7 @@ export function EmployeeKpis({ summary, compact = false }: { summary?: EmployeeS
         </div>
       </div>
       <div className={styles.kpiCard}>
-        <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }}>
+        <div className={styles.kpiIcon} style={{ background: '#f5f3ff', color: '#8b5cf6' }}>
           <CheckSquare size={24} />
         </div>
         <div>
@@ -108,7 +110,7 @@ export function EmployeeKpis({ summary, compact = false }: { summary?: EmployeeS
         </div>
       </div>
       <div className={styles.kpiCard}>
-        <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+        <div className={styles.kpiIcon} style={{ background: '#ecfdf5', color: '#10b981' }}>
           <CalendarClock size={24} />
         </div>
         <div>

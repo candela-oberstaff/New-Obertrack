@@ -251,6 +251,10 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/tenants/:id/activity/people", d.admin.GetTenantActivityPeople)
 		admin.GET("/tenants/:id/notes/pinned", d.admin.GetTenantPinnedNotes)
 		admin.GET("/tenants/:id/archived", d.admin.GetTenantArchived)
+		// Pestaña Actividad de la ficha de empresa: el mismo semáforo de
+		// inactividad y reporte de ausencias del panel, acotados a la empresa.
+		admin.GET("/tenants/:id/inactive-users", d.admin.GetTenantInactiveUsers)
+		admin.GET("/tenants/:id/absence-report", d.admin.GetTenantAbsenceReport)
 		admin.POST("/tenants/:id/suspend", d.admin.SuspendTenant)
 		admin.POST("/tenants/:id/activate", d.admin.ActivateTenant)
 		admin.GET("/employees/:id/tracking", d.admin.GetEmployeeTracking)

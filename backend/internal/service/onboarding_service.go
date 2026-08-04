@@ -81,6 +81,9 @@ type onboardingService struct {
 	uploadSvc      UploadService
 	authSvc        AuthService
 	inductionSvc   InductionService
+	// ticketSvc abre el ticket de incorporación en la bandeja de soporte.
+	// Opcional: si no está cableado, la contratación sigue funcionando igual.
+	ticketSvc TicketService
 }
 
 func NewOnboardingService(
@@ -90,6 +93,7 @@ func NewOnboardingService(
 	uploadSvc UploadService,
 	authSvc AuthService,
 	inductionSvc InductionService,
+	ticketSvc TicketService,
 ) OnboardingService {
 	return &onboardingService{
 		userRepo:       userRepo,
@@ -98,6 +102,7 @@ func NewOnboardingService(
 		uploadSvc:      uploadSvc,
 		authSvc:        authSvc,
 		inductionSvc:   inductionSvc,
+		ticketSvc:      ticketSvc,
 	}
 }
 
@@ -230,7 +235,13 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 	//    no existe.
 	s.notifyHired(user, isNew, result)
 
-	// 6. CV (best-effort): un fallo del CV NO revierte la contratación; se avisa.
+	// 6. Ticket de incorporación en la bandeja de soporte. Va después del correo
+	//    porque su texto depende de si la capacitación salió o no, y es
+	//    best-effort: un fallo del ticket no puede tumbar una contratación ya
+	//    materializada.
+	s.openHireTicket(user, req, result)
+
+	// 7. CV (best-effort): un fallo del CV NO revierte la contratación; se avisa.
 	if req.CV != nil && strings.TrimSpace(req.CV.ContentBase64) != "" {
 		if warn := s.attachCV(emp.ID, req.CompanyID, req.CV); warn != "" {
 			result.CVWarning = warn
@@ -314,6 +325,30 @@ func (s *onboardingService) notifyHired(user *models.User, isNew bool, result *H
 		if err := s.authSvc.ForgotPassword(user.Email); err != nil {
 			log.Printf("[Onboarding] welcome email failed for %s: %v", user.Email, err)
 		}
+	}
+}
+
+// openHireTicket avisa a Soporte de que llegó alguien nuevo. Sin esto, la
+// contratación solo se veía en el panel de profesionales: quien atiende no se
+// enteraba salvo que fuera a mirar sabiendo que tenía que mirar.
+func (s *onboardingService) openHireTicket(user *models.User, req HireRequest, result *HireResult) {
+	if s.ticketSvc == nil {
+		return
+	}
+	empresa := ""
+	if owner, err := s.userRepo.GetByID(req.CompanyID); err == nil && owner != nil {
+		empresa = owner.CompanyName
+	}
+	if err := s.ticketSvc.CreateObersuiteHireAlert(ObersuiteHireInput{
+		ProfessionalID:    user.ID,
+		ProfessionalName:  user.Name,
+		ProfessionalEmail: user.Email,
+		ProfessionalPhone: user.PhoneNumber,
+		CompanyName:       empresa,
+		JobTitle:          req.JobTitle,
+		InductionSent:     result.InductionPending,
+	}); err != nil {
+		log.Printf("[Onboarding] no se pudo abrir el ticket de incorporación de %s: %v", user.Email, err)
 	}
 }
 

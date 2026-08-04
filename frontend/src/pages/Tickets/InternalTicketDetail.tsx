@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, Mail, Phone, Building2, User as UserIcon, UserX, Calendar, FileText, Send, CheckCircle2, ArrowRightLeft, History } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Mail, Phone, Building2, User as UserIcon, UserX, Calendar, FileText, Send, CheckCircle2, ArrowRightLeft, History, GraduationCap, ExternalLink } from 'lucide-react'
+import { inductionService } from '../../services/induction.service'
 import { Ticket, TicketTransfer, SupportAgent, ticketService } from '../../services/ticket.service'
 import TransferTicketModal from './components/TransferTicketModal'
 import styles from './Tickets.module.css'
@@ -14,8 +15,9 @@ const STAGE_OPTIONS: { id: string; label: string }[] = [
 ]
 const STAGE_LABEL: Record<string, string> = { new: 'Nuevo', in_progress: 'En seguimiento', waiting: 'En seguimiento', closed: 'Resuelto' }
 
+// El título lleva el tipo de aviso delante; para el nombre sobra.
 function professionalName(t: Ticket): string {
-  return t.title?.replace(/^Rechazo de horas:\s*/i, '') || 'Profesional'
+  return t.title?.replace(/^(Rechazo de horas|Alta desde Obersuite|Inducción no aprobada):\s*/i, '') || 'Profesional'
 }
 
 export default function InternalTicketDetail() {
@@ -32,6 +34,30 @@ export default function InternalTicketDetail() {
   const [showTransfer, setShowTransfer] = useState(false)
   const [transfers, setTransfers] = useState<TicketTransfer[]>([])
   const [agents, setAgents] = useState<SupportAgent[]>([])
+  const [inductionBusy, setInductionBusy] = useState(false)
+
+  // Un alta de Obersuite se acompaña, no se responde: por eso tiene su propio
+  // atajo para reenviar la capacitación.
+  const isObersuite = ticket?.origin === 'obersuite'
+
+  // Mismo comportamiento que el botón de la ficha del profesional: el enlace
+  // viejo se invalida siempre, porque reenviar el mismo token no resuelve nada
+  // si el correo no llegó.
+  const sendInduction = async () => {
+    if (!ticket?.user_id) return
+    setInductionBusy(true)
+    setError(null)
+    try {
+      let registered = true
+      try { await inductionService.getUserStatus(ticket.user_id) } catch { registered = false }
+      if (registered) await inductionService.resetUser(ticket.user_id)
+      else await inductionService.inviteUser(ticket.user_id)
+      await ticketService.addInternalNote(ticket.id, 'Se reenvió la capacitación desde el ticket.')
+      await fetchTicket(true)
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'No se pudo reenviar la capacitación.')
+    } finally { setInductionBusy(false) }
+  }
 
   const openTransfer = async () => {
     try { setAgents(await ticketService.getSupportAgents()) } catch { /* ignore */ }
@@ -137,12 +163,35 @@ export default function InternalTicketDetail() {
             <InfoRow icon={<Building2 size={15} />} label="Empresa" value={ticket.company_name} />
           </div>
 
-          <div className={styles.sidebarSection}>
-            <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', margin: 0 }}>Detalle del rechazo</h3>
-            <InfoRow icon={<UserX size={15} />} label="Rechazado por" value={ticket.rejected_by_name} />
-            <InfoRow icon={<Calendar size={15} />} label="Fechas" value={ticket.work_dates} />
-            <InfoRow icon={<FileText size={15} />} label="Motivo" value={ticket.reason} />
-          </div>
+          {/* Atajos de la incorporación: es todo lo que se hace con ella. Ver la
+              ficha vale para cualquier aviso que apunte a alguien; reenviar la
+              capacitación solo tiene sentido en un alta de Obersuite. */}
+          {!!ticket.user_id && (
+            <div className={styles.sidebarSection}>
+              <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', margin: 0 }}>Acciones</h3>
+              <button onClick={() => navigate(`/admin/users/${ticket.user_id}`)} className={styles.channelBtn}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem', justifyContent: 'center', color: '#6d28d9', borderColor: 'rgba(124,58,237,0.3)' }}>
+                <ExternalLink size={15} /> Ver ficha del profesional
+              </button>
+              {isObersuite && (
+                <button onClick={sendInduction} disabled={inductionBusy} className={styles.channelBtn}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.9rem', justifyContent: 'center' }}
+                  title="Rota el enlace y reinicia sus intentos">
+                  <GraduationCap size={15} /> {inductionBusy ? 'Enviando…' : 'Reenviar capacitación'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Solo los rechazos traen estos datos; en un alta la sección saldría vacía. */}
+          {(ticket.rejected_by_name || ticket.work_dates) && (
+            <div className={styles.sidebarSection}>
+              <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', margin: 0 }}>Detalle del rechazo</h3>
+              <InfoRow icon={<UserX size={15} />} label="Rechazado por" value={ticket.rejected_by_name} />
+              <InfoRow icon={<Calendar size={15} />} label="Fechas" value={ticket.work_dates} />
+              <InfoRow icon={<FileText size={15} />} label="Motivo" value={ticket.reason} />
+            </div>
+          )}
 
           <div className={styles.sidebarSection}>
             <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', margin: 0 }}>Estado de seguimiento</h3>

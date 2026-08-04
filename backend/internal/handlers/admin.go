@@ -63,10 +63,24 @@ func (h *AdminHandler) GetCompanies(c *gin.Context) {
 }
 
 func (h *AdminHandler) GetInactiveUsers(c *gin.Context) {
+	h.inactiveUsers(c, 0)
+}
+
+// GetTenantInactiveUsers es la misma lista acotada a una empresa, para la
+// pestaña de actividad de su ficha.
+func (h *AdminHandler) GetTenantInactiveUsers(c *gin.Context) {
+	tenantID, ok := parseTenantParam(c)
+	if !ok {
+		return
+	}
+	h.inactiveUsers(c, tenantID)
+}
+
+func (h *AdminHandler) inactiveUsers(c *gin.Context, tenantID uint) {
 	days := c.DefaultQuery("days", "7")
 	daysInt, _ := strconv.Atoi(days)
 
-	users, err := h.service.GetInactiveUsers(daysInt)
+	users, err := h.service.GetInactiveUsers(tenantID, daysInt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch inactive users"})
 		return
@@ -74,8 +88,26 @@ func (h *AdminHandler) GetInactiveUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
+// GetRecentActivity entrega una página del feed global. Sigue devolviendo un
+// array plano (la app móvil lo consume sin parámetros y espera eso); quien
+// pagina pide la siguiente tanda con el último evento recibido como cursor y
+// sabe que se acabó cuando llegan menos de `limit`.
 func (h *AdminHandler) GetRecentActivity(c *gin.Context) {
-	activities, err := h.service.GetRecentActivities()
+	limit, _ := strconv.Atoi(c.Query("limit"))
+
+	// El cursor solo se aplica si la fecha es legible: una query a medias debe
+	// devolver la primera página, no un feed vacío sin explicación.
+	var cursor *repository.ActivityCursor
+	if before, err := time.Parse(time.RFC3339Nano, c.Query("before")); err == nil {
+		id, _ := strconv.ParseUint(c.Query("before_id"), 10, 64)
+		cursor = &repository.ActivityCursor{
+			Timestamp: before,
+			Type:      c.Query("before_type"),
+			ID:        uint(id),
+		}
+	}
+
+	activities, err := h.service.GetRecentActivities(cursor, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch recent activities"})
 		return
@@ -84,10 +116,23 @@ func (h *AdminHandler) GetRecentActivity(c *gin.Context) {
 }
 
 func (h *AdminHandler) GetAbsenceReport(c *gin.Context) {
+	h.absenceReport(c, 0)
+}
+
+// GetTenantAbsenceReport es el mismo reporte acotado a una empresa.
+func (h *AdminHandler) GetTenantAbsenceReport(c *gin.Context) {
+	tenantID, ok := parseTenantParam(c)
+	if !ok {
+		return
+	}
+	h.absenceReport(c, tenantID)
+}
+
+func (h *AdminHandler) absenceReport(c *gin.Context, tenantID uint) {
 	month, _ := strconv.Atoi(c.Query("month"))
 	year, _ := strconv.Atoi(c.Query("year"))
 
-	report, err := h.service.GetAbsenceReport(month, year)
+	report, err := h.service.GetAbsenceReport(tenantID, month, year)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch absence report"})
 		return
@@ -796,6 +841,17 @@ func (h *AdminHandler) GetTenants(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, tenants)
+}
+
+// parseTenantParam lee el :id de las rutas por empresa y responde 400 si no es
+// un id válido. Devuelve ok=false cuando ya escribió la respuesta.
+func parseTenantParam(c *gin.Context) (uint, bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil || id == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return 0, false
+	}
+	return uint(id), true
 }
 
 func (h *AdminHandler) GetTenant(c *gin.Context) {

@@ -502,6 +502,14 @@ func (s *inductionService) grantAccess(user *models.User) {
 			log.Printf("[Induction] no se pudo enviar el correo de acceso a %s: %v", user.Email, err)
 		}
 	}
+	// Aprobar la capacitación es lo que cierra la incorporación: si llegó desde
+	// Obersuite, su ticket de soporte ya no tiene nada pendiente. Best-effort:
+	// no dejar el acceso a medias por un ticket.
+	if s.ticketSvc != nil {
+		if err := s.ticketSvc.CloseObersuiteHireAlert(user.ID); err != nil {
+			log.Printf("[Induction] no se pudo cerrar el ticket de incorporación de %s: %v", user.Email, err)
+		}
+	}
 }
 
 // alertSupport abre una alerta interna en el módulo de Soporte para que

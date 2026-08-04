@@ -18,7 +18,10 @@ const NOTE_MAX_LENGTH = 2000
 import { ticketOrigin, TICKET_STAGE, ticketPath } from './ticketStyle'
 import { EmployeePeekModal } from './EmployeePeekModal'
 import { useQuery } from '@tanstack/react-query'
-import { useTenantDetail, useTenantActivity, ACTIVITY_CATEGORIES } from '../../hooks'
+import { useTenantDetail, useTenantActivity, useFollowUps, ACTIVITY_CATEGORIES } from '../../hooks'
+import { TeamActivityPanel } from '../../components/Admin/TeamActivityPanel'
+import { AbsenceReportPanel } from '../../components/Admin/AbsenceReportPanel'
+import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
 import { ticketService } from '../../services/ticket.service'
 import { useNotification } from '../../context/NotificationContext'
 import { groupByDay } from './activityGrouping'
@@ -121,7 +124,7 @@ export default function TenantDetail() {
   const [contactSaving, setContactSaving] = useState(false)
   const [contactError, setContactError] = useState<string | null>(null)
 
-  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'actividad' | 'tickets' | 'archivados'>('resumen')
+  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'expediente' | 'actividad' | 'tickets' | 'archivados'>('resumen')
 
   // Archivados de esta empresa (bajas + cuentas desactivadas).
   //
@@ -134,6 +137,27 @@ export default function TenantDetail() {
     queryFn: () => adminService.getTenantArchived(tenantId),
     enabled: !!tenantId && tab === 'archivados',
   })
+
+  // Pestaña Actividad: el mismo semáforo de inactividad y reporte de ausencias
+  // del panel de administración, pero solo de esta empresa. El backend ya los
+  // acota; aquí no se filtra en cliente para no traerse el resto de empresas.
+  const { data: teamInactive = [], isLoading: teamInactiveLoading } = useQuery({
+    queryKey: ['tenant-inactive-users', tenantId],
+    queryFn: () => adminService.getTenantInactiveUsers(tenantId, 1),
+    enabled: !!tenantId && tab === 'actividad',
+  })
+  const { data: tenantAbsence } = useQuery({
+    queryKey: ['tenant-absence-report', tenantId],
+    queryFn: () => adminService.getTenantAbsenceReport(tenantId),
+    enabled: !!tenantId && tab === 'actividad',
+  })
+  // La gestión de CS es la misma bitácora del panel: comparte clave de consulta
+  // para que anotar aquí se vea allí sin recargar.
+  const inactivityFollowUps = useFollowUps('inactivity', tab === 'actividad')
+  const absenceFollowUps = useFollowUps('absence', tab === 'actividad')
+  // Redacción de correo a un profesional (la del contacto con la empresa es
+  // otra: esta va dirigida a la persona y queda en su expediente).
+  const [proComposer, setProComposer] = useState<{ recipient: ComposerRecipient; body: string } | null>(null)
 
   // Edición de la empresa
   const [showEdit, setShowEdit] = useState(false)
@@ -641,7 +665,8 @@ export default function TenantDetail() {
       <div className={styles.subTabs}>
         <button className={tab === 'resumen' ? styles.subTabActive : styles.subTab} onClick={() => setTab('resumen')}>Resumen</button>
         <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Profesionales ({employees.length})</button>
-        <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Expediente</button>
+        <button className={tab === 'expediente' ? styles.subTabActive : styles.subTab} onClick={() => setTab('expediente')}>Expediente</button>
+        <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Actividad</button>
         <button className={tab === 'tickets' ? styles.subTabActive : styles.subTab} onClick={() => setTab('tickets')}>
           Tickets{(tenant.open_tickets ?? 0) > 0 ? ` (${tenant.open_tickets})` : ''}
         </button>
@@ -710,7 +735,7 @@ export default function TenantDetail() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => { setActCategory('note'); setTab('actividad') }}
+                    onClick={() => { setActCategory('note'); setTab('expediente') }}
                     style={{ marginTop: 12, padding: 0, border: 'none', background: 'none', color: 'var(--primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                   >
                     Ver todas en el expediente →
@@ -902,7 +927,7 @@ export default function TenantDetail() {
 
       {/* El expediente es una vista de auditoría: si no hay movimientos se dice,
           no se rellena con eventos de ejemplo. */}
-      {tab === 'actividad' && (
+      {tab === 'expediente' && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 20 }}>
             {ACTIVITY_CATEGORIES.map(cat => {
@@ -1196,6 +1221,39 @@ export default function TenantDetail() {
         </>
       )}
 
+      {/* Actividad de la empresa: quién no está registrando horas y qué
+          ausencias hay este mes, con la misma gestión y las mismas vías de
+          contacto que en el panel. Son los dos paneles compartidos, sin la
+          columna ni el filtro de empresa, que aquí sobran. */}
+      {tab === 'actividad' && (
+        <>
+          <TeamActivityPanel
+            items={teamInactive}
+            loading={teamInactiveLoading}
+            followUps={inactivityFollowUps.followUps}
+            onSetFollowUp={inactivityFollowUps.setFollowUp}
+            onCompose={(recipient, body) => setProComposer({ recipient, body })}
+            onOpenUser={(userId, sequence) => {
+              setRecordNav(`tenant-employees:${tenantId}`, sequence)
+              navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
+            }}
+            showCompany={false}
+            description="Profesionales de esta empresa sin registrar horas. Los de 2+ días disparan alerta automática al equipo de customer success."
+          />
+          <AbsenceReportPanel
+            items={tenantAbsence?.items || []}
+            followUps={absenceFollowUps.followUps}
+            onSetFollowUp={absenceFollowUps.setFollowUp}
+            onOpenUser={(userId, sequence) => {
+              setRecordNav(`tenant-employees:${tenantId}`, sequence)
+              navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
+            }}
+            showCompany={false}
+            description="Ausencias de esta empresa este mes, agrupadas por profesional. Haz clic en una fila para ver el detalle."
+          />
+        </>
+      )}
+
       {tab === 'archivados' && (
         archivedLoading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -1282,6 +1340,15 @@ export default function TenantDetail() {
           </div>
         )
       )}
+
+      {/* Correo a un profesional desde la pestaña Actividad. El de la empresa
+          es el Modal de abajo: destinatario distinto y otro registro. */}
+      <EmailComposerModal
+        isOpen={proComposer !== null}
+        onClose={() => setProComposer(null)}
+        recipient={proComposer?.recipient ?? null}
+        defaultBody={proComposer?.body ?? ''}
+      />
 
       <Modal
         isOpen={commModal.isOpen}

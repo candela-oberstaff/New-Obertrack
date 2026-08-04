@@ -116,7 +116,7 @@ export default function UserDetail() {
 
       <div className={styles.kpis}>
         <div className={styles.kpiCard}>
-          <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}>
+          <div className={styles.kpiIcon} style={{ background: '#faf5ff', color: 'var(--primary)' }}>
             <Clock size={24} />
           </div>
           <div>
@@ -125,7 +125,7 @@ export default function UserDetail() {
           </div>
         </div>
         <div className={styles.kpiCard}>
-          <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }}>
+          <div className={styles.kpiIcon} style={{ background: '#f5f3ff', color: '#8b5cf6' }}>
             <CheckSquare size={24} />
           </div>
           <div>
@@ -134,7 +134,7 @@ export default function UserDetail() {
           </div>
         </div>
         <div className={styles.kpiCard}>
-          <div className={styles.kpiIcon} style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+          <div className={styles.kpiIcon} style={{ background: '#ecfdf5', color: '#10b981' }}>
             <CalendarClock size={24} />
           </div>
           <div>

@@ -53,6 +53,11 @@ type TicketService interface {
 	// recién contratado agota sus intentos de inducción sin aprobar, para que
 	// Soporte lo contacte.
 	CreateInductionFailureAlert(in InductionAlertInput) error
+	// CreateObersuiteHireAlert abre el ticket de una incorporación llegada
+	// desde Obersuite, para que la bandeja de soporte la vea.
+	CreateObersuiteHireAlert(in ObersuiteHireInput) error
+	// CloseObersuiteHireAlert cierra esa incorporación al aprobar la capacitación.
+	CloseObersuiteHireAlert(userID uint) error
 	// UpdateInternal changes the stage/status of an internal alert ticket
 	// (e.g. mark as resolved). It never touches Zoho.
 	UpdateInternal(id uint, stage models.TicketStage, status string) (*models.Ticket, error)
@@ -99,6 +104,21 @@ type InductionAlertInput struct {
 	Attempts          int
 }
 
+// ObersuiteHireInput son los datos de quien acaba de ser contratado en
+// Obersuite. Van denormalizados sobre el ticket, como en las demás alertas,
+// para que Soporte pueda contactarlo sin salir de la bandeja.
+type ObersuiteHireInput struct {
+	ProfessionalID    uint
+	ProfessionalName  string
+	ProfessionalEmail string
+	ProfessionalPhone string
+	CompanyName       string
+	JobTitle          string
+	// InductionSent distingue a quien ya recibió la capacitación de quien no:
+	// cambia lo que hay que hacer con él.
+	InductionSent bool
+}
+
 type ticketService struct {
 	repo        repository.TicketRepository
 	userRepo    repository.UserRepository
@@ -135,7 +155,7 @@ type TransferInput struct {
 // the linked professional (and employer), and dates/reason fall back to parsing
 // the description (for legacy alerts created before these fields existed).
 func (s *ticketService) enrichInternal(t *models.Ticket) {
-	if t == nil || t.Origin != models.OriginInternal {
+	if t == nil || !models.IsLocalOrigin(t.Origin) {
 		return
 	}
 	if (t.ProfessionalEmail == "" || t.ProfessionalPhone == "" || t.CompanyName == "") && t.UserID != nil && s.userRepo != nil {
@@ -154,7 +174,12 @@ func (s *ticketService) enrichInternal(t *models.Ticket) {
 		}
 	}
 	// Fallback: parse "Jornadas rechazadas (<dates>). Motivo: <reason>".
-	if (t.WorkDates == "" || t.Reason == "") && t.Description != "" {
+	//
+	// Solo para las alertas internas: es un apaño para las de rechazo antiguas,
+	// que no guardaban esos campos. Aplicado a un alta de Obersuite tomaría
+	// cualquier paréntesis de su descripción como si fueran fechas de jornada, y
+	// la ficha enseñaría un "Fechas: ..." inventado.
+	if t.Origin == models.OriginInternal && (t.WorkDates == "" || t.Reason == "") && t.Description != "" {
 		if t.WorkDates == "" {
 			if a := strings.Index(t.Description, "("); a >= 0 {
 				if b := strings.Index(t.Description[a:], ")"); b > 0 {
@@ -476,9 +501,11 @@ func (s *ticketService) IngestEmail(fromEmail, fromName, subject, textBody, mess
 	return nil
 }
 
-// ListInternal returns Obertrack-generated alert tickets (origin = internal).
+// ListInternal devuelve los tickets que genera la propia plataforma y viven en
+// nuestra base: las alertas (rechazos, inducción) y las altas llegadas desde
+// Obersuite. Van juntos porque comparten bandeja y ficha de detalle.
 func (s *ticketService) ListInternal() ([]models.Ticket, error) {
-	tickets, err := s.repo.ListByOrigin(models.OriginInternal)
+	tickets, err := s.repo.ListByOrigins(models.OriginInternal, models.OriginObersuite)
 	if err != nil {
 		return nil, err
 	}
@@ -883,13 +910,80 @@ func (s *ticketService) CreateInductionFailureAlert(in InductionAlertInput) erro
 	return nil
 }
 
+// CreateObersuiteHireAlert abre el ticket de una incorporación llegada desde
+// Obersuite. No es una conversación ni una alerta de algo que salió mal: es el
+// aviso de que hay alguien nuevo al que acompañar, y existe porque hasta ahora
+// la contratación solo se veía en el panel de profesionales, donde no se mira
+// salvo que se sepa que hay que mirar.
+//
+// Si ya hay uno abierto para esa persona no se duplica: una re-contratación no
+// es un segundo caso que atender.
+func (s *ticketService) CreateObersuiteHireAlert(in ObersuiteHireInput) error {
+	if abierto, err := s.repo.FindOpenByUserAndOrigin(in.ProfessionalID, models.OriginObersuite); err == nil && abierto != nil {
+		return nil
+	}
+
+	pid := in.ProfessionalID
+	detalle := "Contratado en Obersuite"
+	if in.JobTitle != "" {
+		detalle += " como " + in.JobTitle
+	}
+	if in.CompanyName != "" {
+		detalle += " para " + in.CompanyName
+	}
+	seguimiento := " Revisar su ficha y, si no le llegó, reenviarle la capacitación."
+	if !in.InductionSent {
+		seguimiento = " No se le envió capacitación (la empresa la tiene desactivada o ya la tenía aprobada); revisar su ficha por si falta algo."
+	}
+
+	ticket := &models.Ticket{
+		Origin:            models.OriginObersuite,
+		UserID:            &pid,
+		Title:             "Alta desde Obersuite: " + in.ProfessionalName,
+		Description:       detalle + "." + seguimiento,
+		ProfessionalEmail: in.ProfessionalEmail,
+		ProfessionalPhone: in.ProfessionalPhone,
+		CompanyName:       in.CompanyName,
+		Stage:             models.StageNew,
+		Status:            "open",
+	}
+	if err := s.repo.CreateTicket(ticket); err != nil {
+		return err
+	}
+	if s.supportNtfy != nil {
+		s.supportNtfy.Notify(SupportTicketInfo{
+			Type:        "Alta desde Obersuite",
+			Requester:   in.ProfessionalName,
+			Company:     in.CompanyName,
+			Subject:     ticket.Title,
+			Description: ticket.Description,
+			Link:        fmt.Sprintf("/tickets/internal/%d", ticket.ID),
+		})
+	}
+	return nil
+}
+
+// CloseObersuiteHireAlert cierra el ticket de incorporación cuando la persona
+// aprueba la capacitación: es el momento en que deja de haber algo que hacer.
+// Silencioso si no hay ninguno abierto (altas anteriores a esto, o inducción
+// desactivada).
+func (s *ticketService) CloseObersuiteHireAlert(userID uint) error {
+	ticket, err := s.repo.FindOpenByUserAndOrigin(userID, models.OriginObersuite)
+	if err != nil || ticket == nil {
+		return nil
+	}
+	ticket.Stage = models.StageClosed
+	ticket.Status = "closed"
+	return s.repo.SaveTicket(ticket)
+}
+
 // GetInternal returns a single internal alert ticket (with notes/messages).
 func (s *ticketService) GetInternal(id uint) (*models.Ticket, error) {
 	ticket, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, apperrors.ErrNotFound
 	}
-	if ticket.Origin != models.OriginInternal {
+	if !models.IsLocalOrigin(ticket.Origin) {
 		return nil, apperrors.ErrNotFound
 	}
 	s.enrichInternal(ticket)
@@ -906,7 +1000,7 @@ func (s *ticketService) AddInternalNote(id, agentID uint, content string) (*mode
 	if err != nil {
 		return nil, apperrors.ErrNotFound
 	}
-	if ticket.Origin != models.OriginInternal {
+	if !models.IsLocalOrigin(ticket.Origin) {
 		return nil, apperrors.ErrNotFound
 	}
 	msg := &models.TicketMessage{
@@ -929,7 +1023,7 @@ func (s *ticketService) UpdateInternal(id uint, stage models.TicketStage, status
 	if err != nil {
 		return nil, apperrors.ErrNotFound
 	}
-	if ticket.Origin != models.OriginInternal {
+	if !models.IsLocalOrigin(ticket.Origin) {
 		return nil, apperrors.ErrNotFound
 	}
 	if stage != "" {
@@ -1013,7 +1107,7 @@ func (s *ticketService) RecordTransfer(in TransferInput) error {
 	if s.notifSvc != nil {
 		// Internal tickets have a detail page; external ones land on the board.
 		link := "/tickets"
-		if in.LocalTicketID > 0 && in.Origin == string(models.OriginInternal) {
+		if in.LocalTicketID > 0 && models.IsLocalOrigin(in.Origin) {
 			link = fmt.Sprintf("/tickets/internal/%d", in.LocalTicketID)
 		}
 		data := map[string]interface{}{"ticket": in.TicketTitle, "origin": in.Origin, "ref": in.TicketRef, "link": link}
@@ -1034,7 +1128,7 @@ func (s *ticketService) RecordTransfer(in TransferInput) error {
 // TransferInternal reassigns an internal alert ticket and audits it.
 func (s *ticketService) TransferInternal(id, toUserID, byUserID uint, isSuperadmin bool, reason string) (*models.Ticket, error) {
 	ticket, err := s.repo.GetByID(id)
-	if err != nil || ticket.Origin != models.OriginInternal {
+	if err != nil || !models.IsLocalOrigin(ticket.Origin) {
 		return nil, apperrors.ErrNotFound
 	}
 	// Permission: superadmin always; otherwise current owner, or anyone if unassigned.

@@ -169,7 +169,9 @@ func ticketDTOFromInternal(t models.Ticket) gin.H {
 		"description":        t.Description,
 		"stage":              t.Stage,
 		"status":             t.Status,
-		"origin":             models.OriginInternal,
+		// El origen real y no un literal: por aquí pasan tanto las alertas
+		// internas como las altas de Obersuite, y la bandeja las etiqueta distinto.
+		"origin":             t.Origin,
 		"user_id":            t.UserID,
 		"professional_email": t.ProfessionalEmail,
 		"professional_phone": t.ProfessionalPhone,

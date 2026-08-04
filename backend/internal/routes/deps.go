@@ -162,7 +162,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	inductionSvc := service.NewInductionService(inductionRepo, userRepo, brevoSvc, authSvc, ticketSvc, cfg.FrontendURL)
 	// Puente Obersuite (captación) → Obertrack (gestión): materializa la
 	// contratación de un candidato como profesional + empleo activo.
-	onboardingSvc := service.NewOnboardingService(userRepo, employmentRepo, employmentSvc, uploadSvc, authSvc, inductionSvc)
+	onboardingSvc := service.NewOnboardingService(userRepo, employmentRepo, employmentSvc, uploadSvc, authSvc, inductionSvc, ticketSvc)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})

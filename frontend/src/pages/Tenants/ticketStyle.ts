@@ -1,9 +1,10 @@
-import { Activity, ClipboardList, MessageSquare, Inbox } from 'lucide-react'
+import { Activity, ClipboardList, MessageSquare, Inbox, GraduationCap } from 'lucide-react'
 
 // De dónde sale cada ticket. "internal" son alertas que genera la propia
 // plataforma (rechazos de horas); el resto son conversaciones con el cliente.
 export const TICKET_ORIGIN: Record<string, { label: string; color: string; icon: typeof Activity }> = {
   internal: { label: 'Alerta interna', color: '#f97316', icon: ClipboardList },
+  obersuite: { label: 'Obersuite', color: '#7c3aed', icon: GraduationCap },
   whatsapp: { label: 'WhatsApp', color: '#059669', icon: MessageSquare },
   zoho: { label: 'Zoho Desk', color: '#2563eb', icon: Inbox },
 }
@@ -23,6 +24,8 @@ export const TICKET_STAGE: Record<string, string> = {
 // WhatsApp o se gestiona la alerta, y llevar a la genérica perdería el hilo.
 export function ticketPath(t: { id: number; origin: string }): string {
   if (t.origin === 'whatsapp') return `/tickets/wa/${t.id}`
-  if (t.origin === 'internal') return `/tickets/internal/${t.id}`
+  // Las altas de Obersuite comparten ficha con las alertas internas: viven en
+  // nuestra base y se gestionan igual.
+  if (t.origin === 'internal' || t.origin === 'obersuite') return `/tickets/internal/${t.id}`
   return `/tickets/${t.id}`
 }

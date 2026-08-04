@@ -58,7 +58,8 @@ func (w *InactivityWatcher) Start() {
 // RunOnce ejecuta un chequeo: detecta rojos nuevos (sin alerta reciente),
 // notifica al equipo CS y los marca como alertados.
 func (w *InactivityWatcher) RunOnce() error {
-	inactive, err := w.adminRepo.GetInactiveUsersList(inactivityAlertDays)
+	// tenantID 0: la alerta automática mira a todo el mundo, no a una empresa.
+	inactive, err := w.adminRepo.GetInactiveUsersList(0, inactivityAlertDays)
 	if err != nil {
 		return fmt.Errorf("listando inactivos: %w", err)
 	}

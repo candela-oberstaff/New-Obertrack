@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -44,6 +45,11 @@ type TicketRepository interface {
 	GetWithContact(id uint) (*models.Ticket, error)
 	List(assignedTo *uint) ([]models.Ticket, error)
 	ListByOrigin(origin string) ([]models.Ticket, error)
+	// ListByOrigins lista varios orígenes de una vez, ya ordenados entre sí.
+	ListByOrigins(origins ...string) ([]models.Ticket, error)
+	// FindOpenByUserAndOrigin devuelve el ticket sin cerrar de un profesional en
+	// un origen, o (nil, nil) si no hay.
+	FindOpenByUserAndOrigin(userID uint, origin string) (*models.Ticket, error)
 	ListInternalReport(start, end time.Time) ([]models.Ticket, error)
 
 	CreateMessage(m *models.TicketMessage) error
@@ -194,6 +200,22 @@ func (r *ticketRepository) GetByID(id uint) (*models.Ticket, error) {
 	return &t, nil
 }
 
+// FindOpenByUserAndOrigin busca el ticket sin cerrar de un profesional en un
+// origen. Devuelve (nil, nil) cuando no hay ninguno: no encontrarlo es un
+// resultado normal, no un fallo.
+func (r *ticketRepository) FindOpenByUserAndOrigin(userID uint, origin string) (*models.Ticket, error) {
+	var t models.Ticket
+	err := r.db.Where("user_id = ? AND origin = ? AND status <> ?", userID, origin, "closed").
+		Order("created_at desc").First(&t).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func (r *ticketRepository) GetWithContact(id uint) (*models.Ticket, error) {
 	var t models.Ticket
 	if err := r.db.Preload("Contact").First(&t, id).Error; err != nil {
@@ -225,9 +247,19 @@ func (r *ticketRepository) ListByOriginAndSession(origin, session string) ([]mod
 }
 
 func (r *ticketRepository) ListByOrigin(origin string) ([]models.Ticket, error) {
+	return r.ListByOrigins(origin)
+}
+
+// ListByOrigins lista varios orígenes de una vez: la bandeja enseña juntas las
+// alertas internas y las altas de Obersuite, y pedirlas por separado obligaría
+// a ordenarlas a mano después.
+func (r *ticketRepository) ListByOrigins(origins ...string) ([]models.Ticket, error) {
 	var tickets []models.Ticket
+	if len(origins) == 0 {
+		return tickets, nil
+	}
 	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages").
-		Where("origin = ?", origin).Order("updated_at desc").Find(&tickets).Error; err != nil {
+		Where("origin IN ?", origins).Order("updated_at desc").Find(&tickets).Error; err != nil {
 		return nil, err
 	}
 	return tickets, nil

@@ -168,8 +168,10 @@ export const adminService = {
     const { data } = await api.get('/admin/inactive-users', { params: { days } })
     return data
   },
-  getRecentActivity: async () => {
-    const { data } = await api.get('/admin/recent-activity')
+  // Feed global paginado por cursor: `before*` es el último evento ya mostrado.
+  // Sin parámetros devuelve la primera página, como antes.
+  getRecentActivity: async (params?: { limit?: number; before?: string; before_type?: string; before_id?: number }) => {
+    const { data } = await api.get('/admin/recent-activity', { params })
     return data
   },
   getAbsenceReport: async (params?: { month?: number; year?: number }) => {
@@ -238,6 +240,16 @@ export const adminService = {
   getArchived: async () => {
     const { data } = await api.get<{ data: any[] }>('/admin/archived')
     return data.data || []
+  },
+  // Pestaña Actividad de la ficha de empresa: el mismo semáforo de inactividad
+  // y reporte de ausencias del panel, ya acotados por el backend a esa empresa.
+  getTenantInactiveUsers: async (tenantId: number, days = 1) => {
+    const { data } = await api.get(`/admin/tenants/${tenantId}/inactive-users`, { params: { days } })
+    return data || []
+  },
+  getTenantAbsenceReport: async (tenantId: number, params?: { month?: number; year?: number }) => {
+    const { data } = await api.get(`/admin/tenants/${tenantId}/absence-report`, { params })
+    return data
   },
   getTenantArchived: async (tenantId: number) => {
     const { data } = await api.get<{ data: any[] }>(`/admin/tenants/${tenantId}/archived`)

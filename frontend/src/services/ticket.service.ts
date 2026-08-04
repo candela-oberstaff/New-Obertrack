@@ -75,7 +75,9 @@ export interface Ticket {
   assignee_name?: string;
   assignee_email?: string;
   department_id?: string;
-  origin?: 'zoho' | 'internal' | 'support' | 'whatsapp';
+  // 'obersuite' = alta llegada del puente de contratación: no es una
+  // conversación, es el aviso de que hay alguien nuevo al que acompañar.
+  origin?: 'zoho' | 'internal' | 'support' | 'whatsapp' | 'obersuite';
   /** Canal de chat asociado (solo origin 'support'): para navegar al chat */
   channel_id?: number;
   // Internal work-hour-rejection alert fields

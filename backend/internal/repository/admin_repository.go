@@ -32,11 +32,31 @@ type InactiveUser struct {
 }
 
 type Activity struct {
+	// ID es el de la fila de origen (jornada, tarea, tablero). Solo es único
+	// junto al tipo: una misma jornada aparece como registro y como aprobación.
+	ID        uint      `json:"id"`
 	Type      string    `json:"type"`
 	User      string    `json:"user"`
 	Company   string    `json:"company"`
 	Details   string    `json:"details"`
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// Tamaño de página del feed global. El máximo existe para que un limit inventado
+// desde fuera no obligue a materializar el UNION entero.
+const (
+	defaultActivityPageSize = 25
+	MaxActivityPageSize     = 100
+)
+
+// ActivityCursor marca el último evento ya entregado, para pedir los anteriores.
+// Lleva tipo e id además de la fecha porque dos eventos pueden compartir
+// timestamp al milisegundo (una carga masiva, un seed): ordenar solo por fecha
+// haría que uno de los empatados se perdiera justo en el corte de página.
+type ActivityCursor struct {
+	Timestamp time.Time
+	Type      string
+	ID        uint
 }
 
 // Categorías del expediente de empresa. Agrupan los tipos de evento en las
@@ -253,9 +273,11 @@ type EmployeeTask struct {
 
 type AdminRepository interface {
 	GetCompaniesMetrics() ([]CompanyMetric, error)
-	GetInactiveUsersList(minDays int) ([]InactiveUser, error)
-	GetRecentActivities() ([]Activity, error)
-	GetAbsenceReport(startDate, endDate time.Time) (*AbsenceReport, error)
+	GetInactiveUsersList(tenantID uint, minDays int) ([]InactiveUser, error)
+	// GetRecentActivities devuelve una página del feed global, de la más
+	// reciente hacia atrás. cursor nil = primera página.
+	GetRecentActivities(cursor *ActivityCursor, limit int) ([]Activity, error)
+	GetAbsenceReport(tenantID uint, startDate, endDate time.Time) (*AbsenceReport, error)
 	CountInactiveWarning(since time.Time) (int64, error)
 	CountBoards() (int64, error)
 	DeleteSuperadmins() error
@@ -375,7 +397,9 @@ func (r *adminRepository) GetCompaniesMetrics() ([]CompanyMetric, error) {
 // GetInactiveUsersList lista profesionales con minDays o más DÍAS HÁBILES
 // completos sin registrar horas (los fines de semana no cuentan como
 // inactividad, y el día de hoy tampoco: aún pueden registrar).
-func (r *adminRepository) GetInactiveUsersList(minDays int) ([]InactiveUser, error) {
+// GetInactiveUsersList lista profesionales sin registrar horas. tenantID 0 =
+// todas las empresas (panel de admin); con valor, solo la de esa ficha.
+func (r *adminRepository) GetInactiveUsersList(tenantID uint, minDays int) ([]InactiveUser, error) {
 	var all []InactiveUser
 	err := r.db.Raw(`
 		SELECT
@@ -398,10 +422,11 @@ func (r *adminRepository) GetInactiveUsersList(minDays int) ([]InactiveUser, err
 		LEFT JOIN work_hours wh ON wh.user_id = u.id AND wh.deleted_at IS NULL
 		LEFT JOIN users e ON e.id = u.empleador_id
 		WHERE u.user_type = 'profesional' AND u.deleted_at IS NULL AND u.is_active = true
+			AND (@tid = 0 OR u.empleador_id = @tid)
 		GROUP BY u.id, e.company_name
 		ORDER BY days_inactive DESC
 		LIMIT 1000
-	`).Scan(&all).Error
+	`, sql.Named("tid", tenantID)).Scan(&all).Error
 	if err != nil {
 		return nil, err
 	}
@@ -512,15 +537,31 @@ func (r *adminRepository) MarkUsersAlerted(alerts []models.InactivityAlert) erro
 	return r.db.Save(&alerts).Error
 }
 
-func (r *adminRepository) GetRecentActivities() ([]Activity, error) {
+func (r *adminRepository) GetRecentActivities(cursor *ActivityCursor, limit int) ([]Activity, error) {
 	var activities []Activity
+	if limit <= 0 {
+		limit = defaultActivityPageSize
+	}
+
+	// El corte de página va por keyset y no por OFFSET: el feed crece por arriba
+	// mientras se navega, y con OFFSET cada evento nuevo empuja una fila ya vista
+	// a la página siguiente (se ve repetida y la de abajo se pierde).
+	where := ""
+	args := []interface{}{}
+	if cursor != nil {
+		where = "WHERE (feed.timestamp, feed.type, feed.id) < (?::timestamptz, ?::text, ?::bigint)"
+		args = append(args, cursor.Timestamp, cursor.Type, int64(cursor.ID))
+	}
+	args = append(args, limit)
+
 	// Cross-domain activity feed: work-hour registrations + approvals + task and
 	// board creation, attributed to the acting user with their company. UNION ALL
 	// keeps the actor's display name (vs. reading raw audit rows).
 	err := r.db.Raw(`
-		SELECT type, "user", company, details, timestamp FROM (
+		SELECT id, type, "user", company, details, timestamp FROM (
 			-- Work hours registered
 			SELECT
+				wh.id as id,
 				'work_hour' as type,
 				u.name as "user",
 				COALESCE(NULLIF(e.company_name, ''), NULLIF(u.company_name, ''), '-') as company,
@@ -535,6 +576,7 @@ func (r *adminRepository) GetRecentActivities() ([]Activity, error) {
 
 			-- Work hours approved (actor = approver)
 			SELECT
+				wh.id as id,
 				'approval' as type,
 				ap.name as "user",
 				COALESCE(NULLIF(e.company_name, ''), NULLIF(ap.company_name, ''), '-') as company,
@@ -549,6 +591,7 @@ func (r *adminRepository) GetRecentActivities() ([]Activity, error) {
 
 			-- Tasks created
 			SELECT
+				t.id as id,
 				'task' as type,
 				u.name as "user",
 				COALESCE(NULLIF(e.company_name, ''), NULLIF(u.company_name, ''), '-') as company,
@@ -563,6 +606,7 @@ func (r *adminRepository) GetRecentActivities() ([]Activity, error) {
 
 			-- Boards created
 			SELECT
+				b.id as id,
 				'board' as type,
 				u.name as "user",
 				COALESCE(NULLIF(e.company_name, ''), NULLIF(u.company_name, ''), '-') as company,
@@ -573,16 +617,26 @@ func (r *adminRepository) GetRecentActivities() ([]Activity, error) {
 			LEFT JOIN users e ON e.id = u.empleador_id
 			WHERE b.deleted_at IS NULL
 		) feed
-		ORDER BY timestamp DESC
-		LIMIT 25
-	`).Scan(&activities).Error
+		`+where+`
+		ORDER BY feed.timestamp DESC, feed.type DESC, feed.id DESC
+		LIMIT ?
+	`, args...).Scan(&activities).Error
 	return activities, err
 }
 
-func (r *adminRepository) GetAbsenceReport(startDate, endDate time.Time) (*AbsenceReport, error) {
+// GetAbsenceReport resume las ausencias del periodo. tenantID 0 = todas las
+// empresas; con valor, solo las jornadas registradas para esa empresa (se filtra
+// por el tenant de la jornada, no por el empleador actual de la persona: si
+// cambió de empresa, sus ausencias siguen contando donde ocurrieron).
+func (r *adminRepository) GetAbsenceReport(tenantID uint, startDate, endDate time.Time) (*AbsenceReport, error) {
 	report := &AbsenceReport{
 		Reasons: []AbsenceReasonCount{},
 		Items:   []AbsenceReportItem{},
+	}
+	scope := []interface{}{
+		sql.Named("tid", tenantID),
+		sql.Named("start", startDate),
+		sql.Named("end", endDate),
 	}
 
 	err := r.db.Raw(`
@@ -595,8 +649,9 @@ func (r *adminRepository) GetAbsenceReport(startDate, endDate time.Time) (*Absen
 		FROM work_hours wh
 		WHERE wh.work_type = 'absence'
 			AND wh.deleted_at IS NULL
-			AND wh.work_date BETWEEN ? AND ?
-	`, startDate, endDate).Scan(report).Error
+			AND wh.work_date BETWEEN @start AND @end
+			AND (@tid = 0 OR wh.tenant_id = @tid)
+	`, scope...).Scan(report).Error
 	if err != nil {
 		return nil, err
 	}
@@ -608,11 +663,12 @@ func (r *adminRepository) GetAbsenceReport(startDate, endDate time.Time) (*Absen
 		FROM work_hours wh
 		WHERE wh.work_type = 'absence'
 			AND wh.deleted_at IS NULL
-			AND wh.work_date BETWEEN ? AND ?
+			AND wh.work_date BETWEEN @start AND @end
+			AND (@tid = 0 OR wh.tenant_id = @tid)
 		GROUP BY reason
 		ORDER BY count DESC, reason ASC
 		LIMIT 5
-	`, startDate, endDate).Scan(&report.Reasons).Error
+	`, scope...).Scan(&report.Reasons).Error
 	if err != nil {
 		return nil, err
 	}
@@ -639,10 +695,11 @@ func (r *adminRepository) GetAbsenceReport(startDate, endDate time.Time) (*Absen
 		LEFT JOIN users e ON e.id = u.empleador_id
 		WHERE wh.work_type = 'absence'
 			AND wh.deleted_at IS NULL
-			AND wh.work_date BETWEEN ? AND ?
+			AND wh.work_date BETWEEN @start AND @end
+			AND (@tid = 0 OR wh.tenant_id = @tid)
 		ORDER BY wh.work_date DESC, wh.created_at DESC
 		LIMIT 25
-	`, startDate, endDate).Scan(&report.Items).Error
+	`, scope...).Scan(&report.Items).Error
 	if err != nil {
 		return nil, err
 	}

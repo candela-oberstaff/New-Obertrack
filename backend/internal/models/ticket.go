@@ -35,11 +35,21 @@ const (
 
 // Ticket origin discriminator. "internal" tickets are Obertrack-generated
 // alerts (e.g. work-hour rejections) stored locally; "zoho" is set on the DTO
-// for tickets fetched live from Zoho Desk (never persisted).
+// for tickets fetched live from Zoho Desk (never persisted); "obersuite" marks
+// the arrival of someone contratado en Obersuite, para que la incorporación se
+// vea en la bandeja y no solo en el panel de profesionales.
 const (
-	OriginInternal = "internal"
-	OriginZoho     = "zoho"
+	OriginInternal  = "internal"
+	OriginZoho      = "zoho"
+	OriginObersuite = "obersuite"
 )
+
+// IsLocalOrigin distingue los tickets que viven en nuestra base de los que se
+// leen en vivo de Zoho. Solo los locales admiten notas, cambio de etapa y
+// reasignación desde la ficha; los de Zoho se gestionan allí.
+func IsLocalOrigin(origin string) bool {
+	return origin == OriginInternal || origin == OriginObersuite
+}
 
 type Ticket struct {
 	ID          uint           `gorm:"primaryKey" json:"id"`

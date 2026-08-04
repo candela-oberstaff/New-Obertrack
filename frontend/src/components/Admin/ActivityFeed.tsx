@@ -6,6 +6,8 @@ import styles from './ActivityFeed.module.css'
 
 interface ActivityItem {
   id?: number
+  /** Identidad estable entre tandas: el id de origen se repite entre tipos. */
+  uid?: string
   type?: string
   description?: string
   details?: string
@@ -110,7 +112,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
               const d = when(a)
               const Icon = v.icon
               return (
-                <div key={a.id ?? `${group.label}-${i}`} className={styles.row}>
+                <div key={a.uid ?? a.id ?? `${group.label}-${i}`} className={styles.row}>
                   <div className={styles.avatarWrap}>
                     <span className={styles.avatar} style={{ background: avatarColor(a.user) }}>
                       {initials(a.user)}

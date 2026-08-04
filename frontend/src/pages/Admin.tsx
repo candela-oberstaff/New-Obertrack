@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdmin } from '../hooks'
 import {
@@ -20,8 +20,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Mail,
-  MessageCircle,
-  MessageSquare,
   Archive,
   UploadCloud,
   Download,
@@ -38,6 +36,8 @@ import { EmailComposerModal, type ComposerRecipient } from '../components/Admin/
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
 import { ActivityFeed } from '../components/Admin/ActivityFeed'
+import { TeamActivityPanel } from '../components/Admin/TeamActivityPanel'
+import { AbsenceReportPanel, groupAbsences, absenceStatus } from '../components/Admin/AbsenceReportPanel'
 import { ArchivedList } from '../components/Admin/ArchivedList'
 import { authService, adminService } from '../services/api'
 import { setRecordNav } from '../lib/recordNav'
@@ -84,6 +84,13 @@ export default function Admin() {
     followUps,
     setFollowUp,
     recentActivity,
+    activityPage,
+    activityPageNumber,
+    hasPrevActivity,
+    hasMoreActivity,
+    loadingMoreActivity,
+    prevActivityPage,
+    nextActivityPage,
     absenceReport,
     isLoading,
     activeTab,
@@ -113,15 +120,6 @@ export default function Admin() {
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null)
   const [usersPage, setUsersPage] = useState(1)
 
-  // Actividad de equipo (pestaña Actividad): semáforo de inactividad.
-  const [teamSearch, setTeamSearch] = useState('')
-  const [teamTier, setTeamTier] = useState<'' | 'yellow' | 'red'>('')
-  const [teamPage, setTeamPage] = useState(1)
-
-  // Reporte de ausencias (pestaña Actividad): agrupado por usuario.
-  const [absSearch, setAbsSearch] = useState('')
-  const [absPage, setAbsPage] = useState(1)
-  const [absExpandedUserId, setAbsExpandedUserId] = useState<number | null>(null)
   // Tarjeta "Reporte de ausencias" del dashboard: filtro por empresa, paginación
   // y detalle de cada registro en modal.
   const [rptCompany, setRptCompany] = useState<string>('')
@@ -385,80 +383,12 @@ export default function Admin() {
     setUsersPage(1)
   }, [searchQuery, roleFilter, companyFilter])
 
-  // ── Actividad de equipo: filtrado + paginación ──────────────────────────────
-  const TEAM_PER_PAGE = 10
-
-  const teamFiltered = teamInactivity
-    .filter(u => {
-      const q = teamSearch.trim().toLowerCase()
-      if (q && !(u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.company?.toLowerCase().includes(q))) return false
-      if (teamTier === 'yellow' && u.days_inactive !== 1) return false
-      if (teamTier === 'red' && u.days_inactive < 2) return false
-      return true
-    })
-    .sort((a, b) => b.days_inactive - a.days_inactive || (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }))
-
-  const teamYellowCount = teamInactivity.filter(u => u.days_inactive === 1).length
-  const teamRedCount = teamInactivity.filter(u => u.days_inactive >= 2).length
-  const teamTotalPages = Math.max(1, Math.ceil(teamFiltered.length / TEAM_PER_PAGE))
-  const teamCurrentPage = Math.min(teamPage, teamTotalPages)
-  const teamPaginated = teamFiltered.slice((teamCurrentPage - 1) * TEAM_PER_PAGE, teamCurrentPage * TEAM_PER_PAGE)
-
-  useEffect(() => {
-    setTeamPage(1)
-  }, [teamSearch, teamTier])
-
-  // Mensaje de seguimiento prellenado para las acciones rápidas (email / WhatsApp).
-  const followUpMessage = (u: { name: string; days_inactive: number }) =>
-    `Hola ${u.name?.split(' ')[0] || ''}, te escribimos del equipo de Obertrack: notamos que no registras horas desde hace ${u.days_inactive} día${u.days_inactive === 1 ? '' : 's'}. ¿Está todo bien? Si tienes algún inconveniente cuéntanos para ayudarte.`
-
   // Modal de redacción de correo (plantillas de Tools / redacción nueva).
   const [composer, setComposer] = useState<{ recipient: ComposerRecipient; body: string } | null>(null)
 
-  const whatsappHref = (u: { name: string; phone_number?: string; days_inactive: number }) => {
-    const digits = (u.phone_number || '').replace(/\D/g, '')
-    return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(followUpMessage(u as any))}` : null
-  }
-
-  // ── Reporte de ausencias: agrupado por usuario ──────────────────────────────
-  const ABS_PER_PAGE = 10
-
-  const absenceGroups = (() => {
-    const map = new Map<number, {
-      user_id: number; name: string; email: string; phone_number?: string; avatar?: string
-      tenant_id: number; company: string; count: number; totalHours: number; pending: number
-      lastDate: string; lastReason: string; items: typeof absenceItems
-    }>()
-    for (const item of absenceItems) {
-      const g = map.get(item.user_id) || {
-        user_id: item.user_id, name: item.user, email: item.email, phone_number: item.phone_number,
-        avatar: item.avatar, tenant_id: item.tenant_id, company: item.company,
-        count: 0, totalHours: 0, pending: 0, lastDate: '', lastReason: '', items: [] as typeof absenceItems,
-      }
-      g.count++
-      g.totalHours += item.absence_hours || 0
-      if (!item.approved && !item.rejected) g.pending++
-      if (!g.lastDate || item.work_date > g.lastDate) {
-        g.lastDate = item.work_date
-        g.lastReason = item.absence_reason
-      }
-      g.items.push(item)
-      map.set(item.user_id, g)
-    }
-    return Array.from(map.values()).sort((a, b) => b.count - a.count || (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }))
-  })()
-
-  const absFiltered = absenceGroups.filter(g => {
-    const q = absSearch.trim().toLowerCase()
-    return !q || g.name?.toLowerCase().includes(q) || g.email?.toLowerCase().includes(q) || g.company?.toLowerCase().includes(q)
-  })
-  const absTotalPages = Math.max(1, Math.ceil(absFiltered.length / ABS_PER_PAGE))
-  const absCurrentPage = Math.min(absPage, absTotalPages)
-  const absPaginated = absFiltered.slice((absCurrentPage - 1) * ABS_PER_PAGE, absCurrentPage * ABS_PER_PAGE)
-
-  useEffect(() => {
-    setAbsPage(1)
-  }, [absSearch])
+  // El agrupado por profesional lo aporta el panel de ausencias: aquí solo se
+  // reutiliza para el top del dashboard.
+  const absenceGroups = groupAbsences(absenceItems)
 
   // ── Tarjeta del dashboard: lista plana con filtro por empresa + paginación ──
   const RPT_PER_PAGE = 5
@@ -488,17 +418,6 @@ export default function Admin() {
   useEffect(() => {
     setRptPage(1)
   }, [rptCompany, rptReason])
-
-  const absenceFollowUp = (g: { name: string; count: number }) =>
-    `Hola ${g.name?.split(' ')[0] || ''}, te escribimos del equipo de Obertrack por el seguimiento de tus ${g.count} ausencia${g.count === 1 ? '' : 's'} registrada${g.count === 1 ? '' : 's'} este mes. ¿Está todo bien? Si necesitas apoyo, cuéntanos.`
-
-  const absEmailHref = (g: { name: string; email: string; count: number }) =>
-    `mailto:${g.email}?subject=${encodeURIComponent('Seguimiento de ausencias en Obertrack')}&body=${encodeURIComponent(absenceFollowUp(g))}`
-
-  const absWhatsappHref = (g: { name: string; phone_number?: string; count: number }) => {
-    const digits = (g.phone_number || '').replace(/\D/g, '')
-    return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(absenceFollowUp(g))}` : null
-  }
 
   // ── Métricas de Customer Success (dashboard) ───────────────────────────────
   const CS_PER_PAGE = 10
@@ -543,38 +462,6 @@ export default function Admin() {
   const csCardStyle: React.CSSProperties = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '18px' }
   const csCardTitleStyle: React.CSSProperties = { margin: '0 0 12px', fontSize: '14px', fontWeight: 800, color: '#0f172a' }
 
-  // ── Bitácora de gestión CS: celda compartida (inactividad / ausencias) ─────
-  const FOLLOWUP_STYLES: Record<string, { bg: string; color: string }> = {
-    contacted: { bg: 'rgba(59,130,246,0.12)', color: '#1d4ed8' },
-    justified: { bg: 'rgba(16,185,129,0.12)', color: '#047857' },
-    escalated: { bg: 'rgba(168,85,247,0.14)', color: '#7e22ce' },
-  }
-
-  const renderFollowUpCell = (userId: number, kind: 'inactivity' | 'absence') => {
-    const info = followUps[kind][userId]
-    const palette = info ? FOLLOWUP_STYLES[info.status] : undefined
-    return (
-      <div onClick={(e) => e.stopPropagation()}>
-        <select
-          value={info?.status || ''}
-          onChange={(e) => { if (e.target.value) setFollowUp(userId, kind, e.target.value) }}
-          title="Estado de gestión del seguimiento"
-          style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px', fontWeight: 700, background: palette?.bg || '#f8fafc', color: palette?.color || '#64748b', cursor: 'pointer' }}
-        >
-          {!info && <option value="">— Gestionar —</option>}
-          <option value="contacted">📞 Contactado</option>
-          <option value="justified">✅ Justificado</option>
-          <option value="escalated">⚠️ Escalado</option>
-        </select>
-        {info && (
-          <small style={{ display: 'block', color: '#94a3b8', marginTop: '3px' }}>
-            por {info.by_name} · {new Date(info.created_at).toLocaleDateString('es-ES')}
-          </small>
-        )}
-      </div>
-    )
-  }
-
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'users', label: 'Usuarios', icon: Users },
@@ -604,12 +491,6 @@ export default function Admin() {
     if (!value) return 'Sin fecha'
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? 'Sin fecha' : date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
-  }
-
-  const getAbsenceStatus = (item: any) => {
-    if (item.rejected) return { label: 'Rechazada', className: 'danger' }
-    if (item.approved) return { label: 'Aprobada', className: 'success' }
-    return { label: 'Pendiente', className: 'warning' }
   }
 
   if (isLoading) {
@@ -813,7 +694,7 @@ export default function Admin() {
                     </p>
                   ) : (
                     rptPaginated.map((item: any) => {
-                      const status = getAbsenceStatus(item)
+                      const status = absenceStatus(item)
                       return (
                         <div
                           key={item.id}
@@ -1349,319 +1230,24 @@ export default function Admin() {
         {activeTab === 'activity' && (
           <div className={styles['activity-tab']} data-tour="admin-activity-list">
             {/* ── Actividad de equipo: semáforo de inactividad ── */}
-            <div style={{ marginBottom: '32px' }} data-tour="admin-team-activity">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Actividad de equipo</h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>
-                    Profesionales sin registrar horas. Los de 2+ días disparan alerta automática al equipo de customer success.
-                  </p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => setTeamTier(teamTier === 'yellow' ? '' : 'yellow')}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', border: teamTier === 'yellow' ? '1px solid #f59e0b' : '1px solid #e2e8f0', background: 'rgba(245,158,11,0.1)', color: '#b45309', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    🟡 1 día: {teamYellowCount}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTeamTier(teamTier === 'red' ? '' : 'red')}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', border: teamTier === 'red' ? '1px solid #ef4444' : '1px solid #e2e8f0', background: 'rgba(239,68,68,0.1)', color: '#b91c1c', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    🔴 2+ días: {teamRedCount}
-                  </button>
-                  <div className={styles['search-box']}>
-                    <Search size={16} />
-                    <input
-                      type="text"
-                      placeholder="Buscar por nombre, correo o empresa..."
-                      value={teamSearch}
-                      onChange={(e) => setTeamSearch(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {teamInactivityLoading ? (
-                <Skeleton height={180} radius={12} />
-              ) : teamFiltered.length === 0 ? (
-                <div className={styles['empty-state']} style={{ padding: '28px' }}>
-                  <CheckCircle2 size={34} />
-                  <p>{teamInactivity.length === 0 ? 'Todo el equipo está registrando horas 🎉' : 'Sin resultados con los filtros aplicados'}</p>
-                </div>
-              ) : (
-                <div className={styles['users-table']}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Profesional</th>
-                        <th>Empresa</th>
-                        <th>Últ. actividad</th>
-                        <th>Inactividad</th>
-                        <th>Gestión</th>
-                        <th>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teamPaginated.map(u => {
-                        const isRed = u.days_inactive >= 2
-                        const waLink = whatsappHref(u)
-                        return (
-                          <tr key={u.id} style={{ background: isRed ? 'rgba(239,68,68,0.07)' : 'rgba(245,158,11,0.07)' }}>
-                            <td>
-                              <div className={styles['user-cell']} style={{ cursor: 'pointer' }} onClick={() => openUser(u.id, teamFiltered.map(x => x.id))} title="Ver detalle del profesional">
-                                <Avatar src={u.avatar} name={u.name} size="sm" />
-                                <div>
-                                  <span style={{ display: 'block' }}>{u.name}</span>
-                                  <small style={{ color: '#94a3b8' }}>{u.email}{u.job_title ? ` · ${u.job_title}` : ''}</small>
-                                </div>
-                              </div>
-                            </td>
-                            <td>
-                              {u.tenant_id > 0 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => navigate(`/admin/tenants/${u.tenant_id}`)}
-                                  style={{ background: 'none', border: 'none', padding: 0, color: '#5a52e6', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}
-                                  title="Ver detalle de la empresa"
-                                >
-                                  {u.company}
-                                </button>
-                              ) : (u.company || '—')}
-                            </td>
-                            <td>{u.last_active ? new Date(u.last_active).toLocaleDateString('es-ES') : '—'}</td>
-                            <td>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700, background: isRed ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.14)', color: isRed ? '#b91c1c' : '#b45309' }}>
-                                {isRed ? '🔴' : '🟡'} {u.days_inactive} día{u.days_inactive === 1 ? '' : 's'} háb.
-                              </span>
-                            </td>
-                            <td>{renderFollowUpCell(u.id, 'inactivity')}</td>
-                            <td>
-                              <div className={styles['action-buttons']}>
-                                <button
-                                  type="button"
-                                  onClick={() => setComposer({ recipient: { id: u.id, name: u.name, email: u.email }, body: followUpMessage(u) })}
-                                  className={styles['btn-icon']}
-                                  title={`Enviar email a ${u.email}`}
-                                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                                >
-                                  <Mail size={16} />
-                                </button>
-                                {waLink ? (
-                                  <a
-                                    href={waLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={() => adminService.logContact(u.id, 'whatsapp')}
-                                    className={styles['btn-icon']}
-                                    title={`Escribir por WhatsApp (${u.phone_number})`}
-                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}
-                                  >
-                                    <MessageCircle size={16} />
-                                  </a>
-                                ) : (
-                                  <span className={styles['btn-icon']} title="Sin teléfono registrado" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, cursor: 'not-allowed' }}>
-                                    <MessageCircle size={16} />
-                                  </span>
-                                )}
-                                <button
-                                  className={styles['btn-icon']}
-                                  onClick={() => { adminService.logContact(u.id, 'chat'); navigate(`/chat?userId=${u.id}`) }}
-                                  title="Chat interno"
-                                  style={{ color: '#7c3aed' }}
-                                >
-                                  <MessageSquare size={16} />
-                                </button>
-                                <button
-                                  className={styles['btn-icon']}
-                                  onClick={() => openUser(u.id, teamFiltered.map(x => x.id))}
-                                  title="Ver detalle"
-                                >
-                                  <Eye size={16} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '12px 16px' }}>
-                    <span style={{ fontSize: '13px', color: '#64748b' }}>
-                      Mostrando {(teamCurrentPage - 1) * TEAM_PER_PAGE + 1}–{Math.min(teamCurrentPage * TEAM_PER_PAGE, teamFiltered.length)} de {teamFiltered.length} profesionales
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button type="button" className={styles['btn-icon']} onClick={() => setTeamPage(p => Math.max(1, p - 1))} disabled={teamCurrentPage <= 1} style={{ opacity: teamCurrentPage <= 1 ? 0.4 : 1 }} title="Página anterior">
-                        <ChevronLeft size={16} />
-                      </button>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
-                        Página {teamCurrentPage} de {teamTotalPages}
-                      </span>
-                      <button type="button" className={styles['btn-icon']} onClick={() => setTeamPage(p => Math.min(teamTotalPages, p + 1))} disabled={teamCurrentPage >= teamTotalPages} style={{ opacity: teamCurrentPage >= teamTotalPages ? 0.4 : 1 }} title="Página siguiente">
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <TeamActivityPanel
+              items={teamInactivity}
+              loading={teamInactivityLoading}
+              followUps={followUps.inactivity}
+              onSetFollowUp={(userId, status) => setFollowUp(userId, 'inactivity', status)}
+              onCompose={(recipient, body) => setComposer({ recipient, body })}
+              onOpenUser={openUser}
+              dataTour="admin-team-activity"
+            />
 
             {/* ── Reporte de ausencias: agrupado por usuario ── */}
-            <div style={{ marginBottom: '32px' }} data-tour="admin-absence-report">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Reporte de ausencias</h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>
-                    Ausencias del mes agrupadas por profesional. Haz clic en una fila para ver el detalle.
-                  </p>
-                </div>
-                <div className={styles['search-box']}>
-                  <Search size={16} />
-                  <input
-                    type="text"
-                    placeholder="Buscar por nombre, correo o empresa..."
-                    value={absSearch}
-                    onChange={(e) => setAbsSearch(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {absFiltered.length === 0 ? (
-                <div className={styles['empty-state']} style={{ padding: '28px' }}>
-                  <CalendarX size={34} />
-                  <p>{absenceItems.length === 0 ? 'Sin ausencias registradas este mes' : 'Sin resultados con los filtros aplicados'}</p>
-                </div>
-              ) : (
-                <div className={styles['users-table']}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Profesional</th>
-                        <th>Empresa</th>
-                        <th>Ausencias</th>
-                        <th>Horas</th>
-                        <th>Última ausencia</th>
-                        <th>Gestión</th>
-                        <th>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {absPaginated.map(g => {
-                        const expanded = absExpandedUserId === g.user_id
-                        const waLink = absWhatsappHref(g)
-                        return (
-                          <Fragment key={g.user_id}>
-                            <tr
-                              onClick={() => setAbsExpandedUserId(expanded ? null : g.user_id)}
-                              style={{ cursor: 'pointer', background: expanded ? 'rgba(204,51,204,0.05)' : undefined }}
-                              title={expanded ? 'Ocultar detalle' : 'Ver detalle de las ausencias'}
-                            >
-                              <td>
-                                <div className={styles['user-cell']}>
-                                  <Avatar src={g.avatar} name={g.name} size="sm" />
-                                  <div>
-                                    <span style={{ display: 'block' }}>{g.name}</span>
-                                    <small style={{ color: '#94a3b8' }}>{g.email}</small>
-                                  </div>
-                                </div>
-                              </td>
-                              <td>
-                                {g.tenant_id > 0 ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); navigate(`/admin/tenants/${g.tenant_id}`) }}
-                                    style={{ background: 'none', border: 'none', padding: 0, color: '#5a52e6', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}
-                                  >
-                                    {g.company}
-                                  </button>
-                                ) : (g.company || '—')}
-                              </td>
-                              <td>
-                                <span style={{ fontWeight: 700 }}>{g.count}</span>
-                                {g.pending > 0 && (
-                                  <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: 700, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
-                                    {g.pending} pendiente{g.pending === 1 ? '' : 's'}
-                                  </span>
-                                )}
-                              </td>
-                              <td>{g.totalHours.toFixed(1)} h</td>
-                              <td>
-                                {g.lastDate ? new Date(g.lastDate).toLocaleDateString('es-ES') : '—'}
-                                <small style={{ display: 'block', color: '#94a3b8' }}>{g.lastReason}</small>
-                              </td>
-                              <td>{renderFollowUpCell(g.user_id, 'absence')}</td>
-                              <td>
-                                <div className={styles['action-buttons']} onClick={(e) => e.stopPropagation()}>
-                                  <a href={absEmailHref(g)} onClick={() => adminService.logContact(g.user_id, 'email')} className={styles['btn-icon']} title={`Enviar email a ${g.email}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <Mail size={16} />
-                                  </a>
-                                  {waLink ? (
-                                    <a href={waLink} target="_blank" rel="noopener noreferrer" onClick={() => adminService.logContact(g.user_id, 'whatsapp')} className={styles['btn-icon']} title={`Escribir por WhatsApp (${g.phone_number})`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
-                                      <MessageCircle size={16} />
-                                    </a>
-                                  ) : (
-                                    <span className={styles['btn-icon']} title="Sin teléfono registrado" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, cursor: 'not-allowed' }}>
-                                      <MessageCircle size={16} />
-                                    </span>
-                                  )}
-                                  <button className={styles['btn-icon']} onClick={() => { adminService.logContact(g.user_id, 'chat'); navigate(`/chat?userId=${g.user_id}`) }} title="Chat interno" style={{ color: '#7c3aed' }}>
-                                    <MessageSquare size={16} />
-                                  </button>
-                                  <button className={styles['btn-icon']} onClick={() => openUser(g.user_id, absFiltered.map(x => x.user_id))} title="Ver detalle del profesional">
-                                    <Eye size={16} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                            {expanded && (
-                              <tr>
-                                <td colSpan={7} style={{ background: 'rgba(204,51,204,0.03)', padding: '10px 18px' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {g.items.map(item => {
-                                      const status = getAbsenceStatus(item)
-                                      return (
-                                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '13px', color: '#475569' }}>
-                                          <span style={{ minWidth: 90, fontWeight: 600 }}>{new Date(item.work_date).toLocaleDateString('es-ES')}</span>
-                                          <span style={{ flex: 1 }}>{item.absence_reason}</span>
-                                          <span>{(item.absence_hours || 0).toFixed(1)} h</span>
-                                          <span style={{ padding: '2px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 700, background: status.className === 'success' ? 'rgba(16,185,129,0.12)' : status.className === 'danger' ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.14)', color: status.className === 'success' ? '#047857' : status.className === 'danger' ? '#b91c1c' : '#b45309' }}>
-                                            {status.label}
-                                          </span>
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </Fragment>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '12px 16px' }}>
-                    <span style={{ fontSize: '13px', color: '#64748b' }}>
-                      Mostrando {(absCurrentPage - 1) * ABS_PER_PAGE + 1}–{Math.min(absCurrentPage * ABS_PER_PAGE, absFiltered.length)} de {absFiltered.length} profesionales con ausencias
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button type="button" className={styles['btn-icon']} onClick={() => setAbsPage(p => Math.max(1, p - 1))} disabled={absCurrentPage <= 1} style={{ opacity: absCurrentPage <= 1 ? 0.4 : 1 }} title="Página anterior">
-                        <ChevronLeft size={16} />
-                      </button>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
-                        Página {absCurrentPage} de {absTotalPages}
-                      </span>
-                      <button type="button" className={styles['btn-icon']} onClick={() => setAbsPage(p => Math.min(absTotalPages, p + 1))} disabled={absCurrentPage >= absTotalPages} style={{ opacity: absCurrentPage >= absTotalPages ? 0.4 : 1 }} title="Página siguiente">
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <AbsenceReportPanel
+              items={absenceItems}
+              followUps={followUps.absence}
+              onSetFollowUp={(userId, status) => setFollowUp(userId, 'absence', status)}
+              onOpenUser={openUser}
+              dataTour="admin-absence-report"
+            />
 
             {/* ── Actividad reciente (feed existente) ── */}
             <h3 style={{ margin: '0 0 14px', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Actividad reciente</h3>
@@ -1671,7 +1257,26 @@ export default function Admin() {
                 <p>No hay actividad registrada</p>
               </div>
             ) : (
-              <ActivityFeed items={recentActivity} />
+              <>
+                <ActivityFeed items={activityPage} />
+                {/* El feed llega por tandas: sin esto, lo anterior a los últimos
+                    25 eventos era inalcanzable desde el panel. Sin "de N
+                    páginas" porque el cursor no conoce el total (contarlo
+                    obligaría a recorrer todo el histórico en cada carga). */}
+                {(hasPrevActivity || hasMoreActivity) && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', padding: '12px 16px' }}>
+                    <button type="button" className={styles['btn-icon']} onClick={prevActivityPage} disabled={!hasPrevActivity} style={{ opacity: hasPrevActivity ? 1 : 0.4 }} title="Página anterior">
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                      {loadingMoreActivity ? 'Cargando…' : `Página ${activityPageNumber}`}
+                    </span>
+                    <button type="button" className={styles['btn-icon']} onClick={nextActivityPage} disabled={!hasMoreActivity || loadingMoreActivity} style={{ opacity: !hasMoreActivity || loadingMoreActivity ? 0.4 : 1 }} title="Página siguiente">
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -1703,8 +1308,8 @@ export default function Admin() {
                 <div style={{ fontWeight: 800, color: '#0f172a' }}>{rptDetail.user}</div>
                 <div style={{ fontSize: 13, color: '#64748b' }}>{rptDetail.company}</div>
               </div>
-              <span className={`${styles['pill']} ${styles[getAbsenceStatus(rptDetail).className]}`} style={{ marginLeft: 'auto' }}>
-                {getAbsenceStatus(rptDetail).label}
+              <span className={`${styles['pill']} ${styles[absenceStatus(rptDetail).className]}`} style={{ marginLeft: 'auto' }}>
+                {absenceStatus(rptDetail).label}
               </span>
             </div>
 

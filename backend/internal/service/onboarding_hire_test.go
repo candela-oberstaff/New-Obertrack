@@ -385,3 +385,84 @@ func TestHire_NoAvisaSiLaEmpresaNoEsValida(t *testing.T) {
 			induction.invited, auth.welcomeTo)
 	}
 }
+
+// --- Ticket de incorporación --------------------------------------------------
+
+// fakeHireTicketSvc registra las incorporaciones que se abrieron en Soporte.
+type fakeHireTicketSvc struct {
+	TicketService
+	abiertos []ObersuiteHireInput
+	err      error
+}
+
+func (f *fakeHireTicketSvc) CreateObersuiteHireAlert(in ObersuiteHireInput) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.abiertos = append(f.abiertos, in)
+	return nil
+}
+
+// El motivo del ticket: hasta ahora la contratación solo se veía en el panel de
+// profesionales, donde no se mira salvo que se sepa que hay que mirar.
+func TestHire_AbreElTicketDeIncorporacionEnSoporte(t *testing.T) {
+	svc, _, _, _, _ := newHireSvc(true)
+	tickets := &fakeHireTicketSvc{}
+	svc.ticketSvc = tickets
+
+	req := baseHire()
+	req.JobTitle = "Backend Developer"
+	req.PhoneNumber = "+58414700000"
+
+	if _, err := svc.Hire(req); err != nil {
+		t.Fatalf("hire: %v", err)
+	}
+	if len(tickets.abiertos) != 1 {
+		t.Fatalf("se esperaba 1 ticket de incorporación, hubo %d", len(tickets.abiertos))
+	}
+	in := tickets.abiertos[0]
+	if in.ProfessionalEmail != "nuevo@x.com" || in.JobTitle != "Backend Developer" {
+		t.Fatalf("el ticket no lleva los datos del contratado: %+v", in)
+	}
+	if in.CompanyName != "Acme" {
+		t.Fatalf("company = %q, se esperaba la empresa contratante", in.CompanyName)
+	}
+	// El texto del ticket cambia según esto: no es lo mismo "reenvíale la
+	// capacitación" que "no se le envió ninguna".
+	if !in.InductionSent {
+		t.Fatal("con la inducción encendida el ticket debe saber que salió el correo")
+	}
+}
+
+// Con la inducción apagada el alta igual se avisa: hay alguien nuevo al que
+// acompañar aunque no haya capacitación que enviarle.
+func TestHire_AvisaAunqueLaInduccionEsteApagada(t *testing.T) {
+	svc, _, _, _, _ := newHireSvc(false)
+	tickets := &fakeHireTicketSvc{}
+	svc.ticketSvc = tickets
+
+	if _, err := svc.Hire(baseHire()); err != nil {
+		t.Fatalf("hire: %v", err)
+	}
+	if len(tickets.abiertos) != 1 {
+		t.Fatalf("se esperaba 1 ticket, hubo %d", len(tickets.abiertos))
+	}
+	if tickets.abiertos[0].InductionSent {
+		t.Fatal("sin inducción el ticket no debe decir que se envió")
+	}
+}
+
+// El ticket es un aviso, no parte de la contratación: si falla, la persona ya
+// está contratada y el puente no puede devolverle un error a Obersuite.
+func TestHire_UnFalloDelTicketNoRompeLaContratacion(t *testing.T) {
+	svc, _, _, _, _ := newHireSvc(true)
+	svc.ticketSvc = &fakeHireTicketSvc{err: errors.New("soporte caído")}
+
+	result, err := svc.Hire(baseHire())
+	if err != nil {
+		t.Fatalf("la contratación no debía fallar por el ticket: %v", err)
+	}
+	if result.UserID == 0 || result.EmploymentID == 0 {
+		t.Fatalf("la contratación quedó a medias: %+v", result)
+	}
+}

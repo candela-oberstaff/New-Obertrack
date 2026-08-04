@@ -47,9 +47,11 @@ var ErrLastSuperadmin = errors.New("Es el último superadmin activo: asigná otr
 type AdminService interface {
 	GetDashboardMetrics() (*DashboardMetrics, error)
 	GetCompanies() ([]repository.CompanyMetric, error)
-	GetInactiveUsers(days int) ([]repository.InactiveUser, error)
-	GetRecentActivities() ([]repository.Activity, error)
-	GetAbsenceReport(month, year int) (*repository.AbsenceReport, error)
+	// tenantID 0 en ambas = todas las empresas (panel de admin); con valor,
+	// acotadas a la ficha de esa empresa.
+	GetInactiveUsers(tenantID uint, days int) ([]repository.InactiveUser, error)
+	GetRecentActivities(cursor *repository.ActivityCursor, limit int) ([]repository.Activity, error)
+	GetAbsenceReport(tenantID uint, month, year int) (*repository.AbsenceReport, error)
 	GetStats() (map[string]interface{}, error)
 
 	GetAllUsers(userType, isManager, isActive, search string, offset, limit int) ([]models.User, int64, error)
@@ -191,16 +193,19 @@ func (s *adminService) GetCompanies() ([]repository.CompanyMetric, error) {
 	return s.repo.GetCompaniesMetrics()
 }
 
-func (s *adminService) GetInactiveUsers(days int) ([]repository.InactiveUser, error) {
+func (s *adminService) GetInactiveUsers(tenantID uint, days int) ([]repository.InactiveUser, error) {
 	// days se interpreta como días hábiles completos sin registrar horas.
-	return s.repo.GetInactiveUsersList(days)
+	return s.repo.GetInactiveUsersList(tenantID, days)
 }
 
-func (s *adminService) GetRecentActivities() ([]repository.Activity, error) {
-	return s.repo.GetRecentActivities()
+func (s *adminService) GetRecentActivities(cursor *repository.ActivityCursor, limit int) ([]repository.Activity, error) {
+	if limit > repository.MaxActivityPageSize {
+		limit = repository.MaxActivityPageSize
+	}
+	return s.repo.GetRecentActivities(cursor, limit)
 }
 
-func (s *adminService) GetAbsenceReport(month, year int) (*repository.AbsenceReport, error) {
+func (s *adminService) GetAbsenceReport(tenantID uint, month, year int) (*repository.AbsenceReport, error) {
 	now := time.Now()
 	if month < 1 || month > 12 {
 		month = int(now.Month())
@@ -211,7 +216,7 @@ func (s *adminService) GetAbsenceReport(month, year int) (*repository.AbsenceRep
 
 	startDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, now.Location())
 	endDate := startDate.AddDate(0, 1, -1)
-	return s.repo.GetAbsenceReport(startDate, endDate)
+	return s.repo.GetAbsenceReport(tenantID, startDate, endDate)
 }
 
 func (s *adminService) GetStats() (map[string]interface{}, error) {
