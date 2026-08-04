@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/obertrack/backend/internal/apperrors"
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -79,6 +80,28 @@ type TicketRepository interface {
 
 	CreateTransfer(t *models.TicketTransfer) error
 	ListTransfers(origin, ref string) ([]models.TicketTransfer, error)
+
+	// --- Privacidad: purga de conversaciones de WhatsApp ---
+	// ListWhatsAppSessions resume qué hay guardado por sesión. Incluye las
+	// sesiones huérfanas —números ya desvinculados— que no se ven en la bandeja
+	// pero siguen enteras en la base, que es justo lo que hay que poder limpiar.
+	ListWhatsAppSessions() ([]WhatsAppSessionStats, error)
+	// PurgeWhatsAppSession borra DEFINITIVAMENTE las conversaciones de una sesión.
+	PurgeWhatsAppSession(session string) (WhatsAppPurgeCounts, error)
+}
+
+// WhatsAppSessionStats es el inventario de una sesión guardada.
+type WhatsAppSessionStats struct {
+	Session  string `json:"session"`
+	Tickets  int64  `json:"tickets"`
+	Messages int64  `json:"messages"`
+}
+
+// WhatsAppPurgeCounts informa qué se borró.
+type WhatsAppPurgeCounts struct {
+	Tickets  int64 `json:"tickets"`
+	Messages int64 `json:"messages"`
+	Contacts int64 `json:"contacts"`
 }
 
 type ticketRepository struct {
@@ -375,6 +398,89 @@ func (r *ticketRepository) RescheduleMessage(msgID uint, at time.Time) error {
 
 func (r *ticketRepository) CreateTransfer(t *models.TicketTransfer) error {
 	return r.db.Create(t).Error
+}
+
+// ListWhatsAppSessions cuenta tickets y mensajes por sesión. Cuenta sobre las
+// filas ya borradas lógicamente también (Unscoped): para privacidad importa lo
+// que sigue en la base, no lo que la aplicación decide mostrar.
+func (r *ticketRepository) ListWhatsAppSessions() ([]WhatsAppSessionStats, error) {
+	var stats []WhatsAppSessionStats
+	err := r.db.Unscoped().
+		Model(&models.Ticket{}).
+		Select(`tickets.session AS session,
+			COUNT(DISTINCT tickets.id) AS tickets,
+			COUNT(m.id) AS messages`).
+		Joins("LEFT JOIN ticket_messages m ON m.ticket_id = tickets.id").
+		Where("tickets.origin = ?", string(models.ChannelWhatsApp)).
+		Group("tickets.session").
+		Order("tickets.session").
+		Scan(&stats).Error
+	return stats, err
+}
+
+// PurgeWhatsAppSession borra sin retorno las conversaciones de una sesión.
+//
+// Es borrado DURO (Unscoped): un soft delete dejaría los mensajes en la tabla y
+// no resolvería nada del motivo por el que existe esto, que es sacar de la base
+// las conversaciones de un número que se desvinculó.
+//
+// Todo va en una transacción para no dejar mensajes sin ticket si algo falla a
+// mitad. Los contactos se borran solo si no quedan colgando de ningún otro
+// ticket: el mismo contacto puede haber escrito también por correo.
+func (r *ticketRepository) PurgeWhatsAppSession(session string) (WhatsAppPurgeCounts, error) {
+	var counts WhatsAppPurgeCounts
+	if session == "" {
+		return counts, apperrors.ErrInvalidInput
+	}
+
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		var ticketIDs []uint
+		if err := tx.Unscoped().Model(&models.Ticket{}).
+			Where("origin = ? AND session = ?", string(models.ChannelWhatsApp), session).
+			Pluck("id", &ticketIDs).Error; err != nil {
+			return err
+		}
+		if len(ticketIDs) == 0 {
+			return nil
+		}
+
+		// Los contactos se anotan ANTES de borrar los tickets: después ya no habría
+		// forma de saber a quiénes pertenecían.
+		var contactIDs []uint
+		if err := tx.Unscoped().Model(&models.Ticket{}).
+			Where("id IN ? AND contact_id IS NOT NULL", ticketIDs).
+			Distinct().Pluck("contact_id", &contactIDs).Error; err != nil {
+			return err
+		}
+
+		res := tx.Unscoped().Where("ticket_id IN ?", ticketIDs).Delete(&models.TicketMessage{})
+		if res.Error != nil {
+			return res.Error
+		}
+		counts.Messages = res.RowsAffected
+
+		res = tx.Unscoped().Where("id IN ?", ticketIDs).Delete(&models.Ticket{})
+		if res.Error != nil {
+			return res.Error
+		}
+		counts.Tickets = res.RowsAffected
+
+		if len(contactIDs) > 0 {
+			res = tx.Unscoped().
+				Where("id IN ?", contactIDs).
+				Where("NOT EXISTS (SELECT 1 FROM tickets t WHERE t.contact_id = contacts.id)").
+				Delete(&models.Contact{})
+			if res.Error != nil {
+				return res.Error
+			}
+			counts.Contacts = res.RowsAffected
+		}
+		return nil
+	})
+	if err != nil {
+		return WhatsAppPurgeCounts{}, err
+	}
+	return counts, nil
 }
 
 func (r *ticketRepository) ListTransfers(origin, ref string) ([]models.TicketTransfer, error) {

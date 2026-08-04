@@ -159,6 +159,22 @@ export interface WahaStatus {
   }
 }
 
+// Una sesión de WhatsApp con conversaciones guardadas. `current` distingue la
+// que está conectada ahora de las huérfanas, que son las de números ya
+// desvinculados: no aparecen en la bandeja pero siguen enteras en la base.
+export interface WahaSessionInfo {
+  session: string
+  tickets: number
+  messages: number
+  current: boolean
+}
+
+export interface WahaPurgeCounts {
+  tickets: number
+  messages: number
+  contacts: number
+}
+
 export const ticketService = {
   getTickets: async (): Promise<Ticket[]> => {
     const response = await api.get('/tickets')
@@ -330,6 +346,19 @@ export const ticketService = {
   // webhook no está entregando y la bandeja se queda atrás.
   syncWahaHistory: async (): Promise<{ imported: number }> => {
     const response = await api.post('/tickets/waha/sync')
+    return response.data
+  },
+
+  // Inventario de conversaciones guardadas por sesión, incluidas las huérfanas
+  // (números ya desvinculados que no se ven en la bandeja pero siguen guardados).
+  getWahaSessions: async (): Promise<WahaSessionInfo[]> => {
+    const response = await api.get('/tickets/waha/sessions')
+    return response.data ?? []
+  },
+
+  // Borrado DEFINITIVO de las conversaciones de una sesión. No se puede deshacer.
+  purgeWahaSession: async (session: string): Promise<WahaPurgeCounts> => {
+    const response = await api.delete(`/tickets/waha/sessions/${encodeURIComponent(session)}`)
     return response.data
   },
 

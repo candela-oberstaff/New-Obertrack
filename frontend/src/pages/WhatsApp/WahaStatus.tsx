@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, DownloadCloud } from 'lucide-react'
+import { RefreshCw, DownloadCloud, Trash2 } from 'lucide-react'
 import { ticketService, WahaStatus as WahaStatusType } from '../../services/ticket.service'
+import { useAuth } from '../../context/AuthContext'
+import SessionCleanupModal from './SessionCleanupModal'
 
 interface WahaStatusProps {
   // Se llama tras una traída manual que sí importó algo, para que la bandeja
@@ -47,6 +49,12 @@ export default function WahaStatus({ onSynced }: WahaStatusProps) {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const [error, setError] = useState('')
+  const [showCleanup, setShowCleanup] = useState(false)
+  // Borrar conversaciones es irreversible y es una decisión de privacidad, no de
+  // atención al cliente: el backend también lo exige, esto solo evita mostrar un
+  // botón que iba a dar 403.
+  const { user } = useAuth()
+  const isSuperadmin = !!user?.is_superadmin
 
   const load = useCallback(async () => {
     try {
@@ -163,7 +171,24 @@ export default function WahaStatus({ onSynced }: WahaStatusProps) {
           <RefreshCw size={13} className={forcing ? 'spin' : ''} style={forcing ? { animation: 'spin 1s linear infinite' } : {}} />
           {forcing ? 'Conectando…' : 'Reconectar'}
         </button>
+
+        {isSuperadmin && (
+          <button
+            onClick={() => setShowCleanup(true)}
+            title="Borrar conversaciones guardadas"
+            style={{ ...actionBtn, color: '#B91C1C', padding: '5px 8px', cursor: 'pointer' }}
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
+
+      {showCleanup && (
+        <SessionCleanupModal
+          onClose={() => setShowCleanup(false)}
+          onPurged={() => onSynced?.()}
+        />
+      )}
 
       {syncMsg && (
         <div style={{ marginTop: 6, fontSize: '11px', color: '#667781' }}>{syncMsg}</div>

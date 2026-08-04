@@ -41,6 +41,12 @@ type TicketService interface {
 	// session and imports them as tickets/messages (idempotent). Returns the count
 	// of newly imported messages.
 	ImportWhatsAppHistory() (int, error)
+	// ListWhatsAppSessions inventaría lo guardado por sesión, marcando cuál es la
+	// activa. Es lo que se le muestra a quien va a borrar, para que sepa qué se
+	// lleva por delante antes de confirmar.
+	ListWhatsAppSessions() ([]WhatsAppSessionInfo, error)
+	// PurgeWhatsAppSession borra definitivamente las conversaciones de una sesión.
+	PurgeWhatsAppSession(session string) (repository.WhatsAppPurgeCounts, error)
 	SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error)
 	WhatsAppAction(id, agentID uint, action string) (*models.Ticket, error)
 	// GetInternal returns a single internal alert ticket (with notes).
@@ -757,6 +763,50 @@ func (s *ticketService) ImportWhatsAppHistory() (int, error) {
 		}
 	}
 	return imported, nil
+}
+
+// WhatsAppSessionInfo es una sesión con datos guardados. `Current` distingue la
+// que está configurada ahora de las huérfanas: números ya desvinculados cuyas
+// conversaciones no se ven en la bandeja pero siguen en la base.
+type WhatsAppSessionInfo struct {
+	Session  string `json:"session"`
+	Tickets  int64  `json:"tickets"`
+	Messages int64  `json:"messages"`
+	Current  bool   `json:"current"`
+}
+
+func (s *ticketService) ListWhatsAppSessions() ([]WhatsAppSessionInfo, error) {
+	stats, err := s.repo.ListWhatsAppSessions()
+	if err != nil {
+		return nil, err
+	}
+	current := s.wahaSvc.GetSession()
+	out := make([]WhatsAppSessionInfo, 0, len(stats))
+	for _, st := range stats {
+		out = append(out, WhatsAppSessionInfo{
+			Session:  st.Session,
+			Tickets:  st.Tickets,
+			Messages: st.Messages,
+			Current:  st.Session == current,
+		})
+	}
+	return out, nil
+}
+
+// PurgeWhatsAppSession borra las conversaciones de una sesión. No hay vuelta
+// atrás y es a propósito: existe para que las conversaciones de un número
+// desvinculado dejen de estar en la base, no para archivarlas.
+func (s *ticketService) PurgeWhatsAppSession(session string) (repository.WhatsAppPurgeCounts, error) {
+	if strings.TrimSpace(session) == "" {
+		return repository.WhatsAppPurgeCounts{}, apperrors.ErrInvalidInput
+	}
+	counts, err := s.repo.PurgeWhatsAppSession(session)
+	if err != nil {
+		return counts, err
+	}
+	log.Printf("[WAHA] purga de la sesión %q: %d ticket(s), %d mensaje(s), %d contacto(s) borrados",
+		session, counts.Tickets, counts.Messages, counts.Contacts)
+	return counts, nil
 }
 
 // ensureCanColdOutreach blocks sending to a WhatsApp contact that never wrote

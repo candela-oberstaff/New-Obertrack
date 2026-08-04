@@ -281,6 +281,49 @@ func (h *TicketHandler) SyncWhatsAppHistory(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"imported": imported})
 }
 
+// ListWhatsAppSessions inventaría lo que hay guardado por sesión de WhatsApp.
+func (h *TicketHandler) ListWhatsAppSessions(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	sessions, err := h.ticketSvc.ListWhatsAppSessions()
+	if err != nil {
+		log.Printf("[WAHA] no se pudieron listar las sesiones guardadas: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron cargar las sesiones"})
+		return
+	}
+	c.JSON(http.StatusOK, sessions)
+}
+
+// PurgeWhatsAppSession borra definitivamente las conversaciones de una sesión.
+//
+// Solo superadmin: no es una acción de atención al cliente sino de privacidad, y
+// es irreversible. El nombre de la sesión viaja en la URL y el cliente además
+// obliga a escribirlo para confirmar; no hay borrado "de todo" sin elegir cuál.
+func (h *TicketHandler) PurgeWhatsAppSession(c *gin.Context) {
+	if !middleware.IsSuperadmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Solo un superadmin puede borrar conversaciones"})
+		return
+	}
+	session := strings.TrimSpace(c.Param("session"))
+	if session == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Falta el nombre de la sesión"})
+		return
+	}
+	counts, err := h.ticketSvc.PurgeWhatsAppSession(session)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrInvalidInput) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Sesión inválida"})
+			return
+		}
+		log.Printf("[WAHA] purga de la sesión %q falló: %v", session, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron borrar las conversaciones"})
+		return
+	}
+	c.JSON(http.StatusOK, counts)
+}
+
 func (h *TicketHandler) GetWhatsAppTicket(c *gin.Context) {
 	if !canUseSupportInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})

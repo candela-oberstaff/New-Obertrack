@@ -175,6 +175,10 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		// Traída manual del historial: la salida cuando el webhook no está
 		// entregando y la bandeja se queda atrás.
 		tickets.POST("/waha/sync", d.ticket.SyncWhatsAppHistory)
+		// Privacidad: inventario y borrado definitivo de las conversaciones de una
+		// sesión. El borrado exige superadmin (se valida en el handler).
+		tickets.GET("/waha/sessions", d.ticket.ListWhatsAppSessions)
+		tickets.DELETE("/waha/sessions/:session", d.ticket.PurgeWhatsAppSession)
 		tickets.GET("/statuses", d.ticket.GetTicketStatuses)
 		tickets.GET("/agents", d.ticket.GetSupportAgents)
 		tickets.GET("/zoho-agents", d.ticket.GetZohoAgents)
