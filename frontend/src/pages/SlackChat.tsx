@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { channelService, uploadService, adminService } from '../services/api'
 import { Select } from '../components/ui/Select'
 import type { User } from '../types'
-import type { Message, SupportTicket } from '../types/chat'
+import type { Channel, Message, SupportTicket } from '../types/chat'
 import { useConfirm } from '../components/ui/ConfirmProvider'
 import { useNotification } from '../context/NotificationContext'
 import { Sidebar } from '../components/Chat/Sidebar'
@@ -71,11 +71,13 @@ export default function SlackChat() {
     const stored = localStorage.getItem('preferred_company_id')
     return stored ? Number(stored) : null
   })
-  const setSelectedCompanyId = (id: number | null) => {
+  // Estable entre renders: el efecto del deep link la tiene en dependencias y una
+  // función nueva en cada render lo haría dispararse en bucle.
+  const setSelectedCompanyId = useCallback((id: number | null) => {
     setSelectedCompanyIdState(id)
     if (id) localStorage.setItem('preferred_company_id', String(id))
     else localStorage.removeItem('preferred_company_id')
-  }
+  }, [])
 
   const refreshPendingSupport = useCallback(() => {
     if (!isSupportAgent) return
@@ -167,16 +169,44 @@ export default function SlackChat() {
 
   // Deep link from notifications: /chat?channel=<id>&message=<id> opens the
   // channel and scrolls to the mentioned message.
+  //
+  // El canal puede no estar en el sidebar: el alcance del superadmin acota por
+  // empresa, y los canales de soporte son privados, así que quien no es miembro
+  // tampoco los ve listados. Antes se salía en silencio y el botón "Chat" del
+  // tablero de soporte no hacía absolutamente nada. Ahora se resuelve contra el
+  // backend, se cambia el alcance a la empresa dueña y se abre.
   useEffect(() => {
     const channelParam = searchParams.get('channel')
     if (!channelParam || channels.length === 0) return
-    const target = channels.find(c => c.id === parseInt(channelParam))
-    if (!target) return
-    const messageParam = searchParams.get('message')
-    if (messageParam) setHighlightMessageId(parseInt(messageParam))
-    setSelectedChannel(target)
-    setSearchParams({}, { replace: true })
-  }, [searchParams, channels, setSelectedChannel, setSearchParams])
+    const wanted = parseInt(channelParam)
+    if (Number.isNaN(wanted)) return
+
+    const open = (ch: Channel) => {
+      const messageParam = searchParams.get('message')
+      if (messageParam) setHighlightMessageId(parseInt(messageParam))
+      setSelectedChannel(ch)
+      setSearchParams({}, { replace: true })
+    }
+
+    const target = channels.find(c => c.id === wanted)
+    if (target) { open(target); return }
+
+    let cancelled = false
+    channelService.getChannel(wanted)
+      .then(ch => {
+        if (cancelled || !ch) return
+        if (ch.tenant_id && ch.tenant_id !== selectedCompanyId) setSelectedCompanyId(ch.tenant_id)
+        open(ch)
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Se limpia el parámetro igualmente: dejarlo puesto reintentaría en cada
+        // render y repetiría el aviso.
+        setSearchParams({}, { replace: true })
+        showError('No se pudo abrir esa conversación: no tenés acceso o ya no existe.')
+      })
+    return () => { cancelled = true }
+  }, [searchParams, channels, selectedCompanyId, setSelectedCompanyId, setSelectedChannel, setSearchParams, showError])
 
   useEffect(() => {
     if (!highlightMessageId || messages.length === 0) return

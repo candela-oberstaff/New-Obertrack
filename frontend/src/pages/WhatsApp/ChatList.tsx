@@ -21,6 +21,8 @@ interface ChatListProps {
   myChatsCount: number
   unassignedChatsCount: number
   displayName: (ticket: WhatsAppChatTicket) => string
+  // Recarga la bandeja tras una traída manual de mensajes.
+  onSynced?: () => void
 }
 
 export default function ChatList({
@@ -38,7 +40,8 @@ export default function ChatList({
   setActiveTab,
   myChatsCount,
   unassignedChatsCount,
-  displayName
+  displayName,
+  onSynced
 }: ChatListProps) {
 
   const handleTabClick = (tab: 'me' | 'unassigned') => {
@@ -55,7 +58,7 @@ export default function ChatList({
         </div>
       </div>
 
-      <WahaStatus />
+      <WahaStatus onSynced={onSynced} />
 
       <div style={{ display: 'flex', borderBottom: '1px solid #e9edef', flexShrink: 0 }}>
         <button

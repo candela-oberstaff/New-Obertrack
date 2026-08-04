@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -25,6 +26,13 @@ type WahaService struct {
 	// hung WAHA server can never block a request handler (or the ContactSync
 	// goroutine) indefinitely.
 	client *http.Client
+	// readClient sirve las lecturas pesadas (historial de chats, libreta de
+	// contactos). Va aparte porque los plazos útiles son opuestos: un envío tiene
+	// que fallar rápido —hay un agente esperando— mientras que chats/overview
+	// contra una instancia remota tarda decenas de segundos. Con los 10s del
+	// cliente de envío el import del historial se caía en cada vuelta y la
+	// bandeja se quedaba congelada en la última sincronización que sí entró.
+	readClient *http.Client
 
 	// --- Outbound anti-ban throttle ---
 	// WhatsApp bans numbers that behave like bots (bursts, no pauses). All sends
@@ -50,6 +58,9 @@ func NewWahaService() *WahaService {
 		apiKey:  getEnvOrDefault("WAHA_API_KEY", ""),                      // Optional API Key
 		session: getEnvOrDefault("WAHA_SESSION", "default"),               // Session name (e.g. 'default')
 		client:  &http.Client{Timeout: 10 * time.Second},
+		readClient: &http.Client{
+			Timeout: time.Duration(envInt("WAHA_READ_TIMEOUT_S", 45)) * time.Second,
+		},
 
 		maxPerMin:      envInt("WAHA_MAX_MSGS_PER_MIN", 20),
 		minInterval:    time.Duration(envInt("WAHA_MIN_SEND_INTERVAL_MS", 1500)) * time.Millisecond,
@@ -82,6 +93,15 @@ func (s *WahaService) GetSession() string {
 	return s.session
 }
 
+// reader devuelve el cliente para lecturas pesadas, cayendo al de envío cuando el
+// servicio se construyó a mano (tests) y no lo tiene.
+func (s *WahaService) reader() *http.Client {
+	if s.readClient != nil {
+		return s.readClient
+	}
+	return s.client
+}
+
 type WahaSendTextRequest struct {
 	ChatID  string `json:"chatId"`
 	Text    string `json:"text"`
@@ -97,28 +117,63 @@ func (s *WahaService) SendMessage(session string, to string, text string) (strin
 		chatID = fmt.Sprintf("%s@c.us", chatID)
 	}
 
-	// 1) Anti-ban gate: rejects when over the per-minute cap, otherwise reserves
-	// the next free slot that honors the minimum spacing between messages.
+	backoff := 500 * time.Millisecond
+	var lastErr error
+	for attempt := 1; attempt <= sendMaxAttempts; attempt++ {
+		// 1) Anti-ban gate, en CADA intento. Reservar turno solo antes del primero
+		// dejaba que los reintentos salieran pegados al anterior y sin contar en la
+		// ventana por minuto: justo la ráfaga que el gate existe para evitar.
+		if err := s.awaitSendSlot(); err != nil {
+			if lastErr != nil {
+				// Ya se tocó WAHA y falló. Ese fallo es la causa real y merece gastar
+				// un intento; devolver "sin turno" lo reprogramaría a los 5s en bucle.
+				return "", lastErr
+			}
+			return "", err
+		}
+
+		// 2) Human-like pre-send: mark the chat as seen and show "typing…" for a delay
+		// proportional to the message length. Best-effort — failures don't block the send.
+		// Solo antes del primer envío: repetirlo en cada reintento no aporta realismo
+		// y retrasa la entrega varios segundos más.
+		if attempt == 1 && s.humanTyping {
+			s.sendSeen(session, chatID)
+			s.startTyping(session, chatID)
+			time.Sleep(typingDelay(text))
+			s.stopTyping(session, chatID)
+		}
+
+		// 3) Actual send, retrying transient failures so a blip in the WAHA container
+		// doesn't silently drop an agent's reply.
+		msgID, err := s.postSendText(session, chatID, text)
+		if err == nil {
+			return msgID, nil
+		}
+		if !isRetryableSendErr(err) {
+			return "", err
+		}
+		lastErr = err
+		log.Printf("[WAHA] send attempt %d/%d failed: %v", attempt, sendMaxAttempts, err)
+		if attempt < sendMaxAttempts {
+			time.Sleep(backoff)
+			backoff *= 3
+		}
+	}
+	return "", lastErr
+}
+
+// awaitSendSlot reserva el próximo turno de envío y espera a que llegue. La
+// espera ocurre fuera del lock (ver reserveSlot), así que varios remitentes hacen
+// cola en paralelo en vez de serializarse detrás del mutex.
+func (s *WahaService) awaitSendSlot() error {
 	sendAt, err := s.reserveSlot()
 	if err != nil {
-		return "", err
+		return err
 	}
 	if wait := time.Until(sendAt); wait > 0 {
 		time.Sleep(wait)
 	}
-
-	// 2) Human-like pre-send: mark the chat as seen and show "typing…" for a delay
-	// proportional to the message length. Best-effort — failures don't block the send.
-	if s.humanTyping {
-		s.sendSeen(session, chatID)
-		s.startTyping(session, chatID)
-		time.Sleep(typingDelay(text))
-		s.stopTyping(session, chatID)
-	}
-
-	// 3) Actual send, retrying transient failures so a blip in the WAHA container
-	// doesn't silently drop an agent's reply.
-	return s.postSendTextWithRetry(session, chatID, text)
+	return nil
 }
 
 // reserveSlot books the timestamp at which the caller is allowed to send. It
@@ -181,6 +236,13 @@ func (e *wahaHTTPError) Error() string { return fmt.Sprintf("waha API error: sta
 // errors (WAHA restarting, connection reset) and 5xx/429 responses. A 4xx such as
 // 422 "session does not exist" is permanent — retrying only delays the error.
 func isRetryableSendErr(err error) bool {
+	// Un envío de resultado desconocido NO se reintenta: el motor WEBJS tarda de
+	// sobra en responder y para cuando vence el plazo el mensaje suele estar ya
+	// entregado, así que repetirlo se lo deja duplicado al contacto en el teléfono.
+	// Lo resuelve el llamador reconciliando contra el chat (FindDeliveredMessage).
+	if errors.Is(err, apperrors.ErrSendUncertain) {
+		return false
+	}
 	var httpErr *wahaHTTPError
 	if errors.As(err, &httpErr) {
 		return httpErr.status >= 500 || httpErr.status == http.StatusTooManyRequests
@@ -189,30 +251,6 @@ func isRetryableSendErr(err error) bool {
 }
 
 const sendMaxAttempts = 3
-
-// postSendTextWithRetry sends the message, retrying transient failures with a
-// short backoff. Attempts are deliberately few and quick: the caller is an HTTP
-// handler with an agent waiting on the response.
-func (s *WahaService) postSendTextWithRetry(session, chatID, text string) (string, error) {
-	backoff := 500 * time.Millisecond
-	var lastErr error
-	for attempt := 1; attempt <= sendMaxAttempts; attempt++ {
-		msgID, err := s.postSendText(session, chatID, text)
-		if err == nil {
-			return msgID, nil
-		}
-		if !isRetryableSendErr(err) {
-			return "", err
-		}
-		lastErr = err
-		log.Printf("[WAHA] send attempt %d/%d failed: %v", attempt, sendMaxAttempts, err)
-		if attempt < sendMaxAttempts {
-			time.Sleep(backoff)
-			backoff *= 3
-		}
-	}
-	return "", lastErr
-}
 
 // postSendText performs the raw sendText call to WAHA and returns the ID WAHA
 // assigned to the message (empty if the response carries none).
@@ -237,6 +275,13 @@ func (s *WahaService) postSendText(session, chatID, text string) (string, error)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		// Un timeout no significa "no se envió", significa "no sé": WAHA pudo haber
+		// entregado el mensaje y habérsenos agotado el plazo esperando su respuesta.
+		// Se marca aparte para que el llamador lo compruebe antes de reenviar.
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return "", fmt.Errorf("%w: %v", apperrors.ErrSendUncertain, err)
+		}
 		return "", fmt.Errorf("failed to send request to WAHA: %w", err)
 	}
 	defer resp.Body.Close()
@@ -357,8 +402,7 @@ func (s *WahaService) GetContact(session string, contactID string) (*WahaContact
 		req.Header.Set("X-Api-Key", s.apiKey)
 	}
 
-	client := s.client
-	resp, err := client.Do(req)
+	resp, err := s.reader().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch contact from WAHA: %w", err)
 	}
@@ -555,6 +599,46 @@ func (s *WahaService) GetChatMessages(session, chatID string, limit int) ([]Waha
 	return msgs, nil
 }
 
+// reconcileScanLimit acota cuántos mensajes recientes del chat se miran al
+// reconciliar un envío incierto. La copia que se busca, si existe, se entregó
+// hace segundos: mirar más lejos solo aumenta el riesgo de casar con otra cosa.
+const reconcileScanLimit = 10
+
+// reconcileClockSkew tolera que el reloj del contenedor de WAHA y el nuestro no
+// vayan exactamente iguales al comparar el timestamp del mensaje con `since`.
+const reconcileClockSkew = 10 * time.Second
+
+// FindDeliveredMessage busca en el chat un mensaje propio con este texto enviado
+// después de `since`, y devuelve el ID que WAHA le asignó.
+//
+// Resuelve el envío que terminó en timeout: reenviarlo a ciegas le dejaría al
+// contacto el mensaje repetido en el teléfono, y darlo por fallido perdería una
+// respuesta que sí llegó. Preguntarle al chat es lo único que distingue los dos
+// casos. El filtro por fecha evita casar con un "ok" idéntico de ayer.
+func (s *WahaService) FindDeliveredMessage(session, chatID, text string, since time.Time) (string, bool) {
+	if !strings.Contains(chatID, "@") {
+		chatID = fmt.Sprintf("%s@c.us", chatID)
+	}
+	msgs, err := s.GetChatMessages(session, chatID, reconcileScanLimit)
+	if err != nil {
+		// Sin poder comprobarlo se responde "no encontrado": el llamador reintentará,
+		// que es preferible a cerrar como enviado algo que quizá nunca salió.
+		log.Printf("[WAHA] no se pudo reconciliar el envío a %s: %v", chatID, err)
+		return "", false
+	}
+	want := strings.TrimSpace(text)
+	floor := since.Add(-reconcileClockSkew).Unix()
+	for _, m := range msgs {
+		if !m.FromMe || m.Timestamp < floor {
+			continue
+		}
+		if strings.TrimSpace(m.Body) == want {
+			return m.ID, true
+		}
+	}
+	return "", false
+}
+
 // getJSON performs an authenticated GET and decodes the JSON body into out.
 func (s *WahaService) getJSON(url string, out interface{}) error {
 	req, err := http.NewRequest("GET", url, nil)
@@ -565,7 +649,7 @@ func (s *WahaService) getJSON(url string, out interface{}) error {
 	if s.apiKey != "" {
 		req.Header.Set("X-Api-Key", s.apiKey)
 	}
-	resp, err := s.client.Do(req)
+	resp, err := s.reader().Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to fetch from WAHA: %w", err)
 	}

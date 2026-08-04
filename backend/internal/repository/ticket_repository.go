@@ -194,7 +194,7 @@ func (r *ticketRepository) SyncTicketActivity(ticketID uint) error {
 
 func (r *ticketRepository) GetByID(id uint) (*models.Ticket, error) {
 	var t models.Ticket
-	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages").First(&t, id).Error; err != nil {
+	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages", chronological).First(&t, id).Error; err != nil {
 		return nil, err
 	}
 	return &t, nil
@@ -238,12 +238,23 @@ func (r *ticketRepository) List(assignedTo *uint) ([]models.Ticket, error) {
 
 func (r *ticketRepository) ListByOriginAndSession(origin, session string) ([]models.Ticket, error) {
 	var tickets []models.Ticket
-	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages").
+	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages", chronological).
 		Where("origin = ? AND session = ?", origin, session).
 		Order("updated_at desc").Find(&tickets).Error; err != nil {
 		return nil, err
 	}
 	return tickets, nil
+}
+
+// chronological ordena los mensajes precargados por su fecha real.
+//
+// Sin ORDER BY explícito Postgres puede devolverlos en cualquier orden, y el
+// import del historial agrava el problema porque inserta con la fecha original
+// del mensaje: el id y la fecha dejan de ir a la par. De ese orden dependen dos
+// cosas visibles: el hilo de la conversación y la vista previa del listado, que
+// toma el último elemento del array.
+func chronological(db *gorm.DB) *gorm.DB {
+	return db.Order("ticket_messages.created_at ASC, ticket_messages.id ASC")
 }
 
 func (r *ticketRepository) ListByOrigin(origin string) ([]models.Ticket, error) {

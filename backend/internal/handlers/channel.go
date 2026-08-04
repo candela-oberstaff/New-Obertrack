@@ -49,6 +49,36 @@ func (h *ChannelHandler) channelAccessAllowed(c *gin.Context, channel *models.Ch
 	return true
 }
 
+// channelReadAllowed es la compuerta de los endpoints de SOLO LECTURA. Añade un
+// caso a channelAccessAllowed: el personal de soporte puede LEER el canal que
+// respalda una solicitud de soporte aunque no sea miembro y aunque el canal sea
+// de otra empresa.
+//
+// Sin esto, el botón "Chat" del tablero de soporte no abría nada para quien no
+// fuera superadmin: los canales de soporte son privados y pertenecen a un tenant
+// concreto, así que un agente que no estuviera dentro recibía 403 y se quedaba
+// mirando una pantalla vacía, sin forma de revisar el caso que le asignaron.
+//
+// La ESCRITURA sigue pasando por channelAccessAllowed: poder leer un caso para
+// atenderlo no es lo mismo que poder postear en la conversación de otra empresa.
+// Quien atiende de verdad el ticket es miembro explícito del canal y escribe por
+// el camino de siempre.
+func (h *ChannelHandler) channelReadAllowed(c *gin.Context, channel *models.Channel) bool {
+	if h.channelAccessAllowed(c, channel) {
+		return true
+	}
+	if !canUseSupportInbox(c) {
+		return false
+	}
+	isSupport, err := h.svc.HasSupportTicket(channel.ID)
+	if err != nil {
+		// Ante un fallo al resolverlo, fallar cerrado: mejor un 403 que abrir por
+		// error la conversación privada de una empresa.
+		return false
+	}
+	return isSupport
+}
+
 // supervisionWriteBlocked refuerza la supervisión en modo solo-lectura: un NO
 // miembro EXPLÍCITO no puede ESCRIBIR (mensajes, hilos, reacciones) en un DM o en
 // un canal PRIVADO que solo está supervisando. Esto cierra la puerta a que un
@@ -143,13 +173,14 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 
 func (h *ChannelHandler) GetChannel(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
-	// authorize access: superadmin, miembro, o canal público del mismo tenant
+	// authorize access: superadmin, miembro, canal público del mismo tenant, o
+	// soporte leyendo el canal de un caso del tablero.
 	channel, err := h.svc.GetChannel(uint(id))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
 		return
 	}
-	if !h.channelAccessAllowed(c, channel) {
+	if !h.channelReadAllowed(c, channel) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -236,7 +267,7 @@ func (h *ChannelHandler) GetMembers(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
 		return
 	}
-	if !h.channelAccessAllowed(c, channel) {
+	if !h.channelReadAllowed(c, channel) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}
@@ -401,13 +432,13 @@ func (h *ChannelHandler) UnhideChannel(c *gin.Context) {
 func (h *ChannelHandler) GetMessages(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	userID := middleware.GetUserID(c)
-	// ensure membership
+	// Lectura: incluye a soporte revisando el canal de un caso del tablero.
 	channel, err := h.svc.GetChannel(uint(id))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Channel not found"})
 		return
 	}
-	if !h.channelAccessAllowed(c, channel) {
+	if !h.channelReadAllowed(c, channel) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 		return
 	}

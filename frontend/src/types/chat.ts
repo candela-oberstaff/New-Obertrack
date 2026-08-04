@@ -23,6 +23,10 @@ export interface Channel {
   name: string
   description: string
   type: 'public' | 'private' | 'direct'
+  // Empresa dueña del canal. El alcance del superadmin acota el sidebar por
+  // empresa, así que un deep link a un canal de otra necesita este dato para
+  // saber a cuál cambiar antes de abrirlo.
+  tenant_id?: number
   created_by: number
   unread_count: number
   created_at: string

@@ -137,6 +137,60 @@ En el chat, un mensaje propio muestra reloj (pendiente), doble check (entregado)
 
 ---
 
+## 3.b Ingesta: webhook (tiempo real) y re-sincronización (red de seguridad)
+
+Los mensajes entran por dos caminos, y hay que entender que **solo el primero es en tiempo real**.
+
+### Webhook
+
+WAHA notifica cada mensaje a `POST /api/webhooks/waha`, firmado con HMAC-SHA512 sobre el cuerpo crudo en la cabecera `X-Webhook-Hmac`. El middleware falla cerrado: sin `WAHA_WEBHOOK_HMAC` responde 503, y con firma incorrecta 401.
+
+Se registra **un solo evento, `message.any`**, que ya incluye los entrantes y lo escrito desde el teléfono. Añadir también `message` haría que cada mensaje entrante llegara dos veces: la idempotencia por `external_id` lo absorbe, pero se duplica el trabajo y aparece una carrera al crear contacto y ticket.
+
+Registro en la sesión (`PUT /api/sessions/{sesión}`, cabecera `X-Api-Key`):
+
+```jsonc
+{
+  "name": "OsvellTest",
+  "config": {
+    "webhooks": [{
+      "url": "https://obertrack.com/api/webhooks/waha",
+      "events": ["message.any"],
+      "hmac": { "key": "<el mismo valor que WAHA_WEBHOOK_HMAC del backend>" },
+      "retries": { "policy": "linear", "delaySeconds": 2, "attempts": 15 }
+    }]
+  }
+}
+```
+
+Tres cosas tienen que coincidir o los mensajes se descartan en silencio:
+
+1. **La URL debe ser alcanzable desde WAHA.** Un backend en `localhost` no lo es. En desarrollo local el tiempo real no funciona sin un túnel (cloudflared/ngrok); se trabaja con la re-sincronización y el botón.
+2. **El HMAC** debe ser idéntico al `WAHA_WEBHOOK_HMAC` del backend, o todo entra como 401.
+3. **`WAHA_SESSION` del backend debe coincidir con el nombre de la sesión.** El handler descarta lo que venga de otra sesión (`sesión inesperada`) porque una instancia de WAHA puede alojar varias y el HMAC es compartido.
+
+Verificación rápida de que el endpoint está vivo y comparte secreto — el handler ignora los eventos que no son mensaje, así que no tiene efecto:
+
+```bash
+BODY='{"event":"ping","session":"OsvellTest"}'
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha512 -hmac "$WAHA_WEBHOOK_HMAC" -hex | awk '{print $2}')
+curl -s -X POST https://obertrack.com/api/webhooks/waha \
+  -H "Content-Type: application/json" -H "X-Webhook-Hmac: $SIG" -d "$BODY"
+# 200 {"status":"ignored"} = ruta viva y HMAC correcto. 401 = secreto distinto.
+```
+
+### Re-sincronización periódica
+
+`ChatImportWatcher` trae el historial al conectar la sesión y luego cada `WAHA_RESYNC_MINUTES` (5 por defecto) mientras siga conectada. Es idempotente por `external_id`, así que repetir solo añade lo nuevo.
+
+Existe porque el webhook puede no estar llegando —sesión sin webhook, backend inalcanzable, caída de red— y antes el import corría **una sola vez por conexión**: la bandeja se quedaba congelada en la última sincronización que entró, y la única salida era reiniciar la sesión de WhatsApp.
+
+El botón **"Traer mensajes"** de la cabecera (`POST /api/tickets/waha/sync`) dispara esa misma traída a mano. Un `TryLock` deja pasar una sola pasada a la vez: la segunda recibe 409 en vez de competir creando los mismos contactos y tickets.
+
+Las lecturas pesadas (`chats/overview`, `chats/*/messages`, `contacts/all`) usan un cliente HTTP aparte con `WAHA_READ_TIMEOUT_S` (45s). Los plazos son opuestos a los del envío: un envío tiene que fallar rápido porque hay un agente esperando y porque reintentar duplica, mientras que leer el historial de una instancia remota simplemente tarda. Con los 10s del cliente de envío, el import se caía por timeout en cada vuelta.
+
+---
+
 ## 4. Diseño Adaptable y Responsivo
 
 El diseño está optimizado para todo tipo de pantallas (Móviles, Tablets y Escritorios):

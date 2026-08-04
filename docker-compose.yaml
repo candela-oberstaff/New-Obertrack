@@ -57,6 +57,14 @@ services:
       # HMAC compartido: firma los webhooks entrantes de WAHA (X-Webhook-Hmac).
       # Debe ser idéntico al configurado en el webhook de la sesión en WAHA.
       WAHA_WEBHOOK_HMAC: ${WAHA_WEBHOOK_HMAC}
+      # Plazo de las lecturas pesadas (historial de chats, libreta de contactos).
+      # Va aparte del envío, que necesita fallar rápido: contra una instancia
+      # remota, chats/overview no cabe en 10s y el import no llegaba a correr.
+      WAHA_READ_TIMEOUT_S: ${WAHA_READ_TIMEOUT_S:-45}
+      # Cada cuántos minutos se vuelve a traer el historial estando conectado.
+      # Es la red de seguridad del webhook: si este no entrega, la bandeja se
+      # pone al día sola en la siguiente vuelta en vez de quedarse congelada.
+      WAHA_RESYNC_MINUTES: ${WAHA_RESYNC_MINUTES:-5}
       # Anti-baneo (envío saliente). WAHA es no oficial: WhatsApp banea números
       # que se comportan como bots. Estos límites hacen que el tráfico parezca
       # manual. Ajustables sin recompilar.

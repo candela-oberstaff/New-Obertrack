@@ -326,6 +326,13 @@ export const ticketService = {
     return response.data
   },
 
+  // Fuerza la traída del historial reciente desde WAHA. Es la salida cuando el
+  // webhook no está entregando y la bandeja se queda atrás.
+  syncWahaHistory: async (): Promise<{ imported: number }> => {
+    const response = await api.post('/tickets/waha/sync')
+    return response.data
+  },
+
   getWhatsAppTemplates: async (departmentId?: string): Promise<{ id: string; title: string; message: string; displayMessage: string; status: string; language?: string }[]> => {
     const params = departmentId ? { departmentId } : {}
     const response = await api.get('/chats/templates', { params })

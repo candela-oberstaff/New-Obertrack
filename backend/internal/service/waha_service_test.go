@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -87,6 +88,11 @@ func TestIsRetryableSendErr(t *testing.T) {
 	// 422 is WAHA's "session does not exist" — retrying cannot help.
 	if isRetryableSendErr(&wahaHTTPError{status: http.StatusUnprocessableEntity}) {
 		t.Error("422 should not be retried")
+	}
+	// Un timeout deja el resultado en el aire: el mensaje suele estar entregado ya,
+	// así que repetirlo se lo duplica al contacto en el teléfono.
+	if isRetryableSendErr(fmt.Errorf("%w: deadline exceeded", apperrors.ErrSendUncertain)) {
+		t.Error("un envío de resultado desconocido no debe reintentarse a ciegas")
 	}
 }
 

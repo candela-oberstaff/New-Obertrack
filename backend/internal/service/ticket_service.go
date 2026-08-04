@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -127,6 +128,10 @@ type ticketService struct {
 	outbox      *WhatsAppOutbox
 	brevoSvc    *BrevoService
 	supportNtfy *SupportNotifier
+	// importMu deja pasar un solo import de historial a la vez. Ahora hay dos
+	// disparadores —el watcher periódico y el botón de la bandeja— y dos pasadas
+	// simultáneas competirían creando el mismo contacto y el mismo ticket.
+	importMu sync.Mutex
 }
 
 func NewTicketService(repo repository.TicketRepository, userRepo repository.UserRepository, notifSvc NotificationService, wahaSvc *WahaService, brevoSvc *BrevoService, supportNtfy *SupportNotifier, outbox *WhatsAppOutbox) TicketService {
@@ -636,6 +641,14 @@ const (
 // and imports each chat's last messages as a ticket + messages. Idempotent: the
 // external_id unique index dedups messages, so re-running only adds new ones.
 func (s *ticketService) ImportWhatsAppHistory() (int, error) {
+	// Si ya hay una pasada en curso se rechaza en vez de encolar: el que llega
+	// segundo no aportaría nada (traería exactamente los mismos chats) y sí
+	// competiría por crear los mismos contactos y tickets.
+	if !s.importMu.TryLock() {
+		return 0, apperrors.ErrSyncInProgress
+	}
+	defer s.importMu.Unlock()
+
 	session := s.wahaSvc.GetSession()
 	chats, err := s.wahaSvc.GetChatsOverview(session, importMaxChats)
 	if err != nil {

@@ -40,6 +40,17 @@ function timeAgo(iso?: string): string {
   return `hace ${days} d`;
 }
 
+// lastActivity es la fecha que le importa a soporte: cuándo se movió el caso por
+// última vez, no cuándo se abrió.
+//
+// Un chat de WhatsApp es una conversación continua — se reutiliza el ticket
+// abierto del contacto sin ventana temporal — así que `created_at` es cuándo
+// escribió por primera vez, hace meses en algunos casos. Mostrarlo hacía que un
+// contacto que acababa de escribir apareciera como "hace 29 d".
+function lastActivity(t: Ticket): string | undefined {
+  return t.updated_at || t.created_at;
+}
+
 function isToday(iso?: string): boolean {
   if (!iso) return false;
   const d = new Date(iso);
@@ -110,7 +121,9 @@ export default function SupportBoard() {
   const isStale = (t: Ticket): boolean => {
     if (t.stage === 'closed') return false;
     if (!t.assigned_to || t.stage === 'waiting') {
-      return Date.now() - new Date(t.created_at).getTime() > STALE_MS;
+      // Contra la última actividad, no contra la apertura: si no, una
+      // conversación viva de hace meses sale marcada como abandonada.
+      return Date.now() - new Date(lastActivity(t) ?? t.created_at).getTime() > STALE_MS;
     }
     return false;
   };
@@ -709,7 +722,9 @@ function SupportCard({ ticket, stale, mine, busy, dragging, onDragStart, onDragE
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600, color: stale ? '#dc2626' : 'var(--gray-500)' }}>
           {stale && <AlertTriangle size={12} />}
           <Clock size={11} />
-          {timeAgo(ticket.created_at)}
+          <span title={`Última actividad. Abierto el ${new Date(ticket.created_at).toLocaleDateString()}`}>
+            {timeAgo(lastActivity(ticket))}
+          </span>
         </span>
       </div>
 

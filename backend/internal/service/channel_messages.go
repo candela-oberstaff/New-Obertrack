@@ -780,6 +780,19 @@ func (s *channelService) ListSupportTicketsForBoard() ([]models.SupportTicket, e
 	return s.repo.GetAllSupportTickets()
 }
 
+// HasSupportTicket informa si el canal respalda una solicitud de soporte.
+//
+// Se consulta por lista de canales —y no con GetActiveSupportTicketByChannel—
+// porque ahí "activo" excluye los resueltos, y el tablero enlaza precisamente a
+// casos cerrados para revisarlos.
+func (s *channelService) HasSupportTicket(channelID uint) (bool, error) {
+	tickets, err := s.repo.GetSupportTicketsByChannelIDs([]uint{channelID})
+	if err != nil {
+		return false, err
+	}
+	return len(tickets) > 0, nil
+}
+
 type MySupportTicket struct {
 	ID            uint       `json:"id"`
 	ChannelID     uint       `json:"channel_id"`

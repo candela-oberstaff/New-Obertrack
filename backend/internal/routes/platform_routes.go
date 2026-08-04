@@ -172,6 +172,9 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 			}
 			c.JSON(http.StatusOK, status)
 		})
+		// Traída manual del historial: la salida cuando el webhook no está
+		// entregando y la bandeja se queda atrás.
+		tickets.POST("/waha/sync", d.ticket.SyncWhatsAppHistory)
 		tickets.GET("/statuses", d.ticket.GetTicketStatuses)
 		tickets.GET("/agents", d.ticket.GetSupportAgents)
 		tickets.GET("/zoho-agents", d.ticket.GetZohoAgents)

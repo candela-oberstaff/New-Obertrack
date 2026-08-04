@@ -256,6 +256,31 @@ func (h *TicketHandler) ListWhatsAppTickets(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+// SyncWhatsAppHistory fuerza una traída del historial reciente desde WAHA.
+//
+// Es el botón "Traer mensajes" de la bandeja. Existe porque el webhook puede no
+// estar llegando —una sesión sin webhook configurado, o una instancia de WAHA
+// que no alcanza a este backend— y hasta ahora la única salida era reiniciar la
+// sesión de WhatsApp entera solo para que corriera el import.
+func (h *TicketHandler) SyncWhatsAppHistory(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	imported, err := h.ticketSvc.ImportWhatsAppHistory()
+	if errors.Is(err, apperrors.ErrSyncInProgress) {
+		c.JSON(http.StatusConflict, gin.H{"error": "Ya hay una sincronización en curso"})
+		return
+	}
+	if err != nil {
+		// El detalle lleva la URL interna de WAHA: se registra, no se devuelve.
+		log.Printf("[WAHA] sync manual falló: %v", err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "No se pudo sincronizar con WhatsApp"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"imported": imported})
+}
+
 func (h *TicketHandler) GetWhatsAppTicket(c *gin.Context) {
 	if !canUseSupportInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})

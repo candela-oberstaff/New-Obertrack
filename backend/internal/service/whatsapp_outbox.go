@@ -5,6 +5,8 @@ import (
 	"log"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/obertrack/backend/internal/apperrors"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
@@ -76,9 +78,20 @@ func (o *WhatsAppOutbox) processBatch() {
 	}
 }
 
+// dbRetryDelay es lo que se espera antes de volver a intentar un mensaje cuya
+// entrega ni siquiera llegó a empezar por un fallo de base de datos.
+const dbRetryDelay = 30 * time.Second
+
 func (o *WhatsAppOutbox) processMessage(msg *models.TicketMessage) {
 	ticket, err := o.repo.GetWithContact(msg.TicketID)
-	if err != nil || ticket.Contact == nil {
+	// Un fallo de base NO es lo mismo que un ticket sin contacto: si el pool se
+	// agota o hay un failover, darlo por agotado aquí marcaría como no entregado
+	// —para siempre y sin reintento— todo el lote, por un parpadeo. Se pospone.
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		o.postpone(msg, dbRetryDelay, err)
+		return
+	}
+	if err != nil || ticket == nil || ticket.Contact == nil {
 		// Sin destinatario no hay envío posible y esperar no lo arregla: se agota
 		// de inmediato en vez de gastar seis intentos en lo mismo.
 		o.fail(msg, msg.DeliveryAttempts+1, "el ticket no tiene contacto asociado", nil)
@@ -90,15 +103,24 @@ func (o *WhatsAppOutbox) processMessage(msg *models.TicketMessage) {
 		dest = ticket.Contact.Phone
 	}
 
-	sentID, err := o.waha.SendMessage(o.waha.GetSession(), dest, msg.Content)
-	if err == nil {
-		if merr := o.repo.MarkMessageSent(msg.ID, sentID); merr != nil {
-			log.Printf("WhatsApp outbox: no se pudo marcar el mensaje %d como enviado: %v", msg.ID, merr)
-			return
+	session := o.waha.GetSession()
+	// Marca de tiempo previa al envío: acota la búsqueda de la reconciliación a
+	// mensajes posteriores a este instante.
+	startedAt := time.Now()
+	sentID, err := o.waha.SendMessage(session, dest, msg.Content)
+
+	// Envío de resultado desconocido (timeout). Reenviarlo a ciegas se lo dejaría
+	// duplicado al contacto, así que primero se le pregunta al propio chat si el
+	// mensaje llegó a salir.
+	if errors.Is(err, apperrors.ErrSendUncertain) {
+		if id, ok := o.waha.FindDeliveredMessage(session, dest, msg.Content, startedAt); ok {
+			log.Printf("WhatsApp outbox: el mensaje %d sí se había entregado pese al timeout; no se reenvía", msg.ID)
+			sentID, err = id, nil
 		}
-		msg.DeliveryStatus = models.DeliverySent
-		msg.ExternalID = sentID
-		broadcastTicketMessage(msg.TicketID, msg)
+	}
+
+	if err == nil {
+		o.markSent(msg, sentID)
 		return
 	}
 
@@ -106,9 +128,7 @@ func (o *WhatsAppOutbox) processMessage(msg *models.TicketMessage) {
 	// simplemente todavía no tiene turno. Se pospone sin gastar un intento, de lo
 	// contrario una ráfaga legítima agotaría los reintentos sin haber tocado WAHA.
 	if errors.Is(err, apperrors.ErrRateLimited) {
-		if rerr := o.repo.RescheduleMessage(msg.ID, time.Now().Add(5*time.Second)); rerr != nil {
-			log.Printf("WhatsApp outbox: no se pudo reprogramar el mensaje %d: %v", msg.ID, rerr)
-		}
+		o.postpone(msg, 5*time.Second, nil)
 		return
 	}
 
@@ -119,6 +139,41 @@ func (o *WhatsAppOutbox) processMessage(msg *models.TicketMessage) {
 		retryAt = &at
 	}
 	o.fail(msg, attempts, err.Error(), retryAt)
+}
+
+// markSentAttempts: WAHA ya aceptó el mensaje, así que no cerrar la fila lo deja
+// en 'pending' y la vuelta siguiente lo entregaría por segunda vez. Se insiste
+// unas cuantas veces antes de rendirse, que cubre el parpadeo de base típico.
+const markSentAttempts = 3
+
+// markSent cierra la entrega guardando el ID de WAHA y avisa al chat.
+func (o *WhatsAppOutbox) markSent(msg *models.TicketMessage, sentID string) {
+	var err error
+	for attempt := 1; attempt <= markSentAttempts; attempt++ {
+		if err = o.repo.MarkMessageSent(msg.ID, sentID); err == nil {
+			msg.DeliveryStatus = models.DeliverySent
+			msg.ExternalID = sentID
+			broadcastTicketMessage(msg.TicketID, msg)
+			return
+		}
+		if attempt < markSentAttempts {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+	}
+	log.Printf("WhatsApp outbox: ATENCIÓN — el mensaje %d se entregó (id de WAHA %q) pero no se pudo marcar como enviado: %v. Sigue pendiente y la próxima vuelta podría reenviarlo al contacto.",
+		msg.ID, sentID, err)
+}
+
+// postpone retrasa un mensaje SIN gastar un intento: la entrega no llegó a
+// fallar, solo no se pudo intentar todavía.
+func (o *WhatsAppOutbox) postpone(msg *models.TicketMessage, in time.Duration, cause error) {
+	if rerr := o.repo.RescheduleMessage(msg.ID, time.Now().Add(in)); rerr != nil {
+		log.Printf("WhatsApp outbox: no se pudo reprogramar el mensaje %d: %v", msg.ID, rerr)
+		return
+	}
+	if cause != nil {
+		log.Printf("WhatsApp outbox: mensaje %d pospuesto %s: %v", msg.ID, in, cause)
+	}
 }
 
 // fail registra el intento fallido y, cuando ya no hay reintentos, avisa por

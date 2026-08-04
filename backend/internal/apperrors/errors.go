@@ -20,4 +20,13 @@ var (
 	// ErrColdOutreach indicates a send was blocked because the contact never
 	// messaged first — cold outreach is the highest WhatsApp-ban risk (maps to 403).
 	ErrColdOutreach = errors.New("cannot message a contact that has not written first")
+	// ErrSyncInProgress indicates a WhatsApp history import is already running.
+	// Two concurrent imports would race creating the same contacts and tickets,
+	// so the second caller is turned away instead of queued (maps to HTTP 409).
+	ErrSyncInProgress = errors.New("a history sync is already running")
+	// ErrSendUncertain indicates an outbound send whose outcome is unknown: the
+	// call to WAHA timed out, so the message may or may not have reached the
+	// contact. Retrying blindly would deliver it a second time, so the caller must
+	// reconcile against the chat before deciding.
+	ErrSendUncertain = errors.New("outbound send outcome unknown")
 )

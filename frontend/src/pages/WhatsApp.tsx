@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import styles from './WhatsApp.module.css'
 import { ticketService, WhatsAppChatTicket, WhatsAppMessageDTO } from '../services/ticket.service'
@@ -34,6 +35,7 @@ const displayName = (ticket: WhatsAppChatTicket) =>
 
 export default function WhatsApp() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<ChatTab>('me')
   const [myChats, setMyChats] = useState<WhatsAppChatTicket[]>([])
   const [unassignedChats, setUnassignedChats] = useState<WhatsAppChatTicket[]>([])
@@ -98,6 +100,24 @@ export default function WhatsApp() {
     const interval = setInterval(pollMessages, 10000)
     return () => clearInterval(interval)
   }, [activeTicket?.zoho_id])
+
+  // Deep link desde la ficha del contacto: /whatsapp?ticketId=<id>. El enlace ya
+  // existía y la página no leía el parámetro, así que caía en la bandeja sin
+  // seleccionar nada. Se espera a que carguen los chats, se abre la pestaña donde
+  // vive el ticket y se selecciona.
+  useEffect(() => {
+    const wanted = searchParams.get('ticketId')
+    if (!wanted || loadingTickets) return
+    const mine = myChats.find(c => c.zoho_id === wanted)
+    const target = mine ?? unassignedChats.find(c => c.zoho_id === wanted)
+    if (target) {
+      setActiveTab(mine ? 'me' : 'unassigned')
+      handleSelectTicket(target)
+    }
+    // Se limpia siempre: si el ticket no está en la bandeja (otra sesión de WAHA,
+    // o ya resuelto) reintentar en cada render no lo va a hacer aparecer.
+    setSearchParams({}, { replace: true })
+  }, [searchParams, loadingTickets, myChats, unassignedChats])
 
   const handleSelectTicket = async (ticket: WhatsAppChatTicket) => {
     setShowMobileChat(true)
@@ -181,6 +201,7 @@ export default function WhatsApp() {
         myChatsCount={myChats.length}
         unassignedChatsCount={unassignedChats.length}
         displayName={displayName}
+        onSynced={() => fetchTickets(true)}
       />
 
       {activeTicket ? (

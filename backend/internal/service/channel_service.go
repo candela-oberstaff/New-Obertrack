@@ -131,6 +131,11 @@ type ChannelService interface {
 	ListSupportAgents() ([]models.User, error)
 	ListPendingSupport(userID uint, companyFilter uint) ([]models.SupportTicket, error)
 	ListSupportTicketsForBoard() ([]models.SupportTicket, error)
+	// HasSupportTicket informa si el canal respalda una solicitud de soporte.
+	// Es lo que permite que el personal de soporte lea el caso desde el tablero
+	// aunque no sea miembro del canal. Cuenta también los casos ya resueltos: el
+	// tablero enlaza a conversaciones cerradas justamente para analizarlas.
+	HasSupportTicket(channelID uint) (bool, error)
 	ListMySupportTickets(userID uint) ([]MySupportTicket, error)
 	NotifySupportReply(channelID, senderID uint, content string, alreadyNotified []uint)
 	ClaimSupportTicket(ticketID, userID uint) (*models.SupportTicket, error)
