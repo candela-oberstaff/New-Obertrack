@@ -299,7 +299,7 @@ export function TrashPanel() {
             <p>Vas a eliminar <strong>{purgeTargets.length}</strong> elemento(s) <strong>para siempre</strong>.</p>
             <p className={styles['warning-text']}>
               Esta acción no se puede deshacer. Si algún elemento tiene datos dependientes, puede
-              omitirse (te lo reportamos). Para solo recuperarlo, usá "Restaurar".
+              omitirse (te lo reportamos). Para solo recuperarlo, usa "Restaurar".
             </p>
             <div className={styles['modal-actions']}>
               <button className={styles['btn-secondary']} onClick={() => setPurgeTargets(null)} disabled={busy}>Cancelar</button>

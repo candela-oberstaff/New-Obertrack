@@ -275,6 +275,17 @@ export const ticketService = {
     return response.data
   },
 
+  // Traspasa la conversación a otro agente. Queda en la bitácora de traspasos y
+  // le llega un aviso al nuevo responsable.
+  assignWhatsAppTicket: async (id: number, assigneeId: number, reason?: string): Promise<Ticket> => {
+    const response = await api.patch(`/tickets/wa/${id}`, {
+      action: 'assign',
+      assignee_id: assigneeId,
+      reason: reason || '',
+    })
+    return response.data
+  },
+
   getWaChats: async (): Promise<WhatsAppChatTicket[]> => {
     const response = await api.get('/tickets/wa')
     const tickets: Ticket[] = response.data ?? []

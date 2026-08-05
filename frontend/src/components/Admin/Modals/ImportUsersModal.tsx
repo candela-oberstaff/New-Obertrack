@@ -282,7 +282,7 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
             >
               {busy ? <Loader2 size={32} className="animate-spin" color="#6d28d9" /> : <FileSpreadsheet size={32} color="#6d28d9" />}
               <span style={{ fontWeight: 700, color: '#334155' }}>{busy ? 'Leyendo archivo...' : 'Hacé clic para elegir tu archivo .xlsx'}</span>
-              <span style={{ fontSize: 13, color: '#94a3b8' }}>Usá la plantilla para asegurar el formato correcto.</span>
+              <span style={{ fontSize: 13, color: '#94a3b8' }}>Usa la plantilla para asegurar el formato correcto.</span>
               <input
                 type="file"
                 accept=".xlsx"
@@ -304,7 +304,7 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
         {step === 'preview' && preview && (
           <div>
             <p style={{ margin: '0 0 14px', fontSize: 13, color: '#64748b' }}>
-              Archivo: <strong>{fileName}</strong>. Revisá las filas; en los conflictos elegí sobreescribir u omitir.
+              Archivo: <strong>{fileName}</strong>. Revisa las filas; en los conflictos elige sobreescribir u omitir.
             </p>
 
             {errTotal > 0 && (
@@ -364,7 +364,7 @@ export function ImportUsersModal({ onClose, onDone, employerMode = false }: { on
               <AlertCircle size={20} />
               <div>
                 <div style={{ fontWeight: 700 }}>{errTotal === 1 ? '1 fila no se puede importar' : `${errTotal} filas no se pueden importar`}</div>
-                <div style={{ fontSize: 12.5, color: '#7f1d1d' }}>Se van a omitir. Corregilas en el Excel y volvé a subirlo si las necesitás.</div>
+                <div style={{ fontSize: 12.5, color: '#7f1d1d' }}>Se van a omitir. Corrígelas en el Excel y volvé a subirlo si las necesitas.</div>
               </div>
             </div>
 

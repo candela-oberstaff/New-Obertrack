@@ -111,7 +111,7 @@ export function ExportUsersModal({
       await toFile('usuarios_obertrack.xlsx')
       onClose()
     } catch {
-      setError('No se pudo generar el archivo. Intentá de nuevo.')
+      setError('No se pudo generar el archivo. Inténtalo de nuevo.')
       setBusy(false)
     }
   }
@@ -139,7 +139,7 @@ export function ExportUsersModal({
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Elegí las columnas ({orderedSelected.length})</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Elige las columnas ({orderedSelected.length})</span>
           <div style={{ display: 'flex', gap: 14 }}>
             <button type="button" style={linkBtn} onClick={() => setSelected(new Set(FIELDS.map(f => f.key)))}>Todas</button>
             <button type="button" style={linkBtn} onClick={() => setSelected(new Set(DEFAULT_SELECTED))}>Básicas</button>
@@ -170,7 +170,7 @@ export function ExportUsersModal({
         </div>
         <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
           {orderedSelected.length === 0 ? (
-            <div style={{ padding: '24px 12px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Elegí al menos una columna.</div>
+            <div style={{ padding: '24px 12px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Elige al menos una columna.</div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: 12.5, minWidth: '100%', whiteSpace: 'nowrap' }}>

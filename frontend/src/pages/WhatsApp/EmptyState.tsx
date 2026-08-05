@@ -16,7 +16,7 @@ export default function EmptyState() {
         </svg>
       </div>
       <h2 className={styles.emptyTitle}>WhatsApp Web</h2>
-      <p className={styles.emptyDesc}>Seleccioná una conversación para ver los mensajes</p>
+      <p className={styles.emptyDesc}>Selecciona una conversación para ver los mensajes</p>
     </div>
   )
 }

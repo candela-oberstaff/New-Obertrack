@@ -139,6 +139,10 @@ export default function Layout() {
   const isEmployerType = user?.user_type === 'empleador'
   const isProfessional = user?.user_type === 'profesional'
   const isEndUser = isEmployerType || isProfessional
+  // Customer Success trabaja con el alcance de un superadmin salvo en cuatro
+  // pantallas: Papelera, Auditoría, Configuración y Novedades. Esas cuatro
+  // siguen mirando `isSuper` a secas; el resto usa este.
+  const isPlatformAdmin = isSuper || isCS
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, show: !isIT },
@@ -147,21 +151,21 @@ export default function Layout() {
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} />, show: !isIT },
     { path: '/sesiones', label: 'Sesiones', icon: <Video size={20} />, show: GOOGLE_INTEGRATIONS_ENABLED && !isIT },
     { path: '/wallet', label: 'Wallet', icon: <Wallet size={20} />, show: WALLET_ENABLED && isProfessional },
-    { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, show: isSuper || isEmployerType },
+    { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, show: isPlatformAdmin || isEmployerType },
     // Roles y Grupos: oculto para empresas en esta versión (solo superadmin).
-    { path: '/roles-grupos', label: 'Roles y Grupos', icon: <UserCog size={20} />, show: isSuper },
+    { path: '/roles-grupos', label: 'Roles y Grupos', icon: <UserCog size={20} />, show: isPlatformAdmin },
     { path: '/chat', label: 'Chat', icon: <MessageCircle size={20} />, show: !isIT },
     { path: '/admin', label: 'Admin', icon: <Settings size={20} />, show: isSuper || isCS },
     { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} />, show: isSuper || isCS },
-    { path: '/admin/mapa', label: 'Mapa', icon: <MapPin size={20} />, show: isSuper },
-    { path: '/admin/incidentes', label: 'Incidentes', icon: <AlertTriangle size={20} />, show: isSuper },
+    { path: '/admin/mapa', label: 'Mapa', icon: <MapPin size={20} />, show: isPlatformAdmin },
+    { path: '/admin/incidentes', label: 'Incidentes', icon: <AlertTriangle size={20} />, show: isPlatformAdmin },
     { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: false },
     { path: '/tickets/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isCS || isSuper || isIT },
     { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} />, show: isSuper || isCS },
     { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} />, show: isSuper || isIT },
     { path: '/admin/settings', label: 'Configuración', icon: <SlidersHorizontal size={20} />, show: isSuper },
     { path: '/papelera', label: 'Papelera', icon: <Trash2 size={20} />, show: isSuper },
-    { path: '/novedades', label: 'Novedades', icon: <GraduationCap size={20} />, show: !isIT },
+    { path: '/novedades', label: 'Novedades', icon: <GraduationCap size={20} />, show: !isIT && !isCS },
     { path: '/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isEndUser },
     { path: '/profile', label: 'Perfil', icon: <User size={20} />, show: true },
   ].filter(item => {

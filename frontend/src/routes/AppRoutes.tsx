@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
-import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, EmployerRoute, SupportRoute, SupportInboxRoute } from './guards'
+import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, PlatformAdminRoute, NovedadesRoute, EmployerRoute, SupportRoute, SupportInboxRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
 import { WALLET_ENABLED, GOOGLE_INTEGRATIONS_ENABLED } from '../config/features'
 
@@ -90,8 +90,8 @@ export function AppRoutes() {
           <Route path="admin/tenants/:id/employees/:eid" element={<CustomerSuccessRoute><EmployeeDetail /></CustomerSuccessRoute>} />
           <Route path="admin/tools" element={<CustomerSuccessRoute><Tools /></CustomerSuccessRoute>} />
           <Route path="admin/email" element={<CustomerSuccessRoute><EmailCampaigns /></CustomerSuccessRoute>} />
-          <Route path="admin/mapa" element={<AdminRoute><ProfessionalsMap /></AdminRoute>} />
-          <Route path="admin/incidentes" element={<AdminRoute><Incidents /></AdminRoute>} />
+          <Route path="admin/mapa" element={<PlatformAdminRoute><ProfessionalsMap /></PlatformAdminRoute>} />
+          <Route path="admin/incidentes" element={<PlatformAdminRoute><Incidents /></PlatformAdminRoute>} />
           {WALLET_ENABLED && <Route path="wallet" element={<Wallet />} />}
           <Route path="admin/metrics" element={<PlatformTechRoute><Metrics /></PlatformTechRoute>} />
           <Route path="admin/audit" element={<PlatformTechRoute><AuditLogs /></PlatformTechRoute>} />
@@ -99,11 +99,11 @@ export function AppRoutes() {
           <Route path="papelera" element={<AdminRoute><Papelera /></AdminRoute>} />
           <Route path="empresa" element={<EmployerRoute><EmpresaEmployees /></EmployerRoute>} />
           <Route path="empresa/employees/:id" element={<EmployerRoute><EmpresaEmployeeDetail /></EmployerRoute>} />
-          <Route path="novedades" element={<Tutoriales />} />
+          <Route path="novedades" element={<NovedadesRoute><Tutoriales /></NovedadesRoute>} />
           <Route path="tutoriales" element={<Navigate to="/novedades" replace />} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
-          {/* Roles y Grupos: no disponible para empresas en esta versión (solo superadmin). */}
-          <Route path="roles-grupos" element={<AdminRoute><RolesGroups /></AdminRoute>} />
+          {/* Roles y Grupos: no disponible para empresas en esta versión (superadmin y customer success). */}
+          <Route path="roles-grupos" element={<PlatformAdminRoute><RolesGroups /></PlatformAdminRoute>} />
           <Route path="survey/:id" element={<SurveyViewer />} />
           <Route path="tickets" element={<AdminRoute><TicketsBoard /></AdminRoute>} />
           <Route path="tickets/soporte" element={<SupportInboxRoute><SupportBoard /></SupportInboxRoute>} />

@@ -14,17 +14,26 @@ import (
 // requireAdminPanel: el superadmin gestiona todo; los customer success
 // (manager y analista) tienen acceso de consulta (solo GET) al panel de
 // administración y empresas para dar soporte — nunca mutaciones.
+// requireAdminPanel protege el panel de administración.
+//
+// Customer Success opera con el mismo alcance que un superadmin: gestiona
+// usuarios, empresas, expedientes e incidentes. Antes solo podía consultar (GET),
+// que es lo que lo dejaba fuera de su propio trabajo diario.
+//
+// Las cuatro funciones que NO le corresponden —Papelera, Auditoría,
+// Configuración y Novedades— NO se controlan aquí: cada una lleva su propia
+// guarda en su ruta, para que abrir este panel no las arrastre de rebote.
 func requireAdminPanel() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if middleware.IsSuperadmin(c) {
 			c.Next()
 			return
 		}
-		if middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess) && c.Request.Method == http.MethodGet {
+		if middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess) {
 			c.Next()
 			return
 		}
-		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin (customer success solo puede consultar)"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin o customer success"})
 		c.Abort()
 	}
 }
@@ -178,9 +187,11 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/users/:id/reports", d.admin.GetManagerReports)
 		admin.POST("/bulk-assign-manager", d.admin.BulkAssignManager)
 		admin.POST("/bulk-delete-users", d.admin.BulkDeleteUsers)
-		admin.GET("/trash", d.trash.List)
-		admin.POST("/trash/restore", d.trash.Restore)
-		admin.POST("/trash/purge", d.trash.Purge)
+		// Papelera: excluida de Customer Success. Va con su propia guarda porque
+		// cuelga del grupo admin, que sí abre a CS — sin esto entraría de rebote.
+		admin.GET("/trash", middleware.RequireSuperadmin(), d.trash.List)
+		admin.POST("/trash/restore", middleware.RequireSuperadmin(), d.trash.Restore)
+		admin.POST("/trash/purge", middleware.RequireSuperadmin(), d.trash.Purge)
 		admin.GET("/professionals/locations", d.admin.GetProfessionalLocations)
 		admin.POST("/professionals/bulk-email", d.admin.BulkEmailProfessionals)
 		// Entrega de acceso a la plataforma (enlace de alta o clave temporal).

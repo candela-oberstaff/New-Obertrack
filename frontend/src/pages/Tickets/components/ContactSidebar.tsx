@@ -5,7 +5,7 @@ import styles from '../Tickets.module.css';
 import {
   User, Phone, Mail, Clock, AlertCircle, Building2,
   Briefcase, MapPin, MessageCircle, Shield, Brain, TrendingUp, ArrowRightLeft,
-  Hand, CheckCircle2, RotateCcw
+  Hand, CheckCircle2, RotateCcw, UserCog, Lock
 } from 'lucide-react';
 
 interface ContactSidebarProps {
@@ -17,6 +17,15 @@ interface ContactSidebarProps {
   updatingStage?: boolean;
   onTransfer?: () => void;
   onWhatsAppAction?: (action: 'claim' | 'resolve' | 'reopen') => void;
+  // Abre el traspaso de un chat de WhatsApp a otro agente. Se pasa aparte de
+  // onTransfer porque ese va al flujo de Zoho, que no aplica aquí.
+  onWhatsAppAssign?: () => void;
+  // Nombre de quien atiende el chat cuando NO es quien lo está mirando. Con
+  // valor, las acciones se bloquean: el ticket ya no es suyo.
+  whatsAppOwnedByOther?: string;
+  // Permite recuperar la propiedad de un chat ajeno. Solo para superadmins: es
+  // la vía para intervenir sin fingir que el ticket sigue siendo suyo.
+  onWhatsAppTakeOver?: () => void;
   actionBusy?: boolean;
 }
 
@@ -27,7 +36,7 @@ const STAGE_META: Record<string, { label: string; color: string }> = {
   closed:      { label: 'Cerrado',     color: 'var(--gray-400)' },
 };
 
-export default function ContactSidebar({ ticket, linkedUser, statusOptions, onStatusChange, stageError, updatingStage = false, onTransfer, onWhatsAppAction, actionBusy = false }: ContactSidebarProps) {
+export default function ContactSidebar({ ticket, linkedUser, statusOptions, onStatusChange, stageError, updatingStage = false, onTransfer, onWhatsAppAction, onWhatsAppAssign, whatsAppOwnedByOther, onWhatsAppTakeOver, actionBusy = false }: ContactSidebarProps) {
   const navigate = useNavigate();
 
   const isWa = ticket.origin === 'whatsapp';
@@ -412,6 +421,35 @@ export default function ContactSidebar({ ticket, linkedUser, statusOptions, onSt
               </span>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                {/* El chat pasó a manos de otro agente: resolverlo o volver a
+                    traspasarlo ya no es decisión de quien lo mira. Se explica en
+                    vez de dejar botones que sugieren una propiedad que no existe. */}
+                {whatsAppOwnedByOther && ticket.stage !== 'closed' && (
+                  <div style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 7,
+                    padding: '9px 11px', borderRadius: 8,
+                    background: 'var(--gray-50, #f8fafc)',
+                    border: '1px solid var(--gray-200, #e2e8f0)',
+                    fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.45,
+                  }}>
+                    <Lock size={13} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <span>Este chat lo atiende <strong>{whatsAppOwnedByOther}</strong>.</span>
+                  </div>
+                )}
+                {whatsAppOwnedByOther && ticket.stage !== 'closed' && onWhatsAppTakeOver && (
+                  <button
+                    onClick={onWhatsAppTakeOver}
+                    disabled={actionBusy}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      width: '100%', padding: '9px 14px', borderRadius: '8px',
+                      border: '1px solid var(--gray-300, #cbd5e1)', cursor: 'pointer', fontWeight: 600,
+                      fontSize: '13px', background: 'transparent', color: 'var(--text-secondary)',
+                    }}
+                  >
+                    <Hand size={15} /> Retomar el chat
+                  </button>
+                )}
                 {ticket.stage !== 'closed' && !ticket.assigned_to && (
                   <button
                     onClick={() => onWhatsAppAction?.('claim')}
@@ -426,7 +464,7 @@ export default function ContactSidebar({ ticket, linkedUser, statusOptions, onSt
                     <Hand size={15} /> Tomar
                   </button>
                 )}
-                {ticket.stage !== 'closed' && (
+                {ticket.stage !== 'closed' && !whatsAppOwnedByOther && (
                   <button
                     onClick={() => onWhatsAppAction?.('resolve')}
                     disabled={actionBusy}
@@ -438,6 +476,23 @@ export default function ContactSidebar({ ticket, linkedUser, statusOptions, onSt
                     }}
                   >
                     <CheckCircle2 size={15} /> Resolver
+                  </button>
+                )}
+                {/* Traspasar la conversación: hasta ahora había que reabrirla y
+                    pedirle al compañero que la tomara, y el hilo se quedaba sin
+                    responsable por el medio. */}
+                {ticket.stage !== 'closed' && !whatsAppOwnedByOther && onWhatsAppAssign && (
+                  <button
+                    onClick={onWhatsAppAssign}
+                    disabled={actionBusy}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      width: '100%', padding: '9px 14px', borderRadius: '8px',
+                      border: '1px solid var(--gray-300, #cbd5e1)', cursor: 'pointer', fontWeight: 600,
+                      fontSize: '13px', background: 'transparent', color: 'var(--text-secondary)',
+                    }}
+                  >
+                    <UserCog size={15} /> Reasignar…
                   </button>
                 )}
                 {ticket.stage === 'closed' && (

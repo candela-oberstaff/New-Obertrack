@@ -281,7 +281,7 @@ const GestorPlantillas: React.FC = () => {
                 <option key={t.id} value={t.id}>{t.title}</option>
               ))}
             </select>
-            {!sendTemplateId && <p style={{ margin: '-16px 0 16px', fontSize: 12, color: '#ef4444' }}>Seleccioná una plantilla para poder enviar</p>}
+            {!sendTemplateId && <p style={{ margin: '-16px 0 16px', fontSize: 12, color: '#ef4444' }}>Selecciona una plantilla para poder enviar</p>}
 
             <label className={styles.modalLabel}>Destinatarios</label>
             <RecipientSelector

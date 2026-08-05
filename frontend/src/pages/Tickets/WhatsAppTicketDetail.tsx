@@ -4,6 +4,9 @@ import { Ticket, ticketService } from '../../services/ticket.service';
 import MessageTimeline from './components/MessageTimeline';
 import ChatInputArea from './components/ChatInputArea';
 import ContactSidebar from './components/ContactSidebar';
+import TransferTicketModal from './components/TransferTicketModal';
+import { channelService } from '../../services/channel.service';
+import type { User } from '../../types';
 import styles from './Tickets.module.css';
 import { ArrowLeft, RefreshCw, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -35,6 +38,8 @@ export default function WhatsAppTicketDetail() {
   const [refreshing, setRefreshing] = useState(false);
   const [acting, setActing] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [showAssign, setShowAssign] = useState(false);
+  const [agents, setAgents] = useState<User[]>([]);
   const pollRef = useRef<number | null>(null);
 
   const fetchTicket = useCallback(async (silent: boolean) => {
@@ -69,6 +74,18 @@ export default function WhatsAppTicketDetail() {
       setSendError(m);
       throw err;
     }
+  };
+
+  // Traspaso a otro agente. La lista sale del mismo sitio que el tablero de
+  // soporte, así que incluye a Customer Success, superadmins y analistas de IT.
+  const openAssign = async () => {
+    try {
+      setAgents(await channelService.getSupportAgents());
+    } catch {
+      showError('No se pudo cargar la lista de agentes.');
+      return;
+    }
+    setShowAssign(true);
   };
 
   const runAction = async (action: 'claim' | 'resolve' | 'reopen') => {
@@ -107,6 +124,13 @@ export default function WhatsAppTicketDetail() {
   const stageMeta = STAGE_LABELS[ticket.stage] ?? STAGE_LABELS['new'];
   const contactName = ticket.contact?.name || 'Contacto WhatsApp';
   const canEdit = canEditModule(user, 'tickets');
+
+  // Nombre de quien atiende el chat cuando no es quien lo está mirando; vacío si
+  // el ticket es suyo o no tiene dueño. Resolver o volver a traspasar un chat
+  // ajeno no es decisión de quien pasa por aquí, así que con esto se apagan.
+  const ownedByOther = ticket?.assigned_to && ticket.assigned_to !== user?.id
+    ? (ticket.assignee_name || 'otro agente')
+    : undefined;
 
   return (
     <div className={styles.container}>
@@ -172,6 +196,11 @@ export default function WhatsAppTicketDetail() {
           statusOptions={[]}
           onStatusChange={() => {}}
           onWhatsAppAction={runAction}
+          onWhatsAppAssign={canEdit ? openAssign : undefined}
+          whatsAppOwnedByOther={ownedByOther}
+          // Retomar queda para superadmins: quitarle el chat a un compañero no es
+          // una acción de trámite, y el backend deja que cualquiera lo reclame.
+          onWhatsAppTakeOver={ownedByOther && user?.is_superadmin ? () => runAction('claim') : undefined}
           actionBusy={acting}
         />
 
@@ -186,6 +215,21 @@ export default function WhatsAppTicketDetail() {
           )}
         </div>
       </div>
+
+      {showAssign && (
+        <TransferTicketModal
+          // Se excluye al responsable actual: reasignárselo a sí mismo no hace nada.
+          options={agents
+            .filter(a => a.id !== ticket.assigned_to)
+            .map(a => ({ value: a.id, label: `${a.name}${a.email ? ` (${a.email})` : ''}` }))}
+          onClose={() => setShowAssign(false)}
+          onTransfer={async (value, reason) => {
+            const updated = await ticketService.assignWhatsAppTicket(ticket.id, Number(value), reason);
+            setTicket(prev => prev ? { ...prev, ...updated } : updated);
+            showSuccess('Conversación reasignada.');
+          }}
+        />
+      )}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

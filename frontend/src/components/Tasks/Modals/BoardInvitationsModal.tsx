@@ -34,7 +34,7 @@ export function BoardInvitationsModal({
       {invitations.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px 16px', color: '#94a3b8' }}>
           <Inbox size={40} style={{ marginBottom: 10 }} />
-          <p style={{ margin: 0, fontSize: 14 }}>No tenés invitaciones pendientes.</p>
+          <p style={{ margin: 0, fontSize: 14 }}>No tienes invitaciones pendientes.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -56,7 +56,7 @@ export function BoardInvitationsModal({
                     {' te invitó al tablero '}
                     <strong>{inv.board?.name || `#${inv.board_id}`}</strong>
                   </div>
-                  <div style={{ fontSize: 12, color: '#94a3b8' }}>¿Querés unirte?</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>¿Quieres unirte?</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>

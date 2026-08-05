@@ -351,7 +351,7 @@ function TemplateBlockEditor({ blocks, onChange, bindField, variables, variableM
                   {blocks.length === 0 || (blocks.length === 1 && blocks[0].style?.raw === 'true') ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', color: '#cbd5e1', fontSize: 12, textAlign: 'center' }}>
                       <AlignJustify size={24} style={{ opacity: 0.3, marginBottom: 8 }} />
-                      <p style={{ margin: 0 }}>Agregá bloques para diseñar tu plantilla</p>
+                      <p style={{ margin: 0 }}>Agrega bloques para diseñar tu plantilla</p>
                     </div>
                   ) : (
                     blocks.filter(b => b.style?.raw !== 'true').map(b => {
@@ -390,7 +390,7 @@ function TemplateBlockEditor({ blocks, onChange, bindField, variables, variableM
               {selectedBlock && selectedBlock.style?.raw !== 'true' ? (
                 <InspectorPanel block={selectedBlock} onChange={updateBlock} bindField={bindField} />
               ) : (
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 11, textAlign: 'center', padding: 16 }}>Seleccioná un bloque</div>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 11, textAlign: 'center', padding: 16 }}>Selecciona un bloque</div>
               )}
             </div>
           </>

@@ -250,7 +250,7 @@ export default function SupportBoard() {
       else if (target === 'new') ticketService.updateInternalTicket(ticket.id, { stage: 'new', status: 'open' })
         .then(() => queryClient.invalidateQueries({ queryKey: ['tickets'] }))
         .catch((e: any) => showError(e?.response?.data?.error || 'No se pudo reabrir el ticket.'));
-      else showError('Una incorporación de Obersuite no se toma: abrí la ficha del profesional o ciérrala cuando esté acompañada.');
+      else showError('Una incorporación de Obersuite no se toma: abre la ficha del profesional o ciérrala cuando esté acompañada.');
       return;
     }
     const isWa = ticket.origin === 'whatsapp';
@@ -262,7 +262,7 @@ export default function SupportBoard() {
       if (supportState(ticket) === 'resolved') {
         isWa ? waActionMutation.mutate({ ticketId: ticket.id, action: 'reopen' }) : reopenMutation.mutate(ticket.id);
       } else {
-        showError('Un ticket asignado no se puede dejar sin asignar arrastrándolo. Abrí el ticket y usá "Reasignar…".');
+        showError('Un ticket asignado no se puede dejar sin asignar arrastrándolo. Abre el ticket y usa "Reasignar…".');
       }
     }
   };

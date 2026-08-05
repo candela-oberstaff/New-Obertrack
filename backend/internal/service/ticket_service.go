@@ -49,6 +49,9 @@ type TicketService interface {
 	PurgeWhatsAppSession(session string) (repository.WhatsAppPurgeCounts, error)
 	SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error)
 	WhatsAppAction(id, agentID uint, action string) (*models.Ticket, error)
+	// WhatsAppAssign traspasa un chat de WhatsApp a otro agente, dejando la
+	// misma bitácora que un ticket interno.
+	WhatsAppAssign(id, actorID, assigneeID uint, isSuperadmin bool, reason string) (*models.Ticket, error)
 	// GetInternal returns a single internal alert ticket (with notes).
 	GetInternal(id uint) (*models.Ticket, error)
 	// ListInternalReport returns internal alerts created within [start, end].
@@ -1114,11 +1117,23 @@ func (s *ticketService) ListSupportAgents() ([]models.User, error) {
 	}
 	active := make([]models.User, 0, len(cs)+len(sa))
 	for _, u := range append(cs, sa...) {
-		if u.IsActive {
+		if u.IsActive && !isAssignableAgentExcluded(u) {
 			active = append(active, u)
 		}
 	}
 	return active, nil
+}
+
+// isAssignableAgentExcluded aparta del selector de traspaso a las cuentas que no
+// son personas.
+//
+// El usuario de sistema "Obertrack" es de tipo superadmin para poder publicar
+// avisos automáticos, así que entra en cualquier listado de superadmins. Ya se lo
+// excluye del selector de chat y de los asignables de Tareas; en el traspaso de
+// tickets faltaba, y ofrecía asignarle una conversación a un bot que no la va a
+// atender nunca.
+func isAssignableAgentExcluded(u models.User) bool {
+	return u.Email == models.SystemBotEmail
 }
 
 // ListTransfers returns the transfer history for a ticket.
@@ -1236,6 +1251,82 @@ func (s *ticketService) TransferInternal(id, toUserID, byUserID uint, isSuperadm
 		Reason:           reason,
 		AddTimelineEvent: true,
 		LocalTicketID:    ticket.ID,
+	})
+
+	return s.repo.GetByID(ticket.ID)
+}
+
+// WhatsAppAssign traspasa la conversación a otro agente.
+//
+// Hasta ahora un chat de WhatsApp solo se podía tomar, resolver o reabrir: para
+// pasárselo a un compañero había que reabrirlo y pedirle que lo tomara él, con
+// lo que el hilo perdía el responsable por el medio. Esto lo hace en un paso y
+// con el mismo rastro que un ticket interno.
+//
+// Permisos, calcados de TransferInternal: un superadmin siempre; si no, el
+// responsable actual, o cualquiera si el chat todavía no tiene dueño.
+func (s *ticketService) WhatsAppAssign(id, actorID, assigneeID uint, isSuperadmin bool, reason string) (*models.Ticket, error) {
+	ticket, err := s.repo.GetByID(id)
+	if err != nil || ticket.Origin != string(models.ChannelWhatsApp) {
+		return nil, apperrors.ErrNotFound
+	}
+	if ticket.Session != s.wahaSvc.GetSession() {
+		return nil, apperrors.ErrNotFound
+	}
+	if !isSuperadmin && ticket.AssignedTo != nil && *ticket.AssignedTo != actorID {
+		return nil, apperrors.ErrAccessDenied
+	}
+
+	target, err := s.userRepo.GetByID(assigneeID)
+	if err != nil || target == nil {
+		return nil, apperrors.ErrInvalidInput
+	}
+
+	var fromUserID *uint
+	fromName := ""
+	if ticket.AssignedTo != nil {
+		fromUserID = ticket.AssignedTo
+		if from, ferr := s.userRepo.GetByID(*ticket.AssignedTo); ferr == nil && from != nil {
+			fromName = from.Name
+		}
+	}
+	byName := ""
+	if by, berr := s.userRepo.GetByID(actorID); berr == nil && by != nil {
+		byName = by.Name
+	}
+
+	tid := assigneeID
+	ticket.AssignedTo = &tid
+	// Reasignar implica que alguien lo está atendiendo: si venía sin tomar, pasa
+	// a en curso en vez de quedarse en "Nuevo" con dueño, que es contradictorio.
+	if ticket.Stage == models.StageNew {
+		ticket.Stage = models.StageInProgress
+	}
+	// Se limpian las asociaciones precargadas antes de guardar: con ellas puestas,
+	// Save arrastra el contacto y los mensajes y puede pisar sus claves foráneas.
+	ticket.Contact = nil
+	ticket.Assignee = nil
+	ticket.Messages = nil
+	if err := s.repo.SaveTicket(ticket); err != nil {
+		return nil, err
+	}
+
+	_ = s.RecordTransfer(TransferInput{
+		Origin:      string(models.ChannelWhatsApp),
+		TicketRef:   strconv.FormatUint(uint64(ticket.ID), 10),
+		TicketTitle: ticket.Title,
+		FromUserID:  fromUserID,
+		FromName:    fromName,
+		ToUserID:    &tid,
+		ToName:      target.Name,
+		ByUserID:    actorID,
+		ByName:      byName,
+		Reason:      reason,
+		// Sin evento en el hilo: aquí el hilo ES la conversación con el cliente, y
+		// un mensaje de sistema se colaría entre lo que escribió el contacto (la
+		// bandeja pinta como entrante todo lo que no sea del agente). El rastro
+		// queda en la bitácora de traspasos y en el aviso al nuevo responsable.
+		AddTimelineEvent: false,
 	})
 
 	return s.repo.GetByID(ticket.ID)

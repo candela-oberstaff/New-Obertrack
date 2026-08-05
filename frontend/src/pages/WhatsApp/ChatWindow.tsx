@@ -181,7 +181,7 @@ export default function ChatWindow({
         </div>
       ) : (
         <div className={styles.inputDisabledMessage}>
-          {isUnassignedChat ? 'Tomá el chat para poder responder' : 'No tienes permiso para escribir en este chat'}
+          {isUnassignedChat ? 'Toma el chat para poder responder' : 'No tienes permiso para escribir en este chat'}
         </div>
       )}
     </main>

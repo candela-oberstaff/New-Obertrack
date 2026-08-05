@@ -270,7 +270,7 @@ export default function Tasks() {
             >
               <Mail size={20} style={{ color: '#7c3aed', flexShrink: 0 }} />
               <span style={{ fontSize: 14, color: '#4c1d95', fontWeight: 600 }}>
-                Tenés {myInvitations.length} invitación{myInvitations.length === 1 ? '' : 'es'} a tableros.
+                Tienes {myInvitations.length} invitación{myInvitations.length === 1 ? '' : 'es'} a tableros.
               </span>
               <button
                 className={styles['btn-primary']}

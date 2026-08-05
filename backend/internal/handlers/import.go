@@ -64,7 +64,7 @@ func (h *AdminHandler) DownloadImportTemplate(c *gin.Context) {
 		"   • empresa*: nombre EXACTO de la empresa, o su ID. La empresa debe existir",
 		"     (si la estás creando en la hoja Empresas, esa se procesa primero).",
 		"   • cargo, telefono, pais, estado_provincia, ciudad, ubicacion: opcionales.",
-		"   • es_manager: escribí 'Sí' si el profesional es un manager (puede tener gente a cargo);",
+		"   • es_manager: escribe 'Sí' si el profesional es un manager (puede tener gente a cargo);",
 		"     'No' o vacío en caso contrario.",
 		"   • reporta_a: EMAIL del manager de esa persona. Dejalo vacío para quien no le reporta a nadie.",
 		"",
@@ -307,7 +307,7 @@ func resolveProfManagers(rows []profSheetRow, r managerResolver) (map[int]string
 		for steps := 0; ok && steps <= len(rows); steps++ {
 			if cur == i {
 				if errs[i] == "" {
-					errs[i] = "La cadena de reporta_a forma un círculo: revisá quién le reporta a quién."
+					errs[i] = "La cadena de reporta_a forma un círculo: revisa quién le reporta a quién."
 				}
 				break
 			}
@@ -832,7 +832,7 @@ func (h *AdminHandler) DownloadEmployerImportTemplate(c *gin.Context) {
 		"   • Contraseña: NO la pongas; se genera una temporal por fila y te la entregamos al finalizar.",
 		"   • Email ya existente: si pertenece a TU empresa podrás SOBREESCRIBIR u OMITIR; si pertenece a",
 		"     otra empresa, no se podrá importar (usá otro correo).",
-		"   • es_manager: escribí 'Sí' si el profesional es un manager; 'No' o vacío en caso contrario.",
+		"   • es_manager: escribe 'Sí' si el profesional es un manager; 'No' o vacío en caso contrario.",
 		"   • País y ubicación: texto libre.",
 		"",
 		"Organigrama (columna reporta_a):",

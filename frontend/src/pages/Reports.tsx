@@ -112,7 +112,7 @@ export default function Reports() {
           <Calendar size={56} style={{ color: 'var(--primary)', opacity: 0.5, marginBottom: '16px' }} />
           <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--black)', marginBottom: '8px' }}>Selecciona una empresa</h2>
           <p style={{ maxWidth: '420px', color: '#64748b' }}>
-            Elige una empresa para ver sus reportes de horas y tareas. Luego podés filtrar por un empleado. La información de cada empresa se mantiene aislada.
+            Elige una empresa para ver sus reportes de horas y tareas. Luego puedes filtrar por un empleado. La información de cada empresa se mantiene aislada.
           </p>
         </div>
       ) : isLoading ? (

@@ -135,7 +135,7 @@ func (h *WhatsAppHandler) GetMyChats(c *gin.Context) {
 	zohoAgentID, err := h.resolveZohoAgentID(c)
 	if err != nil {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{
-			"error": "No se pudo obtener tu ID de agente en Zoho. Asegurate de que tu correo esté registrado allí.",
+			"error": "No se pudo obtener tu ID de agente en Zoho. Asegúrate de que tu correo esté registrado allí.",
 		})
 		return
 	}

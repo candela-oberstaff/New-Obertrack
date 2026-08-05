@@ -559,7 +559,7 @@ export function useTasksPageState() {
     if (!selectedBoard) return
     const ok = await confirm({
       title: 'Quitar del tablero',
-      message: '¿Seguro que querés quitar a esta persona del tablero?',
+      message: '¿Seguro que quieres quitar a esta persona del tablero?',
       confirmLabel: 'Quitar',
       variant: 'danger',
     })
@@ -585,7 +585,7 @@ export function useTasksPageState() {
     if (!selectedBoard) return
     const ok = await confirm({
       title: 'Salir del tablero',
-      message: `¿Seguro que querés salir de "${selectedBoard.name}"? Perderás el acceso a sus tareas.`,
+      message: `¿Seguro que quieres salir de "${selectedBoard.name}"? Perderás el acceso a sus tareas.`,
       confirmLabel: 'Salir',
       variant: 'danger',
     })

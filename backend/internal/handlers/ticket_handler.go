@@ -385,11 +385,11 @@ func (h *TicketHandler) SendWhatsAppMessage(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, apperrors.ErrRateLimited) {
-			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Estás enviando mensajes muy rápido. Esperá unos segundos e intentá de nuevo."})
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Estás enviando mensajes muy rápido. Espera unos segundos e inténtalo de nuevo."})
 			return
 		}
 		if errors.Is(err, apperrors.ErrColdOutreach) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "No podés escribir a un contacto que no te escribió primero (protección anti-baneo)."})
+			c.JSON(http.StatusForbidden, gin.H{"error": "No puedes escribir a un contacto que no te escribió primero (protección anti-baneo)."})
 			return
 		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "No se pudo enviar el mensaje por WhatsApp"})
@@ -410,12 +410,38 @@ func (h *TicketHandler) UpdateWhatsAppTicket(c *gin.Context) {
 	}
 	var req struct {
 		Action string `json:"action"`
+		// Solo para action="assign": a quién se le traspasa la conversación.
+		AssigneeID *uint  `json:"assignee_id"`
+		Reason     string `json:"reason"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
 		return
 	}
 	agentID := middleware.GetUserID(c)
+
+	if req.Action == "assign" {
+		if req.AssigneeID == nil || *req.AssigneeID == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Falta el agente al que reasignar"})
+			return
+		}
+		ticket, err := h.ticketSvc.WhatsAppAssign(uint(id), agentID, *req.AssigneeID,
+			middleware.IsSuperadmin(c), req.Reason)
+		if err != nil {
+			switch {
+			case errors.Is(err, apperrors.ErrAccessDenied):
+				c.JSON(http.StatusForbidden, gin.H{"error": "Solo el responsable actual o un superadmin pueden reasignar"})
+			case errors.Is(err, apperrors.ErrInvalidInput):
+				c.JSON(http.StatusBadRequest, gin.H{"error": "El agente indicado no existe"})
+			default:
+				c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp ticket not found"})
+			}
+			return
+		}
+		c.JSON(http.StatusOK, ticketDTOFromWhatsApp(*ticket))
+		return
+	}
+
 	ticket, err := h.ticketSvc.WhatsAppAction(uint(id), agentID, req.Action)
 	if err != nil {
 		if err == apperrors.ErrInvalidInput {
@@ -519,16 +545,25 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 		return
 	}
 
-	// Superadmins see all tickets; customer_success only see their own
+	// Alcance de la bandeja: superadmins y Customer Success la ven completa; el
+	// resto queda acotado a lo que tiene asignado en Zoho.
+	//
+	// Un fallo resolviendo el ID de agente NO puede vaciar el tablero. Antes se
+	// respondía 422 y se cortaba aquí, así que un usuario sin agente en Zoho no
+	// veía NADA: ni las alertas internas, ni las solicitudes por chat, ni los
+	// chats de WhatsApp, que no dependen de Zoho para nada. Ahora se omite solo
+	// la fuente que falló, igual que ya hacían las demás entre sí.
 	var assigneeID string
-	if !middleware.IsSuperadmin(c) {
-		var err error
-		assigneeID, err = h.resolveZohoAgentID(c)
+	skipZoho := false
+	if !middleware.IsSuperadmin(c) && middleware.GetUserRole(c) != string(models.UserTypeCustomerSuccess) {
+		id, err := h.resolveZohoAgentID(c)
 		if err != nil {
-			c.JSON(http.StatusUnprocessableEntity, gin.H{
-				"error": "No se pudo obtener tu ID de agente en Zoho. Asegurate de que tu correo esté registrado allí.",
-			})
-			return
+			// Sin ID no se puede acotar la consulta a lo suyo, y pedir todo le
+			// enseñaría tickets ajenos: se omite Zoho para este usuario.
+			log.Printf("[Tickets] sin ID de agente en Zoho, se omite esa fuente: %v", err)
+			skipZoho = true
+		} else {
+			assigneeID = id
 		}
 	}
 
@@ -569,6 +604,11 @@ func (h *TicketHandler) GetTickets(c *gin.Context) {
 				tickets = append(tickets, ticketDTOFromWhatsApp(wt))
 			}
 		}
+	}
+
+	if skipZoho {
+		c.JSON(http.StatusOK, tickets)
+		return
 	}
 
 	zohoTickets, err := h.zohoSvc.ListTickets(assigneeID)

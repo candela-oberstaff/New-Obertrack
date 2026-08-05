@@ -9,14 +9,24 @@ interface MessageTimelineProps {
 }
 
 export default function MessageTimeline({ ticket, contact }: MessageTimelineProps) {
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // La primera colocación es instantánea: animar un salto que el usuario no pidió
+  // solo distrae. A partir de ahí, los mensajes nuevos entran con desplazamiento.
+  const firstScroll = useRef(true);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const box = boxRef.current;
+    if (!box) return;
+    // Se desplaza el contenedor a mano en vez de usar scrollIntoView sobre un
+    // elemento centinela: scrollIntoView arrastra a TODOS los ancestros
+    // desplazables, la ventana incluida, así que al abrir un ticket la página
+    // entera saltaba al final y el encabezado quedaba fuera de vista.
+    box.scrollTo({ top: box.scrollHeight, behavior: firstScroll.current ? 'auto' : 'smooth' });
+    firstScroll.current = false;
   }, [ticket.messages]);
 
   return (
-    <div className={styles.chatMessages}>
+    <div className={styles.chatMessages} ref={boxRef}>
       {(!ticket.messages || ticket.messages.length === 0) ? (
         <div className={styles.emptyMessages}>
           <User size={48} className={styles.emptyIcon} />
@@ -60,7 +70,6 @@ export default function MessageTimeline({ ticket, contact }: MessageTimelineProp
           );
         })
       )}
-      <div ref={chatEndRef} />
     </div>
   );
 }

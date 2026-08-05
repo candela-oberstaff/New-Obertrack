@@ -30,7 +30,7 @@ func (s *channelService) privateHistorySince(channelID, userID uint) *time.Time 
 }
 
 func (s *channelService) GetMessages(channelID, userID, beforeID uint) ([]models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
+	if !s.canReadChannel(channelID, userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 	return s.repo.GetMessages(channelID, 100, s.privateHistorySince(channelID, userID), beforeID)
@@ -49,6 +49,32 @@ func (s *channelService) GetMessages(channelID, userID, beforeID uint) ([]models
 func (s *channelService) isSuperadmin(userID uint) bool {
 	user, err := s.userRepo.GetByID(userID)
 	return err == nil && isSuperadminUser(user)
+}
+
+// canReadChannel indica si el usuario puede LEER el canal: miembro, superadmin,
+// o personal de soporte cuando el canal respalda una solicitud del tablero.
+//
+// El último caso es el que faltaba. El handler ya autorizaba la petición
+// (channelReadAllowed), pero esta capa la rechazaba después, así que el botón
+// "Chat" del tablero abría la conversación correcta y vacía: canal bien
+// seleccionado, cero mensajes, sin ningún error visible.
+//
+// Es solo lectura a propósito: escribir sigue exigiendo membresía explícita, de
+// modo que quien revisa un caso no termina posteando en la conversación privada
+// de una empresa ajena.
+func (s *channelService) canReadChannel(channelID, userID uint) bool {
+	if isMember, _ := s.repo.IsMember(channelID, userID); isMember {
+		return true
+	}
+	if s.isSuperadmin(userID) {
+		return true
+	}
+	if !s.isSupportAgent(userID) {
+		return false
+	}
+	backsTicket, err := s.HasSupportTicket(channelID)
+	// Ante un fallo al resolverlo, fallar cerrado.
+	return err == nil && backsTicket
 }
 
 func (s *channelService) SendMessage(channelID, userID uint, content, attachment, fileName string, fileSize int64, fileType string) (*models.ChannelMessage, []uint, error) {
@@ -373,7 +399,7 @@ func (s *channelService) UnpinMessage(channelID, messageID, userID uint) (*model
 }
 
 func (s *channelService) GetPinnedMessages(channelID, userID uint) ([]models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
+	if !s.canReadChannel(channelID, userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 	return s.repo.GetPinnedMessages(channelID, s.privateHistorySince(channelID, userID))
@@ -385,7 +411,7 @@ func (s *channelService) GetReactions(messageID, userID uint) ([]models.MessageR
 		return nil, err
 	}
 
-	if isMember, _ := s.repo.IsMember(message.ChannelID, userID); !isMember && !s.isSuperadmin(userID) {
+	if !s.canReadChannel(message.ChannelID, userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -393,7 +419,7 @@ func (s *channelService) GetReactions(messageID, userID uint) ([]models.MessageR
 }
 
 func (s *channelService) GetThreadReplies(channelID, messageID, userID uint) ([]models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
+	if !s.canReadChannel(channelID, userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 	return s.repo.GetThreadReplies(messageID)
@@ -486,7 +512,7 @@ func (s *channelService) GetStarredMessages(userID uint) ([]models.ChannelMessag
 }
 
 func (s *channelService) SearchMessages(channelID, userID uint, query string) ([]models.ChannelMessage, error) {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
+	if !s.canReadChannel(channelID, userID) {
 		return nil, fmt.Errorf("you are not a member of this channel")
 	}
 
@@ -758,7 +784,9 @@ func (s *channelService) ListSupportAgents() ([]models.User, error) {
 	agents := make([]models.User, 0, len(cs)+len(sa)+len(it))
 	combined := append(append(cs, sa...), it...)
 	for _, u := range combined {
-		if u.IsActive {
+		// Fuera el usuario de sistema: es superadmin para publicar avisos
+		// automáticos, no una persona a la que traspasarle una conversación.
+		if u.IsActive && !isAssignableAgentExcluded(u) {
 			agents = append(agents, u)
 		}
 	}
@@ -1108,7 +1136,7 @@ func (s *channelService) ReopenSupportTicket(ticketID, actorID uint) (*models.Su
 	}
 	channelID := ticket.ChannelID
 	if ticket.RequesterID != actorID && !s.isSupportAgent(actorID) {
-		return nil, fmt.Errorf("no tenés permiso para reabrir este ticket")
+		return nil, fmt.Errorf("no tienes permiso para reabrir este ticket")
 	}
 	if ticket.Status != models.SupportStatusResolved {
 		return s.repo.GetSupportTicketByID(ticketID)

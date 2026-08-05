@@ -131,7 +131,9 @@ func TestRequireRBACManager(t *testing.T) {
 		{"superadmin", true, true},
 		{string(models.UserTypeEmployer), false, true},
 		{string(models.UserTypeProfessional), false, false},
-		{string(models.UserTypeCustomerSuccess), false, false},
+		// Customer Success gestiona roles y grupos con el alcance de un superadmin.
+		{string(models.UserTypeCustomerSuccess), false, true},
+		{string(models.UserTypeITAnalyst), false, false},
 	}
 	for _, tc := range cases {
 		c, w := permCtx(http.MethodPost, tc.role, tc.isSuper)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
 )
 
@@ -22,7 +23,10 @@ func accessCtx(method, role string, isSuperadmin, isManager bool) (*gin.Context,
 	return c, w
 }
 
-// El panel admin: superadmin gestiona todo; customer success solo consulta (GET).
+// El panel admin: superadmin y customer success gestionan con el mismo alcance.
+// Las cuatro funciones fuera de CS (Papelera, Auditoría, Configuración y
+// Novedades) NO se controlan aquí sino en su propia ruta, para que abrir este
+// panel no las arrastre.
 func TestRequireAdminPanel(t *testing.T) {
 	cs := string(models.UserTypeCustomerSuccess)
 	cases := []struct {
@@ -35,8 +39,8 @@ func TestRequireAdminPanel(t *testing.T) {
 		{"superadmin GET", http.MethodGet, "superadmin", true, true},
 		{"superadmin DELETE", http.MethodDelete, "superadmin", true, true},
 		{"customer success consulta (GET)", http.MethodGet, cs, false, true},
-		{"customer success NO puede mutar (POST)", http.MethodPost, cs, false, false},
-		{"customer success NO puede mutar (DELETE)", http.MethodDelete, cs, false, false},
+		{"customer success gestiona (POST)", http.MethodPost, cs, false, true},
+		{"customer success gestiona (DELETE)", http.MethodDelete, cs, false, true},
 		{"profesional sin acceso ni a consulta", http.MethodGet, string(models.UserTypeProfessional), false, false},
 		{"empresa sin acceso al panel de plataforma", http.MethodGet, string(models.UserTypeEmployer), false, false},
 		{"analista de IT sin acceso", http.MethodGet, string(models.UserTypeITAnalyst), false, false},
@@ -51,6 +55,47 @@ func TestRequireAdminPanel(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Las cuatro funciones que Customer Success NO recibe. Es el recorte del rol, y
+// lo que más fácil se rompe sin querer: Papelera y Configuración cuelgan del
+// grupo admin —que ahora SÍ abre a CS— y Novedades la ve todo el mundo, así que
+// las tres dependen de una guarda propia que hay que no perder de vista.
+func TestCustomerSuccessQuedaFueraDeLasCuatroFunciones(t *testing.T) {
+	cs := string(models.UserTypeCustomerSuccess)
+
+	t.Run("Papelera y Configuración exigen superadmin", func(t *testing.T) {
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			c, w := accessCtx(method, cs, false, false)
+			middleware.RequireSuperadmin()(c)
+			if !c.IsAborted() {
+				t.Errorf("%s: customer success no debería pasar RequireSuperadmin (status %d)", method, w.Code)
+			}
+		}
+	})
+
+	t.Run("Auditoría exige soporte técnico de plataforma", func(t *testing.T) {
+		c, w := accessCtx(http.MethodGet, cs, false, false)
+		middleware.RequirePlatformTech()(c)
+		if !c.IsAborted() {
+			t.Errorf("customer success no debería acceder a auditoría (status %d)", w.Code)
+		}
+	})
+
+	t.Run("Novedades bloquea a customer success y deja pasar al resto", func(t *testing.T) {
+		c, w := accessCtx(http.MethodGet, cs, false, false)
+		middleware.BlockCustomerSuccess()(c)
+		if !c.IsAborted() {
+			t.Errorf("customer success no debería ver Novedades (status %d)", w.Code)
+		}
+		for _, role := range []string{string(models.UserTypeProfessional), string(models.UserTypeEmployer)} {
+			c, _ := accessCtx(http.MethodGet, role, false, false)
+			middleware.BlockCustomerSuccess()(c)
+			if c.IsAborted() {
+				t.Errorf("%s sí debería ver Novedades", role)
+			}
+		}
+	})
 }
 
 // Escritura en el expediente de empresa: es la excepción a requireAdminPanel.

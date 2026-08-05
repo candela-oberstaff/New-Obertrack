@@ -137,6 +137,19 @@ export default function SlackChat() {
     archivedChannels, fetchArchivedChannels,
   } = useSlackChat(user as any, isSuperadmin ? selectedCompanyId : null)
 
+  // Al cambiar el alcance de empresa —por ejemplo cuando el deep link salta al
+  // caso de otra— hay que recargar el sidebar: el hook guarda el nuevo tenant en
+  // un ref, pero nada dispara la consulta, así que la lista quedaba con los
+  // canales de la empresa anterior.
+  const companyScopeMounted = useRef(false)
+  useEffect(() => {
+    if (!companyScopeMounted.current) {
+      companyScopeMounted.current = true // el hook ya carga en el montaje
+      return
+    }
+    if (isSuperadmin) fetchChannels()
+  }, [isSuperadmin, selectedCompanyId, fetchChannels])
+
   const [showNewChannelModal, setShowNewChannelModal] = useState(false)
   const [showChannelSettings, setShowChannelSettings] = useState(false)
   const [showAddMembers, setShowAddMembers] = useState(false)
@@ -203,7 +216,7 @@ export default function SlackChat() {
         // Se limpia el parámetro igualmente: dejarlo puesto reintentaría en cada
         // render y repetiría el aviso.
         setSearchParams({}, { replace: true })
-        showError('No se pudo abrir esa conversación: no tenés acceso o ya no existe.')
+        showError('No se pudo abrir esa conversación: no tienes acceso o ya no existe.')
       })
     return () => { cancelled = true }
   }, [searchParams, channels, selectedCompanyId, setSelectedCompanyId, setSelectedChannel, setSearchParams, showError])

@@ -133,6 +133,23 @@ func RequirePlatformTech() gin.HandlerFunc {
 	}
 }
 
+// BlockCustomerSuccess cierra una ruta a Customer Success dejando pasar al resto.
+//
+// Es la forma de expresar las excepciones del rol: CS tiene el alcance de un
+// superadmin salvo en Papelera, Auditoría, Configuración y Novedades. Las tres
+// primeras ya son solo-superadmin por otras guardas; Novedades, en cambio, la ve
+// todo el mundo, así que la exclusión hay que escribirla al revés.
+func BlockCustomerSuccess() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if GetUserRole(c) == "customer_success" && !IsSuperadmin(c) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Novedades no está disponible para Customer Success"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 func GetUserID(c *gin.Context) uint {
 	userID, exists := c.Get("user_id")
 	if !exists {

@@ -102,7 +102,11 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 	// solo de superadmins (que no se restringen por roles).
 	tutorialsView := handlers.RequirePermission(d.rbacSvc, "tutorials", models.PermissionView)
 
+	// Novedades queda fuera del alcance de Customer Success. Se bloquea en el
+	// grupo entero: si solo se ocultara el enlace del menú, la URL directa y la
+	// API seguirían respondiendo.
 	tutorials := api.Group("/tutorials")
+	tutorials.Use(middleware.BlockCustomerSuccess())
 	{
 		tutorials.GET("", tutorialsView, d.tutorial.GetAll)
 		tutorials.GET("/views", tutorialsView, d.tutorial.GetMyViews)

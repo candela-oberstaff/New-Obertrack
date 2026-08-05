@@ -156,7 +156,7 @@ export default function Soporte() {
       {(showForm || !hasTickets) && (
         <>
           <p className={styles.helper}>
-            Tu solicitud llega al equipo de soporte y podés seguirla por el chat.
+            Tu solicitud llega al equipo de soporte y puedes seguirla por el chat.
           </p>
           <form className={styles.form} onSubmit={handleSubmit}>
             <label className={styles.field}>
@@ -178,7 +178,7 @@ export default function Soporte() {
                 className={styles.textarea}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Contanos qué necesitás con el mayor detalle posible"
+                placeholder="Cuéntanos qué necesitas con el mayor detalle posible"
                 rows={6}
                 required
               />

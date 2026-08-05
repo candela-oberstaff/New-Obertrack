@@ -1409,7 +1409,7 @@ export default function Admin() {
                   </>
                 )}
                 <p className={styles['warning-text']}>
-                  Dejarán de aparecer y no podrán iniciar sesión (sus registros se conservan, podés
+                  Dejarán de aparecer y no podrán iniciar sesión (sus registros se conservan, puedes
                   restaurarlos desde la Papelera). Los superadmins y tu propia cuenta nunca se
                   eliminan desde aquí.
                 </p>

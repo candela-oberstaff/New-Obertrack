@@ -9,14 +9,14 @@ export interface TemplateOption {
 
 export const BUILTIN_EMERGENCY_TEMPLATES: { label: string; subject: string; body: string }[] = [
   {
-    label: 'Confirmá que estás bien',
+    label: 'Confirma que estás bien',
     subject: 'Confirmación de seguridad',
-    body: 'Hola, estamos verificando el estado de nuestro equipo en tu zona. Por favor confirmá que estás bien respondiendo a este correo. Gracias.',
+    body: 'Hola, estamos verificando el estado de nuestro equipo en tu zona. Por favor confirma que estás bien respondiendo a este correo. Gracias.',
   },
   {
     label: 'Sismo en tu zona',
     subject: 'Alerta: sismo reportado en tu zona',
-    body: 'Hemos detectado actividad sísmica cerca de tu ubicación registrada. Por favor confirmá que vos y tu entorno se encuentran a salvo.',
+    body: 'Hemos detectado actividad sísmica cerca de tu ubicación registrada. Por favor confirma que tú y tu entorno se encuentran a salvo.',
   },
   {
     label: 'Reporte de situación',

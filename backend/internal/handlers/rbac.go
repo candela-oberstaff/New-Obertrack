@@ -23,11 +23,19 @@ func NewRBACHandler(svc service.RBACService) *RBACHandler {
 // RequireRBACManager limita el módulo a superadmins y cuentas empresa.
 func RequireRBACManager() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if middleware.IsSuperadmin(c) || middleware.GetUserRole(c) == string(models.UserTypeEmployer) {
+		role := middleware.GetUserRole(c)
+		// Customer Success gestiona roles y grupos con el mismo alcance que un
+		// superadmin. Consecuencia a tener presente: quien administra permisos
+		// puede ampliarse los suyos, así que el recorte de Papelera, Auditoría,
+		// Configuración y Novedades es una convención de uso, no una barrera que
+		// CS no pueda levantar desde esta misma pantalla.
+		if middleware.IsSuperadmin(c) ||
+			role == string(models.UserTypeEmployer) ||
+			role == string(models.UserTypeCustomerSuccess) {
 			c.Next()
 			return
 		}
-		c.JSON(http.StatusForbidden, gin.H{"error": "Solo empresas o superadmins pueden gestionar roles y grupos"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Solo empresas, customer success o superadmins pueden gestionar roles y grupos"})
 		c.Abort()
 	}
 }

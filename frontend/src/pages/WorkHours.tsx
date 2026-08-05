@@ -644,7 +644,7 @@ export default function WorkHours() {
           <Clock size={56} style={{ color: 'var(--primary)', opacity: 0.5, marginBottom: '16px' }} />
           <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--black)', marginBottom: '8px' }}>Selecciona una empresa</h2>
           <p style={{ maxWidth: '420px', margin: '0 auto' }}>
-            Elige una empresa para ver sus horas. Luego podés filtrar por un empleado en particular. La información de cada empresa se mantiene aislada.
+            Elige una empresa para ver sus horas. Luego puedes filtrar por un empleado en particular. La información de cada empresa se mantiene aislada.
           </p>
         </div>
       </div>

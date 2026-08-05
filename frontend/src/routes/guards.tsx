@@ -40,6 +40,48 @@ export function AdminRoute({ children }: RouteGuardProps) {
   return <>{children}</>
 }
 
+// Administración de plataforma: superadmins y Customer Success, que trabaja con
+// el mismo alcance. Se separa de AdminRoute —que sigue siendo solo-superadmin—
+// porque cuatro pantallas quedan fuera de CS: Papelera, Auditoría,
+// Configuración y Novedades.
+export function PlatformAdminRoute({ children }: RouteGuardProps) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <Navigate to={ROUTES.login} replace />
+  }
+
+  if (!user.is_superadmin && user.user_type !== 'customer_success') {
+    return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
+  }
+
+  return <>{children}</>
+}
+
+// Novedades: visible para todos MENOS Customer Success, así que la exclusión se
+// escribe al revés que las demás.
+export function NovedadesRoute({ children }: RouteGuardProps) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <Navigate to={ROUTES.login} replace />
+  }
+
+  if (!user.is_superadmin && user.user_type === 'customer_success') {
+    return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
+  }
+
+  return <>{children}</>
+}
+
 export function ReportsRoute({ children }: RouteGuardProps) {
   const { user, isLoading } = useAuth()
 
@@ -51,7 +93,7 @@ export function ReportsRoute({ children }: RouteGuardProps) {
     return <Navigate to={ROUTES.login} replace />
   }
 
-  if (!user.is_superadmin && user.user_type !== 'empleador') {
+  if (!user.is_superadmin && user.user_type !== 'empleador' && user.user_type !== 'customer_success') {
     return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
   }
 

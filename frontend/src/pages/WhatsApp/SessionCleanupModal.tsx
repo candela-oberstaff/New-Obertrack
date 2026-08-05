@@ -144,7 +144,7 @@ export default function SessionCleanupModal({ onClose, onPurged }: Props) {
                   <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
                   <span>
                     Esto borra {s.messages} mensaje(s) para siempre.
-                    Escribí <strong>{s.session}</strong> para confirmar.
+                    Escribe <strong>{s.session}</strong> para confirmar.
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>

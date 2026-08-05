@@ -201,7 +201,7 @@ export default function WahaStatus({ onSynced }: WahaStatusProps) {
       {qr && (
         <div style={{ marginTop: 10, textAlign: 'center' }}>
           <p style={{ fontSize: '11px', color: '#667781', margin: '0 0 6px 0' }}>
-            Escaneá este código desde WhatsApp → Dispositivos vinculados
+            Escanea este código desde WhatsApp → Dispositivos vinculados
           </p>
           <img
             src={qr}
