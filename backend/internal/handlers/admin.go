@@ -164,9 +164,21 @@ func (h *AdminHandler) GetAllUsers(c *gin.Context) {
 	})
 }
 
+// isAdminPanelUser espeja la regla de requireAdminPanel: quien opera el panel de
+// administración es el superadmin y también customer success.
+//
+// Existe porque varios handlers de este grupo comprobaban superadmin por dentro,
+// de cuando CS solo podía consultar. Al abrir el panel a CS esas comprobaciones
+// se quedaron contradiciendo a la guarda del grupo: la pantalla abría y el dato
+// llegaba 403. Se conservan (defensa en profundidad) pero con la regla correcta.
+func isAdminPanelUser(c *gin.Context) bool {
+	return middleware.IsSuperadmin(c) ||
+		middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess)
+}
+
 func (h *AdminHandler) GetProfessionalLocations(c *gin.Context) {
-	if !middleware.IsSuperadmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin"})
+	if !isAdminPanelUser(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin o customer success"})
 		return
 	}
 
@@ -179,8 +191,8 @@ func (h *AdminHandler) GetProfessionalLocations(c *gin.Context) {
 }
 
 func (h *AdminHandler) BulkEmailProfessionals(c *gin.Context) {
-	if !middleware.IsSuperadmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin"})
+	if !isAdminPanelUser(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin o customer success"})
 		return
 	}
 
@@ -209,8 +221,8 @@ func (h *AdminHandler) BulkEmailProfessionals(c *gin.Context) {
 // respuesta. Aquí se emite un acceso nuevo, y quien lo dispara decide cuándo,
 // a quién y de qué forma.
 func (h *AdminHandler) SendAccessEmails(c *gin.Context) {
-	if !middleware.IsSuperadmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin"})
+	if !isAdminPanelUser(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin o customer success"})
 		return
 	}
 

@@ -607,7 +607,11 @@ export default function AdminUserDetail() {
   let specific: { label: string; value: React.ReactNode }[] = []
   if (user.user_type === 'empleador') {
     specific = [{ label: 'Empresa', value: user.company_name || '—' }]
-  } else if (user.user_type === 'profesional') {
+  } else if (user.user_type === 'profesional' || user.user_type === 'customer_success') {
+    // Customer Success también trabaja: se vincula a una empresa y tiene manager
+    // que le aprueba las horas, sin perder por eso su alcance de gestión. Antes
+    // esta rama era solo para profesionales, así que a un CS no había manera de
+    // asignarle manager desde la ficha aunque el backend ya lo admitía.
     specific = [
       { label: 'Empresa', value: empresaName || '—' },
       {

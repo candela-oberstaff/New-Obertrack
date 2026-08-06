@@ -79,7 +79,10 @@ export function AppRoutes() {
             // el área de contenido en blanco. Mejor devolverlo al dashboard.
             : <Route path="sesiones" element={<Navigate to={ROUTES.dashboard} replace />} />}
           <Route path="chat" element={<SlackChat />} />
-          <Route path="whatsapp" element={<AdminRoute><WhatsApp /></AdminRoute>} />
+          {/* Superadmin + Customer Success, igual que el grupo /chats del backend
+              (requireSupportInboxAccess) y que el icono del topbar. Con AdminRoute
+              el acceso se le mostraba a CS y al pulsarlo lo echaba al dashboard. */}
+          <Route path="whatsapp" element={<CustomerSuccessRoute><WhatsApp /></CustomerSuccessRoute>} />
           <Route path="profile" element={<Profile />} />
           <Route path="soporte" element={<SupportRoute><Soporte /></SupportRoute>} />
           {/* Admin y Empresas: superadmin gestiona; CS consulta (el backend solo les permite GETs). */}

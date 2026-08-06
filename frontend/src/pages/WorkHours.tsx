@@ -202,11 +202,18 @@ export default function WorkHours() {
     }).length
   }, [workHours, currentMonth, currentYear])
 
+  // Horas a recuperar. Es una cifra PERSONAL —el aviso dice "tus ausencias" y el
+  // botón "Recuperar horas" registra en tu propio nombre—, así que solo cuenta
+  // lo propio: la lista de un manager trae también las jornadas de su equipo, y
+  // sumarlas le decía que debía recuperar la ausencia de otra persona.
+  //
+  // La cuenta empresa es la excepción: ahí la tarjeta se titula "(equipo)" y el
+  // total de todos es justo lo que se quiere ver.
   const totalAbsenceHoursToRecover = useMemo(() => {
-    // Filter only current month entries
     const monthHours = workHours.filter(wh => {
       const d = parseLocalDate(wh.work_date)
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+      const delMes = d.getMonth() === currentMonth && d.getFullYear() === currentYear
+      return delMes && (isEmployer || wh.user_id === user?.id)
     })
 
     const absences = monthHours
@@ -218,7 +225,7 @@ export default function WorkHours() {
       .reduce((sum, wh) => sum + (wh.hours_worked || 0), 0)
       
     return Math.max(0, absences - recovered)
-  }, [workHours, currentMonth, currentYear])
+  }, [workHours, currentMonth, currentYear, isEmployer, user?.id])
 
   // Filas para los reportes: solo el mes/año visible (la ventana traída puede
   // incluir la semana actual de otro mes). Así el documento coincide con su

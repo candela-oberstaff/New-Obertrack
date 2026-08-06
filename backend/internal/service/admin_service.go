@@ -316,7 +316,10 @@ func (s *adminService) BulkAssignManager(professionalIDs []uint, managerID *uint
 	assigned, skipped := 0, 0
 	for _, pid := range professionalIDs {
 		prof, err := s.userRepo.GetByID(pid)
-		if err != nil || prof.UserType != models.UserTypeProfessional {
+		// Mismo criterio que AddEmployment: quien puede vincularse a una empresa
+		// puede tener manager. Customer success trabaja además como profesional
+		// (sus horas las aprueba un manager) sin perder su alcance de gestión.
+		if err != nil || (prof.UserType != models.UserTypeProfessional && prof.UserType != models.UserTypeCustomerSuccess) {
 			skipped++
 			continue
 		}
