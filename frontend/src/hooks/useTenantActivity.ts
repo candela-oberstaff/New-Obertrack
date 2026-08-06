@@ -57,7 +57,8 @@ interface UseTenantActivityReturn {
   /** Hay una página nueva en camino (se sigue mostrando la anterior). */
   isFetching: boolean
   error: string | null
-  addNote: (detail: string) => Promise<void>
+  /** Crea la nota y devuelve el id de la entrada, para poder adjuntarle archivos. */
+  addNote: (detail: string) => Promise<number>
   /** Deja constancia de un contacto con la empresa en su expediente. */
   logContact: (channel: TenantContactChannel, detail?: string) => Promise<void>
   updateNote: (eventId: number, detail: string) => Promise<void>
@@ -197,7 +198,9 @@ export function useTenantActivity(
     isLoading,
     isFetching,
     error: error ? 'No se pudo cargar el expediente' : null,
-    addNote: async (detail) => { await addMut.mutateAsync(detail) },
+    // Devuelve el id de la entrada creada, por el mismo motivo que addComment:
+    // los archivos adjuntos necesitan algo a lo que colgarse.
+    addNote: async (detail) => (await addMut.mutateAsync(detail)).id,
     logContact: async (channel, detail) => { await contactMut.mutateAsync({ channel, detail }) },
     updateNote: async (eventId, detail) => { await updateMut.mutateAsync({ eventId, detail }) },
     // Devuelve el id para poder colgarle los archivos que se pegaron mientras

@@ -8,7 +8,7 @@ import TransferTicketModal from './components/TransferTicketModal';
 import { channelService } from '../../services/channel.service';
 import type { User } from '../../types';
 import styles from './Tickets.module.css';
-import { ArrowLeft, RefreshCw, MessageSquare } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MessageSquare, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { canEditModule } from '../../lib/permissions';
@@ -124,6 +124,10 @@ export default function WhatsAppTicketDetail() {
   const stageMeta = STAGE_LABELS[ticket.stage] ?? STAGE_LABELS['new'];
   const contactName = ticket.contact?.name || 'Contacto WhatsApp';
   const canEdit = canEditModule(user, 'tickets');
+  // Salida real cuando el envío está cerrado: el mensaje sale del WhatsApp de
+  // quien atiende y, en cuanto respondan, la conversación continúa aquí.
+  const waDigits = (ticket.contact?.phone || ticket.professional_phone || '').replace(/\D/g, '');
+  const waHref = waDigits ? `https://wa.me/${waDigits}` : '';
 
   // Nombre de quien atiende el chat cuando no es quien lo está mirando; vacío si
   // el ticket es suyo o no tiene dueño. Resolver o volver a traspasar un chat
@@ -206,7 +210,31 @@ export default function WhatsAppTicketDetail() {
 
         <div className={styles.detailMain}>
           <MessageTimeline ticket={ticket} contact={ticket.contact} />
-          {canEdit ? (
+          {canEdit && ticket.can_reply === false ? (
+            /* Conversación abierta desde una ficha a alguien que nunca nos
+               escribió: escribir primero desde la línea oficial es lo que hace
+               que Meta la bloquee, así que el envío está cerrado. Se dice aquí
+               —con la salida real al lado— en vez de dejar escribir un mensaje
+               que el servidor va a rechazar. */
+            <div style={{ padding: '0.9rem 1.1rem', borderTop: '1px solid var(--glass-border, #e2e8f0)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                <AlertTriangle size={15} style={{ color: '#b45309', flexShrink: 0 }} />
+                Este contacto no nos ha escrito todavía: no se puede iniciar la conversación desde la línea oficial.
+              </span>
+              {waHref && (
+                <a
+                  href={waHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.channelBtn}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.85rem', color: '#128C7E', borderColor: 'rgba(18,140,126,0.35)', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                  title="Escribirle desde tu WhatsApp; cuando responda, la conversación sigue aquí"
+                >
+                  <ExternalLink size={14} /> Abrir en wa.me
+                </a>
+              )}
+            </div>
+          ) : canEdit ? (
             <ChatInputArea onSend={(content) => handleSend(content)} />
           ) : (
             <div style={{ padding: '0.85rem 1.1rem', borderTop: '1px solid var(--glass-border, #e2e8f0)', fontSize: '0.85rem', color: 'var(--gray-400)', textAlign: 'center' }}>
@@ -221,7 +249,7 @@ export default function WhatsAppTicketDetail() {
           // Se excluye al responsable actual: reasignárselo a sí mismo no hace nada.
           options={agents
             .filter(a => a.id !== ticket.assigned_to)
-            .map(a => ({ value: a.id, label: `${a.name}${a.email ? ` (${a.email})` : ''}` }))}
+            .map(a => ({ value: a.id, label: a.name }))}
           onClose={() => setShowAssign(false)}
           onTransfer={async (value, reason) => {
             const updated = await ticketService.assignWhatsAppTicket(ticket.id, Number(value), reason);

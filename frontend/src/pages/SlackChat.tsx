@@ -188,11 +188,20 @@ export default function SlackChat() {
   // tampoco los ve listados. Antes se salía en silencio y el botón "Chat" del
   // tablero de soporte no hacía absolutamente nada. Ahora se resuelve contra el
   // backend, se cambia el alcance a la empresa dueña y se abre.
+  // El id ya resuelto (o resolviéndose). Antes la resolución se cancelaba en la
+  // limpieza del efecto, y como `channels` cambia solo —la carga inicial, el
+  // re-sync del WebSocket— cualquiera de esos cambios abortaba la petición en
+  // vuelo: la primera vez no se abría nada y al volver a entrar sí, porque para
+  // entonces la lista ya estaba quieta. Un ref lo hace idempotente sin poder
+  // cancelarse a mitad.
+  const deepLinkRef = useRef<number | null>(null)
+
   useEffect(() => {
     const channelParam = searchParams.get('channel')
-    if (!channelParam || channels.length === 0) return
+    if (!channelParam) return
     const wanted = parseInt(channelParam)
-    if (Number.isNaN(wanted)) return
+    if (Number.isNaN(wanted) || deepLinkRef.current === wanted) return
+    deepLinkRef.current = wanted
 
     const open = (ch: Channel) => {
       const messageParam = searchParams.get('message')
@@ -201,24 +210,26 @@ export default function SlackChat() {
       setSearchParams({}, { replace: true })
     }
 
+    // Si ya está en el sidebar se abre directo; si no —canal de soporte del que
+    // no se es miembro— se resuelve contra el backend. No se espera a que la
+    // lista cargue: quien no tiene canales propios la tendría vacía para
+    // siempre y el enlace no abriría nunca.
     const target = channels.find(c => c.id === wanted)
     if (target) { open(target); return }
 
-    let cancelled = false
     channelService.getChannel(wanted)
       .then(ch => {
-        if (cancelled || !ch) return
+        if (!ch) return
         if (ch.tenant_id && ch.tenant_id !== selectedCompanyId) setSelectedCompanyId(ch.tenant_id)
         open(ch)
       })
       .catch(() => {
-        if (cancelled) return
         // Se limpia el parámetro igualmente: dejarlo puesto reintentaría en cada
         // render y repetiría el aviso.
+        deepLinkRef.current = null
         setSearchParams({}, { replace: true })
         showError('No se pudo abrir esa conversación: no tienes acceso o ya no existe.')
       })
-    return () => { cancelled = true }
   }, [searchParams, channels, selectedCompanyId, setSelectedCompanyId, setSelectedChannel, setSearchParams, showError])
 
   useEffect(() => {

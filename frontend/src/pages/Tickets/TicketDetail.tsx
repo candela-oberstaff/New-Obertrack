@@ -289,7 +289,7 @@ export default function TicketDetail() {
         <TransferTicketModal
           options={zohoAgents
               .filter(a => a.zoho_agent_id !== ticket.assignee_id)
-              .map(a => ({ value: a.zoho_agent_id, label: `${a.name}${a.email ? ` (${a.email})` : ''}` }))}
+              .map(a => ({ value: a.zoho_agent_id, label: a.name }))}
           onClose={() => setShowTransfer(false)}
           onTransfer={async (value, reason) => {
             await ticketService.transferZohoTicket(ticket.zoho_id, String(value), reason);

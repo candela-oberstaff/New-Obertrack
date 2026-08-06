@@ -196,6 +196,9 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		tickets.GET("/wa", d.ticket.ListWhatsAppTickets)
 		// Estático antes que el paramétrico, igual que /internal/report.
 		tickets.GET("/wa/lookup", d.ticket.LookupWhatsAppChat)
+		// Abre (o crea) la conversación de un teléfono para poder entrar siempre
+		// por nuestra bandeja en vez de saltar a wa.me.
+		tickets.POST("/wa/open", d.ticket.OpenWhatsAppChat)
 		tickets.GET("/wa/:id", d.ticket.GetWhatsAppTicket)
 		tickets.POST("/wa/:id/messages", d.ticket.SendWhatsAppMessage)
 		tickets.PATCH("/wa/:id", d.ticket.UpdateWhatsAppTicket)

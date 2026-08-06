@@ -37,6 +37,13 @@ type TicketService interface {
 	// LookupWhatsAppChat dice si un teléfono tiene ya conversación de WhatsApp
 	// con nosotros, para poder abrirla en vez de intentar escribir en frío.
 	LookupWhatsAppChat(phone string) (*WhatsAppChatLookup, error)
+	// OpenWhatsAppChat devuelve la conversación del teléfono, creándola si no
+	// existe, para poder abrirla siempre en nuestra bandeja.
+	OpenWhatsAppChat(phone, name string) (*WhatsAppChatLookup, error)
+	// CanReplyWhatsApp dice si se puede enviar en esa conversación. La interfaz
+	// lo usa para bloquear el cuadro de texto con el motivo, en vez de dejar
+	// escribir un mensaje que el envío va a rechazar.
+	CanReplyWhatsApp(ticketID uint) bool
 	// ImportWhatsAppHistory pulls recent chats + messages from the connected WAHA
 	// session and imports them as tickets/messages (idempotent). Returns the count
 	// of newly imported messages.
@@ -588,6 +595,62 @@ func (s *ticketService) LookupWhatsAppChat(phone string) (*WhatsAppChatLookup, e
 		return out, nil
 	}
 	out.CanReply = inbound
+	return out, nil
+}
+
+// CanReplyWhatsApp aplica la misma guarda que el envío real, para poder
+// anticiparla en la interfaz.
+func (s *ticketService) CanReplyWhatsApp(ticketID uint) bool {
+	return s.ensureCanColdOutreach(ticketID) == nil
+}
+
+// OpenWhatsAppChat devuelve la conversación de un teléfono, creándola si aún no
+// existe. Es lo que necesita el botón de WhatsApp de la ficha de empresa para
+// llevar SIEMPRE a nuestra bandeja en vez de saltar a wa.me: quien atiende ve el
+// historial, las notas y el estado en el mismo sitio que el resto.
+//
+// Crear la conversación NO permite escribir en frío: el envío sigue pasando por
+// ensureCanColdOutreach. Lo que se crea es el hilo vacío donde apoyarse; si
+// nadie ha escrito desde el otro lado, CanReply viaja en false y la interfaz lo
+// dice en vez de dejar probar un envío que va a fallar.
+func (s *ticketService) OpenWhatsAppChat(phone, name string) (*WhatsAppChatLookup, error) {
+	out, err := s.LookupWhatsAppChat(phone)
+	if err != nil {
+		return nil, err
+	}
+	if out.Digits == "" {
+		return nil, apperrors.ErrInvalidInput
+	}
+	if out.TicketID > 0 {
+		return out, nil
+	}
+
+	contact, err := s.repo.GetContactByPhone(out.Digits)
+	if err != nil || contact == nil {
+		displayName := strings.TrimSpace(name)
+		if displayName == "" {
+			displayName = "WA User " + out.Digits
+		}
+		contact = &models.Contact{Phone: out.Digits, Name: displayName}
+		if err := s.repo.CreateContact(contact); err != nil {
+			return nil, err
+		}
+	}
+
+	ticket := &models.Ticket{
+		ContactID: &contact.ID,
+		Origin:    string(models.ChannelWhatsApp),
+		Session:   s.wahaSvc.GetSession(),
+		Title:     "WA: " + out.Digits,
+		Stage:     models.StageNew,
+		Status:    "open",
+	}
+	if err := s.repo.CreateTicket(ticket); err != nil {
+		return nil, err
+	}
+	// Sin aviso a soporte: esta conversación la abre el propio equipo desde una
+	// ficha, no es una solicitud entrante que haya que repartir.
+	out.TicketID = ticket.ID
 	return out, nil
 }
 

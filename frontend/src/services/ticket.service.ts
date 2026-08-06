@@ -88,6 +88,12 @@ export interface Ticket {
   rejected_by_name?: string;
   reason?: string;
   work_dates?: string;
+  /**
+   * Solo en el detalle de WhatsApp: si se puede enviar en esa conversación.
+   * False cuando el contacto nunca escribió — iniciar desde la línea oficial
+   * expone el número a un bloqueo de Meta, así que el envío se rechaza.
+   */
+  can_reply?: boolean;
 }
 
 export interface TicketStatusOption {
@@ -334,6 +340,16 @@ export const ticketService = {
   // escribir en frío desde la línea oficial está bloqueado a propósito.
   lookupWaChat: async (phone: string): Promise<WaChatLookup> => {
     const { data } = await api.get<WaChatLookup>('/tickets/wa/lookup', { params: { phone } })
+    return data
+  },
+
+  /**
+   * Abre la conversación de WhatsApp de un teléfono, creándola si no existe,
+   * para poder entrar siempre por nuestra bandeja. Crearla no habilita escribir
+   * en frío: eso lo sigue decidiendo la guarda del envío (can_reply).
+   */
+  openWaChat: async (phone: string, name?: string): Promise<WaChatLookup> => {
+    const { data } = await api.post<WaChatLookup>('/tickets/wa/open', { phone, name: name || '' })
     return data
   },
 

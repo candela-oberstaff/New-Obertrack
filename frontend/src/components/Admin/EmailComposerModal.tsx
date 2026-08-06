@@ -33,6 +33,12 @@ interface EmailComposerModalProps {
    * empresa, no a la de una persona.
    */
   logTenantId?: number
+  /**
+   * Se llama tras un envío correcto, con el asunto que salió. La pantalla que
+   * abre el modal lo usa para registrar el contacto por su cuenta (y refrescar
+   * lo que tenga en pantalla); con esto puesto, no hace falta logTenantId.
+   */
+  onSent?: (subject: string) => void
 }
 
 type Step = 'choose' | 'pick-template' | 'compose'
@@ -87,6 +93,7 @@ export function EmailComposerModal({
   defaultBody = '',
   logContact = true,
   logTenantId,
+  onSent,
 }: EmailComposerModalProps) {
   const notify = useNotification()
   const [step, setStep] = useState<Step>('choose')
@@ -111,7 +118,12 @@ export function EmailComposerModal({
     setLoadingTemplates(true)
     try {
       const res = await emailService.getTemplates()
-      setTemplates(res.filter(t => t.is_active !== false))
+      // Solo la biblioteca ('gestor'), igual que el Gestor de Plantillas y el
+      // constructor de correos. Las de tipo 'campaign' son el contenido de una
+      // campaña concreta, no plantillas reutilizables: como una campaña nueva
+      // se llama "Nueva Campaña" por defecto, aparecían varias entradas
+      // idénticas entre las que no se podía elegir.
+      setTemplates(res.filter(t => t.type === 'gestor' && t.is_active !== false))
     } catch (err) {
       console.error('Error cargando plantillas:', err)
       notify.error('No se pudieron cargar las plantillas.')
@@ -151,6 +163,7 @@ export function EmailComposerModal({
       // El asunto va al expediente de la empresa: sin él, "correo enviado" no
       // le dice nada al que abra la ficha la semana que viene.
       if (logTenantId) adminService.logTenantContact(logTenantId, 'email', subject.trim()).catch(() => {})
+      onSent?.(subject.trim())
       notify.success(`Correo enviado a ${recipient.name}.`)
       onClose()
     } catch (err: any) {

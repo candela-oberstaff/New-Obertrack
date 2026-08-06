@@ -13,6 +13,7 @@ import { VariableMenu, useEmailVariables, FieldBinder } from '../Common/Variable
 import { useCloseGuard, useDirtySnapshot } from '../../../ui/useCloseGuard';
 import { CodeEditor } from '../Common/CodeEditor';
 import { TestSendButton } from '../Common/TestSendButton';
+import { Select } from '../../../ui/Select';
 
 // ─── Local block types ────────────────────────────────────────────────────────
 type BlockType = 'text' | 'button' | 'image' | 'divider' | 'spacer' | 'social' | 'settings';
@@ -344,24 +345,40 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
     dragging, dragSourceProps, dropZone,
   } = useEmailVariables();
 
+  // Solo la biblioteca de plantillas ('gestor'), el mismo criterio que usa el
+  // Gestor de Plantillas. Cada campaña guardada o enviada crea además su propia
+  // plantilla ('campaign') con el título de la campaña; listarlas aquí llenaba
+  // el desplegable de entradas repetidas ("Nueva Campaña" tantas veces como
+  // borradores hubiera), que no son plantillas reutilizables sino el contenido
+  // de una campaña concreta.
   useEffect(() => {
     emailService.getTemplates()
-      .then(res => setTemplates(res))
+      .then(res => setTemplates(res.filter(t => t.type === 'gestor')))
       .catch(err => console.error("Error fetching templates:", err));
   }, []);
 
   const handleSaveAsTemplate = async () => {
     const tName = prompt("Escribe el nombre de la nueva plantilla:");
     if (!tName) return;
+    // Dos plantillas con el mismo nombre son indistinguibles en el desplegable:
+    // se elige a ciegas. Mejor pedir otro nombre que dejar el duplicado.
+    const repetida = templates.some(t => t.title.trim().toLowerCase() === tName.trim().toLowerCase());
+    if (repetida) {
+      alert(`Ya tienes una plantilla llamada "${tName.trim()}". Usa otro nombre, o edita la existente desde el Gestor de Plantillas.`);
+      return;
+    }
     const tSubject = prompt("Escribe el asunto para esta plantilla:", subject || title);
     if (!tSubject) return;
 
     try {
       const created = await emailService.createTemplate({
-        title: tName,
+        title: tName.trim(),
         subject: tSubject,
         content: JSON.stringify(blocks),
-        type: 'campaign',
+        // 'gestor' y no 'campaign': es una plantilla de biblioteca, y así
+        // aparece también en el Gestor de Plantillas (antes no salía en ningún
+        // sitio salvo este desplegable).
+        type: 'gestor',
         is_active: true
       });
       setTemplates(prev => [...prev, created]);
@@ -607,21 +624,17 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
               <div style={{ borderTop: '1px solid #f1f5f9', flexShrink: 0 }}>
                 <div style={s.paletteLabel}>Plantillas</div>
                 <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <select
-                    style={{
-                      border: '1px solid #cbd5e1',
-                      borderRadius: 8,
-                      padding: '7px 10px',
-                      fontSize: 12,
-                      width: '100%',
-                      cursor: 'pointer',
-                      background: '#fff',
-                      outline: 'none',
-                      color: '#334155',
-                      maxHeight: 36,
-                    }}
-                    onChange={e => {
-                      const selectedTplId = Number(e.target.value);
+                  {/* Se queda siempre en el placeholder: no es un valor
+                      seleccionado sino una acción (cargar y reemplazar). Las
+                      plantillas sin id se omiten: se buscan por id al elegirlas. */}
+                  <Select
+                    fullWidth
+                    value=""
+                    placeholder="— Cargar plantilla —"
+                    ariaLabel="Cargar plantilla"
+                    options={templates.filter(t => t.id != null).map(t => ({ value: t.id as number, label: t.title }))}
+                    onChange={value => {
+                      const selectedTplId = Number(value);
                       if (!selectedTplId) return;
                       const tpl = templates.find(t => t.id === selectedTplId);
                       if (tpl && confirm(`¿Cargar la plantilla "${tpl.title}"? Esto reemplazará el diseño actual.`)) {
@@ -640,14 +653,8 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                           alert("Error al cargar la plantilla.");
                         }
                       }
-                      e.target.value = ""; // Reset select
                     }}
-                  >
-                    <option value="">— Cargar plantilla —</option>
-                    {templates.map(t => (
-                      <option key={t.id} value={t.id}>{t.title}</option>
-                    ))}
-                  </select>
+                  />
 
                   <button
                     onClick={handleSaveAsTemplate}
@@ -747,17 +754,19 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 12, color: '#334155', padding: '16px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <label style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Ancho Máximo</label>
-                    <select
+                    <Select
+                      fullWidth
                       value={settings.maxWidth}
-                      onChange={e => updateSettings('maxWidth', e.target.value)}
-                      style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: 12, outline: 'none', background: '#fff', color: '#1e293b', cursor: 'pointer' }}
-                    >
-                      <option value="500px">500px</option>
-                      <option value="600px">600px (Default)</option>
-                      <option value="650px">650px</option>
-                      <option value="700px">700px</option>
-                      <option value="800px">800px</option>
-                    </select>
+                      onChange={value => updateSettings('maxWidth', String(value))}
+                      ariaLabel="Ancho máximo del correo"
+                      options={[
+                        { value: '500px', label: '500px' },
+                        { value: '600px', label: '600px (Default)' },
+                        { value: '650px', label: '650px' },
+                        { value: '700px', label: '700px' },
+                        { value: '800px', label: '800px' },
+                      ]}
+                    />
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>

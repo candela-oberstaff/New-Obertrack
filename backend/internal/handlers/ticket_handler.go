@@ -339,13 +339,45 @@ func (h *TicketHandler) GetWhatsAppTicket(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp ticket not found"})
 		return
 	}
-	c.JSON(http.StatusOK, ticketDTOFromWhatsApp(*ticket))
+	dto := ticketDTOFromWhatsApp(*ticket)
+	// Para que la vista bloquee el cuadro de texto con su motivo en vez de
+	// dejar escribir un mensaje que el envío rechazaría.
+	dto["can_reply"] = h.ticketSvc.CanReplyWhatsApp(ticket.ID)
+	c.JSON(http.StatusOK, dto)
 }
 
 // LookupWhatsAppChat responde si un teléfono ya tiene conversación de WhatsApp
 // abierta con nosotros. Lo consume la ficha de empresa para decidir entre
 // llevar a la bandeja o abrir wa.me, en vez de ofrecer un envío que la guarda
 // de contacto en frío va a rechazar.
+// OpenWhatsAppChat abre la conversación de un teléfono (creándola si hace falta)
+// para que la ficha de empresa lleve siempre a nuestra bandeja. No habilita
+// escribir en frío: eso lo sigue decidiendo la guarda del envío.
+func (h *TicketHandler) OpenWhatsAppChat(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	var req struct {
+		Phone string `json:"phone"`
+		Name  string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Falta el teléfono"})
+		return
+	}
+	res, err := h.ticketSvc.OpenWhatsAppChat(strings.TrimSpace(req.Phone), req.Name)
+	if err != nil {
+		if errors.Is(err, apperrors.ErrInvalidInput) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "El teléfono no es válido"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo abrir la conversación"})
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
 func (h *TicketHandler) LookupWhatsAppChat(c *gin.Context) {
 	if !canUseSupportInbox(c) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})

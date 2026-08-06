@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone } from 'lucide-react'
+import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip } from 'lucide-react'
+import { useImagePaste } from '../../hooks/useImagePaste'
 import type { TenantContactChannel } from '../../services/admin.service'
 import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
 
@@ -38,7 +39,6 @@ import { COUNTRY_OPTIONS, getStatesForCountry } from '../../components/Auth/coun
 import { INDUSTRY_OPTIONS } from '../../components/Auth/industries'
 import { ArchivedList } from '../../components/Admin/ArchivedList'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
-import { emailService } from '../../services/emailService'
 import styles from './Tenants.module.css'
 
 const EMP_PER_PAGE = 10
@@ -116,6 +116,14 @@ export default function TenantDetail() {
   const [noteError, setNoteError] = useState<string | null>(null)
   // Id de la nota que se está corrigiendo; null = se está escribiendo una nueva.
   const [noteEditingId, setNoteEditingId] = useState<number | null>(null)
+  // Archivos en cola: se suben DESPUÉS de guardar la nota, porque necesitan la
+  // entrada creada para colgarse de ella.
+  const [noteFiles, setNoteFiles] = useState<File[]>([])
+  const noteFileRef = useRef<HTMLInputElement>(null)
+  // Pegar una captura o arrastrarla la encola igual que el botón de adjuntar.
+  const { onPaste: onNotePaste, onDrop: onNoteDrop } = useImagePaste(files => {
+    setNoteFiles(prev => [...prev, ...files])
+  })
 
   // Registro manual de un contacto que pasó fuera de la plataforma.
   const [contactOpen, setContactOpen] = useState(false)
@@ -186,17 +194,9 @@ export default function TenantDetail() {
   // Profesional del vistazo rápido (null = ninguno abierto).
   const [peekEmployee, setPeekEmployee] = useState<number | null>(null)
 
-  // Redacción de correo. El WhatsApp no pasa por aquí: o lleva a la
-  // conversación real de la bandeja, o abre wa.me.
-  const [commModal, setCommModal] = useState<{
-    isOpen: boolean
-    subject: string
-    message: string
-  }>({
-    isOpen: false,
-    subject: 'Contacto de soporte Oberstaff',
-    message: ''
-  })
+  // Redacción de correo a la empresa. El WhatsApp no pasa por aquí: o lleva a
+  // la conversación real de la bandeja, o abre wa.me.
+  const [commOpen, setCommOpen] = useState(false)
 
   // ¿Hay conversación de WhatsApp con el teléfono de esta empresa? De la
   // respuesta depende si el botón lleva a la bandeja o abre wa.me. Se consulta
@@ -271,18 +271,39 @@ export default function TenantDetail() {
         // Corregir conserva la fecha original: la nota no se mueve de sitio en
         // la cronología por arreglar una errata.
         await updateNote(noteEditingId, text)
+        // Los archivos que se hayan añadido al corregir se cuelgan de la misma
+        // entrada, que ya existe.
+        await uploadNoteFiles(noteEditingId)
       } else {
-        await addNote(text)
+        // La nota primero: los archivos necesitan una entrada a la que colgarse,
+        // igual que en los comentarios del expediente.
+        const eventId = await addNote(text)
+        await uploadNoteFiles(eventId)
         // La nota nueva es lo más reciente: se ve en la primera página.
         setActPage(1)
       }
       setNoteOpen(false)
       setNoteText('')
+      setNoteFiles([])
       setNoteEditingId(null)
     } catch (err: any) {
       setNoteError(err?.response?.data?.error || 'No se pudo guardar la nota')
     } finally {
       setNoteSaving(false)
+    }
+  }
+
+  // Los adjuntos van de uno en uno y en serie: si uno falla, se dice cuál y la
+  // nota ya está guardada (no se pierde lo escrito por un archivo que pesaba de
+  // más o tenía un tipo no admitido).
+  const uploadNoteFiles = async (eventId: number) => {
+    if (!eventId || noteFiles.length === 0) return
+    for (const file of noteFiles) {
+      try {
+        await addAttachment(eventId, file)
+      } catch (err: any) {
+        throw new Error(err?.response?.data?.error || `No se pudo adjuntar "${file.name}"`)
+      }
     }
   }
 
@@ -458,60 +479,44 @@ export default function TenantDetail() {
     }
   }
 
+  // El correo a la empresa pasa por el mismo redactor que el de profesionales:
+  // deja elegir una plantilla de Tools o escribir de cero. Antes era un modal
+  // con asunto y cuerpo en blanco, así que las plantillas guardadas no servían
+  // para la comunicación con clientes, que es justo donde se repiten los textos.
   const openComm = () => {
     if (!tenant?.owner_email) {
       notify.warning('Esta empresa no tiene un correo de contacto asociado.')
       return
     }
-    setCommModal({ isOpen: true, subject: 'Contacto oficial Oberstaff', message: '' })
+    setCommOpen(true)
   }
 
-  const sendCommMessage = async () => {
-    if (!tenant?.owner_email) return
-    try {
-      await emailService.sendQuickEmail({
-        to_email: tenant.owner_email,
-        to_name: tenant.owner_name || tenant.company_name,
-        subject: commModal.subject || 'Contacto oficial Oberstaff',
-        html_content: `<p>${commModal.message.replace(/\n/g, '<br>')}</p>`
-      })
-      // El envío queda en el expediente con el asunto, para que el siguiente
-      // que abra la ficha sepa que ya se les escribió y de qué. Best-effort:
-      // el correo ya salió, y fallar aquí no debe parecer que no salió.
-      try { await logContact('email', commModal.subject) } catch { /* no bloquear */ }
-      notify.success(`Correo enviado a ${tenant.owner_email}.`)
-      setCommModal(prev => ({ ...prev, isOpen: false }))
-    } catch (err: any) {
-      console.error(err)
-      const serverMsg = err?.response?.data?.error
-      notify.error(serverMsg ? `No se pudo enviar: ${serverMsg}` : 'No se pudo enviar el correo. Inténtalo de nuevo.')
-    }
-  }
-
-  // WhatsApp. NO se puede escribir en frío desde la línea oficial: el backend
-  // lo rechaza (ensureCanColdOutreach) para no exponer el número a un bloqueo
-  // de Meta. Así que hay dos caminos reales:
+  // WhatsApp: SIEMPRE a nuestra bandeja, aunque todavía no haya conversación
+  // (se crea el hilo vacío). Antes, sin conversación previa, saltaba a wa.me y
+  // el mensaje se iba por el WhatsApp personal de quien atendía: fuera del
+  // historial, sin estado de entrega y sin que nadie más lo viera.
   //
-  //  - Ya hay conversación y escribieron ellos → se abre en la bandeja, donde
-  //    el envío sale por WAHA con estado de entrega.
-  //  - No hay conversación → wa.me en una pestaña, que es lo que ya hacen
-  //    Admin, Incidentes y el Mapa. Lo manda la persona desde su WhatsApp, y
-  //    aquí queda registrado el contacto.
-  const handleWhatsApp = () => {
+  // Abrirla NO habilita escribir en frío: el envío sigue rechazándose si nadie
+  // ha escrito desde el otro lado (así no se expone la línea oficial a un
+  // bloqueo de Meta). En ese caso la propia vista lo dice y ofrece wa.me.
+  const handleWhatsApp = async () => {
     if (!tenant?.phone_number?.trim()) {
       notify.warning('Esta empresa no tiene un teléfono registrado.')
       return
     }
-    if (waLookup?.ticket_id && waLookup.can_reply) {
-      navigate(`/tickets/wa/${waLookup.ticket_id}`)
-      return
+    try {
+      const chat = await ticketService.openWaChat(tenant.phone_number, tenant.owner_name || tenant.company_name)
+      if (!chat.ticket_id) throw new Error('sin conversación')
+      // El clic ES el contacto: refleja el intento, no la entrega.
+      logContact('whatsapp', 'Abierto desde la ficha (bandeja de WhatsApp)').catch(() => {})
+      navigate(`/tickets/wa/${chat.ticket_id}`)
+    } catch {
+      // Si la bandeja no está disponible, wa.me sigue funcionando: mejor eso
+      // que dejar el botón muerto.
+      const digits = tenant.phone_number.replace(/\D/g, '')
+      window.open(`https://wa.me/${digits}`, '_blank', 'noopener,noreferrer')
+      logContact('whatsapp', 'Abierto desde la ficha (WhatsApp Web)').catch(() => {})
     }
-    const digits = tenant.phone_number.replace(/\D/g, '')
-    window.open(`https://wa.me/${digits}`, '_blank', 'noopener,noreferrer')
-    // El clic ES el contacto: igual que el registro de contactos de
-    // profesionales, refleja el intento, no la entrega (el mensaje lo escribe
-    // la persona en su WhatsApp y aquí no se puede confirmar que salió).
-    logContact('whatsapp', 'Abierto desde la ficha (WhatsApp Web)').catch(() => {})
   }
 
   if (isLoading) {
@@ -626,9 +631,10 @@ export default function TenantDetail() {
           <Button variant="secondary" onClick={openComm} leftIcon={<Mail size={16} />}>
             Enviar Correo
           </Button>
-          {/* La etiqueta dice a dónde lleva de verdad: a la conversación que ya
-              existe, o a WhatsApp Web. Prometer "enviar" desde aquí sería
-              mentir, porque en frío el envío está bloqueado. */}
+          {/* Siempre lleva a nuestra bandeja. La etiqueta distingue si ya hay
+              conversación o si se está abriendo una nueva, pero no promete
+              "enviar": en frío el envío sigue bloqueado y eso se explica dentro
+              de la propia conversación. */}
           <Button
             variant="secondary"
             onClick={handleWhatsApp}
@@ -636,12 +642,10 @@ export default function TenantDetail() {
             title={
               !tenant.phone_number?.trim()
                 ? 'Esta empresa no tiene teléfono registrado'
-                : waLookup?.ticket_id && waLookup.can_reply
-                ? 'Abre la conversación en la bandeja de WhatsApp'
-                : 'Abre WhatsApp Web con el número de la empresa'
+                : 'Abre la conversación en la bandeja de WhatsApp'
             }
           >
-            {waLookup?.ticket_id && waLookup.can_reply ? 'Ver conversación' : 'Abrir WhatsApp'}
+            {waLookup?.ticket_id ? 'Ver conversación' : 'Abrir WhatsApp'}
           </Button>
           {canManage && (
             <>
@@ -1341,8 +1345,10 @@ export default function TenantDetail() {
         )
       )}
 
-      {/* Correo a un profesional desde la pestaña Actividad. El de la empresa
-          es el Modal de abajo: destinatario distinto y otro registro. */}
+      {/* Los dos correos de esta ficha pasan por el mismo redactor (plantilla de
+          Tools o texto nuevo). Se diferencian en a quién van y dónde se
+          registra: el del profesional en su ficha, el de la empresa en el
+          expediente de la empresa. */}
       <EmailComposerModal
         isOpen={proComposer !== null}
         onClose={() => setProComposer(null)}
@@ -1350,53 +1356,30 @@ export default function TenantDetail() {
         defaultBody={proComposer?.body ?? ''}
       />
 
-      <Modal
-        isOpen={commModal.isOpen}
-        isDirty={!!commModal.message?.trim()}
-        onClose={() => setCommModal(prev => ({ ...prev, isOpen: false }))}
-        title="Enviar correo"
-        size="md"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setCommModal(prev => ({ ...prev, isOpen: false }))}>Cancelar</Button>
-            <Button onClick={sendCommMessage} disabled={!commModal.message}>Enviar</Button>
-          </>
-        }
-      >
-        <p className={styles.modalHint}>
-          Va a {tenant.owner_name} · {tenant.owner_email}. Queda registrado en el
-          expediente de {tenant.company_name}.
-        </p>
-        <div className={styles.field}>
-          <label>Asunto</label>
-          <input
-            type="text"
-            value={commModal.subject}
-            onChange={(e) => setCommModal(prev => ({ ...prev, subject: e.target.value }))}
-            placeholder="Asunto del correo"
-          />
-        </div>
-        <div className={styles.field}>
-          <label>Mensaje</label>
-          <textarea
-            value={commModal.message}
-            onChange={(e) => setCommModal(prev => ({ ...prev, message: e.target.value }))}
-            placeholder="Escribe el correo aquí..."
-            rows={5}
-            style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 'var(--radius)', fontSize: '14px', outline: 'none' }}
-          />
-        </div>
-      </Modal>
+      <EmailComposerModal
+        isOpen={commOpen}
+        onClose={() => setCommOpen(false)}
+        recipient={tenant.owner_email
+          ? { id: tenant.id, name: tenant.owner_name || tenant.company_name, email: tenant.owner_email }
+          : null}
+        defaultSubject="Contacto oficial Oberstaff"
+        // El responsable de una empresa no es un profesional: su contacto va al
+        // expediente de la empresa, no a la ficha de una persona. Se registra
+        // desde aquí (y no con logTenantId) para que el expediente que está
+        // abierto en pantalla se refresque solo.
+        logContact={false}
+        onSent={(subject) => { logContact('email', subject).catch(() => {}) }}
+      />
 
       <Modal
         isOpen={noteOpen}
-        isDirty={noteText.trim() !== ''}
-        onClose={() => setNoteOpen(false)}
+        isDirty={noteText.trim() !== '' || noteFiles.length > 0}
+        onClose={() => { setNoteOpen(false); setNoteFiles([]) }}
         title={noteEditingId !== null ? 'Editar nota del expediente' : 'Añadir nota al expediente'}
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setNoteOpen(false)} disabled={noteSaving}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => { setNoteOpen(false); setNoteFiles([]) }} disabled={noteSaving}>Cancelar</Button>
             <Button onClick={handleSaveNote} loading={noteSaving} disabled={!noteText.trim()}>
               {noteEditingId !== null ? 'Guardar cambios' : 'Guardar nota'}
             </Button>
@@ -1408,11 +1391,15 @@ export default function TenantDetail() {
             ? 'Se conserva la fecha original y quedará marcada como editada, para que el expediente siga siendo fiel.'
             : `Lo que el sistema no puede deducir solo: una llamada, un acuerdo, un aviso. Queda fechada y firmada con tu nombre en el expediente de ${tenant.company_name}, y solo la ve el equipo de la plataforma.`}
         </p>
-        <div className={styles.field}>
+        {/* Arrastrar sobre el modal entero, no solo sobre el textarea: soltar un
+            archivo un centímetro al lado y ver cómo el navegador lo abre en otra
+            pestaña es la forma más fácil de perder lo escrito. */}
+        <div className={styles.field} onDrop={onNoteDrop} onDragOver={e => e.preventDefault()}>
           <label>Nota</label>
           <textarea
             value={noteText}
             onChange={(e) => setNoteText(e.target.value.slice(0, NOTE_MAX_LENGTH))}
+            onPaste={onNotePaste}
             placeholder="Ej: Llamada con el responsable — renuevan el plan en septiembre."
             rows={5}
             autoFocus
@@ -1421,6 +1408,55 @@ export default function TenantDetail() {
           <span style={{ display: 'block', marginTop: 4, textAlign: 'right', fontSize: '12px', color: noteText.length >= NOTE_MAX_LENGTH ? '#dc2626' : '#94a3b8' }}>
             {noteText.length}/{NOTE_MAX_LENGTH}
           </span>
+
+          {/* Los archivos van en cola y se suben al guardar: la entrada tiene
+              que existir antes de que nada pueda colgarse de ella. */}
+          {noteFiles.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {noteFiles.map((f, i) => (
+                <span key={`${f.name}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, background: '#f1f5f9', fontSize: 12, color: '#334155', maxWidth: '100%' }}>
+                  <Paperclip size={12} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setNoteFiles(prev => prev.filter((_, idx) => idx !== i))}
+                    disabled={noteSaving}
+                    title={`Quitar ${f.name}`}
+                    style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: '#94a3b8', display: 'inline-flex' }}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+            {/* Los mismos tipos que acepta el servidor (upload_service). Sin
+                esto se puede elegir un .txt y el error llega después de haber
+                guardado la nota, que es el peor momento para enterarse. */}
+            <input
+              ref={noteFileRef}
+              type="file"
+              multiple
+              hidden
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.webm"
+              onChange={(e) => {
+                setNoteFiles(prev => [...prev, ...Array.from(e.target.files || [])])
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => noteFileRef.current?.click()}
+              disabled={noteSaving}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: 'transparent', color: '#475569', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              title="Adjuntar un archivo a esta nota"
+            >
+              <Paperclip size={14} /> Adjuntar
+            </button>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>pega o arrastra imágenes · PDF, Word, Excel, imagen o audio</span>
+          </div>
         </div>
         {noteError && <p className={styles.errorMsg}>{noteError}</p>}
       </Modal>

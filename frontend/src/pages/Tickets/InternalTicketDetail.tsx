@@ -293,7 +293,7 @@ export default function InternalTicketDetail() {
         <TransferTicketModal
           options={agents
             .filter(a => a.id !== ticket.assigned_to)
-            .map(a => ({ value: a.id, label: `${a.name} (${a.email})` }))}
+            .map(a => ({ value: a.id, label: a.name }))}
           onClose={() => setShowTransfer(false)}
           onTransfer={async (value, reason) => {
             await ticketService.transferInternalTicket(ticket.id, Number(value), reason)

@@ -235,9 +235,13 @@ export default function TenantsList() {
     })
   }
 
-  // WhatsApp de una fila: lleva a la conversación si ya existe, y si no abre
-  // WhatsApp Web con el número. Escribir en frío desde la línea oficial está
-  // bloqueado en el backend a propósito (protección anti-baneo).
+  // WhatsApp de una fila: SIEMPRE a nuestra bandeja, igual que desde la ficha.
+  // Si aún no hay conversación se crea el hilo vacío, para que el historial y el
+  // estado de entrega vivan aquí y no en el WhatsApp personal de quien atiende.
+  //
+  // Abrirla no habilita escribir en frío: el envío sigue bloqueado en el backend
+  // (protección anti-baneo) y la propia conversación lo explica con el enlace a
+  // wa.me al lado.
   const openWhatsApp = async (e: React.MouseEvent, t: Tenant) => {
     e.stopPropagation()
     if (!t.phone_number?.trim()) {
@@ -245,11 +249,11 @@ export default function TenantsList() {
       return
     }
     try {
-      const lookup = await ticketService.lookupWaChat(t.phone_number)
-      if (lookup.ticket_id && lookup.can_reply) {
-        navigate(`/tickets/wa/${lookup.ticket_id}`)
-        return
-      }
+      const chat = await ticketService.openWaChat(t.phone_number, t.owner_name || t.company_name)
+      if (!chat.ticket_id) throw new Error('sin conversación')
+      adminService.logTenantContact(t.id, 'whatsapp', 'Abierto desde el listado (bandeja de WhatsApp)').catch(() => {})
+      navigate(`/tickets/wa/${chat.ticket_id}`)
+      return
     } catch { /* sin bandeja disponible se cae al enlace, que siempre funciona */ }
     window.open(`https://wa.me/${t.phone_number.replace(/\D/g, '')}`, '_blank', 'noopener,noreferrer')
     adminService.logTenantContact(t.id, 'whatsapp', 'Abierto desde el listado (WhatsApp Web)').catch(() => {})
@@ -554,7 +558,7 @@ export default function TenantsList() {
                         className={styles.iconBtn}
                         style={{ color: '#25D366' }}
                         onClick={(e) => openWhatsApp(e, t)}
-                        title="Abrir la conversación de WhatsApp (o WhatsApp Web si no existe)"
+                        title="Abrir la conversación de WhatsApp en la bandeja"
                       >
                         <MessageSquare size={16} />
                       </button>
