@@ -1747,6 +1747,34 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropColumn(&models.User{}, "obersuite_id")
 			},
 		},
+		{
+			// tasks.status se creó como varchar(20) en el AutoMigrate inicial y el
+			// modelo pasó después a size:50, pero AutoMigrate no vuelve a correr:
+			// la columna se quedó corta mientras phases.status ya era varchar(50).
+			//
+			// Se notaba al arrastrar en el tablero: una fase cuyo nombre pasara de
+			// 20 caracteres ("Pendiente de revisión" ya son 21) generaba un status
+			// más largo que la columna, Postgres lo rechazaba con 22001 y la
+			// petición moría con un 500 sin explicación.
+			ID: "202608061900_widen_task_status",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Ampliando tasks.status a varchar(50)...")
+				return tx.Exec(`ALTER TABLE tasks ALTER COLUMN status TYPE varchar(50)`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// Solo se puede estrechar si nada supera el límite viejo; si algo lo
+				// supera, se deja como está antes que truncar datos de nadie.
+				var largo int64
+				if err := tx.Raw(`SELECT COUNT(*) FROM tasks WHERE length(status) > 20`).Scan(&largo).Error; err != nil {
+					return err
+				}
+				if largo > 0 {
+					log.Printf("Rollback omitido: %d tareas tienen un status de más de 20 caracteres", largo)
+					return nil
+				}
+				return tx.Exec(`ALTER TABLE tasks ALTER COLUMN status TYPE varchar(20)`).Error
+			},
+		},
 		// Future migrations go here
 	})
 

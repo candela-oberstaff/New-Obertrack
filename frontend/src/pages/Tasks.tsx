@@ -27,6 +27,7 @@ import {
   LogOut
 } from 'lucide-react'
 import styles from './Tasks.module.css'
+import { phaseStatusId } from '../components/Tasks/phaseStatus'
 
 export default function Tasks() {
   const {
@@ -490,7 +491,7 @@ export default function Tasks() {
                   id: p.id,
                   name: p.name,
                   color: p.color || 'var(--primary)',
-                  count: counts[p.status || p.name.toLowerCase().replace(/\s+/g, '_')] || 0,
+                  count: counts[phaseStatusId(p)] || 0,
                 }))
                 const total = Object.values(counts).reduce((sum, n) => sum + n, 0)
                 return (

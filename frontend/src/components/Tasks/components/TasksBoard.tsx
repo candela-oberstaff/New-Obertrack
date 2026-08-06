@@ -17,6 +17,7 @@ import { Column } from '../Column'
 import { TaskCard } from '../TaskCard'
 import type { Task, Board } from '../../../types'
 import type { ColumnType, Phase } from '../types'
+import { phaseStatusId } from '../phaseStatus'
 import styles from '../../../pages/Tasks.module.css'
 
 const DEFAULT_PHASE_COLOR = '#6b7280'
@@ -108,7 +109,7 @@ export function TasksBoard({
   const getCurrentColumns = useCallback((): ColumnType[] => {
     if (selectedBoard?.phases?.length) {
       return selectedBoard.phases.map((p: Phase) => ({
-        id: p.status || p.name.toLowerCase().replace(/\s+/g, '_'),
+        id: phaseStatusId(p),
         title: p.name,
         color: p.color
       }))
@@ -194,7 +195,7 @@ export function TasksBoard({
         ).map((p: Phase | ColumnType, idx: number) => {
           const isPhase = !!(p as Phase).name
           const column = {
-            id: isPhase ? ((p as Phase).status || (p as Phase).name.toLowerCase().replace(/\s+/g, '_')) : (p as ColumnType).id,
+            id: isPhase ? phaseStatusId(p as Phase) : (p as ColumnType).id,
             title: isPhase ? (p as Phase).name : (p as ColumnType).title,
             color: (p as Phase).color || (p as ColumnType).color
           }

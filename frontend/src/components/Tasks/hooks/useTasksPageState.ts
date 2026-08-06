@@ -9,6 +9,7 @@ import { ColumnType } from '../types'
 import { useBoards } from './useBoards'
 import { useBoardInvitations } from './useBoardInvitations'
 import { useTasks } from './useTasks'
+import { phaseStatusId } from '../phaseStatus'
 
 export interface CompanyOption {
   id: number
@@ -623,7 +624,7 @@ export function useTasksPageState() {
   const getCurrentColumns = useCallback((): ColumnType[] => {
     if (selectedBoard?.phases?.length) {
       return selectedBoard.phases.map((p: Phase) => ({
-        id: p.status || p.name.toLowerCase().replace(/\s+/g, '_'),
+        id: phaseStatusId(p),
         title: p.name,
         color: p.color
       }))

@@ -30,6 +30,13 @@
 
 ---
 
+## 🌱 [Datos de demostración (seeder)](seed-demo.md)
+* Un comando para dejar la aplicación con contenido: empresas, equipos, tableros, jornadas, chat, soporte e incidentes.
+* Cuentas de cada tipo (superadmin, IT, customer success, empresa, manager, profesional) con contraseña conocida.
+* Idempotente y con `-reset` quirúrgico: todo lo sembrado vive bajo el dominio `demo.obertrack.test`.
+
+---
+
 ## 🛠️ Guía de Buenas Prácticas de Desarrollo
 
 1. **Documentación Proactiva**: Cada vez que se desarrolle una funcionalidad clave, se debe actualizar o crear el correspondiente archivo markdown en `docs/features/`.

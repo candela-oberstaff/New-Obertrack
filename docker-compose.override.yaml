@@ -12,3 +12,30 @@ services:
       # Multi-manager (dev): activa las lecturas "cualquier manager" + la UI de
       # chips por empleo. El default en prod sigue OFF.
       MULTI_MANAGER_READS: "true"
+
+  # Seeder de datos de demostración. Vive solo en este archivo (nunca en el
+  # compose de producción) y bajo un profile, así que ni `up` ni `up -d` lo
+  # levantan por accidente: hay que pedirlo por su nombre.
+  #
+  #   docker compose --profile seed run --rm seeder            # sembrar
+  #   docker compose --profile seed run --rm seeder -reset     # empezar de cero
+  #
+  # Reusa la imagen del backend (el binario ./seed ya viene dentro) y corre
+  # dentro de la red de Docker, que es la única forma de alcanzar la BD: el
+  # servicio db no publica su puerto al host.
+  seeder:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    profiles: ["seed"]
+    entrypoint: ["./seed"]
+    environment:
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_SSL_MODE: ${DB_SSL_MODE:-disable}
+    depends_on:
+      db:
+        condition: service_healthy

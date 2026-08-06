@@ -19,6 +19,10 @@ COPY . .
 # Ahora dejamos que Go use los módulos descargados en el paso anterior
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/main.go
 
+# Seeder de datos de demostración (servicio "seeder" del compose de desarrollo).
+# Es un binario aparte: el servidor nunca lo ejecuta.
+RUN CGO_ENABLED=0 GOOS=linux go build -o seed ./cmd/seed
+
 # --- Run stage ---
 # (El resto de tu archivo puede quedar igual)
 FROM alpine:3.20
@@ -31,6 +35,7 @@ RUN apk add --no-cache curl ca-certificates su-exec \
 WORKDIR /app
 
 COPY --from=builder /app/main .
+COPY --from=builder /app/seed .
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
