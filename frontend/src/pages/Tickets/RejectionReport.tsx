@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Download, FileText } from 'lucide-react'
 import { Ticket, ticketService } from '../../services/ticket.service'
+import { Select } from '../../components/ui/Select'
 import styles from './Tickets.module.css'
 
 const MONTHS = [
@@ -81,14 +82,26 @@ export default function RejectionReport() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
-            style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)' }}>
-            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))}
-            style={{ padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)' }}>
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          {/* El Select del sistema, como el resto del módulo: el nativo se pintaba
+              con los colores del sistema operativo en medio de la barra. */}
+          <div style={{ minWidth: 140 }}>
+            <Select
+              fullWidth
+              value={month}
+              onChange={v => setMonth(Number(v))}
+              ariaLabel="Mes del reporte"
+              options={MONTHS.map((m, i) => ({ value: i + 1, label: m }))}
+            />
+          </div>
+          <div style={{ minWidth: 110 }}>
+            <Select
+              fullWidth
+              value={year}
+              onChange={v => setYear(Number(v))}
+              ariaLabel="Año del reporte"
+              options={years.map(y => ({ value: y, label: String(y) }))}
+            />
+          </div>
           <button
             onClick={handleExport}
             disabled={items.length === 0}
