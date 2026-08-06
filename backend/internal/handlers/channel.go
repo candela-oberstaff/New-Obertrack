@@ -1033,6 +1033,10 @@ func (h *ChannelHandler) MarkAsRead(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 
 	if err := h.svc.MarkAsRead(uint(id), userID); err != nil {
+		if strings.Contains(err.Error(), "not a member of this channel") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "No tienes acceso a esta conversación"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

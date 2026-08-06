@@ -1190,7 +1190,7 @@ func (s *channelService) GetTotalUnreadCount(userID uint) (int64, error) {
 }
 
 func (s *channelService) MarkAsRead(channelID, userID uint) error {
-	if isMember, _ := s.repo.IsMember(channelID, userID); !isMember && !s.isSuperadmin(userID) {
+	if !s.canReadChannel(channelID, userID) {
 		return fmt.Errorf("you are not a member of this channel")
 	}
 	return s.repo.MarkAsRead(channelID, userID)
