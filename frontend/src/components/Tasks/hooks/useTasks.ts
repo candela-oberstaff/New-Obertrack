@@ -118,7 +118,11 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
       }),
       async () => {
         await taskService.update(id, { status: newStatus })
-        await taskService.reorder(boardId, newStatus, orderedIds)
+        try {
+          await taskService.reorder(boardId, newStatus, orderedIds)
+        } catch (reorderError) {
+          console.warn('No se pudo persistir la posición exacta (la tarea sí cambió de columna):', reorderError)
+        }
         await refreshSelectedTask(id)
       },
     )
