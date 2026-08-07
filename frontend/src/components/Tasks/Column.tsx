@@ -2,11 +2,12 @@ import type { DragEvent } from 'react'
 import { useMemo, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { GripVertical } from 'lucide-react'
+import { ChevronsRightLeft, GripVertical } from 'lucide-react'
 import { SortableTaskCard } from './TaskCard'
 import { TaskFilters, DEFAULT_FILTERS, type TaskFiltersState } from './components/TaskFilters'
 import type { Task } from '../../types'
 import { parseDateOnly } from '../../utils/date'
+import { compareTasks } from './taskSort'
 import { ColumnType } from './types'
 import styles from '../../pages/Tasks.module.css'
 
@@ -18,17 +19,12 @@ interface ColumnProps {
   columnDraggable?: boolean
   isColumnDragging?: boolean
   isColumnDragOver?: boolean
+  isCollapsed?: boolean
+  onToggleCollapse?: (columnId: string) => void
   onColumnDragStart?: (index: number) => void
   onColumnDragEnter?: (index: number) => void
   onColumnDrop?: (index: number) => void
   onColumnDragEnd?: () => void
-}
-
-function sortByEndDate(a: Task, b: Task) {
-  if (!a.end_date && !b.end_date) return 0
-  if (!a.end_date) return 1
-  if (!b.end_date) return -1
-  return parseDateOnly(a.end_date).getTime() - parseDateOnly(b.end_date).getTime()
 }
 
 function filterByPriority(task: Task, priority: string) {
@@ -51,7 +47,9 @@ function filterByDateStatus(task: Task, dateStatus: string) {
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const due = parseDateOnly(task.end_date).getTime()
-  if (dateStatus === 'overdue') return due < today && task.status !== 'finalizado'
+  // Por completed, no por status: en tableros con fases custom la fase final
+  // puede tener cualquier id derivado del nombre.
+  if (dateStatus === 'overdue') return due < today && !task.completed
   if (dateStatus === 'today') return due >= today && due < today + 86400000
   if (dateStatus === 'week') return due >= today && due < today + 7 * 86400000
   return true
@@ -65,6 +63,8 @@ export function Column({
   columnDraggable = false,
   isColumnDragging = false,
   isColumnDragOver = false,
+  isCollapsed = false,
+  onToggleCollapse,
   onColumnDragStart,
   onColumnDragEnter,
   onColumnDrop,
@@ -79,7 +79,7 @@ export function Column({
   const filteredSorted = useMemo(() => {
     return tasks
       .filter((t) => filterByPriority(t, filters.priority) && filterByDateRange(t, filters.dateFrom, filters.dateTo) && filterByDateStatus(t, filters.dateStatus))
-      .sort(sortByEndDate)
+      .sort(compareTasks)
   }, [tasks, filters])
 
   const colDragHandlers = columnDraggable && typeof index === 'number'
@@ -89,8 +89,29 @@ export function Column({
       }
     : {}
 
+  // Colapsada: franja vertical con título y conteo; sigue siendo destino de
+  // drop (el droppable es el div completo) y un click la expande.
+  if (isCollapsed) {
+    return (
+      <div
+        ref={setNodeRef}
+        className={`${styles['kanban-column']} ${styles['column-collapsed'] || 'column-collapsed'} ${isOver ? (styles['drag-over'] || 'drag-over') : ''}`}
+        onClick={() => onToggleCollapse?.(column.id)}
+        title="Expandir columna"
+        {...colDragHandlers}
+      >
+        <div className={styles['column-collapsed-body'] || 'column-collapsed-body'}>
+          <span className={styles['column-dot']} style={{ backgroundColor: column.color }} />
+          <span className={styles['column-collapsed-title'] || 'column-collapsed-title'}>{column.title}</span>
+          <span className={styles['column-count']}>{filteredSorted.length}</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
+      ref={setNodeRef}
       className={`${styles['kanban-column']} ${isOver ? (styles['drag-over'] || 'drag-over') : ''} ${isColumnDragging ? (styles['column-dragging'] || 'column-dragging') : ''} ${isColumnDragOver ? (styles['column-drag-over'] || 'column-drag-over') : ''}`}
       {...colDragHandlers}
     >
@@ -113,10 +134,20 @@ export function Column({
         <div className={styles['column-header-actions']}>
           <TaskFilters filters={filters} onChange={setFilters} />
           <span className={styles['column-count']}>{filteredSorted.length}</span>
+          {onToggleCollapse && (
+            <button
+              type="button"
+              className={styles['column-collapse-btn'] || 'column-collapse-btn'}
+              onClick={(e) => { e.stopPropagation(); onToggleCollapse(column.id) }}
+              title="Colapsar columna"
+            >
+              <ChevronsRightLeft size={15} />
+            </button>
+          )}
         </div>
       </div>
       <SortableContext items={filteredSorted.map(t => t.id)} strategy={verticalListSortingStrategy}>
-        <div className={styles['column-content']} ref={setNodeRef}>
+        <div className={styles['column-content']}>
           {filteredSorted.map((task) => (
             <SortableTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
           ))}

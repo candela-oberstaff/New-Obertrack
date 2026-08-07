@@ -32,6 +32,7 @@ func (r *dmTaskRepo) Create(task *models.Task) error {
 }
 func (r *dmTaskRepo) SyncAssignees(_ *models.Task, _ []uint) error          { return nil }
 func (r *dmTaskRepo) Update(_ *models.Task, _ map[string]interface{}) error { return nil }
+func (r *dmTaskRepo) NextOrder(_ uint, _ string) int                        { return 0 }
 func (r *dmTaskRepo) GetByID(_ uint) (*models.Task, error) {
 	r.getCalls++
 	// La 1ª lectura (authorizeTaskByID) devuelve el estado previo; las siguientes

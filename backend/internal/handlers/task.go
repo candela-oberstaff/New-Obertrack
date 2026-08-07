@@ -201,6 +201,29 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
+type ReorderTasksRequest struct {
+	BoardID    uint   `json:"board_id" binding:"required"`
+	Status     string `json:"status" binding:"required"`
+	OrderedIDs []uint `json:"ordered_ids" binding:"required"`
+}
+
+func (h *TaskHandler) Reorder(c *gin.Context) {
+	var req ReorderTasksRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tenantID := middleware.GetTenantID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	if err := h.service.Reorder(req.BoardID, tenantID, isSuperadmin, req.Status, req.OrderedIDs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Orden actualizado"})
+}
+
 func (h *TaskHandler) Delete(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {

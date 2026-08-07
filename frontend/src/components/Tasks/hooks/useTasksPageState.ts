@@ -187,6 +187,8 @@ export function useTasksPageState() {
     setSelectedTask,
     createTask,
     updateTask,
+    moveTask,
+    reorderColumn,
     deleteTask,
     fetchTasks,
   } = useTasks({
@@ -433,9 +435,9 @@ export function useTasksPageState() {
     setIsSavingPhase(true)
     try {
       await addPhase(selectedBoard.id, { name: phase.name.trim(), color: phase.color })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding phase:', error)
-      showError('No se pudo agregar la fase')
+      showError(error?.response?.data?.error || 'No se pudo agregar la fase')
     } finally {
       setIsSavingPhase(false)
     }
@@ -525,6 +527,14 @@ export function useTasksPageState() {
   const handleUpdateTask = useCallback(async (id: number, data: Partial<User | Task | any>) => {
     await updateTask(id, data)
   }, [updateTask])
+
+  const handleMoveTask = useCallback(async (id: number, boardId: number, newStatus: string, orderedIds: number[]) => {
+    await moveTask(id, boardId, newStatus, orderedIds)
+  }, [moveTask])
+
+  const handleReorderColumn = useCallback(async (boardId: number, status: string, orderedIds: number[]) => {
+    await reorderColumn(boardId, status, orderedIds)
+  }, [reorderColumn])
 
   const handleDeleteTask = useCallback(async (id: number) => {
     await deleteTask(id)
@@ -709,6 +719,8 @@ export function useTasksPageState() {
     handleOpenNewTaskModal,
     handleCreateTask,
     handleUpdateTask,
+    handleMoveTask,
+    handleReorderColumn,
     handleDeleteTask,
     getCurrentColumns,
     openBoardModal,

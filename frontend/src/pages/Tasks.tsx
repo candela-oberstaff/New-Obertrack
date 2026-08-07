@@ -4,6 +4,8 @@ import { useTasksPageState } from '../components/Tasks/hooks/useTasksPageState'
 import { canEditModule } from '../lib/permissions'
 
 import { TasksBoard } from '../components/Tasks/components/TasksBoard'
+import { TasksTimelineView } from '../components/Tasks/components/TasksTimelineView'
+import { TasksCalendarView } from '../components/Tasks/components/TasksCalendarView'
 import { TaskScopeToggle, type TaskScope } from '../components/Tasks/components/TaskScopeToggle'
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
@@ -24,7 +26,10 @@ import {
   Columns3,
   Mail,
   UserCheck,
-  LogOut
+  LogOut,
+  LayoutGrid,
+  ChartNoAxesGantt,
+  CalendarDays
 } from 'lucide-react'
 import styles from './Tasks.module.css'
 import { phaseStatusId } from '../components/Tasks/phaseStatus'
@@ -90,6 +95,8 @@ export default function Tasks() {
     handleOpenNewTaskModal,
     handleCreateTask,
     handleUpdateTask,
+    handleMoveTask,
+    handleReorderColumn,
     handleDeleteTask,
     getCurrentColumns,
     openBoardModal,
@@ -126,6 +133,19 @@ export default function Tasks() {
   useEffect(() => {
     localStorage.setItem('tasks_scope', taskScope)
   }, [taskScope])
+
+  // Vista de las tareas: kanban (tablero), timeline (Gantt) o calendario.
+  type TasksView = 'kanban' | 'timeline' | 'calendario'
+  const [tasksView, setTasksView] = useState<TasksView>(() => {
+    const saved = localStorage.getItem('tasks_view')
+    if (saved === 'timeline' || saved === 'calendario') return saved
+    if (saved === 'lista') return 'timeline' // la vista de lista fue reemplazada
+    return 'kanban'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('tasks_view', tasksView)
+  }, [tasksView])
 
   const boardTasks = useMemo(
     () => tasks.filter((t) => t.board_id === selectedBoard?.id),
@@ -457,6 +477,34 @@ export default function Tasks() {
         </div>
         <div className={styles['header-right']}>
           {selectedBoard && (
+            <div className={styles['view-toggle'] || 'view-toggle'} role="group" aria-label="Vista de tareas">
+              <button
+                type="button"
+                className={`${styles['view-toggle-btn'] || 'view-toggle-btn'} ${tasksView === 'kanban' ? styles['view-toggle-active'] || 'view-toggle-active' : ''}`}
+                onClick={() => setTasksView('kanban')}
+                title="Vista kanban"
+              >
+                <LayoutGrid size={16} />
+              </button>
+              <button
+                type="button"
+                className={`${styles['view-toggle-btn'] || 'view-toggle-btn'} ${tasksView === 'timeline' ? styles['view-toggle-active'] || 'view-toggle-active' : ''}`}
+                onClick={() => setTasksView('timeline')}
+                title="Vista de timeline"
+              >
+                <ChartNoAxesGantt size={16} />
+              </button>
+              <button
+                type="button"
+                className={`${styles['view-toggle-btn'] || 'view-toggle-btn'} ${tasksView === 'calendario' ? styles['view-toggle-active'] || 'view-toggle-active' : ''}`}
+                onClick={() => setTasksView('calendario')}
+                title="Vista de calendario"
+              >
+                <CalendarDays size={16} />
+              </button>
+            </div>
+          )}
+          {selectedBoard && (
             <TaskScopeToggle
               scope={taskScope}
               onChange={setTaskScope}
@@ -603,12 +651,27 @@ export default function Tasks() {
             </div>
           </div>
         )
+      ) : tasksView === 'timeline' ? (
+        <TasksTimelineView
+          tasks={visibleTasks}
+          columns={getCurrentColumns()}
+          onTaskClick={setSelectedTask}
+        />
+      ) : tasksView === 'calendario' ? (
+        <TasksCalendarView
+          tasks={visibleTasks}
+          columns={getCurrentColumns()}
+          onTaskClick={setSelectedTask}
+        />
       ) : (
         <TasksBoard
           tasks={visibleTasks}
+          allTasks={boardTasks}
           selectedBoard={selectedBoard}
           onTaskClick={setSelectedTask}
           onUpdateTask={handleUpdateTask}
+          onMoveTask={handleMoveTask}
+          onReorderColumn={handleReorderColumn}
           onMovePhaseLeft={handleMovePhaseLeft}
           onMovePhaseRight={handleMovePhaseRight}
           onReorderPhase={handleReorderPhaseByIndex}

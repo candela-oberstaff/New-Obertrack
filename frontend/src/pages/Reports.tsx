@@ -220,9 +220,13 @@ export default function Reports() {
             <div className={styles['reports-content']}>
               <div className={styles['stats-grid']} data-tour="reports-stats">
                 <StatCard icon={CheckSquare} iconColorClass="blue" label="Total Tareas" value={tasks.length} />
-                <StatCard icon={Check} iconColorClass="green" label="Completadas" value={tasks.filter(t => t.status === 'finalizado').length} />
-                <StatCard icon={Clock} iconColorClass="orange" label="En Proceso" value={tasks.filter(t => t.status === 'en_proceso').length} />
-                <StatCard icon={AlertCircle} iconColorClass="red" label="Por Hacer" value={tasks.filter(t => t.status === 'por_hacer').length} />
+                {/* Buckets exhaustivos: "Por Hacer" agrupa toda tarea pendiente que no
+                    esté en proceso, incluidas las de fases custom (cuyo status no es
+                    ninguno de los tres canónicos). Completadas usa el flag completed,
+                    que se mantiene en sincronía con el status en el backend. */}
+                <StatCard icon={Check} iconColorClass="green" label="Completadas" value={tasks.filter(t => t.completed).length} />
+                <StatCard icon={Clock} iconColorClass="orange" label="En Proceso" value={tasks.filter(t => !t.completed && t.status === 'en_proceso').length} />
+                <StatCard icon={AlertCircle} iconColorClass="red" label="Por Hacer" value={tasks.filter(t => !t.completed && t.status !== 'en_proceso').length} />
               </div>
 
               <div className={styles['reports-section']} data-tour="reports-charts">
@@ -250,7 +254,7 @@ export default function Reports() {
                 <div className={styles['section-header']}>
                   <h3>Tareas Críticas Pendientes</h3>
                   <span className={styles['badge-count']}>
-                    {tasks.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'finalizado').length} Urgentes/Altas
+                    {tasks.filter(t => (t.priority === 'urgent' || t.priority === 'high') && !t.completed).length} Urgentes/Altas
                   </span>
                 </div>
                 <div className={styles['critical-tasks-container']}>
@@ -264,13 +268,13 @@ export default function Reports() {
                       </tr>
                     </thead>
                     <tbody>
-                      {tasks.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'finalizado').length === 0 ? (
+                      {tasks.filter(t => (t.priority === 'urgent' || t.priority === 'high') && !t.completed).length === 0 ? (
                         <tr>
                           <td colSpan={4} className={styles['empty-cell']}>No hay tareas críticas pendientes</td>
                         </tr>
                       ) : (
                         tasks
-                          .filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'finalizado')
+                          .filter(t => (t.priority === 'urgent' || t.priority === 'high') && !t.completed)
                           .slice(0, 5)
                           .map((t) => (
                             <tr key={t.id}>

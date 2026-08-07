@@ -18,6 +18,7 @@ type TaskService interface {
 	GetByID(id uint, tenantID uint, isSuperadmin bool) (*models.Task, error)
 	Create(userID uint, isSuperadmin bool, tenantID uint, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error)
 	Update(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint) (*models.Task, []models.User, error)
+	Reorder(boardID, tenantID uint, isSuperadmin bool, status string, orderedIDs []uint) error
 	Delete(id uint, tenantID uint, userID uint, role string, isManager, isSuperadmin bool) error
 	ToggleCompletion(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool) (*models.Task, error)
 	AddComment(id uint, tenantID uint, userID uint, content string, isSuperadmin bool) (*models.Comment, error)
@@ -338,18 +339,28 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, tenantID uint, titl
 	}
 
 	var boardTenant uint
+	// La tarea nueva nace en la primera fase del tablero (la columna de más a la
+	// izquierda), no siempre en "por_hacer": si el tablero no tiene una fase con
+	// ese status (p. ej. se eliminó o reordenó), la tarea quedaría invisible.
+	initialStatus := models.TaskStatusTodo
 	if b, err := s.boardRepo.GetByID(boardID); err == nil {
 		boardTenant = b.TenantID
+		if len(b.Phases) > 0 {
+			initialStatus = models.TaskStatus(PhaseColumnID(b.Phases[0]))
+		}
 	}
 
 	task := &models.Task{
 		Title:       utils.SanitizeHTML(title),
 		Description: utils.SanitizeHTML(description),
-		Status:      models.TaskStatusTodo,
+		Status:      initialStatus,
 		Priority:    models.PriorityMedium,
 		CreatedBy:   userID,
 		BoardID:     boardID,
 		TenantID:    boardTenant,
+		// Al final de su columna: sin esto (order 0) la tarea nueva se mete en el
+		// grupo de arriba de una columna reordenada a mano.
+		Order: s.repo.NextOrder(boardID, string(initialStatus)),
 	}
 
 	if priority != "" {
@@ -459,6 +470,31 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 	var oldEndDate string
 	if task.EndDate != nil {
 		oldEndDate = task.EndDate.Format("2006-01-02")
+	}
+
+	// Misma sanitización que en Create: la web sanitiza al renderizar, pero otros
+	// consumidores (p. ej. la app móvil) leen el HTML tal cual quedó en la base.
+	if title, ok := reqData["title"].(string); ok {
+		reqData["title"] = utils.SanitizeHTML(title)
+	}
+	if description, ok := reqData["description"].(string); ok {
+		reqData["description"] = utils.SanitizeHTML(description)
+	}
+
+	// Mantiene `completed` en sincronía con el status (igual que ToggleCompletion):
+	// arrastrar a "Finalizado" completa la tarea y sacarla de ahí la reabre. Solo
+	// cuando el status CAMBIA de verdad: el formulario de edición reenvía el
+	// status actual en cada guardado, y sincronizar con un status sin cambios
+	// reabriría/completaría tareas por editar un título. Un `completed` explícito
+	// en el request tiene prioridad.
+	if status, ok := reqData["status"].(string); ok && status != string(task.Status) {
+		if _, explicit := reqData["completed"]; !explicit {
+			if status == string(models.TaskStatusDone) {
+				reqData["completed"] = true
+			} else if task.Completed {
+				reqData["completed"] = false
+			}
+		}
 	}
 
 	if len(reqData) > 0 {
@@ -609,6 +645,20 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 	return task, task.Assignees, nil
 }
 
+// Reorder persiste el orden manual de las tarjetas de una columna. Es un cambio
+// puramente cosmético (no toca status, asignados ni contenido), así que basta
+// con la autorización de tenant sobre el tablero: no se exige canModifyTask por
+// tarjeta porque la columna puede contener tarjetas de otros miembros.
+func (s *taskService) Reorder(boardID, tenantID uint, isSuperadmin bool, status string, orderedIDs []uint) error {
+	if boardID == 0 || status == "" || len(orderedIDs) == 0 {
+		return errors.New("Datos de reordenamiento incompletos")
+	}
+	if err := s.authorizeBoardTenant(boardID, tenantID, isSuperadmin); err != nil {
+		return err
+	}
+	return s.repo.ReorderTasks(boardID, status, orderedIDs)
+}
+
 func (s *taskService) Delete(id uint, tenantID uint, userID uint, role string, isManager, isSuperadmin bool) error {
 	task, err := s.authorizeTaskByID(id, tenantID, isSuperadmin)
 	if err != nil {
@@ -638,9 +688,13 @@ func (s *taskService) ToggleCompletion(id uint, tenantID uint, updaterUserID uin
 	}
 
 	completed := !task.Completed
+	// Al reabrir, la tarea vuelve a la primera fase del tablero (no a un
+	// "por_hacer" fijo que quizás ya no existe como columna).
 	status := models.TaskStatusTodo
 	if completed {
 		status = models.TaskStatusDone
+	} else if b, err := s.boardRepo.GetByID(task.BoardID); err == nil && len(b.Phases) > 0 {
+		status = models.TaskStatus(PhaseColumnID(b.Phases[0]))
 	}
 
 	updates := map[string]interface{}{

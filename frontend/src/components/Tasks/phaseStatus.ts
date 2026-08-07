@@ -17,5 +17,8 @@ export const STATUS_MAX_LENGTH = 50
  */
 export function phaseStatusId(phase: Pick<Phase, 'name' | 'status'>): string {
   const base = phase.status || phase.name.toLowerCase().replace(/\s+/g, '_')
-  return base.slice(0, STATUS_MAX_LENGTH)
+  // Recorte por code points (Array.from), no por unidades UTF-16 (.slice):
+  // así nunca se parte un emoji por la mitad (Postgres rechaza el surrogate
+  // suelto) y coincide con el recorte por runas de PhaseColumnID en el backend.
+  return Array.from(base).slice(0, STATUS_MAX_LENGTH).join('')
 }
