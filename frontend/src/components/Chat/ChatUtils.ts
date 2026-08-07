@@ -87,8 +87,10 @@ export const buildMentionRegex = (allUsers: User[]): RegExp | null => {
     .map(u => u.name)
     .filter(Boolean)
     .sort((a, b) => b.length - a.length)
-  if (names.length === 0) return null
-  return new RegExp(`@(${names.map(escapeRegExp).join('|')})`, 'gi')
+  // Las menciones grupales (@canal/@todos) se resaltan siempre, haya o no
+  // lista de usuarios cargada.
+  const tokens = [...names.map(escapeRegExp), 'canal', 'todos']
+  return new RegExp(`@(${tokens.join('|')})`, 'gi')
 }
 
 // Highlight mentions using a precomputed RegExp (see buildMentionRegex), so the
@@ -129,15 +131,10 @@ export const highlightMentionsWithRegex = (
 // Kept in sync with the backend normalizeMention (channel_messages.go).
 const foldMention = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 
-// True when the message text mentions the given user by name as a whole token,
-// i.e. "@name" followed by end-of-string or a non-alphanumeric character, so
-// "@Ana" does NOT match inside "@Anabel". Mirrors the backend predicate.
-export const mentionsUser = (content: string, userName?: string): boolean => {
-  if (!userName) return false
-  const haystack = foldMention(content)
-  const name = foldMention(userName.trim())
-  if (!name) return false
-  const needle = `@${name}`
+// containsMentionToken: "@<token>" aparece como token completo (fin de texto o
+// carácter no alfanumérico después), sobre contenido ya normalizado.
+const containsMentionToken = (haystack: string, token: string): boolean => {
+  const needle = `@${token}`
   let from = 0
   for (;;) {
     const idx = haystack.indexOf(needle, from)
@@ -147,6 +144,20 @@ export const mentionsUser = (content: string, userName?: string): boolean => {
     if (after === undefined || !/[a-z0-9]/i.test(after)) return true
     from = idx + needle.length
   }
+}
+
+// True when the message text mentions the given user by name as a whole token,
+// i.e. "@name" followed by end-of-string or a non-alphanumeric character, so
+// "@Ana" does NOT match inside "@Anabel". Mirrors the backend predicate.
+// Las menciones grupales @canal/@todos también cuentan como mención al usuario
+// (el backend notifica a todos los miembros con ellas).
+export const mentionsUser = (content: string, userName?: string): boolean => {
+  const haystack = foldMention(content)
+  if (containsMentionToken(haystack, 'canal') || containsMentionToken(haystack, 'todos')) return true
+  if (!userName) return false
+  const name = foldMention(userName.trim())
+  if (!name) return false
+  return containsMentionToken(haystack, name)
 }
 
 export const playNotificationSound = () => {

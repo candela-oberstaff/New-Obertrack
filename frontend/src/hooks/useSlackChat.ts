@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { channelService, uploadService } from '../services/api'
 import type { User } from '../types'
 import type { Channel, Message, ChannelMember, MessageReaction, UserStatus } from '../types/chat'
-import { playNotificationSound, newTempId } from '../components/Chat/ChatUtils'
+import { playNotificationSound, newTempId, mentionsUser } from '../components/Chat/ChatUtils'
 import { useConfirm } from '../components/ui/ConfirmProvider'
 import { useNotification } from '../context/NotificationContext'
 
@@ -105,6 +105,28 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
   useEffect(() => {
     userIdRef.current = user?.id ?? null
   }, [user?.id])
+
+  // Nombre del usuario para detectar menciones en vivo dentro del closure del
+  // WS (que es estable), con la misma normalización que usa el backend.
+  const userNameRef = useRef<string>('')
+  useEffect(() => {
+    userNameRef.current = user?.name ?? ''
+  }, [user?.name])
+
+  // Canales silenciados, en un ref para que el closure del WS decida si suena
+  // la campana sin depender del estado `channels`.
+  const mutedIdsRef = useRef<Set<number>>(new Set())
+  useEffect(() => {
+    mutedIdsRef.current = new Set(channels.filter(c => c.muted).map(c => c.id))
+  }, [channels])
+
+  // ringFor decide la campana de un mensaje entrante: los canales silenciados
+  // no suenan, salvo que el mensaje MENCIONE al usuario (silenciar el ruido no
+  // debe silenciar lo que te nombra).
+  const ringFor = useCallback((channelId: number, content?: string) => {
+    if (mutedIdsRef.current.has(channelId) && !mentionsUser(content ?? '', userNameRef.current)) return
+    playNotificationSound()
+  }, [])
 
   // Reads companyId from the ref so the callback is stable (deps []), letting
   // the WS socket call it on re-sync without depending on companyId.
@@ -327,6 +349,16 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
           }
           return
         }
+        if (msg.type === 'read') {
+          // El OTRO leyó la conversación: actualiza el "✓✓ Visto" del DM en
+          // vivo. Las lecturas propias no cambian nada de lo que se pinta.
+          if (msg.user_id !== currentUserId) {
+            const ts = msg.timestamp
+            setChannels(prev => prev.map(c => c.id === msg.channel_id ? { ...c, recipient_last_read_at: ts } : c))
+            setSelectedChannel(prev => prev && prev.id === msg.channel_id ? { ...prev, recipient_last_read_at: ts } : prev)
+          }
+          return
+        }
         if (msg.type === 'members_updated') {
           // Cambió un rol/membresía: refresca la lista de miembros del canal abierto
           // para que el badge Admin/Creador y los permisos se reflejen en vivo en
@@ -361,7 +393,7 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
             // Only notify/mark-read for messages from OTHER users; the sender's own
             // message must not ring or mark the channel read.
             if (msg.user_id !== currentUserId) {
-              playNotificationSound()
+              ringFor(msg.channel_id, msg.data?.content ?? msg.content)
               // A-3: only auto-mark-read if the tab is actually visible. If the
               // document is hidden the user hasn't seen the message, so leave it
               // counted as unread (bump this channel's count); the visibilitychange
@@ -372,9 +404,12 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
                 channelService.markAsRead(selectedChannelId).then(() => {
                   window.dispatchEvent(new CustomEvent('chat-unread-updated'))
                 })
-                setChannels(prev => prev.map(c => c.id === selectedChannelId ? { ...c, unread_count: 0 } : c))
+                setChannels(prev => prev.map(c => c.id === selectedChannelId ? { ...c, unread_count: 0, mention_count: 0 } : c))
               } else {
-                setChannels(prev => prev.map(c => c.id === selectedChannelId ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c))
+                const mentionedHidden = mentionsUser(msg.data?.content ?? msg.content ?? '', userNameRef.current)
+                setChannels(prev => prev.map(c => c.id === selectedChannelId
+                  ? { ...c, unread_count: (c.unread_count || 0) + 1, mention_count: (c.mention_count || 0) + (mentionedHidden ? 1 : 0) }
+                  : c))
                 window.dispatchEvent(new CustomEvent('chat-unread-updated'))
               }
             }
@@ -419,7 +454,11 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
         } else if (msg.type === 'message' && msg.user_id !== currentUserId) {
           // A-4: bump only THIS channel's per-channel count; the global badge is
           // a useMemo over channels, so it re-derives automatically.
-          playNotificationSound()
+          ringFor(msg.channel_id, msg.data?.content ?? msg.content)
+          // Detección de mención en vivo (misma normalización que el backend):
+          // sube también el contador rojo; el número autoritativo llega con el
+          // próximo fetchChannels.
+          const mentioned = mentionsUser(msg.data?.content ?? msg.content ?? '', userNameRef.current)
           setChannels(prev => {
             // A-4.3: if the channel isn't in the list yet (new incoming DM or a
             // channel added since the last fetch) the .map() can't bump it and the
@@ -433,7 +472,13 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
               refetchChannelsSoon()
               return prev
             }
-            return prev.map(c => c.id === msg.channel_id ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c)
+            return prev.map(c => c.id === msg.channel_id
+              ? {
+                  ...c,
+                  unread_count: (c.unread_count || 0) + 1,
+                  mention_count: (c.mention_count || 0) + (mentioned ? 1 : 0),
+                }
+              : c)
           })
           window.dispatchEvent(new CustomEvent('chat-unread-updated'))
         }
@@ -558,9 +603,67 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
         window.dispatchEvent(new CustomEvent('chat-unread-updated'))
         fetchChannels()
       })
-      setChannels(prev => prev.map(c => c.id === selectedChannelId ? { ...c, unread_count: 0 } : c))
+      setChannels(prev => prev.map(c => c.id === selectedChannelId ? { ...c, unread_count: 0, mention_count: 0 } : c))
     }
   }, [selectedChannel?.id, fetchMessages, fetchChannelMembers, fetchPinnedMessages, fetchChannels])
+
+  // Borradores por canal: lo escrito a medias se conserva al cambiar de canal
+  // (y sobrevive recargas vía localStorage). Antes el cuadro de texto era un
+  // solo estado global: cambiar de conversación arrastraba o perdía el texto.
+  const newMessageRef = useRef('')
+  useEffect(() => {
+    newMessageRef.current = newMessage
+  }, [newMessage])
+  const draftChannelRef = useRef<number | null>(null)
+  useEffect(() => {
+    const prev = draftChannelRef.current
+    const next = selectedChannel?.id ?? null
+    if (prev === next) return
+    if (prev) {
+      const draft = newMessageRef.current
+      try {
+        if (draft.trim()) localStorage.setItem(`chat_draft_${prev}`, draft)
+        else localStorage.removeItem(`chat_draft_${prev}`)
+      } catch { /* storage lleno o bloqueado: el borrador solo vive en memoria */ }
+    }
+    draftChannelRef.current = next
+    let restored = ''
+    if (next) {
+      try { restored = localStorage.getItem(`chat_draft_${next}`) ?? '' } catch { /* ídem */ }
+    }
+    setNewMessage(restored)
+  }, [selectedChannel?.id])
+
+  // Observador sin membresía: el hub WS difunde SOLO a miembros del canal, así
+  // que un superadmin supervisando un DM/privado ajeno o un agente de soporte
+  // mirando un ticket SIN tomar no recibe nada en vivo — la conversación
+  // parecía congelada y lo que escribía el cliente no aparecía hasta cerrar y
+  // reabrir el canal. Mientras dure esa condición se sondea la conversación
+  // cada pocos segundos (solo mensajes nuevos, sin pisar el historial paginado)
+  // y también la membresía, para que el sondeo se apague solo al tomar el
+  // ticket (el WS pasa a entregar en vivo). Pausado con la pestaña oculta.
+  useEffect(() => {
+    const channelId = selectedChannel?.id
+    if (!channelId || !user?.id) return
+    if (channelMembers.length === 0) return // membresía aún cargando
+    if (channelMembers.some(m => m.id === user.id)) return
+
+    const interval = setInterval(() => {
+      if (document.hidden || selectedChannelIdRef.current !== channelId) return
+      channelService.getMessages(channelId)
+        .then(data => {
+          if (selectedChannelIdRef.current !== channelId) return
+          setMessages(prev => {
+            const known = new Set(prev.map(m => m.id))
+            const fresh = (data || []).filter(m => !known.has(m.id))
+            return fresh.length ? [...prev, ...fresh] : prev
+          })
+        })
+        .catch(() => {})
+      fetchChannelMembers(channelId)
+    }, 6000)
+    return () => clearInterval(interval)
+  }, [selectedChannel?.id, channelMembers, user?.id, fetchChannelMembers])
 
   // A-3: when the tab regains visibility and a channel is open, mark it read.
   // While hidden, incoming messages in the active channel are left unread (see
@@ -578,7 +681,7 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
       const channelId = selectedChannelIdRef.current
       if (!channelId) return
       channelService.markAsRead(channelId).then(() => {
-        setChannels(prev => prev.map(c => c.id === channelId ? { ...c, unread_count: 0 } : c))
+        setChannels(prev => prev.map(c => c.id === channelId ? { ...c, unread_count: 0, mention_count: 0 } : c))
         window.dispatchEvent(new CustomEvent('chat-unread-updated'))
       }).catch(err => console.error('Error marking as read on visibility/focus:', err))
     }
@@ -604,6 +707,8 @@ export function useSlackChat(user: User | null, companyId: number | null = null)
         // focus). The filter still removes any prior copy of this id, so no dup.
         setMessages(prev => prev.filter(m => m.tempId !== tempId && m.id !== msg.id).concat([{ ...msg, tempId }]))
         setNewMessage('')
+        // Mensaje enviado: el borrador guardado de este canal ya no aplica.
+        try { localStorage.removeItem(`chat_draft_${selectedChannel.id}`) } catch { /* best-effort */ }
       }).catch(err => {
         console.error('Error sending message:', err)
         setMessages(prev => prev.filter(m => m.tempId !== tempId))

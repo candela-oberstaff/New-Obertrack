@@ -19,10 +19,14 @@ type NotificationService interface {
 
 type notificationService struct {
 	repo repository.NotificationRepository
+	// pusher es Web Push del navegador (opcional, nil = deshabilitado). Solo se
+	// usa cuando el usuario NO tiene la app abierta: con un socket vivo ya le
+	// llegan la campanita y el toast.
+	pusher *WebPushService
 }
 
-func NewNotificationService(repo repository.NotificationRepository) NotificationService {
-	return &notificationService{repo: repo}
+func NewNotificationService(repo repository.NotificationRepository, pusher *WebPushService) NotificationService {
+	return &notificationService{repo: repo, pusher: pusher}
 }
 
 func (s *notificationService) CreateNotification(userID uint, notifType, title, message string, data map[string]interface{}) error {
@@ -52,6 +56,18 @@ func (s *notificationService) CreateNotification(userID uint, notifType, title, 
 		"message": message,
 		"data":    dataJSON,
 	})
+
+	// Sin la app abierta, el aviso sale por Web Push a sus navegadores
+	// suscritos (asíncrono: hace HTTP hacia los push services).
+	if s.pusher != nil && !websocket.GlobalNotifHub.IsOnline(userID) {
+		link := ""
+		if data != nil {
+			if l, ok := data["link"].(string); ok {
+				link = l
+			}
+		}
+		go s.pusher.SendToUser(userID, title, message, link)
+	}
 
 	return nil
 }

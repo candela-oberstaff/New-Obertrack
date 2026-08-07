@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -150,6 +151,8 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 		Description string `json:"description"`
 		Type        string `json:"type" binding:"required"`
 		MemberIDs   []uint `json:"member_ids"`
+		// Announcement crea el canal en modo anuncios (solo admins publican).
+		Announcement bool `json:"announcement"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -158,7 +161,7 @@ func (h *ChannelHandler) CreateChannel(c *gin.Context) {
 	}
 
 	companyFilter := superadminCompanyFilter(c, middleware.IsSuperadmin(c))
-	channel, err := h.svc.Create(userID, req.Name, req.Description, req.Type, req.MemberIDs, companyFilter)
+	channel, err := h.svc.Create(userID, req.Name, req.Description, req.Type, req.MemberIDs, companyFilter, req.Announcement)
 	if err != nil {
 		if errors.Is(err, service.ErrDuplicateChannelName) {
 			c.JSON(http.StatusConflict, gin.H{"error": "Ya existe un canal con ese nombre en esta empresa."})
@@ -427,6 +430,26 @@ func (h *ChannelHandler) UnhideChannel(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Chat restaurado"})
+}
+
+// MuteChannel silencia la campana del canal para el usuario (estado personal).
+func (h *ChannelHandler) MuteChannel(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err := h.svc.MuteChannel(middleware.GetUserID(c), uint(id)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Canal silenciado"})
+}
+
+// UnmuteChannel reactiva la campana del canal para el usuario.
+func (h *ChannelHandler) UnmuteChannel(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err := h.svc.UnmuteChannel(middleware.GetUserID(c), uint(id)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Canal con sonido"})
 }
 
 func (h *ChannelHandler) GetMessages(c *gin.Context) {
@@ -1051,6 +1074,22 @@ func (h *ChannelHandler) ResolveSupport(c *gin.Context) {
 	c.JSON(http.StatusOK, ticket)
 }
 
+// SearchAllMessages busca en todas las conversaciones legibles por el usuario
+// ("¿dónde me pasaron ese enlace?"). El superadmin busca en la empresa que
+// tiene seleccionada (company_id).
+func (h *ChannelHandler) SearchAllMessages(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	companyFilter := superadminCompanyFilter(c, isSuperadmin)
+
+	results, err := h.svc.SearchAllMessages(userID, isSuperadmin, companyFilter, c.Query("q"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo buscar en las conversaciones"})
+		return
+	}
+	c.JSON(http.StatusOK, results)
+}
+
 func (h *ChannelHandler) MarkAsRead(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	userID := middleware.GetUserID(c)
@@ -1063,6 +1102,15 @@ func (h *ChannelHandler) MarkAsRead(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Difunde la lectura a los miembros del canal: es lo que actualiza el
+	// "✓✓ Visto" del otro lado de un DM en vivo, sin esperar un refetch.
+	h.hub.Broadcast(websocket.ChannelWSMessage{
+		Type:      "read",
+		ChannelID: uint(id),
+		UserID:    userID,
+		Timestamp: time.Now(),
+	})
 
 	c.JSON(http.StatusOK, gin.H{"message": "Marked as read"})
 }

@@ -83,7 +83,9 @@ type ChannelService interface {
 	// GetMembersWithRole devuelve los miembros del canal con su rol (admin|member),
 	// uniendo User + ChannelMember.Role para el contrato del frontend.
 	GetMembersWithRole(channelID uint) ([]ChannelMemberDTO, error)
-	Create(userID uint, name, description, channelType string, memberIDs []uint, tenantOverride uint) (*models.Channel, error)
+	// Create crea un canal. isAnnouncement lo marca como canal de ANUNCIOS:
+	// solo publican quienes lo gestionan; el resto lee/reacciona/comenta en hilos.
+	Create(userID uint, name, description, channelType string, memberIDs []uint, tenantOverride uint, isAnnouncement bool) (*models.Channel, error)
 	// Update edita nombre/descripcion y, opcionalmente, el tipo de canal
 	// (publico<->privado). channelType vacio = sin cambio de tipo.
 	Update(id, userID uint, name, description, channelType string, isSuperadmin bool) (*models.Channel, error)
@@ -98,6 +100,10 @@ type ChannelService interface {
 	RemoveUserFromCompanyChannels(userID, companyID uint) error
 	HideChannel(userID, channelID uint) error
 	UnhideChannel(userID, channelID uint) error
+	// MuteChannel / UnmuteChannel silencian o reactivan la campana de un canal
+	// para el usuario (estado personal, como archivar).
+	MuteChannel(userID, channelID uint) error
+	UnmuteChannel(userID, channelID uint) error
 	ListArchivedChannels(userID uint) ([]ChannelWithUnread, error)
 	// IsExplicitMember indica si el usuario tiene una fila de membresía explícita en
 	// el canal (channel_members), sin el auto-join de canales públicos. Lo usa el
@@ -121,6 +127,9 @@ type ChannelService interface {
 	UnstarMessage(messageID, userID uint) error
 	GetStarredMessages(userID uint) ([]models.ChannelMessage, error)
 	SearchMessages(channelID, userID uint, query string) ([]models.ChannelMessage, error)
+	// SearchAllMessages busca en todas las conversaciones legibles por el
+	// usuario y etiqueta cada resultado con su canal.
+	SearchAllMessages(userID uint, isSuperadmin bool, companyFilter uint, query string) ([]GlobalSearchResult, error)
 	CreateDirectMessage(userID, recipientID uint, tenantOverride uint) (*DirectMessageResponse, error)
 	// PostSystemDM publica un DM del usuario de sistema "Obertrack" a recipientID
 	// y lo difunde en vivo. Best-effort: no devuelve error (el aviso principal es
@@ -169,9 +178,22 @@ type ChannelWithUnread struct {
 	Type        models.ChannelType `json:"type"`
 	CreatedBy   uint               `json:"created_by"`
 	IsActive    bool               `json:"is_active"`
-	CreatedAt   time.Time          `json:"created_at"`
-	UnreadCount int64              `json:"unread_count"`
-	Recipient   *models.User       `json:"recipient,omitempty"`
+	// IsAnnouncement replica el flag del canal (solo admins publican) para que
+	// el sidebar lo distinga y el composer se bloquee sin otra consulta.
+	IsAnnouncement bool      `json:"is_announcement"`
+	CreatedAt      time.Time `json:"created_at"`
+	UnreadCount    int64     `json:"unread_count"`
+	// MentionCount es el subconjunto de UnreadCount que MENCIONA al usuario:
+	// el sidebar lo pinta distinto para que "te nombraron" no se pierda entre
+	// el ruido de "hay mensajes".
+	MentionCount int64 `json:"mention_count"`
+	// Muted indica que el usuario silenció este canal (sin campana; las
+	// menciones directas siguen sonando).
+	Muted     bool         `json:"muted"`
+	Recipient *models.User `json:"recipient,omitempty"`
+	// RecipientLastReadAt (solo DMs donde el viewer participa): hasta cuándo
+	// leyó el OTRO. Es lo que pinta el "✓✓ Visto" bajo tu último mensaje.
+	RecipientLastReadAt *time.Time `json:"recipient_last_read_at,omitempty"`
 	// Participants se llena SOLO para DMs vistos por alguien que no participa
 	// (supervisión de superadmin): no existe un "otro" único, así que se exponen
 	// ambos miembros para que la UI muestre "A ↔ B" en vez de un nombre arbitrario.
@@ -342,6 +364,26 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 		log.Printf("[ChannelService] error getting unread counts for user %d: %v", userID, err)
 	}
 
+	// Menciones sin leer por canal (misma consulta agrupada, join a mentions).
+	mentionsByChannel := make(map[uint]int64)
+	if counts, err := s.repo.GetUnreadMentionCounts(userID); err == nil {
+		for _, c := range counts {
+			mentionsByChannel[c.ChannelID] = c.Count
+		}
+	} else {
+		log.Printf("[ChannelService] error getting mention counts for user %d: %v", userID, err)
+	}
+
+	// Canales silenciados por el usuario (una consulta).
+	mutedSet := make(map[uint]bool)
+	if mutedIDs, err := s.repo.ListMutedChannelIDs(userID); err == nil {
+		for _, id := range mutedIDs {
+			mutedSet[id] = true
+		}
+	} else {
+		log.Printf("[ChannelService] error getting muted channels for user %d: %v", userID, err)
+	}
+
 	// Conjunto de canales donde el usuario es miembro explícito, resuelto en UNA
 	// sola consulta (no N): así sabemos por canal si está supervisando (auditando
 	// sin ser miembro) o participando, sin un IsExplicitMember por canal. Para un
@@ -375,6 +417,7 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 
 		var recipient *models.User
 		var participants []models.User
+		var recipientLastRead *time.Time
 		if ch.Type == models.ChannelTypeDirect {
 			members, err := s.repo.GetMembers(ch.ID)
 			if err == nil {
@@ -393,6 +436,18 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 							break
 						}
 					}
+					// Hasta cuándo leyó el otro ("visto"). Una consulta por DM,
+					// mismo costo que el GetMembers de arriba.
+					if recipient != nil {
+						if roles, rerr := s.repo.GetMemberRoles(ch.ID); rerr == nil {
+							for i := range roles {
+								if roles[i].UserID == recipient.ID {
+									recipientLastRead = roles[i].LastReadAt
+									break
+								}
+							}
+						}
+					}
 				} else {
 					// El viewer NO participa (supervisión de superadmin): no hay un
 					// "otro" único, así que se exponen ambos participantes en vez de
@@ -405,17 +460,21 @@ func (s *channelService) GetChannels(userID uint, isSuperadmin bool, companyFilt
 		}
 
 		result = append(result, ChannelWithUnread{
-			ID:           ch.ID,
-			Name:         ch.Name,
-			Description:  ch.Description,
-			Type:         ch.Type,
-			CreatedBy:    ch.CreatedBy,
-			IsActive:     ch.IsActive,
-			CreatedAt:    ch.CreatedAt,
-			UnreadCount:  unreadCount,
-			Recipient:    recipient,
-			Participants: participants,
-			Supervised:   supervised,
+			ID:                  ch.ID,
+			Name:                ch.Name,
+			Description:         ch.Description,
+			Type:                ch.Type,
+			CreatedBy:           ch.CreatedBy,
+			IsActive:            ch.IsActive,
+			IsAnnouncement:      ch.IsAnnouncement,
+			CreatedAt:           ch.CreatedAt,
+			UnreadCount:         unreadCount,
+			MentionCount:        mentionsByChannel[ch.ID],
+			Muted:               mutedSet[ch.ID],
+			Recipient:           recipient,
+			RecipientLastReadAt: recipientLastRead,
+			Participants:        participants,
+			Supervised:          supervised,
 		})
 	}
 
@@ -487,7 +546,7 @@ func (s *channelService) GetChannel(id uint) (*models.Channel, error) {
 	return s.repo.GetChannel(id)
 }
 
-func (s *channelService) Create(userID uint, name, description, channelType string, memberIDs []uint, tenantOverride uint) (*models.Channel, error) {
+func (s *channelService) Create(userID uint, name, description, channelType string, memberIDs []uint, tenantOverride uint, isAnnouncement bool) (*models.Channel, error) {
 	cType := models.ChannelTypePublic
 	if channelType == "private" {
 		cType = models.ChannelTypePrivate
@@ -517,12 +576,13 @@ func (s *channelService) Create(userID uint, name, description, channelType stri
 	}
 
 	channel := &models.Channel{
-		Name:        name,
-		Description: description,
-		Type:        cType,
-		CreatedBy:   userID,
-		TenantID:    tenantID,
-		IsActive:    true,
+		Name:           name,
+		Description:    description,
+		Type:           cType,
+		CreatedBy:      userID,
+		TenantID:       tenantID,
+		IsActive:       true,
+		IsAnnouncement: isAnnouncement,
 	}
 
 	now := time.Now()
@@ -953,6 +1013,14 @@ func (s *channelService) Leave(channelID, userID uint) error {
 
 func (s *channelService) HideChannel(userID, channelID uint) error {
 	return s.repo.HideChannel(userID, channelID)
+}
+
+func (s *channelService) MuteChannel(userID, channelID uint) error {
+	return s.repo.MuteChannel(userID, channelID)
+}
+
+func (s *channelService) UnmuteChannel(userID, channelID uint) error {
+	return s.repo.UnmuteChannel(userID, channelID)
 }
 
 func (s *channelService) UnhideChannel(userID, channelID uint) error {

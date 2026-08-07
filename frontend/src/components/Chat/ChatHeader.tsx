@@ -1,4 +1,4 @@
-import { LifeBuoy, Archive } from 'lucide-react'
+import { LifeBuoy, Archive, Bell, BellOff } from 'lucide-react'
 import { Channel, SupportAgentRef } from '../../types/chat'
 import { PinIcon, UserPlusIcon, InfoIcon, LogOutIcon, SearchIcon, StarIcon } from './Icons'
 import { isSupportChannel, supportLabel, dmContactName } from './ChatUtils'
@@ -20,6 +20,8 @@ interface ChatHeaderProps {
   setShowChannelSettings: (show: boolean) => void
   leaveChannel: (channelId: number) => void
   hideChannel: (channelId: number) => void
+  /** Silenciar/reactivar la campana del canal abierto (estado personal). */
+  onToggleMute?: (channelId: number, mute: boolean) => void
   onShowSearch: () => void
   onShowStarred: () => void
   recipientStatus?: 'online' | 'away' | 'offline'
@@ -47,6 +49,7 @@ export function ChatHeader({
   setShowChannelSettings,
   leaveChannel,
   hideChannel,
+  onToggleMute,
   onShowSearch,
   onShowStarred,
   recipientStatus,
@@ -131,6 +134,17 @@ export function ChatHeader({
             <button onClick={() => setShowChannelSettings(true)} title="Info del canal">
               <InfoIcon />
             </button>
+            {onToggleMute && (
+              <button
+                onClick={() => onToggleMute(selectedChannel.id, !selectedChannel.muted)}
+                title={selectedChannel.muted
+                  ? 'Reactivar sonido de este canal'
+                  : 'Silenciar este canal (las menciones directas siguen sonando)'}
+                style={selectedChannel.muted ? { color: '#ef4444' } : undefined}
+              >
+                {selectedChannel.muted ? <BellOff size={18} /> : <Bell size={18} />}
+              </button>
+            )}
             {!isSupportChannel(selectedChannel) && (
               <button onClick={() => leaveChannel(selectedChannel.id)} title="Salir del canal" className={styles['leave-btn']}>
                 <LogOutIcon />

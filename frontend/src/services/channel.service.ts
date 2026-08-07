@@ -1,6 +1,6 @@
 import api from './client'
 import type { User } from '../types'
-import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket, MySupportTicket, SupportAgentRef } from '../types/chat'
+import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket, MySupportTicket, SupportAgentRef, GlobalSearchHit } from '../types/chat'
 
 export const channelService = {
   getChannels: async (companyId?: number | null): Promise<Channel[]> => {
@@ -13,7 +13,7 @@ export const channelService = {
     const { data } = await api.get<User[]>('/channels/all-users', { params })
     return data
   },
-  createChannel: async (channel: { name: string; description?: string; type: string; member_ids?: number[] }, companyId?: number | null) => {
+  createChannel: async (channel: { name: string; description?: string; type: string; member_ids?: number[]; announcement?: boolean }, companyId?: number | null) => {
     const params = companyId ? { company_id: companyId } : undefined
     const { data } = await api.post<Channel>('/channels', channel, { params })
     return data
@@ -122,6 +122,13 @@ export const channelService = {
     const { data } = await api.get<Message[]>(`/channels/${channelId}/search`, { params: { q: query } })
     return data
   },
+  // Búsqueda global: en todas las conversaciones legibles por el usuario.
+  searchAllMessages: async (query: string, companyId?: number | null): Promise<GlobalSearchHit[]> => {
+    const params: Record<string, unknown> = { q: query }
+    if (companyId) params.company_id = companyId
+    const { data } = await api.get<GlobalSearchHit[]>('/channels/search/global', { params })
+    return data
+  },
   createDM: async (recipientId: number, companyId?: number | null): Promise<DMChannel> => {
     const params = companyId ? { company_id: companyId } : undefined
     const { data } = await api.post<DMChannel>('/channels/dm', { recipient_id: recipientId }, { params })
@@ -168,6 +175,13 @@ export const channelService = {
   resolveSupport: async (ticketId: number): Promise<SupportTicket> => {
     const { data } = await api.post<SupportTicket>(`/channels/support/tickets/${ticketId}/resolve`, {})
     return data
+  },
+  // Silenciar/reactivar la campana de un canal (estado personal del usuario).
+  muteChannel: async (id: number) => {
+    await api.post(`/channels/${id}/mute`)
+  },
+  unmuteChannel: async (id: number) => {
+    await api.post(`/channels/${id}/unmute`)
   },
   markAsRead: async (id: number) => {
     await api.post(`/channels/${id}/read`)

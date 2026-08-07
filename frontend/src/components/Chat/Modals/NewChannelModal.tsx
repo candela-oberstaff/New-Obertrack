@@ -7,7 +7,7 @@ import { getUserColor } from '../ChatUtils'
 import styles from '../../../pages/SlackChat.module.css'
 
 interface NewChannelModalProps {
-  newChannel: { name: string; description: string; type: 'public' | 'private'; member_ids: number[] }
+  newChannel: { name: string; description: string; type: 'public' | 'private'; member_ids: number[]; announcement: boolean }
   setNewChannel: (channel: any) => void
   allUsers: User[]
   currentUser: User | null
@@ -104,6 +104,22 @@ export function NewChannelModal({
             { value: 'private', label: 'Privado' },
           ]}
         />
+      </div>
+      <div className={styles['form-group']}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+          <input
+            type="checkbox"
+            checked={newChannel.announcement}
+            onChange={(e) => setNewChannel({ ...newChannel, announcement: e.target.checked })}
+            style={{ width: 'auto' }}
+          />
+          Canal de anuncios (solo los administradores publican)
+        </label>
+        {newChannel.announcement && (
+          <p className={styles['hint']} style={{ marginTop: 6 }}>
+            📣 El resto del equipo puede leer, reaccionar y comentar en hilos, pero no publicar mensajes.
+          </p>
+        )}
       </div>
       {newChannel.type === 'public' ? (
         <p className={styles['hint']}>

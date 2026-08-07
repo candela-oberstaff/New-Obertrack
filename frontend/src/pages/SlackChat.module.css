@@ -361,6 +361,13 @@
   flex-shrink: 0;
 }
 
+/* Menciones directas: rojo con halo para que "te nombraron" destaque sobre el
+   contador genérico (que en canales grupales baja a gris). */
+.mention-badge {
+  background: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
+}
+
 .chat-main {
   flex: 1;
   display: flex;

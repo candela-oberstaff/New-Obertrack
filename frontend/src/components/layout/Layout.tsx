@@ -48,6 +48,7 @@ const MODULE_BY_PATH: Record<string, string> = {
   '/novedades': 'tutorials',
 }
 import Avatar from '../Common/Avatar'
+import { usePushNotifications } from '../../hooks/usePushNotifications'
 import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
 import { WALLET_ENABLED, GOOGLE_INTEGRATIONS_ENABLED } from '../../config/features'
 import styles from './Layout.module.css'
@@ -65,6 +66,11 @@ export default function Layout() {
   const [totalChatUnread, setTotalChatUnread] = useState(0)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [switchingCompany, setSwitchingCompany] = useState(false)
+
+  // Web Push: con permiso concedido renueva la suscripción en silencio; si el
+  // permiso está sin decidir, ofrece activarlo con una tarjeta discreta.
+  const push = usePushNotifications(!!user)
+  const [enablingPush, setEnablingPush] = useState(false)
 
   // Switcher multi-empresa: cambia la empresa activa, re-emite la sesión y
   // recarga todos los datos (que se scopean por el tenant del nuevo JWT).
@@ -321,6 +327,41 @@ export default function Layout() {
         <div className={`${styles['outlet-container']} ${isChatPage ? styles['chat-layout'] : ''}`}>
           <Outlet />
         </div>
+
+        {push.canPrompt && (
+          <div
+            style={{
+              position: 'fixed', right: 16, bottom: 16, zIndex: 60, maxWidth: 320,
+              background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
+              boxShadow: '0 8px 24px rgba(15,23,42,0.12)', padding: '14px 16px',
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: '#0f172a' }}>
+              🔔 ¿Activar notificaciones del navegador?
+            </p>
+            <p style={{ margin: '6px 0 12px', fontSize: 12.5, color: '#64748b', lineHeight: 1.4 }}>
+              Entérate de menciones, mensajes y avisos de soporte aunque tengas la pestaña cerrada.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={push.dismiss}
+                style={{ border: '1px solid #e2e8f0', background: '#fff', color: '#475569', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', width: 'auto' }}
+              >
+                Ahora no
+              </button>
+              <button
+                disabled={enablingPush}
+                onClick={async () => {
+                  setEnablingPush(true)
+                  try { await push.enable() } finally { setEnablingPush(false); push.dismiss() }
+                }}
+                style={{ border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: enablingPush ? 'wait' : 'pointer', width: 'auto' }}
+              >
+                {enablingPush ? 'Activando…' : 'Activar'}
+              </button>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

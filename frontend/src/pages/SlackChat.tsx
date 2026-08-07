@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { channelService, uploadService, adminService } from '../services/api'
 import { Select } from '../components/ui/Select'
 import type { User } from '../types'
-import type { Channel, Message, SupportTicket, SupportAgentRef } from '../types/chat'
+import type { Channel, Message, SupportTicket, SupportAgentRef, GlobalSearchHit } from '../types/chat'
 import { useConfirm } from '../components/ui/ConfirmProvider'
 import { useNotification } from '../context/NotificationContext'
 import { Sidebar } from '../components/Chat/Sidebar'
@@ -19,7 +19,7 @@ import { ChannelSettingsModal } from '../components/Chat/Modals/ChannelSettingsM
 import { AddMembersModal } from '../components/Chat/Modals/AddMembersModal'
 import { NewDmModal } from '../components/Chat/Modals/NewDmModal'
 import { PinnedMessagesModal } from '../components/Chat/Modals/PinnedMessagesModal'
-import { SearchModal } from '../components/Chat/Modals/SearchModal'
+import { SearchModal, type SearchScope } from '../components/Chat/Modals/SearchModal'
 import { StarredMessagesModal } from '../components/Chat/Modals/StarredMessagesModal'
 import { useSlackChat } from '../hooks/useSlackChat'
 import { formatTime, buildMentionRegex, highlightMentionsWithRegex, getUserColor, isSupportChannel, newTempId } from '../components/Chat/ChatUtils'
@@ -157,7 +157,9 @@ export default function SlackChat() {
   const [showPinnedMessages, setShowPinnedMessages] = useState(false)
   const [showSearchModal, setShowSearchModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Message[]>([])
+  const [searchResults, setSearchResults] = useState<GlobalSearchHit[]>([])
+  // Alcance de la búsqueda: el canal abierto o todas las conversaciones.
+  const [searchScope, setSearchScope] = useState<SearchScope>('channel')
   const [showStarredModal, setShowStarredModal] = useState(false)
   const [showMobileChannels, setShowMobileChannels] = useState(false)
   const [chatSidebarCollapsed, setChatSidebarCollapsed] = useState(false)
@@ -166,7 +168,7 @@ export default function SlackChat() {
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [newChannel, setNewChannel] = useState({ name: '', description: '', type: 'public' as 'public' | 'private', member_ids: [] as number[] })
+  const [newChannel, setNewChannel] = useState({ name: '', description: '', type: 'public' as 'public' | 'private', member_ids: [] as number[], announcement: false })
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null)
   const [editContent, setEditContent] = useState('')
   const [showMentionDropdown, setShowMentionDropdown] = useState(false)
@@ -543,8 +545,13 @@ export default function SlackChat() {
   }
 
   const handleSearch = async () => {
-    if (!selectedChannel || !searchQuery.trim()) return
+    if (!searchQuery.trim()) return
     try {
+      if (searchScope === 'all' || !selectedChannel) {
+        const results = await channelService.searchAllMessages(searchQuery.trim(), isSuperadmin ? selectedCompanyId : null)
+        setSearchResults(results || [])
+        return
+      }
       const results = await channelService.searchMessages(selectedChannel.id, searchQuery.trim())
       setSearchResults(results || [])
     } catch (e) {
@@ -557,6 +564,27 @@ export default function SlackChat() {
   // and the member list need it — offer joining before participating.
   const isMemberOfSelected = !!user && channelMembers.some(m => m.id === user.id)
   const needsJoin = selectedChannel?.type === 'public' && channelMembers.length > 0 && !isMemberOfSelected
+
+  // "✓✓ Visto" del DM: si TU último mensaje ya quedó cubierto por el
+  // last_read_at del otro participante. Solo aplica a DMs donde participas y
+  // cuando el último mensaje del hilo es tuyo.
+  const dmSeenState = (() => {
+    if (!selectedChannel || selectedChannel.type !== 'direct' || !user) return null
+    const last = [...messages].reverse().find(m => m.id > 0 && !m.is_deleted)
+    if (!last || last.user_id !== user.id) return null
+    const readAt = selectedChannel.recipient_last_read_at
+    const seen = !!readAt && new Date(readAt).getTime() >= new Date(last.created_at).getTime()
+    return seen ? 'seen' : 'sent'
+  })()
+
+  // Canal de anuncios: el composer se bloquea para quien no lo gestiona
+  // (creador, admin del canal o superadmin). El backend lo valida igual.
+  const canPostAnnouncement = !!user && !!selectedChannel && (
+    isSuperadmin ||
+    selectedChannel.created_by === user.id ||
+    channelMembers.some(m => m.id === user.id && m.role === 'admin')
+  )
+  const announcementReadOnly = !!selectedChannel?.is_announcement && !canPostAnnouncement
   // Modo supervisión (auditoría): un superadmin que ve un DM o un canal PRIVADO
   // del que NO es participante. No debe poder escribir (se vería como si fuera
   // parte de la conversación ajena); solo observa. Usamos el flag `supervised`
@@ -644,6 +672,20 @@ export default function SlackChat() {
       console.error(e)
       setThreadReplies(prev => prev.filter(r => r.tempId !== tempId))
       showError('No se pudo enviar la respuesta. Intenta de nuevo.')
+    }
+  }
+
+  // Silenciar/reactivar la campana del canal abierto. Refleja el cambio al
+  // instante en el encabezado y el sidebar; fetchChannels lo confirma después.
+  const handleToggleMute = async (channelId: number, mute: boolean) => {
+    try {
+      if (mute) await channelService.muteChannel(channelId)
+      else await channelService.unmuteChannel(channelId)
+      setSelectedChannel(prev => (prev && prev.id === channelId ? { ...prev, muted: mute } : prev))
+      fetchChannels()
+      showSuccess(mute ? 'Canal silenciado: no sonará (las menciones sí).' : 'Canal con sonido de nuevo.')
+    } catch {
+      showError('No se pudo cambiar el sonido del canal.')
     }
   }
 
@@ -769,7 +811,8 @@ export default function SlackChat() {
         setShowChannelSettings={setShowChannelSettings}
         leaveChannel={leaveChannel}
         hideChannel={hideChannel}
-        onShowSearch={() => { setSearchQuery(''); setSearchResults([]); setShowSearchModal(true) }}
+        onToggleMute={handleToggleMute}
+        onShowSearch={() => { setSearchQuery(''); setSearchResults([]); setSearchScope(selectedChannel ? 'channel' : 'all'); setShowSearchModal(true) }}
         onShowStarred={() => { fetchStarredMessages(); setShowStarredModal(true) }}
         recipientStatus={selectedChannel?.type === 'direct' && selectedChannel.recipient
           ? (userStatuses.get(selectedChannel.recipient.id) || 'offline')
@@ -858,6 +901,11 @@ export default function SlackChat() {
                 onLoadOlder={loadOlderMessages}
               />
 
+              {dmSeenState && (
+                <div style={{ padding: '0 20px 4px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: dmSeenState === 'seen' ? '#7c3aed' : '#94a3b8' }}>
+                  {dmSeenState === 'seen' ? '✓✓ Visto' : '✓ Enviado'}
+                </div>
+              )}
               {!canEditChat ? (
                 <div className={styles['join-banner']}>
                   <p>Tu rol tiene acceso de solo lectura en el Chat.</p>
@@ -882,6 +930,15 @@ export default function SlackChat() {
                   >
                     Restaurar
                   </button>
+                </div>
+              ) : announcementReadOnly ? (
+                <div className={styles['join-banner']} style={{ background: 'rgba(245,158,11,0.08)', borderTop: '1px solid rgba(245,158,11,0.25)' }}>
+                  <p style={{ margin: 0, color: '#b45309', fontWeight: 600 }}>
+                    📣 Canal de anuncios — solo los administradores publican aquí.
+                  </p>
+                  <p style={{ margin: '4px 0 0', color: '#92400e', fontSize: 13 }}>
+                    Puedes reaccionar a los anuncios o comentar en sus hilos.
+                  </p>
                 </div>
               ) : supportAttendedByOther ? (
                 <div className={styles['join-banner']} style={{ background: 'rgba(124,58,237,0.08)', borderTop: '1px solid rgba(124,58,237,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -969,7 +1026,7 @@ export default function SlackChat() {
           onClose={() => setShowNewChannelModal(false)}
           onCreate={async () => {
             if (!newChannel.name.trim()) return
-            try { await channelService.createChannel(newChannel, isSuperadmin ? selectedCompanyId : null); setShowNewChannelModal(false); setNewChannel({ name: '', description: '', type: 'public', member_ids: [] }); fetchChannels() } catch (e) { console.error(e); showError('No se pudo crear el canal.') }
+            try { await channelService.createChannel(newChannel, isSuperadmin ? selectedCompanyId : null); setShowNewChannelModal(false); setNewChannel({ name: '', description: '', type: 'public', member_ids: [], announcement: false }); fetchChannels() } catch (e) { console.error(e); showError('No se pudo crear el canal.') }
           }}
         />
       )}
@@ -1019,12 +1076,31 @@ export default function SlackChat() {
         />
       )}
 
-      {showSearchModal && selectedChannel && (
+      {showSearchModal && (
         <SearchModal
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           searchResults={searchResults}
+          scope={selectedChannel ? searchScope : 'all'}
+          setScope={(s) => { setSearchScope(s); setSearchResults([]) }}
+          canSearchChannel={!!selectedChannel}
           onSearch={handleSearch}
+          onOpenResult={(hit) => {
+            // En el canal abierto solo hay que resaltar; en la búsqueda global,
+            // abrir primero la conversación del resultado.
+            if (searchScope === 'all' && hit.channel_id !== selectedChannel?.id) {
+              const target = channels.find(c => c.id === hit.channel_id)
+              if (!target) {
+                showError('Esa conversación no está en tu lista actual.')
+                return
+              }
+              setSelectedChannel(target)
+            }
+            setHighlightMessageId(hit.id)
+            setShowSearchModal(false)
+            setSearchQuery('')
+            setSearchResults([])
+          }}
           onClose={() => { setShowSearchModal(false); setSearchQuery(''); setSearchResults([]) }}
           formatTime={formatTime}
         />

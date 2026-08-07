@@ -105,7 +105,10 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 
 	// Services
 	userSvc := service.NewUserService(userRepo, employmentRepo)
-	notifSvc := service.NewNotificationService(notifRepo)
+	// Web Push del navegador: las campanitas también llegan con la pestaña
+	// cerrada, pero SOLO cuando el usuario no tiene la app abierta.
+	webPushSvc := service.NewWebPushService(repository.NewPushRepository(db))
+	notifSvc := service.NewNotificationService(notifRepo, webPushSvc)
 	chatSvc := service.NewChatService(chatRepo)
 	channelSvc := service.NewChannelService(channelRepo, userRepo, notifSvc)
 	channelSvc.SetSupportNotifier(supportNtfy)
@@ -206,6 +209,11 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// están por vencer (contratos, certificados...).
 	service.NewDocumentExpiryWatcher(employmentRepo, userRepo, notifSvc).Start()
 
+	// Watcher del chat: correo de respaldo a quien acumula mensajes sin leer y
+	// no se conecta — el mensaje interno deja de depender de que se le ocurra
+	// entrar a la plataforma.
+	service.NewChatDigestWatcher(channelRepo, brevoSvc).Start()
+
 	// Worker de reportes automáticos. A diferencia de los otros, se conserva la
 	// instancia: el panel de configuración la usa para "Enviar ahora".
 	reportScheduleRepo := repository.NewReportScheduleRepository(db)
@@ -237,7 +245,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		channel:       handlers.NewChannelHandler(channelSvc, channelHub),
 		upload:        handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"), employmentSvc),
 		companyThread: handlers.NewCompanyThreadHandler(companyThreadSvc, os.Getenv("UPLOAD_PATH")),
-		notification:  handlers.NewNotificationHandler(notifSvc),
+		notification:  handlers.NewNotificationHandler(notifSvc, webPushSvc),
 		email:         handlers.NewEmailHandler(emailRepo, brevoSvc),
 		survey:        handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
 		metrics:       handlers.NewMetricsHandler(metricsRepo),

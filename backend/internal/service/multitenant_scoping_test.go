@@ -322,6 +322,14 @@ func (f *fakeChannelRepo) GetUnreadCounts(userID uint) ([]repository.UnreadCount
 	return nil, nil
 }
 
+func (f *fakeChannelRepo) GetUnreadMentionCounts(userID uint) ([]repository.UnreadCount, error) {
+	return nil, nil
+}
+
+func (f *fakeChannelRepo) ListMutedChannelIDs(userID uint) ([]uint, error) {
+	return nil, nil
+}
+
 func (f *fakeChannelRepo) GetMemberChannelIDs(userID uint) ([]uint, error) {
 	return nil, nil
 }

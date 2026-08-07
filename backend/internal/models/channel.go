@@ -22,6 +22,11 @@ type Channel struct {
 	CreatedBy     uint           `gorm:"not null;index" json:"created_by"`
 	TenantID      uint           `gorm:"uniqueIndex:idx_channel_name_type_tenant" json:"tenant_id"`
 	CreatedByUser User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	// IsAnnouncement marca un canal de ANUNCIOS: solo publican quienes lo
+	// gestionan (creador, admins del canal, superadmin); el resto lee y
+	// reacciona, y los hilos quedan abiertos para comentar. Es el "canal
+	// oficial" de la empresa sin que se entierre entre conversación.
+	IsAnnouncement bool `gorm:"default:false" json:"is_announcement"`
 	// IsActive is the canonical source of truth for whether a channel is "deleted".
 	// Soft-delete (DeleteChannel) flips this to false; recreating a channel with the
 	// same name/type/tenant reactivates the existing row (B-7) instead of inserting a

@@ -1,5 +1,5 @@
 import { useState, useCallback, type ReactNode } from 'react'
-import { LifeBuoy, Inbox, Eye, EyeOff, Hash, AtSign, ChevronDown, ChevronRight, Archive } from 'lucide-react'
+import { LifeBuoy, Inbox, Eye, EyeOff, Hash, AtSign, ChevronDown, ChevronRight, Archive, BellOff } from 'lucide-react'
 import { Channel, SupportTicket } from '../../types/chat'
 import { isSupportChannel, supportLabel, supportStatusMeta, dmContactName, getUserColor } from './ChatUtils'
 import styles from '../../pages/SlackChat.module.css'
@@ -93,6 +93,34 @@ export function Sidebar({
       {status && <span className={`${styles['channel-mini-status']} ${styles[status]}`} />}
     </span>
   )
+
+  // Badge de un canal. Jerarquía: MENCIONES en rojo con @ (lo que te nombra),
+  // DMs sin leer en rojo (todo DM es personal), y el ruido de canales grupales
+  // en gris — silenciados, más apagado todavía.
+  const badge = (channel: Channel) => {
+    if ((channel.mention_count ?? 0) > 0) {
+      return (
+        <span className={`${styles['unread-badge']} ${styles['mention-badge']}`} title="Te mencionaron">
+          @{channel.mention_count}
+        </span>
+      )
+    }
+    if (channel.unread_count > 0) {
+      const groupStyle = channel.type !== 'direct'
+        ? { background: channel.muted ? '#94a3b8' : '#64748b' }
+        : (channel.muted ? { background: '#94a3b8' } : undefined)
+      return (
+        <span className={styles['unread-badge']} style={groupStyle}>
+          {channel.unread_count}
+        </span>
+      )
+    }
+    return null
+  }
+
+  // Campanita tachada junto al nombre de un canal silenciado.
+  const mutedIcon = (channel: Channel) =>
+    channel.muted ? <BellOff size={12} style={{ color: '#94a3b8', flexShrink: 0 }} /> : null
 
   return (
     <>
@@ -193,9 +221,7 @@ export function Sidebar({
                           </span>
                         )}
                       </span>
-                      {channel.unread_count > 0 && (
-                        <span className={styles['unread-badge']}>{channel.unread_count}</span>
-                      )}
+                      {badge(channel)}
                     </div>
                   ))}
                 </>
@@ -227,9 +253,7 @@ export function Sidebar({
                         ? avatar(channel.participants?.[0]?.name || name)
                         : <span className={styles['channel-mini-icon']}>🔒</span>}
                       <span className={styles['channel-mini-name']} title={name}>{name}</span>
-                      {channel.unread_count > 0 && (
-                        <span className={styles['unread-badge']}>{channel.unread_count}</span>
-                      )}
+                      {badge(channel)}
                     </div>
                     )
                   })}
@@ -247,11 +271,12 @@ export function Sidebar({
                   className={`${styles['channel-mini-item']} ${selectedChannel?.id === channel.id ? styles['active'] : ''}`}
                   onClick={() => { setSelectedChannel(channel); setShowMobileChannels(false) }}
                 >
-                  <span className={styles['channel-mini-icon']}>{channel.type === 'private' ? '🔒' : '#'}</span>
+                  <span className={styles['channel-mini-icon']}>
+                    {channel.is_announcement ? '📣' : channel.type === 'private' ? '🔒' : '#'}
+                  </span>
                   <span className={styles['channel-mini-name']} title={channel.name}>{channel.name}</span>
-                  {channel.unread_count > 0 && (
-                    <span className={styles['unread-badge']}>{channel.unread_count}</span>
-                  )}
+                  {mutedIcon(channel)}
+                  {badge(channel)}
                 </div>
               ))}
 
@@ -275,9 +300,8 @@ export function Sidebar({
                 >
                   {avatar(channel.recipient?.name || name, status)}
                   <span className={styles['channel-mini-name']} title={name}>{name}</span>
-                  {channel.unread_count > 0 && (
-                    <span className={styles['unread-badge']}>{channel.unread_count}</span>
-                  )}
+                  {mutedIcon(channel)}
+                  {badge(channel)}
                 </div>
                 )
               })}

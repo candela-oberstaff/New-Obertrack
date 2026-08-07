@@ -93,6 +93,13 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 		return nil, nil, fmt.Errorf("este chat está archivado; restáuralo para escribir")
 	}
 
+	// Canal de ANUNCIOS: solo publican quienes lo gestionan (creador, admins del
+	// canal, superadmin). El resto lee y reacciona; los hilos (SendThreadReply)
+	// quedan abiertos a propósito para comentar sin ensuciar el tablón.
+	if channel.IsAnnouncement && !s.canManageChannel(channel, userID, s.isSuperadmin(userID)) {
+		return nil, nil, fmt.Errorf("este es un canal de anuncios: solo sus administradores pueden publicar")
+	}
+
 	message := &models.ChannelMessage{
 		ChannelID:  channelID,
 		TenantID:   channel.TenantID,
@@ -114,7 +121,7 @@ func (s *channelService) SendMessage(channelID, userID uint, content, attachment
 	}
 
 	// Process mentions
-	mentionedUserIDs := s.processMentions(message.ID, content, channelID)
+	mentionedUserIDs := s.processMentions(message.ID, content, channelID, userID)
 
 	// Send notifications
 	for _, mentionedUserID := range mentionedUserIDs {
@@ -159,12 +166,20 @@ func isMentionBoundary(r rune) bool {
 	return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 }
 
+// groupMentionTokens son las menciones GRUPALES: "@canal" y "@todos" notifican
+// a todos los miembros del canal menos al emisor. Se comparan ya normalizados
+// (normalizeMention), así que "@Canal" o "@TODOS" también cuentan.
+var groupMentionTokens = map[string]bool{"canal": true, "todos": true}
+
 // processMentions resolves mentions against the real members of the channel.
 // A mention is "@<member name>" appearing in the content as a whole token: the
 // character right after the name must be end-of-string or a non-alphanumeric
 // (isMentionBoundary), so "@Ana" does not match inside "@Anabel". The "@" itself
 // is the left boundary (no check on the preceding character). Names with spaces
 // like "@Laura Méndez" are supported. Returns deduplicated member IDs.
+//
+// "@canal" y "@todos" mencionan a TODOS los miembros salvo el emisor
+// (senderID): un aviso al equipo no debe notificar a quien lo escribe.
 //
 // Complexity: the previous implementation scanned the whole content once per
 // member (O(members × length)), which is costly in company-wide public channels.
@@ -174,7 +189,7 @@ func isMentionBoundary(r rune) bool {
 // minority) keep the original per-member scan as a fallback, so the observable
 // behaviour — boundaries, accent/case folding, "@Ana" ≠ "@Anabel", multiple
 // mentions — is preserved exactly.
-func (s *channelService) processMentions(messageID uint, content string, channelID uint) []uint {
+func (s *channelService) processMentions(messageID uint, content string, channelID, senderID uint) []uint {
 	var mentionedUserIDs []uint
 
 	// Shortcut: the vast majority of messages contain no mention at all, so skip
@@ -241,6 +256,15 @@ func (s *channelService) processMentions(messageID uint, content string, channel
 		}
 		if j > i+1 {
 			token := string(contentRunes[i+1 : j])
+			if groupMentionTokens[token] {
+				for _, member := range members {
+					if member.ID == senderID {
+						continue
+					}
+					addMention(member.ID)
+				}
+				continue
+			}
 			for _, id := range nameToIDs[token] {
 				addMention(id)
 			}
@@ -451,6 +475,20 @@ func (s *channelService) SendThreadReply(channelID, messageID, userID uint, cont
 		return nil, err
 	}
 
+	// Menciones también en los HILOS: antes solo SendMessage las procesaba, así
+	// que un "@Nombre" (o @todos) dentro de una respuesta de hilo no notificaba
+	// a nadie — el aludido no se enteraba salvo que abriera el hilo por su
+	// cuenta. El deep link apunta al mensaje PADRE: es el que está en la lista
+	// principal y el que el resaltado puede encontrar.
+	mentioned := s.processMentions(message.ID, content, channelID, userID)
+	for _, mentionedUserID := range mentioned {
+		s.notifSvc.CreateNotification(mentionedUserID, "mention", "Te mencionaron en un hilo", content, map[string]interface{}{
+			"channel_id": channelID,
+			"message_id": parentMessage.ID,
+			"link":       fmt.Sprintf("/chat?channel=%d&message=%d", channelID, parentMessage.ID),
+		})
+	}
+
 	return s.repo.GetMessage(message.ID)
 }
 
@@ -517,6 +555,68 @@ func (s *channelService) SearchMessages(channelID, userID uint, query string) ([
 	}
 
 	return s.repo.SearchMessages(channelID, query, 50, s.privateHistorySince(channelID, userID))
+}
+
+// GlobalSearchResult es un mensaje encontrado con la etiqueta de su canal, para
+// que la lista de resultados diga DÓNDE apareció y pueda abrirse con un clic.
+type GlobalSearchResult struct {
+	models.ChannelMessage
+	ChannelName string             `json:"channel_name"`
+	ChannelType models.ChannelType `json:"channel_type"`
+}
+
+// SearchAllMessages busca en TODAS las conversaciones que el usuario puede
+// leer (las reglas viven en el repo). El superadmin busca dentro de la empresa
+// seleccionada; sin empresa el resultado es vacío, igual que su sidebar.
+func (s *channelService) SearchAllMessages(userID uint, isSuperadmin bool, companyFilter uint, query string) ([]GlobalSearchResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return []GlobalSearchResult{}, nil
+	}
+
+	tenantID := companyFilter
+	if !isSuperadmin {
+		user, err := s.userRepo.GetByID(userID)
+		if err != nil || user == nil {
+			return nil, ErrUserNotFound
+		}
+		tenantID = models.TenantForUser(user)
+	} else if companyFilter == 0 {
+		return []GlobalSearchResult{}, nil
+	}
+
+	messages, err := s.repo.SearchMessagesGlobal(userID, tenantID, isSuperadmin, query, 50)
+	if err != nil {
+		return nil, err
+	}
+
+	// Etiqueta cada resultado con su canal (una sola consulta).
+	idSet := make(map[uint]bool)
+	ids := make([]uint, 0, len(messages))
+	for _, m := range messages {
+		if !idSet[m.ChannelID] {
+			idSet[m.ChannelID] = true
+			ids = append(ids, m.ChannelID)
+		}
+	}
+	nameByID := make(map[uint]string, len(ids))
+	typeByID := make(map[uint]models.ChannelType, len(ids))
+	if chans, cerr := s.repo.GetChannelsByIDs(ids); cerr == nil {
+		for _, ch := range chans {
+			nameByID[ch.ID] = ch.Name
+			typeByID[ch.ID] = ch.Type
+		}
+	}
+
+	out := make([]GlobalSearchResult, 0, len(messages))
+	for _, m := range messages {
+		out = append(out, GlobalSearchResult{
+			ChannelMessage: m,
+			ChannelName:    nameByID[m.ChannelID],
+			ChannelType:    typeByID[m.ChannelID],
+		})
+	}
+	return out, nil
 }
 
 func (s *channelService) CreateDirectMessage(userID, recipientID uint, tenantOverride uint) (*DirectMessageResponse, error) {

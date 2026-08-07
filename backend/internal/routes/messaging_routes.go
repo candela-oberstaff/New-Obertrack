@@ -28,6 +28,10 @@ func registerMessagingRoutes(api *gin.RouterGroup, d *deps) {
 		notifications.GET("/unread-count", d.notification.GetUnreadCount)
 		notifications.POST("/:id/read", d.notification.MarkAsRead)
 		notifications.POST("/read-all", d.notification.MarkAllAsRead)
+		// Web Push del navegador: clave pública VAPID + alta/baja de suscripción.
+		notifications.GET("/push/key", d.notification.GetPushKey)
+		notifications.POST("/push/subscriptions", d.notification.SubscribePush)
+		notifications.DELETE("/push/subscriptions", d.notification.UnsubscribePush)
 	}
 
 	channels := api.Group("/channels")
@@ -58,11 +62,14 @@ func registerMessagingRoutes(api *gin.RouterGroup, d *deps) {
 		channels.POST("/:id/leave", d.channel.LeaveChannel)
 		channels.POST("/:id/hide", d.channel.HideChannel)
 		channels.POST("/:id/unhide", d.channel.UnhideChannel)
+		channels.POST("/:id/mute", d.channel.MuteChannel)
+		channels.POST("/:id/unmute", d.channel.UnmuteChannel)
 		channels.POST("/:id/read", d.channel.MarkAsRead)
 		channels.POST("/:id/pin/:messageId", chatEdit, d.channel.PinMessage)
 		channels.POST("/:id/unpin/:messageId", chatEdit, d.channel.UnpinMessage)
 		channels.GET("/:id/pinned", d.channel.GetPinnedMessages)
 		channels.GET("/:id/search", d.channel.SearchMessages)
+		channels.GET("/search/global", d.channel.SearchAllMessages)
 		channels.POST("/star/:messageId", d.channel.StarMessage)
 		channels.DELETE("/star/:messageId", d.channel.UnstarMessage)
 		channels.GET("/starred", d.channel.GetStarredMessages)

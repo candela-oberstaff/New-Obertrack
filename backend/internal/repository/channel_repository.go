@@ -27,6 +27,11 @@ type ChannelRepository interface {
 	// usuario (personal, no afecta a otros). Un canal archivado no reaparece solo.
 	HideChannel(userID, channelID uint) error
 	UnhideChannel(userID, channelID uint) error
+	// MuteChannel / UnmuteChannel silencian la campana de un canal para un
+	// usuario (personal). ListMutedChannelIDs devuelve sus canales silenciados.
+	MuteChannel(userID, channelID uint) error
+	UnmuteChannel(userID, channelID uint) error
+	ListMutedChannelIDs(userID uint) ([]uint, error)
 	// ListArchivedChannels devuelve los canales que el usuario archivó (para la
 	// sección "Archivados"). IsArchived indica si un canal está archivado para él.
 	ListArchivedChannels(userID uint) ([]models.Channel, error)
@@ -74,11 +79,22 @@ type ChannelRepository interface {
 	// Unread
 	GetUnreadCount(channelID, userID uint) (int64, error)
 	GetUnreadCounts(userID uint) ([]UnreadCount, error)
+	// GetUnreadMentionCounts cuenta por canal los mensajes NO LEÍDOS que
+	// mencionan al usuario (mismo predicado que GetUnreadCounts + join a
+	// mentions), para que el sidebar distinga "hay mensajes" de "te nombraron".
+	GetUnreadMentionCounts(userID uint) ([]UnreadCount, error)
 	MarkAsRead(channelID, userID uint) error
 	GetTotalUnreadCount(userID uint) (int64, error)
 
 	// Mentions
 	CreateMention(mention *models.Mention) error
+
+	// --- Correo de respaldo "tienes mensajes sin leer" ---
+	// ListUsersNeedingChatDigest devuelve los usuarios desconectados con
+	// mensajes pendientes hace más de pendingFor y sin aviso en resendAfter.
+	ListUsersNeedingChatDigest(pendingFor, resendAfter time.Duration) ([]ChatDigestCandidate, error)
+	// MarkChatDigestSent registra el envío (upsert) para no repetirlo.
+	MarkChatDigestSent(userID uint) error
 
 	// Users
 	GetActiveUsers(tenantID uint, isSuperadmin bool) ([]models.User, error)
@@ -86,6 +102,14 @@ type ChannelRepository interface {
 
 	// Custom
 	SearchMessages(channelID uint, query string, limit int, since *time.Time) ([]models.ChannelMessage, error)
+	// SearchMessagesGlobal busca en TODAS las conversaciones legibles por el
+	// usuario: canales donde es miembro (los privados solo desde su joined_at,
+	// igual que privateHistorySince) y públicos de su empresa. Para superadmin
+	// busca en todos los canales del tenant indicado.
+	SearchMessagesGlobal(userID, tenantID uint, isSuperadmin bool, query string, limit int) ([]models.ChannelMessage, error)
+	// GetChannelsByIDs carga varios canales de una vez (para etiquetar
+	// resultados de búsqueda con el nombre del canal).
+	GetChannelsByIDs(ids []uint) ([]models.Channel, error)
 	FindManyMessagesByIDs(ids []uint) ([]models.ChannelMessage, error)
 	CreateDMChannel(channel *models.Channel, memberIDs []uint) error
 	CreateWithMembers(channel *models.Channel, members []models.ChannelMember) error
@@ -113,6 +137,23 @@ type ChannelRepository interface {
 
 type channelRepository struct {
 	db *gorm.DB
+}
+
+// publicUserColumns acota las columnas de usuario que viajan en los payloads
+// del chat: miembros de canal, autor de cada mensaje, selector de DMs. Es lo
+// que la interfaz pinta (nombre, avatar, correo, tipo) más los campos que usa
+// para agrupar (empleador, flags). El resto del modelo —teléfono, documento de
+// identidad, dirección, ubicación— no tiene por qué llegarle en el JSON a cada
+// colega de canal, aunque la UI no lo muestre.
+var publicUserColumns = []string{
+	"id", "name", "email", "avatar", "user_type",
+	"empleador_id", "is_superadmin", "is_manager", "is_active",
+	"company_name", "job_title",
+}
+
+// publicUser aplica publicUserColumns a un Preload de usuario.
+func publicUser(db *gorm.DB) *gorm.DB {
+	return db.Select(publicUserColumns)
 }
 
 func NewChannelRepository(db *gorm.DB) ChannelRepository {
@@ -170,7 +211,7 @@ func (r *channelRepository) GetChannelsByCompany(companyID uint) ([]models.Chann
 
 func (r *channelRepository) GetChannel(id uint) (*models.Channel, error) {
 	var channel models.Channel
-	err := r.db.Preload("Members").First(&channel, id).Error
+	err := r.db.Preload("Members", publicUser).First(&channel, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +267,12 @@ func (r *channelRepository) DeleteChannel(id uint) error {
 
 func (r *channelRepository) GetMembers(channelID uint) ([]models.User, error) {
 	var members []models.User
-	err := r.db.Joins("JOIN channel_members ON channel_members.user_id = users.id").
+	cols := make([]string, len(publicUserColumns))
+	for i, c := range publicUserColumns {
+		cols[i] = "users." + c
+	}
+	err := r.db.Select(cols).
+		Joins("JOIN channel_members ON channel_members.user_id = users.id").
 		Where("channel_members.channel_id = ?", channelID).
 		Find(&members).Error
 	return members, err
@@ -328,9 +374,9 @@ func (r *channelRepository) GetMessages(channelID uint, limit int, since *time.T
 	}
 	// Newest page first, then reversed to chronological order for the client.
 	err := q.
-		Preload("User").
+		Preload("User", publicUser).
 		Preload("Reactions").
-		Preload("Reactions.User").
+		Preload("Reactions.User", publicUser).
 		Order("id DESC").
 		Limit(limit).
 		Find(&messages).Error
@@ -376,7 +422,7 @@ func (r *channelRepository) GetMessage(id uint) (*models.ChannelMessage, error) 
 	// Only load non-deleted messages: editing/pinning/reacting to an already
 	// deleted message must fail cleanly with "record not found" instead of
 	// mutating a tombstoned row.
-	err := r.db.Preload("User").Preload("Reactions").Preload("Reactions.User").
+	err := r.db.Preload("User", publicUser).Preload("Reactions").Preload("Reactions.User", publicUser).
 		Where("id = ? AND is_deleted = ?", id, false).First(&message).Error
 	if err != nil {
 		return nil, err
@@ -395,6 +441,26 @@ func (r *channelRepository) HideChannel(userID, channelID uint) error {
 	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.HiddenChannel{
 		UserID: userID, ChannelID: channelID, HiddenAt: time.Now(),
 	}).Error
+}
+
+func (r *channelRepository) MuteChannel(userID, channelID uint) error {
+	// Idempotente: silenciar dos veces no es un error.
+	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.MutedChannel{
+		UserID: userID, ChannelID: channelID, CreatedAt: time.Now(),
+	}).Error
+}
+
+func (r *channelRepository) UnmuteChannel(userID, channelID uint) error {
+	return r.db.Where("user_id = ? AND channel_id = ?", userID, channelID).
+		Delete(&models.MutedChannel{}).Error
+}
+
+func (r *channelRepository) ListMutedChannelIDs(userID uint) ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&models.MutedChannel{}).
+		Where("user_id = ?", userID).
+		Pluck("channel_id", &ids).Error
+	return ids, err
 }
 
 func (r *channelRepository) UnhideChannel(userID, channelID uint) error {
@@ -431,9 +497,9 @@ func (r *channelRepository) DeleteMessage(id uint) error {
 func (r *channelRepository) GetThreadReplies(parentID uint) ([]models.ChannelMessage, error) {
 	var replies []models.ChannelMessage
 	err := r.db.Where("parent_id = ? AND is_deleted = ?", parentID, false).
-		Preload("User").
+		Preload("User", publicUser).
 		Preload("Reactions").
-		Preload("Reactions.User").
+		Preload("Reactions.User", publicUser).
 		Order("created_at ASC").
 		Find(&replies).Error
 	return replies, err
@@ -444,7 +510,7 @@ func (r *channelRepository) GetThreadReplies(parentID uint) ([]models.ChannelMes
 func (r *channelRepository) GetReactions(messageID uint) ([]models.MessageReaction, error) {
 	var reactions []models.MessageReaction
 	err := r.db.Where("message_id = ?", messageID).
-		Preload("User").
+		Preload("User", publicUser).
 		Find(&reactions).Error
 	return reactions, err
 }
@@ -479,7 +545,7 @@ func (r *channelRepository) GetPinnedMessages(channelID uint, since *time.Time) 
 		q = q.Where("created_at >= ?", *since)
 	}
 	err := q.
-		Preload("User").
+		Preload("User", publicUser).
 		Order("created_at DESC").
 		Find(&messages).Error
 	return messages, err
@@ -627,6 +693,22 @@ func (r *channelRepository) GetUnreadCounts(userID uint) ([]UnreadCount, error) 
 	return rows, err
 }
 
+// GetUnreadMentionCounts usa el MISMO predicado de no-leídos que
+// GetUnreadCounts (unreadJoinCondition) con un join extra a mentions filtrado
+// por el propio usuario: así "menciones sin leer" es siempre un subconjunto
+// exacto de "mensajes sin leer" y ambos badges se apagan juntos al leer.
+func (r *channelRepository) GetUnreadMentionCounts(userID uint) ([]UnreadCount, error) {
+	var rows []UnreadCount
+	err := r.db.Table("channel_members").
+		Select("channel_members.channel_id AS channel_id, COUNT(channel_messages.id) AS count").
+		Joins("JOIN channel_messages ON "+unreadJoinCondition, false).
+		Joins("JOIN mentions ON mentions.message_id = channel_messages.id AND mentions.user_id = channel_members.user_id").
+		Where("channel_members.user_id = ?", userID).
+		Group("channel_members.channel_id").
+		Scan(&rows).Error
+	return rows, err
+}
+
 func (r *channelRepository) MarkAsRead(channelID, userID uint) error {
 	// Use the exact current time. A previous +1s buffer caused messages that
 	// arrived within that second to never count as unread.
@@ -654,11 +736,68 @@ func (r *channelRepository) CreateMention(mention *models.Mention) error {
 	return r.db.Create(mention).Error
 }
 
+// Correo de respaldo
+
+// ChatDigestCandidate es un usuario al que le espera actividad de chat sin
+// leer y no está conectado para enterarse.
+type ChatDigestCandidate struct {
+	UserID uint
+	Name   string
+	Email  string
+	Unread int64
+}
+
+// ListUsersNeedingChatDigest arma, en UNA consulta, los destinatarios del
+// correo de respaldo con el MISMO predicado de no-leídos del sidebar:
+//   - tienen mensajes sin leer cuyo MÁS ANTIGUO lleva pendiente > pendingFor
+//     (no es actividad recién llegada que van a ver enseguida);
+//   - no están conectados (sin presencia 'online');
+//   - no se les envió este aviso en la ventana resendAfter;
+//   - los canales SILENCIADOS no cuentan (silenciar también silencia el correo);
+//   - se excluye al bot de sistema y cuentas inactivas.
+func (r *channelRepository) ListUsersNeedingChatDigest(pendingFor, resendAfter time.Duration) ([]ChatDigestCandidate, error) {
+	now := time.Now()
+	var out []ChatDigestCandidate
+	err := r.db.Raw(`
+		SELECT u.id AS user_id, u.name, u.email, COUNT(m.id) AS unread
+		FROM users u
+		JOIN channel_members cm ON cm.user_id = u.id
+		JOIN channels ch ON ch.id = cm.channel_id AND ch.is_active = true
+		JOIN channel_messages m ON m.channel_id = cm.channel_id
+			AND m.user_id <> cm.user_id
+			AND m.is_deleted = false
+			AND m.created_at > GREATEST(cm.joined_at, COALESCE(cm.last_read_at, cm.joined_at))
+		LEFT JOIN muted_channels mut ON mut.user_id = cm.user_id AND mut.channel_id = cm.channel_id
+		LEFT JOIN user_statuses us ON us.user_id = u.id
+		LEFT JOIN chat_digest_logs dl ON dl.user_id = u.id
+		WHERE u.is_active = true
+		  AND u.deleted_at IS NULL
+		  AND u.email <> ''
+		  AND u.email <> ?
+		  AND mut.user_id IS NULL
+		  AND (us.status IS NULL OR us.status <> 'online')
+		  AND (dl.sent_at IS NULL OR dl.sent_at < ?)
+		GROUP BY u.id, u.name, u.email
+		HAVING MIN(m.created_at) < ?`,
+		models.SystemBotEmail, now.Add(-resendAfter), now.Add(-pendingFor),
+	).Scan(&out).Error
+	return out, err
+}
+
+func (r *channelRepository) MarkChatDigestSent(userID uint) error {
+	return r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"sent_at"}),
+	}).Create(&models.ChatDigestLog{UserID: userID, SentAt: time.Now()}).Error
+}
+
 // Users
 
 func (r *channelRepository) GetActiveUsers(tenantID uint, isSuperadmin bool) ([]models.User, error) {
 	var users []models.User
-	q := r.db.Where("is_active = ?", true)
+	// Solo columnas públicas: esta lista alimenta el selector de DMs/miembros de
+	// cualquier usuario del chat, no una pantalla de administración.
+	q := r.db.Select(publicUserColumns).Where("is_active = ?", true)
 
 	// Exclude internal roles from the chat user list (superadmin, customer_success)
 	if !isSuperadmin {
@@ -701,7 +840,7 @@ func (r *channelRepository) SearchMessages(channelID uint, query string, limit i
 		q = q.Where("created_at >= ?", *since)
 	}
 	err := q.
-		Preload("User").
+		Preload("User", publicUser).
 		Preload("Reactions").
 		Order("created_at DESC").
 		Limit(limit).
@@ -709,10 +848,46 @@ func (r *channelRepository) SearchMessages(channelID uint, query string, limit i
 	return messages, err
 }
 
+// SearchMessagesGlobal replica las reglas de lectura del sidebar en una sola
+// consulta: miembro explícito (privados solo desde joined_at, como
+// privateHistorySince) o canal público del tenant. El superadmin busca en todo
+// el tenant que tiene seleccionado. Solo canales activos y mensajes no borrados.
+func (r *channelRepository) SearchMessagesGlobal(userID, tenantID uint, isSuperadmin bool, query string, limit int) ([]models.ChannelMessage, error) {
+	var messages []models.ChannelMessage
+	q := r.db.Model(&models.ChannelMessage{}).
+		Joins("JOIN channels ON channels.id = channel_messages.channel_id AND channels.is_active = ?", true).
+		Where("channel_messages.is_deleted = ? AND channel_messages.content ILIKE ?", false, "%"+query+"%")
+
+	if isSuperadmin {
+		q = q.Where("channels.tenant_id = ?", tenantID)
+	} else {
+		q = q.
+			Joins("LEFT JOIN channel_members cm ON cm.channel_id = channels.id AND cm.user_id = ?", userID).
+			Where(`(cm.user_id IS NOT NULL AND (channels.type <> 'private' OR channel_messages.created_at >= cm.joined_at))
+				OR (channels.type = 'public' AND channels.tenant_id = ?)`, tenantID)
+	}
+
+	err := q.
+		Preload("User", publicUser).
+		Order("channel_messages.created_at DESC").
+		Limit(limit).
+		Find(&messages).Error
+	return messages, err
+}
+
+func (r *channelRepository) GetChannelsByIDs(ids []uint) ([]models.Channel, error) {
+	var channels []models.Channel
+	if len(ids) == 0 {
+		return channels, nil
+	}
+	err := r.db.Where("id IN ?", ids).Find(&channels).Error
+	return channels, err
+}
+
 func (r *channelRepository) FindManyMessagesByIDs(ids []uint) ([]models.ChannelMessage, error) {
 	var messages []models.ChannelMessage
 	err := r.db.Where("id IN ?", ids).
-		Preload("User").
+		Preload("User", publicUser).
 		Preload("Reactions").
 		Order("created_at DESC").
 		Find(&messages).Error

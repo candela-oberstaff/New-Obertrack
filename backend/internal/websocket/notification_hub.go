@@ -196,6 +196,16 @@ func (h *NotificationHub) HandleConnection(conn *websocket.Conn, userID uint) {
 	}()
 }
 
+// IsOnline reporta si el usuario tiene al menos un socket de notificaciones
+// abierto (una pestaña de la app viva). Lo usa Web Push para empujar SOLO a
+// quien no está conectado: con la app abierta ya llegan la campanita y el
+// toast, y duplicar con un push del navegador sería ruido.
+func (h *NotificationHub) IsOnline(userID uint) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.byUser[userID]) > 0
+}
+
 func (h *NotificationHub) NotifyUser(userID uint, notifType string, data interface{}) {
 	if userID == broadcastUserID {
 		return

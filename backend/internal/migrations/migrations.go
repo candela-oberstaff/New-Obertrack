@@ -1775,6 +1775,57 @@ func Run(db *gorm.DB) error {
 				return tx.Exec(`ALTER TABLE tasks ALTER COLUMN status TYPE varchar(20)`).Error
 			},
 		},
+		{
+			// Silenciar canales por usuario: sin esto el chat suena por CADA mensaje
+			// de CUALQUIER canal (insufrible en los públicos de toda la empresa).
+			ID: "202608071700_muted_channels",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating muted_channels table...")
+				return tx.AutoMigrate(&models.MutedChannel{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.MutedChannel{})
+			},
+		},
+		{
+			// Canales de anuncios: solo los administradores del canal publican; el
+			// resto lee, reacciona y comenta en hilos.
+			ID: "202608071800_channel_is_announcement",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding channels.is_announcement...")
+				return tx.Exec(`ALTER TABLE channels ADD COLUMN IF NOT EXISTS is_announcement boolean NOT NULL DEFAULT false`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`ALTER TABLE channels DROP COLUMN IF EXISTS is_announcement`).Error
+			},
+		},
+		{
+			// Registro del correo de respaldo "tienes mensajes sin leer": máximo un
+			// aviso por usuario por ventana, aunque siga desconectado.
+			ID: "202608071900_chat_digest_logs",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating chat_digest_logs table...")
+				return tx.AutoMigrate(&models.ChatDigestLog{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.ChatDigestLog{})
+			},
+		},
+		{
+			// Web Push: suscripciones de navegador por usuario + par VAPID del
+			// servidor (generado en el primer arranque).
+			ID: "202608072000_web_push",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating push_subscriptions and web_push_keys tables...")
+				return tx.AutoMigrate(&models.PushSubscription{}, &models.WebPushKeys{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropTable(&models.PushSubscription{}); err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.WebPushKeys{})
+			},
+		},
 		// Future migrations go here
 	})
 

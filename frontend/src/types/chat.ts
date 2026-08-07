@@ -29,8 +29,18 @@ export interface Channel {
   tenant_id?: number
   created_by: number
   unread_count: number
+  // Subconjunto de unread_count que MENCIONA al usuario: el sidebar lo pinta
+  // en rojo para que "te nombraron" no se pierda entre "hay mensajes".
+  mention_count?: number
+  // El usuario silenció este canal: sin campana (las menciones sí suenan).
+  muted?: boolean
+  // Canal de ANUNCIOS: solo los administradores publican; el resto lee,
+  // reacciona y comenta en hilos.
+  is_announcement?: boolean
   created_at: string
   recipient?: User
+  // Solo DMs donde participas: hasta cuándo leyó el OTRO ("✓✓ Visto").
+  recipient_last_read_at?: string
   // Solo en DMs vistos por un no-participante (supervisión de superadmin):
   // ambos miembros, para mostrar "A ↔ B" en vez de un nombre arbitrario.
   participants?: User[]
@@ -112,6 +122,12 @@ export interface Message {
   created_at: string
   user?: User
   tempId?: string
+}
+
+/** Resultado de la búsqueda global: el mensaje + la etiqueta de su canal. */
+export interface GlobalSearchHit extends Message {
+  channel_name?: string
+  channel_type?: Channel['type']
 }
 
 export interface ChannelMember {

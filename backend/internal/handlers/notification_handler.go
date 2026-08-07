@@ -11,11 +11,66 @@ import (
 )
 
 type NotificationHandler struct {
-	svc service.NotificationService
+	svc     service.NotificationService
+	pushSvc *service.WebPushService
 }
 
-func NewNotificationHandler(svc service.NotificationService) *NotificationHandler {
-	return &NotificationHandler{svc: svc}
+func NewNotificationHandler(svc service.NotificationService, pushSvc *service.WebPushService) *NotificationHandler {
+	return &NotificationHandler{svc: svc, pushSvc: pushSvc}
+}
+
+// GetPushKey entrega la clave pública VAPID con la que el navegador se
+// suscribe a Web Push. Vacía = la función no está disponible.
+func (h *NotificationHandler) GetPushKey(c *gin.Context) {
+	key := ""
+	if h.pushSvc != nil {
+		key = h.pushSvc.PublicKey()
+	}
+	c.JSON(http.StatusOK, gin.H{"public_key": key})
+}
+
+// SubscribePush registra la suscripción Web Push del navegador del usuario.
+func (h *NotificationHandler) SubscribePush(c *gin.Context) {
+	if h.pushSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Web Push no está disponible"})
+		return
+	}
+	var req struct {
+		Endpoint string `json:"endpoint" binding:"required"`
+		Keys     struct {
+			P256dh string `json:"p256dh" binding:"required"`
+			Auth   string `json:"auth" binding:"required"`
+		} `json:"keys" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Suscripción inválida"})
+		return
+	}
+	if err := h.pushSvc.Subscribe(middleware.GetUserID(c), req.Endpoint, req.Keys.P256dh, req.Keys.Auth); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo registrar la suscripción"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Suscripción registrada"})
+}
+
+// UnsubscribePush elimina la suscripción del navegador (p. ej. al desactivar).
+func (h *NotificationHandler) UnsubscribePush(c *gin.Context) {
+	if h.pushSvc == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+		return
+	}
+	var req struct {
+		Endpoint string `json:"endpoint" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Falta el endpoint"})
+		return
+	}
+	if err := h.pushSvc.Unsubscribe(middleware.GetUserID(c), req.Endpoint); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo eliminar la suscripción"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Suscripción eliminada"})
 }
 
 func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
