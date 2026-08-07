@@ -13,6 +13,10 @@ services:
       # chips por empleo. El default en prod sigue OFF.
       MULTI_MANAGER_READS: "true"
 
+  db:
+    ports:
+      - "5432:5432"
+
   # Seeder de datos de demostración. Vive solo en este archivo (nunca en el
   # compose de producción) y bajo un profile, así que ni `up` ni `up -d` lo
   # levantan por accidente: hay que pedirlo por su nombre.
