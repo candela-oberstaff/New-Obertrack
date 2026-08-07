@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { Clock } from 'lucide-react'
+import { Clock, Bell } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { usePushNotifications } from '../hooks/usePushNotifications'
 import { userService, uploadService, profileChangeService } from '../services/api'
 import { ProfileForm } from '../components/Profile/ProfileForm'
 import { ProfileChangeRequestModal } from '../components/Profile/ProfileChangeRequestModal'
@@ -22,6 +23,10 @@ export default function Profile() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
   const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  // Interruptor de Web Push (activar/desactivar en ESTE navegador).
+  const push = usePushNotifications(!!user)
+  const [pushBusy, setPushBusy] = useState(false)
 
   const isProfessional = user?.user_type === 'profesional'
   useEffect(() => {
@@ -201,6 +206,57 @@ export default function Profile() {
               )}
             </div>
           </div>
+
+          {/* Notificaciones del navegador (Web Push): el interruptor SIEMPRE
+              visible — la tarjeta flotante solo aparece una vez, así que quien
+              la descartó (o quiere apagarlas) las gestiona desde aquí. */}
+          {push.supported && (
+            <div className={styles['sidebar-card']} style={{ marginBottom: '16px' }}>
+              <h3 style={{ marginBottom: '6px' }}>
+                <Bell size={15} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+                Notificaciones del navegador
+              </h3>
+              <p style={{ margin: '0 0 12px', fontSize: '12.5px', color: '#64748b', lineHeight: 1.4 }}>
+                Menciones, mensajes y avisos de soporte aunque tengas la pestaña cerrada.
+              </p>
+              {push.permission === 'denied' ? (
+                <p style={{ margin: 0, fontSize: '12.5px', color: '#b45309', lineHeight: 1.4 }}>
+                  El permiso está bloqueado en el navegador: haz clic en el candado de la
+                  barra de direcciones → Notificaciones → Permitir, y recarga.
+                </p>
+              ) : push.subscribed ? (
+                <button
+                  className={styles['btn-outline']}
+                  style={{ width: '100%', padding: '8px' }}
+                  disabled={pushBusy}
+                  onClick={async () => {
+                    setPushBusy(true)
+                    try { await push.disable(); setMessage({ type: 'success', text: 'Notificaciones del navegador desactivadas.' }) }
+                    finally { setPushBusy(false) }
+                  }}
+                >
+                  {pushBusy ? 'Desactivando…' : 'Desactivar en este navegador'}
+                </button>
+              ) : (
+                <button
+                  className={styles['btn-primary']}
+                  style={{ width: '100%', padding: '8px' }}
+                  disabled={pushBusy || push.subscribed === null}
+                  onClick={async () => {
+                    setPushBusy(true)
+                    try {
+                      const ok = await push.enable()
+                      setMessage(ok
+                        ? { type: 'success', text: 'Notificaciones del navegador activadas.' }
+                        : { type: 'error', text: 'No se pudo activar: revisa el permiso del navegador.' })
+                    } finally { setPushBusy(false) }
+                  }}
+                >
+                  {pushBusy ? 'Activando…' : push.subscribed === null ? 'Verificando…' : 'Activar notificaciones'}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Vincular la cuenta de Google: escondido hasta pasar la
               verificación (ver config/features.ts). */}

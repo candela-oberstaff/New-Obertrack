@@ -32,6 +32,7 @@ import styles from './Notifications.module.css'
 const LIVE_NOTIFICATION_TYPES = new Set([
   'task_assigned',
   'mention',
+  'support',
   'task_created',
   'task_updated',
   'task_completed',
@@ -47,6 +48,7 @@ const LIVE_NOTIFICATION_TYPES = new Set([
 const ALERT_NOTIFICATION_TYPES = new Set([
   'task_assigned',
   'mention',
+  'support',
   'board_invitation',
 ])
 
@@ -243,7 +245,30 @@ export default function Notifications() {
   }
 
   const handleEnableDesktop = async () => {
-    setPermission(await requestDesktopPermission())
+    const result = await requestDesktopPermission()
+    setPermission(result)
+    // Con el permiso concedido, registra también la suscripción Web Push: así
+    // los avisos llegan aunque la pestaña esté CERRADA, no solo con la app
+    // abierta. Best-effort: si falla, el escritorio local sigue funcionando.
+    if (result === 'granted') {
+      try {
+        const { pushService } = await import('../services/push.service')
+        const registration = await navigator.serviceWorker.register('/sw.js')
+        const publicKey = await pushService.getPublicKey()
+        if (publicKey) {
+          const padding = '='.repeat((4 - (publicKey.length % 4)) % 4)
+          const base64 = (publicKey + padding).replace(/-/g, '+').replace(/_/g, '/')
+          const raw = window.atob(base64)
+          const appKey = new Uint8Array(raw.length)
+          for (let i = 0; i < raw.length; i++) appKey[i] = raw.charCodeAt(i)
+          const sub = await registration.pushManager.getSubscription()
+            ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey as BufferSource })
+          await pushService.subscribe(sub.toJSON())
+        }
+      } catch (e) {
+        console.error('No se pudo registrar Web Push:', e)
+      }
+    }
   }
 
   const handleToggleSound = () => {
@@ -345,8 +370,20 @@ export default function Notifications() {
           {permission === 'default' && (
             <button className={styles['enable-desktop']} onClick={handleEnableDesktop}>
               <BellRing size={14} />
-              Avisarme en el escritorio cuando me asignen una tarea
+              Activar notificaciones del navegador (aunque cierres la pestaña)
             </button>
+          )}
+          {permission === 'granted' && (
+            <div className={styles['enable-desktop']} style={{ cursor: 'default', opacity: 0.75 }}>
+              <BellRing size={14} />
+              Notificaciones del navegador activadas ✓
+            </div>
+          )}
+          {permission === 'denied' && (
+            <div className={styles['enable-desktop']} style={{ cursor: 'default', opacity: 0.75 }} title="El permiso está bloqueado: haz clic en el candado de la barra de direcciones → Notificaciones → Permitir">
+              <BellRing size={14} />
+              Notificaciones bloqueadas — actívalas desde el candado del navegador
+            </div>
           )}
 
           <div className={styles['notifications-list']}>

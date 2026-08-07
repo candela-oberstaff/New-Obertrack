@@ -30,10 +30,16 @@ async function ensureSubscribed(): Promise<boolean> {
   return true
 }
 
+// Con este flag puesto, el usuario APAGÓ el push a propósito: la renovación
+// automática al entrar no debe volver a suscribirlo.
+const PUSH_DISABLED_KEY = 'push_disabled'
+
 /**
  * usePushNotifications gestiona Web Push del navegador:
- *  - con permiso ya concedido, renueva la suscripción en silencio al entrar;
- *  - expone `enable()` para pedir el permiso desde un gesto del usuario;
+ *  - con permiso ya concedido, renueva la suscripción en silencio al entrar
+ *    (salvo que el usuario la haya desactivado desde su Perfil);
+ *  - expone `enable()` / `disable()` para el interruptor del Perfil;
+ *  - `subscribed` refleja si ESTE navegador está suscrito;
  *  - `canPrompt` indica si vale la pena ofrecer el aviso (soportado + permiso
  *    aún sin decidir + no descartado antes).
  */
@@ -41,12 +47,21 @@ export function usePushNotifications(loggedIn: boolean) {
   const supported = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
   const [permission, setPermission] = useState<NotificationPermission>(supported ? Notification.permission : 'denied')
   const [dismissed, setDismissed] = useState(() => localStorage.getItem('push_prompt_dismissed') === '1')
+  // null = todavía verificando; luego true/false según este navegador.
+  const [subscribed, setSubscribed] = useState<boolean | null>(supported ? null : false)
 
   // Permiso ya concedido: re-suscribe en silencio (el endpoint del navegador
-  // puede rotar, y el backend reasigna la fila al usuario actual).
+  // puede rotar, y el backend reasigna la fila al usuario actual) — salvo que
+  // el usuario lo haya desactivado explícitamente desde su Perfil.
   useEffect(() => {
-    if (!loggedIn || !supported || Notification.permission !== 'granted') return
-    ensureSubscribed().catch(() => { /* best-effort: sin push se sigue con campanita/correo */ })
+    if (!loggedIn || !supported) return
+    if (Notification.permission !== 'granted' || localStorage.getItem(PUSH_DISABLED_KEY) === '1') {
+      setSubscribed(false)
+      return
+    }
+    ensureSubscribed()
+      .then(ok => setSubscribed(ok))
+      .catch(() => setSubscribed(false)) // best-effort: sin push se sigue con campanita/correo
   }, [loggedIn, supported])
 
   const enable = useCallback(async () => {
@@ -55,11 +70,32 @@ export function usePushNotifications(loggedIn: boolean) {
     setPermission(result)
     if (result !== 'granted') return false
     try {
-      return await ensureSubscribed()
+      const ok = await ensureSubscribed()
+      if (ok) {
+        try { localStorage.removeItem(PUSH_DISABLED_KEY) } catch { /* sin storage */ }
+      }
+      setSubscribed(ok)
+      return ok
     } catch {
+      setSubscribed(false)
       return false
     }
   }, [supported])
+
+  // disable da de baja la suscripción de ESTE navegador (backend + navegador)
+  // y deja el flag para que el auto-suscribir del login no la reviva.
+  const disable = useCallback(async () => {
+    try { localStorage.setItem(PUSH_DISABLED_KEY, '1') } catch { /* sin storage */ }
+    setSubscribed(false)
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js')
+      const sub = await registration?.pushManager.getSubscription()
+      if (sub) {
+        try { await pushService.unsubscribe(sub.endpoint) } catch { /* la limpieza del backend es best-effort */ }
+        await sub.unsubscribe()
+      }
+    } catch { /* sin registro que dar de baja */ }
+  }, [])
 
   const dismiss = useCallback(() => {
     setDismissed(true)
@@ -69,8 +105,10 @@ export function usePushNotifications(loggedIn: boolean) {
   return {
     supported,
     permission,
+    subscribed,
     canPrompt: supported && loggedIn && permission === 'default' && !dismissed,
     enable,
+    disable,
     dismiss,
   }
 }
