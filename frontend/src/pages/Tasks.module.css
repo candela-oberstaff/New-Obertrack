@@ -951,6 +951,10 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* Altura mínima para que una columna vacía siga siendo un destino de drop
+     usable (sin esto colapsa a una franja de ~24px y las tarjetas "caen" en
+     la columna vecina). */
+  min-height: 160px;
 }
 
 .kanban-card {
@@ -3005,5 +3009,428 @@
 .task-filters-chip-active:hover {
   background: #ede9fe;
   border-color: #6d28d9;
+}
+
+/* ============ Columnas colapsadas ============ */
+
+.kanban-column.column-collapsed {
+  flex: 0 0 56px;
+  cursor: pointer;
+}
+
+.kanban-column.column-collapsed:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.column-collapsed-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 8px;
+  flex: 1;
+  min-height: 220px;
+}
+
+.column-collapsed-title {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--black);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 320px;
+}
+
+.column-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.column-collapse-btn:hover {
+  background: #f1f5f9;
+  color: var(--black);
+}
+
+/* ============ Toggle de vistas (kanban / lista / calendario) ============ */
+
+.view-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.view-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 8px;
+  transition: all 0.15s;
+}
+
+.view-toggle-btn:hover {
+  color: var(--black);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.view-toggle-btn.view-toggle-active {
+  background: white;
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* ============ Vista Timeline (Gantt) ============ */
+
+.tasks-timeline-view {
+  --timeline-label-w: 220px;
+  flex: 1;
+  overflow: auto;
+  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.timeline-scroll {
+  overflow-x: auto;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  position: relative;
+}
+
+.timeline-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.timeline-label {
+  flex: 0 0 var(--timeline-label-w);
+  width: var(--timeline-label-w);
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: rgba(255, 255, 255, 0.92);
+  border-right: 1px solid var(--glass-border);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.timeline-label-header {
+  cursor: default;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.timeline-label-done {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
+.timeline-track {
+  position: relative;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+  min-height: 40px;
+  /* Rejilla de días de fondo (34px = DAY_WIDTH del componente). */
+  background-image: repeating-linear-gradient(
+    to right,
+    rgba(226, 232, 240, 0.5) 0,
+    rgba(226, 232, 240, 0.5) 1px,
+    transparent 1px,
+    transparent 34px
+  );
+}
+
+.timeline-months {
+  display: flex;
+  height: 30px;
+}
+
+.timeline-month {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: #64748b;
+  padding: 6px 8px;
+  border-right: 1px solid var(--glass-border);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.timeline-days {
+  display: flex;
+  height: 26px;
+}
+
+.timeline-day {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-align: center;
+  padding-top: 4px;
+  flex-shrink: 0;
+}
+
+.timeline-day-weekend {
+  background: rgba(226, 232, 240, 0.35);
+}
+
+.timeline-day-today {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.timeline-body {
+  position: relative;
+}
+
+.timeline-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--primary);
+  opacity: 0.55;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.timeline-bar {
+  --chip-color: #6b7280;
+  position: absolute;
+  top: 6px;
+  height: 28px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--black);
+  text-align: left;
+  background: color-mix(in srgb, var(--chip-color) 22%, white);
+  border-left: 4px solid var(--chip-color);
+  border-radius: 6px;
+  padding: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.15s, transform 0.15s;
+  z-index: 1;
+}
+
+.timeline-bar:hover {
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+  z-index: 2;
+}
+
+.timeline-bar-done {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.timeline-bar-overdue {
+  box-shadow: inset 0 0 0 1px #ef4444;
+}
+
+.timeline-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+/* ============ Vista Calendario ============ */
+
+.tasks-calendar-view {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-month {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--black);
+  text-transform: capitalize;
+  min-width: 180px;
+  text-align: center;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  padding: 6px 0;
+}
+
+.calendar-day {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  min-height: 96px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calendar-day-out {
+  opacity: 0.45;
+}
+
+.calendar-day-today {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.calendar-day-number {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.calendar-day-today .calendar-day-number {
+  color: var(--primary);
+}
+
+.calendar-day-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.calendar-chip {
+  --chip-color: #6b7280;
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--black);
+  background: color-mix(in srgb, var(--chip-color) 14%, white);
+  border-left: 3px solid var(--chip-color);
+  border-radius: 5px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s;
+}
+
+.calendar-chip:hover {
+  background: color-mix(in srgb, var(--chip-color) 26%, white);
+}
+
+.calendar-chip-done {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.calendar-more {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  padding-left: 4px;
+}
+
+.calendar-no-date {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.calendar-no-date-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.calendar-no-date-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.calendar-no-date-chips .calendar-chip {
+  width: auto;
+  max-width: 260px;
+}
+
+@media (max-width: 768px) {
+  .tasks-timeline-view,
+  .tasks-calendar-view {
+    padding: 12px;
+  }
+
+  .calendar-day {
+    min-height: 64px;
+  }
+
+  .tasks-timeline-view {
+    --timeline-label-w: 140px;
+  }
 }
 

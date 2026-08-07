@@ -1,5 +1,11 @@
 export type UserType = 'empleador' | 'profesional' | 'superadmin' | 'customer_success'
-export type TaskStatus = 'por_hacer' | 'en_proceso' | 'finalizado'
+/**
+ * Statuses canónicos + los derivados de fases custom (phaseStatusId): en
+ * runtime una tarea puede tener cualquier id de columna como status. El
+ * `string & {}` conserva el autocompletado de los tres canónicos sin mentir
+ * sobre el resto.
+ */
+export type TaskStatus = 'por_hacer' | 'en_proceso' | 'finalizado' | (string & {})
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
 export interface User {
@@ -137,6 +143,8 @@ export interface Task {
   created_by: number
   board_id: number
   tenant_id?: number
+  /** Orden manual dentro de su columna (0 = arriba). */
+  order?: number
   created_at: string
   updated_at: string
   creator?: User

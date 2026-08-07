@@ -91,7 +91,10 @@ type Task struct {
 	ID          uint           `gorm:"primaryKey" json:"id"`
 	Title       string         `gorm:"size:255;not null" json:"title"`
 	Description string         `gorm:"type:text" json:"description"`
-	Status      TaskStatus     `gorm:"type:varchar(20);not null;default:'por_hacer';index:idx_status_board" json:"status"`
+	// varchar(50) debe coincidir con la migración 202608061900_widen_task_status y
+	// con STATUS_MAX_LENGTH del frontend (phaseStatus.ts): el status de una fase
+	// custom se deriva de su nombre y puede superar los 20 caracteres.
+	Status      TaskStatus     `gorm:"type:varchar(50);not null;default:'por_hacer';index:idx_status_board" json:"status"`
 	Priority    TaskPriority   `gorm:"type:varchar(20);not null;default:'medium'" json:"priority"`
 	StartDate   *time.Time     `gorm:"type:date" json:"start_date,omitempty"`
 	EndDate     *time.Time     `gorm:"type:date" json:"end_date,omitempty"`

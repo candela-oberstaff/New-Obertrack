@@ -17,6 +17,8 @@ interface UseTasksReturn {
   isLoading: boolean
   createTask: (data: CreateTaskInput) => Promise<Task>
   updateTask: (id: number, data: Partial<Task>) => Promise<void>
+  moveTask: (id: number, boardId: number, newStatus: string, orderedIds: number[]) => Promise<void>
+  reorderColumn: (boardId: number, status: string, orderedIds: number[]) => Promise<void>
   deleteTask: (id: number) => Promise<void>
   fetchTasks: () => Promise<void>
   getTasksByStatus: (status: string) => Task[]
@@ -36,6 +38,9 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
       if (companyId) params.company_id = companyId
       const tasksRes = await taskService.getAll(params)
       let fetched = tasksRes.data || []
+      if (tasksRes.total > fetched.length) {
+        console.warn(`[useTasks] El tablero tiene ${tasksRes.total} tareas pero solo se cargaron ${fetched.length}; las restantes no se muestran.`)
+      }
       if (!showAllTasks && boardId) fetched = fetched.filter((t: any) => t.board_id === boardId)
       return fetched as Task[]
     },
@@ -57,31 +62,78 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qc, boardId, showAllTasks, companyId])
 
-  const updateTask = useCallback(async (id: number, data: Partial<Task>) => {
+  // Protocolo optimista compartido por updateTask/moveTask/reorderColumn:
+  // snapshot → aplicar al cache → persistir → invalidate. Si persist falla a
+  // medias (p. ej. cambió el status pero falló el reorden), el snapshot local
+  // podría no reflejar lo que el servidor sí guardó, así que tras revertir
+  // TAMBIÉN se invalida para resincronizar con la verdad del servidor.
+  const runOptimistic = useCallback(async (apply: (old: Task[]) => Task[], persist: () => Promise<void>) => {
     const previous = qc.getQueryData<Task[]>(queryKey)
-    // Optimistic update (skip assignees — they come as objects not IDs).
-    qc.setQueryData<Task[]>(queryKey, (old) =>
-      (old ?? []).map((t) => {
+    qc.setQueryData<Task[]>(queryKey, (old) => apply(old ?? []))
+    try {
+      await persist()
+      await qc.invalidateQueries({ queryKey })
+    } catch (error) {
+      console.error('Error persisting task change:', error)
+      if (previous) qc.setQueryData(queryKey, previous)
+      await qc.invalidateQueries({ queryKey })
+      throw error
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc, boardId, showAllTasks, companyId])
+
+  const refreshSelectedTask = useCallback(async (id: number) => {
+    if (selectedTask && selectedTask.id === id) {
+      setSelectedTask(await taskService.getById(id))
+    }
+  }, [selectedTask])
+
+  const updateTask = useCallback(async (id: number, data: Partial<Task>) => {
+    await runOptimistic(
+      // Optimistic update (skip assignees — they come as objects not IDs).
+      (old) => old.map((t) => {
         if (t.id === id) {
           const { assignees, ...rest } = data
           return { ...t, ...rest }
         }
         return t
       }),
+      async () => {
+        await taskService.update(id, data)
+        await refreshSelectedTask(id)
+      },
     )
-    try {
-      await taskService.update(id, data)
-      await qc.invalidateQueries({ queryKey })
-      if (selectedTask && selectedTask.id === id) {
-        setSelectedTask(await taskService.getById(id))
-      }
-    } catch (error) {
-      console.error('Error updating task:', error)
-      if (previous) qc.setQueryData(queryKey, previous)
-      throw error
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qc, boardId, showAllTasks, companyId, selectedTask])
+  }, [runOptimistic, refreshSelectedTask])
+
+  // Mueve una tarjeta a otra columna dejándola en una posición concreta:
+  // actualiza status + order de forma optimista, persiste el status y después
+  // el orden de la columna destino (el endpoint de reorden filtra por status,
+  // así que debe correr tras el update).
+  const moveTask = useCallback(async (id: number, boardId: number, newStatus: string, orderedIds: number[]) => {
+    await runOptimistic(
+      (old) => old.map((t) => {
+        const idx = orderedIds.indexOf(t.id)
+        if (t.id === id) return { ...t, status: newStatus, order: idx >= 0 ? idx : t.order }
+        return idx >= 0 ? { ...t, order: idx } : t
+      }),
+      async () => {
+        await taskService.update(id, { status: newStatus })
+        await taskService.reorder(boardId, newStatus, orderedIds)
+        await refreshSelectedTask(id)
+      },
+    )
+  }, [runOptimistic, refreshSelectedTask])
+
+  // Reordena las tarjetas dentro de una columna (orden manual persistido).
+  const reorderColumn = useCallback(async (boardId: number, status: string, orderedIds: number[]) => {
+    await runOptimistic(
+      (old) => old.map((t) => {
+        const idx = orderedIds.indexOf(t.id)
+        return idx >= 0 ? { ...t, order: idx } : t
+      }),
+      () => taskService.reorder(boardId, status, orderedIds),
+    )
+  }, [runOptimistic])
 
   const deleteTask = useCallback(async (id: number) => {
     await taskService.delete(id)
@@ -100,6 +152,8 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
     isLoading,
     createTask,
     updateTask,
+    moveTask,
+    reorderColumn,
     deleteTask,
     fetchTasks,
     getTasksByStatus,

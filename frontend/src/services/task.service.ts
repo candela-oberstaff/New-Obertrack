@@ -38,6 +38,11 @@ export const taskService = {
   delete: async (id: number) => {
     await api.delete(`/tasks/${id}`)
   },
+  // Persiste el orden manual de las tarjetas de una columna (board + status):
+  // cada tarea recibe order = índice en ordered_ids.
+  reorder: async (boardId: number, status: string, orderedIds: number[]) => {
+    await api.put('/tasks/reorder', { board_id: boardId, status, ordered_ids: orderedIds })
+  },
   toggleCompletion: async (id: number) => {
     const { data } = await api.post<Task>(`/tasks/${id}/toggle-completion`)
     return data

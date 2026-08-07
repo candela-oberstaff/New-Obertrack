@@ -51,6 +51,7 @@ func registerWorkRoutes(api *gin.RouterGroup, d *deps) {
 		tasks.GET("/status-counts", d.task.GetBoardStatusCounts)
 		tasks.POST("", tasksEdit, d.task.Create)
 		tasks.GET("/:id", d.task.GetByID)
+		tasks.PUT("/reorder", tasksEdit, d.task.Reorder)
 		tasks.PUT("/:id", tasksEdit, d.task.Update)
 		tasks.DELETE("/:id", tasksEdit, d.task.Delete)
 		tasks.POST("/:id/toggle-completion", tasksEdit, d.task.ToggleCompletion)

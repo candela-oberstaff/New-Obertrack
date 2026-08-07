@@ -229,6 +229,39 @@ func (s *boardService) Create(userID uint, name, description, color string, memb
 		tenantID = tenantOverride
 	}
 
+	phasesToCreate := phases
+	if len(phasesToCreate) == 0 {
+		phasesToCreate = []struct {
+			Name  string
+			Color string
+		}{
+			{Name: "Por hacer", Color: "#6b7280"},
+			{Name: "En proceso", Color: "#3b82f6"},
+			{Name: "Finalizado", Color: "#22c55e"},
+		}
+	}
+
+	// Validar colisiones de columnas ANTES de crear nada: dos fases con el mismo
+	// id de columna duplican tarjetas y rompen el drag & drop, y rechazarlo a
+	// mitad del loop dejaría un tablero a medias. Nota: las tres primeras fases
+	// usan status canónicos, así que una 4.ª llamada "Por hacer" también choca
+	// con la primera aunque tengan nombres distintos.
+	statusNames := []string{"por_hacer", "en_proceso", "finalizado", "", "", ""}
+	phaseStatus := func(i int) string {
+		if i < len(statusNames) {
+			return statusNames[i]
+		}
+		return ""
+	}
+	seenColumnIDs := make(map[string]bool)
+	for i, p := range phasesToCreate {
+		columnID := PhaseColumnID(models.Phase{Name: p.Name, Status: phaseStatus(i)})
+		if seenColumnIDs[columnID] {
+			return nil, fmt.Errorf("La fase \"%s\" está duplicada o genera la misma columna que otra fase", p.Name)
+		}
+		seenColumnIDs[columnID] = true
+	}
+
 	board := &models.Board{
 		Name:        name,
 		Description: description,
@@ -256,32 +289,15 @@ func (s *boardService) Create(userID uint, name, description, color string, memb
 		}
 	}
 
-	phasesToCreate := phases
-	if len(phasesToCreate) == 0 {
-		phasesToCreate = []struct {
-			Name  string
-			Color string
-		}{
-			{Name: "Por hacer", Color: "#6b7280"},
-			{Name: "En proceso", Color: "#3b82f6"},
-			{Name: "Finalizado", Color: "#22c55e"},
-		}
-	}
-
-	statusNames := []string{"por_hacer", "en_proceso", "finalizado", "", "", ""}
 	for i, p := range phasesToCreate {
 		scolor := p.Color
 		if scolor == "" {
 			scolor = "#6b7280"
 		}
-		status := ""
-		if i < len(statusNames) {
-			status = statusNames[i]
-		}
 		phase := &models.Phase{
 			Name:   p.Name,
 			Color:  scolor,
-			Status: status,
+			Status: phaseStatus(i),
 			Order:  i,
 		}
 		s.repo.AddPhase(board, phase)
@@ -340,10 +356,17 @@ func (s *boardService) AddPhase(boardID, tenantID, userID uint, role string, isM
 		return nil, err
 	}
 
+	// Dos fases cuyo nombre derive el mismo id de columna ("QA" y "qa") harían
+	// que las tarjetas aparezcan duplicadas en ambas columnas y el drop sea
+	// ambiguo, así que se rechaza antes de crear.
+	newColumnID := PhaseColumnID(models.Phase{Name: name})
 	maxOrder := -1
 	for _, p := range board.Phases {
 		if p.Order > maxOrder {
 			maxOrder = p.Order
+		}
+		if PhaseColumnID(p) == newColumnID {
+			return nil, errors.New("Ya existe una fase con ese nombre en el tablero")
 		}
 	}
 
@@ -383,11 +406,13 @@ func (s *boardService) RemovePhase(boardID, phaseID, tenantID, userID uint, role
 		return nil, errors.New("Phase not found on this board")
 	}
 
-	// Safety check: are there tasks in this phase?
-	// We can add a simple FindAll call to check
-	tasks, _, _ := s.repo.FindTasksByPhase(boardID, phaseToRemove.Status)
+	// Safety check: ¿hay tareas en esta fase? Se busca por el id de columna
+	// efectivo (PhaseColumnID), no por Status crudo: las fases custom guardan
+	// Status vacío y buscar status = '' nunca encontraba nada, así que se
+	// permitía borrar la fase y sus tareas quedaban huérfanas e invisibles.
+	tasks, _, _ := s.repo.FindTasksByPhase(boardID, PhaseColumnID(*phaseToRemove))
 	if len(tasks) > 0 {
-		return nil, errors.New("Cannot remove phase with tasks. Move or delete tasks first.")
+		return nil, errors.New("No se puede eliminar la fase porque tiene tareas. Muévelas o elimínalas primero.")
 	}
 
 	if err := s.repo.RemovePhase(board, phaseID); err != nil {

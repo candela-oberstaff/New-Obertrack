@@ -43,7 +43,7 @@ export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
             </span>
           )}
           {task.end_date && (
-            <span className={`${styles['card-date']} ${task.status !== 'finalizado' && parseDateOnly(task.end_date).getTime() < todayMidnight().getTime() ? styles['card-date-overdue'] : ''}`}>
+            <span className={`${styles['card-date']} ${!task.completed && parseDateOnly(task.end_date).getTime() < todayMidnight().getTime() ? styles['card-date-overdue'] : ''}`}>
               {formatDateOnly(task.end_date, { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
           )}

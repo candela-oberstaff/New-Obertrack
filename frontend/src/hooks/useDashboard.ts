@@ -102,8 +102,10 @@ export function useDashboard(user: any): UseDashboardReturn {
     return Math.max(...weekData.map(d => Math.max(d.hours, d.target)), 8)
   }, [weekData])
 
-  const pendingTasks = useMemo(() => tasks.filter(t => t.status !== 'finalizado'), [tasks])
-  const completedTasks = useMemo(() => tasks.filter(t => t.status === 'finalizado'), [tasks])
+  // Por completed (no por status === 'finalizado'): en tableros con fases
+  // custom el status final puede ser cualquier id derivado del nombre.
+  const pendingTasks = useMemo(() => tasks.filter(t => !t.completed), [tasks])
+  const completedTasks = useMemo(() => tasks.filter(t => t.completed), [tasks])
 
   const getPriorityColor = useCallback((priority: string): string => {
     const colors: Record<string, string> = {

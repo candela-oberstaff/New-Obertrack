@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"strings"
+
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
 )
@@ -19,6 +21,8 @@ type TaskRepository interface {
 	GetByIDAndTenant(id, tenantID uint) (*models.Task, error)
 	Create(task *models.Task) error
 	Update(task *models.Task, updates map[string]interface{}) error
+	ReorderTasks(boardID uint, status string, orderedIDs []uint) error
+	NextOrder(boardID uint, status string) int
 	Delete(id uint) error
 	AddComment(comment *models.Comment) error
 	GetComment(id uint) (*models.Comment, error)
@@ -142,6 +146,38 @@ func (r *taskRepository) Create(task *models.Task) error {
 
 func (r *taskRepository) Update(task *models.Task, updates map[string]interface{}) error {
 	return r.db.Model(task).Updates(updates).Error
+}
+
+// ReorderTasks fija el orden manual de las tarjetas de una columna: order =
+// posición en orderedIDs. Un solo UPDATE con CASE (no N statements): una
+// columna de 50 tarjetas se reordena en un round-trip, y al ser SQL crudo no
+// pisa updated_at de tarjetas que solo cambiaron de posición. El WHERE
+// restringe a board y status para que un id ajeno colado en la lista no toque
+// tareas de otro tablero/columna.
+func (r *taskRepository) ReorderTasks(boardID uint, status string, orderedIDs []uint) error {
+	if len(orderedIDs) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	args := make([]interface{}, 0, len(orderedIDs)*2+3)
+	b.WriteString(`UPDATE tasks SET "order" = CASE id`)
+	for idx, id := range orderedIDs {
+		b.WriteString(" WHEN ? THEN ?")
+		args = append(args, id, idx)
+	}
+	b.WriteString(` END WHERE id IN ? AND board_id = ? AND status = ? AND deleted_at IS NULL`)
+	args = append(args, orderedIDs, boardID, status)
+	return r.db.Exec(b.String(), args...).Error
+}
+
+// NextOrder devuelve el order para una tarea nueva: al final de su columna.
+func (r *taskRepository) NextOrder(boardID uint, status string) int {
+	var next int
+	r.db.Model(&models.Task{}).
+		Where("board_id = ? AND status = ?", boardID, status).
+		Select(`COALESCE(MAX("order") + 1, 0)`).
+		Scan(&next)
+	return next
 }
 
 func (r *taskRepository) Delete(id uint) error {
