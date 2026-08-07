@@ -16,8 +16,8 @@ import (
 
 	"github.com/obertrack/backend/internal/audit"
 	"github.com/obertrack/backend/internal/config"
-	"github.com/obertrack/backend/internal/migrations"
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/migrations"
 	"github.com/obertrack/backend/internal/routes"
 )
 

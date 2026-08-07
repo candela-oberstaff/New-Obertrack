@@ -112,8 +112,7 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 		return nil, 0, err
 	}
 
-	if err := query.Select("DISTINCT tasks.*").Preload("Creator").Preload("Assignees").Preload("Board").Preload("Attachments").
-		Preload("Comments").Preload("Comments.User").
+	if err := query.Select("DISTINCT tasks.*").Preload("Assignees").Preload("Attachments").
 		Offset(offset).Limit(limit).Order("tasks.created_at DESC").Find(&tasks).Error; err != nil {
 		return nil, 0, err
 	}
@@ -159,14 +158,22 @@ func (r *taskRepository) ReorderTasks(boardID uint, status string, orderedIDs []
 		return nil
 	}
 	var b strings.Builder
-	args := make([]interface{}, 0, len(orderedIDs)*2+3)
+	args := make([]interface{}, 0, len(orderedIDs)*3+2)
 	b.WriteString(`UPDATE tasks SET "order" = CASE id`)
 	for idx, id := range orderedIDs {
-		b.WriteString(" WHEN ? THEN ?")
+		b.WriteString(" WHEN ? THEN CAST(? AS integer)")
 		args = append(args, id, idx)
 	}
-	b.WriteString(` END WHERE id IN ? AND board_id = ? AND status = ? AND deleted_at IS NULL`)
-	args = append(args, orderedIDs, boardID, status)
+	b.WriteString(` END WHERE id IN (`)
+	for idx, id := range orderedIDs {
+		if idx > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString("?")
+		args = append(args, id)
+	}
+	b.WriteString(`) AND board_id = ? AND status = ? AND deleted_at IS NULL`)
+	args = append(args, boardID, status)
 	return r.db.Exec(b.String(), args...).Error
 }
 
