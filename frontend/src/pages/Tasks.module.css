@@ -947,7 +947,9 @@
 .column-content {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 12px 4px 4px 12px; /* Balanced padding: less at right/bottom to compensate for margins */
+  margin-right: 8px; /* Pushes the scrollbar inside from the right border */
+  margin-bottom: 8px; /* Pushes the scrollbar inside from the bottom border */
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -975,8 +977,25 @@
 
 .kanban-card.dragging {
   cursor: grabbing;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -5px rgba(0, 0, 0, 0.1);
+  transform: rotate(2deg) scale(1.02);
+  transition: transform 0.15s ease-out;
+  border-color: var(--primary) !important;
 }
+
+.kanban-card.placeholder {
+  background: rgba(241, 245, 249, 0.4) !important;
+  border: 2px dashed #cbd5e1 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.kanban-card.placeholder > * {
+  opacity: 0 !important;
+}
+
 
 .kanban-card.completed {
   opacity: 0.7;

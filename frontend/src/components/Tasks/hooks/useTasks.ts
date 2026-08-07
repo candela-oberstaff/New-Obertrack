@@ -44,6 +44,7 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
       if (!showAllTasks && boardId) fetched = fetched.filter((t: any) => t.board_id === boardId)
       return fetched as Task[]
     },
+    enabled: !!showAllTasks || !!boardId,
   })
 
   const fetchTasks = useCallback(async () => { await refetch() }, [refetch])

@@ -7,8 +7,12 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  pointerWithin,
+  rectIntersection,
   type DragStartEvent,
   type DragEndEvent,
+  type DragOverEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
@@ -19,7 +23,6 @@ import { TaskCard } from '../TaskCard'
 import type { Task, Board } from '../../../types'
 import type { ColumnType, Phase } from '../types'
 import { phaseStatusId } from '../phaseStatus'
-import { compareTasks } from '../taskSort'
 import styles from '../../../pages/Tasks.module.css'
 
 const DEFAULT_PHASE_COLOR = '#6b7280'
@@ -66,6 +69,18 @@ export function TasksBoard({
 }: TasksBoardProps) {
   const { error: showError } = useNotification()
   const [activeTask, setActiveTask] = useState<Task | null>(null)
+
+  // Local optimistic state for real-time sorting and drop indicators
+  const [localTasks, setLocalTasks] = useState<Task[]>(tasks)
+  const [localAllTasks, setLocalAllTasks] = useState<Task[]>(allTasks || [])
+
+  useEffect(() => {
+    setLocalTasks(tasks)
+  }, [tasks])
+
+  useEffect(() => {
+    setLocalAllTasks(allTasks || [])
+  }, [allTasks])
 
   // Column (phase) drag-and-drop state
   const [draggedColIdx, setDraggedColIdx] = useState<number | null>(null)
@@ -132,6 +147,17 @@ export function TasksBoard({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  const collisionDetectionStrategy = useCallback<CollisionDetection>((args) => {
+    const pointerCollisions = pointerWithin(args)
+    let collisions = pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args)
+    
+    if (collisions.length === 0) {
+      collisions = closestCorners(args)
+    }
+
+    return collisions
+  }, [])
+
   const getCurrentColumns = useCallback((): ColumnType[] => {
     if (selectedBoard?.phases?.length) {
       return selectedBoard.phases.map((p: Phase) => ({
@@ -144,101 +170,129 @@ export function TasksBoard({
   }, [selectedBoard])
 
   const getTasksByStatus = useCallback((status: string) => {
-    return tasks.filter((task) => task.status === status && task.board_id === selectedBoard?.id)
-  }, [tasks, selectedBoard])
+    return localTasks.filter((task) => task.status === status && task.board_id === selectedBoard?.id)
+  }, [localTasks, selectedBoard])
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event
-    const task = tasks.find((t) => t.id === active.id)
+    const task = localTasks.find((t) => t.id === active.id)
     if (task) {
       setActiveTask(task)
     }
-  }, [tasks])
+  }, [localTasks])
 
-  const handleDragOver = useCallback((event: { active: { id: unknown }; over: { id: unknown } | null }) => {
+  const handleDragOver = useCallback((event: DragOverEvent) => {
     const { active, over } = event
     if (!over) return
 
     const activeId = Number(active.id)
     const overId = over.id
 
-    if (typeof overId !== 'string') return
+    if (activeId === overId) return
 
-    const column = getCurrentColumns().find(c => c.id === overId)
-    if (!column) return
+    // Find the active task in local state
+    let activeTaskObj = localTasks.find((t) => t.id === activeId)
+    if (!activeTaskObj) {
+      activeTaskObj = localAllTasks.find((t) => t.id === activeId)
+    }
+    if (!activeTaskObj) return
 
-    const activeTaskObj = tasks.find((t) => t.id === activeId)
-    if (!activeTaskObj || activeTaskObj.status === column.id) return
+    // Determine target column status
+    let targetStatus: string | undefined
+    if (typeof overId === 'string') {
+      const column = getCurrentColumns().find(c => c.id === overId)
+      if (column) targetStatus = column.id
+    } else {
+      const overTask = localAllTasks.find((t) => t.id === Number(overId))
+      if (overTask) targetStatus = overTask.status
+    }
 
-    // Visual feedback only, no backend call here
-  }, [tasks, getCurrentColumns])
+    if (!targetStatus) return
+
+    // Core helper to move task position in state optimistically
+    const updateList = (list: Task[]) => {
+      const activeObj = list.find((t) => t.id === activeId)
+      if (!activeObj) return list
+
+      if (activeObj.status !== targetStatus) {
+        // Dragging into a different column
+        const filtered = list.filter((t) => t.id !== activeId)
+        let insertIndex = filtered.length
+
+        if (typeof overId !== 'string') {
+          const overIndex = filtered.findIndex((t) => t.id === Number(overId))
+          if (overIndex !== -1) {
+            insertIndex = overIndex
+          }
+        }
+
+        const updated = { ...activeObj, status: targetStatus as Task['status'] }
+        const result = [...filtered]
+        result.splice(insertIndex, 0, updated)
+        return result
+      } else {
+        // Dragging/sorting within the same column
+        if (typeof overId !== 'string') {
+          const oldIndex = list.findIndex((t) => t.id === activeId)
+          const newIndex = list.findIndex((t) => t.id === Number(overId))
+          if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+            return arrayMove(list, oldIndex, newIndex)
+          }
+        }
+        return list
+      }
+    }
+
+    // Trigger state changes
+    setLocalTasks((prev) => updateList(prev))
+    setLocalAllTasks((prev) => updateList(prev))
+  }, [localTasks, localAllTasks, getCurrentColumns])
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event
     setActiveTask(null)
 
-    if (!over) return
+    if (!over) {
+      // Revert drag changes if dropped outside a valid target
+      setLocalTasks(tasks)
+      setLocalAllTasks(allTasks || [])
+      return
+    }
 
     const activeId = Number(active.id)
-    const overId = over.id
-
-    const activeTaskObj = tasks.find((t) => t.id === activeId)
-    if (!activeTaskObj) return
-
-    // Destino: una columna (id string) o una tarjeta concreta (id numérico).
-    let targetStatus: string | undefined
-    let overTaskId: number | null = null
-
-    if (typeof overId === 'string') {
-      const column = getCurrentColumns().find(c => c.id === overId)
-      if (column) targetStatus = column.id
-    } else {
-      const overTask = tasks.find((t) => t.id === Number(overId))
-      if (overTask) {
-        targetStatus = overTask.status
-        overTaskId = overTask.id
-      }
+    const activeTaskObj = localAllTasks.find((t) => t.id === activeId)
+    if (!activeTaskObj) {
+      setLocalTasks(tasks)
+      setLocalAllTasks(allTasks || [])
+      return
     }
-    if (!targetStatus) return
 
+    const targetStatus = activeTaskObj.status
     const boardId = selectedBoard?.id
     if (!boardId) return
 
-    // Lista ordenada de la columna destino con el MISMO criterio que pinta
-    // Column (compareTasks); si divergen, la tarjeta salta al soltarla. Se
-    // calcula sobre TODAS las tareas del tablero (allTasks), no sobre las del
-    // scope visible: el orden persistido es compartido por todos los miembros.
-    const targetColumnTasks = (allTasks ?? tasks)
+    // Get the final order of task IDs in the target column from localAllTasks
+    const targetColumnTasks = localAllTasks
       .filter((t) => t.status === targetStatus && t.board_id === boardId)
-      .sort(compareTasks)
+    const ids = targetColumnTasks.map((t) => t.id)
 
     try {
-      if (targetStatus === activeTaskObj.status) {
-        // Reorden dentro de la misma columna (semántica arrayMove de dnd-kit).
-        if (overTaskId === null || overTaskId === activeId || !onReorderColumn) return
-        const ids = targetColumnTasks.map((t) => t.id)
-        const oldIdx = ids.indexOf(activeId)
-        const newIdx = ids.indexOf(overTaskId)
-        if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return
-        await onReorderColumn(boardId, targetStatus, arrayMove(ids, oldIdx, newIdx))
+      const originalTaskObj = tasks.find((t) => t.id === activeId)
+      const wasSameColumn = originalTaskObj && originalTaskObj.status === targetStatus
+
+      if (wasSameColumn) {
+        if (!onReorderColumn) return
+        await onReorderColumn(boardId, targetStatus, ids)
       } else if (onMoveTask) {
-        // Movimiento entre columnas: se inserta antes de la tarjeta sobre la
-        // que se soltó, o al final si se soltó sobre la columna.
-        const ids = targetColumnTasks.map((t) => t.id).filter((id) => id !== activeId)
-        let insertIdx = ids.length
-        if (overTaskId !== null) {
-          const i = ids.indexOf(overTaskId)
-          if (i >= 0) insertIdx = i
-        }
-        ids.splice(insertIdx, 0, activeId)
         await onMoveTask(activeId, boardId, targetStatus, ids)
       } else {
-        // Fallback si el padre no cablea el reorden: solo cambio de status.
         await onUpdateTask(activeId, { status: targetStatus as Task['status'] })
       }
     } catch (error: any) {
-      // useTasks ya revirtió el update optimista; sin este aviso la tarjeta
-      // "vuelve sola" y el usuario no sabe por qué.
+      // Revert local state to matches props in case of request error
+      setLocalTasks(tasks)
+      setLocalAllTasks(allTasks || [])
+
       const backendMsg = error?.response?.data?.error
       if (backendMsg === 'Access denied') {
         showError('No tienes permiso para mover esta tarea: solo pueden hacerlo quien la creó, sus asignados o un responsable.')
@@ -246,12 +300,12 @@ export function TasksBoard({
         showError(backendMsg || 'No se pudo mover la tarea. Inténtalo de nuevo.')
       }
     }
-  }, [tasks, allTasks, getCurrentColumns, selectedBoard, onUpdateTask, onMoveTask, onReorderColumn, showError])
+  }, [tasks, allTasks, localAllTasks, selectedBoard, onUpdateTask, onMoveTask, onReorderColumn, showError])
 
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={collisionDetectionStrategy}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
