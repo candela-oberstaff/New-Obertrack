@@ -100,6 +100,12 @@ type ChannelRepository interface {
 	GetPendingSupportTickets(companyID uint) ([]models.SupportTicket, error)
 	GetAllSupportTickets() ([]models.SupportTicket, error)
 	UpdateSupportTicket(ticket *models.SupportTicket, updates map[string]interface{}) error
+	// ClaimSupportTicketIfFree asigna el ticket al agente SOLO si sigue
+	// disponible para él: sin responsable, ya suyo, o resuelto (retomarlo lo
+	// reabre). Devuelve false si otro agente ganó la carrera — dos "Tomar" casi
+	// simultáneos ya no se pisan en silencio. El traspaso deliberado (takeover
+	// desde el chat, reasignación) sigue usando UpdateSupportTicket.
+	ClaimSupportTicketIfFree(ticketID, assigneeID uint, now time.Time) (bool, error)
 	// ResolveOpenTicketsExcept marca como resueltos los tickets NO resueltos del
 	// canal salvo exceptID: garantiza un solo ticket activo por canal de soporte.
 	ResolveOpenTicketsExcept(channelID, exceptID uint) error
@@ -790,6 +796,24 @@ func (r *channelRepository) UpdateSupportTicket(ticket *models.SupportTicket, up
 	// No usar Model(ticket): sus asociaciones precargadas (Assignee/Requester)
 	// pisarían las FKs del map (la reasignación volvía al responsable anterior).
 	return r.db.Model(&models.SupportTicket{}).Where("id = ?", ticket.ID).Updates(updates).Error
+}
+
+func (r *channelRepository) ClaimSupportTicketIfFree(ticketID, assigneeID uint, now time.Time) (bool, error) {
+	res := r.db.Model(&models.SupportTicket{}).
+		Where("id = ? AND (assigned_to IS NULL OR assigned_to = ? OR status = ?)",
+			ticketID, assigneeID, models.SupportStatusResolved).
+		Updates(map[string]interface{}{
+			"assigned_to": assigneeID,
+			"assigned_at": now,
+			"status":      models.SupportStatusAssigned,
+			// Reabre si estaba resuelto.
+			"resolved_by": nil,
+			"resolved_at": nil,
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
 }
 
 func (r *channelRepository) ResolveOpenTicketsExcept(channelID, exceptID uint) error {

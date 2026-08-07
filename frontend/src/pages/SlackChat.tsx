@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { channelService, uploadService, adminService } from '../services/api'
 import { Select } from '../components/ui/Select'
 import type { User } from '../types'
-import type { Channel, Message, SupportTicket } from '../types/chat'
+import type { Channel, Message, SupportTicket, SupportAgentRef } from '../types/chat'
 import { useConfirm } from '../components/ui/ConfirmProvider'
 import { useNotification } from '../context/NotificationContext'
 import { Sidebar } from '../components/Chat/Sidebar'
@@ -60,7 +60,7 @@ export default function SlackChat() {
 
   // Gestión de tickets de soporte: la pueden hacer CS y superadmins.
   const isSupportAgent = !!user && (isSuperadmin || user.user_type === 'customer_success' || user.user_type === 'analista_it')
-  const [supportAgents, setSupportAgents] = useState<User[]>([])
+  const [supportAgents, setSupportAgents] = useState<SupportAgentRef[]>([])
   const [pendingSupport, setPendingSupport] = useState<SupportTicket[]>([])
   const [supportBusy, setSupportBusy] = useState(false)
   const [showSupportPanel, setShowSupportPanel] = useState(true)
@@ -196,6 +196,14 @@ export default function SlackChat() {
   // cancelarse a mitad.
   const deepLinkRef = useRef<number | null>(null)
 
+  // Canal del deep link cuya EMPRESA hubo que seleccionar primero (superadmin).
+  // Cambiar el alcance limpia la selección en useSlackChat (aislamiento
+  // multi-tenant), así que abrirlo de inmediato no servía: la selección se
+  // borraba un instante después y el chat quedaba en "Selecciona un canal" con
+  // la empresa correcta ya elegida y el canal visible en el sidebar. El canal
+  // queda aquí pendiente y se abre cuando el sidebar emite su lista.
+  const [pendingDeepLink, setPendingDeepLink] = useState<Channel | null>(null)
+
   useEffect(() => {
     const channelParam = searchParams.get('channel')
     if (!channelParam) return
@@ -220,7 +228,12 @@ export default function SlackChat() {
     channelService.getChannel(wanted)
       .then(ch => {
         if (!ch) return
-        if (ch.tenant_id && ch.tenant_id !== selectedCompanyId) setSelectedCompanyId(ch.tenant_id)
+        if (isSuperadmin && ch.tenant_id && ch.tenant_id !== selectedCompanyId) {
+          // El cambio de alcance va a limpiar la selección: abrir en diferido.
+          setPendingDeepLink(ch)
+          setSelectedCompanyId(ch.tenant_id)
+          return
+        }
         open(ch)
       })
       .catch(() => {
@@ -230,7 +243,23 @@ export default function SlackChat() {
         setSearchParams({}, { replace: true })
         showError('No se pudo abrir esa conversación: no tienes acceso o ya no existe.')
       })
-  }, [searchParams, channels, selectedCompanyId, setSelectedCompanyId, setSelectedChannel, setSearchParams, showError])
+  }, [searchParams, channels, selectedCompanyId, setSelectedCompanyId, setSelectedChannel, setSearchParams, showError, isSuperadmin])
+
+  // Segunda mitad del deep link con cambio de empresa: se selecciona el canal
+  // DESPUÉS de que useSlackChat limpió la selección por el cambio de alcance.
+  // Se prefiere la entrada de la lista (trae support/unread para el panel del
+  // ticket); si la lista emitida aún no lo incluye, se abre el canal resuelto
+  // del backend y el sync de soporte lo completa cuando llegue la lista fresca.
+  useEffect(() => {
+    if (!pendingDeepLink) return
+    const target = channels.find(c => c.id === pendingDeepLink.id)
+    if (!target && channels.length === 0) return // aún no emitió ninguna lista
+    setPendingDeepLink(null)
+    const messageParam = searchParams.get('message')
+    if (messageParam) setHighlightMessageId(parseInt(messageParam))
+    setSelectedChannel((target ?? pendingDeepLink) as Channel)
+    setSearchParams({}, { replace: true })
+  }, [pendingDeepLink, channels, searchParams, setSelectedChannel, setSearchParams])
 
   useEffect(() => {
     if (!highlightMessageId || messages.length === 0) return
@@ -684,7 +713,13 @@ export default function SlackChat() {
   }
   const handleClaimSupport = () => {
     const tid = supportTicketId(); if (!tid) return
-    runSupportAction(() => channelService.claimSupport(tid), 'Tomaste el ticket.')
+    // takeover: el ticket lo atiende OTRO agente y este "Tomar" es el traspaso
+    // deliberado que ofrece el chat. Sin el flag, el backend rechaza el claim
+    // sobre un ticket ajeno (protección contra la carrera de dos "Tomar").
+    const fresh = channels.find(c => c.id === selectedChannel?.id) as any
+    const support = fresh?.support ?? (selectedChannel as any)?.support
+    const takeover = !!support?.assigned_to && support.assigned_to !== user?.id
+    runSupportAction(() => channelService.claimSupport(tid, { takeover }), 'Tomaste el ticket.')
   }
   const handleAssignSupport = (assigneeId: number) => {
     const tid = supportTicketId(); if (!tid) return

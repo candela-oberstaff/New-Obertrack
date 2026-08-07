@@ -64,6 +64,14 @@ function supportState(t: Ticket): SupportState {
   return 'open';
 }
 
+// Clave única de una tarjeta. El `id` solo NO alcanza: los tickets de soporte
+// por chat viven en la tabla support_tickets y los de WhatsApp/Obersuite en
+// tickets, dos secuencias independientes, así que en el mismo tablero conviven
+// ids repetidos (mismas keys de React, spinner en la tarjeta equivocada).
+function ticketKey(t: Ticket): string {
+  return `${t.origin ?? 'support'}-${t.id}`;
+}
+
 const STATE_META: Record<SupportState, { label: string; color: string; bg: string }> = {
   open: { label: 'Abierto', color: '#b45309', bg: 'rgba(245,158,11,0.14)' },
   assigned: { label: 'Asignado', color: '#6d28d9', bg: 'rgba(124,58,237,0.12)' },
@@ -230,11 +238,14 @@ export default function SupportBoard() {
     onError: (e: any) => showError(e?.response?.data?.error || 'No se pudo reasignar el ticket.'),
   });
 
-  const busyTicketId = (claimMutation.isPending ? claimMutation.variables : undefined)
-    ?? (resolveMutation.isPending ? resolveMutation.variables : undefined)
-    ?? (reopenMutation.isPending ? reopenMutation.variables : undefined)
-    ?? (waActionMutation.isPending ? waActionMutation.variables?.ticketId : undefined)
-    ?? (assignMutation.isPending ? assignMutation.variables?.ticketId : undefined);
+  // La clave compuesta (origen-id) y no el id: claim/resolve/reopen/assign solo
+  // operan tickets de origen "support" y waAction solo WhatsApp, así que un id
+  // repetido en otra fuente no debe marcar ocupada la tarjeta ajena.
+  const busyTicketKey = (claimMutation.isPending && claimMutation.variables !== undefined ? `support-${claimMutation.variables}` : undefined)
+    ?? (resolveMutation.isPending && resolveMutation.variables !== undefined ? `support-${resolveMutation.variables}` : undefined)
+    ?? (reopenMutation.isPending && reopenMutation.variables !== undefined ? `support-${reopenMutation.variables}` : undefined)
+    ?? (waActionMutation.isPending && waActionMutation.variables ? `whatsapp-${waActionMutation.variables.ticketId}` : undefined)
+    ?? (assignMutation.isPending && assignMutation.variables ? `support-${assignMutation.variables.ticketId}` : undefined);
 
   const [dragTicket, setDragTicket] = useState<Ticket | null>(null);
   const [dragOverStage, setDragOverStage] = useState<StageId | null>(null);
@@ -488,12 +499,12 @@ export default function SupportBoard() {
                   ) : (
                     colTickets.map(t => (
                       <SupportCard
-                        key={t.id}
+                        key={ticketKey(t)}
                         ticket={t}
                         stale={isStale(t)}
                         mine={isMine(t)}
-                        busy={busyTicketId === t.id}
-                        dragging={dragTicket?.id === t.id}
+                        busy={busyTicketKey === ticketKey(t)}
+                        dragging={!!dragTicket && ticketKey(dragTicket) === ticketKey(t)}
                         onDragStart={() => setDragTicket(t)}
                         onDragEnd={() => { setDragTicket(null); setDragOverStage(null); }}
                         onClaim={() => t.origin === 'whatsapp' ? waActionMutation.mutate({ ticketId: t.id, action: 'claim' }) : claimMutation.mutate(t.id)}
@@ -523,7 +534,7 @@ export default function SupportBoard() {
 
       <TicketDetailModal
         ticket={detailTicket}
-        busy={busyTicketId === detailTicket?.id}
+        busy={!!detailTicket && busyTicketKey === ticketKey(detailTicket)}
         agents={supportAgents}
         canReassign={!!detailTicket && (!detailTicket.assigned_to || isMine(detailTicket) || isSuperadmin)}
         onAssign={(assigneeId) => detailTicket && assignMutation.mutate({ ticketId: detailTicket.id, assigneeId })}

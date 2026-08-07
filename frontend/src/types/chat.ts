@@ -54,6 +54,17 @@ export interface SupportTicket {
   created_at?: string
 }
 
+/**
+ * Agente de soporte como destino de reasignación. El backend devuelve solo
+ * estos campos (id/nombre/correo): el modelo User completo exponía teléfono y
+ * documento de los agentes.
+ */
+export interface SupportAgentRef {
+  id: number
+  name: string
+  email: string
+}
+
 export interface MySupportTicket {
   id: number
   channel_id: number

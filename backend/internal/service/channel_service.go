@@ -138,7 +138,11 @@ type ChannelService interface {
 	HasSupportTicket(channelID uint) (bool, error)
 	ListMySupportTickets(userID uint) ([]MySupportTicket, error)
 	NotifySupportReply(channelID, senderID uint, content string, alreadyNotified []uint)
-	ClaimSupportTicket(ticketID, userID uint) (*models.SupportTicket, error)
+	// ClaimSupportTicket asigna el ticket al agente que lo toma. Sin takeover el
+	// claim es atómico: si otro agente ya lo tiene, devuelve error en vez de
+	// robárselo en silencio. takeover=true es el traspaso deliberado que ofrece
+	// el chat ("lo atiende X — Tómalo para responder").
+	ClaimSupportTicket(ticketID, userID uint, takeover bool) (*models.SupportTicket, error)
 	AssignSupportTicket(ticketID, actorID, assigneeID uint) (*models.SupportTicket, error)
 	ResolveSupportTicket(ticketID, actorID uint) (*models.SupportTicket, error)
 	UpdateStatus(userID uint, status string) (*models.UserStatus, error)

@@ -597,6 +597,10 @@ func (s *channelService) buildDMResponse(channel *models.Channel, recipientID ui
 // posts an intro message on first contact and alerts all CS agents. Returns the
 // channel so the frontend can open it right away.
 //
+// forceNew se conserva por compatibilidad de API pero ya no fuerza un ticket
+// nuevo: si el canal tiene un ticket activo, la solicitud se anexa a él (crear
+// otro resolvía el anterior en silencio, incluso asignado y en atención).
+//
 // The channel lives in the client's tenant but CS agents (tenant 0) are added as
 // explicit members, so they see it and can read/reply via membership checks —
 // tenant isolation is bypassed deliberately, only for this support channel.
@@ -660,13 +664,17 @@ func (s *channelService) ContactSupport(userID uint, subject, message, priority,
 	priority = strings.TrimSpace(priority)
 	module = strings.TrimSpace(module)
 
-	wantNew := forceNew || subject != ""
+	// Si el canal ya tiene un ticket activo se reutiliza SIEMPRE, aunque el
+	// cliente haya enviado una "nueva solicitud" (forceNew/subject). Antes se
+	// creaba un ticket nuevo y ResolveOpenTicketsExcept marcaba el anterior como
+	// resuelto en silencio: un caso asignado y en atención se cerraba solo, sin
+	// resolved_by y sin que su responsable se enterara. Ahora la nueva consulta
+	// se anexa a la conversación en curso con su propio encabezado, y solo se
+	// abre ticket cuando no hay ninguno activo (p. ej. tras resolverse el último).
 	var ticket *models.SupportTicket
 	ticketIsNew := false
-	if !wantNew {
-		if active, aerr := s.repo.GetActiveSupportTicketByChannel(channel.ID); aerr == nil && active != nil && active.Status != models.SupportStatusResolved {
-			ticket = active
-		}
+	if active, aerr := s.repo.GetActiveSupportTicketByChannel(channel.ID); aerr == nil && active != nil && active.Status != models.SupportStatusResolved {
+		ticket = active
 	}
 	if ticket == nil {
 		subj := subject
@@ -686,16 +694,27 @@ func (s *channelService) ContactSupport(userID uint, subject, message, priority,
 			log.Printf("[ContactSupport] no se pudo crear el ticket: %v", err)
 		} else {
 			ticketIsNew = true
-			// Un solo ticket activo por canal: al abrir uno nuevo, resuelve los
-			// anteriores abiertos (evita el RESPONSABLE ambiguo por tickets duplicados).
+			// Limpieza de duplicados heredados: con la reutilización de arriba no
+			// debería quedar ninguno abierto, pero si lo hubiera el responsable no
+			// puede quedar ambiguo.
 			if err := s.repo.ResolveOpenTicketsExcept(channel.ID, ticket.ID); err != nil {
 				log.Printf("[ContactSupport] no se pudieron resolver tickets previos: %v", err)
 			}
 		}
 	}
 
-	if ticketIsNew {
-		header := fmt.Sprintf("🆕 Nueva solicitud: %s", ticket.Subject)
+	// Una solicitud formal (con asunto) se anuncia en el chat aunque se haya
+	// anexado a un ticket ya abierto: sin el encabezado, el asunto/prioridad/
+	// módulo del formulario se perderían.
+	announce := ticketIsNew || subject != ""
+	if announce {
+		headerSubject := ticket.Subject
+		label := "🆕 Nueva solicitud"
+		if !ticketIsNew {
+			label = "🆕 Nueva consulta en la solicitud abierta"
+			headerSubject = subject
+		}
+		header := fmt.Sprintf("%s: %s", label, headerSubject)
 		extras := make([]string, 0, 2)
 		if priority != "" {
 			extras = append(extras, "Prioridad "+priority)
@@ -719,12 +738,16 @@ func (s *channelService) ContactSupport(userID uint, subject, message, priority,
 		}
 	}
 
-	if ticketIsNew && s.supportNtfy != nil {
+	if announce && s.supportNtfy != nil {
+		ntfySubject := ticket.Subject
+		if !ticketIsNew && subject != "" {
+			ntfySubject = subject
+		}
 		s.supportNtfy.Notify(SupportTicketInfo{
 			Type:        "Solicitud de soporte",
 			Requester:   user.Name,
 			Company:     user.CompanyName,
-			Subject:     ticket.Subject,
+			Subject:     ntfySubject,
 			Description: message,
 			Link:        "/tickets/soporte",
 		})
@@ -884,8 +907,24 @@ func (s *channelService) ListMySupportTickets(userID uint) ([]MySupportTicket, e
 // mensajes de sistema internos (tomó/asignó/resolvió).
 func (s *channelService) NotifySupportReply(channelID, senderID uint, content string, alreadyNotified []uint) {
 	ticket, err := s.repo.GetActiveSupportTicketByChannel(channelID)
-	if err != nil || ticket == nil || ticket.AssignedTo == nil {
-		return // no es un canal de soporte, o aún no tiene responsable
+	if err != nil || ticket == nil {
+		return // no es un canal de soporte
+	}
+
+	// Si el SOLICITANTE vuelve a escribir en una conversación ya resuelta, el
+	// caso se reabre solo: antes quedaba en "Cerrado" —columna que nadie
+	// revisa— y el mensaje se perdía de la cola. ReopenSupportTicket publica el
+	// "🔄 reabrió la solicitud" y avisa al responsable, así que no hace falta
+	// duplicar la campanita con la vista previa del mensaje.
+	if ticket.Status == models.SupportStatusResolved && senderID == ticket.RequesterID {
+		if _, rerr := s.ReopenSupportTicket(ticket.ID, senderID); rerr != nil {
+			log.Printf("[support] no se pudo reabrir el ticket %d al recibir respuesta del solicitante: %v", ticket.ID, rerr)
+		}
+		return
+	}
+
+	if ticket.AssignedTo == nil {
+		return // aún no tiene responsable (el flujo de ContactSupport ya avisó a los agentes)
 	}
 
 	// No repetir a quien ya recibió notificación por mención, ni al propio emisor.
@@ -986,13 +1025,34 @@ func (s *channelService) PostSystemDM(recipientID uint, content string) {
 // normales de usuario —que difunde el handler HTTP SendMessage— estos se
 // generan dentro del servicio (claim/assign/resolve) y NO pasan por ese
 // handler, así que sin esta difusión no llegaban a los clientes conectados.
+//
+// Escribe DIRECTO en el repo, sin pasar por SendMessage: ese camino exige que
+// el actor sea miembro del canal, y un agente CS puede resolver o reasignar un
+// ticket sin haberlo tomado (sin membresía). Con el gate, el estado cambiaba
+// pero el "✅ marcó como resuelto" se perdía y el solicitante no veía rastro en
+// la conversación. Saltarse el gate aquí es seguro: todos los callers son
+// acciones del ciclo de vida del ticket ya autorizadas (isSupportAgent o el
+// propio solicitante).
 func (s *channelService) postSupportSystemMessage(channelID, actorID uint, content string) {
-	message, _, err := s.SendMessage(channelID, actorID, content, "", "", 0, "")
+	channel, err := s.repo.GetChannel(channelID)
 	if err != nil {
 		log.Printf("[support] no se pudo publicar mensaje de sistema: %v", err)
 		return
 	}
-	if s.broadcast != nil && message != nil {
+	message := &models.ChannelMessage{
+		ChannelID: channelID,
+		TenantID:  channel.TenantID,
+		UserID:    actorID,
+		Content:   content,
+	}
+	if err := s.repo.CreateMessage(message); err != nil {
+		log.Printf("[support] no se pudo publicar mensaje de sistema: %v", err)
+		return
+	}
+	if preloaded, _ := s.repo.GetMessage(message.ID); preloaded != nil {
+		message = preloaded
+	}
+	if s.broadcast != nil {
 		s.broadcast(channelID, message)
 	}
 }
@@ -1007,11 +1067,12 @@ func (s *channelService) notifySupport(userID uint, channelID uint, title, messa
 }
 
 // ClaimSupportTicket asigna el ticket al agente que lo toma (estado → asignado).
-func (s *channelService) ClaimSupportTicket(ticketID, userID uint) (*models.SupportTicket, error) {
+// Ver el contrato de takeover en la interfaz ChannelService.
+func (s *channelService) ClaimSupportTicket(ticketID, userID uint, takeover bool) (*models.SupportTicket, error) {
 	if !s.isSupportAgent(userID) {
 		return nil, fmt.Errorf("solo Customer Success o superadmins pueden gestionar tickets de soporte")
 	}
-	return s.assignSupport(ticketID, userID, userID, true)
+	return s.assignSupport(ticketID, userID, userID, true, takeover)
 }
 
 // AssignSupportTicket reasigna el ticket a otro agente de soporte.
@@ -1036,22 +1097,55 @@ func (s *channelService) AssignSupportTicket(ticketID, actorID, assigneeID uint)
 			return nil, fmt.Errorf("solo el responsable actual o un superadmin pueden reasignar este ticket")
 		}
 	}
-	return s.assignSupport(ticketID, actorID, assigneeID, false)
+	return s.assignSupport(ticketID, actorID, assigneeID, false, false)
 }
 
-func (s *channelService) assignSupport(ticketID, actorID, assigneeID uint, selfClaim bool) (*models.SupportTicket, error) {
+func (s *channelService) assignSupport(ticketID, actorID, assigneeID uint, selfClaim, takeover bool) (*models.SupportTicket, error) {
 	ticket, err := s.repo.GetSupportTicketByID(ticketID)
 	if err != nil || ticket == nil {
 		return nil, fmt.Errorf("ticket de soporte no encontrado")
 	}
 	channelID := ticket.ChannelID
 
-	// El asignado debe ser miembro del canal para verlo y responder.
+	now := time.Now()
+	if selfClaim && !takeover {
+		// Claim atómico: dos agentes pulsando "Tomar" a la vez ya no se pisan en
+		// silencio — el UPDATE condicional solo asigna si el ticket sigue libre
+		// (o ya era suyo, o estaba resuelto) y el que pierde la carrera recibe
+		// un error claro en vez de un "Tomaste el ticket" falso.
+		claimed, cerr := s.repo.ClaimSupportTicketIfFree(ticketID, assigneeID, now)
+		if cerr != nil {
+			return nil, cerr
+		}
+		if !claimed {
+			name := "otro agente"
+			if cur, gerr := s.repo.GetSupportTicketByID(ticketID); gerr == nil && cur != nil && cur.Assignee != nil && cur.Assignee.Name != "" {
+				name = cur.Assignee.Name
+			}
+			return nil, fmt.Errorf("%s ya tomó este ticket", name)
+		}
+	} else {
+		// Traspaso deliberado (reasignación o takeover desde el chat): la
+		// autorización ya se validó en el caller.
+		if err := s.repo.UpdateSupportTicket(ticket, map[string]interface{}{
+			"assigned_to": assigneeID,
+			"assigned_at": now,
+			"status":      models.SupportStatusAssigned,
+			// Reabre si estaba resuelto.
+			"resolved_by": nil,
+			"resolved_at": nil,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	// La membresía se concede DESPUÉS de asegurar la asignación: el agente que
+	// pierde la carrera del claim no debe quedar dentro del canal privado.
 	if member, _ := s.repo.GetMember(channelID, assigneeID); member == nil {
 		// Los canales de soporte son privados: privateHistorySince oculta el
 		// historial previo a JoinedAt. El agente de soporte debe ver TODO el
 		// ticket, así que lo unimos desde la fecha de creación del canal.
-		joinedAt := time.Now()
+		joinedAt := now
 		if channel, err := s.repo.GetChannel(channelID); err == nil && channel != nil && !channel.CreatedAt.IsZero() {
 			joinedAt = channel.CreatedAt
 		}
@@ -1064,18 +1158,6 @@ func (s *channelService) assignSupport(ticketID, actorID, assigneeID uint, selfC
 			// broadcasts del ticket en vivo de inmediato (sin esperar el TTL).
 			s.invalidateMembers(channelID)
 		}
-	}
-
-	now := time.Now()
-	if err := s.repo.UpdateSupportTicket(ticket, map[string]interface{}{
-		"assigned_to": assigneeID,
-		"assigned_at": now,
-		"status":      models.SupportStatusAssigned,
-		// Reabre si estaba resuelto.
-		"resolved_by": nil,
-		"resolved_at": nil,
-	}); err != nil {
-		return nil, err
 	}
 
 	// Un solo ticket activo por canal: al tomar/reasignar uno, resuelve cualquier

@@ -1,6 +1,5 @@
 import { LifeBuoy, Archive } from 'lucide-react'
-import { Channel } from '../../types/chat'
-import type { User } from '../../types'
+import { Channel, SupportAgentRef } from '../../types/chat'
 import { PinIcon, UserPlusIcon, InfoIcon, LogOutIcon, SearchIcon, StarIcon } from './Icons'
 import { isSupportChannel, supportLabel, dmContactName } from './ChatUtils'
 import { SupportTicketControls } from './SupportTicketControls'
@@ -31,7 +30,7 @@ interface ChatHeaderProps {
   // Gestión del ticket de soporte (cuando el canal seleccionado es de soporte).
   currentUserId?: number
   isSupportAgent?: boolean
-  supportAgents?: User[]
+  supportAgents?: SupportAgentRef[]
   onClaimSupport?: () => void
   onAssignSupport?: (assigneeId: number) => void
   onResolveSupport?: () => void

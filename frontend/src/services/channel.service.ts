@@ -1,6 +1,6 @@
 import api from './client'
 import type { User } from '../types'
-import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket, MySupportTicket } from '../types/chat'
+import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket, MySupportTicket, SupportAgentRef } from '../types/chat'
 
 export const channelService = {
   getChannels: async (companyId?: number | null): Promise<Channel[]> => {
@@ -141,8 +141,8 @@ export const channelService = {
     return data
   },
   // Gestión de tickets de soporte (Customer Success / superadmin).
-  getSupportAgents: async (): Promise<User[]> => {
-    const { data } = await api.get<User[]>('/channels/support/agents')
+  getSupportAgents: async (): Promise<SupportAgentRef[]> => {
+    const { data } = await api.get<SupportAgentRef[]>('/channels/support/agents')
     return data
   },
   // Cola de solicitudes de soporte sin asignar (invitaciones a aceptar).
@@ -151,8 +151,14 @@ export const channelService = {
     const { data } = await api.get<SupportTicket[]>('/channels/support/pending', { params })
     return data
   },
-  claimSupport: async (ticketId: number): Promise<SupportTicket> => {
-    const { data } = await api.post<SupportTicket>(`/channels/support/tickets/${ticketId}/claim`, {})
+  /**
+   * Toma el ticket. Sin `takeover` el claim es atómico: si otro agente lo tomó
+   * primero, el backend responde 409 en vez de reasignarlo en silencio.
+   * `takeover: true` es el traspaso deliberado desde el chat ("lo atiende X —
+   * Tómalo para responder").
+   */
+  claimSupport: async (ticketId: number, opts?: { takeover?: boolean }): Promise<SupportTicket> => {
+    const { data } = await api.post<SupportTicket>(`/channels/support/tickets/${ticketId}/claim`, { takeover: !!opts?.takeover })
     return data
   },
   assignSupport: async (ticketId: number, assigneeId: number): Promise<SupportTicket> => {
