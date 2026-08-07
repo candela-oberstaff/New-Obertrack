@@ -1,6 +1,6 @@
 import type { DragEvent } from 'react'
 import { useMemo, useState } from 'react'
-import { useDroppable } from '@dnd-kit/core'
+import { useDroppable, useDndContext } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { ChevronsRightLeft, GripVertical } from 'lucide-react'
 import { SortableTaskCard } from './TaskCard'
@@ -74,6 +74,15 @@ export function Column({
     id: column.id,
   })
 
+  const { over, active } = useDndContext()
+
+  const isCurrentlyOver = useMemo(() => {
+    if (isOver) return true
+    if (!over || !active) return false
+    const overId = over.id
+    return tasks.some(t => t.id === overId)
+  }, [isOver, over, active, tasks])
+
   const [filters, setFilters] = useState<TaskFiltersState>(DEFAULT_FILTERS)
 
   const filteredSorted = useMemo(() => {
@@ -95,7 +104,7 @@ export function Column({
     return (
       <div
         ref={setNodeRef}
-        className={`${styles['kanban-column']} ${styles['column-collapsed'] || 'column-collapsed'} ${isOver ? (styles['drag-over'] || 'drag-over') : ''}`}
+        className={`${styles['kanban-column']} ${styles['column-collapsed'] || 'column-collapsed'} ${isCurrentlyOver ? (styles['drag-over'] || 'drag-over') : ''}`}
         onClick={() => onToggleCollapse?.(column.id)}
         title="Expandir columna"
         {...colDragHandlers}
@@ -112,7 +121,7 @@ export function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`${styles['kanban-column']} ${isOver ? (styles['drag-over'] || 'drag-over') : ''} ${isColumnDragging ? (styles['column-dragging'] || 'column-dragging') : ''} ${isColumnDragOver ? (styles['column-drag-over'] || 'column-drag-over') : ''}`}
+      className={`${styles['kanban-column']} ${isCurrentlyOver ? (styles['drag-over'] || 'drag-over') : ''} ${isColumnDragging ? (styles['column-dragging'] || 'column-dragging') : ''} ${isColumnDragOver ? (styles['column-drag-over'] || 'column-drag-over') : ''}`}
       {...colDragHandlers}
     >
       <div

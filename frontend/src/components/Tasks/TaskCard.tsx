@@ -9,10 +9,11 @@ import styles from '../../pages/Tasks.module.css'
 interface TaskCardProps {
   task: Task
   isDragging?: boolean
+  isPlaceholder?: boolean
   onClick: () => void
 }
 
-export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
+export function TaskCard({ task, isDragging, isPlaceholder, onClick }: TaskCardProps) {
   const getPriorityColor = (priority: string) => {
     const colors: Record<string, string> = {
       urgent: '#ef4444',
@@ -25,7 +26,7 @@ export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
 
   return (
     <div
-      className={`${styles['kanban-card']} ${isDragging ? (styles['dragging'] || 'dragging') : ''} ${task.completed ? (styles['completed'] || 'completed') : ''}`}
+      className={`${styles['kanban-card']} ${isDragging ? (styles['dragging'] || 'dragging') : ''} ${isPlaceholder ? (styles['placeholder'] || 'placeholder') : ''} ${task.completed ? (styles['completed'] || 'completed') : ''}`}
       onClick={onClick}
     >
       <div className={styles['card-priority']} style={{ backgroundColor: getPriorityColor(task.priority) }} />
@@ -89,12 +90,11 @@ export function SortableTaskCard({ task, onClick }: SortableTaskCardProps) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
   }
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCard task={task} isDragging={isDragging} onClick={onClick} />
+      <TaskCard task={task} isPlaceholder={isDragging} onClick={onClick} />
     </div>
   )
 }
