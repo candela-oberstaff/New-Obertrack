@@ -1,7 +1,6 @@
 import { LifeBuoy, Check, UserCheck, UserCog } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import type { Channel } from '../../types/chat'
-import type { User } from '../../types'
+import type { Channel, SupportAgentRef } from '../../types/chat'
 import { supportStatusMeta } from './ChatUtils'
 import { PROFILE_CHANGE_MODULE } from '../../constants/support'
 import { Select } from '../ui/Select'
@@ -10,7 +9,7 @@ interface SupportTicketControlsProps {
   channel: Channel
   currentUserId?: number
   isSupportAgent: boolean
-  supportAgents: User[]
+  supportAgents: SupportAgentRef[]
   onClaim: () => void
   onAssign: (assigneeId: number) => void
   onResolve: () => void

@@ -936,13 +936,24 @@ func (h *ChannelHandler) ContactSupport(c *gin.Context) {
 }
 
 // ListSupportAgents devuelve los agentes (CS + superadmin) para el selector de reasignación.
+// Solo para el personal de soporte, y con un DTO mínimo: devolver models.User
+// completo exponía teléfono, documento y dirección de los agentes a cualquier
+// usuario cliente con el módulo de chat.
 func (h *ChannelHandler) ListSupportAgents(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
 	agents, err := h.svc.ListSupportAgents()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, agents)
+	out := make([]gin.H, 0, len(agents))
+	for _, a := range agents {
+		out = append(out, gin.H{"id": a.ID, "name": a.Name, "email": a.Email})
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // ListPendingSupport: cola de solicitudes de soporte sin asignar (invitaciones).
@@ -969,14 +980,26 @@ func (h *ChannelHandler) ListMySupportTickets(c *gin.Context) {
 	c.JSON(http.StatusOK, tickets)
 }
 
-// ClaimSupport: el agente toma el ticket (se autoasigna).
+// ClaimSupport: el agente toma el ticket (se autoasigna). El body opcional
+// {"takeover": true} distingue el traspaso deliberado desde el chat ("lo
+// atiende X — Tómalo") del claim normal, que es atómico: si otro agente ya lo
+// tomó, responde 409 en vez de robárselo en silencio.
 func (h *ChannelHandler) ClaimSupport(c *gin.Context) {
 	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
 	userID := middleware.GetUserID(c)
 
-	ticket, err := h.svc.ClaimSupportTicket(uint(id), userID)
+	var req struct {
+		Takeover bool `json:"takeover"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	ticket, err := h.svc.ClaimSupportTicket(uint(id), userID, req.Takeover)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		status := http.StatusBadRequest
+		if strings.Contains(err.Error(), "ya tomó este ticket") {
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, ticket)

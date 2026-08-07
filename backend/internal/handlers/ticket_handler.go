@@ -474,10 +474,14 @@ func (h *TicketHandler) UpdateWhatsAppTicket(c *gin.Context) {
 		return
 	}
 
-	ticket, err := h.ticketSvc.WhatsAppAction(uint(id), agentID, req.Action)
+	ticket, err := h.ticketSvc.WhatsAppAction(uint(id), agentID, req.Action, middleware.IsSuperadmin(c))
 	if err != nil {
 		if err == apperrors.ErrInvalidInput {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Acción no válida"})
+			return
+		}
+		if errors.Is(err, apperrors.ErrConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Otro agente ya atiende esta conversación."})
 			return
 		}
 		c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp ticket not found"})

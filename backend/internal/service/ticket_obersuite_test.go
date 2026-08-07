@@ -26,6 +26,12 @@ func (f *fakeTicketRepo) ListByOrigins(origins ...string) ([]models.Ticket, erro
 	return f.tickets, nil
 }
 
+// ListInternal ahora resuelve la vista previa aparte (attachLastMessages); sin
+// este stub el método embebido nil haría panic.
+func (f *fakeTicketRepo) LastMessagesByTicketIDs(ticketIDs []uint) (map[uint]models.TicketMessage, error) {
+	return map[uint]models.TicketMessage{}, nil
+}
+
 func (f *fakeTicketRepo) FindOpenByUserAndOrigin(userID uint, origin string) (*models.Ticket, error) {
 	return f.abierto, nil
 }

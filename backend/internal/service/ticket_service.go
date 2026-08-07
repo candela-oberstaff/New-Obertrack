@@ -55,7 +55,10 @@ type TicketService interface {
 	// PurgeWhatsAppSession borra definitivamente las conversaciones de una sesión.
 	PurgeWhatsAppSession(session string) (repository.WhatsAppPurgeCounts, error)
 	SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error)
-	WhatsAppAction(id, agentID uint, action string) (*models.Ticket, error)
+	// WhatsAppAction ejecuta claim/resolve/reopen. El claim es atómico: si otro
+	// agente ya atiende la conversación devuelve ErrConflict, salvo que el actor
+	// sea superadmin (retomar deliberado, el único caso que la UI ofrece).
+	WhatsAppAction(id, agentID uint, action string, isSuperadmin bool) (*models.Ticket, error)
 	// WhatsAppAssign traspasa un chat de WhatsApp a otro agente, dejando la
 	// misma bitácora que un ticket interno.
 	WhatsAppAssign(id, actorID, assigneeID uint, isSuperadmin bool, reason string) (*models.Ticket, error)
@@ -533,14 +536,48 @@ func (s *ticketService) ListInternal() ([]models.Ticket, error) {
 	for i := range tickets {
 		s.enrichInternal(&tickets[i])
 	}
+	s.attachLastMessages(tickets)
 	return tickets, nil
+}
+
+// attachLastMessages deja en cada ticket SOLO su último mensaje con contenido,
+// que es lo único que consumen los listados (la vista previa de la tarjeta).
+// Antes se precargaba Messages entero y el tablero —que se refresca solo cada
+// minuto— descargaba el historial completo de todas las conversaciones.
+// Best-effort: si la consulta falla, los tickets salen sin preview (se cae al
+// título), no se corta el listado.
+func (s *ticketService) attachLastMessages(tickets []models.Ticket) {
+	if len(tickets) == 0 {
+		return
+	}
+	ids := make([]uint, len(tickets))
+	for i := range tickets {
+		ids[i] = tickets[i].ID
+	}
+	last, err := s.repo.LastMessagesByTicketIDs(ids)
+	if err != nil {
+		log.Printf("[Tickets] no se pudo resolver la vista previa de los tickets: %v", err)
+		last = nil
+	}
+	for i := range tickets {
+		if m, ok := last[tickets[i].ID]; ok {
+			tickets[i].Messages = []models.TicketMessage{m}
+		} else {
+			tickets[i].Messages = []models.TicketMessage{}
+		}
+	}
 }
 
 // ListWhatsApp devuelve SOLO las conversaciones de la sesión activa. Al cambiar
 // el número conectado, los chats de la cuenta anterior siguen en la base pero
 // desaparecen de la bandeja: mezclarlos era el problema.
 func (s *ticketService) ListWhatsApp() ([]models.Ticket, error) {
-	return s.repo.ListByOriginAndSession(string(models.ChannelWhatsApp), s.wahaSvc.GetSession())
+	tickets, err := s.repo.ListByOriginAndSession(string(models.ChannelWhatsApp), s.wahaSvc.GetSession())
+	if err != nil {
+		return nil, err
+	}
+	s.attachLastMessages(tickets)
+	return tickets, nil
 }
 
 // WhatsAppChatLookup es la respuesta a "¿puedo escribirle por WhatsApp a este
@@ -927,7 +964,7 @@ func (s *ticketService) SendWhatsAppReply(id, agentID uint, content string) (*mo
 	return msg, nil
 }
 
-func (s *ticketService) WhatsAppAction(id, agentID uint, action string) (*models.Ticket, error) {
+func (s *ticketService) WhatsAppAction(id, agentID uint, action string, isSuperadmin bool) (*models.Ticket, error) {
 	ticket, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, apperrors.ErrNotFound
@@ -935,26 +972,46 @@ func (s *ticketService) WhatsAppAction(id, agentID uint, action string) (*models
 	if ticket.Origin != string(models.ChannelWhatsApp) {
 		return nil, apperrors.ErrNotFound
 	}
+	// Updates por columna y no SaveTicket: la fila entera pisaría cambios
+	// concurrentes del webhook (mensajes entrantes tocando updated_at).
 	switch action {
 	case "claim":
-		ticket.AssignedTo = &agentID
-		ticket.Stage = models.StageInProgress
-		ticket.Status = "open"
+		if isSuperadmin {
+			// Retomar deliberado: un superadmin puede quitarle el chat a un agente
+			// (es el único "Tomar" que la UI ofrece sobre un chat ya atendido).
+			if err := s.repo.UpdateTicketFields(ticket.ID, map[string]interface{}{
+				"assigned_to": agentID,
+				"stage":       models.StageInProgress,
+				"status":      "open",
+			}); err != nil {
+				return nil, err
+			}
+		} else {
+			claimed, cerr := s.repo.ClaimTicketIfFree(ticket.ID, agentID)
+			if cerr != nil {
+				return nil, cerr
+			}
+			if !claimed {
+				return nil, apperrors.ErrConflict
+			}
+		}
 	case "resolve":
-		ticket.Stage = models.StageClosed
-		ticket.Status = "closed"
+		if err := s.repo.UpdateTicketFields(ticket.ID, map[string]interface{}{
+			"stage":  models.StageClosed,
+			"status": "closed",
+		}); err != nil {
+			return nil, err
+		}
 	case "reopen":
-		ticket.AssignedTo = nil
-		ticket.Stage = models.StageNew
-		ticket.Status = "open"
+		if err := s.repo.UpdateTicketFields(ticket.ID, map[string]interface{}{
+			"assigned_to": nil,
+			"stage":       models.StageNew,
+			"status":      "open",
+		}); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, apperrors.ErrInvalidInput
-	}
-	ticket.Contact = nil
-	ticket.Assignee = nil
-	ticket.Messages = nil
-	if err := s.repo.SaveTicket(ticket); err != nil {
-		return nil, err
 	}
 	return s.repo.GetByID(id)
 }

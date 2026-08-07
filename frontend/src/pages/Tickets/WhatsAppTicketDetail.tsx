@@ -6,7 +6,7 @@ import ChatInputArea from './components/ChatInputArea';
 import ContactSidebar from './components/ContactSidebar';
 import TransferTicketModal from './components/TransferTicketModal';
 import { channelService } from '../../services/channel.service';
-import type { User } from '../../types';
+import type { SupportAgentRef } from '../../types/chat';
 import styles from './Tickets.module.css';
 import { ArrowLeft, RefreshCw, MessageSquare, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -39,7 +39,7 @@ export default function WhatsAppTicketDetail() {
   const [acting, setActing] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [showAssign, setShowAssign] = useState(false);
-  const [agents, setAgents] = useState<User[]>([]);
+  const [agents, setAgents] = useState<SupportAgentRef[]>([]);
   const pollRef = useRef<number | null>(null);
 
   const fetchTicket = useCallback(async (silent: boolean) => {

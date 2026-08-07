@@ -31,9 +31,25 @@ type TicketRepository interface {
 	// guiones. Prefiere el hilo abierto y, entre varios, el más reciente.
 	FindWhatsAppTicketByPhoneDigits(digits, session string) (*models.Ticket, error)
 	// ListByOriginAndSession lista los tickets de un canal acotados a una sesión.
+	// NO precarga los mensajes: los listados solo necesitan la vista previa, que
+	// se resuelve aparte con LastMessagesByTicketIDs.
 	ListByOriginAndSession(origin, session string) ([]models.Ticket, error)
+	// LastMessagesByTicketIDs devuelve el último mensaje con contenido de cada
+	// ticket (uno por ticket). Existe porque precargar Messages entero en los
+	// listados hacía viajar TODO el historial de TODAS las conversaciones en cada
+	// refresco del tablero, cuando la bandeja solo muestra el último como preview.
+	LastMessagesByTicketIDs(ticketIDs []uint) (map[uint]models.TicketMessage, error)
 	CreateTicket(t *models.Ticket) error
 	SaveTicket(t *models.Ticket) error
+	// UpdateTicketFields actualiza columnas puntuales por id con modelo limpio.
+	// Preferirlo a SaveTicket para cambios de estado: Save escribe la fila entera
+	// y puede pisar cambios concurrentes (p. ej. el updated_at del webhook).
+	UpdateTicketFields(ticketID uint, updates map[string]interface{}) error
+	// ClaimTicketIfFree asigna atómicamente la conversación al agente SOLO si
+	// sigue disponible para él: sin responsable, ya suya, o cerrada (retomarla la
+	// reabre). Devuelve false si otro agente ganó la carrera — dos "Tomar" casi
+	// simultáneos ya no se pisan en silencio.
+	ClaimTicketIfFree(ticketID, agentID uint) (bool, error)
 	TouchTicket(t *models.Ticket) error
 	// SyncTicketActivity realinea updated_at con la fecha del mensaje más reciente
 	// del ticket. TouchTicket no sirve para esto porque fuerza time.Now(): al
@@ -197,6 +213,24 @@ func (r *ticketRepository) SaveTicket(t *models.Ticket) error {
 	return r.db.Save(t).Error
 }
 
+func (r *ticketRepository) UpdateTicketFields(ticketID uint, updates map[string]interface{}) error {
+	return r.db.Model(&models.Ticket{}).Where("id = ?", ticketID).Updates(updates).Error
+}
+
+func (r *ticketRepository) ClaimTicketIfFree(ticketID, agentID uint) (bool, error) {
+	res := r.db.Model(&models.Ticket{}).
+		Where("id = ? AND (assigned_to IS NULL OR assigned_to = ? OR status = ?)", ticketID, agentID, "closed").
+		Updates(map[string]interface{}{
+			"assigned_to": agentID,
+			"stage":       models.StageInProgress,
+			"status":      "open",
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
 func (r *ticketRepository) TouchTicket(t *models.Ticket) error {
 	return r.db.Model(t).Update("updated_at", time.Now()).Error
 }
@@ -261,12 +295,36 @@ func (r *ticketRepository) List(assignedTo *uint) ([]models.Ticket, error) {
 
 func (r *ticketRepository) ListByOriginAndSession(origin, session string) ([]models.Ticket, error) {
 	var tickets []models.Ticket
-	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages", chronological).
+	if err := r.db.Preload("Contact").Preload("Assignee").
 		Where("origin = ? AND session = ?", origin, session).
 		Order("updated_at desc").Find(&tickets).Error; err != nil {
 		return nil, err
 	}
 	return tickets, nil
+}
+
+// LastMessagesByTicketIDs resuelve en UNA consulta el último mensaje no vacío de
+// cada ticket (DISTINCT ON de Postgres, ordenado por fecha real y luego id, el
+// mismo criterio que `chronological`). Se filtran los de contenido en blanco
+// porque la vista previa del listado los salta igualmente.
+func (r *ticketRepository) LastMessagesByTicketIDs(ticketIDs []uint) (map[uint]models.TicketMessage, error) {
+	out := make(map[uint]models.TicketMessage, len(ticketIDs))
+	if len(ticketIDs) == 0 {
+		return out, nil
+	}
+	var msgs []models.TicketMessage
+	if err := r.db.
+		Raw(`SELECT DISTINCT ON (ticket_id) *
+		       FROM ticket_messages
+		      WHERE ticket_id IN ? AND deleted_at IS NULL AND btrim(content) <> ''
+		      ORDER BY ticket_id, created_at DESC, id DESC`, ticketIDs).
+		Scan(&msgs).Error; err != nil {
+		return nil, err
+	}
+	for _, m := range msgs {
+		out[m.TicketID] = m
+	}
+	return out, nil
 }
 
 // chronological ordena los mensajes precargados por su fecha real.
@@ -286,13 +344,13 @@ func (r *ticketRepository) ListByOrigin(origin string) ([]models.Ticket, error) 
 
 // ListByOrigins lista varios orígenes de una vez: la bandeja enseña juntas las
 // alertas internas y las altas de Obersuite, y pedirlas por separado obligaría
-// a ordenarlas a mano después.
+// a ordenarlas a mano después. Sin precarga de Messages (ver ListByOriginAndSession).
 func (r *ticketRepository) ListByOrigins(origins ...string) ([]models.Ticket, error) {
 	var tickets []models.Ticket
 	if len(origins) == 0 {
 		return tickets, nil
 	}
-	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages").
+	if err := r.db.Preload("Contact").Preload("Assignee").
 		Where("origin IN ?", origins).Order("updated_at desc").Find(&tickets).Error; err != nil {
 		return nil, err
 	}
