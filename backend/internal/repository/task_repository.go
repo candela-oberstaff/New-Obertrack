@@ -64,7 +64,7 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 	query := r.db.Model(&models.Task{})
 
 	if employerID, ok := filters["employer_id"].(uint); ok {
-		query = query.Joins("JOIN users ON users.id = tasks.created_by").Where("users.empleador_id = ?", employerID)
+		query = query.Where("tasks.created_by IN (SELECT id FROM users WHERE empleador_id = ?)", employerID)
 	}
 	if boardID, ok := filters["board_id"].(uint); ok {
 		query = query.Where("tasks.board_id = ?", boardID)
@@ -73,12 +73,11 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 		query = query.Where("tasks.status = ?", status)
 	}
 	if assigneeID, ok := filters["assignee_id"].(uint); ok {
-		query = query.Joins("LEFT JOIN task_users ON task_users.task_id = tasks.id")
 		if creatorID, ok := filters["created_by"].(uint); ok {
-			query = query.Where(r.db.Where("task_users.user_id = ?", assigneeID).Or("tasks.created_by = ?", creatorID))
+			query = query.Where(r.db.Where("tasks.id IN (SELECT task_id FROM task_users WHERE user_id = ?)", assigneeID).Or("tasks.created_by = ?", creatorID))
 			delete(filters, "created_by") // Handled by Or
 		} else {
-			query = query.Where("task_users.user_id = ?", assigneeID)
+			query = query.Where("tasks.id IN (SELECT task_id FROM task_users WHERE user_id = ?)", assigneeID)
 		}
 	} else if creatorID, ok := filters["created_by"].(uint); ok {
 		query = query.Where("tasks.created_by = ?", creatorID)
@@ -108,11 +107,11 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 		query = query.Where("tasks.title ILIKE ? OR tasks.description ILIKE ?", "%"+search+"%", "%"+search+"%")
 	}
 
-	if err := query.Session(&gorm.Session{}).Distinct("tasks.id").Count(&total).Error; err != nil {
+	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	if err := query.Select("DISTINCT tasks.id, tasks.title, tasks.status, tasks.priority, tasks.start_date, tasks.end_date, tasks.completed, tasks.created_by, tasks.board_id, tasks.tenant_id, tasks.order, tasks.visible_para, tasks.created_at, tasks.updated_at, tasks.deleted_at").
+	if err := query.Select("tasks.id, tasks.title, tasks.status, tasks.priority, tasks.start_date, tasks.end_date, tasks.completed, tasks.created_by, tasks.board_id, tasks.tenant_id, tasks.order, tasks.visible_para, tasks.created_at, tasks.updated_at, tasks.deleted_at").
 		Preload("Assignees").Preload("Attachments").
 		Offset(offset).Limit(limit).Order("tasks.created_at DESC").Find(&tasks).Error; err != nil {
 		return nil, 0, err
