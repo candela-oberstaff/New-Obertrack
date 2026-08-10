@@ -1826,6 +1826,18 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.WebPushKeys{})
 			},
 		},
+		{
+			// Cierre de mes automático: registro idempotente por (empresa, período)
+			// de la aprobación de pendientes + envío del reporte mensual.
+			ID: "202608101900_month_close_runs",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating month_close_runs table...")
+				return tx.AutoMigrate(&models.MonthCloseRun{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.MonthCloseRun{})
+			},
+		},
 		// Future migrations go here
 	})
 

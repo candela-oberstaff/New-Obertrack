@@ -52,7 +52,7 @@ function describe(cfg: ReportSchedule): string {
 }
 
 export default function AppSettings() {
-  const { schedule, runs, isLoading, save, isSaving, runNow, isRunning } = useReportSchedule()
+  const { schedule, runs, runsTotal, runsPage, setRunsPage, runsPageSize, isLoading, save, isSaving, runNow, isRunning } = useReportSchedule()
   const { success, error: showError } = useNotification()
   const [form, setForm] = useState<ReportSchedule | null>(null)
 
@@ -198,7 +198,10 @@ export default function AppSettings() {
       </div>
 
       <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 24 }}>
-        <h2 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>Últimos envíos</h2>
+        <h2 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
+          Últimos envíos
+          {runsTotal > 0 && <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>({runsTotal})</span>}
+        </h2>
         {runs.length === 0 ? (
           <p style={{ color: '#94a3b8', fontSize: 14, margin: 0 }}>Todavía no se envió ningún reporte automático.</p>
         ) : (
@@ -236,6 +239,29 @@ export default function AppSettings() {
                 ))}
               </tbody>
             </table>
+
+            {/* Paginador de la bitácora (10 por página, del lado del servidor). */}
+            {runsTotal > runsPageSize && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '14px 4px 2px' }}>
+                <span style={{ fontSize: 13, color: '#64748b' }}>
+                  {(runsPage - 1) * runsPageSize + 1}–{Math.min(runsPage * runsPageSize, runsTotal)} de {runsTotal}
+                </span>
+                <button
+                  onClick={() => setRunsPage(runsPage - 1)}
+                  disabled={runsPage <= 1}
+                  style={{ border: '1px solid #e2e8f0', background: '#fff', color: runsPage <= 1 ? '#cbd5e1' : '#334155', borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 700, cursor: runsPage <= 1 ? 'default' : 'pointer', width: 'auto' }}
+                >
+                  ← Anterior
+                </button>
+                <button
+                  onClick={() => setRunsPage(runsPage + 1)}
+                  disabled={runsPage * runsPageSize >= runsTotal}
+                  style={{ border: '1px solid #e2e8f0', background: '#fff', color: runsPage * runsPageSize >= runsTotal ? '#cbd5e1' : '#334155', borderRadius: 8, padding: '6px 12px', fontSize: 13, fontWeight: 700, cursor: runsPage * runsPageSize >= runsTotal ? 'default' : 'pointer', width: 'auto' }}
+                >
+                  Siguiente →
+                </button>
+              </div>
+            )}
           </div>
         )}
         </div>

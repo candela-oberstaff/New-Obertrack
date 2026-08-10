@@ -14,7 +14,9 @@ type ReportScheduleRepository interface {
 	// HasSuccessfulRun informa si ese período ya se envió con éxito a esa empresa.
 	HasSuccessfulRun(tenantID uint, periodKey string) (bool, error)
 	RecordRun(run *models.ReportRun) error
-	ListRuns(limit int) ([]models.ReportRun, error)
+	// ListRuns pagina la bitácora de envíos (más recientes primero) y devuelve
+	// también el total, para el paginador del panel.
+	ListRuns(offset, limit int) ([]models.ReportRun, int64, error)
 }
 
 type reportScheduleRepository struct {
@@ -76,11 +78,18 @@ func (r *reportScheduleRepository) RecordRun(run *models.ReportRun) error {
 	return r.db.Create(run).Error
 }
 
-func (r *reportScheduleRepository) ListRuns(limit int) ([]models.ReportRun, error) {
+func (r *reportScheduleRepository) ListRuns(offset, limit int) ([]models.ReportRun, int64, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
+	if offset < 0 {
+		offset = 0
+	}
+	var total int64
+	if err := r.db.Model(&models.ReportRun{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	var runs []models.ReportRun
-	err := r.db.Order("created_at DESC").Limit(limit).Find(&runs).Error
-	return runs, err
+	err := r.db.Order("created_at DESC").Offset(offset).Limit(limit).Find(&runs).Error
+	return runs, total, err
 }

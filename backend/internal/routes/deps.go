@@ -214,10 +214,15 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// entrar a la plataforma.
 	service.NewChatDigestWatcher(channelRepo, brevoSvc).Start()
 
+
 	// Worker de reportes automáticos. A diferencia de los otros, se conserva la
 	// instancia: el panel de configuración la usa para "Enviar ahora".
 	reportScheduleRepo := repository.NewReportScheduleRepository(db)
-	reportWatcher := service.NewReportMailWatcher(reportScheduleRepo, userRepo, workHourSvc)
+	// Además de enviar el reporte, en la frecuencia MENSUAL este watcher cierra
+	// el mes: aprueba las jornadas pendientes de cada empresa antes del envío
+	// (tarjeta "Aprobación de horas automática al final del mes"). Todo se
+	// gobierna desde /admin/settings (toggle, día, hora, zona).
+	reportWatcher := service.NewReportMailWatcher(reportScheduleRepo, userRepo, workHourSvc, workHourRepo, notifSvc)
 	reportWatcher.Start()
 
 	// Worker de sincronización con Google Calendar (Fase 2): procesa la cola de

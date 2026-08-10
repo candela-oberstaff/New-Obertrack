@@ -1,10 +1,12 @@
-import { useCallback } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { settingsService } from '../services/api'
 import type { ReportSchedule } from '../services/api'
 
 const SCHEDULE_KEY = ['settings', 'report-schedule'] as const
 const RUNS_KEY = ['settings', 'report-runs'] as const
+
+const RUNS_PAGE_SIZE = 10
 
 export function useReportSchedule() {
   const qc = useQueryClient()
@@ -14,9 +16,12 @@ export function useReportSchedule() {
     queryFn: () => settingsService.getReportSchedule(),
   })
 
+  // Bitácora paginada. keepPreviousData evita el parpadeo al cambiar de página.
+  const [runsPage, setRunsPage] = useState(1)
   const runsQ = useQuery({
-    queryKey: RUNS_KEY,
-    queryFn: () => settingsService.getReportRuns(50),
+    queryKey: [...RUNS_KEY, runsPage],
+    queryFn: () => settingsService.getReportRuns(runsPage, RUNS_PAGE_SIZE),
+    placeholderData: keepPreviousData,
   })
 
   const invalidateAll = useCallback(async () => {
@@ -39,7 +44,11 @@ export function useReportSchedule() {
 
   return {
     schedule: scheduleQ.data,
-    runs: runsQ.data ?? [],
+    runs: runsQ.data?.runs ?? [],
+    runsTotal: runsQ.data?.total ?? 0,
+    runsPage,
+    setRunsPage,
+    runsPageSize: RUNS_PAGE_SIZE,
     isLoading: scheduleQ.isLoading,
     save: saveMut.mutateAsync,
     isSaving: saveMut.isPending,
