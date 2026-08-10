@@ -546,11 +546,23 @@ export default function WorkHours() {
     }
   }
 
+  // "Aprobar todos" opera solo sobre las jornadas AJENAS: las propias del
+  // manager las aprueba su responsable (separación de funciones) — antes iban
+  // en el lote y el backend, que era todo-o-nada, lo rechazaba COMPLETO con
+  // "No tienes permiso" y el manager no podía aprobar nada de su equipo.
+  const approvablePending = user?.is_superadmin
+    ? pendingForSelectedDate
+    : pendingForSelectedDate.filter(wh => wh.user_id !== user?.id)
+
   const handleBulkApprove = async () => {
-    if (pendingForSelectedDate.length === 0) return
+    if (approvablePending.length === 0) return
     try {
-      await approveWorkHours(pendingForSelectedDate.map(wh => wh.id))
-      notify.success('Jornadas aprobadas.')
+      const res = await approveWorkHours(approvablePending.map(wh => wh.id))
+      if (res?.skipped && res.skipped > 0) {
+        notify.success(`${res.approved ?? 0} jornada(s) aprobadas; ${res.skipped} omitida(s) (fuera de tu equipo).`)
+      } else {
+        notify.success('Jornadas aprobadas.')
+      }
     } catch (error: any) {
       notify.error(errorMessage(error, 'No se pudieron aprobar las jornadas.'))
     }
@@ -813,7 +825,7 @@ export default function WorkHours() {
           filteredHours={filteredHours}
           selectedDate={selectedDate}
           canApprove={canApprove}
-          pendingForSelectedDate={pendingForSelectedDate}
+          pendingForSelectedDate={approvablePending}
           onBulkApprove={handleBulkApprove}
           onItemClick={setSelectedWorkHour}
           isEmployer={isEmployer}

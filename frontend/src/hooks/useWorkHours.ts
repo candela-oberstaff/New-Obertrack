@@ -43,7 +43,7 @@ interface UseWorkHoursReturn {
   // Actions
   fetchData: () => Promise<void>
   createWorkHour: (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours'> & { id?: number; absence_reason?: string; absence_hours?: number }) => Promise<void>
-  approveWorkHours: (ids: number[]) => Promise<void>
+  approveWorkHours: (ids: number[]) => Promise<{ approved?: number; skipped?: number }>
   approveSingle: (id: number) => Promise<void>
   rejectSingle: (id: number, reason: string) => Promise<void>
 
@@ -161,9 +161,12 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
     fetchData()
   }, [fetchData])
 
-  const approveWorkHours = useCallback(async (ids: number[]) => {
-    await workHourService.approve(ids)
+  // Devuelve los conteos del backend: cuántas entraron y cuántas se omitieron
+  // (las jornadas propias del manager nunca son aprobables por él).
+  const approveWorkHours = useCallback(async (ids: number[]): Promise<{ approved?: number; skipped?: number }> => {
+    const res = await workHourService.approve(ids)
     fetchData()
+    return res || {}
   }, [fetchData])
 
   const approveSingle = useCallback(async (id: number) => {

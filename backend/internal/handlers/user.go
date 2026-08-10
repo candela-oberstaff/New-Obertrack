@@ -81,7 +81,7 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	isSuperadmin := middleware.IsSuperadmin(c)
 
-	user, err := h.service.GetByID(uint(id), requesterID, tenantID, isSuperadmin)
+	user, err := h.service.GetByID(uint(id), requesterID, tenantID, middleware.GetUserRole(c), isSuperadmin)
 	if err != nil {
 		status := http.StatusNotFound
 		if err.Error() == "Access denied" {

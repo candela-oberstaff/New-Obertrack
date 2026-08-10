@@ -106,7 +106,14 @@ export default function Admin() {
   const navigate = useNavigate()
   const { user: viewer } = useAuth()
   // CS (manager y analista) entran en modo consulta: sin crear/editar/eliminar.
-  const canManage = !!viewer?.is_superadmin
+  // Customer Success gestiona usuarios como el superadmin (el backend aplica
+  // la misma regla), con una línea roja: las cuentas superadmin no las toca —
+  // para esas filas los botones de editar/eliminar no se muestran (canManageUser).
+  const canManage = !!viewer?.is_superadmin || viewer?.user_type === 'customer_success'
+  const canManageUser = (u: any) => canManage && (!!viewer?.is_superadmin || !u?.is_superadmin)
+  // Eliminar cuentas (individual y masivo) queda reservado al superadmin: CS
+  // edita y gestiona, pero no borra. El backend aplica la misma restricción.
+  const canDelete = !!viewer?.is_superadmin
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [companyFilter, setCompanyFilter] = useState<number | ''>('')
@@ -1080,6 +1087,7 @@ export default function Admin() {
                     >
                       <UserCog size={15} /> Asignar ({selectedIds.size})
                     </button>
+                    {canDelete && (
                     <button
                       onClick={openBulkDelete}
                       disabled={bulkBusy || bulkDeleteBusy}
@@ -1087,6 +1095,7 @@ export default function Admin() {
                     >
                       <Trash2 size={15} /> Eliminar ({selectedIds.size})
                     </button>
+                    )}
                     <button
                       onClick={clearSelection}
                       disabled={bulkBusy || bulkDeleteBusy}
@@ -1163,7 +1172,7 @@ export default function Admin() {
                           >
                             <Eye size={16} />
                           </button>
-                          {canManage && (
+                          {canManageUser(u) && (
                             <>
                               <button
                                 className={styles['btn-icon']}
@@ -1172,6 +1181,7 @@ export default function Admin() {
                               >
                                 <Pencil size={16} />
                               </button>
+                              {canDelete && (
                               <button
                                 className={`${styles['btn-icon']} ${styles['danger']}`}
                                 onClick={() => {
@@ -1182,6 +1192,7 @@ export default function Admin() {
                               >
                                 <Trash2 size={16} />
                               </button>
+                              )}
                             </>
                           )}
                         </div>

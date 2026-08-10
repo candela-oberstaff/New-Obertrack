@@ -640,12 +640,46 @@ func TestPhase2_SecondaryManagerCanApprove(t *testing.T) {
 	notif := &fakeNotifSvc{}
 	s := &workHourService{repo: whRepo, employmentRepo: empRepo, notifSvc: notif, userRepo: &fakeUserRepo{}}
 
-	err := s.Approve([]uint{1}, secondaryMgr, "profesional", false, true, tenantID)
+	approved, skipped, err := s.Approve([]uint{1}, secondaryMgr, "profesional", false, true, tenantID)
 	if err != nil {
 		t.Fatalf("un manager secundario (via-links) debe poder aprobar, got: %v", err)
 	}
+	if approved != 1 || skipped != 0 {
+		t.Fatalf("esperaba 1 aprobada y 0 omitidas, got: %d/%d", approved, skipped)
+	}
 	if !whRepo.approveMultiHit {
 		t.Fatal("la aprobación debió persistirse")
+	}
+}
+
+// El lote de "Aprobar todos" incluye las jornadas PROPIAS del manager (la
+// lista se las muestra), que la separación de funciones le impide aprobarse.
+// Antes el lote era todo-o-nada: una sola propia lo tumbaba entero con "No
+// tienes permiso" y el manager no podía aprobar NADA de su equipo. Ahora las
+// propias se omiten, las del equipo entran, y se informa el conteo.
+func TestApprove_BatchSkipsOwnHoursInsteadOfFailing(t *testing.T) {
+	SetMultiManagerReads(true)
+	defer SetMultiManagerReads(false)
+
+	const managerID, employeeID, tenantID = uint(7), uint(4), uint(20)
+	whRepo := &fakeApproveWHRepo{byID: []models.WorkHour{
+		{ID: 1, UserID: employeeID, TenantID: tenantID}, // subordinado: aprobable
+		{ID: 2, UserID: managerID, TenantID: tenantID},  // propia: se omite
+	}}
+	empRepo := &fakeEmploymentRepo{
+		isManagerOf: map[[2]uint][]uint{{employeeID, tenantID}: {managerID}},
+	}
+	s := &workHourService{repo: whRepo, employmentRepo: empRepo, notifSvc: &fakeNotifSvc{}, userRepo: &fakeUserRepo{}}
+
+	approved, skipped, err := s.Approve([]uint{1, 2}, managerID, "profesional", false, true, tenantID)
+	if err != nil {
+		t.Fatalf("el lote con jornadas propias no debe fallar completo, got: %v", err)
+	}
+	if approved != 1 || skipped != 1 {
+		t.Fatalf("esperaba 1 aprobada y 1 omitida, got: %d/%d", approved, skipped)
+	}
+	if len(whRepo.approvedIDs) != 1 || whRepo.approvedIDs[0] != 1 {
+		t.Fatalf("solo la jornada del subordinado debió persistirse, got: %v", whRepo.approvedIDs)
 	}
 }
 
@@ -668,7 +702,7 @@ func TestPhase2_SecondaryManagerRejectedWhenFlagOff(t *testing.T) {
 	}
 	s := &workHourService{repo: whRepo, employmentRepo: empRepo, notifSvc: &fakeNotifSvc{}, userRepo: &fakeUserRepo{}}
 
-	err := s.Approve([]uint{1}, secondaryMgr, "profesional", false, true, tenantID)
+	_, _, err := s.Approve([]uint{1}, secondaryMgr, "profesional", false, true, tenantID)
 	if err == nil {
 		t.Fatal("con el flag OFF, el manager secundario NO debe poder aprobar")
 	}

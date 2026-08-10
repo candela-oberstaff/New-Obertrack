@@ -17,8 +17,12 @@ type WorkHourService interface {
 	GetAll(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
 	Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error)
 	Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error)
-	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) error
-	Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) error
+	// Approve/Reject procesan las jornadas ELEGIBLES del lote y devuelven
+	// (procesadas, omitidas): las jornadas propias del manager u otras no
+	// autorizadas se omiten en vez de tumbar el lote entero. Error solo cuando
+	// ninguna es procesable.
+	Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) (int, int, error)
+	Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) (int, int, error)
 	GetSummary(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error)
 	GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string) ([]models.WorkHour, error)
 	SendReportEmail(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) error
@@ -370,7 +374,14 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 	return s.repo.FindByID(workHour.ID)
 }
 
-func (s *workHourService) Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) error {
+// Approve aprueba las jornadas ELEGIBLES del lote y devuelve (aprobadas,
+// omitidas). Antes era todo-o-nada: la lista del manager incluye sus PROPIAS
+// jornadas (que la separación de funciones le impide aprobarse), así que
+// "Aprobar todos" tumbaba el lote completo con "No tienes permiso" y no podía
+// aprobar NADA de su equipo. Ahora lo no-aprobable (jornadas propias, o de
+// otro equipo) se omite y se informa; el error solo queda cuando ninguna
+// jornada del lote es aprobable (p. ej. el aprobado individual de una ajena).
+func (s *workHourService) Approve(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint) (int, int, error) {
 	// Use tenant-scoped query for defense-in-depth
 	var workHours []models.WorkHour
 	var err error
@@ -380,13 +391,14 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 		workHours, err = s.repo.FindManyByIDs(ids)
 	}
 	if err != nil {
-		return errors.New("Failed to fetch work hours")
+		return 0, 0, errors.New("Failed to fetch work hours")
 	}
 
 	if len(workHours) == 0 {
-		return errors.New("No work hours found")
+		return 0, 0, errors.New("No work hours found")
 	}
 
+	eligible := make([]models.WorkHour, 0, len(workHours))
 	for _, wh := range workHours {
 		canApprove := false
 
@@ -412,15 +424,26 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 			}
 		}
 
-		if !canApprove {
-			return errors.New("No tienes permiso para aprobar estas horas.")
+		if canApprove {
+			eligible = append(eligible, wh)
 		}
 	}
 
+	skipped := len(workHours) - len(eligible)
+	if len(eligible) == 0 {
+		return 0, skipped, errors.New("No tienes permiso para aprobar estas horas.")
+	}
+	eligibleIDs := make([]uint, len(eligible))
+	for i := range eligible {
+		eligibleIDs[i] = eligible[i].ID
+	}
+	// Solo las elegibles: las notificaciones de abajo también recorren `eligible`.
+	workHours = eligible
+
 	if !isSuperadmin && tenantID > 0 {
-		err = s.repo.ApproveMultipleAndTenant(ids, userID, time.Now(), tenantID)
+		err = s.repo.ApproveMultipleAndTenant(eligibleIDs, userID, time.Now(), tenantID)
 	} else {
-		err = s.repo.ApproveMultiple(ids, userID, time.Now())
+		err = s.repo.ApproveMultiple(eligibleIDs, userID, time.Now())
 	}
 	if err == nil {
 		// Notificaciones de aprobación
@@ -465,13 +488,16 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 			}
 		}()
 	}
-	return err
+	if err != nil {
+		return 0, skipped, err
+	}
+	return len(eligible), skipped, nil
 }
 
-func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) error {
+func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) (int, int, error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		return errors.New("Rejection reason is required")
+		return 0, 0, errors.New("Rejection reason is required")
 	}
 
 	var workHours []models.WorkHour
@@ -482,13 +508,16 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 		workHours, err = s.repo.FindManyByIDs(ids)
 	}
 	if err != nil {
-		return errors.New("Failed to fetch work hours")
+		return 0, 0, errors.New("Failed to fetch work hours")
 	}
 
 	if len(workHours) == 0 {
-		return errors.New("No work hours found")
+		return 0, 0, errors.New("No work hours found")
 	}
 
+	// Mismo criterio que Approve: se rechazan las elegibles y se omiten las
+	// demás (las propias del manager tumbaban el lote entero).
+	eligible := make([]models.WorkHour, 0, len(workHours))
 	for _, wh := range workHours {
 		canReject := false
 
@@ -514,15 +543,25 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 			}
 		}
 
-		if !canReject {
-			return errors.New("No tienes permiso para rechazar estas horas.")
+		if canReject {
+			eligible = append(eligible, wh)
 		}
 	}
 
+	skipped := len(workHours) - len(eligible)
+	if len(eligible) == 0 {
+		return 0, skipped, errors.New("No tienes permiso para rechazar estas horas.")
+	}
+	eligibleIDs := make([]uint, len(eligible))
+	for i := range eligible {
+		eligibleIDs[i] = eligible[i].ID
+	}
+	workHours = eligible
+
 	if !isSuperadmin && tenantID > 0 {
-		err = s.repo.RejectMultipleAndTenant(ids, userID, time.Now(), utils.SanitizeHTML(reason), tenantID)
+		err = s.repo.RejectMultipleAndTenant(eligibleIDs, userID, time.Now(), utils.SanitizeHTML(reason), tenantID)
 	} else {
-		err = s.repo.RejectMultiple(ids, userID, time.Now(), utils.SanitizeHTML(reason))
+		err = s.repo.RejectMultiple(eligibleIDs, userID, time.Now(), utils.SanitizeHTML(reason))
 	}
 	if err == nil {
 		go func() {
@@ -574,7 +613,10 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 			}
 		}()
 	}
-	return err
+	if err != nil {
+		return 0, skipped, err
+	}
+	return len(eligible), skipped, nil
 }
 
 func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error) {

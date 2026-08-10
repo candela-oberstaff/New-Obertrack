@@ -43,7 +43,11 @@ export default function AdminUserDetail() {
   const { user: viewer } = useAuth()
   const confirm = useConfirm()
   // CS entra en modo consulta: sin acciones ni gestión de roles/grupos.
-  const canManage = !!viewer?.is_superadmin
+  // CS gestiona usuarios como el superadmin. La línea roja (cuentas
+  // superadmin) la aplica el backend: a un CS la ficha de un superadmin ni
+  // siquiera le carga, así que si llegamos a pintar botones el objetivo es
+  // gestionable.
+  const canManage = !!viewer?.is_superadmin || viewer?.user_type === 'customer_success'
   const canReviewProfileChange = !!viewer?.is_superadmin ||
     viewer?.user_type === 'customer_success' || viewer?.user_type === 'analista_it'
   const [user, setUser] = useState<User | null>(null)

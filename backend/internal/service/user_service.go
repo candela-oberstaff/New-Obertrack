@@ -12,7 +12,10 @@ import (
 
 type UserService interface {
 	GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error)
-	GetByID(id, requesterID, tenantID uint, isSuperadmin bool) (*models.User, error)
+	// GetByID entrega la ficha si el solicitante puede verla: superadmin y
+	// customer success ven a cualquiera (CS no ve superadmins), el resto solo
+	// dentro de su empresa o a sí mismo.
+	GetByID(id, requesterID, tenantID uint, role string, isSuperadmin bool) (*models.User, error)
 	Create(req map[string]interface{}) (*models.User, error)
 	Update(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool, updates map[string]interface{}) (*models.User, error)
 	Delete(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) error
@@ -51,6 +54,17 @@ func (s *userService) authorizeUserTenant(target *models.User, requesterID, tena
 	if target.ID == requesterID {
 		return nil
 	}
+	// Customer Success gestiona usuarios de TODAS las empresas, como el
+	// superadmin: es soporte transversal y no tiene tenant propio (tenantID 0,
+	// que el chequeo de abajo rechazaría). La línea roja son las cuentas
+	// superadmin: editarles el correo o los datos sería una escalada de
+	// privilegios, así que esas solo las gestiona otro superadmin.
+	if role == string(models.UserTypeCustomerSuccess) {
+		if target.IsSuperadmin || target.UserType == models.UserTypeSuperadmin {
+			return errors.New("Access denied")
+		}
+		return nil
+	}
 	if tenantID == 0 || tenantForUser(target) != tenantID {
 		return errors.New("Access denied")
 	}
@@ -80,12 +94,12 @@ func (s *userService) GetAll(role, isManager, search string, companyID uint, off
 	return s.repo.GetAll(role, isManager, search, companyID, offset, limit)
 }
 
-func (s *userService) GetByID(id, requesterID, tenantID uint, isSuperadmin bool) (*models.User, error) {
+func (s *userService) GetByID(id, requesterID, tenantID uint, role string, isSuperadmin bool) (*models.User, error) {
 	user, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.authorizeUserTenant(user, requesterID, tenantID, isSuperadmin, false, "", false); err != nil {
+	if err := s.authorizeUserTenant(user, requesterID, tenantID, isSuperadmin, false, role, false); err != nil {
 		return nil, err
 	}
 	return user, nil
