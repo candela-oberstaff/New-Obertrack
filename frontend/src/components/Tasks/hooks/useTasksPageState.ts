@@ -240,7 +240,9 @@ export function useTasksPageState() {
       setUsers([])
       return
     }
-    const params: { limit: number; company_id?: number } = { limit: 1000 }
+    // Limite conservador: 200 usuarios por empresa es holgado para cualquier cliente real.
+    // Antes era 1000 (mismo patrón que tasks), generando users?limit=1000 en cada apertura.
+    const params: { limit: number; company_id?: number } = { limit: 200 }
     if (isSuperadmin && selectedCompanyId) params.company_id = selectedCompanyId
     const usersRes = await userService.getAll(params)
     setUsers(usersRes.data || [])

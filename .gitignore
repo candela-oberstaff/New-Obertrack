@@ -25,6 +25,7 @@ frontend/tsconfig.tsbuildinfo
 .env
 .env.local
 .env.*.local
+.env.remote
 backend/.env
 
 # OS-specific files

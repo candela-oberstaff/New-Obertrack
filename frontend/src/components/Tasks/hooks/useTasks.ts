@@ -33,7 +33,11 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
   const { data: tasks = [], isLoading, refetch } = useQuery({
     queryKey,
     queryFn: async () => {
-      const params: Record<string, unknown> = { limit: 1000 }
+      // 200 es el tope por tablero. En producción con limit=1000 se descargaban
+      // hasta 34 MB por apertura de tablero (tasks?limit=1000 → 34,781 kB).
+      // Con 200 el payload cae ~5x manteniendo capacidad para tableros grandes.
+      // Si un tablero supera 200 tareas se emite un console.warn (ver abajo).
+      const params: Record<string, unknown> = { limit: 200 }
       if (!showAllTasks && boardId) params.board_id = boardId
       if (companyId) params.company_id = companyId
       const tasksRes = await taskService.getAll(params)
