@@ -18,6 +18,8 @@ import {
   X,
 } from 'lucide-react'
 import { adminService, type ProfessionalLocation } from '../services/admin.service'
+import { ticketService } from '../services/ticket.service'
+import { EmailComposerModal, type ComposerRecipient } from '../components/Admin/EmailComposerModal'
 import { useCloseGuard, useDirtySnapshot } from '../components/ui/useCloseGuard'
 import { buildTemplateOptions } from '../lib/emergencyTemplates'
 import { EmergencyTemplatesModal } from '../components/Admin/EmergencyTemplatesModal'
@@ -95,10 +97,6 @@ const personPinIcon = (name: string) =>
     popupAnchor: [0, -34],
   })
 
-const whatsappHref = (phone: string) => {
-  const digits = (phone || '').replace(/\D/g, '')
-  return digits ? `https://wa.me/${digits}` : null
-}
 
 
 const haversineKm = (a: LatLng, b: LatLng) => {
@@ -160,6 +158,8 @@ export default function ProfessionalsMap() {
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [contactOpen, setContactOpen] = useState(false)
+  // Destinatario del composer con plantillas (botón de email por persona).
+  const [composeFor, setComposeFor] = useState<ComposerRecipient | null>(null)
   const [contactList, setContactList] = useState<ProfessionalLocation[]>([])
 
   const [showQuakes, setShowQuakes] = useState(false)
@@ -383,32 +383,47 @@ export default function ProfessionalsMap() {
     setContactOpen(true)
   }
 
+  // WhatsApp por la BANDEJA interna (mismo flujo que la ficha de empresa):
+  // abre (o crea) la conversación en nuestro módulo, con historial y estado de
+  // entrega, en vez de irse al wa.me del WhatsApp personal de quien atiende.
+  // Si la bandeja no está disponible, wa.me sigue siendo el respaldo.
+  const openWhatsApp = async (p: ProfessionalLocation) => {
+    adminService.logContact(p.id, 'whatsapp')
+    try {
+      const chat = await ticketService.openWaChat(p.phone_number || '', p.name)
+      if (!chat.ticket_id) throw new Error('sin conversación')
+      navigate(`/tickets/wa/${chat.ticket_id}`)
+    } catch {
+      const digits = (p.phone_number || '').replace(/\D/g, '')
+      if (digits) window.open(`https://wa.me/${digits}`, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   const contactButtons = (p: ProfessionalLocation) => {
-    const wa = whatsappHref(p.phone_number)
     return (
       <div className={styles['contact-actions']}>
         {p.email && (
           <button
             type="button"
             className={styles['icon-btn']}
-            onClick={() => { adminService.logContact(p.id, 'email'); openEmail([p]) }}
+            // Composer con plantillas (el mismo de la ficha de empresa); él
+            // registra el contacto al ENVIAR, no al abrir el modal.
+            onClick={() => setComposeFor({ id: p.id, name: p.name, email: p.email })}
             title="Enviar email"
           >
             <Mail size={16} />
           </button>
         )}
-        {wa && (
-          <a
+        {p.phone_number && (
+          <button
+            type="button"
             className={styles['icon-btn']}
-            href={wa}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => adminService.logContact(p.id, 'whatsapp')}
-            title="WhatsApp"
+            onClick={() => openWhatsApp(p)}
+            title="WhatsApp (bandeja interna)"
             style={{ color: '#25d366' }}
           >
             <MessageCircle size={16} />
-          </a>
+          </button>
         )}
         <button
           type="button"
@@ -794,6 +809,14 @@ export default function ProfessionalsMap() {
           onClose={() => setContactOpen(false)}
         />
       )}
+
+      {/* Email individual con plantillas — el mismo composer de la ficha de
+          empresa. El envío masivo (selección múltiple) sigue en ContactModal. */}
+      <EmailComposerModal
+        isOpen={!!composeFor}
+        onClose={() => setComposeFor(null)}
+        recipient={composeFor}
+      />
     </div>
   )
 }

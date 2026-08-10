@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { channelService, uploadService, adminService } from '../services/api'
+import { channelService, uploadService, adminService, userService } from '../services/api'
 import { Select } from '../components/ui/Select'
 import type { User } from '../types'
 import type { Channel, Message, SupportTicket, SupportAgentRef, GlobalSearchHit } from '../types/chat'
@@ -272,31 +272,61 @@ export default function SlackChat() {
     return () => clearTimeout(timeout)
   }, [highlightMessageId, messages])
 
+  // Deep link a un DM (/chat?userId=): los botones "Chat interno" del Mapa e
+  // Incidentes llegan aquí. Para superadmin el destinatario suele ser de una
+  // empresa DISTINTA a la del alcance actual (o no hay empresa elegida): antes
+  // el efecto no lo encontraba en allUsers y moría en silencio — el chat abría
+  // vacío. Ahora se resuelve la empresa del destinatario, se cambia el
+  // alcance, y cuando la lista del nuevo alcance llega este efecto vuelve a
+  // correr y abre (o crea) el DM. El ref evita resolver dos veces al mismo.
+  const dmScopeLookupRef = useRef<number | null>(null)
   useEffect(() => {
-    if (userIdParam && allUsers.length > 0) {
-      const recipientId = parseInt(userIdParam)
-      if (recipientId && recipientId !== user?.id) {
-        // Try to find if a DM with this user already exists in channels
-        const existingDm = channels.find(c => 
-          c.type === 'direct' && c.recipient?.id === recipientId
-        )
-        if (existingDm) {
-          setSelectedChannel(existingDm)
-          setSearchParams({}, { replace: true })
-        } else {
-          // Check if the recipient exists in allUsers
-          const recipientExists = allUsers.some(u => u.id === recipientId)
-          if (recipientExists) {
-            channelService.createDM(recipientId, isSuperadmin ? selectedCompanyId : null).then(async (dm) => {
-              await fetchChannels()
-              setSelectedChannel(dm as any)
-              setSearchParams({}, { replace: true })
-            }).catch(e => console.error(e))
-          }
-        }
-      }
+    if (!userIdParam) return
+    const recipientId = parseInt(userIdParam)
+    if (!recipientId || recipientId === user?.id) return
+
+    // ¿Ya hay DM en el sidebar? Abrir directo.
+    const existingDm = channels.find(c =>
+      c.type === 'direct' && c.recipient?.id === recipientId
+    )
+    if (existingDm) {
+      setSelectedChannel(existingDm)
+      setSearchParams({}, { replace: true })
+      return
     }
-  }, [userIdParam, allUsers, channels, user?.id, setSearchParams, setSelectedChannel, fetchChannels])
+
+    // ¿El destinatario está en el alcance actual? Crear el DM.
+    const recipientExists = allUsers.some(u => u.id === recipientId)
+    if (recipientExists) {
+      channelService.createDM(recipientId, isSuperadmin ? selectedCompanyId : null).then(async (dm) => {
+        await fetchChannels()
+        setSelectedChannel(dm as any)
+        setSearchParams({}, { replace: true })
+      }).catch(e => console.error(e))
+      return
+    }
+
+    // Superadmin con el alcance en otra empresa (o sin empresa): resolver a
+    // qué empresa pertenece y cambiar el selector. El refetch de allUsers
+    // re-dispara este efecto y entonces sí se crea el DM.
+    if (isSuperadmin && dmScopeLookupRef.current !== recipientId) {
+      dmScopeLookupRef.current = recipientId
+      userService.getById(recipientId)
+        .then((u: any) => {
+          const tenant = u?.user_type === 'empleador' ? u.id : u?.empleador_id
+          if (tenant && tenant !== selectedCompanyId) {
+            setSelectedCompanyId(tenant)
+          } else if (!tenant) {
+            setSearchParams({}, { replace: true })
+            showError('Esa persona no pertenece a ninguna empresa; no se puede abrir un DM.')
+          }
+        })
+        .catch(() => {
+          setSearchParams({}, { replace: true })
+          showError('No se pudo abrir el chat con esa persona.')
+        })
+    }
+  }, [userIdParam, allUsers, channels, user?.id, isSuperadmin, selectedCompanyId, setSelectedCompanyId, setSearchParams, setSelectedChannel, fetchChannels, showError])
 
   // Scroll to bottom only when the newest message changes (sending/receiving),
   // not when older history is prepended by the pagination.

@@ -631,7 +631,9 @@ func (s *ticketService) LookupWhatsAppChat(phone string) (*WhatsAppChatLookup, e
 		out.CanReply = true
 		return out, nil
 	}
-	out.CanReply = inbound
+	// Misma excepción que la guarda del envío: a nuestra propia gente (usuario
+	// activo de la plataforma) se le puede escribir primero.
+	out.CanReply = inbound || s.contactIsPlatformUser(digits)
 	return out, nil
 }
 
@@ -916,6 +918,13 @@ func (s *ticketService) PurgeWhatsAppSession(session string) (repository.WhatsAp
 // first — cold outreach is the highest ban risk. Disabled via WAHA_REQUIRE_INBOUND.
 // On a DB error it fails open (logs and allows) so a transient glitch never blocks
 // a legitimate reply; the rate limiter remains the primary anti-ban control.
+//
+// EXCEPCIÓN: si el número pertenece a un usuario ACTIVO de la plataforma
+// (profesional/empleado nuestro), se permite iniciar la conversación. El caso
+// real es el check-in de emergencias del Mapa ("¿estás bien?"): escribirle
+// primero a nuestra propia gente no es contacto en frío — nos conocen y el
+// riesgo de reporte que la guarda previene no aplica. Para números externos
+// (contactos de Zoho, desconocidos) la guarda sigue intacta.
 func (s *ticketService) ensureCanColdOutreach(ticketID uint) error {
 	if !s.wahaSvc.RequireInboundBeforeSend() {
 		return nil
@@ -926,9 +935,24 @@ func (s *ticketService) ensureCanColdOutreach(ticketID uint) error {
 		return nil
 	}
 	if !hasInbound {
+		if ticket, terr := s.repo.GetWithContact(ticketID); terr == nil && ticket.Contact != nil &&
+			s.contactIsPlatformUser(ticket.Contact.Phone) {
+			return nil
+		}
 		return apperrors.ErrColdOutreach
 	}
 	return nil
+}
+
+// contactIsPlatformUser dice si un teléfono pertenece a un usuario activo de
+// la plataforma (la excepción de la guarda de contacto en frío).
+func (s *ticketService) contactIsPlatformUser(phone string) bool {
+	digits := utils.NormalizePhoneDigits(phone)
+	if len(digits) < 8 || s.userRepo == nil {
+		return false
+	}
+	u, err := s.userRepo.FindActiveByPhoneDigits(digits)
+	return err == nil && u != nil
 }
 
 func (s *ticketService) SendWhatsAppReply(id, agentID uint, content string) (*models.TicketMessage, error) {

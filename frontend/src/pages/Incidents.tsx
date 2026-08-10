@@ -20,6 +20,8 @@ import {
   type IncidentStatus,
 } from '../services/admin.service'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../components/Auth/countries'
+import { ticketService } from '../services/ticket.service'
+import { EmailComposerModal, type ComposerRecipient } from '../components/Admin/EmailComposerModal'
 import { Select } from '../components/ui/Select'
 import { useCloseGuard } from '../components/ui/useCloseGuard'
 import { buildTemplateOptions } from '../lib/emergencyTemplates'
@@ -54,12 +56,6 @@ const STATUS_COLOR: Record<IncidentStatus, string> = {
   pendiente: '#94a3b8',
 }
 
-const whatsappHref = (phone: string) => {
-  const digits = (phone || '').replace(/\D/g, '')
-  return digits ? `https://wa.me/${digits}` : null
-}
-
-const mailtoHref = (email: string) => (email ? `mailto:${email}` : null)
 
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
@@ -246,6 +242,8 @@ function CreateIncidentModal({ onClose, onCreated, initial }: { onClose: () => v
 }
 
 function IncidentDetailModal({ id, onClose }: { id: number; onClose: () => void }) {
+  // Destinatario del composer de email con plantillas (botón por persona).
+  const [composeFor, setComposeFor] = useState<ComposerRecipient | null>(null)
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [broadcastOpen, setBroadcastOpen] = useState(false)
@@ -292,20 +290,44 @@ function IncidentDetailModal({ id, onClose }: { id: number; onClose: () => void 
     },
   })
 
+  // Mismos tres canales que el Mapa, con los flujos internos de la app:
+  // composer con plantillas para el email, bandeja de WhatsApp propia (wa.me
+  // solo como respaldo) y chat interno.
+  const openWhatsApp = async (p: IncidentProfessional) => {
+    adminService.logContact(p.id, 'whatsapp')
+    try {
+      const chat = await ticketService.openWaChat(p.phone_number || '', p.name)
+      if (!chat.ticket_id) throw new Error('sin conversación')
+      navigate(`/tickets/wa/${chat.ticket_id}`)
+    } catch {
+      const digits = (p.phone_number || '').replace(/\D/g, '')
+      if (digits) window.open(`https://wa.me/${digits}`, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   const contactButtons = (p: IncidentProfessional) => {
-    const wa = whatsappHref(p.phone_number)
-    const mail = mailtoHref(p.email)
     return (
       <div className={styles['contact-actions']}>
-        {mail && (
-          <a className={styles['icon-btn']} href={mail} onClick={() => adminService.logContact(p.id, 'email')} title="Email">
+        {p.email && (
+          <button
+            type="button"
+            className={styles['icon-btn']}
+            onClick={() => setComposeFor({ id: p.id, name: p.name, email: p.email })}
+            title="Email"
+          >
             <Mail size={15} />
-          </a>
+          </button>
         )}
-        {wa && (
-          <a className={styles['icon-btn']} href={wa} target="_blank" rel="noreferrer" onClick={() => adminService.logContact(p.id, 'whatsapp')} title="WhatsApp" style={{ color: '#25d366' }}>
+        {p.phone_number && (
+          <button
+            type="button"
+            className={styles['icon-btn']}
+            onClick={() => openWhatsApp(p)}
+            title="WhatsApp (bandeja interna)"
+            style={{ color: '#25d366' }}
+          >
             <MessageCircle size={15} />
-          </a>
+          </button>
         )}
         <button
           type="button"
@@ -428,6 +450,13 @@ function IncidentDetailModal({ id, onClose }: { id: number; onClose: () => void 
         {broadcastOpen && (
           <BroadcastModal id={id} onClose={() => setBroadcastOpen(false)} />
         )}
+
+        {/* Email individual con plantillas (mismo composer que la ficha de empresa). */}
+        <EmailComposerModal
+          isOpen={!!composeFor}
+          onClose={() => setComposeFor(null)}
+          recipient={composeFor}
+        />
       </div>
     </div>
   )

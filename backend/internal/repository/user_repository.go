@@ -11,6 +11,12 @@ type UserRepository interface {
 	CountCompanies() (int64, error)
 	GetByID(id uint) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
+	// FindActiveByPhoneDigits busca un usuario ACTIVO cuyo teléfono coincida con
+	// los dígitos dados (se comparan los últimos 10, para tolerar prefijos de
+	// país: WhatsApp entrega "58414..." y la ficha puede tener "0414...").
+	// Sustenta la excepción de contacto en frío: escribirle primero a nuestra
+	// propia gente no es cold outreach.
+	FindActiveByPhoneDigits(digits string) (*models.User, error)
 	GetByObersuiteID(obersuiteID string) (*models.User, error)
 	GetByResetToken(token string) (*models.User, error)
 	Create(user *models.User) error
@@ -145,6 +151,17 @@ func (r *userRepository) GetByID(id uint) (*models.User, error) {
 func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 	var user models.User
 	if err := r.db.Where("email = ?", email).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) FindActiveByPhoneDigits(digits string) (*models.User, error) {
+	var user models.User
+	if err := r.db.
+		Where(`is_active = ? AND right(regexp_replace(COALESCE(phone_number, ''), '\D', '', 'g'), 10) = right(?, 10)
+			AND phone_number IS NOT NULL AND phone_number <> ''`, true, digits).
+		First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil
