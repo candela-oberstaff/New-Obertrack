@@ -316,10 +316,33 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, user)
 }
 
+// forbidCSOnSuperadmin corta la acción cuando un actor NO superadmin (Customer
+// Success, que requireAdminPanel deja entrar al panel) apunta a una cuenta
+// superadmin: editarla, borrarla o resetear su clave sería una escalada de
+// privilegios. Devuelve true si ya respondió y el handler debe abortar.
+func (h *AdminHandler) forbidCSOnSuperadmin(c *gin.Context, targetID uint) bool {
+	if middleware.IsSuperadmin(c) {
+		return false
+	}
+	isSuper, err := h.service.IsSuperadminUser(targetID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return true
+	}
+	if isSuper {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Las cuentas superadmin solo las gestiona otro superadmin."})
+		return true
+	}
+	return false
+}
+
 func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	if h.forbidCSOnSuperadmin(c, uint(id)) {
 		return
 	}
 
@@ -352,6 +375,14 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	// users), with no way to recover if they are the last active superadmin.
 	if req.IsActive != nil && !*req.IsActive && uint(id) == middleware.GetUserID(c) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No puedes desactivar tu propia cuenta."})
+		return
+	}
+
+	// Otorgar el rol superadmin queda reservado a superadmins: sin esto, un
+	// Customer Success podría ascender una cuenta (o la suya vía otro usuario)
+	// y saltarse todas las guardas.
+	if req.UserType == string(models.UserTypeSuperadmin) && !middleware.IsSuperadmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Solo un superadmin puede otorgar el rol superadmin."})
 		return
 	}
 
@@ -496,6 +527,16 @@ func (h *AdminHandler) BulkDeleteUsers(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No hay usuarios seleccionados"})
 		return
 	}
+	// Misma línea roja que el borrado individual: un actor no superadmin (CS)
+	// no puede colar cuentas superadmin en el lote.
+	if !middleware.IsSuperadmin(c) {
+		for _, uid := range req.UserIDs {
+			if isSuper, serr := h.service.IsSuperadminUser(uid); serr == nil && isSuper {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Las cuentas superadmin solo las gestiona otro superadmin."})
+				return
+			}
+		}
+	}
 	deleted, skipped, err := h.service.BulkDeleteUsers(req.UserIDs, middleware.GetUserID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -566,6 +607,9 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 
 	if uint(id) == middleware.GetUserID(c) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No puedes eliminar tu propia cuenta."})
+		return
+	}
+	if h.forbidCSOnSuperadmin(c, uint(id)) {
 		return
 	}
 
@@ -820,6 +864,11 @@ func (h *AdminHandler) ResetPassword(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	// Resetear la clave de un superadmin es tomarse su cuenta: fuera del
+	// alcance de Customer Success.
+	if h.forbidCSOnSuperadmin(c, uint(id)) {
 		return
 	}
 

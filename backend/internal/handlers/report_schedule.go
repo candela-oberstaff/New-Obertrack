@@ -125,15 +125,20 @@ func (h *ReportScheduleHandler) RunNow(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"sent": sent, "skipped": skipped, "failed": failed})
 }
 
+// ListRuns pagina la bitácora: ?page=1&limit=10 → {runs, total, page, limit}.
 func (h *ReportScheduleHandler) ListRuns(c *gin.Context) {
-	limit := 50
+	limit := 10
 	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
 		limit = v
 	}
-	runs, err := h.repo.ListRuns(limit)
+	page := 1
+	if v, err := strconv.Atoi(c.Query("page")); err == nil && v > 0 {
+		page = v
+	}
+	runs, total, err := h.repo.ListRuns((page-1)*limit, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo cargar la bitácora"})
 		return
 	}
-	c.JSON(http.StatusOK, runs)
+	c.JSON(http.StatusOK, gin.H{"runs": runs, "total": total, "page": page, "limit": limit})
 }

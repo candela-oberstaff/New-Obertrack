@@ -18,6 +18,15 @@ import (
 // generaba un correo a TODOS los agentes CS+IT — con volumen real, spam puro.
 const supportDigestWindow = 15 * time.Minute
 
+// supportTicketEmailEnabled — INTERRUPTOR del correo automático de tickets.
+//
+// DESHABILITADO a pedido del equipo (10/08/2026): los agentes reciben la
+// campanita, el push del navegador y ven el tablero; el correo por cada
+// solicitud les resultaba ruido. Todo el código de abajo (digest, lote,
+// plantillas) queda intacto y compilando: para reactivarlo, cambia este
+// false por true y reconstruye.
+const supportTicketEmailEnabled = false
+
 type SupportNotifier struct {
 	brevoSvc     *BrevoService
 	userRepo     repository.UserRepository
@@ -81,6 +90,10 @@ func (n *SupportNotifier) recipients() []BrevoContact {
 // ticket sale al instante (la urgencia no espera 15 minutos); los siguientes
 // dentro de la ventana se agrupan en un solo correo.
 func (n *SupportNotifier) Notify(info SupportTicketInfo) {
+	// Correo de tickets apagado por el interruptor (ver supportTicketEmailEnabled).
+	if !supportTicketEmailEnabled {
+		return
+	}
 	if n == nil || n.brevoSvc == nil {
 		return
 	}

@@ -11,6 +11,14 @@ import (
 )
 
 const (
+	// chatDigestEnabled — INTERRUPTOR del correo "tienes mensajes esperando".
+	//
+	// DESHABILITADO a pedido del equipo (10/08/2026): estaba llegando a
+	// usuarios reales a diario y se decidió pausarlo. El watcher completo
+	// queda intacto y compilando: para reactivarlo, cambia este false por
+	// true y reconstruye. (Web Push y la campanita siguen activos.)
+	chatDigestEnabled = false
+
 	// chatDigestPendingFor: cuánto tiempo debe llevar pendiente el mensaje sin
 	// leer MÁS ANTIGUO antes de avisar por correo. Corto sería spam (lo iban a
 	// leer igual); esto cubre al que de verdad no se enteró.
@@ -38,6 +46,11 @@ func NewChatDigestWatcher(repo repository.ChannelRepository, brevo *BrevoService
 
 // Start lanza el chequeo periódico en segundo plano.
 func (w *ChatDigestWatcher) Start() {
+	// Apagado por el interruptor (ver chatDigestEnabled): no arranca el loop.
+	if !chatDigestEnabled {
+		log.Println("[chat-digest] deshabilitado por configuración (chatDigestEnabled=false)")
+		return
+	}
 	go func() {
 		time.Sleep(chatDigestFirstRunDelay)
 		for {

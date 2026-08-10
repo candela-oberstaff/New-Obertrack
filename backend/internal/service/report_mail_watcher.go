@@ -32,14 +32,22 @@ type ReportMailWatcher struct {
 	scheduleRepo repository.ReportScheduleRepository
 	userRepo     repository.UserRepository
 	workHourSvc  WorkHourService
+	// whRepo y notifSvc sustentan el CIERRE DE MES: cuando el envío es MENSUAL,
+	// antes de mandar el reporte se aprueban las jornadas del período que
+	// quedaron pendientes (tarjeta "Aprobación de horas automática al final del
+	// mes"). Opcionales: sin ellos el watcher solo envía reportes, como antes.
+	whRepo   repository.WorkHourRepository
+	notifSvc NotificationService
 }
 
 func NewReportMailWatcher(
 	scheduleRepo repository.ReportScheduleRepository,
 	userRepo repository.UserRepository,
 	workHourSvc WorkHourService,
+	whRepo repository.WorkHourRepository,
+	notifSvc NotificationService,
 ) *ReportMailWatcher {
-	return &ReportMailWatcher{scheduleRepo: scheduleRepo, userRepo: userRepo, workHourSvc: workHourSvc}
+	return &ReportMailWatcher{scheduleRepo: scheduleRepo, userRepo: userRepo, workHourSvc: workHourSvc, whRepo: whRepo, notifSvc: notifSvc}
 }
 
 func (w *ReportMailWatcher) Start() {
@@ -101,6 +109,16 @@ func (w *ReportMailWatcher) RunOnce(force bool) (sent, skipped, failed int, err 
 			continue
 		}
 
+		// CIERRE DE MES: en el envío MENSUAL, aprueba primero las jornadas del
+		// período que quedaron pendientes — así el reporte sale con todo en
+		// verde y la empresa no tiene que perseguirlas una a una. Su propio
+		// libro (month_close_runs) lo hace idempotente: un reintento del correo
+		// jamás re-aprueba. Solo aplica a la frecuencia mensual: los reportes
+		// semanales/diarios son informativos y no cierran nada.
+		if cfg.Frequency == models.ReportFreqMonthly {
+			w.autoApproveMonth(&emp, start, end)
+		}
+
 		run := &models.ReportRun{
 			TenantID:       emp.ID,
 			PeriodKey:      periodKey,
@@ -126,6 +144,45 @@ func (w *ReportMailWatcher) RunOnce(force bool) (sent, skipped, failed int, err 
 
 	log.Printf("[report-mail-watcher] período=%s enviados=%d omitidos=%d fallidos=%d", periodKey, sent, skipped, failed)
 	return sent, skipped, failed, nil
+}
+
+// autoApproveMonth aprueba las jornadas PENDIENTES del período mensual en
+// nombre de la empresa (su aprobación tácita de fin de mes), UNA sola vez por
+// (empresa, período). Best-effort: un fallo aquí no frena el envío del reporte.
+func (w *ReportMailWatcher) autoApproveMonth(emp *models.User, start, end time.Time) {
+	if w.whRepo == nil {
+		return
+	}
+	period := start.Format("2006-01")
+	run, err := w.whRepo.GetMonthCloseRun(emp.ID, period)
+	if err != nil {
+		log.Printf("[report-mail-watcher] cierre %s empresa %d: no se pudo consultar: %v", period, emp.ID, err)
+		return
+	}
+	if run != nil {
+		return // ya cerrado (aunque el correo se esté reintentando)
+	}
+
+	approved, err := w.whRepo.ApprovePendingInRange(emp.ID, start, end, emp.ID, time.Now())
+	if err != nil {
+		log.Printf("[report-mail-watcher] cierre %s empresa %d: no se pudieron aprobar pendientes: %v", period, emp.ID, err)
+		return
+	}
+	if err := w.whRepo.CreateMonthCloseRun(&models.MonthCloseRun{
+		TenantID: emp.ID, Period: period, ApprovedCount: approved, ApprovedAt: time.Now(),
+	}); err != nil {
+		log.Printf("[report-mail-watcher] cierre %s empresa %d: no se pudo registrar: %v", period, emp.ID, err)
+	}
+
+	if approved > 0 {
+		log.Printf("[report-mail-watcher] cierre %s empresa %d (%s): %d jornada(s) pendientes aprobadas automáticamente", period, emp.ID, emp.CompanyName, approved)
+		if w.notifSvc != nil {
+			label := fmt.Sprintf("%s %d", monthsEsReport[int(start.Month())-1], start.Year())
+			_ = w.notifSvc.CreateNotification(emp.ID, "month_close", "Cierre de mes",
+				fmt.Sprintf("Cierre de %s: se aprobaron automáticamente %d jornada(s) que seguían pendientes. El reporte mensual va en camino a tu correo.", label, approved),
+				map[string]interface{}{"link": "/work-hours", "period": period})
+		}
+	}
 }
 
 // isDue decide si `now` cae dentro de la ventana de envío configurada.

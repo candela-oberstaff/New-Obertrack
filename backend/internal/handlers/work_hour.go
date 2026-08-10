@@ -144,7 +144,7 @@ func (h *WorkHourHandler) Approve(c *gin.Context) {
 	isManager := middleware.IsManager(c)
 	tenantID := middleware.GetTenantID(c)
 
-	err := h.svc.Approve(req.IDs, userID, role, isSuperadmin, isManager, tenantID)
+	approved, skipped, err := h.svc.Approve(req.IDs, userID, role, isSuperadmin, isManager, tenantID)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "No work hours found" {
@@ -156,7 +156,9 @@ func (h *WorkHourHandler) Approve(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Work hours approved"})
+	// approved/skipped: el frontend informa cuántas entraron y cuántas se
+	// omitieron (las propias del manager, u otras fuera de su equipo).
+	c.JSON(http.StatusOK, gin.H{"message": "Work hours approved", "approved": approved, "skipped": skipped})
 }
 
 func (h *WorkHourHandler) Reject(c *gin.Context) {
@@ -175,7 +177,7 @@ func (h *WorkHourHandler) Reject(c *gin.Context) {
 	isManager := middleware.IsManager(c)
 	tenantID := middleware.GetTenantID(c)
 
-	err := h.svc.Reject(req.IDs, userID, role, isSuperadmin, isManager, tenantID, req.Reason)
+	rejected, skipped, err := h.svc.Reject(req.IDs, userID, role, isSuperadmin, isManager, tenantID, req.Reason)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "No work hours found" || err.Error() == "Rejection reason is required" {
@@ -187,7 +189,7 @@ func (h *WorkHourHandler) Reject(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Work hours rejected"})
+	c.JSON(http.StatusOK, gin.H{"message": "Work hours rejected", "rejected": rejected, "skipped": skipped})
 }
 
 func (h *WorkHourHandler) GetSummary(c *gin.Context) {

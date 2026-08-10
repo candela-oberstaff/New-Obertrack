@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -27,6 +28,18 @@ type WorkHourRepository interface {
 	ListAbsences(userID, tenantID uint, start, end time.Time) ([]models.WorkHour, error)
 	CountActiveToday() (int64, error)
 	GetTotalHoursMonth() (float64, error)
+
+	// --- Cierre de mes automático (lo invoca ReportMailWatcher en el envío
+	// mensual, según la configuración de /admin/settings) ---
+	// ApprovePendingInRange aprueba de golpe las jornadas PENDIENTES (ni
+	// aprobadas ni rechazadas) de una empresa en un rango de fechas. Devuelve
+	// cuántas aprobó.
+	ApprovePendingInRange(tenantID uint, start, end time.Time, approvedBy uint, approvedAt time.Time) (int64, error)
+	// GetMonthCloseRun devuelve el cierre de un (empresa, período), o nil si no
+	// se ha corrido; CreateMonthCloseRun lo registra. Es el libro que hace la
+	// aprobación idempotente aunque el correo del reporte se reintente.
+	GetMonthCloseRun(tenantID uint, period string) (*models.MonthCloseRun, error)
+	CreateMonthCloseRun(run *models.MonthCloseRun) error
 }
 
 type workHourRepository struct {
@@ -43,6 +56,36 @@ func (r *workHourRepository) GetDB() *gorm.DB {
 
 func (r *workHourRepository) Create(workHour *models.WorkHour) error {
 	return r.db.Create(workHour).Error
+}
+
+// Cierre de mes automático
+
+func (r *workHourRepository) ApprovePendingInRange(tenantID uint, start, end time.Time, approvedBy uint, approvedAt time.Time) (int64, error) {
+	res := r.db.Model(&models.WorkHour{}).
+		Where("tenant_id = ? AND approved = ? AND rejected = ? AND work_date >= ? AND work_date <= ?",
+			tenantID, false, false, start, end).
+		Updates(map[string]interface{}{
+			"approved":    true,
+			"approved_by": approvedBy,
+			"approved_at": approvedAt,
+		})
+	return res.RowsAffected, res.Error
+}
+
+func (r *workHourRepository) GetMonthCloseRun(tenantID uint, period string) (*models.MonthCloseRun, error) {
+	var run models.MonthCloseRun
+	err := r.db.Where("tenant_id = ? AND period = ?", tenantID, period).First(&run).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func (r *workHourRepository) CreateMonthCloseRun(run *models.MonthCloseRun) error {
+	return r.db.Create(run).Error
 }
 
 func (r *workHourRepository) FindByID(id uint) (*models.WorkHour, error) {

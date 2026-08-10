@@ -186,7 +186,9 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	{
 		admin.GET("/users/:id/reports", d.admin.GetManagerReports)
 		admin.POST("/bulk-assign-manager", d.admin.BulkAssignManager)
-		admin.POST("/bulk-delete-users", d.admin.BulkDeleteUsers)
+		// Borrar cuentas es solo de superadmin: CS gestiona y edita, pero no
+		// elimina (misma regla que la Papelera).
+		admin.POST("/bulk-delete-users", middleware.RequireSuperadmin(), d.admin.BulkDeleteUsers)
 		// Papelera: excluida de Customer Success. Va con su propia guarda porque
 		// cuelga del grupo admin, que sí abre a CS — sin esto entraría de rebote.
 		admin.GET("/trash", middleware.RequireSuperadmin(), d.trash.List)
@@ -213,7 +215,7 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/users", d.admin.GetAllUsers)
 		admin.POST("/users", d.admin.CreateUser)
 		admin.PUT("/users/:id", d.admin.UpdateUser)
-		admin.DELETE("/users/:id", d.admin.DeleteUser)
+		admin.DELETE("/users/:id", middleware.RequireSuperadmin(), d.admin.DeleteUser)
 		admin.POST("/users/:id/reset-password", d.admin.ResetPassword)
 
 		// Configuración de la app: SOLO superadmin, ni siquiera lectura para CS

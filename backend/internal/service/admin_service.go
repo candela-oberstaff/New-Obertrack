@@ -45,6 +45,11 @@ type ProfessionalLocation struct {
 var ErrLastSuperadmin = errors.New("Es el último superadmin activo: asigná otro superadmin antes de degradar, desactivar o eliminar esta cuenta.")
 
 type AdminService interface {
+	// IsSuperadminUser dice si la cuenta objetivo es un superadmin. Sustenta la
+	// línea roja de Customer Success: puede gestionar usuarios, pero editar,
+	// borrar o resetear la clave de un superadmin sería una escalada de
+	// privilegios — eso solo lo hace otro superadmin.
+	IsSuperadminUser(id uint) (bool, error)
 	GetDashboardMetrics() (*DashboardMetrics, error)
 	GetCompanies() ([]repository.CompanyMetric, error)
 	// tenantID 0 en ambas = todas las empresas (panel de admin); con valor,
@@ -510,6 +515,14 @@ func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, err
 		return nil, err
 	}
 	return user, nil
+}
+
+func (s *adminService) IsSuperadminUser(id uint) (bool, error) {
+	user, err := s.userRepo.GetByID(id)
+	if err != nil {
+		return false, err
+	}
+	return user.IsSuperadmin || user.UserType == models.UserTypeSuperadmin, nil
 }
 
 func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*models.User, error) {

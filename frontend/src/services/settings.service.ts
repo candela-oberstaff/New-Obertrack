@@ -47,8 +47,12 @@ export const settingsService = {
     const { data } = await api.post<RunNowResult>('/admin/settings/report-schedule/run-now')
     return data
   },
-  getReportRuns: async (limit = 50) => {
-    const { data } = await api.get<ReportRun[]>('/admin/settings/report-schedule/runs', { params: { limit } })
+  /** Bitácora paginada: página 1-based; devuelve también el total. */
+  getReportRuns: async (page = 1, limit = 10) => {
+    const { data } = await api.get<{ runs: ReportRun[]; total: number; page: number; limit: number }>(
+      '/admin/settings/report-schedule/runs',
+      { params: { page, limit } },
+    )
     return data
   },
 }
