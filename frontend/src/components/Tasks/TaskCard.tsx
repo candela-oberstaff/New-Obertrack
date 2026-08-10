@@ -31,11 +31,7 @@ export function TaskCard({ task, isDragging, isPlaceholder, onClick }: TaskCardP
     >
       <div className={styles['card-priority']} style={{ backgroundColor: getPriorityColor(task.priority) }} />
       <h4 className={styles['card-title']}>{task.title}</h4>
-      {task.description && (
-        <p className={styles['card-description']}>
-          {(() => { const t = htmlToText(task.description); return t.length > 100 ? t.substring(0, 100) + '...' : t })()}
-        </p>
-      )}
+
       <div className={styles['card-meta']}>
         <div className={styles['card-dates']}>
           {task.start_date && (

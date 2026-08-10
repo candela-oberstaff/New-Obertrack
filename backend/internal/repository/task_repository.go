@@ -112,7 +112,8 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 		return nil, 0, err
 	}
 
-	if err := query.Select("DISTINCT tasks.*").Preload("Assignees").Preload("Attachments").
+	if err := query.Select("DISTINCT tasks.id, tasks.title, tasks.status, tasks.priority, tasks.start_date, tasks.end_date, tasks.completed, tasks.created_by, tasks.board_id, tasks.tenant_id, tasks.order, tasks.visible_para, tasks.created_at, tasks.updated_at, tasks.deleted_at").
+		Preload("Assignees").Preload("Attachments").
 		Offset(offset).Limit(limit).Order("tasks.created_at DESC").Find(&tasks).Error; err != nil {
 		return nil, 0, err
 	}

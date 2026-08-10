@@ -21,6 +21,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
   const [isEditing, setIsEditing] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [fullTask, setFullTask] = useState<Task>(task!)
   const [taskComments, setTaskComments] = useState<any[]>([])
   const [attachments, setAttachments] = useState<TaskAttachment[]>([])
   const [isLoadingComments, setIsLoadingComments] = useState(false)
@@ -39,6 +40,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
     setIsLoadingComments(true)
     try {
       const updated = await taskService.getById(task.id)
+      setFullTask(updated)
       setTaskComments(updated.comments || [])
       setAttachments((updated as any).attachments || [])
     } catch (error) {
@@ -50,6 +52,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
 
   useEffect(() => {
     if (task) {
+      setFullTask(task)
       setTaskComments(task.comments || [])
       setAttachments((task as any).attachments || [])
       setIsEditing(false)
@@ -101,7 +104,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
       <div className={styles['panel-content']}>
         {isEditing ? (
           <TaskDetailEditForm
-            task={task}
+            task={fullTask}
             users={users}
             columns={columns}
             onCancel={() => setIsEditing(false)}
@@ -111,7 +114,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
           />
         ) : (
           <TaskDetailView
-            task={task}
+            task={fullTask}
             columns={columns}
             attachments={attachments}
             comments={taskComments}
