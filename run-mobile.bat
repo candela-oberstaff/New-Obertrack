@@ -90,7 +90,16 @@ echo Lanzando la app en el telefono...
 echo (Si el login dice "No se pudo conectar", revisa que el telefono y la PC
 echo  esten en la misma Wi-Fi y que el Firewall de Windows permita el puerto %BACKEND_PORT%.)
 echo.
-cd /d "%REPO_DIR%obertrack_mobile"
+REM La app movil es un repo aparte (github.com/OsvellChacon/Obertrack-Mobile)
+REM y vive como carpeta hermana de este repo, no dentro de el.
+set "MOBILE_DIR=%REPO_DIR%..\obertrack_mobile"
+if not exist "%MOBILE_DIR%\pubspec.yaml" (
+    echo No se encontro el proyecto movil en "%MOBILE_DIR%".
+    echo Clonalo con: git clone https://github.com/OsvellChacon/Obertrack-Mobile.git obertrack_mobile
+    pause
+    exit /b 1
+)
+cd /d "%MOBILE_DIR%"
 flutter run -d %DEVICE_ID% --dart-define=API_BASE_URL=http://!API_IP!:%BACKEND_PORT%
 
 echo.
