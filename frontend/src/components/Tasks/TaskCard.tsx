@@ -2,7 +2,6 @@ import { Paperclip } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Task } from '../../types'
-import { htmlToText } from '../../utils/sanitize'
 import { parseDateOnly, formatDateOnly, todayMidnight } from '../../utils/date'
 import styles from '../../pages/Tasks.module.css'
 
