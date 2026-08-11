@@ -227,6 +227,14 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 			settings.PUT("/report-schedule", d.reportSched.Update)
 			settings.POST("/report-schedule/run-now", d.reportSched.RunNow)
 			settings.GET("/report-schedule/runs", d.reportSched.ListRuns)
+
+			// Correos del sistema: catálogo, interruptor por tipo y envío de
+			// una muestra para revisar el formato.
+			settings.GET("/emails", d.emailSettings.List)
+			// Interruptor general (apagar/encender todo de una vez).
+			settings.PUT("/emails", d.emailSettings.UpdateAll)
+			settings.PUT("/emails/:key", d.emailSettings.Update)
+			settings.POST("/emails/:key/test", d.emailSettings.SendTest)
 		}
 
 		// Membresías (multi-empresa + expediente). GET lo puede consultar CS;

@@ -1838,6 +1838,18 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.MonthCloseRun{})
 			},
 		},
+		{
+			// Interruptores de correo por tipo (Configuración → Correos): sin fila
+			// = activo, que es el comportamiento por defecto histórico.
+			ID: "202608111200_email_settings",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating email_settings table...")
+				return tx.AutoMigrate(&models.EmailSetting{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.EmailSetting{})
+			},
+		},
 		// Future migrations go here
 	})
 

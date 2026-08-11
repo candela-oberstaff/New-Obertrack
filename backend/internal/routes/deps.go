@@ -49,6 +49,7 @@ type deps struct {
 	profileChange *handlers.ProfileChangeHandler
 	trash         *handlers.TrashHandler
 	reportSched   *handlers.ReportScheduleHandler
+	emailSettings *handlers.EmailSettingsHandler
 	onboarding    *handlers.OnboardingHandler
 	induction     *handlers.InductionHandler
 	emailPreview  *handlers.EmailPreviewHandler
@@ -97,6 +98,11 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 
 	// Integrations
 	brevoSvc := service.NewBrevoService()
+	// Interruptores de correo por tipo (Configuración → Correos). Se cablea
+	// dentro de Brevo para que TODO envío hecho con SendEmailKind los respete,
+	// sin que cada emisor tenga que consultarlos.
+	emailSettingsSvc := service.NewEmailSettingsService(repository.NewEmailSettingRepository(db), brevoSvc)
+	brevoSvc.SetKindGate(emailSettingsSvc.Enabled)
 	wahaSvc := service.NewWahaService()
 	zohoSvc := service.NewZohoService()
 	slackSvc := service.NewSlackService()
@@ -268,6 +274,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		profileChange: handlers.NewProfileChangeHandler(profileChangeSvc),
 		trash:         handlers.NewTrashHandler(service.NewTrashService(db)),
 		reportSched:   handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
+		emailSettings: handlers.NewEmailSettingsHandler(emailSettingsSvc),
 		onboarding:    handlers.NewOnboardingHandler(onboardingSvc),
 		induction:     handlers.NewInductionHandler(inductionSvc),
 		emailPreview:  handlers.NewEmailPreviewHandler(),

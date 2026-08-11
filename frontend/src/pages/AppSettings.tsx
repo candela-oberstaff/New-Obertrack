@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Clock, Play, Save, XCircle } from 'lucide-react'
+import { CheckCircle2, Clock, Mail, Play, Save, XCircle } from 'lucide-react'
 import { useReportSchedule } from '../hooks/useReportSchedule'
+import { EmailTypesPanel } from '../components/Admin/EmailTypesPanel'
 import { useNotification } from '../context/NotificationContext'
 import { Button, Select, Skeleton } from '../components/ui'
 import type { ReportFrequency, ReportSchedule } from '../services/api'
@@ -51,10 +52,18 @@ function describe(cfg: ReportSchedule): string {
   return `El día ${cfg.day_of_month} de cada mes a las ${at} se envía el reporte del mes anterior.`
 }
 
+type TabId = 'reports' | 'emails'
+
+const TABS: { id: TabId; label: string; icon: typeof Clock }[] = [
+  { id: 'reports', label: 'Reportes', icon: Clock },
+  { id: 'emails', label: 'Correos', icon: Mail },
+]
+
 export default function AppSettings() {
   const { schedule, runs, runsTotal, runsPage, setRunsPage, runsPageSize, isLoading, save, isSaving, runNow, isRunning } = useReportSchedule()
   const { success, error: showError } = useNotification()
   const [form, setForm] = useState<ReportSchedule | null>(null)
+  const [tab, setTab] = useState<TabId>('reports')
 
   useEffect(() => {
     if (schedule) setForm(schedule)
@@ -111,8 +120,33 @@ export default function AppSettings() {
         </p>
       </div>
 
-      {/* Dos columnas en pantallas anchas, una sola cuando no entran. Sin media
-          queries: auto-fit colapsa la grilla por sí solo. */}
+      {/* Pestañas: la programación de reportes y el catálogo de correos son dos
+          tareas distintas y cada una necesita el ancho completo. */}
+      <div className={styles['admin-tabs']}>
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`${styles['tab-btn']} ${tab === t.id ? styles['active'] : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            <t.icon size={18} />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className={styles['mobile-tabs']}>
+        <Select
+          fullWidth
+          value={tab}
+          onChange={(v) => setTab(String(v) as TabId)}
+          options={TABS.map((t) => ({ value: t.id, label: t.label }))}
+        />
+      </div>
+
+      {tab === 'emails' && <EmailTypesPanel />}
+
+      {tab === 'reports' && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: 24, alignItems: 'start' }}>
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 24 }}>
         <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -266,6 +300,7 @@ export default function AppSettings() {
         )}
         </div>
       </div>
+      )}
     </div>
   )
 }

@@ -265,7 +265,7 @@ func (h *EmailHandler) dispatchPersonalized(recipients map[string]utils.EmailRec
 			body = utils.RenderVariablesHTML(htmlContent, data)
 			subj = utils.RenderVariablesText(subject, data)
 		}
-		if err := h.brevoSvc.SendEmail(r.Email, r.Name, subj, body); err != nil {
+		if err := h.brevoSvc.SendEmailKind(service.EmailKindCampaign, r.Email, r.Name, subj, body); err != nil {
 			sendErrors = append(sendErrors, fmt.Sprintf("%s: %s", r.Email, err.Error()))
 			continue
 		}
@@ -367,7 +367,7 @@ func (h *EmailHandler) SendTestEmail(c *gin.Context) {
 	subject := "[PRUEBA] " + utils.RenderVariablesText(req.Subject, data)
 	body := utils.RenderVariablesHTML(html, data)
 
-	if sendErr := h.brevoSvc.SendEmail(toEmail, toName, subject, body); sendErr != nil {
+	if sendErr := h.brevoSvc.SendEmailKind(service.EmailKindCampaign, toEmail, toName, subject, body); sendErr != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo enviar la prueba: " + sendErr.Error()})
 		return
 	}
@@ -526,7 +526,7 @@ func (h *EmailHandler) SendQuickEmail(c *gin.Context) {
 	html = utils.RenderVariablesHTML(html, data)
 	subject := utils.RenderVariablesText(req.Subject, data)
 
-	if err := h.brevoSvc.SendEmail(req.ToEmail, req.ToName, subject, html); err != nil {
+	if err := h.brevoSvc.SendEmailKind(service.EmailKindManualComposer, req.ToEmail, req.ToName, subject, html); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al enviar el email: " + err.Error()})
 		return
 	}

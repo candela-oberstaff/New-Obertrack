@@ -636,9 +636,17 @@ func (r *channelRepository) GetUserStatuses(userIDs []uint, tenantID uint, isSup
 // It is written as a JOIN condition on channel_messages ⋈ channel_members so both
 // the per-channel grouped query and the global total stay byte-for-byte identical
 // and can never diverge. The single ? placeholder binds the is_deleted = false arg.
+// El filtro parent_id IS NULL es lo que evita las "notificaciones fantasma":
+// GetMessages solo devuelve mensajes RAÍZ (línea del canal), pero el contador
+// incluía también las respuestas de hilo. El badge marcaba mensajes que el
+// canal no muestra por ningún lado, así que el usuario abría el chat y no
+// encontraba nada nuevo. Contar exactamente lo que se ve es la regla.
+// Una mención dentro de un hilo sigue avisando por campanita y push (ver
+// SendThreadReply), que es el aviso que lleva al mensaje.
 const unreadJoinCondition = "channel_messages.channel_id = channel_members.channel_id" +
 	" AND channel_messages.user_id != channel_members.user_id" +
 	" AND channel_messages.is_deleted = ?" +
+	" AND channel_messages.parent_id IS NULL" +
 	" AND channel_messages.created_at > GREATEST(channel_members.joined_at, COALESCE(channel_members.last_read_at, channel_members.joined_at))"
 
 func (r *channelRepository) GetUnreadCount(channelID, userID uint) (int64, error) {
@@ -648,9 +656,10 @@ func (r *channelRepository) GetUnreadCount(channelID, userID uint) (int64, error
 	}
 
 	// Mirror GetTotalUnreadCount's "countable message" criteria so the per-channel
-	// badges and the global total always add up: exclude deleted messages.
+	// badges and the global total always add up: excluye borrados y respuestas
+	// de hilo (ver unreadJoinCondition: el canal solo muestra mensajes raíz).
 	query := r.db.Model(&models.ChannelMessage{}).
-		Where("channel_id = ? AND user_id != ? AND is_deleted = ?", channelID, userID, false)
+		Where("channel_id = ? AND user_id != ? AND is_deleted = ? AND parent_id IS NULL", channelID, userID, false)
 	// Unread starts at whichever is later: last read or the moment the user joined,
 	// so being added to a channel with history doesn't inflate the badge.
 	cutoff := member.JoinedAt

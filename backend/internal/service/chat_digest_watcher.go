@@ -11,13 +11,10 @@ import (
 )
 
 const (
-	// chatDigestEnabled — INTERRUPTOR del correo "tienes mensajes esperando".
-	//
-	// DESHABILITADO a pedido del equipo (10/08/2026): estaba llegando a
-	// usuarios reales a diario y se decidió pausarlo. El watcher completo
-	// queda intacto y compilando: para reactivarlo, cambia este false por
-	// true y reconstruye. (Web Push y la campanita siguen activos.)
-	chatDigestEnabled = false
+	// El encendido de este correo se gobierna desde Configuración → Correos
+	// (clave EmailKindChatDigest): el watcher siempre corre y el envío pasa por
+	// BrevoService.SendEmailKind, así que apagarlo o encenderlo surte efecto sin
+	// redeploy. Los topes de abajo evitan el exceso cuando está encendido.
 
 	// chatDigestPendingFor: cuánto tiempo debe llevar pendiente el mensaje sin
 	// leer MÁS ANTIGUO antes de avisar por correo. Corto sería spam (lo iban a
@@ -46,11 +43,6 @@ func NewChatDigestWatcher(repo repository.ChannelRepository, brevo *BrevoService
 
 // Start lanza el chequeo periódico en segundo plano.
 func (w *ChatDigestWatcher) Start() {
-	// Apagado por el interruptor (ver chatDigestEnabled): no arranca el loop.
-	if !chatDigestEnabled {
-		log.Println("[chat-digest] deshabilitado por configuración (chatDigestEnabled=false)")
-		return
-	}
 	go func() {
 		time.Sleep(chatDigestFirstRunDelay)
 		for {
@@ -79,7 +71,7 @@ func (w *ChatDigestWatcher) RunOnce() error {
 			log.Printf("[chat-digest] no se pudo registrar el envío a %d: %v", c.UserID, err)
 			continue
 		}
-		if err := w.brevo.SendEmail(c.Email, c.Name, "💬 Tienes mensajes esperando en Obertrack", buildChatDigestHTML(c.Name, c.Unread)); err != nil {
+		if err := w.brevo.SendEmailKind(EmailKindChatDigest, c.Email, c.Name, "💬 Tienes mensajes esperando en Obertrack", buildChatDigestHTML(c.Name, c.Unread)); err != nil {
 			log.Printf("[chat-digest] no se pudo enviar a %s: %v", c.Email, err)
 		}
 	}

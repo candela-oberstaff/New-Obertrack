@@ -18,14 +18,9 @@ import (
 // generaba un correo a TODOS los agentes CS+IT — con volumen real, spam puro.
 const supportDigestWindow = 15 * time.Minute
 
-// supportTicketEmailEnabled — INTERRUPTOR del correo automático de tickets.
-//
-// DESHABILITADO a pedido del equipo (10/08/2026): los agentes reciben la
-// campanita, el push del navegador y ven el tablero; el correo por cada
-// solicitud les resultaba ruido. Todo el código de abajo (digest, lote,
-// plantillas) queda intacto y compilando: para reactivarlo, cambia este
-// false por true y reconstruye.
-const supportTicketEmailEnabled = false
+// El encendido de este correo ya NO vive en una constante: se gobierna desde
+// Configuración → Correos (clave EmailKindSupportTicket) y lo aplica
+// BrevoService.SendEmailKind, sin necesidad de redeploy.
 
 type SupportNotifier struct {
 	brevoSvc     *BrevoService
@@ -90,11 +85,12 @@ func (n *SupportNotifier) recipients() []BrevoContact {
 // ticket sale al instante (la urgencia no espera 15 minutos); los siguientes
 // dentro de la ventana se agrupan en un solo correo.
 func (n *SupportNotifier) Notify(info SupportTicketInfo) {
-	// Correo de tickets apagado por el interruptor (ver supportTicketEmailEnabled).
-	if !supportTicketEmailEnabled {
+	if n == nil || n.brevoSvc == nil {
 		return
 	}
-	if n == nil || n.brevoSvc == nil {
+	// Si el tipo está apagado en Configuración → Correos, no se arma el digest:
+	// así no se acumula un lote que nadie va a recibir.
+	if !n.brevoSvc.AllowsKind(EmailKindSupportTicket) {
 		return
 	}
 	n.mu.Lock()
@@ -146,7 +142,7 @@ func (n *SupportNotifier) send(batch []SupportTicketInfo) {
 		html = n.buildDigestHTML(batch)
 	}
 	for _, r := range recipients {
-		if err := n.brevoSvc.SendEmail(r.Email, r.Name, subject, html); err != nil {
+		if err := n.brevoSvc.SendEmailKind(EmailKindSupportTicket, r.Email, r.Name, subject, html); err != nil {
 			log.Printf("[SupportNotifier] no se pudo enviar a %s: %v", r.Email, err)
 		}
 	}

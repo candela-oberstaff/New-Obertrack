@@ -326,7 +326,7 @@ func (s *authService) ForgotPassword(email string) error {
 
 	htmlContent := BuildPasswordResetHTML(user.Name, resetLink)
 
-	if err := s.brevoSvc.SendEmail(user.Email, user.Name, "Obertrack - Recuperar Contraseña", htmlContent); err != nil {
+	if err := s.brevoSvc.SendEmailKind(EmailKindPasswordReset, user.Email, user.Name, "Obertrack - Recuperar Contraseña", htmlContent); err != nil {
 		log.Printf("[Auth] Failed to send reset email to %s: %v", user.Email, err)
 		return errors.New("failed to send reset email")
 	}
@@ -358,7 +358,7 @@ func (s *authService) SendPasswordSetupEmail(email string) error {
 
 	htmlContent := BuildPasswordSetupHTML(user.Name, user.Email, setupLink)
 
-	if err := s.brevoSvc.SendEmail(user.Email, user.Name, "Obertrack - Crea tu contraseña", htmlContent); err != nil {
+	if err := s.brevoSvc.SendEmailKind(EmailKindAccountSetup, user.Email, user.Name, "Obertrack - Crea tu contraseña", htmlContent); err != nil {
 		log.Printf("[Auth] Failed to send setup email to %s: %v", user.Email, err)
 		return errors.New("failed to send setup email")
 	}

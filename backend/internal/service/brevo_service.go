@@ -15,6 +15,39 @@ type BrevoService struct {
 	apiKey string
 	apiURL string
 	from   BrevoContact
+	// kindGate decide si un TIPO de correo puede salir (Configuración →
+	// Correos). Se inyecta en el wiring para no acoplar Brevo al servicio de
+	// ajustes; si es nil, todo sale (comportamiento histórico).
+	kindGate func(kind string) bool
+}
+
+// SetKindGate cablea el interruptor por tipo de correo. Lo llama routes/deps.
+func (s *BrevoService) SetKindGate(gate func(kind string) bool) { s.kindGate = gate }
+
+// AllowsKind informa si ese tipo de correo está encendido.
+func (s *BrevoService) AllowsKind(kind string) bool {
+	return s.kindGate == nil || s.kindGate(kind)
+}
+
+// SendEmailKind es SendEmail respetando el interruptor del tipo. Es el camino
+// que deben usar TODOS los envíos del sistema: así el panel de Configuración
+// los gobierna sin tocar código. Un correo apagado no es un error: se registra
+// y se devuelve nil para no romper el flujo que lo disparó.
+func (s *BrevoService) SendEmailKind(kind, toEmail, toName, subject, htmlContent string) error {
+	if !s.AllowsKind(kind) {
+		log.Printf("[Brevo] correo %q omitido: está desactivado en Configuración → Correos", kind)
+		return nil
+	}
+	return s.SendEmail(toEmail, toName, subject, htmlContent)
+}
+
+// SendEmailKindWithAttachments es la variante con adjuntos (reporte de jornadas).
+func (s *BrevoService) SendEmailKindWithAttachments(kind, toEmail, toName, subject, htmlContent string, attachments []BrevoAttachment) error {
+	if !s.AllowsKind(kind) {
+		log.Printf("[Brevo] correo %q omitido: está desactivado en Configuración → Correos", kind)
+		return nil
+	}
+	return s.SendEmailWithAttachments(toEmail, toName, subject, htmlContent, attachments)
 }
 
 type BrevoContact struct {
@@ -112,9 +145,16 @@ func (s *BrevoService) SendEmail(toEmail, toName, subject, htmlContent string) e
 </head>
 <body style="margin: 0; padding: 0; background-color: #f6f8fa;">
 	<div style="max-width: 600px; margin: 24px auto; background: #ffffff; border: 1px solid #ddd9ef; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(6, 11, 35, 0.05); font-family: sans-serif;">
-		<!-- Banner con Logo -->
-		<div style="background: #ffffff; padding: 32px 24px; text-align: center; border-bottom: 1px solid #ddd9ef;">
-			<img src="https://obertrack.com/logos/logo-oberstaff.png" alt="Oberstaff Logo" height="40" style="display: block; margin: 0 auto 12px auto; height: 40px; border: 0; outline: none;" />
+		<!-- Banner con Logo. Dos cosas que hay que respetar aquí:
+		     1) El degradado de marca es indispensable: el logo es la versión
+		        BLANCA y sobre el fondo blanco anterior quedaba invisible, dejando
+		        una franja vacía en la cabecera de casi todos los correos.
+		     2) El archivo es logo-oberstaff.png (921x225) y NO Horizontal_Blanco.png
+		        (5000x1058): el proxy de imágenes de Gmail no sirve la versión
+		        grande y el correo llega con la imagen rota. Cualquier logo que se
+		        ponga aquí debe venir ya redimensionado para correo (~600 px). -->
+		<div style="background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; text-align: center;">
+			<img src="https://obertrack.com/logos/logo-oberstaff.png" alt="Oberstaff" height="40" style="display: block; margin: 0 auto; height: 40px; max-width: 260px; border: 0; outline: none;" />
 			<!-- Oberstaff Logo -->
 		</div>
 

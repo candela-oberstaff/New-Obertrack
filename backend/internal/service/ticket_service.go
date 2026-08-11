@@ -300,7 +300,7 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 		if ticket.Contact == nil {
 			return nil, apperrors.ErrExternalSend
 		}
-		if err := s.brevoSvc.SendEmail(ticket.Contact.Email, ticket.Contact.Name, ticket.Title, content); err != nil {
+		if err := s.brevoSvc.SendEmailKind(EmailKindTicketReply, ticket.Contact.Email, ticket.Contact.Name, ticket.Title, content); err != nil {
 			return nil, apperrors.ErrExternalSend
 		}
 	}

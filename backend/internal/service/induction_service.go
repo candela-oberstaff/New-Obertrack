@@ -548,7 +548,7 @@ func (s *inductionService) sendInviteEmail(user *models.User, token string) {
 	html := BuildInductionInviteHTML(user.Name, link)
 
 	go func() {
-		if err := s.brevoSvc.SendEmail(user.Email, user.Name, subject, html); err != nil {
+		if err := s.brevoSvc.SendEmailKind(EmailKindInductionInvite, user.Email, user.Name, subject, html); err != nil {
 			log.Printf("[Induction] no se pudo enviar la invitación a %s: %v", user.Email, err)
 		}
 	}()

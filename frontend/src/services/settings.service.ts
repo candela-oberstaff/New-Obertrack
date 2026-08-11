@@ -33,6 +33,20 @@ export interface RunNowResult {
   failed: number
 }
 
+/** Un tipo de correo del sistema, con su interruptor (Configuración → Correos). */
+export interface EmailType {
+  key: string
+  name: string
+  description: string
+  trigger: string
+  recipient: string
+  category: 'automatic' | 'event' | 'manual'
+  essential: boolean
+  /** Si viene, su encendido se gobierna en otra sección (no lleva toggle propio). */
+  managed_elsewhere?: string
+  enabled: boolean
+}
+
 export const settingsService = {
   getReportSchedule: async () => {
     const { data } = await api.get<ReportSchedule>('/admin/settings/report-schedule')
@@ -47,6 +61,26 @@ export const settingsService = {
     const { data } = await api.post<RunNowResult>('/admin/settings/report-schedule/run-now')
     return data
   },
+  // --- Correos del sistema ---
+  getEmailTypes: async () => {
+    const { data } = await api.get<EmailType[]>('/admin/settings/emails')
+    return data
+  },
+  /** Interruptor general: enciende o apaga todos los correos de una vez. */
+  setAllEmailsEnabled: async (enabled: boolean) => {
+    const { data } = await api.put<{ enabled: boolean }>('/admin/settings/emails', { enabled })
+    return data
+  },
+  setEmailEnabled: async (key: string, enabled: boolean) => {
+    const { data } = await api.put<{ key: string; enabled: boolean }>(`/admin/settings/emails/${key}`, { enabled })
+    return data
+  },
+  /** Envía una muestra del correo (a la sesión si no se indica destinatario). */
+  sendEmailTest: async (key: string, email?: string) => {
+    const { data } = await api.post<{ message: string; email: string }>(`/admin/settings/emails/${key}/test`, { email })
+    return data
+  },
+
   /** Bitácora paginada: página 1-based; devuelve también el total. */
   getReportRuns: async (page = 1, limit = 10) => {
     const { data } = await api.get<{ runs: ReportRun[]; total: number; page: number; limit: number }>(

@@ -263,7 +263,7 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 
 			htmlContent := utils.WrapInPremiumTemplate("Nueva Encuesta: "+survey.Title, rawContent)
 
-			if err := h.brevoSvc.SendEmail(user.Email, user.Name, "Nueva Encuesta: "+survey.Title, htmlContent); err != nil {
+			if err := h.brevoSvc.SendEmailKind(service.EmailKindSurveyInvite, user.Email, user.Name, "Nueva Encuesta: "+survey.Title, htmlContent); err != nil {
 				errors = append(errors, fmt.Sprintf("Email fail for %s: %s", user.Email, err.Error()))
 			} else {
 				userSuccess = true

@@ -283,7 +283,7 @@ func (s *workHourService) sendReportWithAttachments(user *models.User, workHours
 		},
 	}
 
-	return s.brevoSvc.SendEmailWithAttachments(user.Email, user.Name, subject, htmlContent, attachments)
+	return s.brevoSvc.SendEmailKindWithAttachments(EmailKindWorkHourReport, user.Email, user.Name, subject, htmlContent, attachments)
 }
 
 // reportFileSlug convierte "01/07 al 07/07/2026" en algo apto para un nombre de

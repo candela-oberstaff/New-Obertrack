@@ -887,7 +887,7 @@ func (s *adminService) BulkEmailProfessionals(userIDs []uint, subject, body stri
 			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Error: "Usuario no encontrado"})
 			continue
 		}
-		if err := s.brevoSvc.SendEmail(user.Email, user.Name, subject, body); err != nil {
+		if err := s.brevoSvc.SendEmailKind(EmailKindManualComposer, user.Email, user.Name, subject, body); err != nil {
 			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Email: user.Email, Error: err.Error()})
 			continue
 		}
@@ -958,7 +958,7 @@ func (s *adminService) SendAccessEmails(userIDs []uint, mode string) BulkEmailRe
 		}
 
 		html := BuildCredentialsHTML(user.Name, user.Email, temp, loginLink)
-		if err := s.brevoSvc.SendEmail(user.Email, user.Name, "Obertrack - Tus datos de acceso", html); err != nil {
+		if err := s.brevoSvc.SendEmailKind(EmailKindAccessCredentials, user.Email, user.Name, "Obertrack - Tus datos de acceso", html); err != nil {
 			result.Failed = append(result.Failed, BulkEmailFailure{ID: id, Email: user.Email, Error: err.Error()})
 			continue
 		}

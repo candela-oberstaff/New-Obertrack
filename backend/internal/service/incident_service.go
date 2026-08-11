@@ -245,7 +245,7 @@ func (s *incidentService) Broadcast(id uint, subject, body string) (BulkEmailRes
 		return result, err
 	}
 	for _, p := range matched {
-		if err := s.brevoSvc.SendEmail(p.Email, p.Name, subject, body); err != nil {
+		if err := s.brevoSvc.SendEmailKind(EmailKindIncidentBroadcast, p.Email, p.Name, subject, body); err != nil {
 			result.Failed = append(result.Failed, BulkEmailFailure{ID: p.ID, Email: p.Email, Error: err.Error()})
 			continue
 		}
