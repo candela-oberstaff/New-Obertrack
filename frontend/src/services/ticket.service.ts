@@ -13,6 +13,7 @@ export interface Contact {
 export interface TicketMessage {
   id: number;
   ticket_id: number;
+  external_id?: string;
   sender_type: 'agent' | 'contact' | 'system';
   channel: 'whatsapp' | 'email' | 'note';
   content: string;
@@ -134,6 +135,7 @@ export interface WhatsAppChatTicket {
 
 export interface WhatsAppMessageDTO {
   id: string
+  external_id: string
   content: string
   direction: 'incoming' | 'outgoing'
   author_name: string
@@ -312,6 +314,7 @@ export const ticketService = {
     const msgs: TicketMessage[] = response.data?.messages ?? []
     return msgs.map(m => ({
       id: String(m.id),
+      external_id: m.external_id || '',
       content: m.content,
       direction: m.sender_type === 'agent' ? 'outgoing' : 'incoming',
       author_name: m.sender_type === 'agent' ? 'Agente' : contactName,
@@ -320,12 +323,26 @@ export const ticketService = {
       delivery_status: m.delivery_status,
     }))
   },
+  loadOlderWaChatMessages: async (id: string): Promise<number> => {
+    const response = await api.post(`/tickets/wa/${id}/load-older`)
+    return response.data.imported
+  },
+  downloadWaMedia: async (ticketId: string, externalId: string): Promise<{ blob: Blob; contentType: string }> => {
+    const response = await api.get(`/tickets/wa/${ticketId}/media/${externalId}`, {
+      responseType: 'blob'
+    })
+    return {
+      blob: response.data,
+      contentType: (response.headers['content-type'] as string) || ''
+    }
+  },
 
   sendWaChatMessage: async (id: string, content: string): Promise<WhatsAppMessageDTO> => {
     const response = await api.post(`/tickets/wa/${id}/messages`, { content })
     const m = response.data
     return {
       id: String(m.id),
+      external_id: m.external_id || '',
       content: m.content,
       direction: 'outgoing',
       author_name: 'Agente',

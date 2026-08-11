@@ -43,11 +43,16 @@ export default function WhatsApp() {
   const [activeMessages, setActiveMessages] = useState<WhatsAppMessageDTO[]>([])
   const [loadingTickets, setLoadingTickets] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [displayLimit, setDisplayLimit] = useState(20)
+  const [hasMoreMessages, setHasMoreMessages] = useState(true)
   const [inputText, setInputText] = useState('')
   const [sending, setSending] = useState(false)
   const [search, setSearch] = useState('')
   const [showMobileChat, setShowMobileChat] = useState(false)
+  const [readTimestamps, setReadTimestamps] = useState<Record<string, string>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const skipScrollRef = useRef(false)
 
   const currentChats = activeTab === 'me' ? myChats : unassignedChats
 
@@ -77,6 +82,38 @@ export default function WhatsApp() {
 
     return () => clearInterval(interval)
   }, []) // Empty deps for mount/unmount
+
+  // Cargar las marcas de tiempo leídas desde localStorage al iniciar
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('wa_read_timestamps')
+      if (saved) {
+        setReadTimestamps(JSON.parse(saved))
+      }
+    } catch (e) {
+      console.error('Error loading read timestamps', e)
+    }
+  }, [])
+
+  // Marcar chat como leído mientras esté abierto y reciba nuevos mensajes
+  useEffect(() => {
+    if (activeTicket) {
+      const latestTicket = myChats.find(t => t.zoho_id === activeTicket.zoho_id) || 
+                           unassignedChats.find(t => t.zoho_id === activeTicket.zoho_id)
+      
+      if (latestTicket) {
+        setReadTimestamps(prev => {
+          const prevTime = prev[latestTicket.zoho_id]
+          if (!prevTime || new Date(latestTicket.modified_time).getTime() > new Date(prevTime).getTime()) {
+            const next = { ...prev, [latestTicket.zoho_id]: latestTicket.modified_time }
+            localStorage.setItem('wa_read_timestamps', JSON.stringify(next))
+            return next
+          }
+          return prev
+        })
+      }
+    }
+  }, [activeTicket, myChats, unassignedChats])
 
   // Handle active messages polling when a chat is open
   useEffect(() => {
@@ -124,6 +161,8 @@ export default function WhatsApp() {
     setLoadingMessages(true)
     setActiveTicket(ticket)
     setActiveMessages([])
+    setDisplayLimit(20)
+    setHasMoreMessages(true)
     setInputText('')
     try {
       const msgs = await ticketService.getWaChatMessages(ticket.zoho_id)
@@ -162,7 +201,33 @@ export default function WhatsApp() {
     }
   }
 
+  const handleLoadOlder = async () => {
+    if (!activeTicket) return
+    setLoadingOlder(true)
+    skipScrollRef.current = true
+    try {
+      if (displayLimit >= activeMessages.length) {
+        const imported = await ticketService.loadOlderWaChatMessages(activeTicket.zoho_id)
+        if (imported === 0) {
+          setHasMoreMessages(false)
+        } else {
+          const msgs = await ticketService.getWaChatMessages(activeTicket.zoho_id)
+          setActiveMessages(msgs)
+        }
+      }
+      setDisplayLimit(prev => prev + 10)
+    } catch (err) {
+      console.error('Error loading older messages:', err)
+    } finally {
+      setLoadingOlder(false)
+    }
+  }
+
   useEffect(() => {
+    if (skipScrollRef.current) {
+      skipScrollRef.current = false
+      return
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeMessages])
 
@@ -202,12 +267,13 @@ export default function WhatsApp() {
         unassignedChatsCount={unassignedChats.length}
         displayName={displayName}
         onSynced={() => fetchTickets(true)}
+        readTimestamps={readTimestamps}
       />
 
       {activeTicket ? (
         <ChatWindow
           activeTicket={activeTicket}
-          activeMessages={activeMessages}
+          activeMessages={activeMessages.slice(-displayLimit)}
           loadingMessages={loadingMessages}
           inputText={inputText}
           setInputText={setInputText}
@@ -221,6 +287,9 @@ export default function WhatsApp() {
           formatTime={formatTime}
           isUnassignedChat={isUnassignedChat}
           isAssignedToMe={isAssignedToMe}
+          handleLoadOlder={handleLoadOlder}
+          loadingOlder={loadingOlder}
+          hasMoreMessages={hasMoreMessages}
         />
       ) : (
         <EmptyState />

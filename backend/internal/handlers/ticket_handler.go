@@ -346,6 +346,50 @@ func (h *TicketHandler) GetWhatsAppTicket(c *gin.Context) {
 	c.JSON(http.StatusOK, dto)
 }
 
+func (h *TicketHandler) LoadOlderWhatsAppMessages(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+	imported, err := h.ticketSvc.LoadOlderMessages(uint(id))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load older messages", "details": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"imported": imported})
+}
+
+func (h *TicketHandler) DownloadWaMedia(c *gin.Context) {
+	if !canUseSupportInbox(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Access restricted to support users"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+	externalID := c.Param("external_id")
+	if externalID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing external ID"})
+		return
+	}
+
+	body, contentType, err := h.ticketSvc.DownloadWaMedia(uint(id), externalID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to download media", "details": err.Error()})
+		return
+	}
+	defer body.Close()
+
+	c.DataFromReader(http.StatusOK, -1, contentType, body, nil)
+}
+
 // LookupWhatsAppChat responde si un teléfono ya tiene conversación de WhatsApp
 // abierta con nosotros. Lo consume la ficha de empresa para decidir entre
 // llevar a la bandeja o abrir wa.me, en vez de ofrecer un envío que la guarda

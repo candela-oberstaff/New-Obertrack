@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -523,6 +524,8 @@ type WahaChatMessage struct {
 	HasMedia bool `json:"hasMedia"`
 	Media    *struct {
 		Mimetype string `json:"mimetype"`
+		Filename string `json:"filename"`
+		URL      string `json:"url"`
 	} `json:"media"`
 }
 
@@ -689,4 +692,76 @@ func (s *WahaService) StartSession(session string) error {
 		return fmt.Errorf("waha API error: status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// DownloadMessageMedia proxies the download request to WAHA and returns the response body (stream) and content type.
+// The caller is responsible for closing the io.ReadCloser.
+func (s *WahaService) DownloadMessageMedia(session, chatID, messageID string) (io.ReadCloser, string, error) {
+	// 1. Pide a WAHA que recupere el mensaje y descargue el adjunto (downloadMedia=true)
+	//    Los IDs de WAHA contienen '@' que debe codificarse en la URL.
+	urlInfo := fmt.Sprintf("%s/api/%s/chats/%s/messages/%s?downloadMedia=true",
+		s.apiURL, session,
+		url.PathEscape(chatID),
+		url.PathEscape(messageID),
+	)
+	reqInfo, err := http.NewRequest("GET", urlInfo, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create info request: %w", err)
+	}
+	if s.apiKey != "" {
+		reqInfo.Header.Set("X-Api-Key", s.apiKey)
+	}
+	
+	respInfo, err := s.reader().Do(reqInfo)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch message info from WAHA: %w", err)
+	}
+	defer respInfo.Body.Close()
+	
+	if respInfo.StatusCode < 200 || respInfo.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("waha info error: status %d", respInfo.StatusCode)
+	}
+
+	var msg WahaChatMessage
+	if err := json.NewDecoder(respInfo.Body).Decode(&msg); err != nil {
+		return nil, "", fmt.Errorf("waha decode error: %w", err)
+	}
+
+	if msg.Media == nil {
+		return nil, "", fmt.Errorf("el mensaje no contiene adjuntos")
+	}
+
+	// 2. Extraer la URL del archivo.
+	//    WAHA devuelve el URL con http://localhost:PORT (su propio contenedor).
+	//    Hay que reemplazar esa base por la URL remota real.
+	fileURL := msg.Media.URL
+	if fileURL == "" {
+		return nil, "", fmt.Errorf("WAHA no devolvió un enlace al archivo")
+	}
+	if strings.HasPrefix(fileURL, "http://localhost") || strings.HasPrefix(fileURL, "http://127.") {
+		// Extraer solo el path (/api/files/...) y reemplazar el host
+		if parsed, err := url.Parse(fileURL); err == nil {
+			fileURL = s.apiURL + parsed.Path
+		}
+	}
+
+	// 3. Descargar y transmitir el archivo
+	reqFile, err := http.NewRequest("GET", fileURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create file request: %w", err)
+	}
+	if s.apiKey != "" {
+		reqFile.Header.Set("X-Api-Key", s.apiKey)
+	}
+
+	respFile, err := s.reader().Do(reqFile)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch file from WAHA: %w", err)
+	}
+	if respFile.StatusCode < 200 || respFile.StatusCode >= 300 {
+		respFile.Body.Close()
+		return nil, "", fmt.Errorf("waha file error: status %d", respFile.StatusCode)
+	}
+
+	return respFile.Body, msg.Media.Mimetype, nil
 }
