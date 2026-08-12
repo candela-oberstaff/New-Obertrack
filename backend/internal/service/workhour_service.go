@@ -711,6 +711,13 @@ func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuper
 
 	filters["tenant_id"] = tenantID
 
+	// Un profesional solo ve lo suyo, igual que en GetAll. Sin esta rama caía
+	// al filtro de tenant a secas y se llevaba las jornadas pendientes de toda
+	// la empresa: nombres, fechas, horas y actividades de sus compañeros.
+	if !isEmployerRole(role) {
+		filters["user_id"] = userID
+	}
+
 	res, _, err := s.repo.FindAll(filters, 0, 1000)
 	return res, err
 }
