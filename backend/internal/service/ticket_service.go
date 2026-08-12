@@ -331,6 +331,18 @@ func (s *ticketService) SendAgentMessage(id, agentID uint, userType string, cont
 	return msg, nil
 }
 
+// resolveContactName devuelve el nombre del usuario de Obertrack si el teléfono
+// coincide con un usuario activo, o wahaName si no se encuentra.
+func (s *ticketService) resolveContactName(phone, wahaName string) string {
+	digits := utils.NormalizePhoneDigits(phone)
+	if digits != "" {
+		if u, err := s.userRepo.FindActiveByPhoneDigits(digits); err == nil && u != nil && u.Name != "" {
+			return u.Name
+		}
+	}
+	return wahaName
+}
+
 // IngestWhatsApp handles a WhatsApp message: resolve/create the contact, attach
 // it to the contact's open ticket (or open a new one), persist and broadcast it.
 //
@@ -362,6 +374,7 @@ func (s *ticketService) IngestWhatsApp(session, peer, body, externalID string, f
 			phone = realPhone
 		}
 	}
+	resolvedName = s.resolveContactName(phone, resolvedName)
 
 	contact, err := s.repo.GetContactByPhone(phone)
 	if err != nil {
@@ -371,7 +384,7 @@ func (s *ticketService) IngestWhatsApp(session, peer, body, externalID string, f
 		}
 	} else {
 		dirty := false
-		if contact.Name == "WA User "+phone && resolvedName != "WA User "+phone {
+		if contact.Name != resolvedName && resolvedName != "" && resolvedName != "WA User "+phone {
 			contact.Name = resolvedName
 			dirty = true
 		}
@@ -599,6 +612,8 @@ type WhatsAppChatLookup struct {
 	// lado: la guarda de contacto en frío rechazaría el envío igualmente, y es
 	// mejor decirlo antes que enseñar un cuadro de texto que va a dar 403.
 	CanReply bool `json:"can_reply"`
+	// IsRegistered dice si el número corresponde a un usuario activo de Obertrack
+	IsRegistered bool `json:"is_registered"`
 }
 
 // LookupWhatsAppChat busca la conversación de WhatsApp de un teléfono dentro de
@@ -613,6 +628,8 @@ func (s *ticketService) LookupWhatsAppChat(phone string) (*WhatsAppChatLookup, e
 	if digits == "" {
 		return out, nil
 	}
+	
+	out.IsRegistered = s.contactIsPlatformUser(digits)
 
 	ticket, err := s.repo.FindWhatsAppTicketByPhoneDigits(digits, s.wahaSvc.GetSession())
 	if err != nil {
@@ -736,12 +753,14 @@ func (s *ticketService) refreshWhatsAppContact(contactID uint, waID string) {
 		return
 	}
 	changed := false
-	if name := resolved.BestName(); name != "" && strings.HasPrefix(c.Name, "WA User ") {
-		c.Name = name
-		changed = true
-	}
 	if realPhone := resolved.RealPhone(); realPhone != "" && realPhone != c.Phone {
 		c.Phone = realPhone
+		changed = true
+	}
+
+	resolvedName := s.resolveContactName(c.Phone, resolved.BestName())
+	if resolvedName != "" && resolvedName != c.Name && resolvedName != "WA User "+c.Phone {
+		c.Name = resolvedName
 		changed = true
 	}
 	if changed {
@@ -807,24 +826,34 @@ func (s *ticketService) ImportWhatsAppHistory() (int, error) {
 					resolvedName = name
 				}
 			}
+			resolvedName = s.resolveContactName(phone, resolvedName)
+			if resolvedName == "" {
+				resolvedName = "WA User " + phone
+			}
 
 			// Proteger operaciones críticas de base de datos o sincronizar
 			// para evitar race conditions al crear contactos o tickets.
 			importedMu.Lock()
 			contact, cerr := s.repo.GetContactByPhone(phone)
 			if cerr != nil {
-				name := resolvedName
-				if name == "" {
-					name = "WA User " + phone
-				}
-				contact = &models.Contact{Phone: phone, Name: name, WaID: c.ID}
+				contact = &models.Contact{Phone: phone, Name: resolvedName, WaID: c.ID}
 				if err := s.repo.CreateContact(contact); err != nil {
 					importedMu.Unlock()
 					return
 				}
-			} else if contact.WaID == "" && c.ID != "" {
-				contact.WaID = c.ID
-				_ = s.repo.SaveContact(contact)
+			} else {
+				dirty := false
+				if contact.WaID == "" && c.ID != "" {
+					contact.WaID = c.ID
+					dirty = true
+				}
+				if contact.Name != resolvedName && resolvedName != "WA User "+phone {
+					contact.Name = resolvedName
+					dirty = true
+				}
+				if dirty {
+					_ = s.repo.SaveContact(contact)
+				}
 			}
 
 			ticket, terr := s.repo.GetOpenTicketByContact(contact.ID, session)

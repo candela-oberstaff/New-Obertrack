@@ -68,11 +68,14 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
   }, [qc, boardId, showAllTasks, companyId])
 
   // Protocolo optimista compartido por updateTask/moveTask/reorderColumn:
-  // snapshot → aplicar al cache → persistir → invalidate. Si persist falla a
-  // medias (p. ej. cambió el status pero falló el reorden), el snapshot local
-  // podría no reflejar lo que el servidor sí guardó, así que tras revertir
-  // TAMBIÉN se invalida para resincronizar con la verdad del servidor.
+  // cancelar queries en vuelo → snapshot → aplicar al cache → persistir → invalidate.
+  // Cancelar es clave: sin esto un re-fetch en curso puede volver con datos viejos
+  // del servidor y pisar el estado optimista correcto (race condition).
+  // Si persist falla, se revierte el snapshot Y se invalida para resincronizar.
   const runOptimistic = useCallback(async (apply: (old: Task[]) => Task[], persist: () => Promise<void>) => {
+    // Cancelar cualquier re-fetch pendiente para evitar que respuestas viejas del
+    // servidor sobreescriban el estado optimista que estamos a punto de aplicar.
+    await qc.cancelQueries({ queryKey })
     const previous = qc.getQueryData<Task[]>(queryKey)
     qc.setQueryData<Task[]>(queryKey, (old) => apply(old ?? []))
     try {
@@ -88,10 +91,18 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
   }, [qc, boardId, showAllTasks, companyId])
 
   const refreshSelectedTask = useCallback(async (id: number) => {
-    if (selectedTask && selectedTask.id === id) {
-      setSelectedTask(await taskService.getById(id))
+    try {
+      const updated = await taskService.getById(id)
+      setSelectedTask((prev) => {
+        if (prev && prev.id === id) {
+          return updated
+        }
+        return prev
+      })
+    } catch (err) {
+      console.error('Error refreshing selected task:', err)
     }
-  }, [selectedTask])
+  }, [])
 
   const updateTask = useCallback(async (id: number, data: Partial<Task>) => {
     await runOptimistic(
@@ -99,7 +110,16 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
       (old) => old.map((t) => {
         if (t.id === id) {
           const { assignees, ...rest } = data
-          return { ...t, ...rest }
+          let completed = t.completed
+          if (data.status === 'finalizado') {
+            completed = true
+          } else if (data.status !== undefined) {
+            completed = false
+          }
+          if (data.completed !== undefined) {
+            completed = data.completed
+          }
+          return { ...t, ...rest, completed }
         }
         return t
       }),
@@ -118,7 +138,10 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
     await runOptimistic(
       (old) => old.map((t) => {
         const idx = orderedIds.indexOf(t.id)
-        if (t.id === id) return { ...t, status: newStatus, order: idx >= 0 ? idx : t.order }
+        if (t.id === id) {
+          const completed = newStatus === 'finalizado'
+          return { ...t, status: newStatus, completed, order: idx >= 0 ? idx : t.order }
+        }
         return idx >= 0 ? { ...t, order: idx } : t
       }),
       async () => {

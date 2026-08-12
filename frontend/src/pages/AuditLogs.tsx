@@ -241,9 +241,9 @@ export default function AuditLogs() {
                   </td>
                   <td style={{ padding: '0.8rem 0.9rem' }}>
                     {l.success ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', ...badge({ bg: 'rgba(16,185,129,0.12)', fg: '#059669' }) }}><CheckCircle2 size={13} /> Correcto</span>
+                      <span style={{ ...badge({ bg: 'rgba(16,185,129,0.12)', fg: '#059669' }), display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><CheckCircle2 size={13} /> Correcto</span>
                     ) : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', ...badge({ bg: 'rgba(239,68,68,0.12)', fg: '#dc2626' }) }}><XCircle size={13} /> Error</span>
+                      <span style={{ ...badge({ bg: 'rgba(239,68,68,0.12)', fg: '#dc2626' }), display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><XCircle size={13} /> Error</span>
                     )}
                   </td>
                 </tr>
