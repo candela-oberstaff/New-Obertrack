@@ -23,6 +23,7 @@ interface ChatListProps {
   displayName: (ticket: WhatsAppChatTicket) => string
   // Recarga la bandeja tras una traída manual de mensajes.
   onSynced?: () => void
+  readTimestamps: Record<string, string>
 }
 
 export default function ChatList({
@@ -41,7 +42,8 @@ export default function ChatList({
   myChatsCount,
   unassignedChatsCount,
   displayName,
-  onSynced
+  onSynced,
+  readTimestamps
 }: ChatListProps) {
 
   const handleTabClick = (tab: 'me' | 'unassigned') => {
@@ -164,10 +166,15 @@ export default function ChatList({
             {search ? 'Sin resultados' : (activeTab === 'unassigned' ? 'No hay chats sin asignar' : 'No hay conversaciones aún')}
           </li>
         ) : (
-          filteredTickets.map(ticket => (
+          filteredTickets.map(ticket => {
+            const readTime = readTimestamps[ticket.zoho_id];
+            const isActive = activeTicket?.zoho_id === ticket.zoho_id;
+            const isUnread = ticket.status === 'open' && !isActive && (!readTime || new Date(ticket.modified_time).getTime() > new Date(readTime).getTime());
+
+            return (
             <li
               key={ticket.zoho_id}
-              className={`${styles.contactItem} ${activeTicket?.zoho_id === ticket.zoho_id ? styles.contactItemActive : ''}`}
+              className={`${styles.contactItem} ${isActive ? styles.contactItemActive : ''}`}
               onClick={() => handleSelectTicket(ticket)}
             >
               <div className={styles.contactAvatarWrap}>
@@ -191,13 +198,14 @@ export default function ChatList({
                   <span className={styles.contactLastMsg}>
                     {ticket.subject || 'Chat de WhatsApp'}
                   </span>
-                  {ticket.status === 'open' && (
+                  {isUnread && (
                     <span className={styles.unreadBadge} style={{ background: '#25D366' }}>•</span>
                   )}
                 </div>
               </div>
             </li>
-          ))
+            )
+          })
         )}
       </ul>
     </aside>

@@ -200,6 +200,8 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		// por nuestra bandeja en vez de saltar a wa.me.
 		tickets.POST("/wa/open", d.ticket.OpenWhatsAppChat)
 		tickets.GET("/wa/:id", d.ticket.GetWhatsAppTicket)
+		tickets.POST("/wa/:id/load-older", d.ticket.LoadOlderWhatsAppMessages)
+		tickets.GET("/wa/:id/media/:external_id", d.ticket.DownloadWaMedia)
 		tickets.POST("/wa/:id/messages", d.ticket.SendWhatsAppMessage)
 		tickets.PATCH("/wa/:id", d.ticket.UpdateWhatsAppTicket)
 		tickets.GET("/:id", d.ticket.GetTicket)

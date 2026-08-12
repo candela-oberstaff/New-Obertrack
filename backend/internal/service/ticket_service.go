@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"strconv"
 	"strings"
@@ -44,6 +45,11 @@ type TicketService interface {
 	// lo usa para bloquear el cuadro de texto con el motivo, en vez de dejar
 	// escribir un mensaje que el envío va a rechazar.
 	CanReplyWhatsApp(ticketID uint) bool
+	// LoadOlderMessages pide a WAHA más mensajes históricos de una conversación
+	// y guarda los que falten en la base de datos.
+	LoadOlderMessages(ticketID uint) (int, error)
+	// DownloadWaMedia baja un adjunto de WAHA transmitiéndolo en tiempo real.
+	DownloadWaMedia(ticketID uint, externalID string) (io.ReadCloser, string, error)
 	// ImportWhatsAppHistory pulls recent chats + messages from the connected WAHA
 	// session and imports them as tickets/messages (idempotent). Returns the count
 	// of newly imported messages.
@@ -766,108 +772,215 @@ func (s *ticketService) ImportWhatsAppHistory() (int, error) {
 		return 0, err
 	}
 
+	// Concurrencia limitada: Usamos un semáforo (canal de struct{})
+	// para procesar hasta 3 chats en paralelo, acelerando el proceso
+	// sin sobrecargar a WAHA ni el procesador.
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 3)
+	var importedMu sync.Mutex
 	imported := 0
+
 	for _, chat := range chats {
-		// Solo chats individuales. Hoy WhatsApp identifica las conversaciones 1:1
-		// por LID (@lid) y no por número (@c.us); filtrar únicamente por @c.us
-		// descartaba todos los chats reales. Los grupos (@g.us) sí se omiten.
 		if !IsIndividualChat(chat.ID) {
 			continue
 		}
 
-		// El prefijo de un @lid NO es un teléfono, así que se resuelve contra WAHA:
-		// GET /api/contacts?contactId=<lid> devuelve el JID real en `id`.
-		phone := chat.ID
-		if i := strings.IndexByte(chat.ID, '@'); i >= 0 {
-			phone = chat.ID[:i]
-		}
-		resolvedName := strings.TrimSpace(chat.Name)
-		if resolved, rerr := s.wahaSvc.GetContact(session, chat.ID); rerr == nil && resolved != nil {
-			if realPhone := resolved.RealPhone(); realPhone != "" {
-				phone = realPhone
-			}
-			if name := resolved.BestName(); name != "" {
-				resolvedName = name
-			}
-		}
+		wg.Add(1)
+		sem <- struct{}{} // Adquirir ranura del semáforo
 
-		// Resolver/crear contacto.
-		contact, cerr := s.repo.GetContactByPhone(phone)
-		if cerr != nil {
-			name := resolvedName
-			if name == "" {
-				name = "WA User " + phone
-			}
-			contact = &models.Contact{Phone: phone, Name: name, WaID: chat.ID}
-			if err := s.repo.CreateContact(contact); err != nil {
-				continue
-			}
-		} else if contact.WaID == "" && chat.ID != "" {
-			// Backfill del JID para poder responder a este chat.
-			contact.WaID = chat.ID
-			_ = s.repo.SaveContact(contact)
-		}
+		go func(c WahaChatOverview) {
+			defer func() {
+				<-sem // Liberar ranura
+				wg.Done()
+			}()
 
-		// Un ticket por contacto: reutiliza el abierto o crea uno.
-		ticket, terr := s.repo.GetOpenTicketByContact(contact.ID, session)
-		if terr != nil {
-			ticket = &models.Ticket{
-				ContactID: &contact.ID,
-				Origin:    string(models.ChannelWhatsApp),
-				Session:   session,
-				Title:     "WA: " + phone,
-				Stage:     models.StageNew,
-				Status:    "open",
+			phone := c.ID
+			if i := strings.IndexByte(c.ID, '@'); i >= 0 {
+				phone = c.ID[:i]
 			}
-			if err := s.repo.CreateTicket(ticket); err != nil {
-				continue
+			resolvedName := strings.TrimSpace(c.Name)
+			if resolved, rerr := s.wahaSvc.GetContact(session, c.ID); rerr == nil && resolved != nil {
+				if realPhone := resolved.RealPhone(); realPhone != "" {
+					phone = realPhone
+				}
+				if name := resolved.BestName(); name != "" {
+					resolvedName = name
+				}
 			}
-		}
 
-		// WAHA devuelve los mensajes de más nuevo a más viejo; los recorremos en
-		// reversa para insertarlos en orden cronológico.
-		msgs, merr := s.wahaSvc.GetChatMessages(session, chat.ID, importMaxMsgs)
-		if merr != nil {
-			continue
-		}
-		for i := len(msgs) - 1; i >= 0; i-- {
-			m := msgs[i]
-			body := strings.TrimSpace(m.Body)
-			if body == "" {
-				// Adjunto sin texto: se guarda un marcador para que la conversación
-				// refleje que llegó algo, en vez de descartarlo en silencio.
-				body = MediaPlaceholder(m.Type, m.MimeType(), m.HasMedia)
+			// Proteger operaciones críticas de base de datos o sincronizar
+			// para evitar race conditions al crear contactos o tickets.
+			importedMu.Lock()
+			contact, cerr := s.repo.GetContactByPhone(phone)
+			if cerr != nil {
+				name := resolvedName
+				if name == "" {
+					name = "WA User " + phone
+				}
+				contact = &models.Contact{Phone: phone, Name: name, WaID: c.ID}
+				if err := s.repo.CreateContact(contact); err != nil {
+					importedMu.Unlock()
+					return
+				}
+			} else if contact.WaID == "" && c.ID != "" {
+				contact.WaID = c.ID
+				_ = s.repo.SaveContact(contact)
 			}
-			if body == "" {
-				continue // evento sin contenido representable
-			}
-			sender := models.SenderTypeContact
-			if m.FromMe {
-				sender = models.SenderTypeAgent
-			}
-			tm := &models.TicketMessage{
-				TicketID:   ticket.ID,
-				SenderType: sender,
-				Channel:    models.ChannelWhatsApp,
-				Content:    body,
-				ExternalID: m.ID,
-			}
-			if m.Timestamp > 0 {
-				tm.CreatedAt = time.Unix(m.Timestamp, 0)
-			}
-			if inserted, err := s.repo.CreateMessageIfNew(tm); err == nil && inserted {
-				imported++
-			}
-		}
 
-		// Sin esto el ticket conserva el updated_at del momento del import, de modo
-		// que la lista de chats muestra la misma hora en todas las conversaciones y
-		// las ordena por cuándo se importaron y no por su última actividad real.
-		if err := s.repo.SyncTicketActivity(ticket.ID); err != nil {
-			log.Printf("[ChatImport] no se pudo alinear la actividad del ticket %d: %v", ticket.ID, err)
+			ticket, terr := s.repo.GetOpenTicketByContact(contact.ID, session)
+			if terr != nil {
+				ticket = &models.Ticket{
+					ContactID: &contact.ID,
+					Origin:    string(models.ChannelWhatsApp),
+					Session:   session,
+					Title:     "WA: " + phone,
+					Stage:     models.StageNew,
+					Status:    "open",
+				}
+				if err := s.repo.CreateTicket(ticket); err != nil {
+					importedMu.Unlock()
+					return
+				}
+			}
+			importedMu.Unlock()
+
+			// La descarga de mensajes de cada chat puede ser muy lenta y
+			// no requiere bloquear la creación de otros tickets.
+			msgs, merr := s.wahaSvc.GetChatMessages(session, c.ID, importMaxMsgs)
+			if merr != nil {
+				return
+			}
+
+			localImported := 0
+			for i := len(msgs) - 1; i >= 0; i-- {
+				m := msgs[i]
+				body := strings.TrimSpace(m.Body)
+				if body == "" {
+					body = MediaPlaceholder(m.Type, m.MimeType(), m.HasMedia)
+				}
+				if body == "" {
+					continue
+				}
+				sender := models.SenderTypeContact
+				if m.FromMe {
+					sender = models.SenderTypeAgent
+				}
+				tm := &models.TicketMessage{
+					TicketID:   ticket.ID,
+					SenderType: sender,
+					Channel:    models.ChannelWhatsApp,
+					Content:    body,
+					ExternalID: m.ID,
+				}
+				if m.Timestamp > 0 {
+					tm.CreatedAt = time.Unix(m.Timestamp, 0)
+				}
+
+				// El repositorio ya maneja 'ON CONFLICT DO NOTHING', pero la inserción
+				// concurrente debe ser protegida para mantener consistencia.
+				importedMu.Lock()
+				if inserted, err := s.repo.CreateMessageIfNew(tm); err == nil && inserted {
+					localImported++
+				}
+				importedMu.Unlock()
+			}
+
+			if localImported > 0 {
+				importedMu.Lock()
+				imported += localImported
+				importedMu.Unlock()
+			}
+
+			// Actualizar la última actividad del ticket.
+			importedMu.Lock()
+			if err := s.repo.SyncTicketActivity(ticket.ID); err != nil {
+				log.Printf("[ChatImport] no se pudo alinear la actividad del ticket %d: %v", ticket.ID, err)
+			}
+			importedMu.Unlock()
+
+		}(chat)
+	}
+
+	wg.Wait()
+	return imported, nil
+}
+
+func (s *ticketService) LoadOlderMessages(ticketID uint) (int, error) {
+	ticket, err := s.repo.GetByID(ticketID)
+	if err != nil {
+		return 0, err
+	}
+	if ticket.Contact == nil || ticket.Contact.WaID == "" {
+		return 0, fmt.Errorf("no es un ticket de WhatsApp")
+	}
+	session := s.wahaSvc.GetSession()
+	if session == "" {
+		return 0, fmt.Errorf("WAHA no configurado")
+	}
+
+	fetchCount := len(ticket.Messages) + 20
+	msgs, merr := s.wahaSvc.GetChatMessages(session, ticket.Contact.WaID, fetchCount)
+	if merr != nil {
+		return 0, merr
+	}
+
+	existing := make(map[string]bool)
+	for _, tm := range ticket.Messages {
+		if tm.ExternalID != "" {
+			existing[tm.ExternalID] = true
 		}
 	}
+
+	imported := 0
+	for i := len(msgs) - 1; i >= 0; i-- {
+		m := msgs[i]
+		if existing[m.ID] {
+			continue
+		}
+		body := strings.TrimSpace(m.Body)
+		if body == "" {
+			body = MediaPlaceholder(m.Type, m.MimeType(), m.HasMedia)
+		}
+		if body == "" {
+			continue
+		}
+		sender := models.SenderTypeContact
+		if m.FromMe {
+			sender = models.SenderTypeAgent
+		}
+		tm := &models.TicketMessage{
+			TicketID:   ticket.ID,
+			SenderType: sender,
+			Channel:    models.ChannelWhatsApp,
+			Content:    body,
+			ExternalID: m.ID,
+		}
+		if m.Timestamp > 0 {
+			tm.CreatedAt = time.Unix(m.Timestamp, 0)
+		}
+		if inserted, err := s.repo.CreateMessageIfNew(tm); err == nil && inserted {
+			imported++
+		}
+	}
+	if imported > 0 {
+		_ = s.repo.SyncTicketActivity(ticket.ID)
+	}
 	return imported, nil
+}
+
+func (s *ticketService) DownloadWaMedia(ticketID uint, externalID string) (io.ReadCloser, string, error) {
+	ticket, err := s.repo.GetByID(ticketID)
+	if err != nil {
+		return nil, "", err
+	}
+	if ticket.Contact == nil || ticket.Contact.WaID == "" {
+		return nil, "", fmt.Errorf("no es un ticket de WhatsApp")
+	}
+	session := s.wahaSvc.GetSession()
+	if session == "" {
+		return nil, "", fmt.Errorf("WAHA no configurado")
+	}
+	return s.wahaSvc.DownloadMessageMedia(session, ticket.Contact.WaID, externalID)
 }
 
 // WhatsAppSessionInfo es una sesión con datos guardados. `Current` distingue la
