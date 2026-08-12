@@ -26,31 +26,13 @@ const CATEGORY_ORDER: EmailType['category'][] = ['automatic', 'event', 'manual']
  * interruptor y un envío de prueba para revisar el formato.
  */
 export function EmailTypesPanel() {
-  const { types, isLoading, toggle, togglingKey, toggleAll, isTogglingAll, sendTest, testingKey } = useEmailSettings()
+  const { types, isLoading, toggle, togglingKey, sendTest, testingKey } = useEmailSettings()
   const { success, error: showError } = useNotification()
   const confirm = useConfirm()
   const [testEmail, setTestEmail] = useState('')
 
   const allOff = types.length > 0 && types.every((t) => !t.enabled)
   const offCount = types.filter((t) => !t.enabled).length
-
-  const handleToggleAll = async (enabled: boolean) => {
-    if (!enabled) {
-      const ok = await confirm({
-        title: '¿Apagar todos los correos?',
-        message: 'Obertrack dejará de enviar CUALQUIER correo, incluidos los de recuperar y crear contraseña (las personas no podrán entrar por su cuenta) y el reporte de jornadas a las empresas. Las notificaciones dentro de la app no se ven afectadas. Puedes revertirlo desde aquí en cualquier momento.',
-        confirmLabel: 'Apagar todo',
-        variant: 'danger',
-      })
-      if (!ok) return
-    }
-    try {
-      await toggleAll(enabled)
-      success(enabled ? 'Todos los correos quedaron activos.' : 'Se apagaron todos los correos del sistema.')
-    } catch {
-      showError('No se pudo aplicar el cambio general.')
-    }
-  }
 
   const handleToggle = async (t: EmailType) => {
     // Apagar un correo esencial deja gente sin poder entrar: se confirma.
@@ -91,41 +73,30 @@ export function EmailTypesPanel() {
         Todas las salidas de correo de Obertrack. Apaga las que no quieras que salgan y envía una prueba para ver cómo llega el formato.
       </p>
 
-      {/* Interruptor general + estado global, lo primero que se ve. */}
+      {/* Estado global, solo informativo. NO hay interruptor general a
+          propósito: un clic capaz de tumbar todos los correos —incluidos los de
+          recuperar y crear contraseña— es demasiado peligroso para tenerlo a
+          mano. Apagar todo sigue siendo posible, pero tipo por tipo, que obliga
+          a pensar cada uno. */}
       <div
         style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
-          padding: '14px 16px', marginBottom: 16, borderRadius: 12,
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          padding: '12px 16px', marginBottom: 16, borderRadius: 12,
           background: allOff ? '#fef2f2' : '#f8fafc',
           border: `1px solid ${allOff ? '#fecaca' : '#e2e8f0'}`,
         }}
       >
-        <div style={{ minWidth: 260, flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 14, color: allOff ? '#b91c1c' : '#0f172a' }}>
-            {allOff ? <PowerOff size={16} /> : <Power size={16} />}
-            {allOff ? 'Correo apagado por completo' : 'Correo activo'}
-          </div>
-          <p style={{ margin: '4px 0 0', fontSize: 12.5, color: allOff ? '#b91c1c' : '#64748b' }}>
-            {allOff
-              ? 'Obertrack no está enviando ningún correo. Las notificaciones dentro de la app siguen funcionando.'
-              : offCount > 0
-                ? `${offCount} de ${types.length} tipos están apagados.`
-                : 'Todos los tipos de correo están activos.'}
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 14, color: allOff ? '#b91c1c' : '#0f172a' }}>
+          {allOff ? <PowerOff size={16} /> : <Power size={16} />}
+          {allOff ? 'Correo apagado por completo' : 'Correo activo'}
         </div>
-        <button
-          onClick={() => handleToggleAll(allOff)}
-          disabled={isTogglingAll}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', borderRadius: 10,
-            padding: '10px 16px', fontSize: 13, fontWeight: 700, cursor: isTogglingAll ? 'wait' : 'pointer',
-            width: 'auto', whiteSpace: 'nowrap',
-            background: allOff ? '#16a34a' : '#dc2626', color: '#fff',
-          }}
-        >
-          {allOff ? <Power size={14} /> : <PowerOff size={14} />}
-          {isTogglingAll ? 'Aplicando…' : allOff ? 'Encender todos' : 'Apagar todos'}
-        </button>
+        <span style={{ fontSize: 12.5, color: allOff ? '#b91c1c' : '#64748b' }}>
+          {allOff
+            ? 'Obertrack no está enviando ningún correo. Las notificaciones dentro de la app siguen funcionando.'
+            : offCount > 0
+              ? `${offCount} de ${types.length} tipos están apagados.`
+              : 'Todos los tipos de correo están activos.'}
+        </span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 20, padding: '12px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/nocturne-24d5e9b6-9218-485b-98ac-f61ab85f7e8e/styles.css">
+<script src="_ds/nocturne-24d5e9b6-9218-485b-98ac-f61ab85f7e8e/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<style>
+body{margin:0;background:#0B0F22;color:#ECEAF6;font-family:Inter,system-ui,sans-serif}
+a{color:#A96CF0;text-underline-offset:3px}
+a:hover{color:#C39BF7}
+.d-ctl{border:1px solid rgba(236,234,246,.15);background:transparent;color:rgba(236,234,246,.62);border-radius:8px;font:500 12.5px Inter,sans-serif;cursor:pointer;padding:8px 12px;white-space:nowrap}
+.d-ctl:hover{background:rgba(169,108,240,.14);color:#ECEAF6}
+.d-ctl-on{border-color:#A96CF0;background:rgba(169,108,240,.18);color:#C9B4F9}
+.d-rule{height:1px;border:0;background:linear-gradient(to right,transparent,rgba(236,234,246,.16) 48px,rgba(236,234,246,.16) calc(100% - 48px),transparent)}
+</style>
+</helmet>
+
+<div style="max-width:1180px;margin:0 auto;padding:72px 48px 120px">
+
+<div style="display:flex;align-items:center;gap:13px;margin-bottom:44px">
+<span style="width:38px;height:38px;position:relative;flex:none">
+<span style="position:absolute;inset:0;border-radius:11px;background:rgba(169,108,240,.16)"></span>
+<span style="position:absolute;left:10px;top:6px;width:5px;height:25px;border-radius:3px;background:#A96CF0;transform:rotate(24deg)"></span>
+<span style="position:absolute;right:10px;top:6px;width:5px;height:25px;border-radius:3px;background:#E06BE0;transform:rotate(-24deg)"></span>
+</span>
+<span style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(236,234,246,.5)">Obertrack · producto de Oberstaff</span>
+</div>
+
+<h1 style="font-size:52px;font-weight:500;letter-spacing:-.03em;line-height:1.05;margin:0 0 20px;max-width:740px;text-wrap:pretty">Obertrack Móvil: lo que necesitas en el momento y en la mano</h1>
+<p style="font-size:17px;line-height:1.6;color:rgba(236,234,246,.72);max-width:640px;margin:0">Diseño de producto para la app nativa: principios, estrategia de adaptación por rol, arquitectura de navegación y las pantallas que hoy faltan. El prototipo de más abajo es navegable y cambia de rol, de estado y de tema. Está construido sobre el código Flutter actual: tokens, encabezado, tarjetas de métrica, registro de jornada y copy salen de <code style="font-family:ui-monospace,Menlo,monospace;font-size:14px;color:#C39BF7">lib/</code>.</p>
+
+<div style="display:flex;gap:38px;margin-top:34px;flex-wrap:wrap">
+<span><span style="display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(236,234,246,.45);margin-bottom:5px">Alcance</span><span style="font-size:14.5px">1 app · 4 roles · 14 pantallas</span></span>
+<span><span style="display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(236,234,246,.45);margin-bottom:5px">Plataforma</span><span style="font-size:14.5px">Flutter · Material 3 · claro y oscuro</span></span>
+<span><span style="display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(236,234,246,.45);margin-bottom:5px">Copy</span><span style="font-size:14.5px">Español neutro, tuteo</span></span>
+</div>
+
+<hr class="d-rule" style="margin:64px 0">
+
+<div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#A96CF0;margin-bottom:16px">01 · Principios</div>
+<h2 style="font-size:34px;font-weight:500;letter-spacing:-.02em;margin:0 0 34px;max-width:620px">Cinco reglas que deciden por nosotros</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1px;background:rgba(236,234,246,.11)">
+<sc-for list="{{ principles }}" as="p" hint-placeholder-count="5">
+<div style="background:#0B0F22;padding:26px 28px 30px">
+<div style="font-size:12px;color:rgba(236,234,246,.35);margin-bottom:12px">{{ p.n }}</div>
+<div style="font-size:19px;font-weight:500;letter-spacing:-.01em;line-height:1.25;margin-bottom:10px">{{ p.t }}</div>
+<p style="font-size:14px;line-height:1.6;color:rgba(236,234,246,.68);margin:0;text-wrap:pretty">{{ p.d }}</p>
+</div>
+</sc-for>
+</div>
+
+<hr class="d-rule" style="margin:64px 0">
+
+<div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#A96CF0;margin-bottom:16px">02 · Estrategia por rol</div>
+<h2 style="font-size:34px;font-weight:500;letter-spacing:-.02em;margin:0 0 22px;max-width:680px">Cuatro ranuras fijas y una que cambia de identidad</h2>
+<p style="font-size:16px;line-height:1.65;color:rgba(236,234,246,.75);max-width:640px;margin:0 0 14px">La barra inferior mantiene <strong style="font-weight:500;color:#ECEAF6">Inicio, Tareas, Horas y Chats</strong> para todos. La quinta ranura cambia de cara según el rol: <strong style="font-weight:500;color:#ECEAF6">Equipo</strong> para el manager, <strong style="font-weight:500;color:#ECEAF6">Empresa</strong> para el empleador, <strong style="font-weight:500;color:#ECEAF6">Soporte</strong> para el equipo de Oberstaff. Perfil sale de la barra y pasa al avatar del AppBar.</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:22px;margin:38px 0 8px">
+<sc-for list="{{ argRows }}" as="a" hint-placeholder-count="4">
+<div>
+<div style="width:26px;height:2px;background:#A96CF0;margin-bottom:14px"></div>
+<div style="font-size:15.5px;font-weight:500;margin-bottom:8px">{{ a.t }}</div>
+<p style="font-size:13.5px;line-height:1.6;color:rgba(236,234,246,.66);margin:0;text-wrap:pretty">{{ a.d }}</p>
+</div>
+</sc-for>
+</div>
+
+<div style="margin-top:46px;border:1px solid rgba(236,234,246,.13);border-radius:14px;overflow:hidden">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:rgba(236,234,246,.03)">
+<span style="font-size:13.5px;font-weight:500">La barra resultante</span>
+<span style="font-size:12px;color:rgba(236,234,246,.5)">3, 4 o 5 pestañas — todas son versiones válidas</span>
+</div>
+<sc-for list="{{ tabMap }}" as="m" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:20px;padding:16px 20px;border-top:1px solid rgba(236,234,246,.09);flex-wrap:wrap">
+<span style="width:150px;flex:none">
+<span style="display:block;font-size:14px;font-weight:500">{{ m.role }}</span>
+<span style="display:block;font-size:11.5px;color:rgba(236,234,246,.45);margin-top:2px">{{ m.who }}</span>
+</span>
+<span style="display:flex;gap:8px;flex-wrap:wrap;flex:1">
+<sc-for list="{{ m.tabs }}" as="t" hint-placeholder-count="5">
+<span class="{{ t.cls }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;font-size:12.5px"><i class="{{ t.icon }}" style="font-size:15px"></i>{{ t.label }}</span>
+</sc-for>
+</span>
+<span style="font-size:12px;color:rgba(236,234,246,.45);flex:none">{{ m.count }}</span>
+</div>
+</sc-for>
+</div>
+
+<div style="margin-top:30px;padding:20px 22px;border-left:2px solid #E06BE0;background:rgba(224,107,224,.06);max-width:700px">
+<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#E06BE0;margin-bottom:9px">La apuesta que hay que validar</div>
+<p style="font-size:14px;line-height:1.6;color:rgba(236,234,246,.78);margin:0;text-wrap:pretty">El empleador y el superadmin no fichan: su Inicio es lectura y su ranura de rol carga casi todo su valor. Si en pruebas la usan poco, la salida no es agregarles pestañas: es promover el contenido de Empresa al propio Inicio y liberar la ranura para Pagos. Lo mismo al revés — si un rol nuevo aparece, ocupa la ranura, no la barra.</p>
+</div>
+
+<hr class="d-rule" style="margin:64px 0">
+
+<div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#A96CF0;margin-bottom:16px">03 · Mapa de pantallas</div>
+<h2 style="font-size:34px;font-weight:500;letter-spacing:-.02em;margin:0 0 34px">Dos niveles y nada más</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px">
+<sc-for list="{{ mapCols }}" as="c" hint-placeholder-count="5">
+<div style="border:1px solid rgba(236,234,246,.13);border-radius:12px;padding:18px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+<i class="{{ c.icon }}" style="font-size:18px;color:#A96CF0"></i>
+<span style="font-size:14px;font-weight:500">{{ c.t }}</span>
+</div>
+<sc-for list="{{ c.rows }}" as="r" hint-placeholder-count="3">
+<div style="font-size:13px;line-height:1.5;color:rgba(236,234,246,.66);padding:5px 0 5px 12px;border-left:1px solid rgba(236,234,246,.14)">{{ r }}</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<p style="font-size:13.5px;line-height:1.6;color:rgba(236,234,246,.55);max-width:620px;margin:22px 0 0">Fuera de la barra: Perfil y CV (avatar del AppBar), Notificaciones (campana) y las hojas de acción, que siempre vuelven a donde estabas.</p>
+
+<hr class="d-rule" style="margin:64px 0">
+
+<div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#A96CF0;margin-bottom:16px">04 · Pantallas</div>
+<h2 style="font-size:34px;font-weight:500;letter-spacing:-.02em;margin:0 0 12px">Prototipo navegable</h2>
+<p style="font-size:15.5px;line-height:1.6;color:rgba(236,234,246,.7);max-width:620px;margin:0 0 30px">Cambia el rol y mira cómo se reordena la barra y el Inicio. Los dos teléfonos son la misma sesión en modo claro y oscuro. En Horas por aprobar, arrastra una fila.</p>
+
+<div style="border:1px solid rgba(236,234,246,.13);border-radius:14px;padding:18px 20px;margin-bottom:34px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+<span style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(236,234,246,.42);width:64px;flex:none">Rol</span>
+<sc-for list="{{ roleBtns }}" as="b" hint-placeholder-count="4">
+<button onClick="{{ b.onTap }}" class="d-ctl {{ b.cls }}">{{ b.label }}</button>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+<span style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(236,234,246,.42);width:64px;flex:none">Pantalla</span>
+<sc-for list="{{ screenBtns }}" as="b" hint-placeholder-count="8">
+<button onClick="{{ b.onTap }}" class="d-ctl {{ b.cls }}">{{ b.label }}</button>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+<span style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(236,234,246,.42);width:64px;flex:none">Estado</span>
+<sc-for list="{{ stateBtns }}" as="b" hint-placeholder-count="5">
+<button onClick="{{ b.onTap }}" class="d-ctl {{ b.cls }}">{{ b.label }}</button>
+</sc-for>
+<span style="font-size:12px;color:rgba(236,234,246,.4)">afecta a Inicio y a la barra de conexión</span>
+</div>
+</div>
+
+<div style="display:flex;gap:46px;flex-wrap:wrap;align-items:flex-start">
+<div>
+<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(236,234,246,.42);margin-bottom:14px">Modo claro</div>
+<div class="ob-light">
+<dc-import name="ObertrackPhone" vm="{{ vm }}" hint-size="412px,866px"></dc-import>
+</div>
+</div>
+<div>
+<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(236,234,246,.42);margin-bottom:14px">Modo oscuro</div>
+<div class="ob-dark">
+<dc-import name="ObertrackPhone" vm="{{ vm }}" hint-size="412px,866px"></dc-import>
+</div>
+</div>
+</div>
+
+<hr class="d-rule" style="margin:64px 0">
+
+<div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#A96CF0;margin-bottom:16px">05 · Componentes recurrentes</div>
+<h2 style="font-size:34px;font-weight:500;letter-spacing:-.02em;margin:0 0 34px;max-width:640px">Seis piezas construyen las catorce pantallas</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1px;background:rgba(236,234,246,.11)">
+<sc-for list="{{ components }}" as="c" hint-placeholder-count="6">
+<div style="background:#0B0F22;padding:24px 26px 28px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+<i class="{{ c.icon }}" style="font-size:19px;color:#A96CF0"></i>
+<span style="font-size:15.5px;font-weight:500">{{ c.t }}</span>
+</div>
+<p style="font-size:13.5px;line-height:1.6;color:rgba(236,234,246,.68);margin:0 0 12px;text-wrap:pretty">{{ c.d }}</p>
+<div style="font-size:12px;line-height:1.55;color:rgba(236,234,246,.44);font-family:ui-monospace,Menlo,monospace">{{ c.spec }}</div>
+</div>
+</sc-for>
+</div>
+
+<hr class="d-rule" style="margin:64px 0">
+
+<div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#A96CF0;margin-bottom:16px">06 · Sistema visual</div>
+<h2 style="font-size:34px;font-weight:500;letter-spacing:-.02em;margin:0 0 22px;max-width:640px">Qué cambié y qué dejé como está</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:26px;max-width:900px">
+<div>
+<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(236,234,246,.45);margin-bottom:14px">Se mantiene</div>
+<sc-for list="{{ kept }}" as="k" hint-placeholder-count="4">
+<div style="display:flex;gap:10px;font-size:13.5px;line-height:1.55;color:rgba(236,234,246,.72);padding:7px 0"><i class="ph ph-check" style="font-size:16px;color:#4ADE80;flex:none;margin-top:3px"></i><span>{{ k }}</span></div>
+</sc-for>
+</div>
+<div>
+<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(236,234,246,.45);margin-bottom:14px">Se propone cambiar</div>
+<sc-for list="{{ changed }}" as="k" hint-placeholder-count="4">
+<div style="display:flex;gap:10px;font-size:13.5px;line-height:1.55;color:rgba(236,234,246,.72);padding:7px 0"><i class="ph ph-arrow-right" style="font-size:16px;color:#E06BE0;flex:none;margin-top:3px"></i><span>{{ k }}</span></div>
+</sc-for>
+</div>
+</div>
+
+<div style="margin-top:56px;display:flex;flex-wrap:wrap;gap:10px">
+<sc-for list="{{ swatches }}" as="s" hint-placeholder-count="8">
+<span style="{{ s.style }}">{{ s.name }}</span>
+</sc-for>
+</div>
+
+<hr class="d-rule" style="margin:64px 0">
+
+<div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(236,234,246,.42);margin-bottom:16px">Siguientes pasos</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;max-width:900px">
+<sc-for list="{{ next }}" as="n" hint-placeholder-count="4">
+<div>
+<div style="font-size:14px;font-weight:500;margin-bottom:7px">{{ n.t }}</div>
+<p style="font-size:13px;line-height:1.55;color:rgba(236,234,246,.6);margin:0">{{ n.d }}</p>
+</div>
+</sc-for>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const ROLES = {
+  pro: { label: 'Profesional', name: 'Lucía Ferrer', first: 'Lucía', ini: 'LF',
+    role: 'Profesional · Cerámica Andina', tabs: ['home', 'tareas', 'horas', 'chats'] },
+  manager: { label: 'Manager', name: 'Diego Peña', first: 'Diego', ini: 'DP',
+    role: 'Manager · Cerámica Andina', tabs: ['home', 'tareas', 'horas', 'chats', 'equipo'] },
+  employer: { label: 'Empleador', name: 'Marta Solís', first: 'Marta', ini: 'MS',
+    role: 'Empleador · Cerámica Andina', tabs: ['home', 'tareas', 'horas', 'chats', 'empresa'] },
+  admin: { label: 'Superadmin / CS', name: 'Nico Arce', first: 'Nico', ini: 'NA',
+    role: 'Customer Success · Oberstaff', tabs: ['home', 'chats', 'soporte'] }
+};
+
+const TAB = {
+  home: { label: 'Inicio', icon: 'ph-house' },
+  tareas: { label: 'Tareas', icon: 'ph-check-square' },
+  horas: { label: 'Horas', icon: 'ph-clock' },
+  chats: { label: 'Chats', icon: 'ph-chat-circle' },
+  equipo: { label: 'Equipo', icon: 'ph-users-three' },
+  empresa: { label: 'Empresa', icon: 'ph-buildings' },
+  soporte: { label: 'Soporte', icon: 'ph-lifebuoy' }
+};
+
+const APPROVALS = [
+  { id: 'a1', name: 'Lucía Ferrer', ini: 'LF', sub: 'Miércoles 13 · Obra Norte', min: 495, d: 3 },
+  { id: 'a2', name: 'Martín Salas', ini: 'MS', sub: 'Miércoles 13 · Obra Norte', min: 540, d: 3 },
+  { id: 'a3', name: 'Andrea Lemos', ini: 'AL', sub: 'Miércoles 13 · Mantenimiento', min: 405, d: 3 },
+  { id: 'a4', name: 'Julia Otero', ini: 'JO', sub: 'Miércoles 13 · Administración', min: 435, d: 3 },
+  { id: 'a5', name: 'Carla Ruiz', ini: 'CR', sub: 'Martes 12 · Mantenimiento', min: 390, d: 2 },
+  { id: 'a6', name: 'Iván Gómez', ini: 'IG', sub: 'Martes 12 · Obra Norte', min: 480, d: 2 },
+  { id: 'a7', name: 'Lucía Ferrer', ini: 'LF', sub: 'Martes 12 · Obra Norte', min: 450, d: 2 },
+  { id: 'a8', name: 'Martín Salas', ini: 'MS', sub: 'Martes 12 · Obra Norte', min: 480, d: 2 },
+  { id: 'a9', name: 'Sofía Núñez', ini: 'SN', sub: 'Lunes 11 · Administración', min: 465, d: 1 },
+  { id: 'a10', name: 'Pablo Vera', ini: 'PV', sub: 'Lunes 11 · Obra Norte', min: 480, d: 1 },
+  { id: 'a11', name: 'Tomás Ferrari', ini: 'TF', sub: 'Lunes 11 · Obra Norte', min: 330, d: 1 },
+  { id: 'a12', name: 'Carla Ruiz', ini: 'CR', sub: 'Lunes 11 · Mantenimiento', min: 270, d: 1 },
+  { id: 'a13', name: 'Iván Gómez', ini: 'IG', sub: 'Viernes 8 · Obra Norte', min: 240, d: 0 },
+  { id: 'a14', name: 'Pablo Vera', ini: 'PV', sub: 'Viernes 8 · Obra Norte', min: 300, d: 0 }
+];
+
+const TASKS = [
+  { id: 't1', t: 'Revisar planos de la nave 3', proy: 'Obra Norte · asignada por Diego Peña', due: 'Hoy 18:00', estado: 'En curso', tagCls: 'ob-tag-warn', mark: 'ob-mark-alta' },
+  { id: 't2', t: 'Cargar fotos del avance semanal', proy: 'Obra Norte', due: 'Hoy', estado: 'Pendiente', tagCls: 'ob-tag-plain', mark: 'ob-mark-media' },
+  { id: 't3', t: 'Firmar acta de recepción', proy: 'Administración', due: 'Mañana 12:00', estado: 'Pendiente', tagCls: 'ob-tag-plain', mark: 'ob-mark-alta' },
+  { id: 't4', t: 'Actualizar certificación de altura', proy: 'Tu perfil', due: 'Vence en 6 días', estado: 'Por vencer', tagCls: 'ob-tag-bad', mark: 'ob-mark-baja' }
+];
+
+const HOURS = [
+  { dur: '8', date: 'Miércoles 13 de agosto', type: 'Jornada completa', act: 'Revisión de planos de la nave 3', estado: 'Pendiente', tagCls: 'ob-tag-warn' },
+  { dur: '6,5', date: 'Martes 12 de agosto', type: 'Jornada completa', act: 'Control del eje C y acta de avance', estado: 'Aprobado', tagCls: 'ob-tag-ok' },
+  { dur: '8', date: 'Lunes 11 de agosto', type: 'Jornada completa', act: 'Montaje de encofrados', estado: 'Aprobado', tagCls: 'ob-tag-ok' },
+  { dur: '0', date: 'Viernes 8 de agosto', type: 'Ausencia', act: 'Consulta médica', estado: 'Aprobado', tagCls: 'ob-tag-ok' },
+  { dur: '2', date: 'Jueves 7 de agosto', type: 'Recuperación', act: 'Cierre de partes atrasados', estado: 'Rechazado', tagCls: 'ob-tag-bad' }
+];
+
+const SUMMARY = [
+  { label: 'Total', value: '126,5', cls: 'ob-sv' },
+  { label: 'Aprobadas', value: '112', cls: 'ob-sok' },
+  { label: 'Pendientes', value: '14,5', cls: 'ob-sw' },
+  { label: 'Rechazadas', value: '2', cls: 'ob-sb' }
+];
+
+const CHATS = [
+  { id: 'c1', ini: '#', name: 'obra-norte', msg: 'Martín: Subí las fotos del avance de la nave 3.', when: '08:42', unread: 3, avaCls: 'ob-ava-ch' },
+  { id: 'c2', ini: 'DP', name: 'Diego Peña', msg: '¿Puedes cerrar el parte de hoy antes de las 18?', when: '08:10', unread: 1, avaCls: 'ob-ava-dm' },
+  { id: 'c3', ini: '#', name: 'anuncios', msg: 'Recursos Humanos: Nuevo instructivo de seguridad.', when: 'Ayer', unread: 0, avaCls: 'ob-ava-ch' },
+  { id: 'c4', ini: 'CR', name: 'Carla Ruiz', msg: 'Gracias, lo reviso mañana temprano.', when: 'Ayer', unread: 0, avaCls: 'ob-ava-dm' }
+];
+
+const MSGS = [
+  { who: 'Martín Salas', text: 'Subí las fotos del avance de la nave 3.', time: '08:42', mine: false },
+  { who: '', text: 'Faltan las del eje C, las saco después del almuerzo.', time: '08:43', mine: false },
+  { who: '', text: 'Perfecto. Cuando estén, las reviso y cierro la tarea.', time: '09:05', mine: true },
+  { who: 'Diego Peña', text: '¿Alguien puede cargar las horas de ayer? Cierro el parte a las 18.', time: '09:20', mine: false }
+];
+
+const PEOPLE = [
+  { name: 'Lucía Ferrer', ini: 'LF', sub: 'Obra Norte · Técnica', hrs: '32:15', tag: 'Pendiente 8:15', tagCls: 'ob-tag-warn' },
+  { name: 'Martín Salas', ini: 'MS', sub: 'Obra Norte · Oficial', hrs: '41:00', tag: 'Pendiente 9:00', tagCls: 'ob-tag-warn' },
+  { name: 'Carla Ruiz', ini: 'CR', sub: 'Mantenimiento', hrs: '28:30', tag: 'Al día', tagCls: 'ob-tag-ok' },
+  { name: 'Iván Gómez', ini: 'IG', sub: 'Obra Norte · Ayudante', hrs: '36:00', tag: 'Al día', tagCls: 'ob-tag-ok' },
+  { name: 'Sofía Núñez', ini: 'SN', sub: 'Administración', hrs: '30:45', tag: 'Pendiente 7:45', tagCls: 'ob-tag-warn' }
+];
+
+const NOTIS = [
+  { t: 'Diego aprobó tus horas del lunes y del martes', when: 'Hace 2 horas', icon: 'ph ph-check-circle', dot: true },
+  { t: 'Nueva tarea: Firmar acta de recepción', when: 'Hace 4 horas', icon: 'ph ph-check-square', dot: true },
+  { t: 'Martín te mencionó en #obra-norte', when: 'Ayer 17:20', icon: 'ph ph-at', dot: true },
+  { t: 'Tu certificación de altura vence en 6 días', when: 'Ayer 09:00', icon: 'ph ph-certificate', dot: false },
+  { t: 'Se rechazó tu registro del viernes: falta detalle de la tarea', when: 'Hace 3 días', icon: 'ph ph-x-circle', dot: false }
+];
+
+const HOME = {
+  pro: {
+    metricsTitle: 'Tu resumen',
+    metrics: [
+      { label: 'Horas del mes', value: '126,5', sub: 'de 160', icon: 'ph ph-clock', ic: 'ob-ic-azure', go: 'horas' },
+      { label: 'Horas por aprobar', value: '14,5', sub: '2 jornadas', icon: 'ph ph-hourglass-medium', ic: 'ob-ic-warn', go: 'horas' },
+      { label: 'Tareas activas', value: '4', sub: '12 finalizadas', icon: 'ph ph-check-square', ic: 'ob-ic-orchid', go: 'tareas' },
+      { label: 'Avisos sin leer', value: '3', sub: '2 conversaciones', icon: 'ph ph-bell', ic: 'ob-ic-indigo', go: 'chats' }
+    ],
+    hero: 'Registrar jornada', heroIcon: 'ph-bold ph-plus', heroGo: 'sheet-horas',
+    listTitle: 'Tu día', listMore: 'Ver todas', listMoreGo: 'tareas',
+    list: [
+      { t: 'Revisar planos de la nave 3', sub: 'Obra Norte · 18:00', tag: 'Hoy', tagCls: 'ob-tag-warn', mark: 'ob-mark-alta', go: 'tarea' },
+      { t: 'Cargar fotos del avance semanal', sub: 'Obra Norte', tag: 'Hoy', tagCls: 'ob-tag-plain', mark: 'ob-mark-media', go: 'tarea' },
+      { t: 'Firmar acta de recepción', sub: 'Administración · mañana', tag: 'Mañana', tagCls: 'ob-tag-plain', mark: 'ob-mark-alta', go: 'tarea' }
+    ]
+  },
+  manager: {
+    metricsTitle: 'Tu resumen',
+    metrics: [
+      { label: 'Horas por aprobar', value: '96', sub: '14 jornadas · 9 personas', icon: 'ph ph-hourglass-medium', ic: 'ob-ic-warn', go: 'aprobar', hot: true },
+      { label: 'Personas', value: '12', sub: '11 activas hoy', icon: 'ph ph-users-three', ic: 'ob-ic-violet', go: 'equipo' },
+      { label: 'Tareas activas', value: '41', sub: '3 vencidas', icon: 'ph ph-check-square', ic: 'ob-ic-orchid', go: 'tareas' },
+      { label: 'Horas del mes', value: '112', sub: 'las tuyas', icon: 'ph ph-clock', ic: 'ob-ic-azure', go: 'horas' }
+    ],
+    hero: 'Revisar horas del equipo', heroIcon: 'ph ph-hand-swipe-right', heroGo: 'aprobar',
+    listTitle: 'Necesita tu decisión', listMore: 'Ver todo', listMoreGo: 'aprobar',
+    list: [
+      { t: 'Lucía Ferrer · 8:15', sub: 'Miércoles 13 · Obra Norte', tag: 'Aprobar', tagCls: 'ob-tag-accent', mark: 'ob-mark-accent', go: 'aprobar' },
+      { t: 'Martín Salas · 9:00', sub: 'Miércoles 13 · Obra Norte', tag: 'Aprobar', tagCls: 'ob-tag-accent', mark: 'ob-mark-accent', go: 'aprobar' },
+      { t: 'Cargar fotos del avance semanal', sub: 'Sin avance desde el lunes', tag: 'Vencida', tagCls: 'ob-tag-bad', mark: 'ob-mark-alta', go: 'tareas' }
+    ]
+  },
+  employer: {
+    metricsTitle: 'Tu resumen',
+    metrics: [
+      { label: 'Personas', value: '148', sub: 'de 162 usuarios', icon: 'ph ph-users-three', ic: 'ob-ic-violet', go: 'empresa' },
+      { label: 'Horas por aprobar', value: '312', sub: 'en 4 equipos', icon: 'ph ph-hourglass-medium', ic: 'ob-ic-warn', go: 'empresa', hot: true },
+      { label: 'Tareas activas', value: '87', sub: '9 vencidas', icon: 'ph ph-check-square', ic: 'ob-ic-orchid', go: 'tareas' },
+      { label: 'Incidentes abiertos', value: '2', sub: '1 sin asignar', icon: 'ph ph-warning-octagon', ic: 'ob-ic-bad', go: 'empresa' }
+    ],
+    bars: [{ d: 'L', v: 7 }, { d: 'M', v: 8 }, { d: 'X', v: 6.5 }, { d: 'J', v: 8 }, { d: 'V', v: 5 }, { d: 'S', v: 2 }],
+    hero: 'Invitar a alguien', heroIcon: 'ph ph-user-plus', heroGo: 'empresa',
+    listTitle: 'Equipos', listMore: 'Ver empresa', listMoreGo: 'empresa',
+    list: [
+      { t: 'Obra Norte', sub: '46 personas · 128 h por aprobar', tag: 'Revisar', tagCls: 'ob-tag-warn', mark: 'ob-mark-media', go: 'empresa' },
+      { t: 'Mantenimiento', sub: '22 personas · 61 h por aprobar', tag: 'Revisar', tagCls: 'ob-tag-warn', mark: 'ob-mark-media', go: 'empresa' },
+      { t: 'Administración', sub: '18 personas · sin pendientes', tag: 'Al día', tagCls: 'ob-tag-ok', mark: 'ob-mark-ok', go: 'empresa' }
+    ]
+  },
+  admin: {
+    metricsTitle: 'Resumen general',
+    metrics: [
+      { label: 'Usuarios activos', value: '2.418', sub: 'de 2.812', icon: 'ph ph-users-three', ic: 'ob-ic-violet', go: 'soporte' },
+      { label: 'Empresas', value: '34', sub: '2 en prueba', icon: 'ph ph-buildings', ic: 'ob-ic-azure', go: 'soporte' },
+      { label: 'Horas pendientes', value: '1.204', sub: 'en 12 empresas', icon: 'ph ph-hourglass-medium', ic: 'ob-ic-warn', go: 'soporte', hot: true },
+      { label: 'Activos hoy', value: '891', sub: 'dato de hace 5 min', icon: 'ph ph-lightning', ic: 'ob-ic-ok', go: 'soporte' }
+    ],
+    status: true,
+    hero: 'Buscar una empresa', heroIcon: 'ph ph-magnifying-glass', heroGo: 'soporte',
+    listTitle: 'Actividad reciente', listMore: 'Ver todo', listMoreGo: 'soporte',
+    list: [
+      { t: 'Talleres Bahía abrió un incidente', sub: 'Fichaje duplicado · hace 20 min', tag: 'Crítico', tagCls: 'ob-tag-bad', mark: 'ob-mark-alta', go: 'soporte' },
+      { t: 'Grupo Nervión sumó 14 usuarios', sub: 'Hace 2 horas', tag: '', tagCls: 'ob-tag-plain', mark: 'ob-mark-baja', go: 'soporte' },
+      { t: 'Norte Logística terminó la prueba', sub: 'Pasó a plan anual · ayer', tag: 'Nuevo', tagCls: 'ob-tag-info', mark: 'ob-mark-ok', go: 'soporte' }
+    ]
+  }
+};
+
+const PANELS = {
+  empresa: {
+    search: false, cta: 'Invitar a alguien',
+    rows: [
+      { t: 'Personas', sub: '148 activas · 6 invitaciones pendientes', icon: 'ph ph-users-three' },
+      { t: 'Horas', sub: '312 h por aprobar en 4 equipos', icon: 'ph ph-clock', tag: 'Revisar', tagCls: 'ob-tag-warn' },
+      { t: 'Tareas', sub: '87 en curso · 9 vencidas', icon: 'ph ph-check-square' },
+      { t: 'Incidentes', sub: '2 abiertos · 1 sin asignar', icon: 'ph ph-warning-octagon', tag: 'Abierto', tagCls: 'ob-tag-bad' },
+      { t: 'Pagos', sub: 'Próximo cierre el 31 de agosto', icon: 'ph ph-receipt' },
+      { t: 'Roles y permisos', sub: '6 roles configurados', icon: 'ph ph-shield-check' }
+    ]
+  },
+  soporte: {
+    search: true, cta: '',
+    rows: [
+      { t: 'Cerámica Andina', sub: '148 personas · 2 incidentes abiertos', icon: 'ph ph-buildings', tag: 'Crítico', tagCls: 'ob-tag-bad' },
+      { t: 'Talleres Bahía', sub: '31 personas · 1 incidente', icon: 'ph ph-buildings', tag: 'Abierto', tagCls: 'ob-tag-warn' },
+      { t: 'Norte Logística', sub: '210 personas · plan anual', icon: 'ph ph-buildings' },
+      { t: 'Grupo Nervión', sub: '62 personas · prueba hasta el 20 de agosto', icon: 'ph ph-buildings', tag: 'Prueba', tagCls: 'ob-tag-info' },
+      { t: 'Entrar como usuario', sub: 'Reproduce el problema desde su sesión', icon: 'ph ph-user-switch' },
+      { t: 'Métricas de plataforma', sub: 'Sesiones, errores y latencia', icon: 'ph ph-chart-line' }
+    ]
+  }
+};
+
+const SCREEN_META = {
+  splash: { chrome: false, appbar: false, tabs: false },
+  login: { chrome: true, appbar: false, tabs: false },
+  home: { title: null, greeting: true },
+  tareas: { title: 'Tareas', bell: true, avatar: true },
+  tarea: { title: 'Tarea', back: true },
+  horas: { title: 'Mis horas', bell: true, avatar: true },
+  aprobar: { title: 'Horas por aprobar', back: true },
+  chats: { title: 'Chats', bell: true, avatar: true },
+  chat: { title: '#obra-norte', subtitle: '12 personas', back: true },
+  equipo: { title: 'Equipo', bell: true, avatar: true },
+  empresa: { title: 'Empresa', bell: true, avatar: true },
+  soporte: { title: 'Soporte', bell: true, avatar: true },
+  perfil: { title: 'Perfil', back: true },
+  notis: { title: 'Notificaciones', back: true }
+};
+
+class Component extends DCLogic {
+  state = {
+    role: 'pro', screen: 'home', prev: 'home', sheet: '', ui: 'ok', filter: 0,
+    workType: 'complete', dragId: '', dragDx: 0, dragging: false, approved: [], snack: '', sortBy: 'fecha',
+    checks: [true, false, false], notisRead: false
+  };
+
+  go = (s) => {
+    if (s === 'sheet-horas') return this.setState({ screen: 'horas', sheet: 'horas' });
+    this.setState(st => ({ screen: s, prev: st.screen, sheet: '', snack: '' }));
+  };
+  back = () => this.setState(st => ({ screen: st.prev === st.screen ? 'home' : st.prev, sheet: '' }));
+
+  fmt(m) { return Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0'); }
+
+  down = (id) => (e) => { this._x0 = e.clientX; this.setState({ dragId: id, dragDx: 0, dragging: true }); };
+  move = (id) => (e) => {
+    if (!this.state.dragging || this.state.dragId !== id) return;
+    const dx = Math.max(-130, Math.min(130, e.clientX - this._x0));
+    this.setState({ dragDx: dx });
+  };
+  up = (id) => () => {
+    const dx = this.state.dragDx;
+    const row = APPROVALS.find(a => a.id === id);
+    if (dx > 72) {
+      this.setState(st => ({ approved: st.approved.concat(id), dragId: '', dragDx: 0, dragging: false, snack: 'Aprobado: ' + this.fmt(row.min) + ' de ' + row.name }));
+    } else if (dx < -72) {
+      this.setState({ dragId: '', dragDx: 0, dragging: false, sheet: 'reject', rejectId: id });
+    } else {
+      this.setState({ dragId: '', dragDx: 0, dragging: false });
+    }
+  };
+
+  renderVals() {
+    const st = this.state, R = ROLES[st.role], H = HOME[st.role];
+    const meta = SCREEN_META[st.screen] || {};
+    const sc = st.screen;
+    const loading = sc === 'home' && st.ui === 'loading';
+    const error = sc === 'home' && st.ui === 'error';
+    const empty = sc === 'home' && st.ui === 'empty';
+    const rejectRow = APPROVALS.find(a => a.id === st.rejectId);
+    let pending = APPROVALS.filter(a => st.approved.indexOf(a.id) < 0);
+    if (st.sortBy === 'persona') pending = pending.slice().sort((x, y) => x.name.localeCompare(y.name) || y.d - x.d);
+    const pendMin = pending.reduce((s, a) => s + a.min, 0);
+    const pendPeople = pending.reduce((s, a) => s.indexOf(a.name) < 0 ? s.concat(a.name) : s, []).length;
+
+    const activeTab = { tarea: 'tareas', aprobar: 'horas', chat: 'chats' }[sc] || sc;
+    const tabs = (sc === 'splash' || sc === 'login') ? null : R.tabs.map(id => ({
+      label: TAB[id].label,
+      icon: (activeTab === id ? 'ph-fill ' : 'ph ') + TAB[id].icon,
+      cls: activeTab === id ? 'ob-tab ob-tab-on' : 'ob-tab',
+      badge: id === 'chats' ? 4 : 0,
+      onTap: () => this.go(id)
+    }));
+
+    const filterLabels = sc === 'equipo' ? ['Todo el equipo', 'Con pendientes'] : ['Hoy', 'Esta semana', 'Todas'];
+
+    const vm = {
+      chrome: meta.chrome !== false,
+      appbar: meta.appbar !== false && !meta.greeting,
+      greeting: meta.greeting ? R.role : '',
+      firstName: R.first,
+      bodyCls: sc === 'aprobar' && pending.length ? 'ob-body-batch' : 'ob-body',
+      tabs,
+      title: meta.title,
+      subtitle: meta.subtitle || '',
+      back: meta.back ? this.back : null,
+      showBell: !!meta.bell, showAvatar: !!meta.avatar,
+      unread: st.notisRead ? 0 : 3,
+      initials: R.ini, meName: R.name, meRole: R.role,
+      offline: st.ui === 'offline' && sc !== 'splash' && sc !== 'login',
+      goNotis: () => this.go('notis'), goPerfil: () => this.go('perfil'),
+      goLogin: () => this.go('login'), doLogin: () => this.go('home'),
+      logout: () => this.go('login'),
+      retry: () => this.setState({ ui: 'ok' }),
+
+      sSplash: sc === 'splash', sLogin: sc === 'login', sHome: sc === 'home',
+      sTareas: sc === 'tareas', sTarea: sc === 'tarea', sHoras: sc === 'horas',
+      sAprobar: sc === 'aprobar', sChats: sc === 'chats', sChat: sc === 'chat',
+      sEquipo: sc === 'equipo', sPanel: sc === 'empresa' || sc === 'soporte',
+      sPerfil: sc === 'perfil', sNotis: sc === 'notis',
+
+      loading, error, empty, ready: !loading && !error,
+
+      metricsTitle: H.metricsTitle,
+      metrics: H.metrics.map(m => ({
+        label: m.label, value: m.value, sub: m.sub, icon: m.icon, icCls: m.ic,
+        cls: m.hot ? 'ob-metric-hot' : '',
+        onTap: () => this.go(m.go)
+      })),
+      hero: H.hero, heroIcon: H.heroIcon, heroTap: () => this.go(H.heroGo),
+      bars: H.bars ? H.bars.map(b => ({
+        d: b.d, cls: b.v >= 7 ? 'ob-bar' : 'ob-bar-dim',
+        style: { height: (b.v / 8 * 100) + '%' }
+      })) : null,
+      status: !!H.status,
+      listTitle: H.listTitle, listMore: H.listMore, listMoreTap: () => this.go(H.listMoreGo),
+      homeList: empty ? [] : H.list.map(r => ({ t: r.t, sub: r.sub, tag: r.tag, tagCls: r.tagCls, mark: r.mark, onTap: () => this.go(r.go) })),
+
+      filters: filterLabels.map((l, i) => ({
+        label: l, cls: st.filter === i ? 'ob-chip ob-chip-on' : 'ob-chip',
+        onTap: () => this.setState({ filter: i })
+      })),
+      tasks: TASKS.map(t => ({ ...t, onTap: () => this.go('tarea') })),
+      checks: [
+        { t: 'Descargar la última revisión', done: st.checks[0] },
+        { t: 'Comparar el eje C con lo ejecutado', done: st.checks[1] },
+        { t: 'Dejar nota de las diferencias', done: st.checks[2] }
+      ].map((c, i) => ({
+        t: c.t, cls: c.done ? 'ob-check-done' : 'ob-check-todo',
+        icon: c.done ? 'ph-fill ph-check-square' : 'ph ph-square',
+        onTap: () => this.setState(s => { const c2 = s.checks.slice(); c2[i] = !c2[i]; return { checks: c2 }; })
+      })),
+      doneTask: () => this.setState({ screen: 'tareas', snack: 'Tarea marcada como hecha' }),
+
+      hours: HOURS, summary: SUMMARY,
+      fab: sc === 'horas' ? 'Registrar' : (sc === 'tareas' && st.role === 'manager' ? 'Nueva tarea' : ''),
+      fabTap: () => this.setState({ sheet: 'horas' }),
+
+      apCount: pending.length ? pending.length + ' jornadas · ' + pendPeople + ' personas' : 'Nada pendiente',
+      apDone: pending.length === 0,
+      sortLabel: st.sortBy === 'persona' ? 'Ordenar por fecha' : 'Ordenar por persona',
+      toggleSort: () => this.setState(s => ({ sortBy: s.sortBy === 'persona' ? 'fecha' : 'persona' })),
+      snackCls: sc === 'aprobar' && pending.length ? 'ob-snack-hi' : 'ob-snack',
+      approvals: pending.map(a => ({
+        ini: a.ini, name: a.name, sub: a.sub, dur: this.fmt(a.min),
+        down: this.down(a.id), move: this.move(a.id), up: this.up(a.id),
+        frontStyle: {
+          position: 'relative', display: 'flex', alignItems: 'center', gap: '13px',
+          padding: '14px', border: '1px solid var(--ob-divider)', borderRadius: '16px',
+          background: 'var(--ob-surface)', color: 'var(--ob-text)', minHeight: '66px',
+          transform: 'translateX(' + (st.dragId === a.id ? st.dragDx : 0) + 'px)',
+          transition: st.dragging && st.dragId === a.id ? 'none' : 'transform .24s cubic-bezier(.2,.8,.2,1)',
+          touchAction: 'pan-y', cursor: 'grab', userSelect: 'none'
+        }
+      })),
+      barBatch: sc === 'aprobar' && pending.length ? 'Aprobar las ' + pending.length + ' restantes' : '',
+      approveAll: () => this.setState({ approved: APPROVALS.map(a => a.id), snack: 'Aprobados ' + pending.length + ' registros · ' + this.fmt(pendMin) }),
+      snack: st.snack,
+      undo: () => this.setState({ approved: [], snack: '' }),
+
+      chats: CHATS.map(c => ({
+        ini: c.ini, name: c.name, msg: c.msg, when: c.when, unread: c.unread,
+        avaCls: c.avaCls, msgCls: c.unread ? 'ob-msg-unread' : 'ob-msg-read',
+        onTap: () => this.go('chat')
+      })),
+      msgs: MSGS.map(m => ({
+        who: m.who, text: m.text, time: m.time,
+        wrapCls: m.mine ? 'ob-me' : 'ob-them',
+        bubbleCls: m.mine ? 'ob-bub-me' : 'ob-bub-them',
+        timeCls: ''
+      })),
+      people: PEOPLE.map(p => ({ ...p, onTap: () => this.go('aprobar') })),
+
+      panelSearch: sc === 'soporte',
+      panelCta: sc === 'empresa' ? PANELS.empresa.cta : '',
+      panelRows: (PANELS[sc] ? PANELS[sc].rows : []).map(r => ({ ...r, onTap: () => {} })),
+
+      cvRows: [
+        { t: 'Experiencia', sub: '4 puestos · último desde 2023', icon: 'ph ph-briefcase' },
+        { t: 'Habilidades', sub: '12 etiquetas validadas', icon: 'ph ph-wrench' },
+        { t: 'Certificaciones', sub: '3 vigentes', icon: 'ph ph-certificate', tag: 'Vence en 6 días', tagCls: 'ob-tag-warn' },
+        { t: 'Documentos', sub: 'DNI, contrato y ART', icon: 'ph ph-file-text' }
+      ],
+      notis: st.notisRead ? [] : NOTIS.map(n => ({ ...n, tCls: n.dot ? 'ob-noti-unread' : 'ob-noti-read' })),
+      notisEmpty: st.notisRead,
+      readAll: () => this.setState({ notisRead: true }),
+
+      sheet: !!st.sheet, sheetHoras: st.sheet === 'horas', sheetReject: st.sheet === 'reject',
+      closeSheet: () => this.setState({ sheet: '' }),
+      workTypes: [['complete', 'Completa'], ['absence', 'Ausencia'], ['recover', 'Recuper.']].map(([id, label]) => ({
+        label, on: st.workType === id,
+        cls: st.workType === id ? 'ob-seg-on' : 'ob-seg-off',
+        onTap: () => this.setState({ workType: id })
+      })),
+      wtComplete: st.workType === 'complete',
+      wtAbsence: st.workType === 'absence',
+      wtRecover: st.workType === 'recover',
+      saveHoras: () => this.setState({ sheet: '', snack: 'Jornada registrada' }),
+      rejectName: rejectRow ? rejectRow.name : '',
+      reasons: ['Falta detalle de la tarea', 'No coincide con el parte de obra', 'Día equivocado', 'Otro motivo'].map(l => ({
+        label: l, onTap: () => this.setState({ sheet: '', snack: 'Rechazado. La persona recibió el motivo' })
+      }))
+    };
+
+    const screenList = [
+      ['splash', 'Splash'], ['login', 'Login'], ['home', 'Inicio'], ['tareas', 'Tareas'],
+      ['tarea', 'Detalle de tarea'], ['horas', 'Mis horas'], ['sheet-horas', 'Registrar jornada'],
+      ['aprobar', 'Aprobar horas'], ['chats', 'Chats'], ['chat', 'Conversación'],
+      ['equipo', 'Equipo'], ['empresa', 'Empresa'], ['soporte', 'Soporte'],
+      ['perfil', 'Perfil y CV'], ['notis', 'Notificaciones']
+    ].filter(([id]) => {
+      if (id === 'equipo') return st.role === 'manager';
+      if (id === 'empresa') return st.role === 'employer';
+      if (id === 'soporte') return st.role === 'admin';
+      if (id === 'aprobar') return st.role === 'manager';
+      if (id === 'tareas' || id === 'tarea' || id === 'horas' || id === 'sheet-horas') return st.role !== 'admin';
+      return true;
+    });
+
+    return {
+      vm,
+      roleBtns: Object.keys(ROLES).map(k => ({
+        label: ROLES[k].label, cls: st.role === k ? 'd-ctl-on' : '',
+        onTap: () => this.setState({ role: k, screen: 'home', sheet: '', filter: 0, snack: '' })
+      })),
+      screenBtns: screenList.map(([id, label]) => ({
+        label, cls: (st.screen === id || (id === 'sheet-horas' && st.sheet === 'horas')) ? 'd-ctl-on' : '',
+        onTap: () => this.go(id)
+      })),
+      stateBtns: [['ok', 'Normal'], ['loading', 'Cargando'], ['empty', 'Vacío'], ['error', 'Error'], ['offline', 'Sin conexión']].map(([id, label]) => ({
+        label, cls: st.ui === id ? 'd-ctl-on' : '',
+        onTap: () => this.setState({ ui: id })
+      })),
+
+      principles: [
+        { n: '01', t: 'Una pantalla, una decisión', d: 'Cada pantalla tiene una acción principal y vive en el tercio inferior, al alcance del pulgar. Si dos acciones compiten por ese lugar, una de las dos no pertenece al móvil.' },
+        { n: '02', t: 'El rol cambia el contenido, no la gramática', d: 'Las cuatro audiencias ven las mismas piezas —tarjeta de métrica, ítem de lista, hoja de acción— con datos distintos. Nadie aprende una app nueva cuando lo ascienden.' },
+        { n: '03', t: 'Cada número lleva a su lista', d: 'Ninguna métrica es decorativa: tocarla abre exactamente los registros que la explican. Si un número no tiene destino, no es una métrica, es texto.' },
+        { n: '04', t: 'Registrar no se negocia con la señal', d: 'Lo que la persona escribe se guarda en el teléfono y se sincroniza solo. Carga, vacío, error y sin conexión son pantallas diseñadas, con una salida clara en cada una.' },
+        { n: '05', t: 'Nada apagado', d: 'No mostramos lo que el permiso no habilita. Una barra de tres pestañas es una versión legítima de la app, no una app incompleta.' }
+      ],
+      argRows: [
+        { t: 'Las cuatro primeras son el trabajo de todos', d: 'Un manager sigue siendo un profesional: ficha, tiene tareas y responde mensajes. Si al ascender le movemos su propio trabajo de sitio, le cobramos un impuesto por conducir gente.' },
+        { t: 'La conducción es una ranura, no una pestaña por rol', d: 'Equipo, Empresa y Soporte son tres caras de la misma posición. Ningún rol ve dos y ninguna aparece apagada, así que la barra nunca crece por acumulación.' },
+        { t: 'Perfil se muda al avatar', d: 'Es el patrón que la gente ya conoce para “lo mío”, libera la quinta ranura sin quitar nada y deja al profesional con cuatro pestañas limpias.' },
+        { t: 'Las acciones de mando cuelgan de su pestaña', d: 'Aprobar horas vive dentro de Horas, no dentro de Equipo. La ranura de rol sirve para gestionar; la pestaña compartida, para actuar sobre lo del día.' }
+      ],
+      tabMap: [
+        { role: 'Profesional', who: 'el volumen de usuarios', count: '4 pestañas', tabs: ['home', 'tareas', 'horas', 'chats'] },
+        { role: 'Manager', who: 'profesional + equipo', count: '5 pestañas', tabs: ['home', 'tareas', 'horas', 'chats', 'equipo'] },
+        { role: 'Empleador', who: 'dueño del tenant', count: '5 pestañas', tabs: ['home', 'tareas', 'horas', 'chats', 'empresa'] },
+        { role: 'Superadmin / CS', who: 'equipo de Oberstaff', count: '3 pestañas', tabs: ['home', 'chats', 'soporte'] }
+      ].map(m => ({
+        role: m.role, who: m.who, count: m.count,
+        tabs: m.tabs.map(id => ({
+          label: TAB[id].label, icon: 'ph ' + TAB[id].icon,
+          cls: ['equipo', 'empresa', 'soporte'].indexOf(id) >= 0 ? 'tag tag-accent' : 'tag tag-neutral'
+        }))
+      })),
+      mapCols: [
+        { t: 'Inicio', icon: 'ph ph-house', rows: ['Métricas del rol', 'Acción principal', 'Lista del día', 'Notificaciones', 'Perfil y CV'] },
+        { t: 'Tareas', icon: 'ph ph-check-square', rows: ['Lista con filtros', 'Detalle de tarea', 'Comentarios', 'Nueva tarea (manager)'] },
+        { t: 'Horas', icon: 'ph ph-clock', rows: ['Semana y total', 'Registros', 'Nuevo registro', 'Horas por aprobar (manager)'] },
+        { t: 'Chats', icon: 'ph ph-chat-circle', rows: ['Canales y directos', 'Conversación', 'Buscar'] },
+        { t: 'Equipo · Empresa · Soporte', icon: 'ph ph-users-three', rows: ['Personas del equipo', 'Panel de la empresa', 'Empresas e incidentes', 'Entrar como usuario'] }
+      ],
+      components: [
+        { t: 'Tarjeta de métrica', icon: 'ph ph-squares-four', d: 'Ícono, etiqueta, número grande y un pie que da contexto. Siempre tocable y siempre con destino. La variante “caliente” toma el borde y el fondo del acento cuando algo frena al equipo.', spec: '2 columnas · radio 16 · alto mín. 96 · número 25/600' },
+        { t: 'Ítem de lista', icon: 'ph ph-list-dashes', d: 'Marca de color a la izquierda para prioridad o estado, título en dos líneas máximo, subtítulo con proyecto y fecha, etiqueta de estado a la derecha.', spec: 'alto mín. 62 · radio 16 · marca 4 px · gap 9' },
+        { t: 'Etiqueta de estado', icon: 'ph ph-tag', d: 'Un solo tamaño, seis tonos semánticos. El color nunca es la única señal: siempre lleva palabra.', spec: 'ok · pendiente · rechazado · info · acento · neutro' },
+        { t: 'Hoja de acción', icon: 'ph ph-arrow-line-up', d: 'Todo lo que se crea o se decide entra por abajo: nuevo registro, motivo de rechazo, elegir tarea. Nunca navega a una pantalla nueva.', spec: 'radio 20 20 0 0 · asa 38×4 · scrim 42%' },
+        { t: 'Confirmación y deshacer', icon: 'ph ph-arrow-counter-clockwise', d: 'Las acciones destructivas no piden confirmación previa: se ejecutan y ofrecen deshacer durante cinco segundos. Solo rechazar pide motivo, porque el motivo es el mensaje.', spec: 'snackbar sobre la barra · 1 acción · 5 s' },
+        { t: 'Estados', icon: 'ph ph-cloud-slash', d: 'Carga con esqueletos de la forma real, no con un spinner. Vacío con la razón y una salida. Error con reintentar. Sin conexión como franja persistente que promete la sincronización.', spec: 'carga · vacío · error · sin conexión' }
+      ],
+      kept: [
+        'Material 3 con el esquema generado desde blueViolet, y el primario aclarado a #B388F0 en oscuro, tal como está en theme.dart.',
+        'El encabezado de Inicio con degradado indigo → blueViolet, radio inferior 24, campana y avatar en blanco.',
+        'La tarjeta de métrica con su chip de ícono de 38 y color propio por métrica: azure, orchid, indigo, warning, success. No la uniformé al acento.',
+        'Radio 16 en tarjetas, 12 en inputs y botones, alto 52 en la acción principal, AppBar plana con título a la izquierda.',
+        'Registrar jornada sin duración: tipo Completa / Ausencia / Recuperación, y el servidor calcula las horas de la jornada completa.',
+        'Copy existente literal: “Iniciar sesión”, “Inicia sesión para continuar”, “Resumen del mes”, “Jornada registrada”, “No se pudo cargar el panel”.'
+      ],
+      changed: [
+        'Perfil sale de la barra inferior y pasa al avatar del encabezado, que hoy ya está ahí pero no es tocable. Eso libera la quinta ranura para Equipo, Empresa o Soporte.',
+        'Las métricas pasan a ser tocables: hoy la tarjeta no lleva a ninguna parte, y sin destino un número es solo texto.',
+        'La carga deja el CircularProgressIndicator y pasa a esqueletos con la forma real de la pantalla, para que el salto al contenido no reencuadre nada.',
+        'Aparece el estado sin conexión, que hoy no existe: franja persistente y cola local, porque se ficha en la calle.',
+        'La acción principal se dibuja con contorno y relleno tenue en lugar del FilledButton macizo: en pantallas densas el violeta lleno compite con las etiquetas de estado.',
+        'Los íconos del prototipo son Phosphor, no Material. Es la diferencia visible con la app; si el sistema de diseño manda, hay que cambiar el set, y eso se decide aparte.'
+      ],
+      swatches: ['#8A2BE2 blueViolet', '#CC33CC orchid', '#512868 indigo', '#060B23 prussian', '#F5F2FB lavender', '#15F4EE neonIce', '#007FFF azure', '#16A34A success', '#F59E0B warning', '#EF4444 danger'].map(s => {
+        const hex = s.split(' ')[0], name = s.split(' ')[1];
+        const light = ['#F5F2FB', '#15F4EE'].indexOf(hex) >= 0;
+        return {
+          name, style: {
+            display: 'inline-flex', alignItems: 'center', padding: '9px 14px', borderRadius: '8px',
+            background: hex, color: light ? '#0B0F22' : '#F5F2FB', fontSize: '12px',
+            fontFamily: 'ui-monospace,Menlo,monospace', boxShadow: 'inset 0 0 0 1px rgba(236,234,246,.12)'
+          }
+        };
+      }),
+      next: [
+        { t: 'Validar la ranura de rol', d: 'Cinco managers y dos empleadores, tarea única: aprobar lo pendiente de la semana. Medimos si buscan la acción en Horas o en Equipo.' },
+        { t: 'Definir el modelo offline', d: 'Qué se puede crear sin señal, cuánto tiempo vive en cola y qué pasa si el registro entra en conflicto con una aprobación ya hecha.' },
+        { t: 'Cerrar el gesto de aprobación', d: 'El deslizamiento necesita su contrapartida accesible: acción larga o casillas para quien no puede arrastrar con precisión.' },
+        { t: 'Pantallas que faltan', d: 'Detalle de persona, incidente, alta de tarea desde el móvil y el flujo de invitación del empleador.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

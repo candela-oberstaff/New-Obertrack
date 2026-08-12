@@ -66,11 +66,6 @@ export const settingsService = {
     const { data } = await api.get<EmailType[]>('/admin/settings/emails')
     return data
   },
-  /** Interruptor general: enciende o apaga todos los correos de una vez. */
-  setAllEmailsEnabled: async (enabled: boolean) => {
-    const { data } = await api.put<{ enabled: boolean }>('/admin/settings/emails', { enabled })
-    return data
-  },
   setEmailEnabled: async (key: string, enabled: boolean) => {
     const { data } = await api.put<{ key: string; enabled: boolean }>(`/admin/settings/emails/${key}`, { enabled })
     return data

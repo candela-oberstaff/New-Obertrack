@@ -11,9 +11,6 @@ import (
 type EmailSettingRepository interface {
 	List() ([]models.EmailSetting, error)
 	Upsert(setting *models.EmailSetting) error
-	// UpsertMany guarda varios interruptores de una vez (el apagado/encendido
-	// general), en una sola transacción para que nunca quede a medias.
-	UpsertMany(settings []models.EmailSetting) error
 }
 
 type emailSettingRepository struct {
@@ -35,14 +32,4 @@ func (r *emailSettingRepository) Upsert(setting *models.EmailSetting) error {
 		Columns:   []clause.Column{{Name: "key"}},
 		DoUpdates: clause.AssignmentColumns([]string{"enabled", "updated_by", "updated_at"}),
 	}).Create(setting).Error
-}
-
-func (r *emailSettingRepository) UpsertMany(settings []models.EmailSetting) error {
-	if len(settings) == 0 {
-		return nil
-	}
-	return r.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "key"}},
-		DoUpdates: clause.AssignmentColumns([]string{"enabled", "updated_by", "updated_at"}),
-	}).Create(&settings).Error
 }

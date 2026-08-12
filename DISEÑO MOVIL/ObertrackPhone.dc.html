@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/nocturne-24d5e9b6-9218-485b-98ac-f61ab85f7e8e/styles.css">
+<script src="_ds/nocturne-24d5e9b6-9218-485b-98ac-f61ab85f7e8e/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
+<style>
+.ob-light{--ob-bg:#FBFAFE;--ob-surface:#FFFFFF;--ob-sunk:#EFEAF8;--ob-text:#1B1630;--ob-muted:rgba(27,22,48,.58);--ob-faint:rgba(27,22,48,.38);--ob-divider:rgba(27,22,48,.11);--ob-accent:#8A2BE2;--ob-accent-soft:rgba(138,43,226,.10);--ob-orchid:#B32BB3;--ob-ok:#15803D;--ob-ok-soft:rgba(22,163,74,.12);--ob-warn:#B4700A;--ob-warn-soft:rgba(245,158,11,.14);--ob-bad:#DC2626;--ob-bad-soft:rgba(239,68,68,.11);--ob-info:#0069D2;--ob-info-soft:rgba(0,127,255,.11);--ob-scrim:rgba(27,22,48,.42);--ob-bezel:#D8D2E6}
+.ob-dark{--ob-bg:#0B0F22;--ob-surface:#171A31;--ob-sunk:#1F2340;--ob-text:#ECEAF6;--ob-muted:rgba(236,234,246,.60);--ob-faint:rgba(236,234,246,.38);--ob-divider:rgba(236,234,246,.13);--ob-accent:#B388F0;--ob-accent-soft:rgba(179,136,240,.16);--ob-orchid:#E06BE0;--ob-ok:#4ADE80;--ob-ok-soft:rgba(74,222,128,.14);--ob-warn:#FBBF24;--ob-warn-soft:rgba(251,191,36,.14);--ob-bad:#F87171;--ob-bad-soft:rgba(248,113,113,.14);--ob-info:#5FAEFF;--ob-info-soft:rgba(95,174,255,.14);--ob-scrim:rgba(3,5,15,.62);--ob-bezel:#05060D}
+.ob-tag{display:inline-flex;align-items:center;font-size:11px;font-weight:500;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.ob-tag-ok{background:var(--ob-ok-soft);color:var(--ob-ok)}
+.ob-tag-warn{background:var(--ob-warn-soft);color:var(--ob-warn)}
+.ob-tag-bad{background:var(--ob-bad-soft);color:var(--ob-bad)}
+.ob-tag-info{background:var(--ob-info-soft);color:var(--ob-info)}
+.ob-tag-accent{background:var(--ob-accent-soft);color:var(--ob-accent)}
+.ob-tag-plain{background:var(--ob-sunk);color:var(--ob-muted)}
+.ob-scr::-webkit-scrollbar{width:0}
+@keyframes obShine{0%{background-position:-320px 0}100%{background-position:320px 0}}
+.ob-skel{border-radius:6px;background:linear-gradient(90deg,var(--ob-sunk) 0%,var(--ob-divider) 50%,var(--ob-sunk) 100%);background-size:320px 100%;animation:obShine 1.4s linear infinite}
+.ob-mark-alta{background:var(--ob-bad)}
+.ob-mark-media{background:var(--ob-warn)}
+.ob-mark-baja{background:var(--ob-divider)}
+.ob-mark-ok{background:var(--ob-ok)}
+.ob-mark-accent{background:var(--ob-accent)}
+.ob-chip{border:1px solid var(--ob-divider);background:transparent;color:var(--ob-muted)}
+.ob-chip:hover{background:var(--ob-accent-soft)}
+.ob-chip-on{border:1px solid var(--ob-accent);background:var(--ob-accent-soft);color:var(--ob-accent)}
+.ob-tab{color:var(--ob-muted)}
+.ob-tab:hover{color:var(--ob-text)}
+.ob-tab-on{color:var(--ob-accent)}
+.ob-metric-hot{border-color:var(--ob-accent);background:var(--ob-accent-soft)}
+.ob-ava-dm{border-radius:50%;background:var(--ob-sunk);color:var(--ob-muted)}
+.ob-ava-ch{border-radius:13px;background:var(--ob-accent-soft);color:var(--ob-accent)}
+.ob-msg-unread{font-weight:600;color:var(--ob-text)}
+.ob-msg-read{color:var(--ob-muted)}
+.ob-noti-unread{font-weight:500;color:var(--ob-text)}
+.ob-noti-read{color:var(--ob-muted)}
+.ob-check-done{text-decoration:line-through;color:var(--ob-muted)}
+.ob-check-todo{color:var(--ob-text)}
+.ob-me{align-self:flex-end;align-items:flex-end}
+.ob-them{align-self:flex-start;align-items:flex-start}
+.ob-bub-me{background:var(--ob-accent);color:#fff;border-radius:15px 15px 5px 15px}
+.ob-bub-them{background:var(--ob-surface);border:1px solid var(--ob-divider);border-radius:15px 15px 15px 5px}
+.ob-bar{width:100%;border-radius:5px 5px 2px 2px;background:var(--ob-accent);opacity:.88}
+.ob-bar-dim{width:100%;border-radius:5px 5px 2px 2px;background:var(--ob-accent);opacity:.34}
+.ob-metric{border:1px solid var(--ob-divider);background:var(--ob-surface)}
+.ob-metric:hover{border-color:var(--ob-accent)}
+.ob-metric-hot{border:1px solid var(--ob-accent);background:var(--ob-accent-soft)}
+.ob-snack{bottom:96px}
+.ob-snack-hi{bottom:170px}
+.ob-light{--ob-c-violet:#8A2BE2;--ob-c-azure:#007FFF;--ob-c-orchid:#CC33CC;--ob-c-indigo:#512868}
+.ob-dark{--ob-c-violet:#B388F0;--ob-c-azure:#5FAEFF;--ob-c-orchid:#E06BE0;--ob-c-indigo:#A98AD0}
+.ob-ic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:none}
+.ob-ic-violet{color:var(--ob-c-violet);background:color-mix(in srgb,var(--ob-c-violet) 14%,transparent)}
+.ob-ic-azure{color:var(--ob-c-azure);background:color-mix(in srgb,var(--ob-c-azure) 14%,transparent)}
+.ob-ic-orchid{color:var(--ob-c-orchid);background:color-mix(in srgb,var(--ob-c-orchid) 14%,transparent)}
+.ob-ic-indigo{color:var(--ob-c-indigo);background:color-mix(in srgb,var(--ob-c-indigo) 16%,transparent)}
+.ob-ic-warn{color:var(--ob-warn);background:var(--ob-warn-soft)}
+.ob-ic-ok{color:var(--ob-ok);background:var(--ob-ok-soft)}
+.ob-ic-bad{color:var(--ob-bad);background:var(--ob-bad-soft)}
+.ob-body{padding:0 16px 108px}
+.ob-body-batch{padding:0 16px 182px}
+.ob-body-flush{padding:0 16px 108px}
+.ob-sv{color:var(--ob-c-violet)}
+.ob-sok{color:var(--ob-ok)}
+.ob-sw{color:var(--ob-warn)}
+.ob-sb{color:var(--ob-bad)}
+.ob-seg-on{color:var(--ob-accent);box-shadow:inset 0 0 0 1px var(--ob-accent);background:var(--ob-accent-soft)}
+.ob-seg-off{color:var(--ob-muted)}
+.ob-seg-off:hover{background:var(--ob-accent-soft)}
+.ob-light .ob-when-dark{display:none}
+.ob-dark .ob-when-light{display:none}
+</style>
+</helmet>
+<div style="padding:11px;border-radius:46px;background:var(--ob-bezel);box-shadow:0 0 0 1px var(--ob-divider),0 24px 60px rgba(0,0,0,.45);width:412px;flex:none">
+<div class="ob-scr" style="position:relative;width:390px;height:844px;border-radius:36px;overflow:hidden;background:var(--ob-bg);color:var(--ob-text);font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.5;display:flex;flex-direction:column">
+
+<sc-if value="{{ vm.chrome }}" hint-placeholder-val="{{ true }}">
+<div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-size:13px;font-weight:600;letter-spacing:.01em">
+<span>9:41</span>
+<span style="display:flex;align-items:center;gap:5px;font-size:13px"><i class="ph-fill ph-cell-signal-medium"></i><i class="ph-fill ph-wifi-high"></i><i class="ph-fill ph-battery-high"></i></span>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.appbar }}" hint-placeholder-val="{{ true }}">
+<div style="flex:none;display:flex;align-items:center;gap:12px;padding:2px 14px 10px 16px;min-height:52px">
+<sc-if value="{{ vm.back }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ vm.back }}" style="width:38px;height:38px;margin-left:-9px;flex:none;display:grid;place-items:center;border:0;background:transparent;color:var(--ob-text);border-radius:10px;cursor:pointer;font-size:22px"><i class="ph ph-arrow-left"></i></button>
+</sc-if>
+<div style="min-width:0;flex:1">
+<div style="font-size:20px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ vm.title }}</div>
+<sc-if value="{{ vm.subtitle }}" hint-placeholder-val="{{ true }}">
+<div style="font-size:12.5px;color:var(--ob-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ vm.subtitle }}</div>
+</sc-if>
+</div>
+<sc-if value="{{ vm.showBell }}" hint-placeholder-val="{{ true }}">
+<button onClick="{{ vm.goNotis }}" style="position:relative;width:42px;height:42px;flex:none;display:grid;place-items:center;border:0;background:transparent;color:var(--ob-text);border-radius:12px;cursor:pointer;font-size:23px"><i class="ph ph-bell"></i>
+<sc-if value="{{ vm.unread }}" hint-placeholder-val="{{ true }}">
+<span style="position:absolute;top:6px;right:6px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--ob-orchid);color:#fff;font-size:10.5px;font-weight:600;display:grid;place-items:center;box-shadow:0 0 0 2px var(--ob-bg)">{{ vm.unread }}</span>
+</sc-if>
+</button>
+</sc-if>
+<sc-if value="{{ vm.showAvatar }}" hint-placeholder-val="{{ true }}">
+<button onClick="{{ vm.goPerfil }}" style="width:42px;height:42px;flex:none;border:0;padding:0;border-radius:50%;cursor:pointer;background:var(--ob-accent-soft);color:var(--ob-accent);font:600 14px Inter,sans-serif;box-shadow:inset 0 0 0 1px var(--ob-accent)">{{ vm.initials }}</button>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.greeting }}" hint-placeholder-val="{{ true }}">
+<div style="flex:none;padding:22px 20px 26px;background:linear-gradient(135deg,#512868 0%,#8A2BE2 100%);border-radius:0 0 24px 24px;display:flex;align-items:flex-start;gap:6px">
+<div style="flex:1;min-width:0">
+<div style="font-size:15px;color:rgba(255,255,255,.85)">Hola,</div>
+<div style="font-size:26px;font-weight:700;color:#fff;letter-spacing:-.02em;line-height:1.15">{{ vm.firstName }}</div>
+<div style="font-size:13px;color:rgba(255,255,255,.85);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ vm.greeting }}</div>
+</div>
+<button onClick="{{ vm.goNotis }}" style="position:relative;width:46px;height:46px;flex:none;display:grid;place-items:center;border:0;background:transparent;color:#fff;border-radius:14px;cursor:pointer;font-size:26px"><i class="ph ph-bell"></i>
+<sc-if value="{{ vm.unread }}" hint-placeholder-val="{{ true }}">
+<span style="position:absolute;top:5px;right:5px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#CC33CC;color:#fff;font:600 10.5px Inter,sans-serif;display:grid;place-items:center;box-shadow:0 0 0 2px #7B26D4">{{ vm.unread }}</span>
+</sc-if>
+</button>
+<button onClick="{{ vm.goPerfil }}" style="width:52px;height:52px;flex:none;border:0;padding:0;border-radius:50%;cursor:pointer;background:rgba(255,255,255,.2);color:#fff;font:700 18px Inter,sans-serif">{{ vm.initials }}</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.offline }}" hint-placeholder-val="{{ false }}">
+<div style="flex:none;margin:0 16px 10px;padding:10px 12px;border-radius:8px;background:var(--ob-warn-soft);color:var(--ob-warn);display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.4">
+<i class="ph ph-wifi-slash" style="font-size:17px;flex:none;margin-top:1px"></i>
+<span>Sin conexión. Guardamos lo que registres y lo enviamos cuando vuelva la señal.</span>
+</div>
+</sc-if>
+
+<div class="ob-scr {{ vm.bodyCls }}" style="flex:1;overflow-y:auto;overflow-x:hidden">
+
+<sc-if value="{{ vm.sSplash }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:linear-gradient(158deg,#060B23 0%,#2B1244 46%,#512868 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px">
+<img src="assets/logo/isotipo.png" alt="Obertrack" style="width:96px;height:96px;object-fit:contain" />
+<img src="assets/logo/obertrack-white.png" alt="Obertrack" style="height:52px;object-fit:contain" />
+<div style="display:flex;align-items:center;gap:7px;opacity:.85">
+<span style="font-size:11px;color:rgba(245,242,251,.7);letter-spacing:.04em">powered by</span>
+<img src="assets/logo/oberstaff-white.png" alt="Oberstaff" style="height:16px;object-fit:contain" />
+</div>
+<button onClick="{{ vm.goLogin }}" style="position:absolute;bottom:56px;padding:10px 18px;border-radius:8px;border:1px solid rgba(245,242,251,.3);background:transparent;color:rgba(245,242,251,.8);font:500 13px Inter,sans-serif;cursor:pointer">Continuar</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sLogin }}" hint-placeholder-val="{{ false }}">
+<div style="padding:30px 8px 0">
+<div style="display:flex;flex-direction:column;align-items:center;gap:14px;margin-bottom:36px">
+<img class="ob-when-light" src="assets/logo/obertrack-color.png" alt="Obertrack" style="height:60px;object-fit:contain" />
+<img class="ob-when-dark" src="assets/logo/obertrack-white.png" alt="Obertrack" style="height:60px;object-fit:contain" />
+<div style="font-size:14px;color:var(--ob-muted)">Inicia sesión para continuar</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<label style="display:block">
+<span style="display:block;font-size:12.5px;color:var(--ob-muted);margin-bottom:6px">Correo electrónico</span>
+<span style="position:relative;display:block">
+<i class="ph ph-envelope-simple" style="position:absolute;left:14px;top:16px;font-size:20px;color:var(--ob-muted)"></i>
+<input value="lucia.ferrer@ceramicaandina.com" readonly style="width:100%;height:52px;padding:0 14px 0 46px;border:0;border-radius:12px;background:var(--ob-sunk);color:var(--ob-text);font:400 14.5px Inter,sans-serif" />
+</span>
+</label>
+<label style="display:block">
+<span style="display:block;font-size:12.5px;color:var(--ob-muted);margin-bottom:6px">Contraseña</span>
+<span style="position:relative;display:block">
+<i class="ph ph-lock-simple" style="position:absolute;left:14px;top:16px;font-size:20px;color:var(--ob-muted)"></i>
+<input type="password" value="secretsecret" readonly style="width:100%;height:52px;padding:0 46px;border:0;border-radius:12px;background:var(--ob-sunk);color:var(--ob-text);font:400 15px Inter,sans-serif" />
+<i class="ph ph-eye" style="position:absolute;right:15px;top:16px;font-size:20px;color:var(--ob-muted)"></i>
+</span>
+</label>
+<button onClick="{{ vm.doLogin }}" style="height:52px;border-radius:12px;border:1px solid var(--ob-accent);background:var(--ob-accent-soft);color:var(--ob-accent);font:600 16px Inter,sans-serif;cursor:pointer;margin-top:4px">Iniciar sesión</button>
+</div>
+<div style="display:flex;align-items:center;gap:12px;margin:26px 0">
+<span style="flex:1;height:1px;background:linear-gradient(to right,transparent,var(--ob-divider))"></span>
+<span style="font-size:11.5px;color:var(--ob-faint)">o</span>
+<span style="flex:1;height:1px;background:linear-gradient(to left,transparent,var(--ob-divider))"></span>
+</div>
+<button onClick="{{ vm.doLogin }}" style="width:100%;height:52px;border-radius:12px;border:1.5px solid var(--ob-accent);background:transparent;color:var(--ob-accent);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;font:600 16px Inter,sans-serif">
+<i class="ph ph-fingerprint" style="font-size:26px"></i>Entrar con huella
+</button>
+<div style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:26px;opacity:.6">
+<span style="font-size:11px;color:var(--ob-muted);letter-spacing:.04em">powered by</span>
+<img class="ob-when-light" src="assets/logo/oberstaff-white.png" alt="Oberstaff" style="height:16px;object-fit:contain;filter:brightness(0)" />
+<img class="ob-when-dark" src="assets/logo/oberstaff-white.png" alt="Oberstaff" style="height:16px;object-fit:contain" />
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sHome }}" hint-placeholder-val="{{ true }}">
+<sc-if value="{{ vm.loading }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div class="ob-skel" style="height:96px"></div><div class="ob-skel" style="height:96px"></div>
+<div class="ob-skel" style="height:96px"></div><div class="ob-skel" style="height:96px"></div>
+</div>
+<div class="ob-skel" style="height:56px;margin:16px 0 22px"></div>
+<div class="ob-skel" style="height:14px;width:120px;margin-bottom:14px"></div>
+<div class="ob-skel" style="height:62px;margin-bottom:9px"></div>
+<div class="ob-skel" style="height:62px;margin-bottom:9px"></div>
+<div class="ob-skel" style="height:62px"></div>
+</sc-if>
+<sc-if value="{{ vm.error }}" hint-placeholder-val="{{ false }}">
+<div style="padding:88px 18px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px">
+<i class="ph ph-cloud-warning" style="font-size:46px;color:var(--ob-bad)"></i>
+<div style="font-size:17px;font-weight:600">No se pudo cargar el panel</div>
+<p style="font-size:13.5px;color:var(--ob-muted);margin:0;max-width:250px">Revisa tu conexión. Si sigue igual, vuelve a intentarlo en un momento.</p>
+<button onClick="{{ vm.retry }}" style="margin-top:8px;height:44px;padding:0 22px;border-radius:10px;border:1px solid var(--ob-accent);background:transparent;color:var(--ob-accent);font:600 14px Inter,sans-serif;cursor:pointer">Reintentar</button>
+</div>
+</sc-if>
+<sc-if value="{{ vm.ready }}" hint-placeholder-val="{{ true }}">
+<div style="font-size:16px;font-weight:700;padding:18px 2px 12px">{{ vm.metricsTitle }}</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+<sc-for list="{{ vm.metrics }}" as="m" hint-placeholder-count="4">
+<button onClick="{{ m.onTap }}" class="ob-metric {{ m.cls }}" style="text-align:left;border-radius:16px;padding:14px;color:var(--ob-text);cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;min-height:112px">
+<span class="ob-ic {{ m.icCls }}"><i class="{{ m.icon }}" style="font-size:21px"></i></span>
+<span style="font-size:25px;font-weight:700;letter-spacing:-.02em;line-height:1.1;margin-top:12px">{{ m.value }}</span>
+<span style="font-size:12px;color:var(--ob-muted);line-height:1.3;margin-top:2px">{{ m.label }}</span>
+<span style="font-size:11px;color:var(--ob-faint);margin-top:1px">{{ m.sub }}</span>
+</button>
+</sc-for>
+</div>
+
+<sc-if value="{{ vm.hero }}" hint-placeholder-val="{{ true }}">
+<button onClick="{{ vm.heroTap }}" style="width:100%;margin-top:14px;height:56px;border-radius:12px;border:1px solid var(--ob-accent);background:var(--ob-accent-soft);color:var(--ob-accent);font:600 16px Inter,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px">
+<i class="{{ vm.heroIcon }}" style="font-size:21px"></i>{{ vm.hero }}
+</button>
+</sc-if>
+
+<sc-if value="{{ vm.bars }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:22px;border:1px solid var(--ob-divider);border-radius:16px;padding:15px;background:var(--ob-surface)">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+<span style="font-size:13.5px;font-weight:600">Horas cargadas por día</span>
+<span style="font-size:11.5px;color:var(--ob-faint);white-space:nowrap">esta semana</span>
+</div>
+<div style="display:flex;align-items:flex-end;gap:9px;height:92px">
+<sc-for list="{{ vm.bars }}" as="b" hint-placeholder-count="6">
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px">
+<span class="{{ b.cls }}" style="{{ b.style }}"></span>
+<span style="font-size:10.5px;color:var(--ob-faint)">{{ b.d }}</span>
+</span>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.status }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:22px;border:1px solid var(--ob-divider);border-radius:16px;padding:15px;background:var(--ob-surface);display:flex;align-items:center;gap:12px">
+<span style="width:9px;height:9px;border-radius:50%;background:var(--ob-ok);box-shadow:0 0 0 4px var(--ob-ok-soft)"></span>
+<span style="flex:1"><span style="display:block;font-size:13.5px;font-weight:600">Plataforma operativa</span><span style="display:block;font-size:12px;color:var(--ob-muted)">Último incidente resuelto hace 9 días</span></span>
+<i class="ph ph-caret-right" style="font-size:17px;color:var(--ob-faint)"></i>
+</div>
+</sc-if>
+
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin:26px 0 12px">
+<span style="font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ob-muted)">{{ vm.listTitle }}</span>
+<sc-if value="{{ vm.listMore }}" hint-placeholder-val="{{ true }}">
+<button onClick="{{ vm.listMoreTap }}" style="border:0;background:transparent;color:var(--ob-accent);font:500 12.5px Inter,sans-serif;cursor:pointer;padding:2px 0">{{ vm.listMore }}</button>
+</sc-if>
+</div>
+<sc-if value="{{ vm.empty }}" hint-placeholder-val="{{ false }}">
+<div style="padding:44px 18px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;border:1px dashed var(--ob-divider);border-radius:16px">
+<i class="ph ph-tray" style="font-size:38px;color:var(--ob-faint)"></i>
+<div style="font-size:15.5px;font-weight:600">Nada para hoy</div>
+<p style="font-size:13px;color:var(--ob-muted);margin:0;max-width:230px">Cuando te asignen trabajo, aparecerá aquí. Igual puedes registrar tus horas.</p>
+</div>
+</sc-if>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ vm.homeList }}" as="r" hint-placeholder-count="3">
+<button onClick="{{ r.onTap }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--ob-divider);border-radius:16px;background:var(--ob-surface);color:var(--ob-text);cursor:pointer;min-height:62px">
+<span class="{{ r.mark }}" style="width:4px;align-self:stretch;border-radius:3px;flex:none"></span>
+<span style="flex:1;min-width:0">
+<span style="display:block;font-size:14.5px;font-weight:500;line-height:1.3">{{ r.t }}</span>
+<span style="display:block;font-size:12px;color:var(--ob-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.sub }}</span>
+</span>
+<span class="ob-tag {{ r.tagCls }}">{{ r.tag }}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{ vm.sTareas }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;gap:8px;margin-bottom:16px">
+<sc-for list="{{ vm.filters }}" as="f" hint-placeholder-count="3">
+<button onClick="{{ f.onTap }}" class="{{ f.cls }}" style="height:36px;padding:0 15px;border-radius:10px;font:500 13px Inter,sans-serif;cursor:pointer">{{ f.label }}</button>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ vm.tasks }}" as="t" hint-placeholder-count="4">
+<button onClick="{{ t.onTap }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--ob-divider);border-radius:16px;background:var(--ob-surface);color:var(--ob-text);cursor:pointer">
+<span class="{{ t.mark }}" style="width:4px;align-self:stretch;min-height:38px;border-radius:3px;flex:none"></span>
+<span style="flex:1;min-width:0">
+<span style="display:block;font-size:14.5px;font-weight:500;line-height:1.3">{{ t.t }}</span>
+<span style="display:block;font-size:12px;color:var(--ob-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.proy }}</span>
+<span style="display:flex;align-items:center;gap:6px;margin-top:8px">
+<span class="ob-tag {{ t.tagCls }}">{{ t.estado }}</span>
+<span style="font-size:11.5px;color:var(--ob-faint)">{{ t.due }}</span>
+</span>
+</span>
+<i class="ph ph-caret-right" style="font-size:17px;color:var(--ob-faint);flex:none"></i>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sTarea }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;gap:7px;margin-bottom:12px">
+<span class="ob-tag ob-tag-warn">En curso</span>
+<span class="ob-tag ob-tag-plain">Prioridad alta</span>
+</div>
+<div style="font-size:23px;font-weight:600;letter-spacing:-.02em;line-height:1.22;text-wrap:pretty">Revisar planos de la nave 3</div>
+<div style="font-size:13px;color:var(--ob-muted);margin-top:8px">Obra Norte · vence hoy a las 18:00</div>
+<p style="font-size:14.5px;line-height:1.55;margin:20px 0 0;text-wrap:pretty">Contrastar la última revisión con lo ejecutado en obra. Si hay diferencias en las columnas del eje C, deja una nota antes de firmar.</p>
+<div style="margin-top:22px;border:1px solid var(--ob-divider);border-radius:16px;background:var(--ob-surface);overflow:hidden">
+<sc-for list="{{ vm.checks }}" as="c" hint-placeholder-count="3">
+<button onClick="{{ c.onTap }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;border:0;border-bottom:1px solid var(--ob-divider);background:transparent;color:var(--ob-text);cursor:pointer;text-align:left;font:400 14px Inter,sans-serif">
+<i class="{{ c.icon }}" style="font-size:21px;color:var(--ob-accent);flex:none"></i>
+<span class="{{ c.cls }}" style="flex:1">{{ c.t }}</span>
+</button>
+</sc-for>
+</div>
+<div style="margin-top:22px;font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ob-muted);margin-bottom:12px">Comentarios</div>
+<div style="display:flex;gap:11px;align-items:flex-start">
+<span style="width:34px;height:34px;flex:none;border-radius:50%;background:var(--ob-sunk);color:var(--ob-muted);display:grid;place-items:center;font:600 12px Inter,sans-serif">DP</span>
+<span style="flex:1;background:var(--ob-surface);border:1px solid var(--ob-divider);border-radius:14px;padding:11px 13px">
+<span style="display:block;font-size:12.5px;font-weight:600">Diego Peña</span>
+<span style="display:block;font-size:13.5px;color:var(--ob-muted);margin-top:3px;line-height:1.45">El eje C se hormigonó el jueves. Confirmá contra el acta antes de cerrar.</span>
+</span>
+</div>
+<div style="position:sticky;bottom:0;padding:16px 0 4px;margin-top:24px;background:linear-gradient(to top,var(--ob-bg) 62%,transparent)">
+<button onClick="{{ vm.doneTask }}" style="width:100%;height:52px;border-radius:12px;border:1px solid var(--ob-accent);background:var(--ob-accent-soft);color:var(--ob-accent);font:600 16px Inter,sans-serif;cursor:pointer">Marcar como hecha</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sHoras }}" hint-placeholder-val="{{ false }}">
+<div style="border:1px solid var(--ob-divider);border-radius:16px;padding:16px;background:var(--ob-surface)">
+<div style="font-size:13.5px;font-weight:600;margin-bottom:14px">Resumen del mes</div>
+<div style="display:flex">
+<sc-for list="{{ vm.summary }}" as="s" hint-placeholder-count="4">
+<span style="flex:1;text-align:center">
+<span class="{{ s.cls }}" style="display:block;font-size:21px;font-weight:700;letter-spacing:-.02em">{{ s.value }}</span>
+<span style="display:block;font-size:11.5px;color:var(--ob-muted);margin-top:2px">{{ s.label }}</span>
+</span>
+</sc-for>
+</div>
+</div>
+<div style="margin:22px 0 12px;font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ob-muted)">Últimas jornadas</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ vm.hours }}" as="h" hint-placeholder-count="5">
+<div style="display:flex;align-items:center;gap:14px;padding:13px 14px;border:1px solid var(--ob-divider);border-radius:16px;background:var(--ob-surface)">
+<span style="width:52px;flex:none;text-align:center">
+<span style="display:block;font-size:21px;font-weight:700;color:var(--ob-c-violet);letter-spacing:-.02em;line-height:1.1">{{ h.dur }}</span>
+<span style="display:block;font-size:11px;color:var(--ob-faint)">h</span>
+</span>
+<span style="flex:1;min-width:0">
+<span style="display:block;font-size:14px;font-weight:600">{{ h.date }}</span>
+<span style="display:block;font-size:12px;color:var(--ob-muted);margin-top:1px">{{ h.type }}</span>
+<span style="display:block;font-size:12px;color:var(--ob-muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ h.act }}</span>
+</span>
+<span class="ob-tag {{ h.tagCls }}" style="border-radius:20px;padding:5px 10px;font-weight:600">{{ h.estado }}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sAprobar }}" hint-placeholder-val="{{ false }}">
+<div style="padding:2px 2px 4px">
+<div style="font-size:14px;font-weight:600">{{ vm.apCount }}</div>
+<button onClick="{{ vm.toggleSort }}" style="border:0;background:transparent;color:var(--ob-accent);font:500 12.5px Inter,sans-serif;cursor:pointer;padding:6px 0 0;margin-left:-2px">{{ vm.sortLabel }}</button>
+</div>
+<div style="display:flex;align-items:center;gap:8px;margin:12px 0 16px;padding:10px 12px;border-radius:10px;background:var(--ob-accent-soft);color:var(--ob-accent);font-size:12.5px">
+<i class="ph ph-hand-swipe-right" style="font-size:18px"></i>Desliza a la derecha para aprobar, a la izquierda para rechazar.
+</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ vm.approvals }}" as="a" hint-placeholder-count="5">
+<div style="position:relative;border-radius:16px;overflow:hidden;touch-action:pan-y">
+<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--ob-sunk)">
+<span style="display:flex;align-items:center;gap:8px;color:var(--ob-ok);font:600 13.5px Inter,sans-serif"><i class="ph-bold ph-check" style="font-size:19px"></i>Aprobar</span>
+<span style="display:flex;align-items:center;gap:8px;color:var(--ob-bad);font:600 13.5px Inter,sans-serif">Rechazar<i class="ph-bold ph-x" style="font-size:19px"></i></span>
+</div>
+<div onPointerDown="{{ a.down }}" onPointerMove="{{ a.move }}" onPointerUp="{{ a.up }}" onPointerCancel="{{ a.up }}" style="{{ a.frontStyle }}">
+<span style="width:38px;height:38px;flex:none;border-radius:50%;background:var(--ob-accent-soft);color:var(--ob-accent);display:grid;place-items:center;font:600 13px Inter,sans-serif">{{ a.ini }}</span>
+<span style="flex:1;min-width:0">
+<span style="display:block;font-size:14.5px;font-weight:500">{{ a.name }}</span>
+<span style="display:block;font-size:12px;color:var(--ob-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.sub }}</span>
+</span>
+<span style="font-size:17px;font-weight:600;flex:none">{{ a.dur }}</span>
+</div>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{ vm.apDone }}" hint-placeholder-val="{{ false }}">
+<div style="padding:60px 18px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px">
+<i class="ph ph-check-circle" style="font-size:44px;color:var(--ob-ok)"></i>
+<div style="font-size:17px;font-weight:600">Sin horas por revisar</div>
+<p style="font-size:13px;color:var(--ob-muted);margin:0;max-width:230px">Tu equipo está al día. Te avisamos cuando llegue el próximo registro.</p>
+</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{ vm.sChats }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-radius:12px;background:var(--ob-sunk);color:var(--ob-muted);margin-bottom:16px">
+<i class="ph ph-magnifying-glass" style="font-size:18px"></i><span style="font-size:14px">Buscar persona o canal</span>
+</div>
+<div style="display:flex;flex-direction:column">
+<sc-for list="{{ vm.chats }}" as="c" hint-placeholder-count="4">
+<button onClick="{{ c.onTap }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:13px;padding:13px 4px;border:0;border-bottom:1px solid var(--ob-divider);background:transparent;color:var(--ob-text);cursor:pointer">
+<span class="{{ c.avaCls }}" style="width:44px;height:44px;flex:none;display:grid;place-items:center;font:600 14px Inter,sans-serif">{{ c.ini }}</span>
+<span style="flex:1;min-width:0">
+<span style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span><span style="font-size:11.5px;color:var(--ob-faint);flex:none">{{ c.when }}</span></span>
+<span style="display:flex;justify-content:space-between;gap:8px;margin-top:3px;align-items:center">
+<span class="{{ c.msgCls }}" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.msg }}</span>
+<sc-if value="{{ c.unread }}" hint-placeholder-val="{{ false }}">
+<span style="min-width:20px;height:20px;padding:0 6px;flex:none;border-radius:10px;background:var(--ob-orchid);color:#fff;font:600 11px Inter,sans-serif;display:grid;place-items:center">{{ c.unread }}</span>
+</sc-if>
+</span>
+</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sChat }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:12px;padding-top:6px">
+<div style="align-self:center;font-size:11px;color:var(--ob-faint);padding:3px 10px;border-radius:8px;background:var(--ob-sunk)">Hoy</div>
+<sc-for list="{{ vm.msgs }}" as="m" hint-placeholder-count="4">
+<div class="{{ m.wrapCls }}" style="max-width:78%;display:flex;flex-direction:column;gap:3px">
+<sc-if value="{{ m.who }}" hint-placeholder-val="{{ false }}">
+<span style="font-size:11.5px;color:var(--ob-faint);padding-left:2px">{{ m.who }}</span>
+</sc-if>
+<span class="{{ m.bubbleCls }}" style="padding:10px 13px;font-size:14px;line-height:1.45">{{ m.text }}</span>
+<span class="{{ m.timeCls }}" style="font-size:10.5px;color:var(--ob-faint)">{{ m.time }}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sEquipo }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;gap:8px;margin-bottom:16px">
+<sc-for list="{{ vm.filters }}" as="f" hint-placeholder-count="2">
+<button onClick="{{ f.onTap }}" class="{{ f.cls }}" style="height:36px;padding:0 15px;border-radius:10px;font:500 13px Inter,sans-serif;cursor:pointer">{{ f.label }}</button>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ vm.people }}" as="p" hint-placeholder-count="5">
+<button onClick="{{ p.onTap }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:13px;padding:13px 14px;border:1px solid var(--ob-divider);border-radius:16px;background:var(--ob-surface);color:var(--ob-text);cursor:pointer">
+<span style="width:40px;height:40px;flex:none;border-radius:50%;background:var(--ob-accent-soft);color:var(--ob-accent);display:grid;place-items:center;font:600 13px Inter,sans-serif">{{ p.ini }}</span>
+<span style="flex:1;min-width:0">
+<span style="display:block;font-size:14.5px;font-weight:500">{{ p.name }}</span>
+<span style="display:block;font-size:12px;color:var(--ob-muted)">{{ p.sub }}</span>
+</span>
+<span style="text-align:right;flex:none">
+<span style="display:block;font-size:15px;font-weight:600">{{ p.hrs }}</span>
+<span class="ob-tag {{ p.tagCls }}">{{ p.tag }}</span>
+</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sPanel }}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{ vm.panelSearch }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-radius:12px;background:var(--ob-sunk);color:var(--ob-muted);margin-bottom:16px">
+<i class="ph ph-magnifying-glass" style="font-size:18px"></i><span style="font-size:14px">Buscar empresa, persona o incidente</span>
+</div>
+</sc-if>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ vm.panelRows }}" as="r" hint-placeholder-count="5">
+<button onClick="{{ r.onTap }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:13px;padding:14px;border:1px solid var(--ob-divider);border-radius:16px;background:var(--ob-surface);color:var(--ob-text);cursor:pointer">
+<span style="width:38px;height:38px;flex:none;border-radius:11px;background:var(--ob-accent-soft);color:var(--ob-accent);display:grid;place-items:center"><i class="{{ r.icon }}" style="font-size:19px"></i></span>
+<span style="flex:1;min-width:0">
+<span style="display:block;font-size:14.5px;font-weight:500">{{ r.t }}</span>
+<span style="display:block;font-size:12px;color:var(--ob-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.sub }}</span>
+</span>
+<sc-if value="{{ r.tag }}" hint-placeholder-val="{{ false }}">
+<span class="ob-tag {{ r.tagCls }}">{{ r.tag }}</span>
+</sc-if>
+<i class="ph ph-caret-right" style="font-size:17px;color:var(--ob-faint);flex:none"></i>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{ vm.panelCta }}" hint-placeholder-val="{{ false }}">
+<button style="width:100%;margin-top:16px;height:52px;border-radius:12px;border:1px solid var(--ob-divider);background:transparent;color:var(--ob-text);font:600 15px Inter,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px"><i class="ph ph-user-plus" style="font-size:20px"></i>{{ vm.panelCta }}</button>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{ vm.sPerfil }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;align-items:center;gap:15px;padding:4px 0 22px">
+<span style="width:66px;height:66px;flex:none;border-radius:50%;background:var(--ob-accent-soft);color:var(--ob-accent);display:grid;place-items:center;font:600 22px Inter,sans-serif;box-shadow:inset 0 0 0 1px var(--ob-accent)">{{ vm.initials }}</span>
+<span style="min-width:0">
+<span style="display:block;font-size:21px;font-weight:600;letter-spacing:-.02em">{{ vm.meName }}</span>
+<span style="display:block;font-size:13px;color:var(--ob-muted);margin-top:2px">{{ vm.meRole }}</span>
+<span class="ob-tag ob-tag-accent" style="margin-top:7px">Perfil completo al 82%</span>
+</span>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div style="border:1px solid var(--ob-divider);border-radius:16px;padding:13px 14px;background:var(--ob-surface)">
+<span style="display:block;font-size:11.5px;color:var(--ob-muted)">Antigüedad</span>
+<span style="display:block;font-size:22px;font-weight:600;margin-top:2px">3 años</span>
+</div>
+<div style="border:1px solid var(--ob-divider);border-radius:16px;padding:13px 14px;background:var(--ob-surface)">
+<span style="display:block;font-size:11.5px;color:var(--ob-muted)">Horas del mes</span>
+<span style="display:block;font-size:22px;font-weight:600;margin-top:2px">126:30</span>
+</div>
+</div>
+<div style="margin:24px 0 12px;font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ob-muted)">Tu CV</div>
+<div style="border:1px solid var(--ob-divider);border-radius:16px;background:var(--ob-surface);overflow:hidden">
+<sc-for list="{{ vm.cvRows }}" as="r" hint-placeholder-count="4">
+<button style="width:100%;text-align:left;display:flex;align-items:center;gap:13px;padding:14px;border:0;border-bottom:1px solid var(--ob-divider);background:transparent;color:var(--ob-text);cursor:pointer">
+<i class="{{ r.icon }}" style="font-size:20px;color:var(--ob-accent);flex:none"></i>
+<span style="flex:1;min-width:0"><span style="display:block;font-size:14.5px;font-weight:500">{{ r.t }}</span><span style="display:block;font-size:12px;color:var(--ob-muted)">{{ r.sub }}</span></span>
+<sc-if value="{{ r.tag }}" hint-placeholder-val="{{ false }}">
+<span class="ob-tag {{ r.tagCls }}">{{ r.tag }}</span>
+</sc-if>
+<i class="ph ph-caret-right" style="font-size:16px;color:var(--ob-faint);flex:none"></i>
+</button>
+</sc-for>
+</div>
+<button style="width:100%;margin-top:14px;height:52px;border-radius:12px;border:1px solid var(--ob-accent);background:var(--ob-accent-soft);color:var(--ob-accent);font:600 16px Inter,sans-serif;cursor:pointer">Editar mi CV</button>
+<div style="margin:26px 0 12px;font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ob-muted)">Ajustes</div>
+<div style="border:1px solid var(--ob-divider);border-radius:16px;background:var(--ob-surface);overflow:hidden">
+<div style="display:flex;align-items:center;gap:13px;padding:14px;border-bottom:1px solid var(--ob-divider)">
+<i class="ph ph-fingerprint" style="font-size:20px;color:var(--ob-accent)"></i>
+<span style="flex:1;font-size:14.5px">Entrar con huella</span>
+<span style="width:44px;height:26px;border-radius:13px;background:var(--ob-accent);position:relative;flex:none"><span style="position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:#fff"></span></span>
+</div>
+<div style="display:flex;align-items:center;gap:13px;padding:14px;border-bottom:1px solid var(--ob-divider)">
+<i class="ph ph-bell-ringing" style="font-size:20px;color:var(--ob-accent)"></i>
+<span style="flex:1;font-size:14.5px">Notificaciones</span>
+<span style="font-size:12.5px;color:var(--ob-muted)">Todas</span>
+</div>
+<button onClick="{{ vm.logout }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:13px;padding:14px;border:0;background:transparent;color:var(--ob-bad);cursor:pointer;font:500 14.5px Inter,sans-serif">
+<i class="ph ph-sign-out" style="font-size:20px"></i>Cerrar sesión
+</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sNotis }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+<button onClick="{{ vm.readAll }}" style="border:0;background:transparent;color:var(--ob-accent);font:500 12.5px Inter,sans-serif;cursor:pointer;padding:4px 0">Marcar todas como leídas</button>
+</div>
+<sc-for list="{{ vm.notis }}" as="n" hint-placeholder-count="4">
+<div style="display:flex;align-items:flex-start;gap:12px;padding:13px 4px;border-bottom:1px solid var(--ob-divider)">
+<span style="width:36px;height:36px;flex:none;border-radius:11px;background:var(--ob-accent-soft);color:var(--ob-accent);display:grid;place-items:center"><i class="{{ n.icon }}" style="font-size:18px"></i></span>
+<span style="flex:1;min-width:0">
+<span class="{{ n.tCls }}" style="display:block;font-size:14px;line-height:1.4">{{ n.t }}</span>
+<span style="display:block;font-size:11.5px;color:var(--ob-faint);margin-top:3px">{{ n.when }}</span>
+</span>
+<sc-if value="{{ n.dot }}" hint-placeholder-val="{{ false }}">
+<span style="width:8px;height:8px;flex:none;border-radius:50%;background:var(--ob-orchid);margin-top:6px"></span>
+</sc-if>
+</div>
+</sc-for>
+<sc-if value="{{ vm.notisEmpty }}" hint-placeholder-val="{{ false }}">
+<div style="padding:80px 18px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px">
+<i class="ph ph-bell-slash" style="font-size:42px;color:var(--ob-faint)"></i>
+<div style="font-size:16px;font-weight:600">Estás al día</div>
+<p style="font-size:13px;color:var(--ob-muted);margin:0;max-width:220px">Aquí verás avisos de horas, tareas y menciones.</p>
+</div>
+</sc-if>
+</sc-if>
+
+</div>
+
+<sc-if value="{{ vm.fab }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ vm.fabTap }}" style="position:absolute;right:18px;bottom:104px;height:56px;padding:0 20px;border-radius:16px;border:1px solid var(--ob-accent);background:var(--ob-accent);color:#fff;font:600 15px Inter,sans-serif;cursor:pointer;display:flex;align-items:center;gap:9px;box-shadow:0 8px 22px rgba(138,43,226,.35)">
+<i class="ph-bold ph-plus" style="font-size:19px"></i>{{ vm.fab }}
+</button>
+</sc-if>
+
+<sc-if value="{{ vm.snack }}" hint-placeholder-val="{{ false }}">
+<div class="{{ vm.snackCls }}" style="position:absolute;left:16px;right:16px;padding:13px 15px;border-radius:12px;background:var(--ob-surface);box-shadow:0 0 0 1px var(--ob-divider),0 12px 30px rgba(0,0,0,.35);display:flex;align-items:center;gap:12px">
+<span style="flex:1;font-size:13.5px">{{ vm.snack }}</span>
+<button onClick="{{ vm.undo }}" style="border:0;background:transparent;color:var(--ob-accent);font:600 13px Inter,sans-serif;cursor:pointer">Deshacer</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.barBatch }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;left:0;right:0;bottom:82px;padding:12px 16px 14px;background:var(--ob-surface);box-shadow:0 -1px 0 var(--ob-divider),0 -12px 30px rgba(0,0,0,.18)">
+<button onClick="{{ vm.approveAll }}" style="width:100%;height:52px;border-radius:12px;border:1px solid var(--ob-accent);background:var(--ob-accent-soft);color:var(--ob-accent);font:600 16px Inter,sans-serif;cursor:pointer">{{ vm.barBatch }}</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.sheet }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ vm.closeSheet }}" style="position:absolute;inset:0;background:var(--ob-scrim)"></div>
+<div style="position:absolute;left:0;right:0;bottom:0;background:var(--ob-surface);border-radius:20px 20px 0 0;padding:8px 16px 26px;box-shadow:0 -16px 40px rgba(0,0,0,.35)">
+<div style="width:38px;height:4px;border-radius:2px;background:var(--ob-divider);margin:0 auto 16px"></div>
+<sc-if value="{{ vm.sheetHoras }}" hint-placeholder-val="{{ true }}">
+<div style="font-size:20px;font-weight:700;letter-spacing:-.01em">Registrar jornada</div>
+<div style="display:flex;align-items:center;gap:14px;padding:14px 0;margin-top:8px">
+<i class="ph ph-calendar-blank" style="font-size:22px;color:var(--ob-muted);flex:none"></i>
+<span style="flex:1"><span style="display:block;font-size:15px">Fecha</span><span style="display:block;font-size:13px;color:var(--ob-muted);margin-top:1px">Jueves 14 de agosto de 2026</span></span>
+<i class="ph ph-calendar-plus" style="font-size:22px;color:var(--ob-muted);flex:none"></i>
+</div>
+<div style="font-size:13px;font-weight:500;color:var(--ob-muted);margin:6px 0 8px">Tipo</div>
+<div style="display:flex;border:1px solid var(--ob-divider);border-radius:12px;overflow:hidden">
+<sc-for list="{{ vm.workTypes }}" as="w" hint-placeholder-count="3">
+<button onClick="{{ w.onTap }}" class="{{ w.cls }}" style="flex:1;height:44px;border:0;background:transparent;cursor:pointer;font:500 13.5px Inter,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px">
+<sc-if value="{{ w.on }}" hint-placeholder-val="{{ false }}">
+<i class="ph-bold ph-check" style="font-size:15px"></i>
+</sc-if>
+{{ w.label }}</button>
+</sc-for>
+</div>
+<sc-if value="{{ vm.wtComplete }}" hint-placeholder-val="{{ true }}">
+<div style="margin-top:16px">
+<span style="display:block;font-size:12.5px;color:var(--ob-muted);margin-bottom:6px">Actividades realizadas</span>
+<div style="min-height:84px;border-radius:12px;background:var(--ob-sunk);padding:13px 14px;font-size:15px;color:var(--ob-faint);line-height:1.45">Revisión de planos de la nave 3 y control del eje C</div>
+<p style="font-size:12.5px;color:var(--ob-muted);margin:8px 0 0">El servidor calcula las horas de una jornada completa.</p>
+</div>
+</sc-if>
+<sc-if value="{{ vm.wtAbsence }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:16px">
+<span style="display:block;font-size:12.5px;color:var(--ob-muted);margin-bottom:6px">Motivo de la ausencia</span>
+<div style="height:52px;border-radius:12px;background:var(--ob-sunk);display:flex;align-items:center;gap:11px;padding:0 14px;font-size:15px;color:var(--ob-faint)"><i class="ph ph-info" style="font-size:20px"></i>Consulta médica</div>
+</div>
+</sc-if>
+<sc-if value="{{ vm.wtRecover }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:16px">
+<span style="display:block;font-size:12.5px;color:var(--ob-muted);margin-bottom:6px">Horas a recuperar</span>
+<div style="height:52px;border-radius:12px;background:var(--ob-sunk);display:flex;align-items:center;gap:11px;padding:0 14px;font-size:15px"><i class="ph ph-timer" style="font-size:20px;color:var(--ob-muted)"></i>8</div>
+</div>
+</sc-if>
+<button onClick="{{ vm.saveHoras }}" style="width:100%;margin-top:20px;height:52px;border-radius:12px;border:1px solid var(--ob-accent);background:var(--ob-accent-soft);color:var(--ob-accent);font:600 16px Inter,sans-serif;cursor:pointer">Guardar</button>
+</sc-if>
+<sc-if value="{{ vm.sheetReject }}" hint-placeholder-val="{{ false }}">
+<div style="font-size:20px;font-weight:600;letter-spacing:-.01em">Rechazar {{ vm.rejectName }}</div>
+<p style="font-size:13px;color:var(--ob-muted);margin:6px 0 18px">Elige el motivo. La persona lo recibe y puede corregir el registro.</p>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ vm.reasons }}" as="r" hint-placeholder-count="3">
+<button onClick="{{ r.onTap }}" style="width:100%;text-align:left;padding:14px;border:1px solid var(--ob-divider);border-radius:12px;background:transparent;color:var(--ob-text);font:400 14.5px Inter,sans-serif;cursor:pointer">{{ r.label }}</button>
+</sc-for>
+</div>
+<button onClick="{{ vm.closeSheet }}" style="width:100%;margin-top:16px;height:52px;border-radius:12px;border:1px solid var(--ob-divider);background:transparent;color:var(--ob-text);font:600 15px Inter,sans-serif;cursor:pointer">Cancelar</button>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ vm.tabs }}" hint-placeholder-val="{{ true }}">
+<div style="position:absolute;left:0;right:0;bottom:0;height:82px;padding-bottom:14px;background:var(--ob-surface);box-shadow:0 -1px 0 var(--ob-divider);display:flex;align-items:stretch">
+<sc-for list="{{ vm.tabs }}" as="t" hint-placeholder-count="5">
+<button onClick="{{ t.onTap }}" class="{{ t.cls }}" style="flex:1;border:0;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 2px 0;position:relative">
+<span style="position:relative"><i class="{{ t.icon }}" style="font-size:23px"></i>
+<sc-if value="{{ t.badge }}" hint-placeholder-val="{{ false }}">
+<span style="position:absolute;top:-4px;right:-9px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--ob-orchid);color:#fff;font:600 10.5px Inter,sans-serif;display:grid;place-items:center;box-shadow:0 0 0 2px var(--ob-surface)">{{ t.badge }}</span>
+</sc-if>
+</span>
+<span style="font-size:10.5px;font-weight:500;letter-spacing:.01em">{{ t.label }}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:440,&quot;height&quot;:900},&quot;vm&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;any&quot;}}"></script>
+</body>
+</html>

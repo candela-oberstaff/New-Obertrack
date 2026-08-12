@@ -41,22 +41,6 @@ func (h *EmailSettingsHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"key": key, "enabled": *req.Enabled})
 }
 
-// UpdateAll enciende o apaga todos los correos del sistema de una vez.
-func (h *EmailSettingsHandler) UpdateAll(c *gin.Context) {
-	var req struct {
-		Enabled *bool `json:"enabled" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Falta el valor de 'enabled'"})
-		return
-	}
-	if err := h.svc.SetAll(*req.Enabled, middleware.GetUserID(c)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo aplicar el cambio"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"enabled": *req.Enabled})
-}
-
 // SendTest manda una muestra del correo. Sin destinatario en el cuerpo usa el
 // correo de quien lo pide (lo habitual: "quiero ver cómo llega").
 func (h *EmailSettingsHandler) SendTest(c *gin.Context) {

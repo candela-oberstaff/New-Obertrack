@@ -76,9 +76,21 @@ REM ---- 3) Esperar el telefono ----
 echo.
 echo [3/3] Conecta el telefono por USB (con depuracion USB activada)...
 echo       Esperando el dispositivo %DEVICE_ID% ...
+set /a _phone=0
 :waitphone
-flutter devices 2>nul | findstr /c:"%DEVICE_ID%" >nul
+call flutter devices 2>nul | findstr /c:"%DEVICE_ID%" >nul
 if errorlevel 1 (
+    set /a _phone+=1
+    if !_phone! geq 40 (
+        echo.
+        echo No aparecio el dispositivo %DEVICE_ID% tras 2 minutos.
+        echo   - Revisa que la depuracion USB este activada y que aceptaste
+        echo     el aviso de "Permitir depuracion USB" en el telefono.
+        echo   - Comprueba con: flutter devices
+        echo   - Si cambiaste de telefono, edita DEVICE_ID arriba en este .bat
+        pause
+        exit /b 1
+    )
     timeout /t 3 >nul
     goto waitphone
 )
@@ -100,7 +112,10 @@ if not exist "%MOBILE_DIR%\pubspec.yaml" (
     exit /b 1
 )
 cd /d "%MOBILE_DIR%"
-flutter run -d %DEVICE_ID% --dart-define=API_BASE_URL=http://!API_IP!:%BACKEND_PORT%
+REM OJO: "flutter" en Windows es flutter.bat. Sin CALL, cmd transfiere el
+REM control a ese .bat y NO vuelve nunca: al terminar flutter se cierra la
+REM ventana entera y no se llega al pause de abajo.
+call flutter run -d %DEVICE_ID% --dart-define=API_BASE_URL=http://!API_IP!:%BACKEND_PORT%
 
 echo.
 echo La app se cerro. Presiona una tecla para salir.

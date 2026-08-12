@@ -231,8 +231,9 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 			// Correos del sistema: catálogo, interruptor por tipo y envío de
 			// una muestra para revisar el formato.
 			settings.GET("/emails", d.emailSettings.List)
-			// Interruptor general (apagar/encender todo de una vez).
-			settings.PUT("/emails", d.emailSettings.UpdateAll)
+			// Sin endpoint de "apagar todo": un solo clic capaz de tumbar todos
+			// los correos (incluidos los de contraseña) se consideró demasiado
+			// peligroso. El apagado se hace tipo por tipo.
 			settings.PUT("/emails/:key", d.emailSettings.Update)
 			settings.POST("/emails/:key/test", d.emailSettings.SendTest)
 		}

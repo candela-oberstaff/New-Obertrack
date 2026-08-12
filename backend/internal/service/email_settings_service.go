@@ -238,24 +238,10 @@ func (s *EmailSettingsService) SetEnabled(kind string, enabled bool, userID uint
 	return nil
 }
 
-// SetAll enciende o apaga TODOS los correos del sistema de una vez (el
-// interruptor general del panel). Incluye el reporte de jornadas: apagar todo
-// debe significar que no sale un solo correo, sin excepciones. La única salida
-// que sigue funcionando es el botón "Probar", que existe justamente para
-// revisar un correo apagado antes de encenderlo.
-func (s *EmailSettingsService) SetAll(enabled bool, userID uint) error {
-	rows := make([]models.EmailSetting, 0, len(emailCatalog))
-	for _, t := range emailCatalog {
-		rows = append(rows, models.EmailSetting{Key: t.Key, Enabled: enabled, UpdatedBy: userID})
-	}
-	if err := s.repo.UpsertMany(rows); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.loaded = false // fuerza recarga en la próxima consulta
-	s.mu.Unlock()
-	return nil
-}
+// NOTA: no hay un SetAll (apagar/encender todo de una vez) a propósito. Existió
+// y se quitó: un único clic capaz de tumbar TODOS los correos —incluidos los de
+// recuperar y crear contraseña, que dejan a la gente sin poder entrar— es un
+// riesgo que no compensa la comodidad. El apagado se hace tipo por tipo.
 
 func isKnownEmailKind(kind string) bool {
 	for _, t := range emailCatalog {
