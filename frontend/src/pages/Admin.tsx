@@ -163,7 +163,7 @@ export default function Admin() {
     if (showCreateModal && publicCompanies.length === 0) {
       authService.getPublicCompanies()
         .then(data => setPublicCompanies(data))
-        .catch(() => {})
+        .catch(() => { })
     }
   }, [showCreateModal])
 
@@ -190,7 +190,7 @@ export default function Admin() {
       if (!phoneNumber.trim()) { setCreateError('El teléfono es obligatorio'); return }
       if (!country.trim()) { setCreateError('El país es obligatorio'); return }
       if (!industry.trim()) { setCreateError('El rubro o industria es obligatorio'); return }
-    }    setCreateLoading(true)
+    } setCreateLoading(true)
     try {
       await createUser({
         name,
@@ -226,9 +226,9 @@ export default function Admin() {
   // empresa; un profesional/CS toma la del empleador al que está vinculado.
   const companyNameById = useMemo(() => {
     const m = new Map<number, string>()
-    ;(Array.isArray(users) ? users : []).forEach((u: any) => {
-      if (u.user_type === 'empleador') m.set(u.id, (u.company_name || '').trim() || u.name || '')
-    })
+      ; (Array.isArray(users) ? users : []).forEach((u: any) => {
+        if (u.user_type === 'empleador') m.set(u.id, (u.company_name || '').trim() || u.name || '')
+      })
     return m
   }, [users])
   const resolveCompanyName = (u: any): string => {
@@ -326,9 +326,9 @@ export default function Admin() {
 
   const reportsCountByManager = useMemo(() => {
     const m = new Map<number, number>()
-    ;(Array.isArray(users) ? users : []).forEach((u: any) => {
-      if (u.manager_id) m.set(u.manager_id, (m.get(u.manager_id) || 0) + 1)
-    })
+      ; (Array.isArray(users) ? users : []).forEach((u: any) => {
+        if (u.manager_id) m.set(u.manager_id, (m.get(u.manager_id) || 0) + 1)
+      })
     return m
   }, [users])
   const selectedManagersWithTeam = useMemo(() =>
@@ -336,7 +336,7 @@ export default function Admin() {
       .filter((u: any) => selectedIds.has(u.id) && u.is_manager && (reportsCountByManager.get(u.id) || 0) > 0)
       .map((u: any) => ({ id: u.id, name: u.name, count: reportsCountByManager.get(u.id) || 0 }))
       .sort((a: any, b: any) => b.count - a.count)
-  , [users, selectedIds, reportsCountByManager])
+    , [users, selectedIds, reportsCountByManager])
   const bulkWillDelete = Math.max(0, selectedIds.size - selectedManagersWithTeam.length)
 
   // Borrar una cuenta empleador se lleva la empresa entera, así que el modal
@@ -975,10 +975,47 @@ export default function Admin() {
                 )}
               </div>
               {canManage && (
-              <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowActionsMenu(o => !o)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '10px 16px',
+                      background: '#fff',
+                      color: '#6d28d9',
+                      border: '1px solid #ddd6fe',
+                      borderRadius: '12px',
+                      fontWeight: 700,
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title="Importar o exportar usuarios"
+                  >
+                    <FileSpreadsheet size={16} /> Acciones
+                    <ChevronDown size={15} style={{ transform: showActionsMenu ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                  </button>
+                  {showActionsMenu && (
+                    <>
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 20 }} onClick={() => setShowActionsMenu(false)} />
+                      <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 21, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', padding: '6px', minWidth: '200px' }}>
+                        <button type="button" onClick={() => { setShowActionsMenu(false); setShowImportModal(true) }} style={actionMenuItem}>
+                          <UploadCloud size={16} /> Importar desde Excel
+                        </button>
+                        <button type="button" onClick={() => { setShowActionsMenu(false); setShowExportModal(true) }} style={actionMenuItem}>
+                          <Download size={16} /> Exportar a Excel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {canManage && (
                 <button
-                  type="button"
-                  onClick={() => setShowActionsMenu(o => !o)}
+                  onClick={() => setShowSendEmailModal(true)}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -993,73 +1030,36 @@ export default function Admin() {
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
                   }}
-                  title="Importar o exportar usuarios"
+                  title="Enviar un correo masivo con las plantillas y variables de Tools"
                 >
-                  <FileSpreadsheet size={16} /> Acciones
-                  <ChevronDown size={15} style={{ transform: showActionsMenu ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                  <Mail size={16} /> Enviar correo
                 </button>
-                {showActionsMenu && (
-                  <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 20 }} onClick={() => setShowActionsMenu(false)} />
-                    <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 21, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 12px 32px rgba(0,0,0,0.12)', padding: '6px', minWidth: '200px' }}>
-                      <button type="button" onClick={() => { setShowActionsMenu(false); setShowImportModal(true) }} style={actionMenuItem}>
-                        <UploadCloud size={16} /> Importar desde Excel
-                      </button>
-                      <button type="button" onClick={() => { setShowActionsMenu(false); setShowExportModal(true) }} style={actionMenuItem}>
-                        <Download size={16} /> Exportar a Excel
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
               )}
               {canManage && (
-              <button
-                onClick={() => setShowSendEmailModal(true)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 16px',
-                  background: '#fff',
-                  color: '#6d28d9',
-                  border: '1px solid #ddd6fe',
-                  borderRadius: '12px',
-                  fontWeight: 700,
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-                title="Enviar un correo masivo con las plantillas y variables de Tools"
-              >
-                <Mail size={16} /> Enviar correo
-              </button>
-              )}
-              {canManage && (
-              <button
-                onClick={openCreateModal}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 20px',
-                  background: 'linear-gradient(135deg, var(--primary), var(--primary-dark, #1d4ed8))',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '12px',
-                  fontWeight: 700,
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(59,130,246,0.3)',
-                  transition: 'all 0.2s',
-                  whiteSpace: 'nowrap',
-                }}
-                onMouseOver={e => (e.currentTarget.style.transform = 'translateY(-1px)')}
-                onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0)')}
-              >
-                <UserPlus size={16} />
-                Crear Usuario
-              </button>
+                <button
+                  onClick={openCreateModal}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '10px 20px',
+                    background: 'linear-gradient(135deg, var(--primary), var(--primary-dark, #1d4ed8))',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(59,130,246,0.3)',
+                    transition: 'all 0.2s',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseOver={e => (e.currentTarget.style.transform = 'translateY(-1px)')}
+                  onMouseOut={e => (e.currentTarget.style.transform = 'translateY(0)')}
+                >
+                  <UserPlus size={16} />
+                  Crear Usuario
+                </button>
               )}
             </div>
 
@@ -1087,13 +1087,13 @@ export default function Admin() {
                       <UserCog size={15} /> Asignar ({selectedIds.size})
                     </button>
                     {canDelete && (
-                    <button
-                      onClick={openBulkDelete}
-                      disabled={bulkBusy || bulkDeleteBusy}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '10px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: (bulkBusy || bulkDeleteBusy) ? 'progress' : 'pointer' }}
-                    >
-                      <Trash2 size={15} /> Eliminar ({selectedIds.size})
-                    </button>
+                      <button
+                        onClick={openBulkDelete}
+                        disabled={bulkBusy || bulkDeleteBusy}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '10px', border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: (bulkBusy || bulkDeleteBusy) ? 'progress' : 'pointer' }}
+                      >
+                        <Trash2 size={15} /> Eliminar ({selectedIds.size})
+                      </button>
                     )}
                     <button
                       onClick={clearSelection}
@@ -1143,10 +1143,10 @@ export default function Admin() {
                       )}
                       <td>
                         <div className={styles['user-cell']}>
-                          <Avatar 
-                            src={u.avatar} 
-                            name={u.name} 
-                            size="sm" 
+                          <Avatar
+                            src={u.avatar}
+                            name={u.name}
+                            size="sm"
                           />
                           <span>{u.name}</span>
                         </div>
@@ -1181,16 +1181,16 @@ export default function Admin() {
                                 <Pencil size={16} />
                               </button>
                               {canDelete && (
-                              <button
-                                className={`${styles['btn-icon']} ${styles['danger']}`}
-                                onClick={() => {
-                                  setUserToDelete(u)
-                                  setShowDeleteModal(true)
-                                }}
-                                title="Eliminar"
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                                <button
+                                  className={`${styles['btn-icon']} ${styles['danger']}`}
+                                  onClick={() => {
+                                    setUserToDelete(u)
+                                    setShowDeleteModal(true)
+                                  }}
+                                  title="Eliminar"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
                               )}
                             </>
                           )}
