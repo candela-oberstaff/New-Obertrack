@@ -64,7 +64,18 @@ export default function ChatWindow({
   hasMoreMessages
 }: ChatWindowProps) {
   const [downloadingMsgId, setDownloadingMsgId] = useState<string | null>(null)
-  
+  const [isRegistered, setIsRegistered] = useState<boolean | null>(null)
+
+  React.useEffect(() => {
+    if (activeTicket.contact_phone) {
+      ticketService.lookupWaChat(activeTicket.contact_phone)
+        .then(res => setIsRegistered(res.is_registered))
+        .catch(err => console.error('Error looking up WA chat status:', err))
+    } else {
+      setIsRegistered(null)
+    }
+  }, [activeTicket.contact_phone])
+
   const contactName = activeTicket.contact_name || activeTicket.subject || 'Sin nombre'
   const canWriteInput = isAssignedToMe || !isUnassignedChat
 
@@ -101,14 +112,14 @@ export default function ChatWindow({
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      
+
       let ext = ''
       if (contentType.includes('image/jpeg')) ext = '.jpg'
       else if (contentType.includes('image/png')) ext = '.png'
       else if (contentType.includes('video/mp4')) ext = '.mp4'
       else if (contentType.includes('audio/ogg')) ext = '.ogg'
       else if (contentType.includes('application/pdf')) ext = '.pdf'
-      
+
       a.download = `adjunto_${msg.id}${ext}`
       document.body.appendChild(a)
       a.click()
@@ -131,7 +142,7 @@ export default function ChatWindow({
       <div className={styles.chatHeader}>
         <button className={styles.backBtn} onClick={handleBack} aria-label="Volver">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
-            <path d="M15 18l-6-6 6-6"/>
+            <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
         <div className={styles.chatHeaderAvatar}>
@@ -146,6 +157,21 @@ export default function ChatWindow({
           </span>
         </div>
         <div className={styles.chatHeaderActions} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {isRegistered !== null && (
+            <span style={{
+              fontSize: '11px',
+              padding: '4px 10px',
+              borderRadius: '20px',
+              background: isRegistered ? 'rgba(37,211,102,0.1)' : 'rgba(239,68,68,0.1)',
+              color: isRegistered ? '#128C7E' : '#EF4444',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              {isRegistered ? '✓ Registrado en Obertrack' : '❌ No está registrado en Obertrack'}
+            </span>
+          )}
           {isUnassignedChat && !isAssignedToMe && (
             <button
               onClick={handleAssign}
@@ -193,8 +219,8 @@ export default function ChatWindow({
         ) : (
           <>
             <div style={{ textAlign: 'center', margin: '10px 0 20px' }}>
-              <button 
-                onClick={handleLoadOlder} 
+              <button
+                onClick={handleLoadOlder}
                 disabled={loadingOlder || !hasMoreMessages}
                 className={styles.loadOlderBtn}
               >
@@ -203,41 +229,41 @@ export default function ChatWindow({
             </div>
             {activeMessages.map((msg) => {
               const isOwn = msg.direction === 'outgoing'
-            return (
-              <div key={msg.id} className={`${styles.msgRow} ${isOwn ? styles.msgRowOwn : ''}`}>
-                <div className={`${styles.msgBubble} ${isOwn ? styles.msgBubbleOwn : ''}`}>
-                  {!isOwn && (
-                    <p style={{ fontSize: '11px', fontWeight: 600, color: '#128C7E', margin: '0 0 4px 0' }}>
-                      {msg.author_name || 'Cliente'}
-                    </p>
-                  )}
-                  <p className={styles.msgText}>{msg.content}</p>
-                  
-                  {isMediaMessage(msg) && (
-                    <button 
-                      className={styles.mediaDownloadBtn} 
-                      onClick={() => handleDownloadMedia(msg)}
-                      disabled={downloadingMsgId === msg.id}
-                      title="Descargar archivo"
-                    >
-                      {downloadingMsgId === msg.id ? <Loader2 size={14} className={styles.spin} /> : <Download size={14} />}
-                      <span>{downloadingMsgId === msg.id ? 'Descargando...' : 'Descargar'}</span>
-                    </button>
-                  )}
+              return (
+                <div key={msg.id} className={`${styles.msgRow} ${isOwn ? styles.msgRowOwn : ''}`}>
+                  <div className={`${styles.msgBubble} ${isOwn ? styles.msgBubbleOwn : ''}`}>
+                    {!isOwn && (
+                      <p style={{ fontSize: '11px', fontWeight: 600, color: '#128C7E', margin: '0 0 4px 0' }}>
+                        {msg.author_name || 'Cliente'}
+                      </p>
+                    )}
+                    <p className={styles.msgText}>{msg.content}</p>
 
-                  <div className={styles.msgMeta}>
-                    <span className={styles.msgTime}>{formatTime(msg.created_time)}</span>
-                    {isOwn && <DeliveryIcon status={msg.delivery_status} />}
+                    {isMediaMessage(msg) && (
+                      <button
+                        className={styles.mediaDownloadBtn}
+                        onClick={() => handleDownloadMedia(msg)}
+                        disabled={downloadingMsgId === msg.id}
+                        title="Descargar archivo"
+                      >
+                        {downloadingMsgId === msg.id ? <Loader2 size={14} className={styles.spin} /> : <Download size={14} />}
+                        <span>{downloadingMsgId === msg.id ? 'Descargando...' : 'Descargar'}</span>
+                      </button>
+                    )}
+
+                    <div className={styles.msgMeta}>
+                      <span className={styles.msgTime}>{formatTime(msg.created_time)}</span>
+                      {isOwn && <DeliveryIcon status={msg.delivery_status} />}
+                    </div>
+                    {isOwn && msg.delivery_status === 'failed' && (
+                      <p style={{ fontSize: '11px', color: '#B91C1C', margin: '4px 0 0 0' }}>
+                        No se pudo entregar. Reenvialo cuando WhatsApp esté disponible.
+                      </p>
+                    )}
                   </div>
-                  {isOwn && msg.delivery_status === 'failed' && (
-                    <p style={{ fontSize: '11px', color: '#B91C1C', margin: '4px 0 0 0' }}>
-                      No se pudo entregar. Reenvialo cuando WhatsApp esté disponible.
-                    </p>
-                  )}
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
           </>
         )}
         <div ref={messagesEndRef} />

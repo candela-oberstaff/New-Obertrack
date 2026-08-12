@@ -73,6 +73,11 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
   }
 
   const handleStatusChange = async (newStatus: string) => {
+    const doneCol = columns.find(c => c.id === 'finalizado' || c.title.toLowerCase().includes('finaliz'))
+    const doneId = doneCol ? doneCol.id : 'finalizado'
+    if (newStatus === doneId) {
+      onClose()
+    }
     await onUpdate(task.id, { status: newStatus as Task['status'] })
   }
 

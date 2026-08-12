@@ -156,6 +156,8 @@ export interface WaChatLookup {
    * en frío rechazaría el envío.
    */
   can_reply: boolean
+  /** Si el número pertenece a un usuario registrado en la plataforma */
+  is_registered: boolean
 }
 
 export interface WahaStatus {

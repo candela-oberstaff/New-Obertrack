@@ -5,7 +5,7 @@ import { TaskAttachmentsSection } from './TaskAttachmentsSection'
 import { TaskCommentsSection } from './TaskCommentsSection'
 import { Select } from '../../ui/Select'
 import { useConfirm } from '../../ui/ConfirmProvider'
-import { Pencil, Trash2, X, Download } from 'lucide-react'
+import { Pencil, Trash2, X, Download, CheckCheck } from 'lucide-react'
 import { sanitizeRichHtml } from '../../../utils/sanitize'
 import { formatDateOnly } from '../../../utils/date'
 
@@ -160,7 +160,7 @@ export function TaskDetailView({
 
   return (
     <>
-      <div className={styles['task-status-bar']}>
+      <div className={styles['task-status-bar']} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <Select
           value={task.status}
           onChange={(v) => onStatusChange(String(v))}
@@ -172,6 +172,36 @@ export function TaskDetailView({
         >
           {task.priority}
         </span>
+        <div style={{ flex: 1 }} />
+        {(() => {
+          const doneCol = columns.find(c => c.id === 'finalizado' || c.title.toLowerCase().includes('finaliz'))
+          const doneId = doneCol ? doneCol.id : 'finalizado'
+          if (task.status !== doneId) {
+            return (
+              <button
+                type="button"
+                onClick={() => onStatusChange(doneId)}
+                style={{
+                  background: '#22c55e',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '20px',
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 6px rgba(34, 197, 94, 0.3)'
+                }}
+              >
+                <CheckCheck size={14} /> Finalizar Tarea
+              </button>
+            )
+          }
+          return null
+        })()}
       </div>
 
       <h3 className={styles['task-title']}>{task.title}</h3>
