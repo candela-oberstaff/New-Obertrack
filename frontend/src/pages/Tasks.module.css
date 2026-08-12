@@ -1021,7 +1021,6 @@
   line-height: 1.4;
   overflow-wrap: break-word;
   word-wrap: break-word;
-  word-break: break-all;
 }
 
 .card-description {
@@ -1035,7 +1034,6 @@
   overflow: hidden;
   overflow-wrap: break-word;
   word-wrap: break-word;
-  word-break: break-all;
 }
 
 .card-meta {
@@ -1208,7 +1206,6 @@
   margin: 0 0 20px 0;
   overflow-wrap: break-word;
   word-wrap: break-word;
-  word-break: break-all;
 }
 
 .task-description-html {
@@ -1382,9 +1379,13 @@
 .comment-content p {
   margin: 4px 0;
   font-size: 14px;
+  /* Respeta los saltos de línea que la persona escribió en el textarea. Sin
+     esto, un comentario en forma de lista llegaba como un párrafo corrido. */
+  white-space: pre-wrap;
+  /* break-word parte SOLO la palabra que no cabe entera por sí sola (una URL
+     larga). El break-all que había antes partía cualquier palabra por la
+     mitad: "obert rack", "de c orreos". */
   overflow-wrap: break-word;
-  word-wrap: break-word;
-  word-break: break-all;
 }
 
 .comment-date {
