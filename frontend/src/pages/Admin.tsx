@@ -290,7 +290,8 @@ export default function Admin() {
       if (u.is_active === false && (u.user_type === 'profesional' || u.user_type === 'customer_success')) return false
       const q = searchQuery.trim().toLowerCase()
       if (q && !(u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))) return false
-      if (roleFilter && u.user_type !== roleFilter) return false
+      if (roleFilter === 'manager') { if (!u.is_manager) return false }
+      else if (roleFilter && u.user_type !== roleFilter) return false
       // Una empresa "incluye" a su propia cuenta empleador y a sus vinculados.
       if (companyFilter !== '' && u.empleador_id !== companyFilter && u.id !== companyFilter) return false
       return true
@@ -663,36 +664,33 @@ export default function Admin() {
                   </div>
                 </div>
 
-                {rptReasonCounts.length ? (
-                  <div className={styles['reason-cloud']}>
-                    {rptReasonCounts.map((reason: any) => {
-                      const active = rptReason === reason.reason
-                      return (
-                        <span
-                          key={reason.reason}
-                          onClick={() => setRptReason(active ? '' : reason.reason)}
-                          title={active ? 'Quitar filtro' : `Filtrar por ${reason.reason}`}
-                          style={{
-                            cursor: 'pointer',
-                            ...(active ? { background: '#ede9fe', borderColor: '#8b5cf6', color: '#6d28d9' } : {}),
-                          }}
-                        >
-                          {reason.reason} ({reason.count})
-                        </span>
-                      )
-                    })}
-                  </div>
-                ) : null}
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '4px 0 14px' }}>
+                  {rptReasonCounts.length > 0 && (
+                    <div style={{ flex: 1, minWidth: 180, maxWidth: 240 }}>
+                      <Select
+                        value={rptReason}
+                        onChange={(v) => setRptReason(String(v))}
+                        options={[
+                          { value: '', label: 'Todos los motivos' },
+                          ...rptReasonCounts.map((r: any) => ({
+                            value: r.reason,
+                            label: `${r.reason} (${r.count})`
+                          }))
+                        ]}
+                      />
+                    </div>
+                  )}
 
-                {rptCompanies.length > 1 && (
-                  <div style={{ margin: '4px 0 12px', maxWidth: 240 }}>
-                    <Select
-                      value={rptCompany}
-                      onChange={(v) => setRptCompany(String(v))}
-                      options={[{ value: '', label: 'Todas las empresas' }, ...rptCompanies.map(c => ({ value: c, label: c }))]}
-                    />
-                  </div>
-                )}
+                  {rptCompanies.length > 1 && (
+                    <div style={{ flex: 1, minWidth: 180, maxWidth: 240 }}>
+                      <Select
+                        value={rptCompany}
+                        onChange={(v) => setRptCompany(String(v))}
+                        options={[{ value: '', label: 'Todas las empresas' }, ...rptCompanies.map(c => ({ value: c, label: c }))]}
+                      />
+                    </div>
+                  )}
+                </div>
 
                 <div className={styles['absence-list']}>
                   {rptFiltered.length === 0 ? (
@@ -951,6 +949,7 @@ export default function Admin() {
                       { value: 'customer_success', label: 'Customer Success' },
                       { value: 'analista_it', label: 'Analista de IT' },
                       { value: 'superadmin', label: 'Superadmin' },
+                      { value: 'manager', label: 'Manager' },
                     ]}
                   />
                 </div>
@@ -1308,30 +1307,32 @@ export default function Admin() {
       {rptDetail && (
         <div className={styles['modal-overlay']} onClick={() => setRptDetail(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className={styles['modal']} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, width: '92%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <h2 style={{ margin: 0 }}>Detalle de ausencia</h2>
-              <button type="button" className={styles['btn-icon']} onClick={() => setRptDetail(null)} title="Cerrar"><X size={18} /></button>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #e2e8f0', marginBottom: 14 }}>
-              <Avatar src={rptDetail.avatar} name={rptDetail.user} size="md" />
-              <div>
-                <div style={{ fontWeight: 800, color: '#0f172a' }}>{rptDetail.user}</div>
-                <div style={{ fontSize: 13, color: '#64748b' }}>{rptDetail.company}</div>
+            <div style={{ padding: '20px 24px 0 24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <h2 style={{ margin: 0 }}>Detalle de ausencia</h2>
+                <button type="button" className={styles['btn-icon']} onClick={() => setRptDetail(null)} title="Cerrar"><X size={18} /></button>
               </div>
-              <span className={`${styles['pill']} ${styles[absenceStatus(rptDetail).className]}`} style={{ marginLeft: 'auto' }}>
-                {absenceStatus(rptDetail).label}
-              </span>
-            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', fontSize: 14 }}>
-              <DetailField label="Fecha" value={new Date(rptDetail.work_date).toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} full />
-              <DetailField label="Horas ausentes" value={`${(rptDetail.absence_hours || 0).toFixed(1)} h`} />
-              <DetailField label="Horas trabajadas" value={`${(rptDetail.hours_worked || 0).toFixed(1)} h`} />
-              <DetailField label="Motivo" value={rptDetail.absence_reason || 'Sin motivo'} full />
-              {rptDetail.email && <DetailField label="Email" value={rptDetail.email} full />}
-              {rptDetail.phone_number && <DetailField label="Teléfono" value={rptDetail.phone_number} />}
-              {rptDetail.created_at && <DetailField label="Registrado" value={new Date(rptDetail.created_at).toLocaleString('es-ES')} full />}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #e2e8f0', marginBottom: 14 }}>
+                <Avatar src={rptDetail.avatar} name={rptDetail.user} size="md" />
+                <div>
+                  <div style={{ fontWeight: 800, color: '#0f172a' }}>{rptDetail.user}</div>
+                  <div style={{ fontSize: 13, color: '#64748b' }}>{rptDetail.company}</div>
+                </div>
+                <span className={`${styles['pill']} ${styles[absenceStatus(rptDetail).className]}`} style={{ marginLeft: 'auto' }}>
+                  {absenceStatus(rptDetail).label}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', fontSize: 14 }}>
+                <DetailField label="Fecha" value={new Date(rptDetail.work_date).toLocaleDateString('es-ES', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} full />
+                <DetailField label="Horas ausentes" value={`${(rptDetail.absence_hours || 0).toFixed(1)} h`} />
+                <DetailField label="Horas trabajadas" value={`${(rptDetail.hours_worked || 0).toFixed(1)} h`} />
+                <DetailField label="Motivo" value={rptDetail.absence_reason || 'Sin motivo'} full />
+                {rptDetail.email && <DetailField label="Email" value={rptDetail.email} full />}
+                {rptDetail.phone_number && <DetailField label="Teléfono" value={rptDetail.phone_number} />}
+                {rptDetail.created_at && <DetailField label="Registrado" value={new Date(rptDetail.created_at).toLocaleString('es-ES')} full />}
+              </div>
             </div>
 
             <div className={styles['modal-actions']} style={{ marginTop: 18 }}>

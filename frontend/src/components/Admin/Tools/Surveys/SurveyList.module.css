@@ -104,6 +104,13 @@
   flex: 1;
   font-size: 12px;
   padding: 8px 12px;
+  justify-content: center;
+}
+
+.surveyActions button:last-child {
+  flex: 0 0 auto;
+  width: 36px;
+  padding: 0;
 }
 
 @media (max-width: 768px) {

@@ -30,11 +30,22 @@ const META: Record<Kind, { label: string; color: string; bg: string }> = {
 // Estilo común de los dos botones de la cabecera, para que no se separen al
 // tocar uno solo.
 const actionBtn: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: '6px',
-  fontSize: '11px', fontWeight: 600,
-  padding: '5px 10px', borderRadius: '14px',
-  border: '1px solid #d1d7db', background: 'white',
-  color: '#128C7E', fontFamily: 'inherit',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '5px',
+  fontSize: '11px',
+  fontWeight: 600,
+  height: '28px',
+  padding: '0 9px',
+  borderRadius: '14px',
+  border: '1px solid #d1d7db',
+  background: 'white',
+  color: '#128C7E',
+  fontFamily: 'inherit',
+  whiteSpace: 'nowrap',
+  boxSizing: 'border-box',
+  flexShrink: 0,
 }
 
 function qrSrc(image?: string): string | null {
@@ -125,20 +136,21 @@ export default function WahaStatus({ onSynced }: WahaStatusProps) {
 
   return (
     <div style={{
-      padding: '8px 16px',
+      padding: '8px 12px',
       borderBottom: '1px solid #e9edef',
       background: '#fafbfc',
       flexShrink: 0,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         <span style={{
-          width: 9, height: 9, borderRadius: '50%',
+          width: 8, height: 8, borderRadius: '50%',
           background: kind === 'connected' ? '#25D366' : kind === 'scan' ? '#F59E0B' : '#EF4444',
           flexShrink: 0,
         }} />
         <span style={{
-          fontSize: '12px', fontWeight: 600, color: meta.color,
-          background: meta.bg, padding: '2px 8px', borderRadius: '10px',
+          fontSize: '11px', fontWeight: 600, color: meta.color,
+          background: meta.bg, padding: '3px 7px', borderRadius: '10px',
+          whiteSpace: 'nowrap', flexShrink: 0, display: 'inline-flex', alignItems: 'center',
         }}>
           {loading ? 'Cargando…' : meta.label}
         </span>
@@ -154,7 +166,7 @@ export default function WahaStatus({ onSynced }: WahaStatusProps) {
             opacity: syncing ? 0.6 : 1,
           }}
         >
-          <DownloadCloud size={13} style={syncing ? { animation: 'spin 1s linear infinite' } : {}} />
+          <DownloadCloud size={15} style={{ flexShrink: 0, ...(syncing ? { animation: 'spin 1s linear infinite' } : {}) }} />
           {syncing ? 'Trayendo…' : 'Traer mensajes'}
         </button>
 
@@ -168,7 +180,7 @@ export default function WahaStatus({ onSynced }: WahaStatusProps) {
             opacity: forcing ? 0.6 : 1,
           }}
         >
-          <RefreshCw size={13} className={forcing ? 'spin' : ''} style={forcing ? { animation: 'spin 1s linear infinite' } : {}} />
+          <RefreshCw size={14} className={forcing ? 'spin' : ''} style={{ flexShrink: 0, ...(forcing ? { animation: 'spin 1s linear infinite' } : {}) }} />
           {forcing ? 'Conectando…' : 'Reconectar'}
         </button>
 
@@ -176,9 +188,9 @@ export default function WahaStatus({ onSynced }: WahaStatusProps) {
           <button
             onClick={() => setShowCleanup(true)}
             title="Borrar conversaciones guardadas"
-            style={{ ...actionBtn, color: '#B91C1C', padding: '5px 8px', cursor: 'pointer' }}
+            style={{ ...actionBtn, color: '#B91C1C', width: '28px', padding: 0, cursor: 'pointer' }}
           >
-            <Trash2 size={13} />
+            <Trash2 size={14} style={{ flexShrink: 0 }} />
           </button>
         )}
       </div>
