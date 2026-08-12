@@ -513,7 +513,18 @@ func (h *ChannelHandler) SendMessage(c *gin.Context) {
 
 	message, mentioned, err := h.svc.SendMessage(uint(id), userID, req.Content, req.Attachment, req.FileName, req.FileSize, req.FileType)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Las reglas de escritura no son fallos del servidor. Devolverlas como
+		// 500 hacía que el cliente enseñara una excepción cruda en vez del
+		// motivo, que ya viene explicado y en español.
+		status := http.StatusInternalServerError
+		switch err.Error() {
+		case "you are not a member of this channel",
+			"este es un canal de anuncios: solo sus administradores pueden publicar":
+			status = http.StatusForbidden
+		case "este chat está archivado; restáuralo para escribir":
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
