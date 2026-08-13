@@ -186,8 +186,12 @@ export const channelService = {
   markAsRead: async (id: number) => {
     await api.post(`/channels/${id}/read`)
   },
-  getTotalUnreadCount: async (): Promise<number> => {
-    const { data } = await api.get<{ total_unread: number }>('/channels/unread/total')
+  // El superadmin ve la barra acotada a una empresa, así que el badge tiene que
+  // ir acotado igual: sin company_id el backend no cuenta nada para él, y el
+  // número quedaría siempre en cero.
+  getTotalUnreadCount: async (companyId?: number | null): Promise<number> => {
+    const params = companyId ? { company_id: companyId } : undefined
+    const { data } = await api.get<{ total_unread: number }>('/channels/unread/total', { params })
     return data.total_unread
   },
 }

@@ -100,7 +100,11 @@ export default function Layout() {
 
     const fetchTotalUnread = async () => {
       try {
-        const count = await channelService.getTotalUnreadCount()
+        // Misma empresa que el chat tiene seleccionada (la guarda ahí), para que
+        // el badge y la barra hablen del mismo tenant.
+        const stored = localStorage.getItem('preferred_company_id')
+        const companyId = user.is_superadmin && stored ? Number(stored) : null
+        const count = await channelService.getTotalUnreadCount(companyId)
         setTotalChatUnread(count)
       } catch (error) {
         console.error('Error fetching chat unread count:', error)
