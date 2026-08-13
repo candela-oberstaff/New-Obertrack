@@ -1850,6 +1850,23 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.EmailSetting{})
 			},
 		},
+		{
+			// Fecha de alta real de la empresa como cliente, editable a mano.
+			// created_at solo dice cuándo se creó la cuenta en Obertrack, y las
+			// empresas cargadas después de empezar a trabajar con nosotros
+			// quedaban con una antigüedad que no es la suya.
+			ID: "202608131200_users_client_since",
+			Migrate: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.User{}, "client_since") {
+					return nil
+				}
+				log.Println("Adding client_since to users...")
+				return tx.Migrator().AddColumn(&models.User{}, "client_since")
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.User{}, "client_since")
+			},
+		},
 		// Future migrations go here
 	})
 

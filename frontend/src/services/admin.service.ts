@@ -279,6 +279,12 @@ export const adminService = {
     const { data } = await api.put(`/admin/users/${userId}/employments/${employmentId}/manager`, { manager_id: managerId })
     return data
   },
+  // Corrige la fecha de ingreso de un empleo (AAAA-MM-DD). El alta la sella con
+  // el día en que se cargó el profesional, que casi nunca es el día real.
+  updateEmploymentStart: async (userId: number, employmentId: number, startedAt: string) => {
+    const { data } = await api.put(`/admin/users/${userId}/employments/${employmentId}/start`, { started_at: startedAt })
+    return data
+  },
   // ── Multi-manager por empleo (Fase 3, gateado por flag) ─────────────────────
   // Flag de features: indica si el front debe mostrar el modo multi-manager.
   getFeatures: async (): Promise<{ multi_manager_reads: boolean }> => {

@@ -2,7 +2,7 @@ import { Check, AlertCircle } from 'lucide-react'
 import { RichTextEditor } from '../../Tasks/RichTextEditor'
 import { Select } from '../../ui/Select'
 import { useDirtySnapshot } from '../../ui/useCloseGuard'
-import { Modal, Button } from '../../ui'
+import { Modal, Button, DatePicker, toISODate } from '../../ui'
 import { htmlToText } from '../../../utils/sanitize'
 import { formatHours } from '../../../utils/formatHours'
 import { ABSENCE_REASONS, REASONS_REQUIRING_DETAIL } from '../../../utils/absenceReasons'
@@ -73,12 +73,12 @@ export function RegisterDayModal({
       <form id="register-day-form" onSubmit={onSubmit}>
         <div className={styles['form-group']}>
           <label>Fecha</label>
-          <input
-            type="date"
+          <DatePicker
+            fullWidth
             value={formData.work_date}
-            min={new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]}
+            min={toISODate(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}
             max={today}
-            onChange={(e) => setFormData({ ...formData, work_date: e.target.value })}
+            onChange={(v) => setFormData({ ...formData, work_date: v })}
             required
           />
         </div>

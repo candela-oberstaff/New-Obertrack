@@ -75,7 +75,10 @@ export function EmployeePeekModal({ employeeId, tenantId, canManage, onClose, on
             </div>
           </div>
 
-          <EmployeeFicha user={user} managerName={manager?.name} compact />
+          {/* El vistazo no carga los empleos (sería una petición más por cada
+              fila que se abre): el ingreso a la empresa viaja ya resuelto en el
+              resumen del tracking. */}
+          <EmployeeFicha user={user} managerName={manager?.name} startedAt={tracking?.summary?.started_at} compact />
           <EmployeeKpis summary={tracking?.summary} compact />
 
           {/* Las acciones del vistazo son las que no necesitan contexto: escribir,

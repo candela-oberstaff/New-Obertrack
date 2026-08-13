@@ -32,7 +32,7 @@ import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import type { EmployeeSummary } from '../../types'
 import Avatar from '../../components/Common/Avatar'
-import { Modal, Button, RecordPager, Skeleton } from '../../components/ui'
+import { Modal, Button, RecordPager, Skeleton, DatePicker, toISODate } from '../../components/ui'
 import { setRecordNav } from '../../lib/recordNav'
 import { Select } from '../../components/ui/Select'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../components/Auth/countries'
@@ -52,6 +52,7 @@ const EMPTY_EDIT_FORM = {
   city: '',
   location: '',
   address: '',
+  client_since: '',
 }
 
 function generatePassword(): string {
@@ -456,6 +457,7 @@ export default function TenantDetail() {
       city: tenant.city || '',
       location: tenant.location || '',
       address: tenant.address || '',
+      client_since: (tenant.client_since || '').slice(0, 10),
     })
     setEditError(null)
     setShowEdit(true)
@@ -544,7 +546,11 @@ export default function TenantDetail() {
     )
   }
 
-  const createdLabel = tenant.created_at ? new Date(tenant.created_at).toLocaleDateString('es-ES') : '-'
+  // El alta que se muestra es la corregida a mano cuando existe. created_at es
+  // solo cuándo se creó la cuenta aquí, que en las empresas cargadas después de
+  // empezar a trabajar con nosotros no es el alta que reconoce nadie.
+  const clientSince = tenant.client_since || tenant.created_at
+  const createdLabel = clientSince ? new Date(clientSince).toLocaleDateString('es-ES') : '-'
   const editStates = getStatesForCountry(editForm.country)
   const contactHealth = healthSignal(tenant.last_contact_at)
   const activityHealth = healthSignal(tenant.last_activity_at)
@@ -1536,6 +1542,20 @@ export default function TenantDetail() {
             placeholder="Selecciona un rubro..."
             options={INDUSTRY_OPTIONS}
           />
+        </div>
+        <div className={styles.field}>
+          <label>Alta como cliente</label>
+          <DatePicker
+            fullWidth
+            clearable
+            value={editForm.client_since}
+            max={toISODate(new Date())}
+            onChange={(v) => setEditForm(f => ({ ...f, client_since: v }))}
+            ariaLabel="Alta como cliente"
+          />
+          <small style={{ color: '#94a3b8' }}>
+            Desde cuándo es cliente de verdad. Vacío = la fecha en que se creó la cuenta aquí.
+          </small>
         </div>
         <div className={styles.field}>
           <label>Teléfono</label>

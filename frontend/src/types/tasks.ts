@@ -29,6 +29,10 @@ export interface User {
   address?: string
   identity_document?: string
   industry?: string
+  /** Alta real de la empresa como cliente (solo cuentas empleador). Ausente
+   *  mientras nadie la haya corregido: entonces el alta que vale es created_at,
+   *  que es cuándo se creó la cuenta en Obertrack. */
+  client_since?: string | null
   created_at: string
   updated_at: string
   password?: string
@@ -79,6 +83,8 @@ export interface Tenant {
   pending_hours: number
   open_tickets: number
   created_at: string
+  /** Alta real como cliente, corregida a mano. Ausente = vale created_at. */
+  client_since?: string | null
   /** Última vez que el equipo contactó con la empresa. Ausente si nunca. */
   last_contact_at?: string | null
   /** Última señal de vida de la empresa (jornada o tarea). Ausente si nunca. */
@@ -97,6 +103,9 @@ export interface EmployeeSummary {
   tasks_assigned: number
   tasks_completed: number
   last_active?: string | null
+  /** Ingreso a la empresa (employments.started_at), no el alta de la cuenta.
+   *  Cae a created_at solo si la persona aún no tiene empleo registrado. */
+  started_at?: string
 }
 
 export interface EmployeeWorkHour {

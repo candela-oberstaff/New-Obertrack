@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { FileText, Star, Trash2, Upload, Lock, Eye, Clock3, CheckSquare, CalendarDays, CalendarX, ClipboardList, Send, Snowflake, Download, Pencil, CalendarClock, StickyNote, X } from 'lucide-react'
 import { adminService, authService, employerService, uploadService } from '../../services/api'
 import { useDirtySnapshot } from '../ui/useCloseGuard'
-import { Modal, Button, Select } from '../ui'
+import { Modal, Button, Select, DatePicker } from '../ui'
 import styles from './Expediente.module.css'
 
 interface ExpedienteModalProps {
@@ -516,15 +516,15 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
               placeholder="Título (opcional)"
             />
             <div className={styles.toolbarRow}>
-              <label className={styles.checkLabel} title="Fecha de vencimiento (opcional)">
-                <CalendarClock size={14} />
-                <input
-                  className={styles.dateInput}
-                  type="date"
-                  value={docExpiry}
-                  onChange={e => setDocExpiry(e.target.value)}
-                />
-              </label>
+              <DatePicker
+                compact
+                clearable
+                value={docExpiry}
+                onChange={setDocExpiry}
+                placeholder="Vencimiento"
+                ariaLabel="Fecha de vencimiento (opcional)"
+                title="Fecha de vencimiento (opcional)"
+              />
               <label className={styles.checkLabel}>
                 <input type="checkbox" checked={docShared} onChange={e => setDocShared(e.target.checked)} />
                 Compartir
@@ -593,15 +593,15 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
                         onChange={e => setEditDocTitle(e.target.value)}
                         placeholder="Título"
                       />
-                      <label className={styles.checkLabel} title="Vencimiento">
-                        <CalendarClock size={14} />
-                        <input
-                          className={styles.dateInput}
-                          type="date"
-                          value={editDocExpiry}
-                          onChange={e => setEditDocExpiry(e.target.value)}
-                        />
-                      </label>
+                      <DatePicker
+                        compact
+                        clearable
+                        value={editDocExpiry}
+                        onChange={setEditDocExpiry}
+                        placeholder="Vencimiento"
+                        ariaLabel="Vencimiento"
+                        title="Vencimiento"
+                      />
                       <label className={styles.checkLabel}>
                         <input type="checkbox" checked={editDocShared} onChange={e => setEditDocShared(e.target.checked)} /> Compartir
                       </label>

@@ -13,9 +13,9 @@ const ONBOARDING_STATE: Record<string, { label: string; pill: string }> = {
 }
 
 /**
- * Antigüedad en la plataforma. La fecha de alta sola no distingue a quien acaba
- * de entrar (y por eso no tiene jornadas) de quien lleva un año sin registrar
- * nada, que es justo lo que se viene a mirar aquí.
+ * Antigüedad. La fecha sola no distingue a quien acaba de entrar (y por eso no
+ * tiene jornadas) de quien lleva un año sin registrar nada, que es justo lo que
+ * se viene a mirar aquí.
  */
 export function timeSince(iso?: string | null): string {
   if (!iso) return ''
@@ -48,11 +48,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * del listado) enseña exactamente lo mismo; si cada uno tuviera su copia, se
  * irían separando al añadir un campo.
  */
-export function EmployeeFicha({ user, managerName, compact = false }: { user: User; managerName?: string; compact?: boolean }) {
+export function EmployeeFicha({ user, managerName, startedAt, compact = false }: { user: User; managerName?: string; startedAt?: string | null; compact?: boolean }) {
   // Del detalle a lo general: la ciudad dice más que el país, pero el país solo
   // también sirve. Location es el campo libre de quien no rellenó los otros.
   const place = [user.city, user.state, user.country].filter(Boolean).join(', ') || user.location?.trim()
   const onboarding = ONBOARDING_STATE[user.onboarding_status || 'not_required']
+  // El alta de la cuenta solo se usa mientras no llegue el ingreso al empleo.
+  const ingreso = startedAt || user.created_at
 
   return (
     <div className={`${styles.infoGrid} ${compact ? styles.noMargin : ''}`}>
@@ -68,9 +70,13 @@ export function EmployeeFicha({ user, managerName, compact = false }: { user: Us
       </Field>
       <Field label="Ubicación">{place || null}</Field>
       <Field label="Teléfono">{user.phone_number?.trim() || null}</Field>
-      <Field label="Alta">
-        {user.created_at
-          ? <>{formatDateOnly(user.created_at)} <em className={styles.fieldNote}>· {timeSince(user.created_at)}</em></>
+      {/* Ingreso a ESTA empresa, no alta de la cuenta. Quien empezó a trabajar
+          antes de que le abrieran el acceso tiene una antigüedad real que la
+          fecha de la cuenta no cuenta, y era justo lo que rompía la continuidad
+          entre lo que dice la empresa y lo que enseñaba la ficha. */}
+      <Field label="En la empresa desde">
+        {ingreso
+          ? <>{formatDateOnly(ingreso)} <em className={styles.fieldNote}>· {timeSince(ingreso)}</em></>
           : null}
       </Field>
       <Field label="Acceso">

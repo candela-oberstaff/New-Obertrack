@@ -1,0 +1,247 @@
+/* ─────────────────────────────────────────────
+   <DatePicker> (Obertrack UI)
+   Sustituye al <input type="date"> nativo. Comparte lenguaje visual con
+   .ui-select: mismo borde, mismo foco y mismo panel flotante.
+   ───────────────────────────────────────────── */
+
+.ui-datepicker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 170px;
+  background: var(--white, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(6, 11, 35, 0.08);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ui-datepicker--full {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.ui-datepicker:hover:not(.ui-datepicker--disabled),
+.ui-datepicker:focus-within {
+  border-color: var(--primary, #cc33cc);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.12), 0 2px 6px rgba(204, 51, 204, 0.15);
+}
+
+.ui-datepicker--disabled {
+  opacity: 0.6;
+  background: #f8fafc;
+}
+
+.ui-datepicker__input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0 10px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--black, #060b23);
+  background: transparent;
+  border: none;
+  outline: none;
+  border-radius: 10px 0 0 10px;
+}
+
+.ui-datepicker__input::placeholder {
+  color: var(--gray-400, #8880a8);
+  font-weight: 400;
+}
+
+.ui-datepicker__input:disabled {
+  cursor: not-allowed;
+}
+
+.ui-datepicker__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  align-self: stretch;
+  color: var(--gray-400, #8880a8);
+  background: transparent;
+  border: none;
+  border-radius: 0 10px 10px 0;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.ui-datepicker__toggle:hover:not(:disabled) {
+  color: var(--primary, #cc33cc);
+}
+
+.ui-datepicker__toggle:disabled {
+  cursor: not-allowed;
+}
+
+/* Compacto: para filas y barras de filtros, donde el campo convive con texto
+   pequeño y el tamaño normal se comería la línea. */
+.ui-datepicker--compact {
+  min-width: 140px;
+  border-radius: 8px;
+}
+
+/* 5px arriba y abajo dejan la caja en ~28px: la altura de una línea de texto
+   con su borde. Con 6px el campo engordaba la fila en la que vive (la del
+   empleo, la barra de filtros) y se comía la alineación con lo de al lado. */
+.ui-datepicker--compact .ui-datepicker__input {
+  padding: 5px 0 5px 10px;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.ui-datepicker--compact .ui-datepicker__toggle {
+  padding: 0 8px;
+}
+
+/* ── Panel ─────────────────────────────────────────────────────────────── */
+
+.ui-datepicker__panel {
+  width: 280px;
+  padding: 10px;
+  background: var(--white, #ffffff);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(6, 11, 35, 0.18), 0 10px 10px -5px rgba(6, 11, 35, 0.1);
+  animation: ui-datepicker-in 0.14s ease;
+}
+
+@keyframes ui-datepicker-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ui-datepicker__header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.ui-datepicker__month {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--black, #060b23);
+  white-space: nowrap;
+}
+
+.ui-datepicker__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--gray-400, #8880a8);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ui-datepicker__nav:hover {
+  background: var(--primary-soft, #f5f2fb);
+  color: var(--primary, #cc33cc);
+}
+
+.ui-datepicker__weekdays,
+.ui-datepicker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.ui-datepicker__weekdays span {
+  text-align: center;
+  padding: 4px 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray-400, #8880a8);
+  text-transform: uppercase;
+}
+
+.ui-datepicker__day {
+  height: 32px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--black, #060b23);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.ui-datepicker__day:hover:not(:disabled) {
+  background: var(--primary-soft, #f5f2fb);
+}
+
+/* Los días de los meses vecinos se ven, pero apagados: dan continuidad a la
+   semana sin competir con el mes que se está mirando. */
+.ui-datepicker__day--outside {
+  color: var(--gray-400, #8880a8);
+  opacity: 0.55;
+}
+
+.ui-datepicker__day--today {
+  border-color: var(--primary, #cc33cc);
+  font-weight: 700;
+}
+
+.ui-datepicker__day--selected,
+.ui-datepicker__day--selected:hover:not(:disabled) {
+  background: var(--primary, #cc33cc);
+  border-color: var(--primary, #cc33cc);
+  color: #ffffff;
+  font-weight: 700;
+  opacity: 1;
+}
+
+.ui-datepicker__day:disabled {
+  color: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.ui-datepicker__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eef2f7;
+}
+
+.ui-datepicker__action {
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--gray-400, #8880a8);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.ui-datepicker__action:hover:not(:disabled) {
+  background: var(--primary-soft, #f5f2fb);
+  color: var(--primary, #cc33cc);
+}
+
+.ui-datepicker__action--primary {
+  color: var(--primary, #cc33cc);
+}
+
+.ui-datepicker__action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

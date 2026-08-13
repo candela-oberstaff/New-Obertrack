@@ -249,6 +249,7 @@ export default function Admin() {
       city: u.city || '',
       location: u.location || '',
       company_name: u.company_name || '',
+      client_since: (u.client_since || '').slice(0, 10),
       empleador_id: u.empleador_id || '',
       manager_id: u.manager_id || '',
       is_active: u.is_active,

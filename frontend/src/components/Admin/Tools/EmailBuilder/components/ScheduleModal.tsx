@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Clock, Send } from 'lucide-react';
 import { useDirtySnapshot } from '../../../../ui/useCloseGuard'
-import { Modal, Button } from '../../../../ui';
+import { Modal, Button, DatePicker, toISODate } from '../../../../ui';
 import styles from '../Builder.module.css';
 import AudienceSelector, { AudienceSelection } from '../../Common/AudienceSelector';
 
@@ -102,11 +102,12 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
         <div className={styles['prop-control']}>
           <label>Fecha de envío</label>
-          <input
-            type="date"
+          <DatePicker
+            fullWidth
             value={scheduleDate}
-            min={new Date().toISOString().split('T')[0]}
-            onChange={(e) => setScheduleDate(e.target.value)}
+            min={toISODate(new Date())}
+            onChange={setScheduleDate}
+            ariaLabel="Fecha de envío"
           />
         </div>
         <div className={styles['prop-control']}>

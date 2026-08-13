@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Clock, AlertCircle } from 'lucide-react'
 import { Select } from '../../ui/Select'
 import { useDirtySnapshot } from '../../ui/useCloseGuard'
-import { Modal, Button } from '../../ui'
+import { Modal, Button, DatePicker } from '../../ui'
 import styles from '../../../pages/WorkHours.module.css'
 
 interface RecoverHoursModalProps {
@@ -78,12 +78,13 @@ export function RecoverHoursModal({
       <form id="recover-hours-form" onSubmit={handleSubmit}>
         <div className={styles['form-group']}>
           <label>Fecha de recuperación</label>
-          <input
-            type="date"
+          <DatePicker
+            fullWidth
             value={date}
             max={today}
-            onChange={(e) => { setDate(e.target.value); setError(null) }}
+            onChange={(v) => { setDate(v); setError(null) }}
             required
+            ariaLabel="Fecha de recuperación"
           />
         </div>
 

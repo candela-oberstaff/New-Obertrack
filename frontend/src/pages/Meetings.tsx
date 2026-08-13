@@ -25,6 +25,7 @@ import { userService } from '../services/user.service'
 import { useGoogleConnection } from '../hooks/useGoogleConnection'
 import { useAuth } from '../context/AuthContext'
 import { useConfirm } from '../components/ui/ConfirmProvider'
+import { DatePicker } from '../components/ui'
 import styles from './Meetings.module.css'
 
 /** Ruta a la que vuelve el navegador tras el consentimiento de Google. */
@@ -71,7 +72,7 @@ function parseRRULE(rule?: string): { freq: string; end: SeriesEnd; until: strin
 
   if (countPart) return { freq, end: 'after', until: '', count: Number(countPart.slice(6)) || 10 }
   if (untilPart) {
-    // 20260930T235959Z → 2026-09-30, que es lo que espera <input type="date">.
+    // 20260930T235959Z → 2026-09-30, que es lo que habla el DatePicker.
     const raw = untilPart.slice(6)
     const iso = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
     return { freq, end: 'on', until: iso, count: 10 }
@@ -675,11 +676,11 @@ function MeetingFormModal({
                   <option value="after">Tras varias veces</option>
                 </select>
                 {seriesEnd === 'on' && (
-                  <input
-                    type="date"
-                    className={styles['field-input']}
+                  <DatePicker
+                    fullWidth
                     value={until}
-                    onChange={e => setUntil(e.target.value)}
+                    onChange={setUntil}
+                    ariaLabel="Repetir hasta"
                   />
                 )}
                 {seriesEnd === 'after' && (

@@ -118,7 +118,11 @@ export default function EmployeeDetail() {
   })()
   const phone = user.phone_number?.trim()
   const waNumber = phone?.replace(/\D/g, '')
-  const seniority = timeSince(user.created_at)
+  // Antigüedad en ESTA empresa. El empleo manda sobre el alta de la cuenta: es
+  // la fecha que se corrige desde la ficha del profesional y la que la empresa
+  // reconoce como el día que entró.
+  const ingreso = employment?.started_at || summary?.started_at || user.created_at
+  const seniority = timeSince(ingreso)
 
   return (
     <div className={styles.page}>
@@ -183,7 +187,7 @@ export default function EmployeeDetail() {
       {/* Ficha del profesional. Estos datos ya viajaban en la respuesta del
           tracking; enseñarlos evita tener que abrir el modal de edición solo
           para saber quién es esta persona y quién la supervisa. */}
-      <EmployeeFicha user={user} managerName={manager?.name} />
+      <EmployeeFicha user={user} managerName={manager?.name} startedAt={ingreso} />
 
       <EmployeeKpis summary={summary} />
 
@@ -326,7 +330,7 @@ export default function EmployeeDetail() {
             <p>Sin movimientos en el expediente</p>
             <span className={styles.emptyHint}>
               {seniority
-                ? `Se dio de alta ${seniority} y todavía no ha dejado rastro en el expediente de la empresa.`
+                ? `Entró a la empresa ${seniority} y todavía no ha dejado rastro en el expediente.`
                 : 'Aquí aparecerán sus jornadas, su incorporación y las gestiones que le mencionen.'}
             </span>
           </div>

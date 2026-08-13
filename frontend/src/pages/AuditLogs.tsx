@@ -5,6 +5,7 @@ import { Shield, Download, Search, ChevronLeft, ChevronRight, Filter, X, Cpu, Ch
 import { AuditLog, AuditLogParams, auditService } from '../services/audit.service'
 import AuditDetailModal from '../components/Audit/AuditDetailModal'
 import { describeAudit, moduleLabel } from '../lib/auditHumanize'
+import { DatePicker } from '../components/ui'
 
 // Maps an audited entity (table/module + id) to the app page where it lives.
 // Returns null when there is no dedicated source page.
@@ -175,8 +176,8 @@ export default function AuditLogs() {
           <option value="true">Solo éxito</option>
           <option value="false">Solo fallo</option>
         </select>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} />
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle} />
+        <DatePicker compact clearable value={startDate} onChange={setStartDate} placeholder="Desde" ariaLabel="Desde" />
+        <DatePicker compact clearable value={endDate} min={startDate || undefined} onChange={setEndDate} placeholder="Hasta" ariaLabel="Hasta" />
         <button onClick={() => fetchLogs(1)}
           style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1.1rem', borderRadius: '10px', border: 'none', background: 'var(--primary, #cc33cc)', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
           <Filter size={14} /> Filtrar

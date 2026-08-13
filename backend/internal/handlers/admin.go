@@ -363,6 +363,11 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		UserType    string `json:"user_type"`
 		EmpleadorID *uint  `json:"empleador_id"`
 		ManagerID   *uint  `json:"manager_id"`
+		// ClientSince es la fecha de alta real de la empresa (AAAA-MM-DD). Va
+		// como puntero y no como string porque aquí "" SÍ significa algo:
+		// borrar la corrección y volver a mostrar created_at. Ausente = no
+		// tocar (es el caso de todo usuario que no sea una empresa).
+		ClientSince *string `json:"client_since"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -448,6 +453,22 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	}
 	if req.ManagerID != nil {
 		updates["manager_id"] = *req.ManagerID
+	}
+	if req.ClientSince != nil {
+		if *req.ClientSince == "" {
+			updates["client_since"] = nil
+		} else {
+			since := parseDatePtr(*req.ClientSince)
+			if since == nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Fecha de alta inválida: se espera el formato AAAA-MM-DD"})
+				return
+			}
+			if since.After(time.Now()) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "La fecha de alta no puede ser futura"})
+				return
+			}
+			updates["client_since"] = *since
+		}
 	}
 
 	user, err := h.service.UpdateUser(uint(id), updates)
@@ -1448,6 +1469,36 @@ func (h *AdminHandler) UpdateEmploymentManager(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Manager actualizado"})
+}
+
+// UpdateEmploymentStart corrige la fecha de ingreso de un empleo concreto del
+// usuario. Recibe la fecha en AAAA-MM-DD (lo que emite un <input type="date">).
+func (h *AdminHandler) UpdateEmploymentStart(c *gin.Context) {
+	userID, _ := strconv.ParseUint(c.Param("id"), 10, 32)
+	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
+	var req struct {
+		StartedAt string `json:"started_at" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	started := parseDatePtr(req.StartedAt)
+	if started == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Fecha inválida: se espera el formato AAAA-MM-DD"})
+		return
+	}
+	if err := h.employmentSvc.UpdateEmploymentStart(uint(userID), uint(empID), *started); err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "Fecha inválida") {
+			status = http.StatusBadRequest
+		} else if err.Error() == "Membresía no encontrada" {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Fecha de ingreso actualizada"})
 }
 
 // employmentManagerError mapea errores del conjunto de managers a HTTP:

@@ -9,6 +9,7 @@ import Pagination from '../Common/Pagination';
 import styles from './EmailMarketing.module.css';
 import commonStyles from '../Tools.module.css';
 import { useConfirm } from '../../../ui/ConfirmProvider';
+import { DatePicker } from '../../../ui';
 
 interface EmailMarketingProps {
   onToggleFullScreen: (isFull: boolean) => void;
@@ -326,12 +327,8 @@ const EmailMarketing: React.FC<EmailMarketingProps> = ({ onToggleFullScreen, set
               style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px 8px 34px', fontSize: 13, outline: 'none', color: '#1e293b', background: '#fff', boxSizing: 'border-box' }}
             />
           </div>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', color: '#1e293b', background: '#fff' }}
-            title="Desde" />
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', color: '#1e293b', background: '#fff' }}
-            title="Hasta" />
+          <DatePicker compact value={dateFrom} onChange={setDateFrom} placeholder="Desde" title="Desde" ariaLabel="Desde" />
+          <DatePicker compact value={dateTo} onChange={setDateTo} placeholder="Hasta" title="Hasta" ariaLabel="Hasta" />
           {(dateFrom || dateTo) && (
             <button onClick={() => { setDateFrom(''); setDateTo(''); }}
               style={{ padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}

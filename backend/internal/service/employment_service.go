@@ -180,6 +180,12 @@ type EmploymentService interface {
 	// (o lo desasigna si managerID es nil). Si ese empleo es la empresa activa
 	// del usuario, espeja el cambio en users.manager_id.
 	UpdateEmploymentManager(userID, employmentID uint, managerID *uint) error
+	// UpdateEmploymentStart corrige la fecha de ingreso de un empleo. Es un dato
+	// que nace mal con frecuencia: al importar o al dar de alta tarde, el empleo
+	// se sella con la fecha del día y no con la que la persona empezó de verdad.
+	// Todo el expediente cuelga de ella (antigüedad, ausencias, contactos y
+	// seguimientos se leen desde esa fecha), así que corregirla los recalcula.
+	UpdateEmploymentStart(userID, employmentID uint, startedAt time.Time) error
 
 	SetChannelCleaner(fn func(userID, companyID uint) error)
 
@@ -1053,6 +1059,29 @@ func (s *employmentService) UpdateEmploymentManager(userID, employmentID uint, m
 		}
 	}
 	return nil
+}
+
+// UpdateEmploymentStart corrige la fecha de ingreso de un empleo del usuario.
+//
+// Se permite en empleos ya finalizados: buena parte de las correcciones salen
+// justo al cerrar el expediente, y bloquearlas dejaría el dato malo para
+// siempre. Lo que no se permite es una fecha que rompa el período (futura o
+// posterior a la baja), porque el resto del expediente se calcula sobre él.
+func (s *employmentService) UpdateEmploymentStart(userID, employmentID uint, startedAt time.Time) error {
+	target, err := s.findUserEmployment(userID, employmentID)
+	if err != nil {
+		return err
+	}
+	if startedAt.IsZero() {
+		return errors.New("Fecha inválida: falta la fecha de ingreso")
+	}
+	if startedAt.After(time.Now()) {
+		return errors.New("Fecha inválida: la fecha de ingreso no puede ser futura")
+	}
+	if target.EndedAt != nil && startedAt.After(*target.EndedAt) {
+		return errors.New("Fecha inválida: el ingreso no puede ser posterior a la baja")
+	}
+	return s.repo.Update(target, map[string]interface{}{"started_at": startedAt})
 }
 
 // findUserEmployment localiza el empleo employmentID dentro de las membresías

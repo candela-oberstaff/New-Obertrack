@@ -6,7 +6,7 @@ import { userService, adminService, authService } from '../services/api'
 import { rbacService } from '../services/rbac.service'
 import { inductionService } from '../services/induction.service'
 import { useAuth } from '../context/AuthContext'
-import { Modal, Button, RecordPager } from '../components/ui'
+import { Modal, Button, RecordPager, DatePicker } from '../components/ui'
 import { useConfirm } from '../components/ui/ConfirmProvider'
 import { Select } from '../components/ui/Select'
 import type { User, CompanyRole, CompanyGroup } from '../types'
@@ -96,6 +96,12 @@ export default function AdminUserDetail() {
   const [empError, setEmpError] = useState<string | null>(null)
   const [endingEmp, setEndingEmp] = useState<any | null>(null)
   const [endReason, setEndReason] = useState('')
+  // Id del empleo cuya fecha de ingreso se está guardando (uno por fila) y lo
+  // que el usuario acaba de escribir en él. El borrador existe para que el
+  // input muestre lo elegido mientras viaja al servidor; al volver se borra, y
+  // así una fecha rechazada revierte sola a la que sigue guardada.
+  const [startBusy, setStartBusy] = useState<number | null>(null)
+  const [startDraft, setStartDraft] = useState<Record<number, string>>({})
   // Empleo cuyo expediente (resumen + notas + documentos) se está viendo.
   const [expedienteEmp, setExpedienteEmp] = useState<any | null>(null)
 
@@ -318,6 +324,36 @@ export default function AdminUserDetail() {
     } finally { setManagerBusy(false) }
   }
 
+  // Corrige la fecha de ingreso de un empleo. El alta la sella con el día en
+  // que se cargó al profesional, así que casi nunca es la real: la de quien ya
+  // llevaba meses trabajando cuando se le abrió la cuenta, o la que llega mal
+  // desde un import. De esta fecha cuelga toda su antigüedad y su expediente.
+  const handleEmploymentStart = async (emp: any, value: string) => {
+    if (!user || !value) return
+    setStartDraft(d => ({ ...d, [emp.id]: value }))
+    if (value === String(emp.started_at ?? '').slice(0, 10)) return
+    setStartBusy(emp.id); setActionMsg(null); setActionErr(false)
+    try {
+      await adminService.updateEmploymentStart(user.id, emp.id, value)
+      await loadEmployments(user)
+      // De esta fecha vive el ranking de antigüedad Y todo lo que la empresa ve
+      // de esta persona (su ficha en la plantilla, el vistazo, el expediente).
+      // Sin tirar esas cachés, la empresa seguiría enseñando la fecha vieja.
+      invalidateAdmin()
+      qc.invalidateQueries({ queryKey: ['employee-tracking', user.id] })
+      qc.invalidateQueries({ queryKey: ['user-employments', user.id] })
+      qc.invalidateQueries({ queryKey: ['tenant-detail', emp.company_id] })
+      qc.invalidateQueries({ queryKey: ['expediente', user.id] })
+      setActionMsg('Fecha de ingreso actualizada')
+    } catch (err: any) {
+      setActionErr(true)
+      setActionMsg(err?.response?.data?.error ?? 'No se pudo actualizar la fecha de ingreso.')
+    } finally {
+      setStartBusy(null)
+      setStartDraft(d => { const next = { ...d }; delete next[emp.id]; return next })
+    }
+  }
+
   const resetPass = async () => {
     if (!user) return
     setBusy(true); setActionMsg(null)
@@ -451,6 +487,7 @@ export default function AdminUserDetail() {
       city: user.city || '',
       location: user.location || '',
       company_name: user.company_name || '',
+      client_since: (user.client_since || '').slice(0, 10),
       empleador_id: user.empleador_id || '',
       manager_id: user.manager_id || '',
       is_active: user.is_active,
@@ -607,10 +644,23 @@ export default function AdminUserDetail() {
   // Empleo activo del profesional (empresa actual): el campo MANAGER de arriba
   // gestiona el conjunto de managers de ESE empleo cuando el multi-manager está ON.
   const activeEmployment = employments.find((e: any) => e.company_id === user.empleador_id && e.status === 'active')
+  // Tope del selector de fecha de ingreso: nadie empieza mañana (el backend lo
+  // rechaza igual; aquí solo evita el viaje).
+  const todayISO = new Date().toISOString().slice(0, 10)
 
   let specific: { label: string; value: React.ReactNode }[] = []
   if (user.user_type === 'empleador') {
-    specific = [{ label: 'Empresa', value: user.company_name || '—' }]
+    specific = [
+      { label: 'Empresa', value: user.company_name || '—' },
+      // El alta corregida a mano manda sobre "Registrado", que es solo cuándo
+      // se creó la cuenta en Obertrack.
+      {
+        label: 'Alta como cliente',
+        value: user.client_since
+          ? new Date(user.client_since).toLocaleDateString('es-ES')
+          : (user.created_at ? `${new Date(user.created_at).toLocaleDateString('es-ES')} (creación de la cuenta)` : '—'),
+      },
+    ]
   } else if (user.user_type === 'profesional' || user.user_type === 'customer_success') {
     // Customer Success también trabaja: se vincula a una empresa y tiene manager
     // que le aprueba las horas, sin perder por eso su alcance de gestión. Antes
@@ -831,10 +881,29 @@ export default function AdminUserDetail() {
                       <span style={{ fontWeight: isActiveCompany ? 800 : 600, color: '#0f172a' }}>
                         {emp.company_name}{isActiveCompany && ' · activa'}
                       </span>
-                      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                        {emp.job_title || 'Sin cargo'} · desde {new Date(emp.started_at).toLocaleDateString('es-ES')}
-                        {ended && emp.ended_at && ` · hasta ${new Date(emp.ended_at).toLocaleDateString('es-ES')}`}
-                        {ended && emp.end_reason ? ` · ${emp.end_reason}` : ''}
+                      {/* 10px y no 5: el campo de fecha es una caja con borde,
+                          y pegado al texto parecía continuación de la frase en
+                          vez de algo que se puede tocar. */}
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px', fontSize: '0.8rem', color: '#94a3b8' }}>
+                        <span>{emp.job_title || 'Sin cargo'} · desde</span>
+                        {/* La fecha de ingreso se edita aquí y no en el modal
+                            del usuario: es de ESTE empleo, y quien trabaja en
+                            dos empresas tiene una distinta en cada una. */}
+                        {canManage ? (
+                          <DatePicker
+                            compact
+                            value={startDraft[emp.id] ?? String(emp.started_at ?? '').slice(0, 10)}
+                            max={ended && emp.ended_at ? String(emp.ended_at).slice(0, 10) : todayISO}
+                            disabled={startBusy === emp.id}
+                            onChange={v => handleEmploymentStart(emp, v)}
+                            title="Fecha de ingreso"
+                            ariaLabel="Fecha de ingreso"
+                          />
+                        ) : (
+                          <span>{new Date(emp.started_at).toLocaleDateString('es-ES')}</span>
+                        )}
+                        {ended && emp.ended_at && <span>· hasta {new Date(emp.ended_at).toLocaleDateString('es-ES')}</span>}
+                        {ended && emp.end_reason ? <span>· {emp.end_reason}</span> : null}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

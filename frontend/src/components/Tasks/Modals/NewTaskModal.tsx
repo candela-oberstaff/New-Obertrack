@@ -2,7 +2,7 @@ import React from 'react'
 import { X, Paperclip } from 'lucide-react'
 import { RichTextEditor } from '../RichTextEditor'
 import { Select } from '../../ui/Select'
-import { Modal, Button } from '../../ui'
+import { Modal, Button, DatePicker } from '../../ui'
 import type { User } from '../../../types'
 import styles from '../../../pages/Tasks.module.css'
 
@@ -96,11 +96,12 @@ export function NewTaskModal({
 
             <div className={styles['setting-item']}>
               <label>Fecha límite</label>
-              <input
-                type="date"
+              <DatePicker
+                fullWidth
+                clearable
                 value={newTaskData.end_date}
-                onChange={(e) => setNewTaskData({ ...newTaskData, end_date: e.target.value })}
-                className={styles['setting-input']}
+                onChange={(v) => setNewTaskData({ ...newTaskData, end_date: v })}
+                ariaLabel="Fecha límite"
               />
             </div>
 

@@ -185,6 +185,9 @@ type TenantSummary struct {
 	RejectedCount  int64     `json:"rejected_count"`
 	OpenTickets    int       `json:"open_tickets"`
 	CreatedAt      time.Time `json:"created_at"`
+	// ClientSince es el alta corregida a mano. Nula = nadie la ha corregido y
+	// el alta que se muestra es created_at.
+	ClientSince *time.Time `json:"client_since,omitempty"`
 	// Señales de salud de la cuenta. Nulos cuando nunca ha pasado: "todavía no
 	// la hemos contactado" y "nunca la hemos contactado" se ven igual, y es la
 	// respuesta honesta en ambos casos.
@@ -243,6 +246,10 @@ type EmployeeSummary struct {
 	TasksAssigned  int        `json:"tasks_assigned"`
 	TasksCompleted int        `json:"tasks_completed"`
 	LastActive     *time.Time `json:"last_active"`
+	// StartedAt es el ingreso a la empresa (employments.started_at), que es la
+	// fecha que la empresa reconoce como suya y la que se corrige desde la
+	// ficha del profesional.
+	StartedAt time.Time `json:"started_at"`
 }
 
 type EmployeeWorkHour struct {
@@ -500,23 +507,41 @@ func (r *adminRepository) GetArchived(tenantID uint) ([]ArchivedEntry, error) {
 	return entries, err
 }
 
+// GetSeniorityRanking ordena a los profesionales por antigüedad.
+//
+// La antigüedad sale de employments.started_at (la fecha de ingreso, que se
+// puede corregir a mano) y no de users.created_at: esa última es cuándo se creó
+// la cuenta en Obertrack, y para todo el que se cargó después de empezar a
+// trabajar da una antigüedad más corta que la real. created_at queda solo como
+// respaldo para el profesional que todavía no tiene empleo registrado.
 func (r *adminRepository) GetSeniorityRanking() ([]SeniorityItem, error) {
 	var items []SeniorityItem
 	err := r.db.Raw(`
 		SELECT
-			u.id as user_id,
-			u.name,
-			u.email,
-			COALESCE(u.avatar, '') as avatar,
-			COALESCE(u.job_title, '') as job_title,
-			COALESCE(e.company_name, '-') as company,
-			COALESCE(u.empleador_id, 0) as tenant_id,
-			u.created_at as started_at,
-			EXTRACT(DAY FROM CURRENT_DATE - u.created_at)::int as days_employed
-		FROM users u
-		LEFT JOIN users e ON e.id = u.empleador_id
-		WHERE u.user_type = 'profesional' AND u.deleted_at IS NULL AND u.is_active = true
-		ORDER BY u.created_at ASC
+			s.*,
+			EXTRACT(DAY FROM CURRENT_DATE - s.started_at)::int as days_employed
+		FROM (
+			SELECT
+				u.id as user_id,
+				u.name,
+				u.email,
+				COALESCE(u.avatar, '') as avatar,
+				COALESCE(u.job_title, '') as job_title,
+				COALESCE(e.company_name, '-') as company,
+				COALESCE(u.empleador_id, 0) as tenant_id,
+				-- Subconsulta y no JOIN: unir employments multiplicaría la fila
+				-- del profesional si alguna vez tuviera dos empleos activos en
+				-- la misma empresa, y el ranking lo mostraría repetido.
+				COALESCE((
+					SELECT MIN(em.started_at) FROM employments em
+					WHERE em.user_id = u.id AND em.company_id = u.empleador_id
+					  AND em.status = 'active' AND em.deleted_at IS NULL
+				), u.created_at) as started_at
+			FROM users u
+			LEFT JOIN users e ON e.id = u.empleador_id
+			WHERE u.user_type = 'profesional' AND u.deleted_at IS NULL AND u.is_active = true
+		) s
+		ORDER BY s.started_at ASC
 		LIMIT 500
 	`).Scan(&items).Error
 	return items, err
@@ -767,6 +792,7 @@ const tenantSelect = `
 		u.phone_number,
 		u.is_active,
 		u.created_at,
+		u.client_since,
 		COUNT(DISTINCT m.id) as user_count,
 		COUNT(DISTINCT b.id) as board_count,
 		COUNT(DISTINCT t.id) as task_count,
@@ -891,6 +917,15 @@ func (r *adminRepository) GetEmployeeTickets(userID uint) ([]TenantTicket, error
 
 const employeeMetrics = `
 	u.id, u.name, u.email, u.avatar, u.user_type, u.is_active, u.is_manager,
+	-- Desde cuándo está en ESTA empresa, no desde cuándo tiene cuenta: son dos
+	-- fechas distintas en cuanto alguien entra a la app después de haber
+	-- empezado a trabajar, y la que reconoce la empresa es la del empleo.
+	-- created_at solo queda de respaldo para quien aún no tiene empleo escrito.
+	COALESCE((
+		SELECT MIN(em.started_at) FROM employments em
+		WHERE em.user_id = u.id AND em.company_id = u.empleador_id
+		  AND em.status = 'active' AND em.deleted_at IS NULL
+	), u.created_at) as started_at,
 	COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh WHERE wh.user_id = u.id AND wh.deleted_at IS NULL AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
 	(SELECT COUNT(*) FROM task_users tu WHERE tu.user_id = u.id) as tasks_assigned,
 	(SELECT COUNT(*) FROM task_users tu JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL WHERE tu.user_id = u.id AND t.completed = true) as tasks_completed,

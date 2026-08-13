@@ -3,6 +3,7 @@ import type { Task, User, TaskPriority, TaskStatus } from '../../../types'
 import { RichTextEditor } from '../RichTextEditor'
 import { ColumnType } from '../types'
 import { Select } from '../../ui/Select'
+import { DatePicker } from '../../ui'
 import { X, Check } from 'lucide-react'
 
 interface TaskDetailEditFormProps {
@@ -113,18 +114,23 @@ export function TaskDetailEditForm({
       <div className={styles['form-row']}>
         <div className={styles['form-group']}>
           <label>Fecha inicio</label>
-          <input
-            type="date"
+          <DatePicker
+            fullWidth
+            clearable
             value={formData.start_date}
-            onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+            onChange={(v) => setFormData({ ...formData, start_date: v })}
+            ariaLabel="Fecha inicio"
           />
         </div>
         <div className={styles['form-group']}>
           <label>Fecha límite</label>
-          <input
-            type="date"
+          <DatePicker
+            fullWidth
+            clearable
             value={formData.end_date}
-            onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+            min={formData.start_date || undefined}
+            onChange={(v) => setFormData({ ...formData, end_date: v })}
+            ariaLabel="Fecha límite"
           />
         </div>
       </div>

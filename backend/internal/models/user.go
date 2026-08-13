@@ -43,6 +43,12 @@ type User struct {
 	Empleador        *User      `gorm:"foreignKey:EmpleadorID" json:"-"`
 	CompanyName      string     `gorm:"size:255" json:"company_name"`
 	Industry         string     `gorm:"size:255" json:"industry"`
+	// ClientSince es la fecha de alta REAL de la empresa como cliente. Solo
+	// aplica a las cuentas empleador. Existe aparte de created_at porque ese es
+	// cuándo se creó el registro en Obertrack, que no coincide con el alta
+	// cuando la empresa se carga meses después de empezar a trabajar con
+	// nosotros. Nula = no se ha corregido y se muestra created_at.
+	ClientSince      *time.Time `gorm:"type:date" json:"client_since,omitempty"`
 	JobTitle         string     `gorm:"size:255" json:"job_title"`
 	PhoneNumber      string     `gorm:"size:50" json:"phone_number"`
 	Country          string     `gorm:"size:100" json:"country"`

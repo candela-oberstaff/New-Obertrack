@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Filter, X, Calendar, ArrowUpDown, Clock, AlertTriangle } from 'lucide-react'
+import { DatePicker } from '../../ui'
 import styles from '../../../pages/Tasks.module.css'
 
 export interface TaskFiltersState {
@@ -100,20 +101,25 @@ export function TaskFilters({ filters, onChange }: TaskFiltersProps) {
             <div className={styles['task-filters-date-row']}>
               <div className={styles['task-filters-date-field']}>
                 <span className={styles['task-filters-date-label']}>Desde</span>
-                <input
-                  type="date"
-                  className={styles['task-filters-date-input']}
+                <DatePicker
+                  compact
+                  fullWidth
+                  clearable
                   value={filters.dateFrom}
-                  onChange={(e) => onChange({ ...filters, dateFrom: e.target.value })}
+                  onChange={(v) => onChange({ ...filters, dateFrom: v })}
+                  ariaLabel="Desde"
                 />
               </div>
               <div className={styles['task-filters-date-field']}>
                 <span className={styles['task-filters-date-label']}>Hasta</span>
-                <input
-                  type="date"
-                  className={styles['task-filters-date-input']}
+                <DatePicker
+                  compact
+                  fullWidth
+                  clearable
                   value={filters.dateTo}
-                  onChange={(e) => onChange({ ...filters, dateTo: e.target.value })}
+                  min={filters.dateFrom || undefined}
+                  onChange={(v) => onChange({ ...filters, dateTo: v })}
+                  ariaLabel="Hasta"
                 />
               </div>
             </div>

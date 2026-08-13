@@ -323,9 +323,10 @@
   white-space: nowrap;
 }
 
+/* .dateInput vivía aquí para el <input type="date"> de los vencimientos; ahora
+   los pinta el <DatePicker>, que trae su propio estilo. */
 .input,
-.textarea,
-.dateInput {
+.textarea {
   padding: 8px 12px;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
@@ -336,7 +337,6 @@
 }
 
 .input { flex: 1 1 200px; min-width: 0; }
-.dateInput { font-size: 13px; }
 
 .textarea {
   width: 100%;
@@ -345,8 +345,7 @@
 }
 
 .input:focus,
-.textarea:focus,
-.dateInput:focus { outline: none; border-color: var(--primary); }
+.textarea:focus { outline: none; border-color: var(--primary); }
 
 .checkLabel {
   display: inline-flex;

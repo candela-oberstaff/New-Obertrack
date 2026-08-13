@@ -244,6 +244,9 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.POST("/users/:id/employments", d.admin.AddUserEmployment)
 		admin.POST("/users/:id/employments/:empId/end", d.admin.EndUserEmployment)
 		admin.PUT("/users/:id/employments/:empId/manager", d.admin.UpdateEmploymentManager)
+		// Corrección de la fecha de ingreso: el alta la sella con el día en que
+		// se cargó, que casi nunca es el día en que la persona empezó.
+		admin.PUT("/users/:id/employments/:empId/start", d.admin.UpdateEmploymentStart)
 
 		// Conjunto de managers por empleo (multi-manager). El single de arriba
 		// gestiona el principal; estos gestionan el CONJUNTO (adicionales +

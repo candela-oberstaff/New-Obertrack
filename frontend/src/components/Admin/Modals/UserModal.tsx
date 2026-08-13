@@ -1,7 +1,7 @@
 import { User } from '../../../types'
 import { Select } from '../../ui/Select'
 import { useDirtySnapshot } from '../../ui/useCloseGuard'
-import { Modal, Button } from '../../ui'
+import { Modal, Button, DatePicker, toISODate } from '../../ui'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../Auth/countries'
 import styles from '../Admin.module.css'
 
@@ -122,6 +122,23 @@ export function UserModal({
               type="text"
               value={form.company_name}
               onChange={e => setForm({ ...form, company_name: e.target.value })}
+            />
+          </div>
+        )}
+
+        {/* Alta real como cliente. Solo al editar: en el alta la fecha es hoy
+            por definición, y lo que hay que corregir son las empresas que ya
+            llevaban tiempo con nosotros cuando se les creó la cuenta. */}
+        {mode === 'edit' && !employerMode && form.user_type === 'empleador' && (
+          <div className={styles['form-group']}>
+            <label>Alta como cliente</label>
+            <DatePicker
+              fullWidth
+              clearable
+              value={form.client_since || ''}
+              max={toISODate(new Date())}
+              onChange={v => setForm({ ...form, client_since: v })}
+              ariaLabel="Alta como cliente"
             />
           </div>
         )}
