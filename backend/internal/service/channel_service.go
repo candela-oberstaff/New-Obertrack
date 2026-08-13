@@ -156,7 +156,7 @@ type ChannelService interface {
 	ResolveSupportTicket(ticketID, actorID uint) (*models.SupportTicket, error)
 	UpdateStatus(userID uint, status string) (*models.UserStatus, error)
 	GetStatuses(userIDs []uint, tenantID uint, isSuperadmin bool) ([]models.UserStatus, error)
-	GetTotalUnreadCount(userID uint) (int64, error)
+	GetTotalUnreadCount(userID uint, isSuperadmin bool, companyFilter uint) (int64, error)
 	MarkAsRead(channelID, userID uint) error
 	GetAllUsers(tenantID uint, isSuperadmin bool, companyFilter uint) ([]models.User, error)
 

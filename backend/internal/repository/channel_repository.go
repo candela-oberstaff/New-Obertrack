@@ -84,7 +84,7 @@ type ChannelRepository interface {
 	// mentions), para que el sidebar distinga "hay mensajes" de "te nombraron".
 	GetUnreadMentionCounts(userID uint) ([]UnreadCount, error)
 	MarkAsRead(channelID, userID uint) error
-	GetTotalUnreadCount(userID uint) (int64, error)
+	GetTotalUnreadCount(userID, companyFilter uint) (int64, error)
 
 	// Mentions
 	CreateMention(mention *models.Mention) error
@@ -730,12 +730,27 @@ func (r *channelRepository) MarkAsRead(channelID, userID uint) error {
 // per-channel counts from GetUnreadCounts, so it uses the exact same predicate
 // (unreadJoinCondition) over channel_members ⋈ channel_messages: COUNT here ==
 // SUM of the grouped COUNTs there because both count the identical rows.
-func (r *channelRepository) GetTotalUnreadCount(userID uint) (int64, error) {
+// GetTotalUnreadCount cuenta lo mismo que el usuario puede llegar a abrir.
+//
+// Al predicado de no-leídos hay que sumarle los MISMOS descartes que hace la
+// lista de canales (GetChannelsByUser): canal desactivado y canal archivado por
+// el usuario. Sin ellos el badge marcaba mensajes que la lista no muestra por
+// ningún lado —el mismo síntoma que ya se corrigió con parent_id para las
+// respuestas de hilo— y la persona abría el chat buscando algo que no estaba.
+func (r *channelRepository) GetTotalUnreadCount(userID, companyFilter uint) (int64, error) {
 	var count int64
-	err := r.db.Table("channel_members").
+	q := r.db.Table("channel_members").
 		Joins("JOIN channel_messages ON "+unreadJoinCondition, false).
+		Joins("JOIN channels ON channels.id = channel_members.channel_id").
 		Where("channel_members.user_id = ?", userID).
-		Count(&count).Error
+		Where("channels.is_active = ?", true).
+		Where("NOT EXISTS (SELECT 1 FROM hidden_channels h WHERE h.channel_id = channels.id AND h.user_id = ?)", userID)
+	// El superadmin ve la barra acotada a la empresa que tenga seleccionada; el
+	// badge se acota igual para no contarle lo de otro tenant.
+	if companyFilter > 0 {
+		q = q.Where("channels.tenant_id = ?", companyFilter)
+	}
+	err := q.Count(&count).Error
 	return count, err
 }
 

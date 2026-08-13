@@ -1145,7 +1145,9 @@ func (h *ChannelHandler) GetAllUsers(c *gin.Context) {
 
 func (h *ChannelHandler) GetTotalUnreadCount(c *gin.Context) {
 	userID := middleware.GetUserID(c)
-	count, err := h.svc.GetTotalUnreadCount(userID)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	count, err := h.svc.GetTotalUnreadCount(
+		userID, isSuperadmin, superadminCompanyFilter(c, isSuperadmin))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

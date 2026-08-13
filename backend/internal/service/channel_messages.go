@@ -1367,8 +1367,14 @@ func (s *channelService) GetStatuses(userIDs []uint, tenantID uint, isSuperadmin
 	return s.repo.GetUserStatuses(userIDs, tenantID, isSuperadmin)
 }
 
-func (s *channelService) GetTotalUnreadCount(userID uint) (int64, error) {
-	return s.repo.GetTotalUnreadCount(userID)
+func (s *channelService) GetTotalUnreadCount(userID uint, isSuperadmin bool, companyFilter uint) (int64, error) {
+	// Mismo corte que GetChannels: sin empresa seleccionada la barra no muestra
+	// nada, así que el badge tampoco cuenta nada. Marcar un número que no lleva
+	// a ninguna conversación es justo la "notificación fantasma".
+	if isSuperadmin && companyFilter == 0 {
+		return 0, nil
+	}
+	return s.repo.GetTotalUnreadCount(userID, companyFilter)
 }
 
 func (s *channelService) MarkAsRead(channelID, userID uint) error {
