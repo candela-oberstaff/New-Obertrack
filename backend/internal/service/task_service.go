@@ -117,6 +117,22 @@ func (s *taskService) authorizeTaskTenant(task *models.Task, tenantID uint, isSu
 		return nil
 	}
 
+	// La tarea pertenece a un tenant, y es el mismo campo por el que GetAll
+	// filtra la lista. Comprobarlo aquí es lo que hace que lista y detalle
+	// coincidan.
+	//
+	// Antes la pertenencia se deducía del CREADOR DEL TABLERO, y eso dejaba
+	// fuera cualquier tablero creado por un superadmin: su empleador_id es
+	// nulo, así que no coincidía con ningún tenant. La lista mostraba la tarea
+	// —filtrada por tenant_id, correctamente— y al abrirla el detalle la
+	// negaba. Como el handler colapsa cualquier error en 404, salía
+	// "Task not found" sobre una tarea que sí existía y sí era suya.
+	if task.TenantID != 0 && task.TenantID == tenantID {
+		return nil
+	}
+
+	// Compatibilidad con tareas antiguas sin tenant_id: para esas se sigue
+	// resolviendo por el tablero, como hasta ahora.
 	board, err := s.boardRepo.GetByID(task.BoardID)
 	if err != nil {
 		return errors.New("Tarea no encontrada")

@@ -113,6 +113,13 @@ func (h *TaskHandler) GetByID(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	task, err := h.service.GetByID(uint(id), tenantID, middleware.IsSuperadmin(c))
 	if err != nil {
+		// "No existe" y "no es tuya" son cosas distintas. Colapsarlas en 404
+		// hacía que un fallo de permisos se leyera como una tarea borrada, y
+		// costó encontrar por qué la lista mostraba algo que no se podía abrir.
+		if err.Error() == "No tienes permiso para acceder a esta tarea" {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
 		return
 	}
