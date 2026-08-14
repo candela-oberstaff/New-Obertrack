@@ -21,8 +21,16 @@ type UserService interface {
 	Delete(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) error
 
 	ToggleStatus(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) (*models.User, error)
-	PromoteToManager(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool, desired *bool) (*models.User, error)
-	AssignToManager(professionalID, managerID, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) (*models.User, error)
+	// PromoteToManager fija el NIVEL del usuario en la cadena de mando.
+	// desired/desiredSupervisor son opcionales e independientes: nil = no tocar.
+	// Marcar supervisor implica manager, y quitar manager se lleva la supervisión
+	// (la misma invariante que aplica adminService.UpdateUser).
+	PromoteToManager(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool, desired, desiredSupervisor *bool) (*models.User, error)
+	// AssignToManager fija el manager de un profesional DENTRO de una empresa.
+	// companyID solo lo atiende el superadmin (que no tiene tenant propio) para
+	// decir sobre cuál opera; para el resto se usa el suyo. Con 0 se cae a la
+	// empresa activa del profesional, que es el comportamiento histórico.
+	AssignToManager(professionalID, managerID, requesterID, tenantID, companyID uint, role string, isManager, isSuperadmin bool) (*models.User, error)
 	// ReassignTeam mueve TODOS los reportes activos de oldManagerID (en todas las
 	// empresas) al nuevo manager, o los desasigna si newManagerID es nil. Devuelve
 	// cuántas membresías se reasignaron.
@@ -88,6 +96,58 @@ func (s *userService) authorizeAdminAction(target *models.User, tenantID uint, i
 		return errors.New("Access denied")
 	}
 	return nil
+}
+
+// authorizeTeamAction es authorizeAdminAction para las acciones sobre el EQUIPO
+// (promover/quitar manager, asignar manager, reasignar equipo): además del
+// empleador y el superadmin, deja pasar al supervisor, pero solo sobre gente de
+// su propio árbol.
+//
+// Es la única guarda de todo el rol que abre algo reservado hasta ahora a la
+// cuenta empresa, así que se escribe al revés de lo habitual: primero intenta el
+// permiso de siempre y solo si falla considera la vía del supervisor. Así, si
+// mañana authorizeAdminAction se endurece, esto hereda el cambio en vez de
+// esquivarlo.
+//
+// Los dos cortes que importan: el objetivo tiene que estar en el MISMO tenant y
+// ser descendiente del supervisor. Como IsDescendantOf devuelve false cuando la
+// raíz y el objetivo coinciden, un supervisor tampoco puede usar esto sobre sí
+// mismo (ni promoverse, ni reasignarse).
+func (s *userService) authorizeTeamAction(target *models.User, requesterID, tenantID uint, isSuperadmin, isManager bool, role string) error {
+	err := s.authorizeAdminAction(target, tenantID, isSuperadmin, role)
+	if err == nil {
+		return nil
+	}
+	if target == nil || !supervisorScopeApplies(s.repo, requesterID, isManager) {
+		return err
+	}
+	if tenantID == 0 || tenantForUser(target) != tenantID {
+		return errors.New("Access denied")
+	}
+	ok, derr := s.employmentRepo.IsDescendantOf(requesterID, target.ID, tenantID, maxSupervisorDepth)
+	if derr != nil {
+		return derr // fail-closed: sin poder resolver el árbol no se concede nada
+	}
+	if !ok {
+		return errors.New("Access denied")
+	}
+	return nil
+}
+
+// authorizeTeamDestination autoriza al DESTINO de una asignación (a quién pasa a
+// reportar alguien). Es authorizeTeamAction con una excepción: el propio
+// supervisor es un destino válido.
+//
+// Hace falta porque IsDescendantOf devuelve false cuando la raíz y el objetivo
+// coinciden —lo que es correcto para aprobar horas, donde nadie se aprueba a sí
+// mismo— pero colgarse a alguien de uno mismo es la operación más normal del
+// organigrama, y sin esto quedaba prohibida.
+func (s *userService) authorizeTeamDestination(target *models.User, requesterID, tenantID uint, isSuperadmin, isManager bool, role string) error {
+	if target != nil && target.ID == requesterID &&
+		supervisorScopeApplies(s.repo, requesterID, isManager) {
+		return nil
+	}
+	return s.authorizeTeamAction(target, requesterID, tenantID, isSuperadmin, isManager, role)
 }
 
 func (s *userService) GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error) {
@@ -254,20 +314,29 @@ func (s *userService) ToggleStatus(id, requesterID, tenantID uint, role string, 
 	return user, nil
 }
 
-func (s *userService) PromoteToManager(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool, desired *bool) (*models.User, error) {
+func (s *userService) PromoteToManager(id, requesterID, tenantID uint, role string, isManager, isSuperadmin bool, desired, desiredSupervisor *bool) (*models.User, error) {
 	user, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("User not found")
 	}
-	if err := s.authorizeAdminAction(user, tenantID, isSuperadmin, role); err != nil {
+	if err := s.authorizeTeamAction(user, requesterID, tenantID, isSuperadmin, isManager, role); err != nil {
 		return nil, err
 	}
 
 	var newVal bool
-	if desired != nil {
+	switch {
+	case desired != nil:
 		newVal = *desired
-	} else {
+	case desiredSupervisor != nil:
+		// Solo vino el nivel de supervisor: el de manager se deduce de él, en vez
+		// de que el toggle de respaldo lo invierta por su cuenta.
+		newVal = user.IsManager
+	default:
 		newVal = !user.IsManager // toggle de respaldo por compatibilidad
+	}
+	// Marcar supervisor implica manager: los dos flags nunca se separan.
+	if desiredSupervisor != nil && *desiredSupervisor {
+		newVal = true
 	}
 
 	// Solo profesionales y customer success pueden ser manager.
@@ -288,11 +357,24 @@ func (s *userService) PromoteToManager(id, requesterID, tenantID uint, role stri
 	}
 
 	updates := map[string]interface{}{"is_manager": newVal}
+	newSupervisor := user.IsSupervisor
+	if desiredSupervisor != nil {
+		newSupervisor = *desiredSupervisor
+	}
+	// Quitar el rol de manager se lleva la supervisión con él: un supervisor que
+	// ya no es manager no podría aprobar nada de su árbol.
+	if !newVal {
+		newSupervisor = false
+	}
+	if newSupervisor != user.IsSupervisor {
+		updates["is_supervisor"] = newSupervisor
+	}
 	if err := s.repo.Update(user, updates); err != nil {
 		return nil, err
 	}
 
 	user.IsManager = newVal
+	user.IsSupervisor = newSupervisor
 	return user, nil
 }
 
@@ -305,17 +387,34 @@ func (s *userService) GetEmployees(employerID uint) ([]models.User, error) {
 	return s.repo.GetEmployees(employerID)
 }
 
-func (s *userService) AssignToManager(professionalID, managerID, requesterID, tenantID uint, role string, isManager, isSuperadmin bool) (*models.User, error) {
+func (s *userService) AssignToManager(professionalID, managerID, requesterID, tenantID, companyID uint, role string, isManager, isSuperadmin bool) (*models.User, error) {
 	professional, err := s.repo.GetByID(professionalID)
 	if err != nil {
 		return nil, errors.New("Professional not found")
 	}
-	if err := s.authorizeAdminAction(professional, tenantID, isSuperadmin, role); err != nil {
+	if err := s.authorizeTeamAction(professional, requesterID, tenantID, isSuperadmin, isManager, role); err != nil {
 		return nil, err
 	}
 
+	// Empresa sobre la que se opera. Importa cuando el profesional trabaja en
+	// varias: el cambio tiene que caer en la que se está editando y no en la que
+	// resulte ser su activa. Solo el superadmin puede indicarla (no tiene tenant
+	// propio); a los demás se les impone el suyo, venga lo que venga en la
+	// petición, para que nadie escriba en una empresa ajena.
+	targetCompany := tenantID
+	if isSuperadmin && companyID > 0 {
+		targetCompany = companyID
+	}
+	if targetCompany == 0 && professional.EmpleadorID != nil {
+		targetCompany = *professional.EmpleadorID
+	}
+	// users.manager_id es un puntero GLOBAL que refleja la empresa activa, así
+	// que solo se toca cuando se está operando justo sobre esa empresa.
+	isActiveCompany := professional.EmpleadorID != nil && *professional.EmpleadorID == targetCompany
+
+	var newManagerID *uint
 	if managerID == 0 {
-		professional.ManagerID = nil
+		newManagerID = nil
 	} else {
 		if managerID == professionalID {
 			return nil, errors.New("Un profesional no puede ser su propio manager")
@@ -324,35 +423,44 @@ func (s *userService) AssignToManager(professionalID, managerID, requesterID, te
 		if err != nil {
 			return nil, errors.New("Manager not found")
 		}
-		if err := s.authorizeAdminAction(manager, tenantID, isSuperadmin, role); err != nil {
+		// El destino se autoriza igual que el profesional: un supervisor mueve
+		// gente ENTRE managers suyos, no hacia alguien de fuera de su árbol (eso
+		// le entregaría las horas de su subordinado a un tercero). Él mismo sí es
+		// un destino válido.
+		if err := s.authorizeTeamDestination(manager, requesterID, tenantID, isSuperadmin, isManager, role); err != nil {
 			return nil, err
 		}
-		companyID := uint(0)
-		if professional.EmpleadorID != nil {
-			companyID = *professional.EmpleadorID
-		}
-		if err := ensureValidManager(s.repo, s.employmentRepo, manager, professionalID, companyID); err != nil {
+		// El ciclo se valida contra la empresa que se está editando, que es donde
+		// vive la cadena de mando que puede cerrarse.
+		if err := ensureValidManager(s.repo, s.employmentRepo, manager, professionalID, targetCompany); err != nil {
 			return nil, err
 		}
-		professional.ManagerID = &managerID
+		newManagerID = &managerID
 	}
 
-	if err := s.repo.Save(professional); err != nil {
-		return nil, err
+	// La fuente de verdad por-empresa es el empleo; el puntero global solo la
+	// acompaña cuando coinciden. Así, editar el organigrama de una empresa nunca
+	// mueve a nadie en otra.
+	if targetCompany > 0 {
+		if emp, err := s.employmentRepo.GetActive(professional.ID, targetCompany); err == nil && emp != nil {
+			if err := s.employmentRepo.Update(emp, map[string]interface{}{"manager_id": newManagerID}); err != nil {
+				return nil, err
+			}
+			// Asignar manager REEMPLAZA, no suma. Antes solo se cambiaba cuál era
+			// el principal y los vínculos anteriores seguían vivos, así que el
+			// manager saliente conservaba la aprobación de horas de alguien que ya
+			// no era suyo — invisible salvo por el contador de managers extra.
+			// Sumar managers sigue siendo posible, pero como acción explícita
+			// desde el editor multi-manager de la ficha.
+			_ = s.employmentRepo.ClearManagers(emp.ID)
+			syncPrimaryManager(s.employmentRepo, emp.ID, newManagerID)
+		}
 	}
 
-	// Sincroniza el employment de la empresa que asigna (espejo per-empresa de
-	// users.manager_id) para que la fuente de verdad por-empresa quede alineada.
-	// Un empleador opera sobre su propio tenant; un superadmin no tiene tenant
-	// (tenantID==0), así que se usa la empresa activa del propio profesional.
-	syncCompanyID := tenantID
-	if syncCompanyID == 0 && professional.EmpleadorID != nil {
-		syncCompanyID = *professional.EmpleadorID
-	}
-	if syncCompanyID > 0 {
-		if emp, err := s.employmentRepo.GetActive(professional.ID, syncCompanyID); err == nil && emp != nil {
-			_ = s.employmentRepo.Update(emp, map[string]interface{}{"manager_id": professional.ManagerID})
-			syncPrimaryManager(s.employmentRepo, emp.ID, professional.ManagerID)
+	if isActiveCompany || targetCompany == 0 {
+		professional.ManagerID = newManagerID
+		if err := s.repo.Save(professional); err != nil {
+			return nil, err
 		}
 	}
 
@@ -364,7 +472,7 @@ func (s *userService) ReassignTeam(oldManagerID uint, newManagerID *uint, reques
 	if err != nil {
 		return 0, errors.New("User not found")
 	}
-	if err := s.authorizeAdminAction(oldManager, tenantID, isSuperadmin, role); err != nil {
+	if err := s.authorizeTeamAction(oldManager, requesterID, tenantID, isSuperadmin, isManager, role); err != nil {
 		return 0, err
 	}
 
@@ -383,6 +491,12 @@ func (s *userService) ReassignTeam(oldManagerID uint, newManagerID *uint, reques
 		newManager, err := s.repo.GetByID(*newManagerID)
 		if err != nil {
 			return 0, errors.New("Manager inválido: manager no encontrado")
+		}
+		// El destino también se autoriza: sin esto un supervisor podría descargar
+		// el equipo de uno de sus managers en alguien de fuera de su árbol. Él
+		// mismo sí puede recibirlo.
+		if err := s.authorizeTeamDestination(newManager, requesterID, tenantID, isSuperadmin, isManager, role); err != nil {
+			return 0, err
 		}
 		// Todo el equipo de oldManager pasa a newManager: se cierra un ciclo si
 		// newManager cuelga de oldManager (sería uno de los reportes que se
@@ -414,6 +528,22 @@ func (s *userService) GetMyTeam(userID uint) ([]models.User, error) {
 
 	if !user.IsManager {
 		return []models.User{}, nil
+	}
+
+	// Un supervisor tiene a cargo el árbol entero, no solo a quienes le reportan
+	// directo: sus managers y la gente de esos managers.
+	if SupervisorScopeEnabled() && user.IsSupervisor {
+		companyID := tenantForUser(user)
+		if companyID > 0 {
+			ids, err := s.employmentRepo.DescendantIDs(userID, companyID, maxSupervisorDepth)
+			if err != nil {
+				return nil, err
+			}
+			if len(ids) == 0 {
+				return []models.User{}, nil
+			}
+			return s.repo.GetByIDs(ids)
+		}
 	}
 
 	if MultiManagerReadsEnabled() {

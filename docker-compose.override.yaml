@@ -12,6 +12,9 @@ services:
       # Multi-manager (dev): activa las lecturas "cualquier manager" + la UI de
       # chips por empleo. El default en prod sigue OFF.
       MULTI_MANAGER_READS: "true"
+      # Rol supervisor (dev): alcance transitivo del árbol, gestión de equipo
+      # acotada a la rama y escalado de pendientes. El default en prod sigue OFF.
+      SUPERVISOR_SCOPE: "true"
 
   db:
     ports:

@@ -558,8 +558,15 @@ export default function WorkHours() {
     if (approvablePending.length === 0) return
     try {
       const res = await approveWorkHours(approvablePending.map(wh => wh.id))
-      if (res?.skipped && res.skipped > 0) {
-        notify.success(`${res.approved ?? 0} jornada(s) aprobadas; ${res.skipped} omitida(s) (fuera de tu equipo).`)
+      const approved = res?.approved ?? 0
+      const skipped = res?.skipped ?? 0
+      // Una jornada se omite por estar fuera del equipo O por haberla aprobado ya
+      // otra persona: con manager y supervisor pudiendo aprobar a la misma gente,
+      // lo segundo pasa a diario y el aviso no debe afirmar el motivo equivocado.
+      if (skipped > 0 && approved === 0) {
+        notify.success('No había nada que aprobar: esas jornadas ya estaban aprobadas o están fuera de tu equipo.')
+      } else if (skipped > 0) {
+        notify.success(`${approved} jornada(s) aprobadas; ${skipped} omitida(s) (ya aprobadas o fuera de tu equipo).`)
       } else {
         notify.success('Jornadas aprobadas.')
       }

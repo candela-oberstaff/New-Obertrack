@@ -12,6 +12,7 @@ import { IntegracionesPanel } from '../components/Profile/IntegracionesPanel'
 import { GOOGLE_INTEGRATIONS_ENABLED } from '../config/features'
 import Avatar from '../components/Common/Avatar'
 import Tooltip from '../components/Common/Tooltip'
+import { hierarchyLabel } from '../lib/permissions'
 import styles from './Profile.module.css'
 
 export default function Profile() {
@@ -70,7 +71,8 @@ export default function Profile() {
 
   const getRoleLabel = () => {
     if (user?.is_superadmin) return 'Super Administrador'
-    if (user?.is_manager) return 'Manager'
+    const level = hierarchyLabel(user)
+    if (level) return level
     if (user?.user_type === 'empleador') return 'Empresa'
     if (user?.user_type === 'customer_success') return 'Customer Success'
     return 'Profesional'

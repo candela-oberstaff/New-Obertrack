@@ -30,6 +30,11 @@ type Config struct {
 	// (employment_managers) con semántica "cualquier manager" (Fase 2).
 	// Default false: comportamiento actual (puntero employments.manager_id).
 	MultiManagerReads bool
+	// SupervisorScope activa el alcance transitivo del rol supervisor: en vez de
+	// ver solo a sus reportes directos, recorre el árbol de mando hacia abajo
+	// (managers y los profesionales de esos managers). Default false: un
+	// supervisor se comporta exactamente como el manager que ya es.
+	SupervisorScope bool
 
 	// --- Integración Ontop (módulo Wallet) ---
 	// Credenciales de la cuenta Ontop usadas por el backend como proxy. NUNCA se
@@ -76,6 +81,8 @@ func LoadConfig() *Config {
 		SupportEmail: getEnv("SUPPORT_EMAIL", ""),
 		// Feature flag Fase 2: OFF por defecto; "true"/"1" lo activan.
 		MultiManagerReads: getBoolEnv("MULTI_MANAGER_READS", false),
+		// Feature flag Fase 2 del supervisor: OFF por defecto.
+		SupervisorScope: getBoolEnv("SUPERVISOR_SCOPE", false),
 
 		// Ontop (Wallet). Default a sandbox/staging; las credenciales se inyectan
 		// por entorno (nunca se hardcodean).

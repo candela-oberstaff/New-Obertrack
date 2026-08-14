@@ -72,6 +72,21 @@ type EmploymentRepository interface {
 	// primero (ORDER BY is_primary DESC, id ASC).
 	ListEmploymentManagers(employmentID uint) ([]models.EmploymentManager, error)
 
+	// ListCompanyOrg devuelve una fila por empleo ACTIVO de la empresa, con su
+	// manager principal, para dibujar el organigrama. Es plano a propósito: el
+	// árbol se arma en el cliente, que es quien lo va a reordenar.
+	ListCompanyOrg(companyID uint) ([]OrgNode, error)
+
+	// --- Alcance transitivo (rol supervisor) ---
+	// DescendantIDs devuelve los IDs de usuario que cuelgan de rootID en la
+	// empresa, recorriendo employment_managers hacia abajo hasta maxDepth niveles
+	// (1 = reportes directos, que es lo que ve un manager). No incluye a rootID.
+	DescendantIDs(rootID, companyID uint, maxDepth int) ([]uint, error)
+	// IsDescendantOf indica si userID cuelga de rootID dentro de la empresa, a
+	// cualquier profundidad hasta maxDepth. Es DescendantIDs acotado a un usuario:
+	// existe aparte para no traerse el árbol entero en un chequeo de permiso.
+	IsDescendantOf(rootID, userID, companyID uint, maxDepth int) (bool, error)
+
 	// --- Expediente (FASE 3) ---
 	CreateNote(note *models.EmploymentNote) error
 	ListNotes(employmentID uint) ([]models.EmploymentNote, error)
@@ -319,6 +334,150 @@ func (r *employmentRepository) ListEmploymentManagers(employmentID uint) ([]mode
 		Order("is_primary DESC, id ASC").
 		Find(&links).Error
 	return links, err
+}
+
+// OrgNode es una persona dentro del organigrama de una empresa. ManagerID nulo
+// = cuelga de la raíz (nadie por encima dentro de la empresa).
+type OrgNode struct {
+	UserID       uint   `json:"user_id"`
+	EmploymentID uint   `json:"employment_id"`
+	Name         string `json:"name"`
+	Email        string `json:"email"`
+	Avatar       string `json:"avatar"`
+	JobTitle     string `json:"job_title"`
+	IsManager    bool   `json:"is_manager"`
+	IsSupervisor bool   `json:"is_supervisor"`
+	IsActive     bool   `json:"is_active"`
+	ManagerID    *uint  `json:"manager_id"`
+	// IsCompany marca la cuenta de empresa, que es la raíz del organigrama. No
+	// sale de employments (una empresa no se emplea a sí misma): la agrega el
+	// servicio para que el árbol tenga cabeza.
+	IsCompany bool `json:"is_company"`
+	// ExtraManagers son los managers ADICIONALES al principal. El árbol solo
+	// dibuja el principal (si no, dejaría de ser un árbol), así que este contador
+	// es lo que avisa de que la persona además responde a alguien más.
+	ExtraManagers int `json:"extra_managers"`
+}
+
+func (r *employmentRepository) ListCompanyOrg(companyID uint) ([]OrgNode, error) {
+	if companyID == 0 {
+		return []OrgNode{}, nil
+	}
+	var nodes []OrgNode
+	// El manager principal se toma de employment_managers (is_primary), que es la
+	// fuente que mantiene el dual-write, y se cae al puntero employments.manager_id
+	// para los empleos que aún no tengan vínculo escrito.
+	// DISTINCT ON: una fila POR PERSONA. Si por un arrastre de datos alguien
+	// tuviera dos empleos activos en la misma empresa, aparecería dos veces en el
+	// organigrama y se podría arrastrar cada copia por separado, que es peor que
+	// quedarse con el empleo más antiguo.
+	err := r.db.Raw(`
+		SELECT * FROM (
+		SELECT DISTINCT ON (e.user_id)
+			e.user_id        AS user_id,
+			e.id             AS employment_id,
+			u.name           AS name,
+			u.email          AS email,
+			u.avatar         AS avatar,
+			COALESCE(NULLIF(e.job_title, ''), u.job_title, '') AS job_title,
+			u.is_manager     AS is_manager,
+			u.is_supervisor  AS is_supervisor,
+			u.is_active      AS is_active,
+			COALESCE(
+				(SELECT em.manager_id FROM employment_managers em
+				  WHERE em.employment_id = e.id AND em.is_primary AND em.deleted_at IS NULL
+				  LIMIT 1),
+				e.manager_id
+			) AS manager_id,
+			(SELECT COUNT(*) FROM employment_managers em2
+			  WHERE em2.employment_id = e.id AND NOT em2.is_primary AND em2.deleted_at IS NULL
+			) AS extra_managers
+		FROM employments e
+		JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL
+		WHERE e.company_id = ?
+		  AND e.status = ?
+		  AND e.deleted_at IS NULL
+		ORDER BY e.user_id, e.id ASC
+		) t ORDER BY t.name ASC
+	`, companyID, models.EmploymentActive).Scan(&nodes).Error
+	if nodes == nil {
+		nodes = []OrgNode{}
+	}
+	return nodes, err
+}
+
+// --- Alcance transitivo (rol supervisor) ---
+
+// subtreeCTE recorre la cadena de mando hacia ABAJO desde un usuario raíz,
+// dentro de una empresa. Sus parámetros, en orden: rootID, companyID, estado
+// activo, companyID, estado activo, maxDepth.
+//
+// Se apoya en employment_managers y no en el puntero employments.manager_id
+// porque el dual-write la mantiene en espejo desde la fase 1 del multi-manager:
+// está poblada valga lo que valga MULTI_MANAGER_READS, y además es la única que
+// sabe expresar que un empleo tenga varios jefes.
+//
+// UNION —y no UNION ALL— deduplica. Junto con el tope de profundidad, eso evita
+// que un ciclo heredado de datos viejos haga girar la recursión para siempre:
+// aunque ensureNoManagerCycle impide crearlos hoy, esta consulta no depende de
+// esa garantía.
+const subtreeCTE = `
+	WITH RECURSIVE subtree(user_id, depth) AS (
+		SELECT e.user_id, 1
+		FROM employments e
+		JOIN employment_managers em
+		  ON em.employment_id = e.id
+		 AND em.deleted_at IS NULL
+		WHERE em.manager_id = ?
+		  AND e.company_id = ?
+		  AND e.status = ?
+		  AND e.deleted_at IS NULL
+	  UNION
+		SELECT e.user_id, s.depth + 1
+		FROM subtree s
+		JOIN employment_managers em
+		  ON em.manager_id = s.user_id
+		 AND em.deleted_at IS NULL
+		JOIN employments e
+		  ON e.id = em.employment_id
+		 AND e.company_id = ?
+		 AND e.status = ?
+		 AND e.deleted_at IS NULL
+		WHERE s.depth < ?
+	)`
+
+func (r *employmentRepository) DescendantIDs(rootID, companyID uint, maxDepth int) ([]uint, error) {
+	if rootID == 0 || companyID == 0 || maxDepth < 1 {
+		return nil, nil
+	}
+	var ids []uint
+	err := r.db.Raw(subtreeCTE+`
+		SELECT DISTINCT s.user_id
+		FROM subtree s
+		JOIN users u ON u.id = s.user_id AND u.deleted_at IS NULL AND u.is_active = ?
+		WHERE s.user_id <> ?`,
+		rootID, companyID, models.EmploymentActive,
+		companyID, models.EmploymentActive, maxDepth,
+		true, rootID,
+	).Scan(&ids).Error
+	return ids, err
+}
+
+func (r *employmentRepository) IsDescendantOf(rootID, userID, companyID uint, maxDepth int) (bool, error) {
+	// La raíz nunca es descendiente de sí misma: eso mantiene la separación de
+	// funciones (nadie aprueba sus propias jornadas) sin depender de que cada
+	// llamador lo recuerde.
+	if rootID == 0 || userID == 0 || companyID == 0 || maxDepth < 1 || rootID == userID {
+		return false, nil
+	}
+	var exists bool
+	err := r.db.Raw(subtreeCTE+`
+		SELECT EXISTS (SELECT 1 FROM subtree s WHERE s.user_id = ?)`,
+		rootID, companyID, models.EmploymentActive,
+		companyID, models.EmploymentActive, maxDepth,
+		userID,
+	).Scan(&exists).Error
+	return exists, err
 }
 
 // upsertLink crea o restaura el vínculo (employmentID, managerID) con el valor

@@ -44,9 +44,11 @@ func (r *emailRepository) CreateTemplate(template *models.EmailTemplate) error {
 	return r.db.Create(template).Error
 }
 
+// Mismo criterio que GetCampaigns: la pestaña de plantillas comparte pantalla y
+// tenía el mismo orden indefinido.
 func (r *emailRepository) GetTemplates() ([]models.EmailTemplate, error) {
 	var templates []models.EmailTemplate
-	err := r.db.Find(&templates).Error
+	err := r.db.Order("created_at DESC, id DESC").Find(&templates).Error
 	return templates, err
 }
 
@@ -74,9 +76,21 @@ func (r *emailRepository) CreateCampaign(campaign *models.EmailCampaign) error {
 	return r.db.Create(campaign).Error
 }
 
+// GetCampaigns lista las campañas de la más reciente a la más vieja.
+//
+// El ORDER BY no es cosmético: sin él Postgres devuelve las filas en el orden
+// que le conviene —que arranca pareciéndose al de inserción, pero se desordena
+// en cuanto se actualiza una fila, porque el UPDATE la reescribe en otro sitio—.
+// El listado sale paginado, así que eso dejaba lo más nuevo en la última página
+// y las fechas mezcladas dentro de la misma.
+//
+// El desempate por id importa: las campañas se crean en lote y comparten
+// created_at al segundo, así que sin él volvería a ser arbitrario entre ellas.
 func (r *emailRepository) GetCampaigns() ([]models.EmailCampaign, error) {
 	var campaigns []models.EmailCampaign
-	err := r.db.Preload("Template").Find(&campaigns).Error
+	err := r.db.Preload("Template").
+		Order("created_at DESC, id DESC").
+		Find(&campaigns).Error
 	return campaigns, err
 }
 
@@ -117,9 +131,14 @@ func (r *emailRepository) CreateEvent(event *models.EmailEvent) error {
 	return r.db.Create(event).Error
 }
 
+// El detalle de una campaña es un registro de actividad: lo último arriba. Se
+// ordena por timestamp (cuándo ocurrió en Brevo) y no por created_at (cuándo nos
+// llegó el webhook), que pueden diferir bastante si hubo reintentos.
 func (r *emailRepository) GetEventsByCampaign(campaignID uint) ([]models.EmailEvent, error) {
 	var events []models.EmailEvent
-	err := r.db.Where("campaign_id = ?", campaignID).Find(&events).Error
+	err := r.db.Where("campaign_id = ?", campaignID).
+		Order("timestamp DESC, id DESC").
+		Find(&events).Error
 	return events, err
 }
 

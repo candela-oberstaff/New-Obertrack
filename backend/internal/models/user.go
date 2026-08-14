@@ -30,19 +30,26 @@ const (
 )
 
 type User struct {
-	ID               uint       `gorm:"primaryKey" json:"id"`
-	Name             string     `gorm:"size:255;not null" json:"name"`
-	Email            string     `gorm:"size:255;uniqueIndex;not null" json:"email"`
-	Password         string     `gorm:"size:255;not null" json:"-"`
-	Avatar           string     `gorm:"size:500" json:"avatar"`
-	UserType         UserType   `gorm:"type:varchar(20);not null;default:'profesional'" json:"user_type"`
-	IsManager        bool       `gorm:"default:false" json:"is_manager"`
-	IsSuperadmin     bool       `gorm:"default:false" json:"is_superadmin"`
-	IsActive         bool       `gorm:"default:true" json:"is_active"`
-	EmpleadorID      *uint      `gorm:"index" json:"empleador_id,omitempty"`
-	Empleador        *User      `gorm:"foreignKey:EmpleadorID" json:"-"`
-	CompanyName      string     `gorm:"size:255" json:"company_name"`
-	Industry         string     `gorm:"size:255" json:"industry"`
+	ID        uint     `gorm:"primaryKey" json:"id"`
+	Name      string   `gorm:"size:255;not null" json:"name"`
+	Email     string   `gorm:"size:255;uniqueIndex;not null" json:"email"`
+	Password  string   `gorm:"size:255;not null" json:"-"`
+	Avatar    string   `gorm:"size:500" json:"avatar"`
+	UserType  UserType `gorm:"type:varchar(20);not null;default:'profesional'" json:"user_type"`
+	IsManager bool     `gorm:"default:false" json:"is_manager"`
+	// IsSupervisor marca al manager que además tiene OTROS managers a su cargo.
+	// Es un flag encima de is_manager, nunca solo: así todo lo que hoy pregunta
+	// por is_manager (tareas, tableros, horas) sigue valiendo para un supervisor
+	// sin tocarse. Lo propio del rol es el alcance —ve el árbol completo bajo su
+	// mando y no solo sus reportes directos— y se resuelve aparte, recorriendo
+	// employment_managers.
+	IsSupervisor bool   `gorm:"default:false" json:"is_supervisor"`
+	IsSuperadmin bool   `gorm:"default:false" json:"is_superadmin"`
+	IsActive     bool   `gorm:"default:true" json:"is_active"`
+	EmpleadorID  *uint  `gorm:"index" json:"empleador_id,omitempty"`
+	Empleador    *User  `gorm:"foreignKey:EmpleadorID" json:"-"`
+	CompanyName  string `gorm:"size:255" json:"company_name"`
+	Industry     string `gorm:"size:255" json:"industry"`
 	// ClientSince es la fecha de alta REAL de la empresa como cliente. Solo
 	// aplica a las cuentas empleador. Existe aparte de created_at porque ese es
 	// cuándo se creó el registro en Obertrack, que no coincide con el alta
@@ -57,7 +64,7 @@ type User struct {
 	Location         string     `gorm:"type:text" json:"location"`
 	IdentityDocument string     `gorm:"size:500" json:"identity_document"`
 	Address          string     `gorm:"type:text" json:"address"`
-	ObersuiteID string `gorm:"size:64" json:"obersuite_id,omitempty"`
+	ObersuiteID      string     `gorm:"size:64" json:"obersuite_id,omitempty"`
 	RememberToken    string     `gorm:"size:100" json:"-"`
 	EmailVerifiedAt  *time.Time `json:"email_verified_at,omitempty"`
 	ManagerID        *uint      `gorm:"index" json:"manager_id,omitempty"`

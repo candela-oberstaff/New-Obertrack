@@ -51,6 +51,48 @@ func TestResolveProfManagers_ManagerLaterInFile(t *testing.T) {
 	}
 }
 
+// Si a alguien le reporta un MANAGER, es supervisor por definición del rol: se
+// marca solo, igual que es_manager, para que el organigrama salga del archivo
+// sin depender de que alguien se acuerde de la columna.
+func TestResolveProfManagers_AutoMarksSupervisor(t *testing.T) {
+	rows := []profSheetRow{
+		row(2, "pedro@x.com", "No", "maria@x.com"), // profesional
+		row(3, "maria@x.com", "Sí", "ana@x.com"),   // manager, le reporta a Ana
+		row(4, "ana@x.com", "Sí", ""),              // Ana: recibe a un manager
+	}
+	errs, warns := resolveProfManagers(rows, testResolver(nil, nil))
+
+	if errs[2] != "" {
+		t.Fatalf("la fila de Ana no debe dar error, got: %q", errs[2])
+	}
+	if rows[2].data["es_supervisor"] != "Sí" {
+		t.Fatalf("Ana debe quedar marcada como supervisora, got %q", rows[2].data["es_supervisor"])
+	}
+	if !strings.Contains(warns[2], "supervisor") {
+		t.Fatalf("debe avisarse la deducción, got: %q", warns[2])
+	}
+	// María recibe a un PROFESIONAL, no a un manager: sigue siendo solo manager.
+	if rows[1].data["es_supervisor"] == "Sí" {
+		t.Fatal("recibir a un profesional no convierte a nadie en supervisor")
+	}
+}
+
+// La deducción respeta lo que ya venía en el archivo: si Ana ya está marcada, no
+// se pisa el aviso con uno automático.
+func TestResolveProfManagers_NoPisaElSupervisorDeclarado(t *testing.T) {
+	rows := []profSheetRow{
+		row(2, "maria@x.com", "Sí", "ana@x.com"),
+		{row: 3, data: map[string]string{
+			"nombre": "ana", "email": "ana@x.com", "es_manager": "Sí", "es_supervisor": "Sí", "reporta_a": "",
+		}},
+	}
+	_, warns := resolveProfManagers(rows, testResolver(nil, nil))
+
+	if warns[1] != "" {
+		t.Fatalf("si ya venía marcada no hace falta avisar de nada, got: %q", warns[1])
+	}
+}
+
 // Si alguien recibe reportes pero no venía marcado, se lo marca y se avisa.
 func TestResolveProfManagers_AutoMarksManager(t *testing.T) {
 	rows := []profSheetRow{

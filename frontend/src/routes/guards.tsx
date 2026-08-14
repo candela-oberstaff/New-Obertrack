@@ -179,6 +179,28 @@ export function EmployerRoute({ children }: RouteGuardProps) {
   return <>{children}</>
 }
 
+// Organigrama propio: lo mantiene la empresa y lo consulta/reordena también el
+// supervisor sobre su rama. El backend acota lo que cada uno ve y puede mover;
+// esta guarda solo evita ofrecer la pantalla a quien no tiene nada que hacer en
+// ella (un profesional sin gente a cargo).
+export function OrgChartRoute({ children }: RouteGuardProps) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <Navigate to={ROUTES.login} replace />
+  }
+
+  if (user.user_type !== 'empleador' && !user.is_supervisor) {
+    return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
+  }
+
+  return <>{children}</>
+}
+
 export function SupportRoute({ children }: RouteGuardProps) {
   const { user, isLoading } = useAuth()
 

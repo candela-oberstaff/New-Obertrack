@@ -254,6 +254,7 @@ export default function Admin() {
       manager_id: u.manager_id || '',
       is_active: u.is_active,
       is_manager: u.is_manager,
+      is_supervisor: !!u.is_supervisor,
     })
     setShowEditModal(true)
   }
@@ -291,7 +292,11 @@ export default function Admin() {
       if (u.is_active === false && (u.user_type === 'profesional' || u.user_type === 'customer_success')) return false
       const q = searchQuery.trim().toLowerCase()
       if (q && !(u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))) return false
-      if (roleFilter === 'manager') { if (!u.is_manager) return false }
+      // Los dos filtros parten el conjunto en vez de solaparse: un supervisor es
+      // manager, pero si "Manager" lo incluyera, el filtro dedicado no serviría
+      // para distinguirlos.
+      if (roleFilter === 'manager') { if (!u.is_manager || u.is_supervisor) return false }
+      else if (roleFilter === 'supervisor') { if (!u.is_supervisor) return false }
       else if (roleFilter && u.user_type !== roleFilter) return false
       // Una empresa "incluye" a su propia cuenta empleador y a sus vinculados.
       if (companyFilter !== '' && u.empleador_id !== companyFilter && u.id !== companyFilter) return false
@@ -951,6 +956,7 @@ export default function Admin() {
                       { value: 'analista_it', label: 'Analista de IT' },
                       { value: 'superadmin', label: 'Superadmin' },
                       { value: 'manager', label: 'Manager' },
+                      { value: 'supervisor', label: 'Supervisor' },
                     ]}
                   />
                 </div>

@@ -39,6 +39,7 @@ import { COUNTRY_OPTIONS, getStatesForCountry } from '../../components/Auth/coun
 import { INDUSTRY_OPTIONS } from '../../components/Auth/industries'
 import { ArchivedList } from '../../components/Admin/ArchivedList'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
+import { OrgChartPanel } from '../../components/OrgChart/OrgChartPanel'
 import styles from './Tenants.module.css'
 
 const EMP_PER_PAGE = 10
@@ -133,7 +134,7 @@ export default function TenantDetail() {
   const [contactSaving, setContactSaving] = useState(false)
   const [contactError, setContactError] = useState<string | null>(null)
 
-  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'expediente' | 'actividad' | 'tickets' | 'archivados'>('resumen')
+  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados'>('resumen')
 
   // Archivados de esta empresa (bajas + cuentas desactivadas).
   //
@@ -675,6 +676,7 @@ export default function TenantDetail() {
       <div className={styles.subTabs}>
         <button className={tab === 'resumen' ? styles.subTabActive : styles.subTab} onClick={() => setTab('resumen')}>Resumen</button>
         <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Profesionales ({employees.length})</button>
+        <button className={tab === 'organigrama' ? styles.subTabActive : styles.subTab} onClick={() => setTab('organigrama')}>Organigrama</button>
         <button className={tab === 'expediente' ? styles.subTabActive : styles.subTab} onClick={() => setTab('expediente')}>Expediente</button>
         <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Actividad</button>
         <button className={tab === 'tickets' ? styles.subTabActive : styles.subTab} onClick={() => setTab('tickets')}>
@@ -933,6 +935,17 @@ export default function TenantDetail() {
             )}
           </>
         )
+      )}
+
+      {/* El organigrama del cliente. El superadmin puede reordenarlo: es la
+          misma acción que ya hacía desde la ficha de cada profesional, solo que
+          viendo la estructura entera. */}
+      {tab === 'organigrama' && (
+        <OrgChartPanel
+          companyId={tenant.id}
+          editable
+          hint="Arrastra a una persona sobre otra para cambiar su manager. Se lleva a su equipo con ella."
+        />
       )}
 
       {/* El expediente es una vista de auditoría: si no hay movimientos se dice,

@@ -8,6 +8,7 @@ interface ExportUser {
   user_type?: string
   is_active?: boolean
   is_manager?: boolean
+  is_supervisor?: boolean
   empleador_id?: number
   company_name?: string
   job_title?: string
@@ -45,6 +46,7 @@ const FIELDS: FieldDef[] = [
   { key: 'is_active', label: 'Estado', type: String, width: 12, value: u => (u.is_active === false ? 'Inactivo' : 'Activo') },
   { key: 'company', label: 'Empresa', type: String, width: 30, value: (u, companyName) => companyName(u) },
   { key: 'is_manager', label: 'Es manager', type: Boolean, width: 12, value: u => !!u.is_manager },
+  { key: 'is_supervisor', label: 'Es supervisor', type: Boolean, width: 14, value: u => !!u.is_supervisor },
   { key: 'job_title', label: 'Cargo', type: String, width: 22, value: u => u.job_title || '' },
   { key: 'phone_number', label: 'Teléfono', type: String, width: 18, value: u => u.phone_number || '' },
   { key: 'identity_document', label: 'Documento', type: String, width: 18, value: u => u.identity_document || '' },

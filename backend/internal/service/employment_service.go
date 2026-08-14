@@ -125,6 +125,10 @@ type ExpedienteView struct {
 // FASE 1: alta/baja de membresías adicionales (multi-empresa). users.empleador_id
 // sigue siendo la "empresa activa"; al terminar la activa se reasigna a otra.
 type EmploymentService interface {
+	// OrgChart devuelve el organigrama de la empresa acotado a lo que el actor
+	// puede ver: la empresa entera para el empleador y el superadmin, y solo su
+	// rama para un supervisor.
+	OrgChart(companyID, actorID uint, role string, isSuperadmin, isManager bool) ([]repository.OrgNode, error)
 	SyncActiveForUser(user *models.User) error
 	ListForUser(userID uint) ([]EmploymentView, error)
 	AddEmployment(userID, companyID uint, jobTitle, startReason string, managerID *uint) (*models.Employment, error)
@@ -209,6 +213,84 @@ type ManagerView struct {
 	ManagerID uint   `json:"manager_id"`
 	Name      string `json:"name"`
 	IsPrimary bool   `json:"is_primary"`
+}
+
+func (s *employmentService) OrgChart(companyID, actorID uint, role string, isSuperadmin, isManager bool) ([]repository.OrgNode, error) {
+	nodes, err := s.repo.ListCompanyOrg(companyID)
+	if err != nil {
+		return nil, err
+	}
+	// Quien manda en la empresa ve la empresa entera, con la cuenta de empresa
+	// como raíz.
+	if isSuperadmin || isEmployerRole(role) {
+		return s.withCompanyRoot(companyID, nodes), nil
+	}
+
+	// Un supervisor ve SU rama y nada más. Cualquier otro no tiene organigrama
+	// que mirar: un manager suelto ya tiene su equipo en "Mi Equipo".
+	ids, applied, err := supervisorTeamAndSelfIDs(s.userRepo, s.repo, actorID, companyID, isManager)
+	if err != nil {
+		return nil, err
+	}
+	if !applied {
+		return nil, errors.New("Access denied")
+	}
+
+	allowed := make(map[uint]bool, len(ids))
+	for _, id := range ids {
+		allowed[id] = true
+	}
+	out := make([]repository.OrgNode, 0, len(ids))
+	for _, n := range nodes {
+		if !allowed[n.UserID] {
+			continue
+		}
+		// El supervisor es la raíz de su propia vista: por encima de él no se
+		// asoma nada, aunque él le reporte a alguien.
+		if n.UserID == actorID {
+			n.ManagerID = nil
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+// withCompanyRoot pone a la cuenta de empresa como cabeza del organigrama y
+// cuelga de ella a todo el que no tenga manager.
+//
+// La empresa es la dueña del tenant, así que "sin manager" y "reporta a la
+// empresa" son lo mismo. Sin esta raíz, quien no reportaba a nadie quedaba
+// flotando suelto al lado del árbol, y no había nada que impidiera dejar a la
+// propia empresa colgando de uno de sus empleados.
+//
+// Solo aplica a la vista completa: un supervisor es la raíz de la suya y no ve
+// nada por encima de él.
+func (s *employmentService) withCompanyRoot(companyID uint, nodes []repository.OrgNode) []repository.OrgNode {
+	owner, err := s.userRepo.GetByID(companyID)
+	if err != nil || owner == nil || owner.UserType != models.UserTypeEmployer {
+		// Sin cuenta de empresa resoluble el árbol se devuelve como estaba: es
+		// preferible un organigrama sin cabeza que ninguno.
+		return nodes
+	}
+
+	out := make([]repository.OrgNode, 0, len(nodes)+1)
+	out = append(out, repository.OrgNode{
+		UserID:    owner.ID,
+		Name:      owner.CompanyDisplayName(),
+		Email:     owner.Email,
+		Avatar:    owner.Avatar,
+		JobTitle:  "Cuenta de empresa",
+		IsActive:  owner.IsActive,
+		IsCompany: true,
+	})
+	for _, n := range nodes {
+		if n.ManagerID == nil {
+			id := owner.ID
+			n.ManagerID = &id
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 type employmentService struct {

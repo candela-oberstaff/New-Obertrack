@@ -71,6 +71,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// Feature flag Fase 2: conmuta las lecturas de manager a la tabla N-a-N
 	// (employment_managers). Se fija una sola vez antes de construir services.
 	service.SetMultiManagerReads(cfg.MultiManagerReads)
+	service.SetSupervisorScope(cfg.SupervisorScope)
 
 	// Repositories
 	userRepo := repository.NewUserRepository(db)
@@ -219,6 +220,11 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// no se conecta — el mensaje interno deja de depender de que se le ocurra
 	// entrar a la plataforma.
 	service.NewChatDigestWatcher(channelRepo, brevoSvc).Start()
+
+	// Watcher del supervisor: si en su árbol quedan jornadas sin aprobar hace
+	// demasiado, se le avisa a él. El aviso normal sigue yendo solo al manager
+	// directo; esto es la red por si no lo resuelve. No-op con el flag apagado.
+	service.NewSupervisorEscalationWatcher(userRepo, employmentRepo, workHourRepo, notifSvc).Start()
 
 
 	// Worker de reportes automáticos. A diferencia de los otros, se conserva la

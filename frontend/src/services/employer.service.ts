@@ -36,6 +36,7 @@ export const employerService = {
       location?: string
       is_active?: boolean
       is_manager?: boolean
+      is_supervisor?: boolean
       manager_id?: number
     },
   ): Promise<User> => {
@@ -105,7 +106,7 @@ export const employerService = {
   },
   // ── Multi-manager por empleo (Fase 3, gateado por flag) ─────────────────────
   // Flag de features: indica si el front debe mostrar el modo multi-manager.
-  getFeatures: async (): Promise<{ multi_manager_reads: boolean }> => {
+  getFeatures: async (): Promise<{ multi_manager_reads: boolean; supervisor_scope?: boolean }> => {
     const { data } = await api.get('/features')
     return data
   },

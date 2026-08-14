@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { userService, employerService } from '../../services/api'
+import { useAuth } from '../../context/AuthContext'
 import Avatar from '../Common/Avatar'
 import { useConfirm } from '../ui/ConfirmProvider'
 import { Modal } from '../ui'
@@ -18,6 +19,7 @@ interface TeamPanelProps {
 }
 
 export function TeamPanel({ type }: TeamPanelProps) {
+  const { user } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
@@ -34,14 +36,21 @@ export function TeamPanel({ type }: TeamPanelProps) {
   const [reassignTo, setReassignTo] = useState<number | ''>('')
   const [reassignBusy, setReassignBusy] = useState(false)
 
-  // Flag de features: solo en el panel de empleador habilitamos multi-manager.
+  // Flag de features: multi-manager solo en el panel de empleador; el alcance de
+  // supervisor también hace falta en el panel de manager, así que se pide en los
+  // dos casos.
   const { data: features } = useQuery({
     queryKey: ['features'],
     queryFn: () => employerService.getFeatures(),
-    enabled: type === 'employer',
     staleTime: 5 * 60 * 1000,
   })
-  const multiManager = features?.multi_manager_reads === true
+  const multiManager = type === 'employer' && features?.multi_manager_reads === true
+  // Un supervisor gestiona a los suyos —asignar manager, promover y quitar el
+  // rol— sin ser la empresa. El backend acota cada acción a su árbol; aquí solo
+  // se decide si los controles se muestran.
+  const canManageTeam =
+    type === 'employer' ||
+    (features?.supervisor_scope === true && user?.is_supervisor === true)
 
   const openExpediente = async (memberId: number) => {
     try {
@@ -102,9 +111,16 @@ export function TeamPanel({ type }: TeamPanelProps) {
 
   // Antes de degradar: trae el equipo del manager; si tiene gente a cargo, muestra
   // el bloqueo (lista + reasignar) en vez de quitarle el rol directo.
+  //
+  // El endpoint de reportes es solo del empleador, así que un supervisor deriva
+  // la lista de su propio árbol —que ya tiene cargado— en vez de pedirla. Sin
+  // esto se quedaba en un callejón sin salida: el backend le respondía "reasigna
+  // su equipo primero" y no tenía desde dónde reasignarlo.
   const handleRemoveManagerClick = async (member: any) => {
     try {
-      const reports = await employerService.getManagerReports(member.id)
+      const reports = type === 'employer'
+        ? await employerService.getManagerReports(member.id)
+        : teamMembers.filter((m: any) => m.manager_id === member.id)
       if (Array.isArray(reports) && reports.length > 0) {
         setReassignTo(''); setBlockTarget({ member, reports })
         return
@@ -143,7 +159,9 @@ export function TeamPanel({ type }: TeamPanelProps) {
 
   if (teamMembers.length === 0) return null
 
-  // Managers del tenant derivados del propio dataset (solo aplica en panel de empleador).
+  // Managers derivados del propio dataset. Para el empleador son los del tenant;
+  // para un supervisor, los de su árbol, que es justo el conjunto al que el
+  // backend le deja mover gente.
   const managers = teamMembers.filter(m => m.is_manager)
   // Opciones para el editor multi-manager (el editor excluye al propio miembro).
   const managerOptions = managers.map(m => ({ id: m.id, name: m.name }))
@@ -206,7 +224,7 @@ export function TeamPanel({ type }: TeamPanelProps) {
                   </>
                 )}
               </span>
-              {type === 'employer' && !member.is_manager && !multiManager && (
+              {canManageTeam && !member.is_manager && !multiManager && (
                 managers.length === 0 ? (
                   <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
                     Sin managers disponibles
@@ -265,7 +283,7 @@ export function TeamPanel({ type }: TeamPanelProps) {
                 <FileText size={14} style={{ color: '#7c3aed' }} />
               </button>
             )}
-            {type === 'employer' && (
+            {canManageTeam && (
               <button
                 className={styles['btn-promote']}
                 onClick={() => (member.is_manager ? handleRemoveManagerClick(member) : handlePromoteToManager(member.id, false))}

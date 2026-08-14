@@ -16,6 +16,7 @@ type Claims struct {
 	Email        string `json:"email"`
 	Role         string `json:"role"`
 	IsManager    bool   `json:"is_manager"`
+	IsSupervisor bool   `json:"is_supervisor"`
 	IsSuperadmin bool   `json:"is_superadmin"`
 	EmpleadorID  *uint  `json:"empleador_id,omitempty"`
 	TokenVersion int    `json:"tv"`
@@ -101,6 +102,7 @@ func AuthMiddleware(jwtSecret string, tvGetter TokenVersionGetter) gin.HandlerFu
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
 		c.Set("is_manager", claims.IsManager)
+		c.Set("is_supervisor", claims.IsSupervisor)
 		c.Set("is_superadmin", claims.IsSuperadmin)
 		c.Set("empleador_id", claims.EmpleadorID)
 		c.Set("tenant_id", claims.TenantID)
@@ -168,6 +170,12 @@ func IsSuperadmin(c *gin.Context) bool {
 
 func IsManager(c *gin.Context) bool {
 	return c.GetBool("is_manager")
+}
+
+// IsSupervisor indica si la sesión es de un manager con alcance de supervisor.
+// Todo supervisor es manager, así que IsManager sigue siendo cierto para él.
+func IsSupervisor(c *gin.Context) bool {
+	return c.GetBool("is_supervisor")
 }
 
 func GetEmpleadorID(c *gin.Context) uint {

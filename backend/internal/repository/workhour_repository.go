@@ -40,6 +40,12 @@ type WorkHourRepository interface {
 	// aprobación idempotente aunque el correo del reporte se reintente.
 	GetMonthCloseRun(tenantID uint, period string) (*models.MonthCloseRun, error)
 	CreateMonthCloseRun(run *models.MonthCloseRun) error
+
+	// --- Escalado al supervisor ---
+	// CanEscalateTo indica si al supervisor NO se le avisó dentro de la ventana,
+	// es decir, si toca volver a avisarle. MarkEscalationSent deja constancia.
+	CanEscalateTo(userID uint, window time.Duration) (bool, error)
+	MarkEscalationSent(userID uint) error
 }
 
 type workHourRepository struct {
@@ -140,9 +146,14 @@ func (r *workHourRepository) Update(workHour *models.WorkHour) error {
 	return r.db.Save(workHour).Error
 }
 
+// El guard approved = false hace que la aprobación sea de "gana el primero":
+// con manager y supervisor pudiendo aprobar a la misma persona, dos peticiones
+// simultáneas ya no se pisan el aprobador ni la fecha. Una jornada RECHAZADA sí
+// pasa el guard (rechazar deja approved en false), que es la corrección legítima.
 func (r *workHourRepository) ApproveMultiple(ids []uint, approvedBy uint, approvedAt time.Time) error {
 	return r.db.Model(&models.WorkHour{}).
 		Where("id IN ?", ids).
+		Where("approved = ?", false).
 		Select("approved", "approved_by", "approved_at", "rejected", "rejected_by", "rejected_at", "rejection_reason").
 		Updates(models.WorkHour{
 			Approved:        true,
@@ -159,6 +170,7 @@ func (r *workHourRepository) ApproveMultipleAndTenant(ids []uint, approvedBy uin
 	return r.db.Model(&models.WorkHour{}).
 		Where("id IN ?", ids).
 		Where("tenant_id = ?", tenantID).
+		Where("approved = ?", false).
 		Select("approved", "approved_by", "approved_at", "rejected", "rejected_by", "rejected_at", "rejection_reason").
 		Updates(models.WorkHour{
 			Approved:        true,
@@ -198,6 +210,40 @@ func (r *workHourRepository) RejectMultipleAndTenant(ids []uint, rejectedBy uint
 			"rejected_at":      rejectedAt,
 			"rejection_reason": reason,
 		}).Error
+}
+
+func (r *workHourRepository) CanEscalateTo(userID uint, window time.Duration) (bool, error) {
+	var logRow models.SupervisorEscalationLog
+	err := r.db.Where("user_id = ?", userID).First(&logRow).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return true, nil // nunca se le avisó
+	}
+	if err != nil {
+		return false, err // fail-closed: ante la duda no se avisa
+	}
+	return time.Since(logRow.SentAt) >= window, nil
+}
+
+func (r *workHourRepository) MarkEscalationSent(userID uint) error {
+	return r.db.Save(&models.SupervisorEscalationLog{UserID: userID, SentAt: time.Now()}).Error
+}
+
+// applyUserIDsFilter acota la consulta a un conjunto explícito de usuarios. Lo
+// usa el alcance del supervisor, que resuelve su árbol en el service y lo baja
+// aquí ya resuelto en vez de expresarlo como un JOIN más.
+//
+// Una lista VACÍA no es lo mismo que ausente: significa "un árbol sin nadie" y
+// tiene que devolver cero filas. Sin el 1 = 0 el filtro se caería y un
+// supervisor recién creado vería las horas de todo el tenant.
+func applyUserIDsFilter(query *gorm.DB, filters map[string]interface{}) *gorm.DB {
+	userIDs, ok := filters["user_ids"].([]uint)
+	if !ok {
+		return query
+	}
+	if len(userIDs) == 0 {
+		return query.Where("1 = 0")
+	}
+	return query.Where("work_hours.user_id IN ?", userIDs)
 }
 
 func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, limit int) ([]models.WorkHour, int64, error) {
@@ -245,6 +291,8 @@ func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, lim
 			  AND em_mul.manager_id = ?
 		)`, managerOrUserLinksID, models.EmploymentActive, managerOrUserLinksID)
 	}
+
+	query = applyUserIDsFilter(query, filters)
 
 	if userID, ok := filters["user_id"].(uint); ok {
 		query = query.Where("work_hours.user_id = ?", userID)
@@ -322,6 +370,8 @@ func (r *workHourRepository) GetSummary(filters map[string]interface{}) (map[str
 				  AND em_mul.manager_id = ?
 			)`, managerOrUserLinksID, models.EmploymentActive, managerOrUserLinksID)
 		}
+
+		query = applyUserIDsFilter(query, filters)
 
 		if userID, ok := filters["user_id"].(uint); ok {
 			query = query.Where("work_hours.user_id = ?", userID)

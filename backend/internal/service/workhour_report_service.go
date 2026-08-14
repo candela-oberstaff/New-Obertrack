@@ -95,7 +95,15 @@ func (s *workHourService) getReportWorkHours(userID uint, role string, isSuperad
 		if tenantID > 0 {
 			filters["tenant_id"] = tenantID
 		}
-		if MultiManagerReadsEnabled() {
+		// El reporte cubre lo mismo que la pantalla de horas: el equipo directo
+		// del manager, o el árbol completo si quien lo pide es supervisor.
+		ids, applied, err := supervisorTeamAndSelfIDs(s.userRepo, s.employmentRepo, userID, tenantID, isManager)
+		if err != nil {
+			return nil, monthName, err
+		}
+		if applied {
+			filters["user_ids"] = ids
+		} else if MultiManagerReadsEnabled() {
 			filters["manager_or_user_links_id"] = userID
 		} else {
 			filters["manager_or_user_id"] = userID

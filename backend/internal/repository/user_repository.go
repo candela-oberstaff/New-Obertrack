@@ -53,6 +53,13 @@ type UserRepository interface {
 	CountReportsByManagerViaLinks(managerID uint) (int64, error)
 	// GetReportsByManagerViaLinks lista esos usuarios (orden por nombre).
 	GetReportsByManagerViaLinks(managerID uint) ([]models.User, error)
+	// GetByIDs lista los usuarios activos de la lista, ordenados por nombre. Lo
+	// usa el alcance del supervisor, que resuelve su árbol como un conjunto de
+	// IDs y después lo materializa.
+	GetByIDs(ids []uint) ([]models.User, error)
+	// ListActiveSupervisors lista los supervisores activos con empresa asignada.
+	// Lo recorre el watcher de escalado, que trabaja supervisor por supervisor.
+	ListActiveSupervisors() ([]models.User, error)
 	Save(user *models.User) error
 	// ReassignManager mueve todos los usuarios que tienen a oldManagerID como
 	// manager hacia newManagerID, o los desasigna si newManagerID es nil.
@@ -265,6 +272,27 @@ func (r *userRepository) GetReportsByManagerViaLinks(managerID uint) ([]models.U
 		Order("users.name ASC").
 		Find(&reports).Error
 	return reports, err
+}
+
+func (r *userRepository) GetByIDs(ids []uint) ([]models.User, error) {
+	if len(ids) == 0 {
+		return []models.User{}, nil
+	}
+	var users []models.User
+	err := r.db.
+		Where("id IN ? AND is_active = ?", ids, true).
+		Order("name ASC").
+		Find(&users).Error
+	return users, err
+}
+
+func (r *userRepository) ListActiveSupervisors() ([]models.User, error) {
+	var users []models.User
+	err := r.db.
+		Where("is_supervisor = ? AND is_active = ? AND empleador_id IS NOT NULL", true, true).
+		Order("id ASC").
+		Find(&users).Error
+	return users, err
 }
 
 func (r *userRepository) Save(user *models.User) error {

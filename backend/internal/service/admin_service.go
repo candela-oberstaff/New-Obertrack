@@ -471,6 +471,15 @@ func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, err
 	if v, ok := req["is_manager"].(bool); ok {
 		user.IsManager = v
 	}
+	// El supervisor es un manager con alcance ampliado: el flag nunca va solo, y
+	// hereda la misma restricción de tipo que el rol de manager.
+	if v, ok := req["is_supervisor"].(bool); ok && v {
+		if userType != models.UserTypeProfessional && userType != models.UserTypeCustomerSuccess {
+			return nil, errors.New("Supervisor inválido: solo profesionales o customer success pueden ser supervisor")
+		}
+		user.IsSupervisor = true
+		user.IsManager = true
+	}
 
 	if userType == models.UserTypeEmployer && strings.TrimSpace(user.CompanyName) == "" {
 		return nil, errors.New("El nombre de la empresa es obligatorio")
@@ -539,7 +548,21 @@ func (s *adminService) UpdateUser(id uint, updates map[string]interface{}) (*mod
 		targetType = models.UserType(t)
 	}
 
-	// Solo profesionales o customer success pueden ser manager.
+	// Los dos flags del rol viajan juntos: marcar supervisor implica manager (el
+	// alcance ampliado se apoya en todo lo que ya cuelga de is_manager), y quitar
+	// el rol de manager se lleva por delante la supervisión —si no, quedaría un
+	// supervisor que no puede aprobar nada—. El orden importa: una petición
+	// contradictoria (supervisor sí, manager no) se resuelve a favor del rol más
+	// alto en vez de dejar un estado imposible.
+	if v, ok := updates["is_supervisor"].(bool); ok && v {
+		updates["is_manager"] = true
+	}
+	if v, ok := updates["is_manager"].(bool); ok && !v {
+		updates["is_supervisor"] = false
+	}
+
+	// Solo profesionales o customer success pueden ser manager (y, por lo de
+	// arriba, esto cubre también al supervisor).
 	if v, ok := updates["is_manager"].(bool); ok && v &&
 		targetType != models.UserTypeProfessional && targetType != models.UserTypeCustomerSuccess {
 		return nil, errors.New("Manager inválido: solo profesionales o customer success pueden ser manager")
@@ -1294,12 +1317,13 @@ func (s *adminService) AssignTenant(userID uint, companyName string) (*models.Us
 	}
 
 	updates := map[string]interface{}{
-		"user_type":    models.UserTypeEmployer,
-		"company_name": companyName,
-		"is_active":    true,
-		"is_manager":   false,
-		"empleador_id": nil,
-		"manager_id":   nil,
+		"user_type":     models.UserTypeEmployer,
+		"company_name":  companyName,
+		"is_active":     true,
+		"is_manager":    false,
+		"is_supervisor": false,
+		"empleador_id":  nil,
+		"manager_id":    nil,
 	}
 	if err := s.userRepo.Update(user, updates); err != nil {
 		return nil, err

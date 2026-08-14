@@ -1,0 +1,348 @@
+.wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  padding: 18px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.hint {
+  font-size: 12.5px;
+  color: #64748b;
+  margin: 0;
+  flex: 1;
+  min-width: 220px;
+}
+
+/* Conmutador de vista: el mismo control de dos estados que el resto del panel. */
+.views {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+.viewBtn {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.viewBtn:hover:not(.viewActive) {
+  color: #0f172a;
+}
+
+.viewActive {
+  background: #fff;
+  color: var(--primary, #7c3aed);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.message {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.messageError {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.messageOk {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.rootZone {
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.rootZoneOver {
+  border-color: var(--primary, #7c3aed);
+  background: #f5f3ff;
+  color: var(--primary, #7c3aed);
+  font-weight: 600;
+}
+
+/* ── Vista organigrama: cajas y conectores ──────────────────────────────────
+   Árbol de arriba abajo con los conectores dibujados por CSS (bordes de los
+   pseudo-elementos) en vez de SVG: así las líneas siguen a las cajas cuando el
+   texto cambia de tamaño, sin recalcular nada. */
+.tree {
+  overflow-x: auto;
+  padding: 4px 4px 12px;
+}
+
+.tree ul {
+  display: flex;
+  justify-content: center;
+  position: relative;
+  padding: 22px 0 0;
+  margin: 0;
+  list-style: none;
+}
+
+.tree li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding: 22px 8px 0;
+  list-style: none;
+}
+
+/* Mitades del conector horizontal que une a los hermanos. */
+.tree li::before,
+.tree li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 22px;
+  border-top: 1.5px solid #cbd5e1;
+}
+
+.tree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1.5px solid #cbd5e1;
+}
+
+/* Hijo único: solo baja la vertical, sin brazos horizontales. */
+.tree li:only-child::after,
+.tree li:only-child::before {
+  display: none;
+}
+
+.tree li:only-child {
+  padding-top: 22px;
+}
+
+/* Los extremos no llevan brazo hacia afuera. */
+.tree li:first-child::before,
+.tree li:last-child::after {
+  border: 0 none;
+}
+
+.tree li:last-child::before {
+  border-right: 1.5px solid #cbd5e1;
+  border-radius: 0 6px 0 0;
+}
+
+.tree li:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+
+/* Vertical que baja del padre hacia la fila de hijos. */
+.tree ul ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 22px;
+  border-left: 1.5px solid #cbd5e1;
+}
+
+/* La fila raíz no cuelga de nada. */
+.treeRoot > li::before,
+.treeRoot > li::after {
+  display: none;
+}
+
+.treeRoot > li {
+  padding-top: 0;
+}
+
+.box {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  min-width: 190px;
+  max-width: 250px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+/* ── Vista lista ───────────────────────────────────────────────────────────
+   El mismo árbol indentado, que para plantillas grandes se lee mejor que las
+   cajas y no obliga a desplazarse en horizontal. */
+.branch {
+  margin-left: 20px;
+  border-left: 1px solid #e2e8f0;
+  padding-left: 16px;
+}
+
+.branchRoot {
+  margin-left: 0;
+  border-left: none;
+  padding-left: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  margin: 5px 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+/* La cuenta de empresa: cabeza del árbol. Se distingue para que se lea como
+   "de aquí cuelga todo" y no como una persona más. */
+.company {
+  border-color: #ddd6fe;
+  background: #faf5ff;
+  cursor: default;
+}
+
+.companyIcon {
+  color: var(--primary, #7c3aed);
+  flex-shrink: 0;
+}
+
+.company .name {
+  color: var(--primary, #7c3aed);
+  font-weight: 700;
+}
+
+/* ── Estados comunes a caja y fila ─────────────────────────────────────────── */
+.draggable {
+  cursor: grab;
+}
+
+.draggable:hover {
+  border-color: #c4b5fd;
+}
+
+.dragging {
+  opacity: 0.4;
+}
+
+.over {
+  border-color: var(--primary, #7c3aed);
+  background: #f5f3ff;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+}
+
+.blocked {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.inactive {
+  opacity: 0.55;
+}
+
+.who {
+  min-width: 0;
+  text-align: left;
+}
+
+.name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.role {
+  font-size: 11.5px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badges {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.badgeSupervisor {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.badgeManager {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.badgeTeam {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.badgeExtra {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.overlayCard {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--primary, #7c3aed);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.empty {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 24px 0;
+}

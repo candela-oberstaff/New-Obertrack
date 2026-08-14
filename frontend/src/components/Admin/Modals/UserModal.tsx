@@ -48,6 +48,34 @@ export function UserModal({
   // haber tocado nada no molesta con la confirmación.
   const isDirty = useDirtySnapshot(form)
 
+  // Los tres niveles de la cadena de mando son excluyentes y se eligen juntos,
+  // en vez de como dos casillas sueltas donde "supervisor sin manager" era un
+  // estado imposible que el formulario dejaba pintar.
+  //
+  // Solo aplica a los profesionales: en customer_success el flag de manager
+  // significa otra cosa (CS Manager, la jerarquía de soporte), así que ahí se
+  // conserva la casilla de siempre. En modo empleador el tipo no viaja en el
+  // formulario porque se fuerza profesional fuera de este componente.
+  const showLevelSelector = employerMode || form.user_type === 'profesional'
+
+  const hierarchyLevel = form.is_supervisor
+    ? 'supervisor'
+    : form.is_manager
+      ? 'manager'
+      : 'profesional'
+
+  const LEVELS = [
+    { value: 'profesional', label: 'Profesional', hint: 'Registra sus horas y tareas. No aprueba a nadie.' },
+    { value: 'manager', label: 'Manager', hint: 'Aprueba las horas de los profesionales a su cargo.' },
+    { value: 'supervisor', label: 'Supervisor', hint: 'Tiene managers a su cargo: ve y aprueba todo lo que cuelga de él.' },
+  ]
+
+  const setLevel = (value: string) => setForm({
+    ...form,
+    is_manager: value !== 'profesional',
+    is_supervisor: value === 'supervisor',
+  })
+
   return (
     <Modal
       isOpen
@@ -112,6 +140,29 @@ export function UserModal({
                 { value: 'superadmin', label: 'Super Administrador' },
               ]}
             />
+          </div>
+        )}
+
+        {showLevelSelector && (
+          <div className={styles['form-group']}>
+            <label>Nivel en la jerarquía</label>
+            <div className={styles['level-group']} role="radiogroup" aria-label="Nivel en la jerarquía">
+              {LEVELS.map(l => (
+                <button
+                  key={l.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={hierarchyLevel === l.value}
+                  className={`${styles['level-btn']} ${hierarchyLevel === l.value ? styles['active'] : ''}`}
+                  onClick={() => setLevel(l.value)}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+            <p className={styles['level-hint']}>
+              {LEVELS.find(l => l.value === hierarchyLevel)?.hint}
+            </p>
           </div>
         )}
 
@@ -244,14 +295,24 @@ export function UserModal({
 
             <div className={styles['section-label']}>Permisos</div>
             <div className={styles['permissions-group']}>
-              <label className={styles['checkbox-label']}>
-                <span>Es Gerente/Manager</span>
-                <input
-                  type="checkbox"
-                  checked={form.is_manager}
-                  onChange={e => setForm({ ...form, is_manager: e.target.checked })}
-                />
-              </label>
+              {/* Para los profesionales el nivel se elige arriba, en el selector
+                  de jerarquía. Aquí queda la casilla solo para el resto de tipos,
+                  donde "manager" significa otra cosa (p. ej. CS Manager) y no hay
+                  cadena de mando que ordenar. */}
+              {!showLevelSelector && (
+                <label className={styles['checkbox-label']}>
+                  <span>Es Gerente/Manager</span>
+                  <input
+                    type="checkbox"
+                    checked={form.is_manager}
+                    onChange={e => setForm({
+                      ...form,
+                      is_manager: e.target.checked,
+                      is_supervisor: e.target.checked ? form.is_supervisor : false,
+                    })}
+                  />
+                </label>
+              )}
               <label className={styles['checkbox-label']}>
                 <span>Usuario Activo</span>
                 <input

@@ -1867,6 +1867,34 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropColumn(&models.User{}, "client_since")
 			},
 		},
+		{
+			// Rol supervisor: flag encima de is_manager para quien tiene otros
+			// managers a su cargo. Nace en false, así que ninguna cuenta existente
+			// cambia de comportamiento al migrar.
+			ID: "202608141200_users_is_supervisor",
+			Migrate: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.User{}, "is_supervisor") {
+					return nil
+				}
+				log.Println("Adding is_supervisor to users...")
+				return tx.Migrator().AddColumn(&models.User{}, "is_supervisor")
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.User{}, "is_supervisor")
+			},
+		},
+		{
+			// Escalado del supervisor: registro del último aviso por jornadas que
+			// llevan demasiado pendientes, para no repetirlo en cada pasada.
+			ID: "202608141400_supervisor_escalation_logs",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating supervisor_escalation_logs table...")
+				return tx.AutoMigrate(&models.SupervisorEscalationLog{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.SupervisorEscalationLog{})
+			},
+		},
 		// Future migrations go here
 	})
 

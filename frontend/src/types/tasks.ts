@@ -15,6 +15,8 @@ export interface User {
   avatar?: string
   user_type: string
   is_manager: boolean
+  /** Manager con otros managers a su cargo. Implica is_manager: nunca viene solo. */
+  is_supervisor?: boolean
   is_superadmin: boolean
   is_active: boolean
   empleador_id?: number

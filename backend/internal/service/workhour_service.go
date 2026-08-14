@@ -78,6 +78,31 @@ func (s *workHourService) parseFloatVal(val interface{}) float64 {
 	return 0
 }
 
+// canManageWorkHourOf resuelve si el actor puede tocar la jornada de otro
+// usuario dentro de una empresa: un manager llega a sus reportes directos, un
+// supervisor a todo su árbol.
+//
+// superScope se pasa ya resuelto en vez de calcularse aquí porque los lotes de
+// aprobación recorren muchas jornadas y averiguar si el actor es supervisor es
+// una consulta que no depende de cuál se esté mirando.
+func (s *workHourService) canManageWorkHourOf(targetUserID, companyID, actorID uint, superScope bool) bool {
+	// Separación de funciones: nadie gestiona sus propias jornadas, sea manager
+	// o supervisor.
+	if targetUserID == actorID {
+		return false
+	}
+	if superScope {
+		ok, _ := s.employmentRepo.IsDescendantOf(actorID, targetUserID, companyID, maxSupervisorDepth)
+		return ok
+	}
+	if MultiManagerReadsEnabled() {
+		ok, _ := s.employmentRepo.IsManagerOf(targetUserID, companyID, actorID)
+		return ok
+	}
+	emp, err := s.employmentRepo.GetActive(targetUserID, companyID)
+	return err == nil && emp != nil && emp.ManagerID != nil && *emp.ManagerID == actorID
+}
+
 func (s *workHourService) GetAll(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
 	filters := make(map[string]interface{})
 
@@ -91,11 +116,18 @@ func (s *workHourService) GetAll(userID uint, role string, isSuperadmin, isManag
 	} else if isManager {
 		// Un manager ve solo su equipo (él + subordinados directos), igual que su
 		// lista de pendientes y su resumen; no todas las horas del tenant. Así
-		// "lo que ve" coincide con "lo que puede aprobar".
+		// "lo que ve" coincide con "lo que puede aprobar". Un supervisor mantiene
+		// esa correspondencia sobre su árbol completo.
 		if tenantID > 0 {
 			filters["tenant_id"] = tenantID
 		}
-		if MultiManagerReadsEnabled() {
+		ids, applied, err := supervisorTeamAndSelfIDs(s.userRepo, s.employmentRepo, userID, tenantID, isManager)
+		if err != nil {
+			return nil, 0, err
+		}
+		if applied {
+			filters["user_ids"] = ids
+		} else if MultiManagerReadsEnabled() {
 			filters["manager_or_user_links_id"] = userID
 		} else {
 			filters["manager_or_user_id"] = userID
@@ -291,16 +323,9 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 			return nil, errors.New("Access denied")
 		}
 		allowed := workHour.UserID == userID || isEmployerRole(role)
-		if !allowed && isManager && workHour.UserID != userID {
-			if MultiManagerReadsEnabled() {
-				if ok, _ := s.employmentRepo.IsManagerOf(workHour.UserID, workHour.TenantID, userID); ok {
-					allowed = true
-				}
-			} else {
-				if emp, err := s.employmentRepo.GetActive(workHour.UserID, workHour.TenantID); err == nil && emp != nil && emp.ManagerID != nil && *emp.ManagerID == userID {
-					allowed = true
-				}
-			}
+		if !allowed && isManager {
+			superScope := supervisorScopeApplies(s.userRepo, userID, isManager)
+			allowed = s.canManageWorkHourOf(workHour.UserID, workHour.TenantID, userID, superScope)
 		}
 		if !allowed {
 			return nil, errors.New("Access denied")
@@ -398,7 +423,11 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 		return 0, 0, errors.New("No work hours found")
 	}
 
+	// Se resuelve una vez para todo el lote, no por jornada.
+	superScope := supervisorScopeApplies(s.userRepo, userID, isManager)
+
 	eligible := make([]models.WorkHour, 0, len(workHours))
+	alreadyApproved := 0
 	for _, wh := range workHours {
 		canApprove := false
 
@@ -410,27 +439,33 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 			}
 		} else if isManager {
 			// Separación de funciones: un manager NO puede aprobar sus propias
-			// jornadas, solo las de sus subordinados directos (per-empresa).
-			if wh.UserID != userID {
-				if MultiManagerReadsEnabled() {
-					if ok, _ := s.employmentRepo.IsManagerOf(wh.UserID, wh.TenantID, userID); ok {
-						canApprove = true
-					}
-				} else {
-					if emp, err := s.employmentRepo.GetActive(wh.UserID, wh.TenantID); err == nil && emp != nil && emp.ManagerID != nil && *emp.ManagerID == userID {
-						canApprove = true
-					}
-				}
-			}
+			// jornadas, solo las de sus subordinados directos (per-empresa); un
+			// supervisor, las de todo su árbol menos las suyas.
+			canApprove = s.canManageWorkHourOf(wh.UserID, wh.TenantID, userID, superScope)
 		}
 
-		if canApprove {
-			eligible = append(eligible, wh)
+		if !canApprove {
+			continue
 		}
+		// Idempotencia: si ya está aprobada no hay nada que hacer, gana quien
+		// aprobó primero. Con manager Y supervisor pudiendo aprobar a la misma
+		// persona esto deja de ser raro: el segundo llega con la lista en pantalla
+		// sin refrescar, y sin este corte volvería a escribir el aprobador y le
+		// mandaría al profesional un segundo "tus horas fueron aprobadas".
+		if wh.Approved {
+			alreadyApproved++
+			continue
+		}
+		eligible = append(eligible, wh)
 	}
 
 	skipped := len(workHours) - len(eligible)
 	if len(eligible) == 0 {
+		// Que ya estuvieran aprobadas no es un fallo: el estado que se pedía ya se
+		// cumple. Solo es error cuando lo único que hubo fue falta de permiso.
+		if alreadyApproved > 0 {
+			return 0, skipped, nil
+		}
 		return 0, skipped, errors.New("No tienes permiso para aprobar estas horas.")
 	}
 	eligibleIDs := make([]uint, len(eligible))
@@ -517,7 +552,11 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 
 	// Mismo criterio que Approve: se rechazan las elegibles y se omiten las
 	// demás (las propias del manager tumbaban el lote entero).
+	superScope := supervisorScopeApplies(s.userRepo, userID, isManager)
+	cleanReason := utils.SanitizeHTML(reason)
+
 	eligible := make([]models.WorkHour, 0, len(workHours))
+	alreadyRejected := 0
 	for _, wh := range workHours {
 		canReject := false
 
@@ -529,27 +568,32 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 			}
 		} else if isManager {
 			// Separación de funciones: un manager NO puede rechazar sus propias
-			// jornadas, solo las de sus subordinados directos (per-empresa).
-			if wh.UserID != userID {
-				if MultiManagerReadsEnabled() {
-					if ok, _ := s.employmentRepo.IsManagerOf(wh.UserID, wh.TenantID, userID); ok {
-						canReject = true
-					}
-				} else {
-					if emp, err := s.employmentRepo.GetActive(wh.UserID, wh.TenantID); err == nil && emp != nil && emp.ManagerID != nil && *emp.ManagerID == userID {
-						canReject = true
-					}
-				}
-			}
+			// jornadas, solo las de sus subordinados directos (per-empresa); un
+			// supervisor, las de todo su árbol menos las suyas.
+			canReject = s.canManageWorkHourOf(wh.UserID, wh.TenantID, userID, superScope)
 		}
 
-		if canReject {
-			eligible = append(eligible, wh)
+		if !canReject {
+			continue
 		}
+		// Idempotencia, igual que en Approve, pero comparando también el motivo:
+		// repetir el MISMO rechazo no hace nada (es el doble clic o el segundo
+		// aprobador con la lista sin refrescar), mientras que volver a rechazar
+		// con un motivo distinto sí se aplica, porque corregir la explicación que
+		// va a leer el profesional es una acción deliberada.
+		if wh.Rejected && wh.RejectionReason == cleanReason {
+			alreadyRejected++
+			continue
+		}
+		eligible = append(eligible, wh)
 	}
 
 	skipped := len(workHours) - len(eligible)
 	if len(eligible) == 0 {
+		// Ya rechazadas con este mismo motivo: el estado pedido ya se cumple.
+		if alreadyRejected > 0 {
+			return 0, skipped, nil
+		}
 		return 0, skipped, errors.New("No tienes permiso para rechazar estas horas.")
 	}
 	eligibleIDs := make([]uint, len(eligible))
@@ -559,9 +603,9 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 	workHours = eligible
 
 	if !isSuperadmin && tenantID > 0 {
-		err = s.repo.RejectMultipleAndTenant(eligibleIDs, userID, time.Now(), utils.SanitizeHTML(reason), tenantID)
+		err = s.repo.RejectMultipleAndTenant(eligibleIDs, userID, time.Now(), cleanReason, tenantID)
 	} else {
-		err = s.repo.RejectMultiple(eligibleIDs, userID, time.Now(), utils.SanitizeHTML(reason))
+		err = s.repo.RejectMultiple(eligibleIDs, userID, time.Now(), cleanReason)
 	}
 	if err == nil {
 		go func() {
@@ -636,11 +680,18 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin, isM
 		filters["tenant_id"] = companyFilter
 	} else if isManager {
 		// Un manager solo ve el resumen de su equipo (él + subordinados), igual
-		// que su lista de pendientes; no el total de toda la empresa.
+		// que su lista de pendientes; no el total de toda la empresa. Para un
+		// supervisor, "su equipo" es su árbol.
 		if tenantID > 0 {
 			filters["tenant_id"] = tenantID
 		}
-		if MultiManagerReadsEnabled() {
+		ids, applied, err := supervisorTeamAndSelfIDs(s.userRepo, s.employmentRepo, userID, tenantID, isManager)
+		if err != nil {
+			return nil, err
+		}
+		if applied {
+			filters["user_ids"] = ids
+		} else if MultiManagerReadsEnabled() {
 			filters["manager_or_user_links_id"] = userID
 		} else {
 			filters["manager_or_user_id"] = userID
@@ -691,8 +742,15 @@ func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuper
 		if tenantID > 0 {
 			filters["tenant_id"] = tenantID
 		}
-		// solo subordinados: el manager no aprueba sus propias horas
-		if MultiManagerReadsEnabled() {
+		// solo subordinados: el manager no aprueba sus propias horas (y el
+		// supervisor tampoco, así que su árbol tampoco se incluye a sí mismo)
+		ids, applied, err := supervisorTeamIDs(s.userRepo, s.employmentRepo, userID, tenantID, isManager)
+		if err != nil {
+			return nil, err
+		}
+		if applied {
+			filters["user_ids"] = ids
+		} else if MultiManagerReadsEnabled() {
 			filters["manager_links_id"] = userID
 		} else {
 			filters["manager_id"] = userID

@@ -9,6 +9,7 @@ import (
 
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
+	"github.com/obertrack/backend/internal/service"
 )
 
 func accessCtx(method, role string, isSuperadmin, isManager bool) (*gin.Context, *httptest.ResponseRecorder) {
@@ -131,9 +132,11 @@ func TestRequireSupportWrite(t *testing.T) {
 	}
 }
 
-// Gestión de usuarios (promover/asignar/reasignar manager, activar/desactivar):
-// solo el dueño de la empresa (empleador) o superadmin. Un manager (is_manager)
-// NO puede, aunque el flag esté activo: defensa en profundidad sobre el servicio.
+// Gestión de CUENTAS (activar/desactivar): solo el dueño de la empresa
+// (empleador) o superadmin. Un manager NO puede, aunque el flag esté activo:
+// defensa en profundidad sobre el servicio. Las acciones sobre el equipo
+// (promover/asignar/reasignar manager) se separaron a requireManageTeam, que sí
+// admite supervisores.
 func TestRequireManageUsers(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -152,6 +155,43 @@ func TestRequireManageUsers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c, w := accessCtx(http.MethodPost, tc.role, tc.isSuper, tc.isManager)
 			requireManageUsers()(c)
+			allowed := !c.IsAborted()
+			if allowed != tc.wantAllow {
+				t.Fatalf("allowed = %v (status %d), esperaba %v", allowed, w.Code, tc.wantAllow)
+			}
+		})
+	}
+}
+
+// Acciones sobre el equipo (promover/asignar/reasignar manager): empleador,
+// superadmin y —solo con el flag encendido— supervisor. Esta guarda decide quién
+// puede intentarlo; que el objetivo esté en su árbol lo comprueba el servicio.
+func TestRequireManageTeam(t *testing.T) {
+	prof := string(models.UserTypeProfessional)
+	cases := []struct {
+		name         string
+		role         string
+		isSuper      bool
+		isManager    bool
+		isSupervisor bool
+		flagOn       bool
+		wantAllow    bool
+	}{
+		{"superadmin", "superadmin", true, false, false, false, true},
+		{"empresa (empleador)", string(models.UserTypeEmployer), false, false, false, false, true},
+		{"supervisor con el flag encendido", prof, false, true, true, true, true},
+		{"supervisor con el flag APAGADO no pasa", prof, false, true, true, false, false},
+		{"manager normal no pasa", prof, false, true, false, true, false},
+		{"profesional no pasa", prof, false, false, false, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			service.SetSupervisorScope(tc.flagOn)
+			defer service.SetSupervisorScope(false)
+
+			c, w := accessCtx(http.MethodPost, tc.role, tc.isSuper, tc.isManager)
+			c.Set("is_supervisor", tc.isSupervisor)
+			requireManageTeam()(c)
 			allowed := !c.IsAborted()
 			if allowed != tc.wantAllow {
 				t.Fatalf("allowed = %v (status %d), esperaba %v", allowed, w.Code, tc.wantAllow)

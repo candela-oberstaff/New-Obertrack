@@ -76,6 +76,30 @@ func requireManageUsers() gin.HandlerFunc {
 	}
 }
 
+// requireManageTeam: las acciones sobre el EQUIPO (promover/quitar manager,
+// asignar manager, reasignar equipo) las hace el empleador, un superadmin o un
+// supervisor.
+//
+// Esta guarda solo decide quién puede INTENTARLO; hasta dónde llega el
+// supervisor lo decide el servicio (authorizeTeamAction), que exige que el
+// objetivo esté dentro de su árbol. Se separa de requireManageUsers a propósito:
+// activar/desactivar una cuenta sigue siendo cosa de la empresa, porque deja a
+// alguien fuera de la aplicación y eso no es gestionar un equipo.
+func requireManageTeam() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if middleware.IsSuperadmin(c) || middleware.GetUserRole(c) == string(models.UserTypeEmployer) {
+			c.Next()
+			return
+		}
+		if service.SupervisorScopeEnabled() && middleware.IsSupervisor(c) {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere empresa, supervisor o superadmin"})
+		c.Abort()
+	}
+}
+
 // requireExpedienteOwnership acota la gestión del expediente al empleador: el
 // superadmin pasa libre; el empleador solo puede tocar empleos/notas/documentos
 // de SU empresa (resuelve la empresa dueña del recurso más específico del path).
@@ -124,10 +148,16 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	api.GET("/auth/me", d.auth.Me)
 	api.POST("/auth/switch-company", d.auth.SwitchCompany)
 
+	// Organigrama de una empresa. Lo consultan el superadmin (con ?company_id=),
+	// el empleador sobre la suya y el supervisor sobre su rama; el recorte por rol
+	// lo aplica el servicio, así que no lleva guarda de panel.
+	api.GET("/org-chart", d.admin.GetOrgChart)
+
 	// Feature flags para el front (p.ej. mostrar el modo multi-manager).
 	api.GET("/features", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"multi_manager_reads": service.MultiManagerReadsEnabled(),
+			"supervisor_scope":    service.SupervisorScopeEnabled(),
 		})
 	})
 
@@ -162,9 +192,9 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		users.GET("/:id", d.user.GetByID)
 		users.PUT("/:id", d.user.Update)
 		users.POST("/:id/toggle-status", requireManageUsers(), d.user.ToggleStatus)
-		users.POST("/:id/promote-manager", requireManageUsers(), d.user.PromoteToManager)
-		users.POST("/:id/assign-manager", requireManageUsers(), d.user.AssignToManager)
-		users.POST("/:id/reassign-team", requireManageUsers(), d.user.ReassignTeam)
+		users.POST("/:id/promote-manager", requireManageTeam(), d.user.PromoteToManager)
+		users.POST("/:id/assign-manager", requireManageTeam(), d.user.AssignToManager)
+		users.POST("/:id/reassign-team", requireManageTeam(), d.user.ReassignTeam)
 		users.POST("/:id/change-password", d.user.ChangePassword)
 	}
 

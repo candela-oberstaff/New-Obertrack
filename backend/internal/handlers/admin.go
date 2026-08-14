@@ -249,21 +249,22 @@ func (h *AdminHandler) SendAccessEmails(c *gin.Context) {
 
 func (h *AdminHandler) CreateUser(c *gin.Context) {
 	var req struct {
-		Name        string `json:"name" binding:"required"`
-		Email       string `json:"email" binding:"required,email"`
-		Password    string `json:"password" binding:"required"`
-		UserType    string `json:"user_type" binding:"required"`
-		CompanyName string `json:"company_name"`
-		JobTitle    string `json:"job_title"`
-		EmpleadorID *uint  `json:"empleador_id"`
-		ManagerID   *uint  `json:"manager_id"`
-		IsManager   bool   `json:"is_manager"`
-		PhoneNumber string `json:"phone_number"`
-		Country     string `json:"country"`
-		State       string `json:"state"`
-		City        string `json:"city"`
-		Location    string `json:"location"`
-		Industry    string `json:"industry"`
+		Name         string `json:"name" binding:"required"`
+		Email        string `json:"email" binding:"required,email"`
+		Password     string `json:"password" binding:"required"`
+		UserType     string `json:"user_type" binding:"required"`
+		CompanyName  string `json:"company_name"`
+		JobTitle     string `json:"job_title"`
+		EmpleadorID  *uint  `json:"empleador_id"`
+		ManagerID    *uint  `json:"manager_id"`
+		IsManager    bool   `json:"is_manager"`
+		IsSupervisor bool   `json:"is_supervisor"`
+		PhoneNumber  string `json:"phone_number"`
+		Country      string `json:"country"`
+		State        string `json:"state"`
+		City         string `json:"city"`
+		Location     string `json:"location"`
+		Industry     string `json:"industry"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -272,19 +273,20 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 	}
 
 	payload := map[string]interface{}{
-		"name":         req.Name,
-		"email":        req.Email,
-		"password":     req.Password,
-		"user_type":    req.UserType,
-		"company_name": req.CompanyName,
-		"job_title":    req.JobTitle,
-		"is_manager":   req.IsManager,
-		"phone_number": req.PhoneNumber,
-		"country":      req.Country,
-		"state":        req.State,
-		"city":         req.City,
-		"location":     req.Location,
-		"industry":     req.Industry,
+		"name":          req.Name,
+		"email":         req.Email,
+		"password":      req.Password,
+		"user_type":     req.UserType,
+		"company_name":  req.CompanyName,
+		"job_title":     req.JobTitle,
+		"is_manager":    req.IsManager,
+		"is_supervisor": req.IsSupervisor,
+		"phone_number":  req.PhoneNumber,
+		"country":       req.Country,
+		"state":         req.State,
+		"city":          req.City,
+		"location":      req.Location,
+		"industry":      req.Industry,
 	}
 	// Solo profesionales y customer success pueden quedar vinculados a una empresa.
 	if req.EmpleadorID != nil && (req.UserType == "profesional" || req.UserType == "customer_success") {
@@ -347,22 +349,23 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	}
 
 	var req struct {
-		Name        string `json:"name"`
-		Email       string `json:"email"`
-		JobTitle    string `json:"job_title"`
-		PhoneNumber string `json:"phone_number"`
-		Country     string `json:"country"`
-		State       string `json:"state"`
-		City        string `json:"city"`
-		Location    string `json:"location"`
-		Address     string `json:"address"`
-		Industry    string `json:"industry"`
-		CompanyName string `json:"company_name"`
-		IsActive    *bool  `json:"is_active"`
-		IsManager   *bool  `json:"is_manager"`
-		UserType    string `json:"user_type"`
-		EmpleadorID *uint  `json:"empleador_id"`
-		ManagerID   *uint  `json:"manager_id"`
+		Name         string `json:"name"`
+		Email        string `json:"email"`
+		JobTitle     string `json:"job_title"`
+		PhoneNumber  string `json:"phone_number"`
+		Country      string `json:"country"`
+		State        string `json:"state"`
+		City         string `json:"city"`
+		Location     string `json:"location"`
+		Address      string `json:"address"`
+		Industry     string `json:"industry"`
+		CompanyName  string `json:"company_name"`
+		IsActive     *bool  `json:"is_active"`
+		IsManager    *bool  `json:"is_manager"`
+		IsSupervisor *bool  `json:"is_supervisor"`
+		UserType     string `json:"user_type"`
+		EmpleadorID  *uint  `json:"empleador_id"`
+		ManagerID    *uint  `json:"manager_id"`
 		// ClientSince es la fecha de alta real de la empresa (AAAA-MM-DD). Va
 		// como puntero y no como string porque aquí "" SÍ significa algo:
 		// borrar la corrección y volver a mostrar created_at. Ausente = no
@@ -445,6 +448,9 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	if req.IsManager != nil {
 		updates["is_manager"] = *req.IsManager
 	}
+	if req.IsSupervisor != nil {
+		updates["is_supervisor"] = *req.IsSupervisor
+	}
 	if req.UserType != "" {
 		updates["user_type"] = req.UserType
 	}
@@ -492,6 +498,48 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+// GetOrgChart devuelve el organigrama de una empresa: una fila por persona con
+// su manager principal, para que el cliente arme el árbol.
+//
+// Vive fuera del panel de admin porque lo consumen tres públicos distintos, y
+// cada uno resuelve su empresa de otra forma: el superadmin la elige con
+// ?company_id=, el empleador y el supervisor usan la suya. El recorte de lo que
+// cada uno ve lo hace el servicio.
+func (h *AdminHandler) GetOrgChart(c *gin.Context) {
+	isSuperadmin := middleware.IsSuperadmin(c)
+
+	companyID := middleware.GetTenantID(c)
+	if isSuperadmin {
+		companyID = superadminCompanyFilter(c, true)
+		if companyID == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Selecciona una empresa (company_id) para ver su organigrama"})
+			return
+		}
+	}
+	if companyID == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Tu cuenta no está asociada a una empresa"})
+		return
+	}
+
+	nodes, err := h.employmentSvc.OrgChart(
+		companyID,
+		middleware.GetUserID(c),
+		middleware.GetUserRole(c),
+		isSuperadmin,
+		middleware.IsManager(c),
+	)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "Access denied" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": nodes, "company_id": companyID})
 }
 
 // GetManagerReports lista los profesionales a cargo de un manager (para mostrar
@@ -732,17 +780,18 @@ func (h *AdminHandler) UpdateEmployee(c *gin.Context) {
 	}
 
 	var req struct {
-		Name        string `json:"name"`
-		Email       string `json:"email"`
-		JobTitle    string `json:"job_title"`
-		PhoneNumber string `json:"phone_number"`
-		Country     string `json:"country"`
-		State       string `json:"state"`
-		City        string `json:"city"`
-		Location    string `json:"location"`
-		IsActive    *bool  `json:"is_active"`
-		IsManager   *bool  `json:"is_manager"`
-		ManagerID   *uint  `json:"manager_id"`
+		Name         string `json:"name"`
+		Email        string `json:"email"`
+		JobTitle     string `json:"job_title"`
+		PhoneNumber  string `json:"phone_number"`
+		Country      string `json:"country"`
+		State        string `json:"state"`
+		City         string `json:"city"`
+		Location     string `json:"location"`
+		IsActive     *bool  `json:"is_active"`
+		IsManager    *bool  `json:"is_manager"`
+		IsSupervisor *bool  `json:"is_supervisor"`
+		ManagerID    *uint  `json:"manager_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -785,6 +834,9 @@ func (h *AdminHandler) UpdateEmployee(c *gin.Context) {
 	}
 	if req.IsManager != nil {
 		updates["is_manager"] = *req.IsManager
+	}
+	if req.IsSupervisor != nil {
+		updates["is_supervisor"] = *req.IsSupervisor
 	}
 	if req.ManagerID != nil {
 		updates["manager_id"] = *req.ManagerID

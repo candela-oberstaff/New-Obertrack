@@ -18,3 +18,21 @@ func SetMultiManagerReads(v bool) { multiManagerReads = v }
 
 // MultiManagerReadsEnabled indica si las lecturas via-links están activas.
 func MultiManagerReadsEnabled() bool { return multiManagerReads }
+
+// supervisorScope es el feature flag que le da al supervisor su alcance propio:
+// el ÁRBOL completo bajo su mando (sus managers y la gente de esos managers) en
+// vez de solo sus reportes directos.
+//
+// Mismo patrón y mismas reglas que multiManagerReads: variable de paquete para
+// que los services la consulten sin ciclo de imports, fijada una sola vez desde
+// routes/deps.go al arrancar. Default OFF: con el flag apagado un supervisor ve
+// y aprueba exactamente lo mismo que el manager que ya es, así que encenderlo es
+// lo único que cambia comportamiento.
+var supervisorScope bool
+
+// SetSupervisorScope fija el estado del flag (una sola vez, en el wiring).
+func SetSupervisorScope(v bool) { supervisorScope = v }
+
+// SupervisorScopeEnabled indica si el alcance transitivo del supervisor está
+// activo.
+func SupervisorScopeEnabled() bool { return supervisorScope }

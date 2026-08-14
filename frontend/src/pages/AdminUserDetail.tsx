@@ -17,6 +17,7 @@ import { ExpedienteModal } from '../components/Admin/ExpedienteModal'
 import { ProfileChangeReviewPanel } from '../components/Admin/ProfileChangeReviewPanel'
 import { InductionStatusPanel } from '../components/Admin/InductionStatusPanel'
 import EmploymentManagersEditor from '../components/Admin/EmploymentManagersEditor'
+import { hierarchyLabel } from '../lib/permissions'
 import styles from './AdminUserDetail.module.css'
 
 // Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de dictar.
@@ -492,6 +493,7 @@ export default function AdminUserDetail() {
       manager_id: user.manager_id || '',
       is_active: user.is_active,
       is_manager: user.is_manager,
+      is_supervisor: !!user.is_supervisor,
     })
     setEditError(null)
     setShowEdit(true)
@@ -728,7 +730,9 @@ export default function AdminUserDetail() {
           <p className={styles.email}>{user.email}</p>
           <div className={styles.tags}>
             <span className={`${styles.tag} ${user.is_superadmin ? styles.tagAdmin : ''}`}>{rol}</span>
-            {user.is_manager && !user.is_superadmin && <span className={`${styles.tag} ${styles.tagManager}`}>Manager</span>}
+            {!user.is_superadmin && hierarchyLabel(user) && (
+              <span className={`${styles.tag} ${styles.tagManager}`}>{hierarchyLabel(user)}</span>
+            )}
           </div>
         </div>
       </div>

@@ -265,6 +265,10 @@ func (h *UserHandler) PromoteToManager(c *gin.Context) {
 	// stays nil and the service falls back to the legacy toggle behavior.
 	var req struct {
 		IsManager *bool `json:"is_manager"`
+		// IsSupervisor es independiente: lo usa el organigrama, que al colgar un
+		// manager de alguien lo asciende a supervisor (tener managers a cargo es
+		// justo la definición del rol).
+		IsSupervisor *bool `json:"is_supervisor"`
 	}
 	_ = c.ShouldBindJSON(&req) // body is optional; ignore bind errors (empty body)
 
@@ -274,11 +278,13 @@ func (h *UserHandler) PromoteToManager(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isManager := middleware.IsManager(c)
 
-	user, err := h.service.PromoteToManager(uint(id), requesterID, tenantID, role, isManager, isSuperadmin, req.IsManager)
+	user, err := h.service.PromoteToManager(uint(id), requesterID, tenantID, role, isManager, isSuperadmin, req.IsManager, req.IsSupervisor)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "User not found" {
 			status = http.StatusNotFound
+		} else if err.Error() == "Access denied" {
+			status = http.StatusForbidden
 		} else if strings.Contains(err.Error(), "a su cargo") {
 			status = http.StatusConflict
 		} else if strings.Contains(err.Error(), "Manager inválido") {
@@ -356,6 +362,10 @@ func (h *UserHandler) AssignToManager(c *gin.Context) {
 
 	var req struct {
 		ManagerID uint `json:"manager_id"`
+		// CompanyID lo manda el organigrama del superadmin para que el cambio caiga
+		// en la empresa que está mirando y no en la empresa activa del profesional
+		// (que puede ser otra si trabaja en varias). El resto de roles lo omite.
+		CompanyID uint `json:"company_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -368,11 +378,13 @@ func (h *UserHandler) AssignToManager(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isManager := middleware.IsManager(c)
 
-	professional, err := h.service.AssignToManager(uint(professionalID), req.ManagerID, requesterID, tenantID, role, isManager, isSuperadmin)
+	professional, err := h.service.AssignToManager(uint(professionalID), req.ManagerID, requesterID, tenantID, req.CompanyID, role, isManager, isSuperadmin)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Professional not found" || err.Error() == "Manager not found" {
 			status = http.StatusNotFound
+		} else if err.Error() == "Access denied" {
+			status = http.StatusForbidden
 		} else if err.Error() == "User is not a manager" || err.Error() == "Un profesional no puede ser su propio manager" {
 			status = http.StatusBadRequest
 		} else if strings.Contains(err.Error(), "Manager inválido") {

@@ -25,7 +25,8 @@ import {
   UserPlus,
   LogOut,
   Volume2,
-  VolumeX
+  VolumeX,
+  Hourglass
 } from 'lucide-react'
 import styles from './Notifications.module.css'
 
@@ -308,6 +309,8 @@ export default function Notifications() {
       case 'task_completed': return <CheckCircle2 size={18} className="text-green-500" />
       case 'work_hour_approved': return <CheckCircle2 size={18} className="text-green-500" />
       case 'work_hour_rejected': return <XCircle size={18} className="text-red-500" />
+      // Escalado al supervisor: jornadas de su árbol que llevan demasiado sin aprobar.
+      case 'work_hour_escalation': return <Hourglass size={18} className="text-amber-500" />
       case 'new_comment': return <MessageSquare size={18} className="text-indigo-500" />
       case 'mention': return <AtSign size={18} className="text-orange-500" />
       case 'board_invitation': return <Mail size={18} className="text-violet-500" />

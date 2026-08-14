@@ -35,13 +35,27 @@ export const userService = {
     const { data } = await api.get<User[]>('/users/my-team')
     return data
   },
-  assignToManager: async (professionalId: number, managerId: number | null) => {
-    const { data } = await api.post<User>(`/users/${professionalId}/assign-manager`, { manager_id: managerId })
+  // companyId lo manda el organigrama del superadmin para clavar el cambio en la
+  // empresa que se está mirando: un profesional puede tener empleo en varias, y
+  // sin esto el vínculo acabaría escrito en la que resulte ser su activa.
+  assignToManager: async (professionalId: number, managerId: number | null, companyId?: number) => {
+    const { data } = await api.post<User>(`/users/${professionalId}/assign-manager`, {
+      manager_id: managerId,
+      ...(companyId ? { company_id: companyId } : {}),
+    })
     return data
   },
-  promoteToManager: async (userId: number, isManager?: boolean) => {
-    const body = typeof isManager === 'boolean' ? { is_manager: isManager } : undefined
-    const { data } = await api.post<User>(`/users/${userId}/promote-manager`, body)
+  // Fija el nivel en la cadena de mando. Los dos flags son opcionales e
+  // independientes: omitir uno lo deja como está. Sin ninguno, alterna manager
+  // (comportamiento histórico del botón "Promover / Quitar rol").
+  promoteToManager: async (userId: number, isManager?: boolean, isSupervisor?: boolean) => {
+    const body: Record<string, boolean> = {}
+    if (typeof isManager === 'boolean') body.is_manager = isManager
+    if (typeof isSupervisor === 'boolean') body.is_supervisor = isSupervisor
+    const { data } = await api.post<User>(
+      `/users/${userId}/promote-manager`,
+      Object.keys(body).length > 0 ? body : undefined,
+    )
     return data
   },
   // Mueve todos los reportes activos del manager (todas las empresas) a otro

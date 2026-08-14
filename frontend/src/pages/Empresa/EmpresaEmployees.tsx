@@ -13,6 +13,7 @@ import { CreateUserModal, type CreateUserForm } from '../../components/Admin/Mod
 import { ImportUsersModal } from '../../components/Admin/Modals/ImportUsersModal'
 import { ExportUsersModal } from '../../components/Admin/Modals/ExportUsersModal'
 import { setRecordNav } from '../../lib/recordNav'
+import { hierarchyLabel } from '../../lib/permissions'
 import styles from '../../components/Admin/Admin.module.css'
 
 const EMPTY_CREATE_FORM: CreateUserForm = {
@@ -31,7 +32,7 @@ export default function EmpresaEmployees() {
   const confirm = useConfirm()
   const { error: showError, success: showSuccess } = useNotification()
   const [search, setSearch] = useState('')
-  const [roleFilter, setRoleFilter] = useState<'all' | 'manager' | 'profesional'>('all')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'manager' | 'supervisor' | 'profesional'>('all')
 
   const [showImport, setShowImport] = useState(false)
   const [showExport, setShowExport] = useState(false)
@@ -130,7 +131,10 @@ export default function EmpresaEmployees() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return employees.filter((u) => {
-      if (roleFilter === 'manager' && !u.is_manager) return false
+      // Los tres niveles parten el conjunto sin solaparse (un supervisor es
+      // manager, pero se filtra aparte).
+      if (roleFilter === 'manager' && (!u.is_manager || u.is_supervisor)) return false
+      if (roleFilter === 'supervisor' && !u.is_supervisor) return false
       if (roleFilter === 'profesional' && u.is_manager) return false
       if (!q) return true
       return u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
@@ -292,6 +296,7 @@ export default function EmpresaEmployees() {
               { value: 'all', label: 'Todos los roles' },
               { value: 'profesional', label: 'Profesionales' },
               { value: 'manager', label: 'Managers' },
+              { value: 'supervisor', label: 'Supervisores' },
             ]}
           />
         </div>
@@ -403,7 +408,7 @@ export default function EmpresaEmployees() {
                   <td>{u.email}</td>
                   <td>
                     <span className={`${styles['badge']} ${styles[u.user_type] || ''}`}>
-                      {u.is_manager ? 'Manager' : u.user_type}
+                      {hierarchyLabel(u) ?? u.user_type}
                     </span>
                   </td>
                   <td>

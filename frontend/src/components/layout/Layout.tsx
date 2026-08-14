@@ -23,6 +23,7 @@ import {
   MessageSquare,
   GraduationCap,
   Building2,
+  Network,
   Users,
   Compass,
   Map,
@@ -51,6 +52,7 @@ import Avatar from '../Common/Avatar'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
 import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
 import { WALLET_ENABLED, GOOGLE_INTEGRATIONS_ENABLED } from '../../config/features'
+import { hierarchyLabel } from '../../lib/permissions'
 import styles from './Layout.module.css'
 
 // Module-level flag prevents the auto-tour from firing more than once per
@@ -157,6 +159,8 @@ export default function Layout() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, show: !isIT },
     { path: '/empresa', label: 'Profesionales', icon: <Users size={20} />, show: isEmployerType },
+    // La empresa mantiene su organigrama; el supervisor reordena su rama.
+    { path: '/organigrama', label: 'Organigrama', icon: <Network size={20} />, show: isEmployerType || !!user?.is_supervisor },
     { path: '/tasks', label: 'Tareas', icon: <CheckSquare size={20} />, show: !isIT },
     { path: '/work-hours', label: 'Horas', icon: <Clock size={20} />, show: !isIT },
     { path: '/sesiones', label: 'Sesiones', icon: <Video size={20} />, show: GOOGLE_INTEGRATIONS_ENABLED && !isIT },
@@ -193,7 +197,8 @@ export default function Layout() {
     if (user?.is_superadmin) return 'Super Admin'
     if (user?.user_type === 'customer_success') return user?.is_manager ? 'CS Manager' : 'CS Analista'
     if (user?.user_type === 'analista_it') return 'Analista de IT'
-    if (user?.is_manager) return 'Manager'
+    const level = hierarchyLabel(user)
+    if (level) return level
     if (user?.user_type === 'empleador') return 'Empresa'
     if (user?.user_type === 'superadmin') return 'Super Admin'
     return 'Profesional'

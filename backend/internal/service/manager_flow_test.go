@@ -217,7 +217,7 @@ func TestManagerPromote_ProfessionalSetsIsManager(t *testing.T) {
 	empRepo := &fakeEmploymentRepo{}
 	s := &userService{repo: userRepo, employmentRepo: empRepo}
 
-	got, err := s.PromoteToManager(7, 1, 0, "superadmin", false, true, boolPtr(true))
+	got, err := s.PromoteToManager(7, 1, 0, "superadmin", false, true, boolPtr(true), nil)
 	if err != nil {
 		t.Fatalf("promoting a professional should succeed, got error: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestManagerPromote_EmployerRejected(t *testing.T) {
 	empRepo := &fakeEmploymentRepo{}
 	s := &userService{repo: userRepo, employmentRepo: empRepo}
 
-	_, err := s.PromoteToManager(9, 1, 0, "superadmin", false, true, boolPtr(true))
+	_, err := s.PromoteToManager(9, 1, 0, "superadmin", false, true, boolPtr(true), nil)
 	if err == nil {
 		t.Fatalf("promoting an employer to manager must fail")
 	}
@@ -257,7 +257,7 @@ func TestManagerPromote_DemoteWithTeamRejected(t *testing.T) {
 	empRepo := &fakeEmploymentRepo{countByManager: 3} // tiene equipo
 	s := &userService{repo: userRepo, employmentRepo: empRepo}
 
-	_, err := s.PromoteToManager(5, 1, 0, "superadmin", false, true, boolPtr(false))
+	_, err := s.PromoteToManager(5, 1, 0, "superadmin", false, true, boolPtr(false), nil)
 	if err == nil {
 		t.Fatalf("demoting a manager with an active team must fail")
 	}
@@ -275,7 +275,7 @@ func TestManagerPromote_DemoteWithoutTeamOK(t *testing.T) {
 	empRepo := &fakeEmploymentRepo{countByManager: 0} // sin equipo
 	s := &userService{repo: userRepo, employmentRepo: empRepo}
 
-	got, err := s.PromoteToManager(5, 1, 0, "superadmin", false, true, boolPtr(false))
+	got, err := s.PromoteToManager(5, 1, 0, "superadmin", false, true, boolPtr(false), nil)
 	if err != nil {
 		t.Fatalf("demoting a manager with no team should succeed, got: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestManagerPromote_DemoteCountErrorFailsClosed(t *testing.T) {
 	empRepo := &fakeEmploymentRepo{countErr: errors.New("db down")}
 	s := &userService{repo: userRepo, employmentRepo: empRepo}
 
-	_, err := s.PromoteToManager(5, 1, 0, "superadmin", false, true, boolPtr(false))
+	_, err := s.PromoteToManager(5, 1, 0, "superadmin", false, true, boolPtr(false), nil)
 	if err == nil {
 		t.Fatalf("when CountActiveByManager errors, demote MUST fail closed")
 	}
@@ -313,7 +313,7 @@ func TestManagerAssign_SelfRejected(t *testing.T) {
 	empRepo := &fakeEmploymentRepo{}
 	s := &userService{repo: userRepo, employmentRepo: empRepo}
 
-	_, err := s.AssignToManager(4, 4, 1, 0, "superadmin", false, true)
+	_, err := s.AssignToManager(4, 4, 1, 0, 0, "superadmin", false, true)
 	if err == nil {
 		t.Fatalf("a professional cannot be their own manager")
 	}
@@ -329,7 +329,7 @@ func TestManagerAssign_TargetNotManagerRejected(t *testing.T) {
 	empRepo := &fakeEmploymentRepo{}
 	s := &userService{repo: userRepo, employmentRepo: empRepo}
 
-	_, err := s.AssignToManager(4, 8, 1, 0, "superadmin", false, true)
+	_, err := s.AssignToManager(4, 8, 1, 0, 0, "superadmin", false, true)
 	if err == nil {
 		t.Fatalf("assigning to a non-manager must fail")
 	}
@@ -352,7 +352,7 @@ func TestManagerAssign_ValidManagerAssignsAndSyncsEmployment(t *testing.T) {
 	}
 	s := &userService{repo: userRepo, employmentRepo: empRepo}
 
-	got, err := s.AssignToManager(4, 8, 1, 0, "superadmin", false, true)
+	got, err := s.AssignToManager(4, 8, 1, 0, 0, "superadmin", false, true)
 	if err != nil {
 		t.Fatalf("assigning a valid manager should succeed, got: %v", err)
 	}
@@ -573,7 +573,7 @@ func TestManagerDemote_EmploymentsEmptyButUsersHaveReports(t *testing.T) {
 	uEmpRepo := &fakeEmploymentRepo{countByManager: 0}
 	s := &userService{repo: uUserRepo, employmentRepo: uEmpRepo}
 	demote := false
-	if _, err := s.PromoteToManager(7, 1, 0, "superadmin", false, true, &demote); err == nil || !strings.Contains(err.Error(), "a su cargo") {
+	if _, err := s.PromoteToManager(7, 1, 0, "superadmin", false, true, &demote, nil); err == nil || !strings.Contains(err.Error(), "a su cargo") {
 		t.Fatalf("service: degradar con reportes en users.manager_id debe bloquearse, got: %v", err)
 	}
 }
@@ -723,7 +723,7 @@ func TestPhase2_ViaLinksTeamBlocksDemote(t *testing.T) {
 	empRepo := &fakeEmploymentRepo{countByManager: 0, countViaLinks: 2}
 	s := &userService{repo: userRepo, employmentRepo: empRepo}
 
-	_, err := s.PromoteToManager(5, 1, 0, "superadmin", false, true, boolPtr(false))
+	_, err := s.PromoteToManager(5, 1, 0, "superadmin", false, true, boolPtr(false), nil)
 	if err == nil {
 		t.Fatal("degradar un manager con equipo via-links debe bloquearse")
 	}

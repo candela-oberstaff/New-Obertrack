@@ -516,6 +516,12 @@ function Pager({ page, pageCount, setPage, from, shown, total }: { page: number;
 const emailOf = (r: ImportRow) => (r.data.email ?? '').trim().toLowerCase()
 const managerOf = (r: ImportRow) => (r.data.reporta_a ?? '').trim().toLowerCase()
 
+/** Espejo de managerFlag() del backend: acepta las mismas formas de decir "sí"
+ *  para que la previsualización coincida con lo que se va a importar. */
+const YES = new Set(['si', 'sí', 'yes', 'y', 'true', '1', 'x', 'verdadero'])
+const flagOf = (value?: string) => YES.has((value ?? '').trim().toLowerCase())
+const isSupervisorRow = (r: ImportRow) => flagOf(r.data.es_supervisor)
+
 // Índice email → nombre de las filas del archivo, para poder mostrar "Martín
 // Salas" donde el Excel dice un correo.
 function buildNameIndex(rows: ImportRow[]) {
@@ -611,6 +617,14 @@ function OrgNode({ row, all, depth, seen }: { row: ImportRow; all: ImportRow[]; 
           {row.data.nombre || row.data.email || '—'}
         </span>
         {row.data.cargo && <span style={{ fontSize: 12, color: '#64748b' }}>{row.data.cargo}</span>}
+        {/* El nivel de manager se lee del propio árbol (quién tiene gente
+            debajo), pero el de supervisor no: es una decisión de la empresa que
+            solo viene en la columna, así que aquí se marca. */}
+        {isSupervisorRow(row) && (
+          <span style={{ ...pill, background: '#fef3c7', color: '#b45309', fontSize: 10 }}>
+            Supervisor
+          </span>
+        )}
         {reports.length > 0 && (
           <span style={{ ...pill, background: '#ede9fe', color: '#6d28d9', fontSize: 10 }}>
             {reports.length} a cargo
@@ -730,8 +744,19 @@ function PreviewTable({
               <tr key={r.row} style={{ borderTop: '1px solid #f1f5f9' }}>
                 <td style={td}>{r.row}</td>
                 {/* Sin badge de manager: quién manda a quién se lee en el
-                    organigrama de arriba, y acá solo agregaba ruido. */}
-                <td style={td}>{r.data[nameKey] || '—'}</td>
+                    organigrama de arriba, y acá solo agregaba ruido. El de
+                    supervisor sí va: es poco frecuente, no se deduce del árbol y
+                    concede permisos sobre toda la estructura, así que conviene
+                    verlo antes de importar (y aunque no haya organigrama que
+                    dibujar, porque nadie tenga reporta_a). */}
+                <td style={td}>
+                  {r.data[nameKey] || '—'}
+                  {entity === 'pro' && isSupervisorRow(r) && (
+                    <span style={{ ...pill, background: '#fef3c7', color: '#b45309', fontSize: 10, marginLeft: 6 }}>
+                      Supervisor
+                    </span>
+                  )}
+                </td>
                 <td style={td}>{r.data.email || '—'}</td>
                 {showCompany && <td style={td}>{r.data[companyKey] || '—'}</td>}
                 {showManager && (

@@ -242,6 +242,7 @@ type EmployeeSummary struct {
 	UserType       string     `json:"user_type"`
 	IsActive       bool       `json:"is_active"`
 	IsManager      bool       `json:"is_manager"`
+	IsSupervisor   bool       `json:"is_supervisor"`
 	HoursThisMonth float64    `json:"hours_this_month"`
 	TasksAssigned  int        `json:"tasks_assigned"`
 	TasksCompleted int        `json:"tasks_completed"`
@@ -916,7 +917,7 @@ func (r *adminRepository) GetEmployeeTickets(userID uint) ([]TenantTicket, error
 }
 
 const employeeMetrics = `
-	u.id, u.name, u.email, u.avatar, u.user_type, u.is_active, u.is_manager,
+	u.id, u.name, u.email, u.avatar, u.user_type, u.is_active, u.is_manager, u.is_supervisor,
 	-- Desde cuándo está en ESTA empresa, no desde cuándo tiene cuenta: son dos
 	-- fechas distintas en cuanto alguien entra a la app después de haber
 	-- empezado a trabajar, y la que reconoce la empresa es la del empleo.

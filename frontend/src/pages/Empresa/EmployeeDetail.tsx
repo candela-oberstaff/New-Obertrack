@@ -12,6 +12,7 @@ import { ExpedienteModal } from '../../components/Admin/ExpedienteModal'
 import EmploymentManagersEditor from '../../components/Admin/EmploymentManagersEditor'
 import { UserModal } from '../../components/Admin/Modals/UserModal'
 import type { User } from '../../types'
+import { hierarchyLabel } from '../../lib/permissions'
 import styles from '../AdminUserDetail.module.css'
 
 // Empleo resuelto del profesional dentro de la empresa del empleador.
@@ -61,7 +62,7 @@ export default function EmployeeDetail() {
     name: '', email: '', password: '', user_type: 'profesional', company_name: '',
     empleador_id: undefined, manager_id: undefined, job_title: '',
     phone_number: '', country: '', state: '', city: '', location: '',
-    is_manager: false, is_active: true,
+    is_manager: false, is_supervisor: false, is_active: true,
   })
   const [editBusy, setEditBusy] = useState(false)
   const [editErr, setEditErr] = useState<string | null>(null)
@@ -87,6 +88,7 @@ export default function EmployeeDetail() {
       city: user.city || '',
       location: user.location || '',
       is_manager: !!user.is_manager,
+      is_supervisor: !!user.is_supervisor,
       is_active: user.is_active !== false,
     })
     setEditErr(null)
@@ -108,6 +110,7 @@ export default function EmployeeDetail() {
         city: (editForm.city || '').trim(),
         location: (editForm.location || '').trim(),
         is_manager: !!editForm.is_manager,
+        is_supervisor: !!editForm.is_supervisor,
         is_active: !!editForm.is_active,
       }
       const newMgr = editForm.manager_id ? Number(editForm.manager_id) : 0
@@ -390,7 +393,7 @@ export default function EmployeeDetail() {
           <p className={styles.email}>{user.email}</p>
           <div className={styles.tags}>
             <span className={styles.tag}>Profesional</span>
-            {user.is_manager && <span className={`${styles.tag} ${styles.tagManager}`}>Manager</span>}
+            {hierarchyLabel(user) && <span className={`${styles.tag} ${styles.tagManager}`}>{hierarchyLabel(user)}</span>}
           </div>
         </div>
       </div>

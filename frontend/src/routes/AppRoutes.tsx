@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
-import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, PlatformAdminRoute, NovedadesRoute, EmployerRoute, SupportRoute, SupportInboxRoute } from './guards'
+import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, PlatformAdminRoute, NovedadesRoute, EmployerRoute, OrgChartRoute, SupportRoute, SupportInboxRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
 import { WALLET_ENABLED, GOOGLE_INTEGRATIONS_ENABLED } from '../config/features'
 
@@ -16,6 +16,7 @@ const Reports = lazy(() => import('../pages/Reports'))
 const SlackChat = lazy(() => import('../pages/SlackChat'))
 const WhatsApp = lazy(() => import('../pages/WhatsApp'))
 const Profile = lazy(() => import('../pages/Profile'))
+const Organigrama = lazy(() => import('../pages/Organigrama'))
 const Admin = lazy(() => import('../pages/Admin'))
 const AdminUserDetail = lazy(() => import('../pages/AdminUserDetail'))
 const TenantsList = lazy(() => import('../pages/Tenants/TenantsList'))
@@ -101,6 +102,7 @@ export function AppRoutes() {
           <Route path="admin/settings" element={<AdminRoute><AppSettings /></AdminRoute>} />
           <Route path="papelera" element={<AdminRoute><Papelera /></AdminRoute>} />
           <Route path="empresa" element={<EmployerRoute><EmpresaEmployees /></EmployerRoute>} />
+          <Route path="organigrama" element={<OrgChartRoute><Organigrama /></OrgChartRoute>} />
           <Route path="empresa/employees/:id" element={<EmployerRoute><EmpresaEmployeeDetail /></EmployerRoute>} />
           <Route path="novedades" element={<NovedadesRoute><Tutoriales /></NovedadesRoute>} />
           <Route path="tutoriales" element={<Navigate to="/novedades" replace />} />

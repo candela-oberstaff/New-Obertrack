@@ -26,6 +26,7 @@ func (s *authService) generateTokenPair(user *models.User) (string, string, erro
 		Email:        user.Email,
 		Role:         string(user.UserType),
 		IsManager:    user.IsManager,
+		IsSupervisor: user.IsSupervisor,
 		IsSuperadmin: user.IsSuperadmin,
 		EmpleadorID:  user.EmpleadorID,
 		TokenVersion: user.TokenVersion,

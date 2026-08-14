@@ -20,12 +20,12 @@ var importCompanyHeaders = []string{
 
 var importProfessionalHeaders = []string{
 	"nombre *", "email *", "empresa *",
-	"cargo", "telefono", "pais", "estado_provincia", "ciudad", "ubicacion", "es_manager", "reporta_a",
+	"cargo", "telefono", "pais", "estado_provincia", "ciudad", "ubicacion", "es_manager", "es_supervisor", "reporta_a",
 }
 
 var importEmployerProfHeaders = []string{
 	"nombre *", "email *",
-	"cargo", "telefono", "pais", "estado_provincia", "ciudad", "ubicacion", "es_manager", "reporta_a",
+	"cargo", "telefono", "pais", "estado_provincia", "ciudad", "ubicacion", "es_manager", "es_supervisor", "reporta_a",
 }
 
 func (h *AdminHandler) DownloadImportTemplate(c *gin.Context) {
@@ -66,6 +66,9 @@ func (h *AdminHandler) DownloadImportTemplate(c *gin.Context) {
 		"   • cargo, telefono, pais, estado_provincia, ciudad, ubicacion: opcionales.",
 		"   • es_manager: escribe 'Sí' si el profesional es un manager (puede tener gente a cargo);",
 		"     'No' o vacío en caso contrario.",
+		"   • es_supervisor: escribe 'Sí' si además tiene MANAGERS a su cargo, no solo profesionales.",
+		"     Un supervisor ve y aprueba todo lo que cuelga de él hacia abajo. Marcarlo implica",
+		"     es_manager: no hace falta poner las dos, pero tampoco estorba.",
 		"   • reporta_a: EMAIL del manager de esa persona. Dejalo vacío para quien no le reporta a nadie.",
 		"",
 		"Cómo armar el organigrama con reporta_a:",
@@ -98,14 +101,19 @@ func (h *AdminHandler) DownloadImportTemplate(c *gin.Context) {
 		"Tecnología", "+58 412 000 0000", "Venezuela", "Distrito Capital", "Caracas", "Las Mercedes", "Av. Principal 123",
 	})
 
-	// Dos filas de ejemplo: la manager y alguien que le reporta, para que se vea
-	// cómo se encadenan con reporta_a.
+	// Tres filas de ejemplo que arman una cadena completa: la supervisora, la
+	// manager que le reporta y alguien del equipo de esa manager. Así se ve de
+	// una sola lectura cómo se encadenan con reporta_a y en qué se diferencian
+	// es_manager y es_supervisor.
 	writeImportSheet(f, "Profesionales", importProfessionalHeaders, headerStyle, exampleStyle, []string{
+		"Ana Torres", "ana@miempresa.com", "Mi Empresa S.A.",
+		"Directora de Operaciones", "+58 412 000 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "Sí", "Sí", "",
+	}, []string{
 		"María González", "maria@miempresa.com", "Mi Empresa S.A.",
-		"Líder de Desarrollo", "+58 412 111 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "Sí", "",
+		"Líder de Desarrollo", "+58 412 111 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "Sí", "No", "ana@miempresa.com",
 	}, []string{
 		"Pedro Ruiz", "pedro@miempresa.com", "Mi Empresa S.A.",
-		"Desarrollador Backend", "+58 412 222 2222", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "No", "maria@miempresa.com",
+		"Desarrollador Backend", "+58 412 222 2222", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "No", "No", "maria@miempresa.com",
 	})
 
 	if idx, err := f.GetSheetIndex("Instrucciones"); err == nil {
@@ -160,12 +168,12 @@ type importRow struct {
 // Claves que se leen de cada hoja de profesionales, en el orden de la plantilla.
 var profDataKeys = []string{
 	"nombre", "email", "empresa", "cargo", "telefono",
-	"pais", "estado_provincia", "ciudad", "ubicacion", "es_manager", "reporta_a",
+	"pais", "estado_provincia", "ciudad", "ubicacion", "es_manager", "es_supervisor", "reporta_a",
 }
 
 var employerProfDataKeys = []string{
 	"nombre", "email", "cargo", "telefono",
-	"pais", "estado_provincia", "ciudad", "ubicacion", "es_manager", "reporta_a",
+	"pais", "estado_provincia", "ciudad", "ubicacion", "es_manager", "es_supervisor", "reporta_a",
 }
 
 // profSheetRow es una fila ya parseada de la hoja Profesionales. Conserva el
@@ -295,6 +303,27 @@ func resolveProfManagers(rows []profSheetRow, r managerResolver) (map[int]string
 		if ok, why := r.existingUsable(pr.data, u); !ok {
 			errs[i] = why
 		}
+	}
+
+	// Segunda deducción, ya con todos los es_manager resueltos: si a alguien le
+	// reporta un MANAGER, esa persona es supervisora — es literalmente la
+	// definición del rol. Se marca sola, igual que es_manager, para que el
+	// organigrama salga del archivo sin depender de que alguien se acuerde de la
+	// columna. Se recorre por orden de fila y no por el mapa de aristas para que
+	// el aviso sea siempre el mismo ante el mismo archivo.
+	for i := range rows {
+		j, inFile := edges[i]
+		if !inFile || !managerFlag(rows[i].data["es_manager"]) {
+			continue
+		}
+		if managerFlag(rows[j].data["es_supervisor"]) {
+			continue
+		}
+		rows[j].data["es_supervisor"] = "Sí"
+		// Reemplaza al aviso de "se marcará como manager": decir las dos cosas de
+		// la misma fila confunde más de lo que informa, y supervisor ya implica
+		// manager.
+		warns[j] = fmt.Sprintf("Se marcará como supervisor automáticamente: la fila %d, que es manager, le reporta.", rows[i].row)
 	}
 
 	// Ciclos dentro del archivo. Las cadenas que salen hacia usuarios ya
@@ -744,6 +773,11 @@ func (h *AdminHandler) ImportExecute(c *gin.Context) {
 			if strings.TrimSpace(d["es_manager"]) != "" {
 				updates["is_manager"] = managerFlag(d["es_manager"])
 			}
+			// El servicio ya sabe que supervisor implica manager, así que aquí
+			// solo se traslada la columna tal cual venga.
+			if strings.TrimSpace(d["es_supervisor"]) != "" {
+				updates["is_supervisor"] = managerFlag(d["es_supervisor"])
+			}
 			u, err := h.service.UpdateUser(existing.ID, updates)
 			if err != nil {
 				profErrors = append(profErrors, rowErr{d["email"], err.Error()})
@@ -770,7 +804,8 @@ func (h *AdminHandler) ImportExecute(c *gin.Context) {
 				"user_type": string(models.UserTypeProfessional), "empleador_id": empID,
 				"job_title": d["cargo"], "phone_number": d["telefono"], "country": d["pais"],
 				"state": d["estado_provincia"], "city": d["ciudad"], "location": d["ubicacion"],
-				"is_manager": managerFlag(d["es_manager"]),
+				"is_manager":    managerFlag(d["es_manager"]),
+				"is_supervisor": managerFlag(d["es_supervisor"]),
 			}
 			u, err := h.service.CreateUser(payload)
 			if err != nil {
@@ -833,6 +868,8 @@ func (h *AdminHandler) DownloadEmployerImportTemplate(c *gin.Context) {
 		"   • Email ya existente: si pertenece a TU empresa podrás SOBREESCRIBIR u OMITIR; si pertenece a",
 		"     otra empresa, no se podrá importar (usá otro correo).",
 		"   • es_manager: escribe 'Sí' si el profesional es un manager; 'No' o vacío en caso contrario.",
+		"   • es_supervisor: escribe 'Sí' si además tiene MANAGERS a su cargo, no solo profesionales.",
+		"     Ve y aprueba todo lo que cuelga de él hacia abajo. Marcarlo implica es_manager.",
 		"   • País y ubicación: texto libre.",
 		"",
 		"Organigrama (columna reporta_a):",
@@ -851,11 +888,14 @@ func (h *AdminHandler) DownloadEmployerImportTemplate(c *gin.Context) {
 	_ = f.SetColWidth("Instrucciones", "A", "A", 95)
 
 	writeImportSheet(f, "Profesionales", importEmployerProfHeaders, headerStyle, exampleStyle, []string{
+		"Ana Torres", "ana@miempresa.com",
+		"Directora de Operaciones", "+58 412 000 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "Sí", "Sí", "",
+	}, []string{
 		"María González", "maria@miempresa.com",
-		"Líder de Desarrollo", "+58 412 111 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "Sí", "",
+		"Líder de Desarrollo", "+58 412 111 1111", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "Sí", "No", "ana@miempresa.com",
 	}, []string{
 		"Pedro Ruiz", "pedro@miempresa.com",
-		"Desarrollador Backend", "+58 412 222 2222", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "No", "maria@miempresa.com",
+		"Desarrollador Backend", "+58 412 222 2222", "Venezuela", "Distrito Capital", "Caracas", "Chacao", "No", "No", "maria@miempresa.com",
 	})
 
 	if idx, err := f.GetSheetIndex("Instrucciones"); err == nil {
@@ -999,6 +1039,11 @@ func (h *AdminHandler) EmployerImportExecute(c *gin.Context) {
 			if strings.TrimSpace(d["es_manager"]) != "" {
 				updates["is_manager"] = managerFlag(d["es_manager"])
 			}
+			// El servicio ya sabe que supervisor implica manager, así que aquí
+			// solo se traslada la columna tal cual venga.
+			if strings.TrimSpace(d["es_supervisor"]) != "" {
+				updates["is_supervisor"] = managerFlag(d["es_supervisor"])
+			}
 			u, err := h.service.UpdateUserScoped(existing.ID, updates, tenantID)
 			if err != nil {
 				errs = append(errs, rowErr{d["email"], err.Error()})
@@ -1020,7 +1065,8 @@ func (h *AdminHandler) EmployerImportExecute(c *gin.Context) {
 				"user_type": string(models.UserTypeProfessional), "empleador_id": tenantID,
 				"job_title": d["cargo"], "phone_number": d["telefono"], "country": d["pais"],
 				"state": d["estado_provincia"], "city": d["ciudad"], "location": d["ubicacion"],
-				"is_manager": managerFlag(d["es_manager"]),
+				"is_manager":    managerFlag(d["es_manager"]),
+				"is_supervisor": managerFlag(d["es_supervisor"]),
 			}
 			u, err := h.service.CreateUser(payload)
 			if err != nil {
