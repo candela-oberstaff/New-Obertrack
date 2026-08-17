@@ -944,7 +944,8 @@ export default function TenantDetail() {
         <OrgChartPanel
           companyId={tenant.id}
           editable
-          hint="Arrastra a una persona sobre otra para cambiar su manager. Se lleva a su equipo con ella."
+          hint="Arrastra a una persona sobre otra para cambiar su manager. Se lleva a su equipo con ella. Haz clic en alguien para abrir su ficha."
+          profileHref={p => `/admin/users/${p.user_id}`}
         />
       )}
 

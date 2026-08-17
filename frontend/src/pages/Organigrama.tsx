@@ -27,8 +27,12 @@ export default function Organigrama() {
       <OrgChartPanel
         editable
         hint={isEmployer
-          ? 'Arrastra a una persona sobre otra para cambiar su manager. Se lleva a su equipo con ella.'
+          ? 'Arrastra a una persona sobre otra para cambiar su manager. Se lleva a su equipo con ella. Haz clic en alguien para abrir su ficha.'
           : 'Solo se muestra tu rama. Arrastra dentro de ella para reorganizar; se lleva su equipo con ella.'}
+        // Solo el empleador tiene una ficha que abrir (/empresa/employees/:id).
+        // El supervisor no llega a ninguna pantalla de perfil ajeno, así que sus
+        // tarjetas se quedan sin enlace en vez de llevar a un "no autorizado".
+        profileHref={isEmployer ? p => `/empresa/employees/${p.user_id}` : undefined}
       />
     </div>
   )

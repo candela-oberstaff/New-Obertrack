@@ -5,6 +5,20 @@
   padding: 18px;
 }
 
+/* Vista ampliada: el organigrama ocupa la ventana entera. Un árbol de más de
+   dos niveles no entra en el ancho de una pestaña de ficha, y encogerlo con
+   transform rompería las coordenadas del arrastre; darle la pantalla completa
+   resuelve el espacio sin tocar nada de eso. */
+.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  border: none;
+  border-radius: 0;
+  overflow: auto;
+  padding: 22px 26px 32px;
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -12,6 +26,38 @@
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 14px;
+}
+
+/* En la vista ampliada la barra queda fija arriba: con un árbol alto, el botón
+   para volver no debe irse con el desplazamiento. */
+.fullscreen .toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+  padding: 6px 0 10px;
+  margin-bottom: 8px;
+}
+
+.expandBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 7px 13px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.expandBtn:hover {
+  border-color: #c4b5fd;
+  color: var(--primary, #7c3aed);
+  background: #faf5ff;
 }
 
 .hint {
@@ -95,8 +141,23 @@
    pseudo-elementos) en vez de SVG: así las líneas siguen a las cajas cuando el
    texto cambia de tamaño, sin recalcular nada. */
 .tree {
-  overflow-x: auto;
+  overflow: auto;
   padding: 4px 4px 12px;
+  /* Se agarra el fondo para mover el árbol, como un tablero. */
+  cursor: grab;
+  /* Sin esto, arrastrar el lienzo va seleccionando los nombres a su paso. */
+  user-select: none;
+}
+
+.panning {
+  cursor: grabbing;
+}
+
+/* A pantalla completa el lienzo ocupa lo que queda de ventana: sin alto propio
+   no habría hacia dónde desplazarse en vertical. */
+.fullscreen .tree {
+  height: calc(100vh - 116px);
+  max-height: none;
 }
 
 .tree ul {
@@ -241,6 +302,15 @@
 }
 
 /* ── Estados comunes a caja y fila ─────────────────────────────────────────── */
+
+/* El nombre y el cargo no se seleccionan al arrastrar: al mover una tarjeta se
+   pintaba el texto de azul a mitad del gesto. El enlace del nombre sigue
+   funcionando con el clic. */
+.box,
+.row {
+  user-select: none;
+}
+
 .draggable {
   cursor: grab;
 }
@@ -266,6 +336,35 @@
 
 .inactive {
   opacity: 0.55;
+}
+
+/* Tarjeta que abre una ficha. El puntero de mano tiene que convivir con el de
+   arrastre: .draggable define grab y va después en el archivo, así que aquí se
+   marca la pista visual y el cursor lo resuelve la regla de abajo. */
+.linked .name {
+  color: var(--primary-dark, #5b21b6);
+}
+
+.linked:hover {
+  border-color: #c4b5fd;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.12);
+}
+
+.nameLink {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.nameLink:hover {
+  text-decoration: underline;
+}
+
+/* Sin esto el foco por teclado no se ve dentro de la tarjeta. */
+.nameLink:focus-visible {
+  outline: 2px solid var(--primary, #7c3aed);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .who {

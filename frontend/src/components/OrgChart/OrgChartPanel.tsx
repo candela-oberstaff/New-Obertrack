@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { orgChartService, userService } from '../../services/api'
-import { OrgChart } from './OrgChart'
+import { OrgChart, type OrgChartProps } from './OrgChart'
 
 interface OrgChartPanelProps {
   /** Solo el superadmin la indica; el resto usa la suya. */
@@ -8,6 +8,8 @@ interface OrgChartPanelProps {
   /** Sin esto el árbol se dibuja pero no se reordena. */
   editable?: boolean
   hint?: string
+  /** Enlace a la ficha de cada persona; ver OrgChartProps.profileHref. */
+  profileHref?: OrgChartProps['profileHref']
 }
 
 /**
@@ -20,7 +22,7 @@ interface OrgChartPanelProps {
  * rechaza los círculos, así que aquí no hace falta ninguna comprobación de
  * permisos más.
  */
-export function OrgChartPanel({ companyId, editable = false, hint }: OrgChartPanelProps) {
+export function OrgChartPanel({ companyId, editable = false, hint, profileHref }: OrgChartPanelProps) {
   const qc = useQueryClient()
   const queryKey = ['org-chart', companyId ?? 'me']
 
@@ -76,6 +78,7 @@ export function OrgChartPanel({ companyId, editable = false, hint }: OrgChartPan
       people={people}
       hint={hint}
       onReassign={editable ? reassign : undefined}
+      profileHref={profileHref}
     />
   )
 }

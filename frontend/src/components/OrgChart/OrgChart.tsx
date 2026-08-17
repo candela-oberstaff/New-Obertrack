@@ -1,4 +1,7 @@
-import { useMemo, useState } from 'react'
+import {
+  useEffect, useMemo, useRef, useState,
+  type MutableRefObject, type PointerEvent as ReactPointerEvent,
+} from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -11,7 +14,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { Network, List, Building2 } from 'lucide-react'
+import { Network, List, Building2, Maximize2, Minimize2 } from 'lucide-react'
 import Avatar from '../Common/Avatar'
 import { buildForest, dropRejection, teamSizes, type OrgPerson, type OrgTreeNode } from './orgTree'
 import styles from './OrgChart.module.css'
@@ -21,15 +24,49 @@ export interface OrgChartProps {
   /** Sin esto el árbol se dibuja pero no se puede reordenar. */
   onReassign?: (userId: number, newManagerId: number | null) => Promise<void>
   hint?: string
+  /**
+   * Enlace al perfil de cada persona. Lo decide quien monta el organigrama
+   * porque la ficha vive en rutas distintas según quién mire —/admin/users/:id
+   * para superadmin y customer success, /empresa/employees/:id para el
+   * empleador— y un supervisor no tiene acceso a ninguna de las dos. Si esto no
+   * viene, las tarjetas no se enlazan: mejor sin enlace que con uno que lleva a
+   * una pantalla prohibida.
+   */
+  profileHref?: (person: OrgPerson) => string | null
 }
 
 type View = 'tree' | 'list'
 
-export function OrgChart({ people, onReassign, hint }: OrgChartProps) {
+export function OrgChart({ people, onReassign, hint, profileHref }: OrgChartProps) {
   const [view, setView] = useState<View>('tree')
   const [dragId, setDragId] = useState<number | null>(null)
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+
+  // Soltar una tarjeta dispara un clic sobre ella justo después. Sin esta marca,
+  // cada vez que alguien reorganiza el equipo se le abriría además el perfil de
+  // la persona que acaba de mover.
+  const justDragged = useRef(false)
+
+  // Escape cierra la vista ampliada. Es lo que espera cualquiera que la haya
+  // abierto, y evita quedar atrapado si el botón queda fuera de la pantalla en
+  // un árbol ancho.
+  useEffect(() => {
+    if (!fullscreen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [fullscreen])
+
+  // Con el organigrama ocupando toda la pantalla, el fondo no debe seguir
+  // desplazándose por detrás.
+  useEffect(() => {
+    if (!fullscreen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previous }
+  }, [fullscreen])
 
   const forest = useMemo(() => buildForest(people), [people])
   const sizes = useMemo(() => teamSizes(people), [people])
@@ -48,12 +85,60 @@ export function OrgChart({ people, onReassign, hint }: OrgChartProps) {
 
   const dragged = dragId != null ? people.find(p => p.user_id === dragId) ?? null : null
 
+  // ── Desplazamiento tipo lienzo ────────────────────────────────────────────
+  // Agarrar el fondo y arrastrar mueve el árbol, como en un tablero. Se hace
+  // moviendo el scroll del contenedor y NO con transform: dnd-kit calcula las
+  // zonas de soltado desde el DOM, y una transformación le desalinea el
+  // arrastre de personas. El scroll ya lo tiene en cuenta.
+  const panRef = useRef<HTMLDivElement | null>(null)
+  const [panning, setPanning] = useState(false)
+  const panFrom = useRef({ x: 0, y: 0, left: 0, top: 0 })
+
+  const startPan = (e: ReactPointerEvent<HTMLDivElement>) => {
+    // Solo con ratón: en pantallas táctiles el desplazamiento nativo ya hace
+    // esto, y capturar el puntero se lo rompería.
+    if (e.pointerType !== 'mouse' || e.button !== 0) return
+    // Arrancar sobre una tarjeta es mover a esa persona, no el lienzo.
+    if ((e.target as HTMLElement).closest('[data-org-person]')) return
+    const el = panRef.current
+    if (!el) return
+    panFrom.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
+    setPanning(true)
+    el.setPointerCapture(e.pointerId)
+  }
+
+  const movePan = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!panning) return
+    const el = panRef.current
+    if (!el) return
+    el.scrollLeft = panFrom.current.left - (e.clientX - panFrom.current.x)
+    el.scrollTop = panFrom.current.top - (e.clientY - panFrom.current.y)
+  }
+
+  const endPan = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!panning) return
+    setPanning(false)
+    panRef.current?.releasePointerCapture(e.pointerId)
+  }
+
+  // El clic que sigue a soltar llega en el mismo ciclo; se libera en el
+  // siguiente para no tragarse clics legítimos posteriores.
+  const swallowNextClick = () => {
+    justDragged.current = true
+    setTimeout(() => { justDragged.current = false }, 0)
+  }
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const activeId = Number(event.active.id)
     setDragId(null)
+    swallowNextClick()
     if (!onReassign || !event.over) return
 
     const droppedOn = Number(event.over.id)
+    // Soltar a alguien sobre sí mismo es no haber movido nada, no un error.
+    // Ocurre al empujar de más una tarjeta yendo a hacerle clic, y contestaba
+    // "Nadie puede ser su propio manager", que suena a que hiciste algo mal.
+    if (droppedOn === activeId) return
     // Soltar sobre la cuenta de empresa es "quitarle el manager": la empresa no
     // es un manager de verdad y el backend rechazaría asignarla como tal.
     const droppedOnCompany = !!people.find(p => p.user_id === droppedOn)?.is_company
@@ -108,10 +193,10 @@ export function OrgChart({ people, onReassign, hint }: OrgChartProps) {
     return <div className={styles.wrap}><p className={styles.empty}>Esta empresa todavía no tiene profesionales activos.</p></div>
   }
 
-  const shared = { people, sizes, dragId, editable: editable && !busy }
+  const shared = { people, sizes, dragId, editable: editable && !busy, profileHref, justDragged }
 
   return (
-    <div className={styles.wrap}>
+    <div className={`${styles.wrap} ${fullscreen ? styles.fullscreen : ''}`}>
       <div className={styles.toolbar}>
         <p className={styles.hint}>
           {hint ?? (editable
@@ -138,6 +223,16 @@ export function OrgChart({ people, onReassign, hint }: OrgChartProps) {
             <List size={14} /> Lista
           </button>
         </div>
+        <button
+          type="button"
+          className={styles.expandBtn}
+          onClick={() => setFullscreen(v => !v)}
+          title={fullscreen ? 'Salir de la vista ampliada (Esc)' : 'Ver el organigrama a pantalla completa'}
+          aria-pressed={fullscreen}
+        >
+          {fullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          {fullscreen ? 'Reducir' : 'Ampliar'}
+        </button>
       </div>
 
       {message && (
@@ -154,7 +249,14 @@ export function OrgChart({ people, onReassign, hint }: OrgChartProps) {
         onDragEnd={handleDragEnd}
       >
         {view === 'tree' ? (
-          <div className={styles.tree}>
+          <div
+            ref={panRef}
+            className={`${styles.tree} ${panning ? styles.panning : ''}`}
+            onPointerDown={startPan}
+            onPointerMove={movePan}
+            onPointerUp={endPan}
+            onPointerCancel={endPan}
+          >
             <ul className={styles.treeRoot}>
               {forest.map(node => <TreeNode key={node.person.user_id} node={node} {...shared} />)}
             </ul>
@@ -184,6 +286,8 @@ interface NodeProps {
   sizes: Map<number, number>
   dragId: number | null
   editable: boolean
+  profileHref?: (person: OrgPerson) => string | null
+  justDragged: MutableRefObject<boolean>
 }
 
 function TreeNode({ node, ...rest }: NodeProps) {
@@ -213,12 +317,20 @@ function ListNode({ node, ...rest }: NodeProps) {
 }
 
 function Person({
-  node, people, sizes, dragId, editable, shape,
+  node, people, sizes, dragId, editable, shape, profileHref, justDragged,
 }: NodeProps & { shape: 'box' | 'row' }) {
   const { person } = node
   const id = person.user_id
   // La cuenta de empresa recibe gente pero no se mueve: es la cabeza del árbol.
   const canDrag = editable && !person.is_company
+  // La empresa no tiene ficha de persona que abrir.
+  const href = person.is_company ? null : profileHref?.(person) ?? null
+
+  const openProfile = () => {
+    if (!href || justDragged.current) return
+    // noopener: la pestaña nueva no debe poder tocar a la que la abrió.
+    window.open(href, '_blank', 'noopener,noreferrer')
+  }
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id, disabled: !canDrag })
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id, disabled: !editable })
@@ -236,20 +348,53 @@ function Person({
     isOver && !blocked ? styles.over : '',
     blocked ? styles.blocked : '',
     person.is_active ? '' : styles.inactive,
+    href ? styles.linked : '',
   ].filter(Boolean).join(' ')
+
+  const title = person.is_company
+    ? 'Suelta aquí a quien deba reportar directamente a la empresa.'
+    : href
+      ? `Abrir el perfil de ${person.name} en una pestaña nueva`
+      : undefined
 
   return (
     <div
       ref={el => { setDragRef(el); setDropRef(el) }}
       className={classes}
-      title={person.is_company ? 'Suelta aquí a quien deba reportar directamente a la empresa.' : undefined}
+      title={title}
+      onClick={openProfile}
+      // Marca para que agarrar una tarjeta mueva a la persona y no el lienzo.
+      data-org-person=""
       {...(canDrag ? { ...listeners, ...attributes } : {})}
     >
       {person.is_company
         ? <Building2 size={18} className={styles.companyIcon} />
         : <Avatar src={person.avatar} name={person.name} size="sm" />}
       <div className={styles.who}>
-        <div className={styles.name}>{person.name}</div>
+        {/* El nombre es un enlace de verdad y no solo un div con onClick: así
+            funcionan ctrl+clic, el clic con la rueda y el "abrir en pestaña
+            nueva" del menú contextual, que es como mucha gente navega. No se
+            frena el pointerdown a propósito —arrastrar agarrando el nombre
+            sigue moviendo la tarjeta, que es el gesto natural—; lo único que se
+            corta es la propagación del clic, para que no se abran dos pestañas
+            (la del enlace y la de la tarjeta). */}
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${styles.name} ${styles.nameLink}`}
+            draggable={false}
+            onClick={e => {
+              e.stopPropagation()
+              if (justDragged.current) e.preventDefault()
+            }}
+          >
+            {person.name}
+          </a>
+        ) : (
+          <div className={styles.name}>{person.name}</div>
+        )}
         <div className={styles.role}>{person.job_title || 'Profesional'}</div>
       </div>
       {/* Una sola insignia por persona: el nivel más alto que tenga. El tamaño
