@@ -20,6 +20,11 @@ const EVENT_META: Record<string, { label: string; color: string; icon: React.Rea
   delivered:     { label: 'Entregado',     color: '#22c55e', icon: <CheckCircle2 size={12} /> },
   opened:        { label: 'Abierto',       color: '#8b5cf6', icon: <Eye size={12} /> },
   unique_opened: { label: 'Apertura única',color: '#a78bfa', icon: <Eye size={12} /> },
+  // Aperturas detectadas a través de un proxy de privacidad (Apple Mail y
+  // similares). Se distinguen porque las dispara el proxy al precargar las
+  // imágenes, así que valen menos como señal de interés que una apertura normal.
+  proxy_open:        { label: 'Apertura vía proxy',       color: '#c4b5fd', icon: <Eye size={12} /> },
+  unique_proxy_open: { label: 'Apertura única vía proxy', color: '#c4b5fd', icon: <Eye size={12} /> },
   click:         { label: 'Clic',          color: '#3b82f6', icon: <MousePointer2 size={12} /> },
   soft_bounce:   { label: 'Rebote suave',  color: '#f59e0b', icon: <AlertTriangle size={12} /> },
   hard_bounce:   { label: 'Rebote duro',   color: '#ef4444', icon: <XCircle size={12} /> },
@@ -78,7 +83,12 @@ const CampaignDetailPanel: React.FC<Props> = ({ campaign, onClose, onEdit, onDel
       .filter(Boolean)
   ).size;
 
-  const openCount   = uniquePeople(['unique_opened', 'opened']);
+  // Los proxy_open cuentan como apertura. Brevo los reporta aparte de 'opened'
+  // cuando la apertura llega a través de un proxy de privacidad —el caso típico
+  // es Apple Mail con Protección de Privacidad, que descarga las imágenes por su
+  // cuenta—, y hoy eso es una porción grande del correo de consumo. Dejarlos
+  // afuera no era neutral: hundía la tasa de aperturas sin que se notara.
+  const openCount   = uniquePeople(['unique_opened', 'opened', 'unique_proxy_open', 'proxy_open']);
   const clickCount  = uniquePeople(['click']);
   const bounceCount = uniquePeople(['hard_bounce', 'soft_bounce']);
   const totalClicks = eventSummary['click'] || 0;

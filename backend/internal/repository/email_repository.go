@@ -123,6 +123,10 @@ func (r *emailRepository) GetCampaignByID(id uint) (*models.EmailCampaign, error
 // genera tres 'opened', y Brevo además reintenta el webhook si no respondimos a
 // tiempo. Contando eventos, los porcentajes pasaban del 100%. Es el mismo
 // criterio que usa el panel de detalle, para que no se contradigan.
+//
+// Los proxy_open cuentan como apertura: Brevo los reporta aparte cuando la
+// apertura viene de un proxy de privacidad (Apple Mail y similares, que
+// precargan las imágenes). Omitirlos hundía la tasa sin que se notara.
 func (r *emailRepository) fillEngagementRates(campaigns []models.EmailCampaign) {
 	if len(campaigns) == 0 {
 		return
@@ -146,7 +150,7 @@ func (r *emailRepository) fillEngagementRates(campaigns []models.EmailCampaign) 
 
 	err := r.db.Model(&models.EmailEvent{}).
 		Select(`campaign_id,
-			COUNT(DISTINCT LOWER(email)) FILTER (WHERE event IN ('opened','unique_opened')) AS opens,
+			COUNT(DISTINCT LOWER(email)) FILTER (WHERE event IN ('opened','unique_opened','proxy_open','unique_proxy_open')) AS opens,
 			COUNT(DISTINCT LOWER(email)) FILTER (WHERE event = 'click') AS clicks`).
 		Where("campaign_id IN ?", ids).
 		Group("campaign_id").

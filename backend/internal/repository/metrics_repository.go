@@ -49,7 +49,10 @@ func (r *metricsRepository) GetEmailMetrics(days int) (map[string]interface{}, e
 	var totalClicked int64
 	var totalBounced int64
 
-	r.db.Model(&models.EmailEvent{}).Where("event = ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", "opened", days).Count(&totalOpened)
+	// Incluye los proxy_open: Brevo reporta así las aperturas que llegan por un
+	// proxy de privacidad (Apple Mail y similares). Mismo criterio que el panel
+	// de campañas, para que las dos pantallas no den números distintos.
+	r.db.Model(&models.EmailEvent{}).Where("event IN ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", []string{"opened", "proxy_open"}, days).Count(&totalOpened)
 	r.db.Model(&models.EmailEvent{}).Where("event = ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", "click", days).Count(&totalClicked)
 	r.db.Model(&models.EmailEvent{}).Where("event LIKE ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", "%bounce%", days).Count(&totalBounced)
 
