@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -41,6 +42,16 @@ func (s *BrevoService) SendEmailKind(kind, toEmail, toName, subject, htmlContent
 	return s.SendEmail(toEmail, toName, subject, htmlContent)
 }
 
+// SendEmailKindTagged es SendEmailKind estampando etiquetas en el envío. Lo usan
+// las campañas para que sus eventos vuelvan del webhook identificados.
+func (s *BrevoService) SendEmailKindTagged(kind, toEmail, toName, subject, htmlContent string, tags []string) error {
+	if !s.AllowsKind(kind) {
+		log.Printf("[Brevo] correo %q omitido: está desactivado en Configuración → Correos", kind)
+		return nil
+	}
+	return s.SendEmailTagged(toEmail, toName, subject, htmlContent, tags)
+}
+
 // SendEmailKindWithAttachments es la variante con adjuntos (reporte de jornadas).
 func (s *BrevoService) SendEmailKindWithAttachments(kind, toEmail, toName, subject, htmlContent string, attachments []BrevoAttachment) error {
 	if !s.AllowsKind(kind) {
@@ -66,6 +77,10 @@ type BrevoEmailRequest struct {
 	Subject     string            `json:"subject"`
 	HTMLContent string            `json:"htmlContent"`
 	Attachment  []BrevoAttachment `json:"attachment,omitempty"`
+	// Tags viajan de ida en el envío y vuelven en cada evento del webhook. Son
+	// el ÚNICO hilo que ata una apertura o un clic a la campaña que lo provocó:
+	// ver CampaignTag más abajo.
+	Tags []string `json:"tags,omitempty"`
 }
 
 type BrevoErrorResponse struct {
@@ -118,6 +133,62 @@ func recipient(email, name string) BrevoContact {
 	return BrevoContact{Name: name, Email: email}
 }
 
+// campaignTagPrefix marca las etiquetas que pone Obertrack. El prefijo evita
+// confundirlas con etiquetas puestas a mano en el panel de Brevo.
+const campaignTagPrefix = "obertrack-campaign-"
+
+// CampaignTag es la etiqueta con la que sale cada correo de una campaña.
+//
+// Las campañas de Obertrack se envían por la API TRANSACCIONAL, un correo por
+// persona: Brevo no sabe que existe la campaña, ve 330 envíos sueltos. Por eso
+// sus eventos (`opened`, `click`, `hard_bounce`) NO traen `campaign_id` —ese
+// campo solo existe en las campañas de marketing de Brevo— y sin esta etiqueta
+// no hay forma de saber a qué campaña pertenece una apertura. Era exactamente
+// el motivo por el que el panel mostraba 0.0% en todo.
+func CampaignTag(id uint) string {
+	return fmt.Sprintf("%s%d", campaignTagPrefix, id)
+}
+
+// CampaignIDFromTags recupera el ID de campaña de las etiquetas de un evento.
+// Devuelve 0 si ninguna es nuestra (correo suelto, prueba, notificación).
+func CampaignIDFromTags(tags []string) uint {
+	for _, t := range tags {
+		rest := strings.TrimPrefix(strings.TrimSpace(t), campaignTagPrefix)
+		if rest == t {
+			continue
+		}
+		if id, err := strconv.ParseUint(rest, 10, 32); err == nil {
+			return uint(id)
+		}
+	}
+	return 0
+}
+
+// ParseBrevoTags normaliza las etiquetas tal como llegan en el webhook, que no
+// tiene un formato único: según el evento, Brevo manda `tags` como arreglo
+// (["obertrack-campaign-15"]), como cadena con JSON dentro, o solo el campo
+// `tag` con una sola etiqueta. Se aceptan las tres para que ningún evento se
+// pierda por la forma en que vino.
+func ParseBrevoTags(raw json.RawMessage, single string) []string {
+	var tags []string
+
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &tags); err != nil {
+			var asString string
+			if json.Unmarshal(raw, &asString) == nil && asString != "" {
+				if json.Unmarshal([]byte(asString), &tags) != nil {
+					tags = []string{asString}
+				}
+			}
+		}
+	}
+
+	if single != "" {
+		tags = append(tags, single)
+	}
+	return tags
+}
+
 func NewBrevoService() *BrevoService {
 	return &BrevoService{
 		apiKey: os.Getenv("BREVO_API_KEY"),
@@ -131,6 +202,13 @@ func NewBrevoService() *BrevoService {
 
 // SendEmail sends a single transactional email via Brevo.
 func (s *BrevoService) SendEmail(toEmail, toName, subject, htmlContent string) error {
+	return s.SendEmailTagged(toEmail, toName, subject, htmlContent, nil)
+}
+
+// SendEmailTagged es SendEmail adjuntando etiquetas al envío. Las etiquetas no
+// se ven en el buzón: viajan con el correo y Brevo las devuelve en cada evento
+// del webhook, que es como se atribuye una apertura a su campaña.
+func (s *BrevoService) SendEmailTagged(toEmail, toName, subject, htmlContent string, tags []string) error {
 	if s.apiKey == "" {
 		return fmt.Errorf("BREVO_API_KEY is not configured")
 	}
@@ -178,6 +256,7 @@ func (s *BrevoService) SendEmail(toEmail, toName, subject, htmlContent string) e
 		To:          []BrevoContact{recipient(toEmail, toName)},
 		Subject:     subject,
 		HTMLContent: wrappedHTML,
+		Tags:        tags,
 	}
 
 	body, err := json.Marshal(payload)

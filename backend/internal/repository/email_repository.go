@@ -5,6 +5,7 @@ package repository
 // middleware (see routes/platform_routes.go). Do NOT expose to non-superadmin users.
 
 import (
+	"math"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -91,13 +92,85 @@ func (r *emailRepository) GetCampaigns() ([]models.EmailCampaign, error) {
 	err := r.db.Preload("Template").
 		Order("created_at DESC, id DESC").
 		Find(&campaigns).Error
-	return campaigns, err
+	if err != nil {
+		return campaigns, err
+	}
+	r.fillEngagementRates(campaigns)
+	return campaigns, nil
 }
 
 func (r *emailRepository) GetCampaignByID(id uint) (*models.EmailCampaign, error) {
 	var campaign models.EmailCampaign
 	err := r.db.Preload("Template").First(&campaign, id).Error
-	return &campaign, err
+	if err != nil {
+		return &campaign, err
+	}
+	one := []models.EmailCampaign{campaign}
+	r.fillEngagementRates(one)
+	return &one[0], nil
+}
+
+// fillEngagementRates calcula open_rate y click_rate desde los eventos, en vez
+// de leerlos de las columnas del mismo nombre.
+//
+// Esas columnas existen desde la primera versión pero NUNCA se escribieron: no
+// hay un solo UPDATE que las toque, así que la tarjeta de cada campaña mostraba
+// 0% de forma permanente. Calcularlas al leer las mantiene siempre al día —los
+// eventos siguen llegando durante días después del envío— y evita tener que
+// recalcular una fila por cada webhook entrante.
+//
+// Se cuentan PERSONAS distintas, no eventos: quien abre el correo tres veces
+// genera tres 'opened', y Brevo además reintenta el webhook si no respondimos a
+// tiempo. Contando eventos, los porcentajes pasaban del 100%. Es el mismo
+// criterio que usa el panel de detalle, para que no se contradigan.
+func (r *emailRepository) fillEngagementRates(campaigns []models.EmailCampaign) {
+	if len(campaigns) == 0 {
+		return
+	}
+
+	ids := make([]uint, 0, len(campaigns))
+	for _, c := range campaigns {
+		if c.Recipients > 0 {
+			ids = append(ids, c.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	var rows []struct {
+		CampaignID uint
+		Opens      int
+		Clicks     int
+	}
+
+	err := r.db.Model(&models.EmailEvent{}).
+		Select(`campaign_id,
+			COUNT(DISTINCT LOWER(email)) FILTER (WHERE event IN ('opened','unique_opened')) AS opens,
+			COUNT(DISTINCT LOWER(email)) FILTER (WHERE event = 'click') AS clicks`).
+		Where("campaign_id IN ?", ids).
+		Group("campaign_id").
+		Scan(&rows).Error
+	if err != nil {
+		// Las tasas son informativas: si la agregación falla, el listado sale
+		// igual (en 0%) en lugar de romperse entero.
+		return
+	}
+
+	byID := make(map[uint]struct{ opens, clicks int }, len(rows))
+	for _, row := range rows {
+		byID[row.CampaignID] = struct{ opens, clicks int }{row.Opens, row.Clicks}
+	}
+
+	for i := range campaigns {
+		agg, ok := byID[campaigns[i].ID]
+		if !ok {
+			continue
+		}
+		total := float64(campaigns[i].Recipients)
+		campaigns[i].OpenRate = math.Round(float64(agg.opens)/total*1000) / 10
+		campaigns[i].ClickRate = math.Round(float64(agg.clicks)/total*1000) / 10
+	}
 }
 
 func (r *emailRepository) UpdateCampaign(campaign *models.EmailCampaign) error {

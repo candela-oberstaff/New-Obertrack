@@ -253,7 +253,11 @@ func sqlPlaceholders(ids []int) (string, []interface{}) {
 // los datos de cada destinatario. El HTML se renderiza una sola vez antes de
 // llamar aquí; lo único que se repite por persona es la sustitución de tokens,
 // y ni eso cuando la plantilla no declara ninguna variable.
-func (h *EmailHandler) dispatchPersonalized(recipients map[string]utils.EmailRecipient, subject, htmlContent string) (int, []string) {
+//
+// tags es opcional y viaja con cada correo hasta el webhook de Brevo. Solo las
+// campañas la usan (para poder atribuirse sus propios eventos); los envíos
+// sueltos no la necesitan.
+func (h *EmailHandler) dispatchPersonalized(recipients map[string]utils.EmailRecipient, subject, htmlContent string, tags ...string) (int, []string) {
 	personalize := utils.HasEmailVariables(htmlContent) || utils.HasEmailVariables(subject)
 
 	sent := 0
@@ -265,7 +269,7 @@ func (h *EmailHandler) dispatchPersonalized(recipients map[string]utils.EmailRec
 			body = utils.RenderVariablesHTML(htmlContent, data)
 			subj = utils.RenderVariablesText(subject, data)
 		}
-		if err := h.brevoSvc.SendEmailKind(service.EmailKindCampaign, r.Email, r.Name, subj, body); err != nil {
+		if err := h.brevoSvc.SendEmailKindTagged(service.EmailKindCampaign, r.Email, r.Name, subj, body, tags); err != nil {
 			sendErrors = append(sendErrors, fmt.Sprintf("%s: %s", r.Email, err.Error()))
 			continue
 		}
@@ -422,7 +426,9 @@ func (h *EmailHandler) SendCampaign(c *gin.Context) {
 		subject = campaign.Title
 	}
 
-	successCount, sendErrors := h.dispatchPersonalized(uniqueRecipients, subject, htmlContent)
+	// La etiqueta es lo que permite que las aperturas y clics de este envío
+	// vuelvan atribuidos a ESTA campaña cuando Brevo dispare el webhook.
+	successCount, sendErrors := h.dispatchPersonalized(uniqueRecipients, subject, htmlContent, service.CampaignTag(campaign.ID))
 
 	// Mark campaign as sent regardless of partial failures
 	now := time.Now()
@@ -451,13 +457,18 @@ func (h *EmailHandler) SendCampaign(c *gin.Context) {
 // HandleBrevoWebhook receives and persists events from Brevo (opens, clicks, etc.)
 func (h *EmailHandler) HandleBrevoWebhook(c *gin.Context) {
 	var payload struct {
-		Event      string `json:"event"`
-		Email      string `json:"email"`
-		CampaignID uint   `json:"campaign_id"`
-		MessageID  string `json:"message-id"`
-		IP         string `json:"ip"`
-		UserAgent  string `json:"user-agent"`
-		Date       string `json:"date"`
+		Event string `json:"event"`
+		Email string `json:"email"`
+		// CampaignID solo llega en eventos de campañas de MARKETING de Brevo.
+		// Las campañas de Obertrack salen por la API transaccional, así que en
+		// la práctica viene vacío y el ID se saca de las etiquetas.
+		CampaignID uint            `json:"campaign_id"`
+		Tags       json.RawMessage `json:"tags"`
+		Tag        string          `json:"tag"`
+		MessageID  string          `json:"message-id"`
+		IP         string          `json:"ip"`
+		UserAgent  string          `json:"user-agent"`
+		Date       string          `json:"date"`
 	}
 
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -474,8 +485,16 @@ func (h *EmailHandler) HandleBrevoWebhook(c *gin.Context) {
 		}
 	}
 
+	// Sin campaña atribuida el evento igual se guarda (CampaignID 0): sirve para
+	// las métricas globales de Correos y para rastrear un rebote de cualquier
+	// correo del sistema, no solo de campañas.
+	campaignID := payload.CampaignID
+	if campaignID == 0 {
+		campaignID = service.CampaignIDFromTags(service.ParseBrevoTags(payload.Tags, payload.Tag))
+	}
+
 	event := &models.EmailEvent{
-		CampaignID: payload.CampaignID,
+		CampaignID: campaignID,
 		Email:      payload.Email,
 		Event:      payload.Event,
 		IP:         payload.IP,
