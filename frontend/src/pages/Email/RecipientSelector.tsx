@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, X, Users, Mail, UserCheck, Check } from 'lucide-react'
+import { Search, X, Users, Mail, UserCheck, Check, MapPin } from 'lucide-react'
 import { emailService } from '../../services/emailService'
 import { audienceService, AudienceGroup } from '../../services/audienceService'
+import { Select } from '../../components/ui/Select'
 
 export interface RecipientValue {
   userIds: number[]
@@ -16,7 +17,15 @@ interface User {
   user_type: string
   is_manager: boolean
   is_superadmin: boolean
+  country?: string
 }
+
+// Valor del filtro de país cuando se quiere ver a quienes NO tienen país
+// cargado. No es un capricho: al filtrar por "Venezuela" esa gente desaparece
+// del listado sin aviso, y en un envío masivo eso es quedarse fuera en silencio.
+// Con esta opción se los puede encontrar (y arreglar su ficha) o incluirlos a
+// propósito.
+const NO_COUNTRY = '__sin_pais__'
 
 interface Props {
   value: RecipientValue
@@ -29,6 +38,7 @@ export default function RecipientSelector({ value, onChange }: Props) {
   const [tab, setTab] = useState<Tab>('users')
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('all')
+  const [countryFilter, setCountryFilter] = useState<string>('all')
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [groups, setGroups] = useState<AudienceGroup[]>([])
   const [expressRaw, setExpressRaw] = useState('')
@@ -46,23 +56,63 @@ export default function RecipientSelector({ value, onChange }: Props) {
     }).finally(() => setLoading(false))
   }, [])
 
-  const filteredUsers = useMemo(() => {
+  // El filtro de rol se separó del resto para poder contar cuánta gente hay por
+  // país DENTRO del rol elegido: "Profesionales → Venezuela (312)" es el dato
+  // que hace falta antes de lanzar un envío masivo.
+  const usersByRole = useMemo(() => {
     return allUsers.filter(u => {
-      const matchQuery = 
-        u.name?.toLowerCase().includes(query.toLowerCase()) ||
-        u.email?.toLowerCase().includes(query.toLowerCase())
-
-      if (!matchQuery) return false
-
       if (roleFilter === 'superadmin') return u.is_superadmin || u.user_type === 'superadmin'
       if (roleFilter === 'customer_success') return u.user_type === 'customer_success'
       if (roleFilter === 'empleador') return u.user_type === 'empleador'
       if (roleFilter === 'profesional') return u.user_type === 'profesional'
       if (roleFilter === 'manager') return u.is_manager
+      return true
+    })
+  }, [allUsers, roleFilter])
+
+  // Los países salen de la gente que hay, no de un catálogo fijo: el catálogo
+  // tiene ~250 países y casi todos estarían vacíos. Se ordenan por cantidad
+  // porque el país con más gente es casi siempre el que se busca.
+  const countryOptions = useMemo(() => {
+    const counts = new Map<string, number>()
+    let sinPais = 0
+    for (const u of usersByRole) {
+      const c = (u.country ?? '').trim()
+      if (c) counts.set(c, (counts.get(c) ?? 0) + 1)
+      else sinPais++
+    }
+    // El país elegido nunca desaparece del desplegable aunque el filtro de rol
+    // lo deje en cero: si desapareciera, el selector saltaría solo a otro valor
+    // y el listado cambiaría sin que nadie lo haya tocado.
+    if (countryFilter !== 'all' && countryFilter !== NO_COUNTRY && !counts.has(countryFilter)) {
+      counts.set(countryFilter, 0)
+    }
+    const options = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
+      .map(([name, count]) => ({ value: name, label: `${name} (${count})` }))
+
+    if (sinPais > 0 || countryFilter === NO_COUNTRY) {
+      options.push({ value: NO_COUNTRY, label: `Sin país registrado (${sinPais})` })
+    }
+    return options
+  }, [usersByRole, countryFilter])
+
+  const filteredUsers = useMemo(() => {
+    const q = query.toLowerCase()
+    return usersByRole.filter(u => {
+      const matchQuery =
+        u.name?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q)
+
+      if (!matchQuery) return false
+
+      const country = (u.country ?? '').trim()
+      if (countryFilter === NO_COUNTRY) return country === ''
+      if (countryFilter !== 'all') return country === countryFilter
 
       return true
     })
-  }, [allUsers, query, roleFilter])
+  }, [usersByRole, query, countryFilter])
 
   const toggleUser = (id: number) => {
     const ids = value.userIds.includes(id)
@@ -178,6 +228,33 @@ export default function RecipientSelector({ value, onChange }: Props) {
                 ))}
               </div>
 
+              {/* Filtro por país. Usa el Select del proyecto y no un <select>
+                  nativo: el nativo dibuja el menú con el estilo del sistema
+                  operativo (que no se puede tocar) y además lo recortaba el
+                  overflow del panel. Este monta el menú en un portal, trae
+                  buscador solo. */}
+              <div className="flex items-center gap-2 pt-1">
+                <div className="flex-1 min-w-0">
+                  <Select
+                    options={[{ value: 'all', label: 'Todos los países' }, ...countryOptions]}
+                    value={countryFilter}
+                    onChange={v => setCountryFilter(String(v))}
+                    leftIcon={<MapPin size={13} />}
+                    className="ui-select__trigger--compact"
+                    ariaLabel="Filtrar por país"
+                    fullWidth
+                  />
+                </div>
+                {countryFilter !== 'all' && (
+                  <button
+                    onClick={() => setCountryFilter('all')}
+                    className="text-[10px] font-bold text-slate-500 hover:text-slate-700 shrink-0"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+
               {/* Bulk actions inside filters */}
               <div className="flex justify-between items-center pt-1 border-t border-slate-100 mt-1">
                 <span className="text-[10px] text-slate-400 font-semibold">{filteredUsers.length} encontrados</span>
@@ -231,7 +308,14 @@ export default function RecipientSelector({ value, onChange }: Props) {
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-slate-400">{u.email}</div>
+                      <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                        <span className="truncate">{u.email}</span>
+                        {u.country?.trim() && (
+                          <span className="text-slate-400 shrink-0 flex items-center gap-0.5">
+                            <MapPin size={9} /> {u.country}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )

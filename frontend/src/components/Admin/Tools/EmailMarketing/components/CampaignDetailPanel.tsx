@@ -65,9 +65,23 @@ const CampaignDetailPanel: React.FC<Props> = ({ campaign, onClose, onEdit, onDel
     return map;
   }, [events]);
 
-  const openCount   = (eventSummary['opened'] || 0) + (eventSummary['unique_opened'] || 0);
-  const clickCount  = eventSummary['click'] || 0;
-  const bounceCount = (eventSummary['hard_bounce'] || 0) + (eventSummary['soft_bounce'] || 0);
+  // Las tasas se miden en PERSONAS, no en eventos. Brevo manda un evento por
+  // cada apertura y cada clic —la misma persona que abre el correo tres veces
+  // genera tres 'opened'—, y además reintenta el webhook si no le respondimos a
+  // tiempo, así que contar eventos sueltos inflaba los porcentajes hasta pasarse
+  // del 100%. Contando direcciones distintas, "30% de aperturas" significa lo
+  // que uno espera: 3 de cada 10 destinatarios lo abrieron.
+  const uniquePeople = (types: string[]) => new Set(
+    events
+      .filter(ev => types.includes(ev.event))
+      .map(ev => (ev.email || '').toLowerCase())
+      .filter(Boolean)
+  ).size;
+
+  const openCount   = uniquePeople(['unique_opened', 'opened']);
+  const clickCount  = uniquePeople(['click']);
+  const bounceCount = uniquePeople(['hard_bounce', 'soft_bounce']);
+  const totalClicks = eventSummary['click'] || 0;
   const total       = campaign.recipients || 0;
 
   const openRate  = total > 0 ? ((openCount  / total) * 100).toFixed(1) : '0.0';
@@ -129,7 +143,7 @@ const CampaignDetailPanel: React.FC<Props> = ({ campaign, onClose, onEdit, onDel
             <div className={styles.statsGrid}>
               <StatCard icon={<Users size={18} />}    label="Enviados"   value={total}        color="#3b82f6" />
               <StatCard icon={<Eye size={18} />}       label="Aperturas"  value={`${openRate}%`}  sub={`${openCount} únicos`} color="#8b5cf6" />
-              <StatCard icon={<MousePointer2 size={18} />} label="Clics" value={`${clickRate}%`} sub={`${clickCount} clics`}  color="#22c55e" />
+              <StatCard icon={<MousePointer2 size={18} />} label="Clics" value={`${clickRate}%`} sub={`${totalClicks} clics · ${clickCount} únicos`}  color="#22c55e" />
               <StatCard icon={<AlertTriangle size={18} />} label="Rebotes" value={`${bounceRate}%`} sub={`${bounceCount} emails`} color="#f59e0b" />
             </div>
 
