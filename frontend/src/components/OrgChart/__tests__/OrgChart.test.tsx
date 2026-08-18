@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { OrgChart } from '../OrgChart';
 import type { OrgPerson } from '../orgTree';
@@ -79,6 +79,119 @@ describe('OrgChart — enlace al perfil', () => {
 
     expect(open).not.toHaveBeenCalled();
     open.mockRestore();
+  });
+});
+
+// jsdom no hace layout: sin medidas, el recorte que impide perder el árbol de
+// vista dejaría el desplazamiento clavado en su tope. Se le dan medidas para
+// que haya margen donde moverse.
+const withLayout = () => {
+  const rect = { width: 800, height: 400, top: 0, left: 0, right: 800, bottom: 400, x: 0, y: 0, toJSON: () => ({}) };
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect as DOMRect);
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { value: 1000, configurable: true });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { value: 600, configurable: true });
+  // jsdom no implementa la captura de puntero.
+  HTMLElement.prototype.setPointerCapture = vi.fn();
+  HTMLElement.prototype.releasePointerCapture = vi.fn();
+};
+
+const canvasOf = (container: HTMLElement) =>
+  container.querySelector('[data-org-canvas]') as HTMLElement;
+
+const shiftOf = (el: HTMLElement) => {
+  const m = /translate3d\((-?\d+)px, (-?\d+)px/.exec(el.style.transform);
+  return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
+};
+
+describe('OrgChart — lienzo', () => {
+  beforeEach(withLayout);
+  afterEach(() => vi.restoreAllMocks());
+
+  it('arrastrar el fondo mueve el árbol', async () => {
+    const { container } = render(<OrgChart people={PEOPLE} />);
+    const view = canvasOf(container).parentElement!;
+    const before = shiftOf(canvasOf(container))!;
+
+    fireEvent.pointerDown(view, { button: 0, clientX: 400, clientY: 300 });
+    fireEvent.pointerMove(view, { clientX: 460, clientY: 340 });
+
+    const after = shiftOf(canvasOf(container))!;
+    expect(after.x - before.x).toBe(60);
+    expect(after.y - before.y).toBe(40);
+  });
+
+  // Si agarrar una tarjeta moviera además el lienzo, reasignar un manager
+  // arrastraría el árbol entero bajo el puntero.
+  it('arrastrar una tarjeta no mueve el lienzo', () => {
+    const { container } = render(<OrgChart people={PEOPLE} />);
+    const view = canvasOf(container).parentElement!;
+    const before = shiftOf(canvasOf(container))!;
+
+    const card = container.querySelector('[data-org-person]') as HTMLElement;
+    fireEvent.pointerDown(card, { button: 0, clientX: 400, clientY: 300 });
+    fireEvent.pointerMove(view, { clientX: 460, clientY: 340 });
+
+    expect(shiftOf(canvasOf(container))).toEqual(before);
+  });
+
+  it('la rueda desplaza el lienzo', () => {
+    const { container } = render(<OrgChart people={PEOPLE} />);
+    const view = canvasOf(container).parentElement!;
+    const before = shiftOf(canvasOf(container))!;
+
+    fireEvent.wheel(view, { deltaX: 30, deltaY: 50 });
+
+    const after = shiftOf(canvasOf(container))!;
+    expect(after.x - before.x).toBe(-30);
+    expect(after.y - before.y).toBe(-50);
+  });
+});
+
+describe('OrgChart — zoom', () => {
+  const level = () => screen.getByRole('button', { name: /%/ });
+
+  it('aleja y acerca en pasos de 10%', () => {
+    render(<OrgChart people={PEOPLE} />);
+    expect(level()).toHaveTextContent('100%');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Alejar' }));
+    expect(level()).toHaveTextContent('90%');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Acercar' }));
+    expect(level()).toHaveTextContent('100%');
+  });
+
+  // Sin tope, alejar sin límite deja el árbol ilegible y acercar lo desborda
+  // sin necesidad: 30% y 120% son los extremos útiles.
+  it('no se pasa de los límites', () => {
+    render(<OrgChart people={PEOPLE} />);
+    const out = screen.getByRole('button', { name: 'Alejar' });
+
+    for (let i = 0; i < 12; i++) fireEvent.click(out);
+    expect(level()).toHaveTextContent('30%');
+    expect(out).toBeDisabled();
+
+    const zin = screen.getByRole('button', { name: 'Acercar' });
+    for (let i = 0; i < 12; i++) fireEvent.click(zin);
+    expect(level()).toHaveTextContent('120%');
+    expect(zin).toBeDisabled();
+  });
+
+  it('el zoom se aplica al árbol, no a la barra de herramientas', () => {
+    const { container } = render(<OrgChart people={PEOPLE} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Alejar' }));
+
+    const root = container.querySelector('ul');
+    expect(root).toHaveStyle({ zoom: '0.9' });
+  });
+
+  // En la vista de lista el zoom no aplica: no hay nada que desbordar.
+  it('los controles solo están en la vista de organigrama', () => {
+    render(<OrgChart people={PEOPLE} />);
+    expect(screen.getByRole('button', { name: 'Alejar' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /lista/i }));
+    expect(screen.queryByRole('button', { name: 'Alejar' })).not.toBeInTheDocument();
   });
 });
 

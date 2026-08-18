@@ -45,16 +45,40 @@ func (r *metricsRepository) GetEmailMetrics(days int) (map[string]interface{}, e
 		  AND COALESCE(sent_at, created_at) >= NOW() - (? * INTERVAL '1 day')
 	`, days).Scan(&campaignCount)
 
-	var totalOpened int64
-	var totalClicked int64
-	var totalBounced int64
+	// Aperturas, clics y rebotes DE ESAS CAMPAÑAS.
+	//
+	// Antes se contaban los eventos de todos los correos del sistema —avisos de
+	// tareas, recordatorios de horas, tickets, inducciones— contra un
+	// denominador que solo suma destinatarios de campañas. Mezclar los dos
+	// universos daba tasas sin sentido: el sistema manda muchos más avisos que
+	// campañas, así que la apertura se iba muy por encima del 100%. El error
+	// estuvo escondido mientras la tabla de eventos estuvo vacía; aparece en
+	// cuanto el webhook empieza a entregar.
+	//
+	// Se cuentan PERSONAS por campaña y no eventos —quien abre tres veces genera
+	// tres eventos, y el webhook se reintenta— con el mismo criterio que el
+	// panel de campañas, para que las dos pantallas no se contradigan.
+	var agg struct {
+		Opened  int64
+		Clicked int64
+		Bounced int64
+	}
+	r.db.Raw(`
+		SELECT
+		  COUNT(DISTINCT (e.campaign_id, LOWER(e.email)))
+		    FILTER (WHERE e.event IN ('opened','unique_opened','proxy_open','unique_proxy_open')) AS opened,
+		  COUNT(DISTINCT (e.campaign_id, LOWER(e.email)))
+		    FILTER (WHERE e.event = 'click') AS clicked,
+		  COUNT(DISTINCT (e.campaign_id, LOWER(e.email)))
+		    FILTER (WHERE e.event IN ('hard_bounce','soft_bounce')) AS bounced
+		FROM email_events e
+		JOIN email_campaigns c ON c.id = e.campaign_id
+		WHERE c.status = 'sent'
+		  AND c.deleted_at IS NULL
+		  AND COALESCE(c.sent_at, c.created_at) >= NOW() - (? * INTERVAL '1 day')
+	`, days).Scan(&agg)
 
-	// Incluye los proxy_open: Brevo reporta así las aperturas que llegan por un
-	// proxy de privacidad (Apple Mail y similares). Mismo criterio que el panel
-	// de campañas, para que las dos pantallas no den números distintos.
-	r.db.Model(&models.EmailEvent{}).Where("event IN ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", []string{"opened", "proxy_open"}, days).Count(&totalOpened)
-	r.db.Model(&models.EmailEvent{}).Where("event = ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", "click", days).Count(&totalClicked)
-	r.db.Model(&models.EmailEvent{}).Where("event LIKE ? AND timestamp >= NOW() - (? * INTERVAL '1 day')", "%bounce%", days).Count(&totalBounced)
+	totalOpened, totalClicked, totalBounced := agg.Opened, agg.Clicked, agg.Bounced
 
 	openRate := 0.0
 	clickRate := 0.0
@@ -63,14 +87,19 @@ func (r *metricsRepository) GetEmailMetrics(days int) (map[string]interface{}, e
 		clickRate = (float64(totalClicked) / float64(totalSent)) * 100
 	}
 
-	// Evolution data for the requested days
+	// Evolución diaria, también acotada a campañas: un gráfico que incluyera los
+	// correos de aviso al lado de unas tasas que no los incluyen contaría dos
+	// historias distintas en la misma pantalla.
 	var evolution []map[string]interface{}
 	r.db.Raw(`
-		SELECT DATE(timestamp) as date, event, COUNT(*) as count 
-		FROM email_events 
-		WHERE timestamp >= NOW() - (? * INTERVAL '1 day')
-		GROUP BY DATE(timestamp), event
-		ORDER BY DATE(timestamp) ASC
+		SELECT DATE(e.timestamp) as date, e.event, COUNT(*) as count
+		FROM email_events e
+		JOIN email_campaigns c ON c.id = e.campaign_id
+		WHERE c.status = 'sent'
+		  AND c.deleted_at IS NULL
+		  AND e.timestamp >= NOW() - (? * INTERVAL '1 day')
+		GROUP BY DATE(e.timestamp), e.event
+		ORDER BY DATE(e.timestamp) ASC
 	`, days).Scan(&evolution)
 
 	return map[string]interface{}{
