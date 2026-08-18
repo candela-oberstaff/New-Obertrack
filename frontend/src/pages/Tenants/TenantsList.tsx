@@ -13,7 +13,7 @@ import { useConfirm } from '../../components/ui/ConfirmProvider'
 import { setRecordNav } from '../../lib/recordNav'
 import { healthSignal, daysSince, HEALTH_COLOR } from './accountHealth'
 import { emailService } from '../../services/emailService'
-import { ticketService } from '../../services/ticket.service'
+import { openWaConversation } from '../../lib/whatsappInbox'
 import { useNotification } from '../../context/NotificationContext'
 import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
 import styles from './Tenants.module.css'
@@ -248,15 +248,12 @@ export default function TenantsList() {
       notify.warning(`${t.company_name} no tiene un teléfono registrado.`)
       return
     }
-    try {
-      const chat = await ticketService.openWaChat(t.phone_number, t.owner_name || t.company_name)
-      if (!chat.ticket_id) throw new Error('sin conversación')
+    const ok = await openWaConversation(t.phone_number, t.owner_name || t.company_name, navigate)
+    if (ok) {
       adminService.logTenantContact(t.id, 'whatsapp', 'Abierto desde el listado (bandeja de WhatsApp)').catch(() => {})
-      navigate(`/tickets/wa/${chat.ticket_id}`)
       return
-    } catch { /* sin bandeja disponible se cae al enlace, que siempre funciona */ }
-    window.open(`https://wa.me/${t.phone_number.replace(/\D/g, '')}`, '_blank', 'noopener,noreferrer')
-    adminService.logTenantContact(t.id, 'whatsapp', 'Abierto desde el listado (WhatsApp Web)').catch(() => {})
+    }
+    notify.error('No se pudo abrir la conversación de WhatsApp. Revisa la bandeja e inténtalo de nuevo.')
   }
 
   const handleSendComm = async () => {

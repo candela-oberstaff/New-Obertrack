@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/service"
 )
 
@@ -21,8 +22,26 @@ func NewWorkHourHandler(svc service.WorkHourService) *WorkHourHandler {
 
 // superadminCompanyFilter reads the ?company_id= scope from the request. It only
 // applies to superadmins; tenant-scoped users are always bound to their own tenant.
-func superadminCompanyFilter(c *gin.Context, isSuperadmin bool) uint {
-	if !isSuperadmin {
+// readsAcrossCompanies indica si quien pide LEE a nivel plataforma: elige la
+// empresa con ?company_id= en vez de quedar atado a la suya.
+//
+// Son el superadmin y customer success. CS ya atiende a todas las cuentas —el
+// panel de empresas, el expediente y la bandeja de soporte lo tratan igual que
+// al superadmin (ver requireAdminPanel)—, pero en Reportes caía en la rama de
+// "usuario normal" y solo veía sus propias horas: una pantalla vacía, porque un
+// CS no carga jornadas.
+//
+// Es un permiso de LECTURA. No sustituye a IsSuperadmin en ninguna escritura:
+// esas siguen decidiéndose por separado.
+func readsAcrossCompanies(c *gin.Context) bool {
+	return middleware.IsSuperadmin(c) ||
+		middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess)
+}
+
+// companyFilterFor lee ?company_id= para quien puede elegir empresa. Para el
+// resto devuelve 0 y el servicio los acota a su propio tenant.
+func companyFilterFor(c *gin.Context, crossCompany bool) uint {
+	if !crossCompany {
 		return 0
 	}
 	if v, err := strconv.ParseUint(c.Query("company_id"), 10, 32); err == nil {
@@ -31,17 +50,26 @@ func superadminCompanyFilter(c *gin.Context, isSuperadmin bool) uint {
 	return 0
 }
 
+// superadminCompanyFilter es lo mismo acotado al superadmin. Lo usan el resto de
+// los módulos (tableros, canales, RBAC), donde la lectura de customer success no
+// está contemplada y no se cambia aquí.
+func superadminCompanyFilter(c *gin.Context, isSuperadmin bool) uint {
+	return companyFilterFor(c, isSuperadmin)
+}
+
 func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
-	isSuperadmin := middleware.IsSuperadmin(c)
 	isManager := middleware.IsManager(c)
 	tenantID := middleware.GetTenantID(c)
+	// Quien lee a nivel plataforma (superadmin y CS) elige empresa; el resto
+	// queda acotado a la suya.
+	crossCompany := readsAcrossCompanies(c)
 
 	userIDFilter := c.Query("user_id")
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
-	companyFilter := superadminCompanyFilter(c, isSuperadmin)
+	companyFilter := companyFilterFor(c, crossCompany)
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	if page < 1 {
@@ -57,7 +85,7 @@ func (h *WorkHourHandler) GetAll(c *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
-	workHours, total, err := h.svc.GetAll(userID, role, isSuperadmin, isManager, tenantID, companyFilter, userIDFilter, startDate, endDate, offset, limit)
+	workHours, total, err := h.svc.GetAll(userID, role, crossCompany, isManager, tenantID, companyFilter, userIDFilter, startDate, endDate, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch work hours"})
 		return

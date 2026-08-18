@@ -44,10 +44,10 @@ func verifySurveyToken(surveyID, userID uint, token string) bool {
 }
 
 type SurveyHandler struct {
-	repo         repository.SurveyRepository
-	userRepo     repository.UserRepository
-	brevoSvc     *service.BrevoService
-	notifSvc     service.NotificationService
+	repo     repository.SurveyRepository
+	userRepo repository.UserRepository
+	brevoSvc *service.BrevoService
+	notifSvc service.NotificationService
 }
 
 func NewSurveyHandler(
@@ -57,10 +57,10 @@ func NewSurveyHandler(
 	notifSvc service.NotificationService,
 ) *SurveyHandler {
 	return &SurveyHandler{
-		repo:      repo,
-		userRepo:  userRepo,
-		brevoSvc:  brevoSvc,
-		notifSvc:  notifSvc,
+		repo:     repo,
+		userRepo: userRepo,
+		brevoSvc: brevoSvc,
+		notifSvc: notifSvc,
 	}
 }
 
@@ -175,8 +175,6 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Survey not found"})
 		return
 	}
-
-
 
 	// El cuerpo puede traer una lista de destinatarios que reemplaza a la
 	// guardada en la encuesta (p. ej. el envío masivo desde el panel de

@@ -1143,12 +1143,24 @@ func (s *employmentService) UpdateEmploymentManager(userID, employmentID uint, m
 	return nil
 }
 
+// maxFutureStart es cuánto puede adelantarse una fecha de ingreso.
+//
+// El límite no está para impedir incorporaciones futuras —son el caso normal—
+// sino para atajar el año tecleado de más. Una fecha así no la revisa nadie
+// después y descoloca todo el expediente, que se calcula sobre ese período. Dos
+// años deja fuera cualquier contratación real por adelantado.
+const maxFutureStart = 2 * 365 * 24 * time.Hour
+
 // UpdateEmploymentStart corrige la fecha de ingreso de un empleo del usuario.
 //
 // Se permite en empleos ya finalizados: buena parte de las correcciones salen
 // justo al cerrar el expediente, y bloquearlas dejaría el dato malo para
-// siempre. Lo que no se permite es una fecha que rompa el período (futura o
-// posterior a la baja), porque el resto del expediente se calcula sobre él.
+// siempre.
+//
+// La fecha PUEDE ser futura: se contrata a alguien hoy para que se incorpore la
+// semana que viene, y antes había que esperar al día de la incorporación para
+// poder cargarla. Mientras no haya llegado, el expediente sale vacío y la
+// antigüedad en cero, que es lo correcto: todavía no empezó.
 func (s *employmentService) UpdateEmploymentStart(userID, employmentID uint, startedAt time.Time) error {
 	target, err := s.findUserEmployment(userID, employmentID)
 	if err != nil {
@@ -1157,8 +1169,8 @@ func (s *employmentService) UpdateEmploymentStart(userID, employmentID uint, sta
 	if startedAt.IsZero() {
 		return errors.New("Fecha inválida: falta la fecha de ingreso")
 	}
-	if startedAt.After(time.Now()) {
-		return errors.New("Fecha inválida: la fecha de ingreso no puede ser futura")
+	if startedAt.After(time.Now().Add(maxFutureStart)) {
+		return errors.New("Fecha inválida: la fecha de ingreso está demasiado lejos en el futuro")
 	}
 	if target.EndedAt != nil && startedAt.After(*target.EndedAt) {
 		return errors.New("Fecha inválida: el ingreso no puede ser posterior a la baja")

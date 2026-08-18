@@ -14,7 +14,7 @@ import (
 )
 
 type WorkHourService interface {
-	GetAll(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
+	GetAll(userID uint, role string, crossCompany, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
 	Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error)
 	Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error)
 	// Approve/Reject procesan las jornadas ELEGIBLES del lote y devuelven
@@ -103,12 +103,15 @@ func (s *workHourService) canManageWorkHourOf(targetUserID, companyID, actorID u
 	return err == nil && emp != nil && emp.ManagerID != nil && *emp.ManagerID == actorID
 }
 
-func (s *workHourService) GetAll(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
+// crossCompany: quien lee a nivel plataforma (superadmin y customer success) y
+// por tanto elige la empresa en vez de quedar atado a la suya. Es un permiso de
+// LECTURA; las escrituras siguen mirando isSuperadmin por separado.
+func (s *workHourService) GetAll(userID uint, role string, crossCompany, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
 	filters := make(map[string]interface{})
 
-	if isSuperadmin {
-		// Superadmin must scope to a company explicitly. Without it, no records are
-		// returned so we never mix work hours from different tenants in the view.
+	if crossCompany {
+		// Debe elegir empresa explícitamente. Sin eso no se devuelve nada, para
+		// no mezclar nunca horas de tenants distintos en la misma vista.
 		if companyFilter == 0 {
 			return []models.WorkHour{}, 0, nil
 		}
@@ -142,7 +145,7 @@ func (s *workHourService) GetAll(userID uint, role string, isSuperadmin, isManag
 		filters["user_id"] = userID
 	}
 
-	if userIDFilter != "" && (isSuperadmin || role == string(models.UserTypeEmployer) || role == "empleador") {
+	if userIDFilter != "" && (crossCompany || role == string(models.UserTypeEmployer) || role == "empleador") {
 		uid, _ := strconv.ParseUint(userIDFilter, 10, 32)
 		filters["user_id"] = uint(uid)
 	}

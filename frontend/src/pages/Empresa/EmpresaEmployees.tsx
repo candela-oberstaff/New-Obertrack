@@ -309,18 +309,18 @@ export default function EmpresaEmployees() {
             {selectedIds.size} seleccionado(s)
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <select
+            <Select
               value={bulkManagerId}
-              onChange={(e) => setBulkManagerId(e.target.value)}
+              onChange={(v) => setBulkManagerId(String(v))}
               disabled={bulkBusy}
-              style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid #c7d2fe', background: '#fff', fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}
-            >
-              <option value="">Asignar manager…</option>
-              {managers.map((m) => (
-                <option key={m.id} value={String(m.id)}>{m.name}</option>
-              ))}
-              <option value="__unassign__">Quitar manager</option>
-            </select>
+              className="ui-select__trigger--compact"
+              ariaLabel="Manager a asignar"
+              options={[
+                { value: '', label: 'Asignar manager…' },
+                ...managers.map((m) => ({ value: String(m.id), label: m.name })),
+                { value: '__unassign__', label: 'Quitar manager' },
+              ]}
+            />
             <button
               type="button"
               onClick={handleBulkAssign}

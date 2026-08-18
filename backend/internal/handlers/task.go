@@ -47,8 +47,9 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	role := middleware.GetUserRole(c)
 	isManager := middleware.IsManager(c)
-	isSuperadmin := middleware.IsSuperadmin(c)
 	tenantID := middleware.GetTenantID(c)
+	// Superadmin y customer success leen a nivel plataforma eligiendo empresa.
+	crossCompany := readsAcrossCompanies(c)
 
 	boardIDStr := c.Query("board_id")
 	status := c.Query("status")
@@ -57,19 +58,15 @@ func (h *TaskHandler) GetAll(c *gin.Context) {
 	startDate := c.Query("start_date")
 	endDate := c.Query("end_date")
 
-	// Superadmin scopes to a company via ?company_id=. Ignored for tenant-scoped users.
-	var companyFilter uint
-	if isSuperadmin {
-		if v, err := strconv.ParseUint(c.Query("company_id"), 10, 32); err == nil {
-			companyFilter = uint(v)
-		}
-	}
+	// Se elige empresa con ?company_id=. Se ignora para quien está acotado a su
+	// propio tenant.
+	companyFilter := companyFilterFor(c, crossCompany)
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	offset := (page - 1) * limit
 
-	tasks, total, err := h.service.GetAll(userID, role, isManager, isSuperadmin, tenantID, companyFilter, boardIDStr, status, priority, assigneeIDStr, startDate, endDate, offset, limit)
+	tasks, total, err := h.service.GetAll(userID, role, isManager, crossCompany, tenantID, companyFilter, boardIDStr, status, priority, assigneeIDStr, startDate, endDate, offset, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tasks", "details": err.Error()})
 		return

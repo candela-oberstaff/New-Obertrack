@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -177,7 +178,9 @@ func (w *InactivityWatcher) notifySupportTeam(users []repository.InactiveUser) {
 		html := fmt.Sprintf("<p>%s</p><p>%s</p><p>Revisa la pestaña <b>Actividad</b> del panel de administración de Obertrack para contactarlos.</p>",
 			title, strings.ReplaceAll(detail, "\n", "<br>"))
 		if err := w.brevoSvc.SendEmailKind(EmailKindInactivityAlert, cs.Email, cs.Name, title, html); err != nil {
-			log.Printf("[inactivity-watcher] email a %s falló: %v", cs.Email, err)
+			if !errors.Is(err, ErrEmailKindDisabled) {
+				log.Printf("[inactivity-watcher] email a %s falló: %v", cs.Email, err)
+			}
 		}
 	}
 

@@ -711,13 +711,13 @@ func (s *WahaService) DownloadMessageMedia(session, chatID, messageID string) (i
 	if s.apiKey != "" {
 		reqInfo.Header.Set("X-Api-Key", s.apiKey)
 	}
-	
+
 	respInfo, err := s.reader().Do(reqInfo)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch message info from WAHA: %w", err)
 	}
 	defer respInfo.Body.Close()
-	
+
 	if respInfo.StatusCode < 200 || respInfo.StatusCode >= 300 {
 		return nil, "", fmt.Errorf("waha info error: status %d", respInfo.StatusCode)
 	}

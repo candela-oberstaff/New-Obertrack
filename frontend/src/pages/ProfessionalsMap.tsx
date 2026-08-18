@@ -18,7 +18,8 @@ import {
   X,
 } from 'lucide-react'
 import { adminService, type ProfessionalLocation } from '../services/admin.service'
-import { ticketService } from '../services/ticket.service'
+import { openWaConversation } from '../lib/whatsappInbox'
+import { useNotification } from '../context/NotificationContext'
 import { EmailComposerModal, type ComposerRecipient } from '../components/Admin/EmailComposerModal'
 import { useCloseGuard, useDirtySnapshot } from '../components/ui/useCloseGuard'
 import { buildTemplateOptions } from '../lib/emergencyTemplates'
@@ -130,6 +131,7 @@ const fetchQuakes = async (feed: string): Promise<Quake[]> => {
 
 export default function ProfessionalsMap() {
   const navigate = useNavigate()
+  const notify = useNotification()
   const qc = useQueryClient()
   const [country, setCountry] = useState('')
   const [state, setState] = useState('')
@@ -383,20 +385,12 @@ export default function ProfessionalsMap() {
     setContactOpen(true)
   }
 
-  // WhatsApp por la BANDEJA interna (mismo flujo que la ficha de empresa):
-  // abre (o crea) la conversación en nuestro módulo, con historial y estado de
-  // entrega, en vez de irse al wa.me del WhatsApp personal de quien atiende.
-  // Si la bandeja no está disponible, wa.me sigue siendo el respaldo.
+  // WhatsApp por la BANDEJA interna: abre (o crea) la conversación en nuestro
+  // módulo, con historial y estado de entrega. No hay salida a wa.me.
   const openWhatsApp = async (p: ProfessionalLocation) => {
     adminService.logContact(p.id, 'whatsapp')
-    try {
-      const chat = await ticketService.openWaChat(p.phone_number || '', p.name)
-      if (!chat.ticket_id) throw new Error('sin conversación')
-      navigate(`/tickets/wa/${chat.ticket_id}`)
-    } catch {
-      const digits = (p.phone_number || '').replace(/\D/g, '')
-      if (digits) window.open(`https://wa.me/${digits}`, '_blank', 'noopener,noreferrer')
-    }
+    const ok = await openWaConversation(p.phone_number, p.name, navigate)
+    if (!ok) notify.error('No se pudo abrir la conversación de WhatsApp. Revisa la bandeja e inténtalo de nuevo.')
   }
 
   const contactButtons = (p: ProfessionalLocation) => {

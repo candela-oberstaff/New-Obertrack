@@ -426,9 +426,32 @@ func (h *EmailHandler) SendCampaign(c *gin.Context) {
 		subject = campaign.Title
 	}
 
+	// Si el tipo está apagado no se intenta nada: se avisa y la campaña queda
+	// intacta para enviarla cuando se vuelva a encender. Antes se recorrían los
+	// destinatarios, cada envío devolvía "omitido", y la campaña terminaba
+	// marcada como enviada sin haber salido.
+	if !h.brevoSvc.AllowsKind(service.EmailKindCampaign) {
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "Las campañas están desactivadas en Configuración → Correos. La campaña no se envió y sigue disponible.",
+		})
+		return
+	}
+
 	// La etiqueta es lo que permite que las aperturas y clics de este envío
 	// vuelvan atribuidos a ESTA campaña cuando Brevo dispare el webhook.
 	successCount, sendErrors := h.dispatchPersonalized(uniqueRecipients, subject, htmlContent, service.CampaignTag(campaign.ID))
+
+	// Una campaña donde NO salió ni un correo no se marca como enviada: hacerlo
+	// la bloqueaba para siempre (el reenvío se corta por status == "sent") y
+	// dejaba un registro que dice "enviada a 0" sin explicar nada. Con fallos
+	// parciales sí se marca: esos correos ya salieron y no se pueden repetir.
+	if successCount == 0 && len(uniqueRecipients) > 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":  "No se pudo enviar ningún correo. La campaña sigue disponible para reintentar.",
+			"errors": sendErrors,
+		})
+		return
+	}
 
 	// Mark campaign as sent regardless of partial failures
 	now := time.Now()

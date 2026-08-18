@@ -48,17 +48,35 @@ func TestUpdateEmploymentStart_CorrigeLaFecha(t *testing.T) {
 	}
 }
 
-// Una fecha futura dejaría la antigüedad en negativo y vaciaría el expediente
-// (ausencias, contactos y seguimientos se leen desde el ingreso hacia delante).
-func TestUpdateEmploymentStart_RechazaFechaFutura(t *testing.T) {
+// Se contrata a alguien hoy para que se incorpore la semana que viene: esa
+// fecha tiene que poder cargarse en el momento del alta y no el día que empieza.
+func TestUpdateEmploymentStart_AceptaIncorporacionFutura(t *testing.T) {
 	const empID, userID = uint(51), uint(8)
 	target := models.Employment{UserID: userID, Status: models.EmploymentActive, StartedAt: time.Now()}
 	target.ID = empID
 	s, repo := newStartService(target)
 
-	err := s.UpdateEmploymentStart(userID, empID, time.Now().Add(48*time.Hour))
-	if err == nil || !strings.Contains(err.Error(), "futura") {
-		t.Fatalf("se esperaba rechazo por fecha futura; llegó %v", err)
+	proxima := time.Now().Add(7 * 24 * time.Hour)
+	if err := s.UpdateEmploymentStart(userID, empID, proxima); err != nil {
+		t.Fatalf("una incorporación futura debió aceptarse: %v", err)
+	}
+	got, ok := repo.updates["started_at"].(time.Time)
+	if !ok || !got.Equal(proxima) {
+		t.Fatalf("started_at = %v, se esperaba %v", repo.updates["started_at"], proxima)
+	}
+}
+
+// El tope no está para frenar incorporaciones futuras sino el año tecleado de
+// más, que nadie revisa después y descoloca el expediente entero.
+func TestUpdateEmploymentStart_RechazaFuturoDisparatado(t *testing.T) {
+	const empID, userID = uint(53), uint(11)
+	target := models.Employment{UserID: userID, Status: models.EmploymentActive, StartedAt: time.Now()}
+	target.ID = empID
+	s, repo := newStartService(target)
+
+	err := s.UpdateEmploymentStart(userID, empID, time.Now().AddDate(200, 0, 0))
+	if err == nil || !strings.Contains(err.Error(), "lejos en el futuro") {
+		t.Fatalf("se esperaba rechazo por fecha disparatada; llegó %v", err)
 	}
 	if repo.updates != nil {
 		t.Fatal("no debió persistirse nada con una fecha rechazada")

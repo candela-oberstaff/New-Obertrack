@@ -24,6 +24,7 @@ import { TeamActivityPanel } from '../../components/Admin/TeamActivityPanel'
 import { AbsenceReportPanel } from '../../components/Admin/AbsenceReportPanel'
 import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
 import { ticketService } from '../../services/ticket.service'
+import { openWaConversation } from '../../lib/whatsappInbox'
 import { useNotification } from '../../context/NotificationContext'
 import { groupByDay } from './activityGrouping'
 import { healthSignal, HEALTH_COLOR } from './accountHealth'
@@ -507,19 +508,13 @@ export default function TenantDetail() {
       notify.warning('Esta empresa no tiene un teléfono registrado.')
       return
     }
-    try {
-      const chat = await ticketService.openWaChat(tenant.phone_number, tenant.owner_name || tenant.company_name)
-      if (!chat.ticket_id) throw new Error('sin conversación')
+    const ok = await openWaConversation(tenant.phone_number, tenant.owner_name || tenant.company_name, navigate)
+    if (ok) {
       // El clic ES el contacto: refleja el intento, no la entrega.
       logContact('whatsapp', 'Abierto desde la ficha (bandeja de WhatsApp)').catch(() => {})
-      navigate(`/tickets/wa/${chat.ticket_id}`)
-    } catch {
-      // Si la bandeja no está disponible, wa.me sigue funcionando: mejor eso
-      // que dejar el botón muerto.
-      const digits = tenant.phone_number.replace(/\D/g, '')
-      window.open(`https://wa.me/${digits}`, '_blank', 'noopener,noreferrer')
-      logContact('whatsapp', 'Abierto desde la ficha (WhatsApp Web)').catch(() => {})
+      return
     }
+    notify.error('No se pudo abrir la conversación de WhatsApp. Revisa la bandeja e inténtalo de nuevo.')
   }
 
   if (isLoading) {

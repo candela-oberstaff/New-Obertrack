@@ -1075,17 +1075,16 @@ export default function Admin() {
                 {selectedIds.size > 0 ? (
                   <>
                     <span style={{ fontWeight: 700, color: '#6d28d9', whiteSpace: 'nowrap' }}>{selectedIds.size} usuario(s) seleccionado(s)</span>
-                    <select
+                    <Select
                       value={bulkManagerId}
-                      onChange={e => setBulkManagerId(e.target.value === '' ? '' : Number(e.target.value))}
+                      onChange={v => setBulkManagerId(v === '' ? '' : Number(v))}
                       disabled={bulkBusy || bulkDeleteBusy}
-                      style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px', minWidth: 200, background: '#fff', color: '#334155' }}
-                    >
-                      <option value="">Sin manager (desasignar)</option>
-                      {bulkManagerOptions.map((m: any) => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
-                      ))}
-                    </select>
+                      ariaLabel="Manager a asignar"
+                      options={[
+                        { value: '', label: 'Sin manager (desasignar)' },
+                        ...bulkManagerOptions.map((m: any) => ({ value: m.id, label: m.name })),
+                      ]}
+                    />
                     <button
                       onClick={handleBulkAssign}
                       disabled={bulkBusy || bulkDeleteBusy}

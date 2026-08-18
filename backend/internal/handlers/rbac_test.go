@@ -108,10 +108,10 @@ func TestAudienceForRequest(t *testing.T) {
 		isSuper bool
 		want    string
 	}{
-		{"superadmin", true, ""},                                        // ve todas las audiencias
+		{"superadmin", true, ""}, // ve todas las audiencias
 		{string(models.UserTypeEmployer), false, models.TutorialAudienceEmployer},
 		{string(models.UserTypeProfessional), false, models.TutorialAudienceProfessional},
-		{string(models.UserTypeCustomerSuccess), false, ""},             // soporte ve todo
+		{string(models.UserTypeCustomerSuccess), false, ""}, // soporte ve todo
 		{string(models.UserTypeITAnalyst), false, ""},
 	}
 	for _, tc := range cases {

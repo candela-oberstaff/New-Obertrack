@@ -13,7 +13,7 @@ import (
 )
 
 type TaskService interface {
-	GetAll(userID uint, role string, isManager, isSuperadmin bool, tenantID, companyFilter uint, boardIDStr, status, priority, assigneeIDStr, startDate, endDate string, offset, limit int) ([]models.Task, int64, error)
+	GetAll(userID uint, role string, isManager, crossCompany bool, tenantID, companyFilter uint, boardIDStr, status, priority, assigneeIDStr, startDate, endDate string, offset, limit int) ([]models.Task, int64, error)
 	GetBoardStatusCounts(isSuperadmin bool, tenantID, companyFilter uint) (map[uint]map[string]int, error)
 	GetByID(id uint, tenantID uint, isSuperadmin bool) (*models.Task, error)
 	Create(userID uint, isSuperadmin bool, tenantID uint, title, description, priority string, endDate *string, assignees []uint, boardID uint) (*models.Task, []models.User, error)
@@ -196,7 +196,10 @@ func NewTaskService(
 	}
 }
 
-func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin bool, tenantID, companyFilter uint, boardIDStr, status, priority, assigneeIDStr, startDate, endDate string, offset, limit int) ([]models.Task, int64, error) {
+// crossCompany: quien lee a nivel plataforma (superadmin y customer success) y
+// elige la empresa en vez de quedar atado a la suya. Permiso de LECTURA; las
+// escrituras de tareas siguen decidiéndose con isSuperadmin.
+func (s *taskService) GetAll(userID uint, role string, isManager, crossCompany bool, tenantID, companyFilter uint, boardIDStr, status, priority, assigneeIDStr, startDate, endDate string, offset, limit int) ([]models.Task, int64, error) {
 	filters := make(map[string]interface{})
 
 	if boardIDStr != "" && boardIDStr != "all" {
@@ -220,9 +223,9 @@ func (s *taskService) GetAll(userID uint, role string, isManager, isSuperadmin b
 		filters["end_date"] = endDate
 	}
 
-	if isSuperadmin {
-		// Superadmin must scope to a company explicitly. Without it, no tasks are
-		// returned so we never mix tasks from different tenants in the same view.
+	if crossCompany {
+		// Debe elegir empresa explícitamente. Sin eso no se devuelve nada, para
+		// no mezclar nunca tareas de tenants distintos en la misma vista.
 		if companyFilter == 0 {
 			return []models.Task{}, 0, nil
 		}

@@ -6,6 +6,12 @@ import { ticketService } from '../../../services/ticket.service';
 interface ChatInputAreaProps {
   onSend: (content: string, channel: 'whatsapp' | 'email', templateId?: string) => void;
   departmentId?: string;
+  /**
+   * Texto con el que arranca el campo. Lo usa quien llega desde un seguimiento
+   * (por ejemplo el semáforo de inactividad) para que el mensaje venga escrito
+   * y solo haya que revisarlo. No se envía solo: siempre hay que darle a enviar.
+   */
+  initialContent?: string;
 }
 
 interface TemplateMessage {
@@ -16,8 +22,10 @@ interface TemplateMessage {
   status: string;
 }
 
-export default function ChatInputArea({ onSend, departmentId }: ChatInputAreaProps) {
-  const [content, setContent] = useState('');
+export default function ChatInputArea({ onSend, departmentId, initialContent }: ChatInputAreaProps) {
+  // Solo siembra el valor inicial: a partir de ahí manda lo que escriba la
+  // persona, y tras enviar el campo queda vacío como siempre.
+  const [content, setContent] = useState(initialContent ?? '');
   const [sending, setSending] = useState(false);
   const [templates, setTemplates] = useState<TemplateMessage[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');

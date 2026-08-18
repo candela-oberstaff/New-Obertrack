@@ -8,6 +8,8 @@ import { FollowUpCell } from './FollowUpCell'
 import type { ComposerRecipient } from './EmailComposerModal'
 import type { TeamInactivityItem, FollowUpInfo } from '../../hooks/useAdmin'
 import { adminService } from '../../services/api'
+import { openWaConversation, waDigits } from '../../lib/whatsappInbox'
+import { useNotification } from '../../context/NotificationContext'
 import styles from './Admin.module.css'
 
 // Tramos de inactividad. Los dos primeros son los chips del semáforo (la regla
@@ -81,6 +83,7 @@ export function TeamActivityPanel({
   dataTour,
 }: TeamActivityPanelProps) {
   const navigate = useNavigate()
+  const notify = useNotification()
   const withPerson = showPerson ?? !showCompany
   const [person, setPerson] = useState<number | ''>('')
   const [search, setSearch] = useState('')
@@ -153,9 +156,23 @@ export function TeamActivityPanel({
   const currentPage = Math.min(page, totalPages)
   const paginated = filtered.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE)
 
-  const whatsappHref = (u: TeamInactivityItem) => {
-    const digits = (u.phone_number || '').replace(/\D/g, '')
-    return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(inactivityFollowUpMessage(u))}` : null
+  // Abre el seguimiento por WhatsApp DENTRO de la app.
+  //
+  // Antes esto era un enlace a wa.me: sacaba a la persona de Obertrack y el
+  // mensaje se enviaba desde el WhatsApp personal de quien hacía clic, así que
+  // la respuesta del profesional no quedaba en ninguna parte. Ahora abre —o
+  // crea— la conversación en nuestra bandeja, que es donde el equipo la sigue.
+  //
+  // Es el mismo camino que ya usa la ficha de empresa (TenantDetail).
+  const openWhatsApp = async (u: TeamInactivityItem) => {
+    if (!waDigits(u.phone_number)) return
+    adminService.logContact(u.id, 'whatsapp')
+    // El mensaje de seguimiento viaja para que llegue escrito y solo haya que
+    // revisarlo: es lo que hacía el ?text= del enlace a wa.me que había antes.
+    const ok = await openWaConversation(u.phone_number, u.name, navigate, {
+      draft: inactivityFollowUpMessage(u),
+    })
+    if (!ok) notify.error('No se pudo abrir la conversación de WhatsApp. Revisa la bandeja e inténtalo de nuevo.')
   }
 
   return (
@@ -281,7 +298,7 @@ export function TeamActivityPanel({
             <tbody>
               {paginated.map(u => {
                 const isRed = u.days_inactive >= 2
-                const waLink = whatsappHref(u)
+                const hasPhone = !!waDigits(u.phone_number)
                 return (
                   <tr key={u.id} style={{ background: isRed ? 'rgba(239,68,68,0.07)' : 'rgba(245,158,11,0.07)' }}>
                     <td>
@@ -327,18 +344,16 @@ export function TeamActivityPanel({
                         >
                           <Mail size={16} />
                         </button>
-                        {waLink ? (
-                          <a
-                            href={waLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={() => adminService.logContact(u.id, 'whatsapp')}
+                        {hasPhone ? (
+                          <button
+                            type="button"
+                            onClick={() => openWhatsApp(u)}
                             className={styles['btn-icon']}
-                            title={`Escribir por WhatsApp (${u.phone_number})`}
+                            title={`Abrir la conversación de WhatsApp en la bandeja (${u.phone_number})`}
                             style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}
                           >
                             <MessageCircle size={16} />
-                          </a>
+                          </button>
                         ) : (
                           <span className={styles['btn-icon']} title="Sin teléfono registrado" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, cursor: 'not-allowed' }}>
                             <MessageCircle size={16} />

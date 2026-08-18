@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { Channel } from '../../types/chat'
 import { supportStatusMeta } from './ChatUtils'
 import { PROFILE_CHANGE_MODULE } from '../../constants/support'
+import { openWaConversation } from '../../lib/whatsappInbox'
 
 interface SupportContextPanelProps {
   channel: Channel
@@ -82,8 +83,19 @@ export function SupportContextPanel({ channel, onClose }: SupportContextPanelPro
         )}
         {row(
           <Phone size={12} />, 'Teléfono',
+          // El teléfono abre la conversación en nuestra bandeja, no en wa.me:
+          // por fuera el mensaje sale del WhatsApp personal de quien atiende.
           s.requester_phone
-            ? <a href={`https://wa.me/${s.requester_phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: '#16a34a', textDecoration: 'none' }}>{s.requester_phone}</a>
+            ? (
+              <button
+                type="button"
+                onClick={() => openWaConversation(s.requester_phone, s.requester_name, navigate)}
+                title="Abrir la conversación de WhatsApp"
+                style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: '#16a34a', cursor: 'pointer', textAlign: 'left' }}
+              >
+                {s.requester_phone}
+              </button>
+            )
             : '—'
         )}
         {row(<Calendar size={12} />, 'Creada', created)}

@@ -6,6 +6,7 @@ import { AuditLog, AuditLogParams, auditService } from '../services/audit.servic
 import AuditDetailModal from '../components/Audit/AuditDetailModal'
 import { describeAudit, moduleLabel } from '../lib/auditHumanize'
 import { DatePicker } from '../components/ui'
+import { Select } from '../components/ui/Select'
 
 // Maps an audited entity (table/module + id) to the app page where it lives.
 // Returns null when there is no dedicated source page.
@@ -162,20 +163,44 @@ export default function AuditLogs() {
           <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchLogs(1) }}
             placeholder="Buscar email, acción o ruta…" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', padding: '0.5rem 0', fontSize: '0.85rem' }} />
         </div>
-        <select value={kind} onChange={e => setKind(e.target.value)} style={inputStyle}>
-          <option value="">Actividad y datos</option>
-          <option value="activity">Actividad (acciones)</option>
-          <option value="data">Datos (cambios en BD)</option>
-        </select>
-        <select value={module} onChange={e => setModule(e.target.value)} style={inputStyle}>
-          <option value="">Todas las áreas</option>
-          {MODULES.map(m => <option key={m} value={m}>{moduleLabel(m)}</option>)}
-        </select>
-        <select value={success} onChange={e => setSuccess(e.target.value)} style={inputStyle}>
-          <option value="">Éxito y fallo</option>
-          <option value="true">Solo éxito</option>
-          <option value="false">Solo fallo</option>
-        </select>
+        {/* Los tres filtros usan el Select del proyecto y no un <select> nativo:
+            el nativo dibuja su menú con el estilo del sistema operativo, que no
+            se puede tocar por CSS y desentona con el resto —además de quedar
+            recortado por contenedores con overflow—. Este monta el menú en un
+            portal y trae buscador cuando la lista pasa de cinco, que es el caso
+            de «Todas las áreas». */}
+        <Select
+          value={kind}
+          onChange={v => setKind(String(v))}
+          className="ui-select__trigger--compact"
+          ariaLabel="Tipo de registro"
+          options={[
+            { value: '', label: 'Actividad y datos' },
+            { value: 'activity', label: 'Actividad (acciones)' },
+            { value: 'data', label: 'Datos (cambios en BD)' },
+          ]}
+        />
+        <Select
+          value={module}
+          onChange={v => setModule(String(v))}
+          className="ui-select__trigger--compact"
+          ariaLabel="Área"
+          options={[
+            { value: '', label: 'Todas las áreas' },
+            ...MODULES.map(m => ({ value: m, label: moduleLabel(m) })),
+          ]}
+        />
+        <Select
+          value={success}
+          onChange={v => setSuccess(String(v))}
+          className="ui-select__trigger--compact"
+          ariaLabel="Resultado"
+          options={[
+            { value: '', label: 'Éxito y fallo' },
+            { value: 'true', label: 'Solo éxito' },
+            { value: 'false', label: 'Solo fallo' },
+          ]}
+        />
         <DatePicker compact clearable value={startDate} onChange={setStartDate} placeholder="Desde" ariaLabel="Desde" />
         <DatePicker compact clearable value={endDate} min={startDate || undefined} onChange={setEndDate} placeholder="Hasta" ariaLabel="Hasta" />
         <button onClick={() => fetchLogs(1)}

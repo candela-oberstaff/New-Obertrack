@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -72,7 +73,9 @@ func (w *ChatDigestWatcher) RunOnce() error {
 			continue
 		}
 		if err := w.brevo.SendEmailKind(EmailKindChatDigest, c.Email, c.Name, "💬 Tienes mensajes esperando en Obertrack", buildChatDigestHTML(c.Name, c.Unread)); err != nil {
-			log.Printf("[chat-digest] no se pudo enviar a %s: %v", c.Email, err)
+			if !errors.Is(err, ErrEmailKindDisabled) {
+				log.Printf("[chat-digest] no se pudo enviar a %s: %v", c.Email, err)
+			}
 		}
 	}
 	if len(candidates) > 0 {

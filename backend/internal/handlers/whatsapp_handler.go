@@ -444,7 +444,6 @@ func (h *WhatsAppHandler) GetTemplates(c *gin.Context) {
 	c.JSON(http.StatusOK, approved)
 }
 
-
 // ─── Sync endpoint ────────────────────────────────────────────────────────────
 
 // SyncAgentID is an optional convenience endpoint to force‑refresh the
