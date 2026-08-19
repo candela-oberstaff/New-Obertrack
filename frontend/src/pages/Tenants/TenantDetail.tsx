@@ -525,7 +525,7 @@ export default function TenantDetail() {
     const ok = await openWaConversation(tenant.phone_number, tenant.owner_name || tenant.company_name, navigate)
     if (ok) {
       // El clic ES el contacto: refleja el intento, no la entrega.
-      logContact('whatsapp', 'Abierto desde la ficha (bandeja de WhatsApp)').catch(() => {})
+      logContact('whatsapp', 'Abierto desde la ficha (bandeja de WhatsApp)').catch(() => { })
       return
     }
     notify.error('No se pudo abrir la conversación de WhatsApp. Revisa la bandeja e inténtalo de nuevo.')
@@ -777,128 +777,641 @@ export default function TenantDetail() {
 
 
 
-      {tab === 'usuarios' && (
-        employees.length === 0 ? (
-          <div className={styles.empty}><Users size={40} /><p>Esta empresa no tiene profesionales</p></div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 20 }}>
-              <div className={styles.searchBox} style={{ margin: 0 }}>
-                <Search size={18} />
-                <input
-                  type="text"
-                  placeholder="Buscar profesional o correo..."
-                  value={empSearch}
-                  onChange={(e) => setEmpSearch(e.target.value)}
-                />
+          {tab === 'usuarios' && (
+            employees.length === 0 ? (
+              <div className={styles.empty}><Users size={40} /><p>Esta empresa no tiene profesionales</p></div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 20 }}>
+                  <div className={styles.searchBox} style={{ margin: 0 }}>
+                    <Search size={18} />
+                    <input
+                      type="text"
+                      placeholder="Buscar profesional o correo..."
+                      value={empSearch}
+                      onChange={(e) => setEmpSearch(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ minWidth: 190 }}>
+                    <Select
+                      fullWidth
+                      clearable
+                      placeholder="Todos los roles"
+                      value={empRole}
+                      onChange={v => setEmpRole(v ? String(v) : '')}
+                      options={[
+                        { value: 'profesional', label: 'Profesional' },
+                        { value: 'empleador', label: 'Empresa' },
+                        { value: 'customer_success', label: 'Customer Success' },
+                      ]}
+                    />
+                  </div>
+                  <div style={{ minWidth: 170 }}>
+                    <Select
+                      fullWidth
+                      clearable
+                      placeholder="Todos los estados"
+                      value={empStatus}
+                      onChange={v => setEmpStatus(v ? String(v) : '')}
+                      options={[
+                        { value: 'active', label: 'Activos' },
+                        { value: 'inactive', label: 'Inactivos' },
+                      ]}
+                    />
+                  </div>
+                  {empHasFilters && (
+                    <button
+                      type="button"
+                      onClick={clearEmpFilters}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      title="Quitar todos los filtros"
+                    >
+                      <X size={14} /> Limpiar filtros
+                    </button>
+                  )}
+                </div>
+
+                {empFiltered.length === 0 ? (
+                  <div className={styles.empty}><Users size={40} /><p>Sin profesionales que coincidan</p></div>
+                ) : (
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Profesional</th>
+                          <th>Horas (mes)</th>
+                          <th>Tareas</th>
+                          <th>Últ. actividad</th>
+                          <th>Estado</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {empPaginated.map(emp => {
+                          const last = emp.last_active ? new Date(emp.last_active) : null
+                          const lastValid = last && !isNaN(last.getTime())
+                          return (
+                            <tr key={emp.id} className={styles.row} onClick={() => setPeekEmployee(emp.id)} title="Ver un vistazo rápido">
+                              <td>
+                                <div className={styles.companyCell}>
+                                  <Avatar src={emp.avatar} name={emp.name} size="sm" />
+                                  <div className={styles.ownerCell}>
+                                    <span>{emp.name}</span>
+                                    <small>{emp.email} · {emp.is_manager ? 'manager' : emp.user_type}</small>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>{emp.hours_this_month?.toFixed(1) ?? '0.0'} h</td>
+                              <td>{emp.tasks_completed}/{emp.tasks_assigned}</td>
+                              <td>{lastValid ? last!.toLocaleDateString('es-ES') : '—'}</td>
+                              <td>
+                                <span className={`${styles.badge} ${emp.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
+                                  {emp.is_active ? 'Activo' : 'Inactivo'}
+                                </span>
+                              </td>
+                              <td>
+                                <div className={styles.rowActions}>
+                                  {canManage && (
+                                    <>
+                                      <button
+                                        className={`${styles.iconBtn} ${emp.is_active ? styles.danger : styles.success}`}
+                                        onClick={(e) => handleToggleEmployee(e, emp)}
+                                        title={emp.is_active ? 'Desactivar profesional' : 'Activar profesional'}
+                                      >
+                                        {emp.is_active ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                                      </button>
+                                      <button
+                                        className={styles.iconBtn}
+                                        onClick={(e) => openReset(e, emp)}
+                                        title="Resetear contraseña"
+                                      >
+                                        <RefreshCw size={16} />
+                                      </button>
+                                    </>
+                                  )}
+                                  {/* La fila abre el vistazo; el chevron se salta el
+                                  atajo y va directo a la ficha completa. */}
+                                  <button
+                                    className={styles.iconBtn}
+                                    onClick={(e) => { e.stopPropagation(); openEmployee(emp.id) }}
+                                    title="Abrir la ficha completa"
+                                    aria-label={`Abrir la ficha completa de ${emp.name}`}
+                                  >
+                                    <ChevronRight size={18} className={styles.chevron} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 16px' }}>
+                      <span style={{ fontSize: '13px', color: '#64748b' }}>
+                        Mostrando {(empCurrentPage - 1) * EMP_PER_PAGE + 1}–{Math.min(empCurrentPage * EMP_PER_PAGE, empFiltered.length)} de {empFiltered.length} profesionales
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                          type="button"
+                          className={styles.iconBtn}
+                          onClick={() => setEmpPage(p => Math.max(1, p - 1))}
+                          disabled={empCurrentPage <= 1}
+                          style={{ opacity: empCurrentPage <= 1 ? 0.4 : 1, cursor: empCurrentPage <= 1 ? 'not-allowed' : 'pointer' }}
+                          title="Página anterior"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                          Página {empCurrentPage} de {empTotalPages}
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.iconBtn}
+                          onClick={() => setEmpPage(p => Math.min(empTotalPages, p + 1))}
+                          disabled={empCurrentPage >= empTotalPages}
+                          style={{ opacity: empCurrentPage >= empTotalPages ? 0.4 : 1, cursor: empCurrentPage >= empTotalPages ? 'not-allowed' : 'pointer' }}
+                          title="Página siguiente"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          )}
+
+          {/* El organigrama del cliente. El superadmin puede reordenarlo: es la
+          misma acción que ya hacía desde la ficha de cada profesional, solo que
+          viendo la estructura entera. */}
+          {tab === 'organigrama' && (
+            <OrgChartPanel
+              companyId={tenant.id}
+              editable
+              hint="Arrastra a una persona sobre otra para cambiar su manager. Se lleva a su equipo con ella. Haz clic en alguien para abrir su ficha."
+              profileHref={p => `/admin/users/${p.user_id}`}
+            />
+          )}
+
+          {/* El expediente es una vista de auditoría: si no hay movimientos se dice,
+          no se rellena con eventos de ejemplo. */}
+          {tab === 'expediente' && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', marginBottom: 20, overflow: 'visible' }}>
+                {ACTIVITY_CATEGORIES.map(cat => {
+                  const active = actCategory === cat.value
+                  return (
+                    <button
+                      key={cat.value || 'all'}
+                      type="button"
+                      onClick={() => setActCategory(cat.value)}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '999px',
+                        border: active ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
+                        background: active ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
+                        color: active ? 'var(--primary)' : '#64748b',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}
+                      aria-pressed={active}
+                    >
+                      {cat.label}
+                      {/* El contador se calcula con el MISMO filtro de persona que
+                      la lista, así que nunca promete más de lo que enseña. */}
+                      {actCounts[cat.value] !== undefined && (
+                        <span className={styles.chipCount}>{actCounts[cat.value]}</span>
+                      )}
+                    </button>
+                  )
+                })}
+                {/* Filtro por persona + botones de acción: van juntos en el lado
+                derecho de la barra de pestañas. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', flexShrink: 0 }}>
+                  <div style={{ minWidth: 230 }}>
+                    <Select
+                      fullWidth
+                      clearable
+                      searchable
+                      placeholder="Todas las personas"
+                      value={actPerson || ''}
+                      onChange={v => setActPerson(v ? Number(v) : 0)}
+                      ariaLabel="Filtrar el expediente por persona"
+                      options={actPeople.map(p => ({ value: p.user_id, label: p.name }))}
+                    />
+                  </div>
+                  {canAnnotate && (
+                    <>
+                      {actCategory === 'contact' && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          leftIcon={<Phone size={14} />}
+                          onClick={openContact}
+                        >
+                          Registrar
+                        </Button>
+                      )}
+                      {actCategory === 'note' && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          leftIcon={<Plus size={14} />}
+                          onClick={openNewNote}
+                        >
+                          Añadir
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-              <div style={{ minWidth: 190 }}>
-                <Select
-                  fullWidth
-                  clearable
-                  placeholder="Todos los roles"
-                  value={empRole}
-                  onChange={v => setEmpRole(v ? String(v) : '')}
-                  options={[
-                    { value: 'profesional', label: 'Profesional' },
-                    { value: 'empleador', label: 'Empresa' },
-                    { value: 'customer_success', label: 'Customer Success' },
-                  ]}
-                />
-              </div>
-              <div style={{ minWidth: 170 }}>
-                <Select
-                  fullWidth
-                  clearable
-                  placeholder="Todos los estados"
-                  value={empStatus}
-                  onChange={v => setEmpStatus(v ? String(v) : '')}
-                  options={[
-                    { value: 'active', label: 'Activos' },
-                    { value: 'inactive', label: 'Inactivos' },
-                  ]}
-                />
-              </div>
-              {empHasFilters && (
+
+              {actError && <p className={styles.errorMsg}>{actError}</p>}
+
+              {/* Notas fijadas: avisos vigentes, no historia. Van arriba y fuera de
+              la cronología, así que no dependen del filtro ni de la página. */}
+              {pinnedNotes.length > 0 && (
+                <div className={styles.pinnedBox}>
+                  <span className={styles.pinnedTitle}>
+                    <Pin size={13} /> Fijado en este expediente
+                  </span>
+                  {pinnedNotes.map(note => (
+                    <div key={`pinned-${note.event_id}`} className={styles.pinnedItem}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p className={styles.noteBody}>{note.details}</p>
+                        <span className={styles.timelineMeta} style={{ marginTop: 4 }}>
+                          <strong style={{ color: '#64748b', fontWeight: 600 }}>{note.user || 'Sistema'}</strong>
+                          <span>{new Date(note.timestamp).toLocaleDateString('es-ES')}</span>
+                          {note.edited_at && <span className={styles.noteEdited}>editada</span>}
+                        </span>
+                      </div>
+                      {canAnnotate && (
+                        <button
+                          type="button"
+                          className={styles.iconBtn}
+                          onClick={() => handleTogglePin(note)}
+                          title="Dejar de fijar"
+                          aria-label="Dejar de fijar esta nota"
+                        >
+                          <PinOff size={15} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {actLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={56} radius={12} />)}
+                </div>
+              ) : activity.length === 0 ? (
+                <div className={styles.empty}>
+                  <Activity size={40} />
+                  <p>
+                    {actCategory !== 'lifecycle' || actPerson !== 0
+                      ? 'Sin movimientos con estos filtros'
+                      : 'Sin movimientos en el expediente'}
+                  </p>
+                  {(actCategory !== 'lifecycle' || actPerson !== 0) && (
+                    <button
+                      type="button"
+                      onClick={() => { setActCategory('lifecycle'); setActPerson(0) }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: 10, padding: '8px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      <X size={14} /> Limpiar filtros
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {/* Mientras llega la página nueva se atenúa la anterior: se ve que
+                  algo está pasando sin vaciar la lista. */}
+                  <div className={styles.timeline} style={{ opacity: actFetching ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
+                    {groupByDay(activity).map(group => (
+                      <div key={group.key} className={styles.timelineDay}>
+                        <div className={styles.timelineDayLabel}>
+                          <span className={styles.timelineDayChip}>
+                            {group.label}
+                            <span className={styles.timelineDayCount}>
+                              {group.items.length} {group.items.length === 1 ? 'movimiento' : 'movimientos'}
+                            </span>
+                          </span>
+                        </div>
+                        {group.items.map((a, i) => {
+                          const date = new Date(a.timestamp)
+                          const valid = !isNaN(date.getTime())
+                          const st = ACTIVITY_STYLE[a.type] || ACTIVITY_FALLBACK
+                          const Icon = st.icon
+                          const isNote = a.type === 'company_note'
+                          return (
+                            <div key={a.event_id ? `note-${a.event_id}` : `act-${actPage}-${group.key}-${i}`} className={styles.timelineItem}>
+                              <div className={styles.timelineNode} style={{ color: st.color }}>
+                                <Icon size={15} />
+                              </div>
+                              <div className={`${styles.timelineCard} ${isNote ? styles.isNote : ''}`}>
+                                {isNote ? (
+                                  <>
+                                    {/* Cabecera explícita: quién la escribió, que es
+                                    interna, y si se corrigió después. */}
+                                    <div className={styles.noteHeader}>
+                                      <span className={styles.noteTitle}>
+                                        <StickyNote size={13} /> Nota interna del equipo
+                                      </span>
+                                      <span className={styles.noteScope}>· No la ve la empresa</span>
+                                      {a.pinned && (
+                                        <span className={styles.noteScope} style={{ color: '#0e7490' }}>
+                                          · fijada
+                                        </span>
+                                      )}
+                                      {a.edited_at && <span className={styles.noteEdited}>· editada</span>}
+                                      {canAnnotate && (
+                                        <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                                          <button
+                                            type="button"
+                                            className={styles.iconBtn}
+                                            onClick={() => handleTogglePin(a)}
+                                            title={a.pinned ? 'Dejar de fijar' : 'Fijar arriba del expediente'}
+                                            aria-label={a.pinned ? 'Dejar de fijar esta nota' : 'Fijar esta nota arriba del expediente'}
+                                          >
+                                            {a.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={styles.iconBtn}
+                                            onClick={() => openEditNote(a)}
+                                            title="Editar nota"
+                                            aria-label="Editar esta nota"
+                                          >
+                                            <Pencil size={14} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={`${styles.iconBtn} ${styles.danger}`}
+                                            onClick={() => handleDeleteNote(a.event_id)}
+                                            title="Eliminar nota"
+                                            aria-label={`Eliminar la nota de ${a.user || 'Sistema'}`}
+                                          >
+                                            <Trash2 size={15} />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <p className={styles.noteBody}>{a.details}</p>
+                                    <div className={styles.timelineMeta}>
+                                      <strong style={{ color: '#64748b', fontWeight: 600 }}>{a.user || 'Sistema'}</strong>
+                                      <span className={styles.timelineTime}>
+                                        {valid ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                      </span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p className={styles.timelineText}>{a.details}</p>
+                                    <div className={styles.timelineMeta}>
+                                      <span className={styles.timelineTag} style={{ color: st.color }}>
+                                        {ACTIVITY_LABEL[a.type] || a.type}
+                                      </span>
+                                      {/* En un contacto, el canal es la mitad de la
+                                      información: no es lo mismo haberles
+                                      escrito que haberles llamado. */}
+                                      {a.channel && CONTACT_STYLE[a.channel] && (
+                                        <span className={styles.timelineTag} style={{ color: st.color }}>
+                                          {(() => { const CI = CONTACT_STYLE[a.channel!].icon; return <CI size={11} /> })()}
+                                          {CONTACT_STYLE[a.channel].label}
+                                        </span>
+                                      )}
+                                      <strong style={{ color: '#64748b', fontWeight: 600 }}>{a.user || 'Sistema'}</strong>
+                                      {/* La fecha vive en la cabecera del día: aquí
+                                      basta la hora. */}
+                                      <span className={styles.timelineTime}>
+                                        {valid ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Comentarios y archivos. Solo cuelgan de las
+                                entradas que existen como registro: las
+                                derivadas (jornadas, altas, gestiones de CS)
+                                llegan con event_id 0 y no hay a qué atarlas. */}
+                                {a.event_id > 0 && (
+                                  <EventThread
+                                    key={`thread-${a.event_id}`}
+                                    tenantId={tenantId}
+                                    eventId={a.event_id}
+                                    thread={threads[a.event_id]}
+                                    canEdit={canAnnotate}
+                                    addComment={addComment}
+                                    updateComment={updateComment}
+                                    deleteComment={deleteComment}
+                                    addAttachment={addAttachment}
+                                    deleteAttachment={deleteAttachment}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>
+                      Mostrando {(actPage - 1) * actPageSize + 1}–{Math.min(actPage * actPageSize, actTotal)} de {actTotal} movimientos
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        className={styles.iconBtn}
+                        onClick={() => setActPage(p => Math.max(1, p - 1))}
+                        disabled={actPage <= 1}
+                        style={{ opacity: actPage <= 1 ? 0.4 : 1, cursor: actPage <= 1 ? 'not-allowed' : 'pointer' }}
+                        title="Página anterior"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                        Página {actPage} de {actTotalPages}
+                      </span>
+                      <button
+                        type="button"
+                        className={styles.iconBtn}
+                        onClick={() => setActPage(p => Math.min(actTotalPages, p + 1))}
+                        disabled={actPage >= actTotalPages}
+                        style={{ opacity: actPage >= actTotalPages ? 0.4 : 1, cursor: actPage >= actTotalPages ? 'not-allowed' : 'pointer' }}
+                        title="Página siguiente"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Actividad de la empresa: quién no está registrando horas y qué
+          ausencias hay este mes, con la misma gestión y las mismas vías de
+          contacto que en el panel. Son los dos paneles compartidos, sin la
+          columna ni el filtro de empresa, que aquí sobran. */}
+          {tab === 'actividad' && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 20 }}>
                 <button
                   type="button"
-                  onClick={clearEmpFilters}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  title="Quitar todos los filtros"
+                  onClick={() => setActSubTab('inactividad')}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '999px',
+                    border: actSubTab === 'inactividad' ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
+                    background: actSubTab === 'inactividad' ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
+                    color: actSubTab === 'inactividad' ? 'var(--primary)' : '#64748b',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                  aria-pressed={actSubTab === 'inactividad'}
                 >
-                  <X size={14} /> Limpiar filtros
+                  Inactividad
+                  <span className={styles.chipCount}>{teamInactive.length}</span>
                 </button>
-              )}
-            </div>
 
-            {empFiltered.length === 0 ? (
-              <div className={styles.empty}><Users size={40} /><p>Sin profesionales que coincidan</p></div>
+                <button
+                  type="button"
+                  onClick={() => setActSubTab('ausencias')}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '999px',
+                    border: actSubTab === 'ausencias' ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
+                    background: actSubTab === 'ausencias' ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
+                    color: actSubTab === 'ausencias' ? 'var(--primary)' : '#64748b',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                  aria-pressed={actSubTab === 'ausencias'}
+                >
+                  Ausencias
+                  <span className={styles.chipCount}>{tenantAbsence?.items?.length || 0}</span>
+                </button>
+              </div>
+
+              {actSubTab === 'inactividad' ? (
+                <TeamActivityPanel
+                  items={teamInactive}
+                  loading={teamInactiveLoading}
+                  followUps={inactivityFollowUps.followUps}
+                  onSetFollowUp={inactivityFollowUps.setFollowUp}
+                  onCompose={(recipient, body) => setProComposer({ recipient, body })}
+                  onOpenUser={(userId, sequence) => {
+                    setRecordNav(`tenant-employees:${tenantId}`, sequence)
+                    navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
+                  }}
+                  showCompany={false}
+                  description="Profesionales de esta empresa sin registrar horas. Los de 2+ días disparan alerta automática al equipo de customer success."
+                />
+              ) : (
+                <AbsenceReportPanel
+                  items={tenantAbsence?.items || []}
+                  followUps={absenceFollowUps.followUps}
+                  onSetFollowUp={absenceFollowUps.setFollowUp}
+                  onOpenUser={(userId, sequence) => {
+                    setRecordNav(`tenant-employees:${tenantId}`, sequence)
+                    navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
+                  }}
+                  showCompany={false}
+                  description="Ausencias de esta empresa este mes, agrupadas por profesional. Haz clic en una fila para ver el detalle."
+                />
+              )}
+            </>
+          )}
+
+          {tab === 'archivados' && (
+            archivedLoading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={56} radius={12} />)}
+              </div>
+            ) : archivedError ? (
+              <p className={styles.errorMsg}>No se pudieron cargar los archivados de esta empresa.</p>
+            ) : (
+              <ArchivedList entries={archived} showCompany={false} />
+            )
+          )}
+
+          {/* Tickets de la empresa: las alertas que genera la plataforma sobre su
+          gente y las conversaciones de WhatsApp de su número, juntas. Cada fila
+          lleva a su detalle real, que es donde se trabaja el ticket. */}
+          {tab === 'tickets' && (
+            ticketsLoading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={56} radius={12} />)}
+              </div>
+            ) : ticketsError ? (
+              <p className={styles.errorMsg}>No se pudieron cargar los tickets de esta empresa.</p>
+            ) : tickets.length === 0 ? (
+              <div className={styles.empty}>
+                <Inbox size={40} />
+                <p>Esta empresa no tiene tickets</p>
+                <span style={{ fontSize: 13, color: '#94a3b8', maxWidth: 460, textAlign: 'center', marginTop: 6 }}>
+                  Aparecerán aquí las alertas de la plataforma sobre sus profesionales
+                  y las conversaciones de WhatsApp con {tenant.phone_number?.trim() || 'su teléfono'}.
+                </span>
+              </div>
             ) : (
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>Profesional</th>
-                      <th>Horas (mes)</th>
-                      <th>Tareas</th>
-                      <th>Últ. actividad</th>
+                      <th>Ticket</th>
+                      <th>Origen</th>
+                      <th>Sobre</th>
+                      <th>Responsable</th>
+                      <th>Últ. movimiento</th>
                       <th>Estado</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {empPaginated.map(emp => {
-                      const last = emp.last_active ? new Date(emp.last_active) : null
-                      const lastValid = last && !isNaN(last.getTime())
+                    {ticketsSlice.map(tk => {
+                      const st = ticketOrigin(tk.origin)
+                      const OriginIcon = st.icon
+                      const updated = new Date(tk.updated_at)
+                      const updatedValid = !isNaN(updated.getTime())
+                      const isOpen = tk.status === 'open'
                       return (
-                        <tr key={emp.id} className={styles.row} onClick={() => setPeekEmployee(emp.id)} title="Ver un vistazo rápido">
+                        <tr key={tk.id} className={styles.row} onClick={() => navigate(ticketPath(tk))}>
                           <td>
-                            <div className={styles.companyCell}>
-                              <Avatar src={emp.avatar} name={emp.name} size="sm" />
-                              <div className={styles.ownerCell}>
-                                <span>{emp.name}</span>
-                                <small>{emp.email} · {emp.is_manager ? 'manager' : emp.user_type}</small>
-                              </div>
+                            <div className={styles.ownerCell}>
+                              <span>{tk.title?.trim() || `Ticket #${tk.id}`}</span>
+                              <small>#{tk.id}{tk.stage ? ` · ${TICKET_STAGE[tk.stage] || tk.stage}` : ''}</small>
                             </div>
                           </td>
-                          <td>{emp.hours_this_month?.toFixed(1) ?? '0.0'} h</td>
-                          <td>{emp.tasks_completed}/{emp.tasks_assigned}</td>
-                          <td>{lastValid ? last!.toLocaleDateString('es-ES') : '—'}</td>
                           <td>
-                            <span className={`${styles.badge} ${emp.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
-                              {emp.is_active ? 'Activo' : 'Inactivo'}
+                            <span className={styles.timelineTag} style={{ color: st.color }}>
+                              <OriginIcon size={13} /> {st.label}
+                            </span>
+                          </td>
+                          <td>{tk.about?.trim() || '—'}</td>
+                          <td>{tk.assignee?.trim() || <span style={{ color: '#94a3b8' }}>Sin asignar</span>}</td>
+                          <td>{updatedValid ? updated.toLocaleDateString('es-ES') : '—'}</td>
+                          <td>
+                            <span className={`${styles.badge} ${isOpen ? styles.badgeActive : styles.badgeSuspended}`}>
+                              {isOpen ? 'Abierto' : 'Cerrado'}
                             </span>
                           </td>
                           <td>
                             <div className={styles.rowActions}>
-                              {canManage && (
-                                <>
-                                  <button
-                                    className={`${styles.iconBtn} ${emp.is_active ? styles.danger : styles.success}`}
-                                    onClick={(e) => handleToggleEmployee(e, emp)}
-                                    title={emp.is_active ? 'Desactivar profesional' : 'Activar profesional'}
-                                  >
-                                    {emp.is_active ? <Ban size={16} /> : <CheckCircle2 size={16} />}
-                                  </button>
-                                  <button
-                                    className={styles.iconBtn}
-                                    onClick={(e) => openReset(e, emp)}
-                                    title="Resetear contraseña"
-                                  >
-                                    <RefreshCw size={16} />
-                                  </button>
-                                </>
-                              )}
-                              {/* La fila abre el vistazo; el chevron se salta el
-                                  atajo y va directo a la ficha completa. */}
-                              <button
-                                className={styles.iconBtn}
-                                onClick={(e) => { e.stopPropagation(); openEmployee(emp.id) }}
-                                title="Abrir la ficha completa"
-                                aria-label={`Abrir la ficha completa de ${emp.name}`}
-                              >
-                                <ChevronRight size={18} className={styles.chevron} />
-                              </button>
+                              <ChevronRight size={18} className={styles.chevron} />
                             </div>
                           </td>
                         </tr>
@@ -906,554 +1419,41 @@ export default function TenantDetail() {
                     })}
                   </tbody>
                 </table>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 16px' }}>
-                  <span style={{ fontSize: '13px', color: '#64748b' }}>
-                    Mostrando {(empCurrentPage - 1) * EMP_PER_PAGE + 1}–{Math.min(empCurrentPage * EMP_PER_PAGE, empFiltered.length)} de {empFiltered.length} profesionales
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                      type="button"
-                      className={styles.iconBtn}
-                      onClick={() => setEmpPage(p => Math.max(1, p - 1))}
-                      disabled={empCurrentPage <= 1}
-                      style={{ opacity: empCurrentPage <= 1 ? 0.4 : 1, cursor: empCurrentPage <= 1 ? 'not-allowed' : 'pointer' }}
-                      title="Página anterior"
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
-                      Página {empCurrentPage} de {empTotalPages}
+                {ticketTotalPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>
+                      Mostrando {(ticketPage - 1) * TICKETS_PER_PAGE + 1}–{Math.min(ticketPage * TICKETS_PER_PAGE, tickets.length)} de {tickets.length} tickets
                     </span>
-                    <button
-                      type="button"
-                      className={styles.iconBtn}
-                      onClick={() => setEmpPage(p => Math.min(empTotalPages, p + 1))}
-                      disabled={empCurrentPage >= empTotalPages}
-                      style={{ opacity: empCurrentPage >= empTotalPages ? 0.4 : 1, cursor: empCurrentPage >= empTotalPages ? 'not-allowed' : 'pointer' }}
-                      title="Página siguiente"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        )
-      )}
-
-      {/* El organigrama del cliente. El superadmin puede reordenarlo: es la
-          misma acción que ya hacía desde la ficha de cada profesional, solo que
-          viendo la estructura entera. */}
-      {tab === 'organigrama' && (
-        <OrgChartPanel
-          companyId={tenant.id}
-          editable
-          hint="Arrastra a una persona sobre otra para cambiar su manager. Se lleva a su equipo con ella. Haz clic en alguien para abrir su ficha."
-          profileHref={p => `/admin/users/${p.user_id}`}
-        />
-      )}
-
-      {/* El expediente es una vista de auditoría: si no hay movimientos se dice,
-          no se rellena con eventos de ejemplo. */}
-      {tab === 'expediente' && (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', marginBottom: 20, overflow: 'visible' }}>
-            {ACTIVITY_CATEGORIES.map(cat => {
-              const active = actCategory === cat.value
-              return (
-                <button
-                  key={cat.value || 'all'}
-                  type="button"
-                  onClick={() => setActCategory(cat.value)}
-                  style={{
-                    padding: '7px 14px',
-                    borderRadius: '999px',
-                    border: active ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
-                    background: active ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
-                    color: active ? 'var(--primary)' : '#64748b',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}
-                  aria-pressed={active}
-                >
-                  {cat.label}
-                  {/* El contador se calcula con el MISMO filtro de persona que
-                      la lista, así que nunca promete más de lo que enseña. */}
-                  {actCounts[cat.value] !== undefined && (
-                    <span className={styles.chipCount}>{actCounts[cat.value]}</span>
-                  )}
-                </button>
-              )
-            })}
-            {/* Filtro por persona + botones de acción: van juntos en el lado
-                derecho de la barra de pestañas. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', flexShrink: 0 }}>
-              <div style={{ minWidth: 230 }}>
-                <Select
-                  fullWidth
-                  clearable
-                  searchable
-                  placeholder="Todas las personas"
-                  value={actPerson || ''}
-                  onChange={v => setActPerson(v ? Number(v) : 0)}
-                  ariaLabel="Filtrar el expediente por persona"
-                  options={actPeople.map(p => ({ value: p.user_id, label: p.name }))}
-                />
-              </div>
-              {canAnnotate && (
-                <>
-                  {actCategory === 'contact' && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      leftIcon={<Phone size={14} />}
-                      onClick={openContact}
-                    >
-                      Registrar
-                    </Button>
-                  )}
-                  {actCategory === 'note' && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      leftIcon={<Plus size={14} />}
-                      onClick={openNewNote}
-                    >
-                      Añadir
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
-          {actError && <p className={styles.errorMsg}>{actError}</p>}
-
-          {/* Notas fijadas: avisos vigentes, no historia. Van arriba y fuera de
-              la cronología, así que no dependen del filtro ni de la página. */}
-          {pinnedNotes.length > 0 && (
-            <div className={styles.pinnedBox}>
-              <span className={styles.pinnedTitle}>
-                <Pin size={13} /> Fijado en este expediente
-              </span>
-              {pinnedNotes.map(note => (
-                <div key={`pinned-${note.event_id}`} className={styles.pinnedItem}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p className={styles.noteBody}>{note.details}</p>
-                    <span className={styles.timelineMeta} style={{ marginTop: 4 }}>
-                      <strong style={{ color: '#64748b', fontWeight: 600 }}>{note.user || 'Sistema'}</strong>
-                      <span>{new Date(note.timestamp).toLocaleDateString('es-ES')}</span>
-                      {note.edited_at && <span className={styles.noteEdited}>editada</span>}
-                    </span>
-                  </div>
-                  {canAnnotate && (
-                    <button
-                      type="button"
-                      className={styles.iconBtn}
-                      onClick={() => handleTogglePin(note)}
-                      title="Dejar de fijar"
-                      aria-label="Dejar de fijar esta nota"
-                    >
-                      <PinOff size={15} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {actLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={56} radius={12} />)}
-            </div>
-          ) : activity.length === 0 ? (
-            <div className={styles.empty}>
-              <Activity size={40} />
-              <p>
-                {actCategory !== 'lifecycle' || actPerson !== 0
-                  ? 'Sin movimientos con estos filtros'
-                  : 'Sin movimientos en el expediente'}
-              </p>
-              {(actCategory !== 'lifecycle' || actPerson !== 0) && (
-                <button
-                  type="button"
-                  onClick={() => { setActCategory('lifecycle'); setActPerson(0) }}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: 10, padding: '8px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-                >
-                  <X size={14} /> Limpiar filtros
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* Mientras llega la página nueva se atenúa la anterior: se ve que
-                  algo está pasando sin vaciar la lista. */}
-              <div className={styles.timeline} style={{ opacity: actFetching ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
-                {groupByDay(activity).map(group => (
-                  <div key={group.key} className={styles.timelineDay}>
-                    <div className={styles.timelineDayLabel}>
-                      <span className={styles.timelineDayChip}>
-                        {group.label}
-                        <span className={styles.timelineDayCount}>
-                          {group.items.length} {group.items.length === 1 ? 'movimiento' : 'movimientos'}
-                        </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        className={styles.iconBtn}
+                        onClick={() => setTicketPage(p => Math.max(1, p - 1))}
+                        disabled={ticketPage <= 1}
+                        style={{ opacity: ticketPage <= 1 ? 0.4 : 1, cursor: ticketPage <= 1 ? 'not-allowed' : 'pointer' }}
+                        title="Página anterior"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span style={{ fontSize: '13px', color: '#334155', fontWeight: 600 }}>
+                        {ticketPage} / {ticketTotalPages}
                       </span>
+                      <button
+                        type="button"
+                        className={styles.iconBtn}
+                        onClick={() => setTicketPage(p => Math.min(ticketTotalPages, p + 1))}
+                        disabled={ticketPage >= ticketTotalPages}
+                        style={{ opacity: ticketPage >= ticketTotalPages ? 0.4 : 1, cursor: ticketPage >= ticketTotalPages ? 'not-allowed' : 'pointer' }}
+                        title="Página siguiente"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
                     </div>
-                    {group.items.map((a, i) => {
-                      const date = new Date(a.timestamp)
-                      const valid = !isNaN(date.getTime())
-                      const st = ACTIVITY_STYLE[a.type] || ACTIVITY_FALLBACK
-                      const Icon = st.icon
-                      const isNote = a.type === 'company_note'
-                      return (
-                        <div key={a.event_id ? `note-${a.event_id}` : `act-${actPage}-${group.key}-${i}`} className={styles.timelineItem}>
-                          <div className={styles.timelineNode} style={{ color: st.color }}>
-                            <Icon size={15} />
-                          </div>
-                          <div className={`${styles.timelineCard} ${isNote ? styles.isNote : ''}`}>
-                            {isNote ? (
-                              <>
-                                {/* Cabecera explícita: quién la escribió, que es
-                                    interna, y si se corrigió después. */}
-                                <div className={styles.noteHeader}>
-                                  <span className={styles.noteTitle}>
-                                    <StickyNote size={13} /> Nota interna del equipo
-                                  </span>
-                                  <span className={styles.noteScope}>· No la ve la empresa</span>
-                                  {a.pinned && (
-                                    <span className={styles.noteScope} style={{ color: '#0e7490' }}>
-                                      · fijada
-                                    </span>
-                                  )}
-                                  {a.edited_at && <span className={styles.noteEdited}>· editada</span>}
-                                  {canAnnotate && (
-                                    <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                                      <button
-                                        type="button"
-                                        className={styles.iconBtn}
-                                        onClick={() => handleTogglePin(a)}
-                                        title={a.pinned ? 'Dejar de fijar' : 'Fijar arriba del expediente'}
-                                        aria-label={a.pinned ? 'Dejar de fijar esta nota' : 'Fijar esta nota arriba del expediente'}
-                                      >
-                                        {a.pinned ? <PinOff size={15} /> : <Pin size={15} />}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={styles.iconBtn}
-                                        onClick={() => openEditNote(a)}
-                                        title="Editar nota"
-                                        aria-label="Editar esta nota"
-                                      >
-                                        <Pencil size={14} />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={`${styles.iconBtn} ${styles.danger}`}
-                                        onClick={() => handleDeleteNote(a.event_id)}
-                                        title="Eliminar nota"
-                                        aria-label={`Eliminar la nota de ${a.user || 'Sistema'}`}
-                                      >
-                                        <Trash2 size={15} />
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                                <p className={styles.noteBody}>{a.details}</p>
-                                <div className={styles.timelineMeta}>
-                                  <strong style={{ color: '#64748b', fontWeight: 600 }}>{a.user || 'Sistema'}</strong>
-                                  <span className={styles.timelineTime}>
-                                    {valid ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                                  </span>
-                                </div>
-                              </>
-                            ) : (
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p className={styles.timelineText}>{a.details}</p>
-                                <div className={styles.timelineMeta}>
-                                  <span className={styles.timelineTag} style={{ color: st.color }}>
-                                    {ACTIVITY_LABEL[a.type] || a.type}
-                                  </span>
-                                  {/* En un contacto, el canal es la mitad de la
-                                      información: no es lo mismo haberles
-                                      escrito que haberles llamado. */}
-                                  {a.channel && CONTACT_STYLE[a.channel] && (
-                                    <span className={styles.timelineTag} style={{ color: st.color }}>
-                                      {(() => { const CI = CONTACT_STYLE[a.channel!].icon; return <CI size={11} /> })()}
-                                      {CONTACT_STYLE[a.channel].label}
-                                    </span>
-                                  )}
-                                  <strong style={{ color: '#64748b', fontWeight: 600 }}>{a.user || 'Sistema'}</strong>
-                                  {/* La fecha vive en la cabecera del día: aquí
-                                      basta la hora. */}
-                                  <span className={styles.timelineTime}>
-                                    {valid ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Comentarios y archivos. Solo cuelgan de las
-                                entradas que existen como registro: las
-                                derivadas (jornadas, altas, gestiones de CS)
-                                llegan con event_id 0 y no hay a qué atarlas. */}
-                            {a.event_id > 0 && (
-                              <EventThread
-                                key={`thread-${a.event_id}`}
-                                tenantId={tenantId}
-                                eventId={a.event_id}
-                                thread={threads[a.event_id]}
-                                canEdit={canAnnotate}
-                                addComment={addComment}
-                                updateComment={updateComment}
-                                deleteComment={deleteComment}
-                                addAttachment={addAttachment}
-                                deleteAttachment={deleteAttachment}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
                   </div>
-                ))}
+                )}
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>
-                  Mostrando {(actPage - 1) * actPageSize + 1}–{Math.min(actPage * actPageSize, actTotal)} de {actTotal} movimientos
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button
-                    type="button"
-                    className={styles.iconBtn}
-                    onClick={() => setActPage(p => Math.max(1, p - 1))}
-                    disabled={actPage <= 1}
-                    style={{ opacity: actPage <= 1 ? 0.4 : 1, cursor: actPage <= 1 ? 'not-allowed' : 'pointer' }}
-                    title="Página anterior"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
-                    Página {actPage} de {actTotalPages}
-                  </span>
-                  <button
-                    type="button"
-                    className={styles.iconBtn}
-                    onClick={() => setActPage(p => Math.min(actTotalPages, p + 1))}
-                    disabled={actPage >= actTotalPages}
-                    style={{ opacity: actPage >= actTotalPages ? 0.4 : 1, cursor: actPage >= actTotalPages ? 'not-allowed' : 'pointer' }}
-                    title="Página siguiente"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              </div>
-            </>
+            )
           )}
-        </>
-      )}
-
-      {/* Actividad de la empresa: quién no está registrando horas y qué
-          ausencias hay este mes, con la misma gestión y las mismas vías de
-          contacto que en el panel. Son los dos paneles compartidos, sin la
-          columna ni el filtro de empresa, que aquí sobran. */}
-      {tab === 'actividad' && (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 20 }}>
-            <button
-              type="button"
-              onClick={() => setActSubTab('inactividad')}
-              style={{
-                padding: '7px 14px',
-                borderRadius: '999px',
-                border: actSubTab === 'inactividad' ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
-                background: actSubTab === 'inactividad' ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
-                color: actSubTab === 'inactividad' ? 'var(--primary)' : '#64748b',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-              aria-pressed={actSubTab === 'inactividad'}
-            >
-              Inactividad
-              <span className={styles.chipCount}>{teamInactive.length}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActSubTab('ausencias')}
-              style={{
-                padding: '7px 14px',
-                borderRadius: '999px',
-                border: actSubTab === 'ausencias' ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
-                background: actSubTab === 'ausencias' ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
-                color: actSubTab === 'ausencias' ? 'var(--primary)' : '#64748b',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-              aria-pressed={actSubTab === 'ausencias'}
-            >
-              Ausencias
-              <span className={styles.chipCount}>{tenantAbsence?.items?.length || 0}</span>
-            </button>
-          </div>
-
-          {actSubTab === 'inactividad' ? (
-            <TeamActivityPanel
-              items={teamInactive}
-              loading={teamInactiveLoading}
-              followUps={inactivityFollowUps.followUps}
-              onSetFollowUp={inactivityFollowUps.setFollowUp}
-              onCompose={(recipient, body) => setProComposer({ recipient, body })}
-              onOpenUser={(userId, sequence) => {
-                setRecordNav(`tenant-employees:${tenantId}`, sequence)
-                navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
-              }}
-              showCompany={false}
-              description="Profesionales de esta empresa sin registrar horas. Los de 2+ días disparan alerta automática al equipo de customer success."
-            />
-          ) : (
-            <AbsenceReportPanel
-              items={tenantAbsence?.items || []}
-              followUps={absenceFollowUps.followUps}
-              onSetFollowUp={absenceFollowUps.setFollowUp}
-              onOpenUser={(userId, sequence) => {
-                setRecordNav(`tenant-employees:${tenantId}`, sequence)
-                navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
-              }}
-              showCompany={false}
-              description="Ausencias de esta empresa este mes, agrupadas por profesional. Haz clic en una fila para ver el detalle."
-            />
-          )}
-        </>
-      )}
-
-      {tab === 'archivados' && (
-        archivedLoading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={56} radius={12} />)}
-          </div>
-        ) : archivedError ? (
-          <p className={styles.errorMsg}>No se pudieron cargar los archivados de esta empresa.</p>
-        ) : (
-          <ArchivedList entries={archived} showCompany={false} />
-        )
-      )}
-
-      {/* Tickets de la empresa: las alertas que genera la plataforma sobre su
-          gente y las conversaciones de WhatsApp de su número, juntas. Cada fila
-          lleva a su detalle real, que es donde se trabaja el ticket. */}
-      {tab === 'tickets' && (
-        ticketsLoading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={56} radius={12} />)}
-          </div>
-        ) : ticketsError ? (
-          <p className={styles.errorMsg}>No se pudieron cargar los tickets de esta empresa.</p>
-        ) : tickets.length === 0 ? (
-          <div className={styles.empty}>
-            <Inbox size={40} />
-            <p>Esta empresa no tiene tickets</p>
-            <span style={{ fontSize: 13, color: '#94a3b8', maxWidth: 460, textAlign: 'center', marginTop: 6 }}>
-              Aparecerán aquí las alertas de la plataforma sobre sus profesionales
-              y las conversaciones de WhatsApp con {tenant.phone_number?.trim() || 'su teléfono'}.
-            </span>
-          </div>
-        ) : (
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Ticket</th>
-                  <th>Origen</th>
-                  <th>Sobre</th>
-                  <th>Responsable</th>
-                  <th>Últ. movimiento</th>
-                  <th>Estado</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {ticketsSlice.map(tk => {
-                  const st = ticketOrigin(tk.origin)
-                  const OriginIcon = st.icon
-                  const updated = new Date(tk.updated_at)
-                  const updatedValid = !isNaN(updated.getTime())
-                  const isOpen = tk.status === 'open'
-                  return (
-                    <tr key={tk.id} className={styles.row} onClick={() => navigate(ticketPath(tk))}>
-                      <td>
-                        <div className={styles.ownerCell}>
-                          <span>{tk.title?.trim() || `Ticket #${tk.id}`}</span>
-                          <small>#{tk.id}{tk.stage ? ` · ${TICKET_STAGE[tk.stage] || tk.stage}` : ''}</small>
-                        </div>
-                      </td>
-                      <td>
-                        <span className={styles.timelineTag} style={{ color: st.color }}>
-                          <OriginIcon size={13} /> {st.label}
-                        </span>
-                      </td>
-                      <td>{tk.about?.trim() || '—'}</td>
-                      <td>{tk.assignee?.trim() || <span style={{ color: '#94a3b8' }}>Sin asignar</span>}</td>
-                      <td>{updatedValid ? updated.toLocaleDateString('es-ES') : '—'}</td>
-                      <td>
-                        <span className={`${styles.badge} ${isOpen ? styles.badgeActive : styles.badgeSuspended}`}>
-                          {isOpen ? 'Abierto' : 'Cerrado'}
-                        </span>
-                      </td>
-                      <td>
-                        <div className={styles.rowActions}>
-                          <ChevronRight size={18} className={styles.chevron} />
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {ticketTotalPages > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>
-                  Mostrando {(ticketPage - 1) * TICKETS_PER_PAGE + 1}–{Math.min(ticketPage * TICKETS_PER_PAGE, tickets.length)} de {tickets.length} tickets
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button
-                    type="button"
-                    className={styles.iconBtn}
-                    onClick={() => setTicketPage(p => Math.max(1, p - 1))}
-                    disabled={ticketPage <= 1}
-                    style={{ opacity: ticketPage <= 1 ? 0.4 : 1, cursor: ticketPage <= 1 ? 'not-allowed' : 'pointer' }}
-                    title="Página anterior"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span style={{ fontSize: '13px', color: '#334155', fontWeight: 600 }}>
-                    {ticketPage} / {ticketTotalPages}
-                  </span>
-                  <button
-                    type="button"
-                    className={styles.iconBtn}
-                    onClick={() => setTicketPage(p => Math.min(ticketTotalPages, p + 1))}
-                    disabled={ticketPage >= ticketTotalPages}
-                    style={{ opacity: ticketPage >= ticketTotalPages ? 0.4 : 1, cursor: ticketPage >= ticketTotalPages ? 'not-allowed' : 'pointer' }}
-                    title="Página siguiente"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )
-      )}
 
         </div> {/* .rightContentArea */}
       </div> {/* .twoColumnGrid */}
@@ -1481,7 +1481,7 @@ export default function TenantDetail() {
         // desde aquí (y no con logTenantId) para que el expediente que está
         // abierto en pantalla se refresque solo.
         logContact={false}
-        onSent={(subject) => { logContact('email', subject).catch(() => {}) }}
+        onSent={(subject) => { logContact('email', subject).catch(() => { }) }}
       />
 
       <Modal
