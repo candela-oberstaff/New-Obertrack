@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, cloneElement } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip } from 'lucide-react'
+import { ArrowLeft, Building2, Users, User, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip, MoreVertical } from 'lucide-react'
 import { useImagePaste } from '../../hooks/useImagePaste'
 import type { TenantContactChannel } from '../../services/admin.service'
 import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
@@ -13,7 +13,6 @@ const MANUAL_CONTACT_CHANNELS: { value: TenantContactChannel; label: string }[] 
   { value: 'meeting', label: 'Reunión' },
 ]
 
-const ACTIVITY_PER_PAGE = 20
 const NOTE_MAX_LENGTH = 2000
 
 import { ticketOrigin, TICKET_STAGE, ticketPath } from './ticketStyle'
@@ -43,7 +42,7 @@ import { useConfirm } from '../../components/ui/ConfirmProvider'
 import { OrgChartPanel } from '../../components/OrgChart/OrgChartPanel'
 import styles from './Tenants.module.css'
 
-const EMP_PER_PAGE = 10
+const EMP_PER_PAGE = 5
 
 const EMPTY_EDIT_FORM = {
   company_name: '',
@@ -82,9 +81,10 @@ export default function TenantDetail() {
   const notify = useNotification()
 
   // Expediente: filtros (categoría y persona) + paginación, todo de servidor.
-  const [actCategory, setActCategory] = useState('')
+  const [actCategory, setActCategory] = useState('lifecycle')
   const [actPerson, setActPerson] = useState(0)
   const [actPage, setActPage] = useState(1)
+  const actPageSize = actCategory === 'note' ? 3 : 5
   const {
     activity,
     total: actTotal,
@@ -105,14 +105,11 @@ export default function TenantDetail() {
     deleteComment,
     addAttachment,
     deleteAttachment,
-  } = useTenantActivity(tenantId, actCategory, actPerson, actPage, ACTIVITY_PER_PAGE)
+  } = useTenantActivity(tenantId, actCategory, actPerson, actPage, actPageSize)
 
-  // Últimas notas para el Resumen. Consulta propia (categoría "note", 3 por
-  // página) para que no dependa de en qué página o filtro esté el Expediente;
-  // React Query reutiliza el resto de consultas del hook, que comparten clave.
-  const { activity: latestNotes } = useTenantActivity(tenantId, 'note', 0, 1, 3)
 
-  const actTotalPages = Math.max(1, Math.ceil(actTotal / ACTIVITY_PER_PAGE))
+  const [actSubTab, setActSubTab] = useState<'inactividad' | 'ausencias'>('inactividad')
+  const actTotalPages = Math.max(1, Math.ceil(actTotal / actPageSize))
   const [noteOpen, setNoteOpen] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
@@ -136,6 +133,19 @@ export default function TenantDetail() {
   const [contactError, setContactError] = useState<string | null>(null)
 
   const [tab, setTab] = useState<'resumen' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados'>('resumen')
+
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Archivados de esta empresa (bajas + cuentas desactivadas).
   //
@@ -220,6 +230,10 @@ export default function TenantDetail() {
     queryFn: () => adminService.getTenantTickets(tenantId),
     enabled: !!tenantId && tab === 'tickets',
   })
+  const TICKETS_PER_PAGE = 5
+  const [ticketPage, setTicketPage] = useState(1)
+  const ticketTotalPages = Math.max(1, Math.ceil(tickets.length / TICKETS_PER_PAGE))
+  const ticketsSlice = tickets.slice((ticketPage - 1) * TICKETS_PER_PAGE, ticketPage * TICKETS_PER_PAGE)
 
   useEffect(() => {
     setEmpPage(1)
@@ -232,7 +246,7 @@ export default function TenantDetail() {
     setEmpRole('')
     setEmpStatus('')
     setEmpPage(1)
-    setActCategory('')
+    setActCategory('lifecycle')
     setActPerson(0)
     setActPage(1)
   }, [tenantId])
@@ -554,14 +568,27 @@ export default function TenantDetail() {
   // Iconos en estilo "suave": fondo pastel + icono del mismo tono (igual que las
   // tarjetas del panel admin), en vez de gradientes saturados.
   const kpis = [
-    { value: tenant.user_count, label: 'Profesionales', icon: <Users size={24} />, bg: '#faf5ff', color: 'var(--primary)' },
-    { value: tenant.board_count, label: 'Tableros', icon: <LayoutGrid size={24} />, bg: '#fffbeb', color: '#f59e0b' },
-    { value: tenant.task_count, label: 'Tareas', icon: <CheckSquare size={24} />, bg: '#f5f3ff', color: '#8b5cf6' },
-    { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: '#ecfdf5', color: '#10b981' },
-    { value: `${(tenant.pending_hours ?? 0).toFixed(1)} h`, label: 'Horas por aprobar', icon: <Hourglass size={24} />, bg: '#fff7ed', color: '#f97316' },
-    // Este lleva a alguna parte: un contador de tickets sin forma de ver cuáles
-    // son obliga a buscarlos a mano en la bandeja.
-    { value: tenant.open_tickets ?? 0, label: 'Tickets abiertos', icon: <Inbox size={24} />, bg: '#fef2f2', color: '#ef4444', onClick: () => setTab('tickets') },
+    { value: createdLabel, label: 'Fecha de alta', icon: <Calendar size={24} />, bg: '#ecfeff', color: '#0891b2' },
+    { value: tenant.user_count, label: 'Profesionales', icon: <Users size={24} />, bg: '#fae8ff', color: 'var(--primary)' },
+    { value: tenant.board_count, label: 'Tableros', icon: <LayoutGrid size={24} />, bg: '#fef3c7', color: '#d97706' },
+    { value: tenant.task_count, label: 'Tareas', icon: <CheckSquare size={24} />, bg: '#ede9fe', color: '#8b5cf6' },
+    { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: '#d1fae5', color: '#059669' },
+    { value: `${(tenant.pending_hours ?? 0).toFixed(1)} h`, label: 'Horas por aprobar', icon: <Hourglass size={24} />, bg: '#ffedd5', color: '#ea580c' },
+    { value: tenant.open_tickets ?? 0, label: 'Tickets abiertos', icon: <Inbox size={24} />, bg: '#fee2e2', color: '#dc2626' },
+    {
+      value: <span style={{ color: HEALTH_COLOR[contactHealth.level], fontWeight: 800 }}>{contactHealth.label}</span>,
+      label: 'Último contacto',
+      icon: <Send size={24} />,
+      bg: '#e0f2fe',
+      color: '#0284c7'
+    },
+    {
+      value: <span style={{ color: HEALTH_COLOR[activityHealth.level], fontWeight: 800 }}>{activityHealth.label}</span>,
+      label: 'Última actividad',
+      icon: <Activity size={24} />,
+      bg: '#e2e8f0',
+      color: '#475569'
+    },
   ]
 
   const infoFields = [
@@ -576,195 +603,179 @@ export default function TenantDetail() {
 
   return (
     <div className={styles.page}>
-      {/* El aire lo pone la fila, no el botón: dentro del flex su margen queda
-          centrado y el paginador acabaría rozando la cabecera de abajo. */}
+      {/* Cabecera unificada en una sola fila */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
-        <button className={styles.backBtn} style={{ marginBottom: 0 }} onClick={() => navigate('/admin/tenants')}>
-          <ArrowLeft size={18} /> Empresas
-        </button>
-        <RecordPager
-          scope="tenants"
-          currentId={tenantId}
-          toPath={id => `/admin/tenants/${id}`}
-          noun="empresa"
-        />
-      </div>
-
-      <div className={styles.detailHeader}>
-        <div className={styles.detailIdentity}>
-          <div className={styles.companyLogoLg}>{tenant.company_name?.charAt(0).toUpperCase() || '?'}</div>
-          <div>
-            <div className={styles.detailTitleRow}>
-              <h1>{tenant.company_name}</h1>
-              <span className={`${styles.badge} ${tenant.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
-                {tenant.is_active ? 'Activa' : 'Suspendida'}
-              </span>
-            </div>
-            <div className={styles.detailMeta}>
-              <span><Mail size={14} /> {tenant.owner_name} · {tenant.owner_email}</span>
-              <span><Calendar size={14} /> Alta: {createdLabel}</span>
-            </div>
-            {/* Las dos preguntas que se hace soporte al abrir una ficha, sin
-                tener que deducirlas leyendo el expediente entero.
-
-                Van en su propia línea y no mezcladas con el correo y el alta:
-                los cuatro datos no caben a lo ancho, y dejarlos juntos hacía que
-                "última actividad" cayera sola abajo como si fuera un descuadre.
-                Separadas entre sí a propósito: "la llamamos ayer" y "no entra
-                hace dos meses" son a la vez ciertas y significan cosas
-                distintas. */}
-            <div className={`${styles.detailMeta} ${styles.detailHealth}`}>
-              <span title={tenant.last_contact_at ? new Date(tenant.last_contact_at).toLocaleString('es-ES') : 'Nunca se ha registrado un contacto con esta empresa'}>
-                <Send size={14} /> Último contacto:{' '}
-                <strong style={{ color: HEALTH_COLOR[contactHealth.level], fontWeight: 600 }}>
-                  {contactHealth.label}
-                </strong>
-              </span>
-              <span title={tenant.last_activity_at ? new Date(tenant.last_activity_at).toLocaleString('es-ES') : 'Esta empresa no ha registrado jornadas ni tareas'}>
-                <Activity size={14} /> Última actividad:{' '}
-                <strong style={{ color: HEALTH_COLOR[activityHealth.level], fontWeight: 600 }}>
-                  {activityHealth.label}
-                </strong>
-              </span>
-            </div>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+          <button className={styles.backBtn} style={{ marginBottom: 0, paddingRight: '8px' }} onClick={() => navigate('/admin/tenants')} title="Volver a Empresas" aria-label="Volver a Empresas">
+            <ArrowLeft size={18} />
+          </button>
+          <div className={styles.companyLogoSm}>{tenant.company_name?.charAt(0).toUpperCase() || '?'}</div>
+          <h1 className={styles.headerTitle}>{tenant.company_name}</h1>
+          <span className={`${styles.badge} ${tenant.is_active ? styles.badgeActive : styles.badgeSuspended}`} style={{ marginLeft: '4px' }}>
+            {tenant.is_active ? 'Activa' : 'Suspendida'}
+          </span>
         </div>
-        <div className={styles.headerActions}>
-          <Button variant="secondary" onClick={openComm} leftIcon={<Mail size={16} />}>
-            Enviar Correo
-          </Button>
-          {/* Siempre lleva a nuestra bandeja. La etiqueta distingue si ya hay
-              conversación o si se está abriendo una nueva, pero no promete
-              "enviar": en frío el envío sigue bloqueado y eso se explica dentro
-              de la propia conversación. */}
-          <Button
-            variant="secondary"
-            onClick={handleWhatsApp}
-            leftIcon={<MessageSquare size={16} />}
-            title={
-              !tenant.phone_number?.trim()
-                ? 'Esta empresa no tiene teléfono registrado'
-                : 'Abre la conversación en la bandeja de WhatsApp'
-            }
-          >
-            {waLookup?.ticket_id ? 'Ver conversación' : 'Abrir WhatsApp'}
-          </Button>
+        <div className={styles.pagerActionsContainer}>
           {canManage && (
-            <>
-              <Button variant="secondary" onClick={openEdit} leftIcon={<Pencil size={16} />}>
-                Editar
-              </Button>
-              {tenant.is_active ? (
-                <button className={`${styles.dangerBtn}`} onClick={handleSuspend}>
-                  <Ban size={18} /> Suspender acceso
-                </button>
-              ) : (
-                <button className={`${styles.successBtn}`} onClick={handleActivate}>
-                  <CheckCircle2 size={18} /> Reactivar acceso
-                </button>
-              )}
-            </>
+            <button
+              className={styles.circleActionBtn}
+              onClick={openEdit}
+              title="Editar empresa"
+              aria-label="Editar empresa"
+            >
+              <Pencil size={18} />
+            </button>
           )}
-        </div>
-      </div>
-
-      <div className={styles.subTabs}>
-        <button className={tab === 'resumen' ? styles.subTabActive : styles.subTab} onClick={() => setTab('resumen')}>Resumen</button>
-        <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Profesionales ({employees.length})</button>
-        <button className={tab === 'organigrama' ? styles.subTabActive : styles.subTab} onClick={() => setTab('organigrama')}>Organigrama</button>
-        <button className={tab === 'expediente' ? styles.subTabActive : styles.subTab} onClick={() => setTab('expediente')}>Expediente</button>
-        <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Actividad</button>
-        <button className={tab === 'tickets' ? styles.subTabActive : styles.subTab} onClick={() => setTab('tickets')}>
-          Tickets{(tenant.open_tickets ?? 0) > 0 ? ` (${tenant.open_tickets})` : ''}
-        </button>
-        <button className={tab === 'archivados' ? styles.subTabActive : styles.subTab} onClick={() => setTab('archivados')}>Archivados</button>
-      </div>
-
-      {tab === 'resumen' && (
-        <>
-          <div className={styles.kpis}>
-            {kpis.map(kpi => {
-              // Los que llevan a alguna parte son botones de verdad, para que
-              // también respondan al teclado y se anuncien como pulsables.
-              const Tag = kpi.onClick ? 'button' : 'div'
-              return (
-                <Tag
-                  key={kpi.label}
-                  className={styles.kpiCard}
-                  {...(kpi.onClick
-                    ? { type: 'button' as const, onClick: kpi.onClick, style: { cursor: 'pointer', textAlign: 'left' as const } }
-                    : {})}
+          <div className={styles.dropdownWrapper} ref={menuRef}>
+            <button
+              className={styles.circleActionBtn}
+              onClick={() => setMenuOpen(!menuOpen)}
+              title="Más opciones"
+              aria-label="Más opciones"
+            >
+              <MoreVertical size={18} />
+            </button>
+            {menuOpen && (
+              <div className={styles.dropdownMenu}>
+                <button
+                  className={styles.dropdownItem}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    openComm()
+                  }}
                 >
-                  <div className={styles.kpiIcon} style={{ background: kpi.bg, color: kpi.color }}>
-                    {kpi.icon}
-                  </div>
-                  <div>
-                    <span className={styles.kpiValue}>{kpi.value}</span>
-                    <span className={styles.kpiLabel}>{kpi.label}</span>
-                  </div>
-                </Tag>
-              )
-            })}
-          </div>
-
-          {/* Últimas notas del equipo: lo que hay que saber de esta empresa al
-              entrar, sin tener que ir al Expediente a buscarlo. */}
-          {(latestNotes.length > 0 || canAnnotate) && (
-            <div className={styles.infoCard}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-                  <StickyNote size={18} color="#0891b2" /> Notas del equipo
-                </h2>
-                {canAnnotate && (
-                  <Button size="sm" variant="secondary" leftIcon={<Plus size={14} />} onClick={openNewNote}>
-                    Añadir nota
-                  </Button>
+                  <Mail size={16} /> Enviar Correo
+                </button>
+                <button
+                  className={styles.dropdownItem}
+                  onClick={() => {
+                    if (tenant.phone_number?.trim()) {
+                      setMenuOpen(false)
+                      handleWhatsApp()
+                    }
+                  }}
+                  title={
+                    !tenant.phone_number?.trim()
+                      ? 'Esta empresa no tiene teléfono registrado'
+                      : 'Abre la conversación en la bandeja de WhatsApp'
+                  }
+                  disabled={!tenant.phone_number?.trim()}
+                >
+                  <MessageSquare size={16} /> {waLookup?.ticket_id ? 'Ver conversación' : 'Abrir WhatsApp'}
+                </button>
+                {canManage && (
+                  <>
+                    {tenant.is_active ? (
+                      <button
+                        className={`${styles.dropdownItem} ${styles.dropdownItemDanger}`}
+                        onClick={() => {
+                          setMenuOpen(false)
+                          handleSuspend()
+                        }}
+                      >
+                        <Ban size={16} /> Suspender acceso
+                      </button>
+                    ) : (
+                      <button
+                        className={`${styles.dropdownItem} ${styles.dropdownItemSuccess}`}
+                        onClick={() => {
+                          setMenuOpen(false)
+                          handleActivate()
+                        }}
+                      >
+                        <CheckCircle2 size={16} /> Reactivar acceso
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
-              {latestNotes.length === 0 ? (
-                <p style={{ margin: '12px 0 0', fontSize: 13.5, color: '#94a3b8' }}>
-                  Todavía no hay notas sobre esta empresa.
-                </p>
-              ) : (
-                <>
-                  <div className={styles.notesSummary} style={{ marginTop: 14 }}>
-                    {latestNotes.map(note => (
-                      <div key={`summary-note-${note.event_id}`} className={styles.notesSummaryItem}>
-                        <p>{note.details}</p>
-                        <span className={styles.timelineMeta}>
-                          {note.pinned && <span className={styles.noteTitle} style={{ fontSize: 10.5 }}><Pin size={11} /> Fijada</span>}
-                          <strong style={{ color: '#64748b', fontWeight: 600 }}>{note.user || 'Sistema'}</strong>
-                          <span>{new Date(note.timestamp).toLocaleDateString('es-ES')}</span>
-                          {note.edited_at && <span className={styles.noteEdited}>editada</span>}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { setActCategory('note'); setTab('expediente') }}
-                    style={{ marginTop: 12, padding: 0, border: 'none', background: 'none', color: 'var(--primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    Ver todas en el expediente →
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+            )}
+          </div>
+          <RecordPager
+            scope="tenants"
+            currentId={tenantId}
+            toPath={id => `/admin/tenants/${id}`}
+            noun="empresa"
+          />
+        </div>
+      </div>
 
-          <div className={styles.infoCard}>
-            <h2>Información</h2>
-            <div className={styles.infoGrid}>
+      <div className={styles.twoColumnGrid}>
+        {/* Columna Izquierda: Información Básica y Otra Información */}
+        <div className={styles.leftSidebar}>
+          {/* Card 1: Información Básica */}
+          <div className={styles.sidebarCard}>
+            <h2 className={styles.sidebarCardTitle}>Información Básica</h2>
+            <div className={styles.sidebarFieldsList}>
+              <div className={styles.sidebarField}>
+                <span className={styles.sidebarLabel}>Propietario</span>
+                <span className={styles.sidebarFieldIconRow}>
+                  <User size={14} style={{ color: '#94a3b8', flexShrink: 0 }} /> {tenant.owner_name || '—'}
+                </span>
+              </div>
+              <div className={styles.sidebarField}>
+                <span className={styles.sidebarLabel}>Email</span>
+                <span className={styles.sidebarFieldIconRow}>
+                  <Mail size={14} style={{ color: '#94a3b8', flexShrink: 0 }} /> {tenant.owner_email || '—'}
+                </span>
+              </div>
+
+
               {infoFields.map(f => (
-                <div key={f.label}>
-                  <span className={styles.infoLabel}>{f.label}</span>
-                  <span className={styles.infoValue}>{f.value?.trim() || '—'}</span>
+                <div className={styles.sidebarField} key={f.label}>
+                  <span className={styles.sidebarLabel}>{f.label}</span>
+                  <span className={styles.sidebarValue}>{f.value?.trim() || '—'}</span>
                 </div>
               ))}
             </div>
           </div>
-        </>
-      )}
+        </div>
+
+        {/* Columna Derecha: Tabs y Contenido de las pestañas */}
+        <div className={styles.rightContentArea}>
+          <div className={styles.subTabs}>
+            <button className={tab === 'resumen' ? styles.subTabActive : styles.subTab} onClick={() => setTab('resumen')}>Resumen</button>
+            <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Profesionales ({employees.length})</button>
+            <button className={tab === 'organigrama' ? styles.subTabActive : styles.subTab} onClick={() => setTab('organigrama')}>Organigrama</button>
+            <button className={tab === 'expediente' ? styles.subTabActive : styles.subTab} onClick={() => setTab('expediente')}>Expediente</button>
+            <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Actividad</button>
+            <button className={tab === 'tickets' ? styles.subTabActive : styles.subTab} onClick={() => setTab('tickets')}>
+              Tickets{(tenant.open_tickets ?? 0) > 0 ? ` (${tenant.open_tickets})` : ''}
+            </button>
+            <button className={tab === 'archivados' ? styles.subTabActive : styles.subTab} onClick={() => setTab('archivados')}>Archivados</button>
+          </div>
+
+          {tab === 'resumen' && (
+            <div className={styles.sidebarCard} style={{ margin: 0 }}>
+              <h2 className={styles.sidebarCardTitle}>Otra Información</h2>
+              <div className={styles.kpiGrid3x2}>
+                {kpis.map((kpi: any) => {
+                  const Tag = kpi.onClick ? 'button' : 'div'
+                  return (
+                    <Tag
+                      key={kpi.label}
+                      className={styles.kpiGridItem}
+                      {...(kpi.onClick
+                        ? { type: 'button' as const, onClick: kpi.onClick }
+                        : {})}
+                    >
+                      <div className={styles.kpiGridIcon} style={{ background: kpi.bg, color: kpi.color }}>
+                        {kpi.icon && typeof kpi.icon === 'object'
+                          ? cloneElement(kpi.icon as any, { size: 24 })
+                          : kpi.icon}
+                      </div>
+                      <div className={styles.kpiGridContent}>
+                        <span className={styles.kpiGridLabel}>{kpi.label}</span>
+                        <span className={styles.kpiGridValue}>{kpi.value}</span>
+                      </div>
+                    </Tag>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+
 
       {tab === 'usuarios' && (
         employees.length === 0 ? (
@@ -995,22 +1006,26 @@ export default function TenantDetail() {
             </div>
             {canAnnotate && (
               <>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  leftIcon={<Phone size={14} />}
-                  onClick={openContact}
-                >
-                  Registrar contacto
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  leftIcon={<Plus size={14} />}
-                  onClick={openNewNote}
-                >
-                  Añadir nota
-                </Button>
+                {actCategory === 'contact' && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leftIcon={<Phone size={14} />}
+                    onClick={openContact}
+                  >
+                    Registrar
+                  </Button>
+                )}
+                {actCategory === 'note' && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leftIcon={<Plus size={14} />}
+                    onClick={openNewNote}
+                  >
+                    Añadir nota
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -1058,14 +1073,14 @@ export default function TenantDetail() {
             <div className={styles.empty}>
               <Activity size={40} />
               <p>
-                {actCategory || actPerson
+                {actCategory !== 'lifecycle' || actPerson !== 0
                   ? 'Sin movimientos con estos filtros'
                   : 'Sin movimientos en el expediente'}
               </p>
-              {(actCategory || actPerson) && (
+              {(actCategory !== 'lifecycle' || actPerson !== 0) && (
                 <button
                   type="button"
-                  onClick={() => { setActCategory(''); setActPerson(0) }}
+                  onClick={() => { setActCategory('lifecycle'); setActPerson(0) }}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: 10, padding: '8px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
                 >
                   <X size={14} /> Limpiar filtros
@@ -1107,7 +1122,7 @@ export default function TenantDetail() {
                                   <span className={styles.noteTitle}>
                                     <StickyNote size={13} /> Nota interna del equipo
                                   </span>
-                                  <span className={styles.noteScope}>· no la ve la empresa</span>
+                                  <span className={styles.noteScope}>· No la ve la empresa</span>
                                   {a.pinned && (
                                     <span className={styles.noteScope} style={{ color: '#0e7490' }}>
                                       · fijada
@@ -1115,7 +1130,7 @@ export default function TenantDetail() {
                                   )}
                                   {a.edited_at && <span className={styles.noteEdited}>· editada</span>}
                                   {canAnnotate && (
-                                    <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
+                                    <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                                       <button
                                         type="button"
                                         className={styles.iconBtn}
@@ -1186,6 +1201,7 @@ export default function TenantDetail() {
                                 llegan con event_id 0 y no hay a qué atarlas. */}
                             {a.event_id > 0 && (
                               <EventThread
+                                key={`thread-${a.event_id}`}
                                 tenantId={tenantId}
                                 eventId={a.event_id}
                                 thread={threads[a.event_id]}
@@ -1207,7 +1223,7 @@ export default function TenantDetail() {
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
                 <span style={{ fontSize: '13px', color: '#64748b' }}>
-                  Mostrando {(actPage - 1) * ACTIVITY_PER_PAGE + 1}–{Math.min(actPage * ACTIVITY_PER_PAGE, actTotal)} de {actTotal} movimientos
+                  Mostrando {(actPage - 1) * actPageSize + 1}–{Math.min(actPage * actPageSize, actTotal)} de {actTotal} movimientos
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <button
@@ -1246,30 +1262,75 @@ export default function TenantDetail() {
           columna ni el filtro de empresa, que aquí sobran. */}
       {tab === 'actividad' && (
         <>
-          <TeamActivityPanel
-            items={teamInactive}
-            loading={teamInactiveLoading}
-            followUps={inactivityFollowUps.followUps}
-            onSetFollowUp={inactivityFollowUps.setFollowUp}
-            onCompose={(recipient, body) => setProComposer({ recipient, body })}
-            onOpenUser={(userId, sequence) => {
-              setRecordNav(`tenant-employees:${tenantId}`, sequence)
-              navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
-            }}
-            showCompany={false}
-            description="Profesionales de esta empresa sin registrar horas. Los de 2+ días disparan alerta automática al equipo de customer success."
-          />
-          <AbsenceReportPanel
-            items={tenantAbsence?.items || []}
-            followUps={absenceFollowUps.followUps}
-            onSetFollowUp={absenceFollowUps.setFollowUp}
-            onOpenUser={(userId, sequence) => {
-              setRecordNav(`tenant-employees:${tenantId}`, sequence)
-              navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
-            }}
-            showCompany={false}
-            description="Ausencias de esta empresa este mes, agrupadas por profesional. Haz clic en una fila para ver el detalle."
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 20 }}>
+            <button
+              type="button"
+              onClick={() => setActSubTab('inactividad')}
+              style={{
+                padding: '7px 14px',
+                borderRadius: '999px',
+                border: actSubTab === 'inactividad' ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
+                background: actSubTab === 'inactividad' ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
+                color: actSubTab === 'inactividad' ? 'var(--primary)' : '#64748b',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+              aria-pressed={actSubTab === 'inactividad'}
+            >
+              Inactividad
+              <span className={styles.chipCount}>{teamInactive.length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActSubTab('ausencias')}
+              style={{
+                padding: '7px 14px',
+                borderRadius: '999px',
+                border: actSubTab === 'ausencias' ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
+                background: actSubTab === 'ausencias' ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
+                color: actSubTab === 'ausencias' ? 'var(--primary)' : '#64748b',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+              aria-pressed={actSubTab === 'ausencias'}
+            >
+              Ausencias
+              <span className={styles.chipCount}>{tenantAbsence?.items?.length || 0}</span>
+            </button>
+          </div>
+
+          {actSubTab === 'inactividad' ? (
+            <TeamActivityPanel
+              items={teamInactive}
+              loading={teamInactiveLoading}
+              followUps={inactivityFollowUps.followUps}
+              onSetFollowUp={inactivityFollowUps.setFollowUp}
+              onCompose={(recipient, body) => setProComposer({ recipient, body })}
+              onOpenUser={(userId, sequence) => {
+                setRecordNav(`tenant-employees:${tenantId}`, sequence)
+                navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
+              }}
+              showCompany={false}
+              description="Profesionales de esta empresa sin registrar horas. Los de 2+ días disparan alerta automática al equipo de customer success."
+            />
+          ) : (
+            <AbsenceReportPanel
+              items={tenantAbsence?.items || []}
+              followUps={absenceFollowUps.followUps}
+              onSetFollowUp={absenceFollowUps.setFollowUp}
+              onOpenUser={(userId, sequence) => {
+                setRecordNav(`tenant-employees:${tenantId}`, sequence)
+                navigate(`/admin/tenants/${tenantId}/employees/${userId}`)
+              }}
+              showCompany={false}
+              description="Ausencias de esta empresa este mes, agrupadas por profesional. Haz clic en una fila para ver el detalle."
+            />
+          )}
         </>
       )}
 
@@ -1319,7 +1380,7 @@ export default function TenantDetail() {
                 </tr>
               </thead>
               <tbody>
-                {tickets.map(tk => {
+                {ticketsSlice.map(tk => {
                   const st = ticketOrigin(tk.origin)
                   const OriginIcon = st.icon
                   const updated = new Date(tk.updated_at)
@@ -1356,9 +1417,44 @@ export default function TenantDetail() {
                 })}
               </tbody>
             </table>
+            {ticketTotalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  Mostrando {(ticketPage - 1) * TICKETS_PER_PAGE + 1}–{Math.min(ticketPage * TICKETS_PER_PAGE, tickets.length)} de {tickets.length} tickets
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    onClick={() => setTicketPage(p => Math.max(1, p - 1))}
+                    disabled={ticketPage <= 1}
+                    style={{ opacity: ticketPage <= 1 ? 0.4 : 1, cursor: ticketPage <= 1 ? 'not-allowed' : 'pointer' }}
+                    title="Página anterior"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span style={{ fontSize: '13px', color: '#334155', fontWeight: 600 }}>
+                    {ticketPage} / {ticketTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    onClick={() => setTicketPage(p => Math.min(ticketTotalPages, p + 1))}
+                    disabled={ticketPage >= ticketTotalPages}
+                    style={{ opacity: ticketPage >= ticketTotalPages ? 0.4 : 1, cursor: ticketPage >= ticketTotalPages ? 'not-allowed' : 'pointer' }}
+                    title="Página siguiente"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )
       )}
+
+        </div> {/* .rightContentArea */}
+      </div> {/* .twoColumnGrid */}
 
       {/* Los dos correos de esta ficha pasan por el mismo redactor (plantilla de
           Tools o texto nuevo). Se diferencian en a quién van y dónde se

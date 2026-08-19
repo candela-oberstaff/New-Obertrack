@@ -166,7 +166,7 @@ export function EventThread(props: EventThreadProps) {
   const attachments = thread?.attachments ?? []
   const total = comments.length + attachments.length
 
-  const [open, setOpen] = useState(total > 0)
+  const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [pending, setPending] = useState<File[]>([])
