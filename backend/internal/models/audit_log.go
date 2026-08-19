@@ -8,13 +8,13 @@ type AuditLog struct {
 	ID uint `gorm:"primaryKey" json:"id"`
 	// Kind discriminates "activity" (HTTP action: who/IP/route) from "data"
 	// (a row change captured at the DB layer).
-	Kind       string    `gorm:"size:20;index" json:"kind"`
-	ActorID    *uint     `gorm:"index" json:"actor_id,omitempty"`
-	ActorEmail string    `gorm:"size:255;index" json:"actor_email"`
-	ActorRole  string    `gorm:"size:50" json:"actor_role"`
-	TenantID   *uint     `gorm:"index" json:"tenant_id,omitempty"`
-	Action     string    `gorm:"size:100;index" json:"action"`
-	Module     string    `gorm:"size:50;index" json:"module"`
+	Kind       string `gorm:"size:20;index" json:"kind"`
+	ActorID    *uint  `gorm:"index" json:"actor_id,omitempty"`
+	ActorEmail string `gorm:"size:255;index" json:"actor_email"`
+	ActorRole  string `gorm:"size:50" json:"actor_role"`
+	TenantID   *uint  `gorm:"index" json:"tenant_id,omitempty"`
+	Action     string `gorm:"size:100;index" json:"action"`
+	Module     string `gorm:"size:50;index" json:"module"`
 	// EntityType/EntityID correlate the event with a model row (table + PK).
 	EntityType string    `gorm:"size:64;index" json:"entity_type,omitempty"`
 	EntityID   string    `gorm:"size:64;index" json:"entity_id,omitempty"`

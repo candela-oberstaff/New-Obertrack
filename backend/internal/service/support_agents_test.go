@@ -11,9 +11,16 @@ import (
 // superadmins. Ofrecerlo como destino de un traspaso es ofrecer asignarle una
 // conversación a un bot que no la va a atender.
 func TestElBotDeSistemaNoEsUnDestinoDeTraspaso(t *testing.T) {
-	bot := models.User{Email: models.SystemBotEmail, Name: models.SystemBotName, IsActive: true}
-	if !isAssignableAgentExcluded(bot) {
-		t.Error("el usuario de sistema debería quedar fuera del selector de traspaso")
+	// Se reconoce por la bandera is_system, que es la fuente de verdad...
+	porBandera := models.User{IsSystem: true, Name: models.SystemBotName, IsActive: true}
+	if !isAssignableAgentExcluded(porBandera) {
+		t.Error("con is_system marcado debería quedar fuera del selector de traspaso")
+	}
+	// ...y también por el correo, para el caso de un usuario cargado sin esa
+	// columna o construido a mano: un falso negativo lo devolvería a la lista.
+	porCorreo := models.User{Email: models.SystemBotEmail, Name: models.SystemBotName, IsActive: true}
+	if !isAssignableAgentExcluded(porCorreo) {
+		t.Error("por su correo también debería quedar fuera del selector de traspaso")
 	}
 }
 

@@ -5,16 +5,27 @@ import { useConfirm } from '../../ui/ConfirmProvider'
 import { useTutorials } from './useTutorials'
 import { parseVideoUrl } from '../utils'
 import type { Tutorial, CreateTutorialInput } from '../../../types'
+import { EMPTY_TARGET } from '../../../types'
 
 const EMPTY_FORM: CreateTutorialInput = {
   title: '',
   description: '',
+  content_type: 'video',
   google_drive_url: '',
+  image_url: '',
+  body: '',
   icon_name: 'PlayCircle',
   category: 'General',
   audience: 'all',
+  target: EMPTY_TARGET,
   duration_min: 0,
   order_index: 0,
+  announce_days: 2,
+  cta_label: '',
+  cta_url: '',
+  publish_at: null,
+  expires_at: null,
+  require_ack: false,
   is_active: true,
 }
 
@@ -40,6 +51,7 @@ export function useTutorialsPageState() {
   } = useTutorials()
 
   const [selectedTutorial, setSelectedTutorial] = useState<Tutorial | null>(null)
+  const [metricsTutorial, setMetricsTutorial] = useState<Tutorial | null>(null)
   const [showFormModal, setShowFormModal] = useState(false)
   const [editingTutorial, setEditingTutorial] = useState<Tutorial | null>(null)
   const [formData, setFormData] = useState<CreateTutorialInput>(EMPTY_FORM)
@@ -83,12 +95,27 @@ export function useTutorialsPageState() {
     setFormData({
       title: tutorial.title,
       description: tutorial.description,
+      content_type: tutorial.content_type || 'video',
       google_drive_url: tutorial.google_drive_url,
+      image_url: tutorial.image_url || '',
+      body: tutorial.body || '',
       icon_name: tutorial.icon_name,
       category: tutorial.category || 'General',
       audience: tutorial.audience || 'all',
+      target: {
+        company_ids: tutorial.target?.company_ids ?? [],
+        countries: tutorial.target?.countries ?? [],
+        group_ids: tutorial.target?.group_ids ?? [],
+        managers_only: tutorial.target?.managers_only ?? false,
+      },
       duration_min: tutorial.duration_min,
       order_index: tutorial.order_index,
+      announce_days: tutorial.announce_days ?? 2,
+      cta_label: tutorial.cta_label || '',
+      cta_url: tutorial.cta_url || '',
+      publish_at: tutorial.publish_at ?? null,
+      expires_at: tutorial.expires_at ?? null,
+      require_ack: tutorial.require_ack ?? false,
       is_active: tutorial.is_active,
     })
     setShowFormModal(true)
@@ -107,8 +134,27 @@ export function useTutorialsPageState() {
       error('El título es obligatorio')
       return
     }
-    if (!parseVideoUrl(formData.google_drive_url)) {
+    // Cada tipo de novedad exige su propio contenido: se valida el que manda,
+    // no los tres.
+    if (formData.content_type === 'video' && !parseVideoUrl(formData.google_drive_url)) {
       error('Pega un link válido de Google Drive o YouTube')
+      return
+    }
+    if (formData.content_type === 'imagen' && !formData.image_url.trim()) {
+      error('Sube la imagen de la novedad')
+      return
+    }
+    if (formData.content_type === 'texto' && !formData.body.replace(/<[^>]*>/g, '').trim()) {
+      error('Escribe el contenido de la novedad')
+      return
+    }
+
+    if (formData.cta_label.trim() && !formData.cta_url.trim()) {
+      error('El botón de acción necesita un destino')
+      return
+    }
+    if (formData.cta_url.trim() && !formData.cta_label.trim()) {
+      error('El botón de acción necesita un texto')
       return
     }
 
@@ -177,6 +223,8 @@ export function useTutorialsPageState() {
     isLoading,
     selectedTutorial,
     setSelectedTutorial,
+    metricsTutorial,
+    setMetricsTutorial,
     handleOpenTutorial,
     showFormModal,
     editingTutorial,

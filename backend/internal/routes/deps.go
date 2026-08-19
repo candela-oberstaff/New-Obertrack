@@ -156,7 +156,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	meetingSvc.SetSystemDM(channelSvc.PostSystemDM)
 	adminSvc := service.NewAdminService(adminRepo, userRepo, taskRepo, workHourRepo, employmentRepo, brevoSvc, authSvc)
 	boardSvc := service.NewBoardService(boardRepo, userRepo, notifSvc)
-	tutorialSvc := service.NewTutorialService(tutorialRepo)
+	tutorialSvc := service.NewTutorialService(tutorialRepo, userRepo, notifSvc)
 	rbacSvc := service.NewRBACService(rbacRepo, userRepo)
 	employmentSvc := service.NewEmploymentService(employmentRepo, userRepo, workHourRepo, notifSvc)
 	employmentSvc.SetChannelCleaner(channelSvc.RemoveUserFromCompanyChannels)
@@ -226,6 +226,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// directo; esto es la red por si no lo resuelve. No-op con el flag apagado.
 	service.NewSupervisorEscalationWatcher(userRepo, employmentRepo, workHourRepo, notifSvc).Start()
 
+	// Reloj de las novedades: publica lo programado y retira lo caducado.
+	service.NewTutorialScheduleWatcher(tutorialSvc).Start()
 
 	// Worker de reportes automáticos. A diferencia de los otros, se conserva la
 	// instancia: el panel de configuración la usa para "Enviar ahora".

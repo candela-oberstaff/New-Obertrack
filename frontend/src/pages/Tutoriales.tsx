@@ -7,6 +7,7 @@ import { useTutorialsPageState, ALL_CATEGORIES, ALL_AUDIENCES } from '../compone
 import { TutorialCard } from '../components/Tutorials/TutorialCard'
 import { TutorialPlayerModal } from '../components/Tutorials/Modals/TutorialPlayerModal'
 import { TutorialFormModal } from '../components/Tutorials/Modals/TutorialFormModal'
+import { TutorialMetricsModal } from '../components/Tutorials/Modals/TutorialMetricsModal'
 import { useAuth } from '../context/AuthContext'
 import InductionSettings from '../components/Admin/InductionSettings'
 import { Skeleton } from '../components/ui'
@@ -30,6 +31,8 @@ export default function Tutoriales() {
     isLoading,
     selectedTutorial,
     setSelectedTutorial,
+    metricsTutorial,
+    setMetricsTutorial,
     handleOpenTutorial,
     showFormModal,
     editingTutorial,
@@ -227,6 +230,7 @@ export default function Tutoriales() {
                   onOpen={handleOpenTutorial}
                   onEdit={openEdit}
                   onDelete={handleDelete}
+                  onMetrics={setMetricsTutorial}
                 />
               ))}
             </div>
@@ -237,6 +241,11 @@ export default function Tutoriales() {
       <TutorialPlayerModal
         tutorial={selectedTutorial}
         onClose={() => setSelectedTutorial(null)}
+      />
+
+      <TutorialMetricsModal
+        tutorial={metricsTutorial}
+        onClose={() => setMetricsTutorial(null)}
       />
 
       <TutorialFormModal

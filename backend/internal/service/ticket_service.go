@@ -1419,7 +1419,11 @@ func (s *ticketService) ListSupportAgents() ([]models.User, error) {
 // tickets faltaba, y ofrecía asignarle una conversación a un bot que no la va a
 // atender nunca.
 func isAssignableAgentExcluded(u models.User) bool {
-	return u.Email == models.SystemBotEmail
+	// La bandera es la fuente de verdad; el correo queda como red por si el
+	// usuario llega de una consulta que no seleccionó la columna, o construido
+	// a mano. Un falso negativo aquí devuelve al bot a las listas, así que la
+	// redundancia es deliberada.
+	return u.IsSystem || u.Email == models.SystemBotEmail
 }
 
 // ListTransfers returns the transfer history for a ticket.

@@ -88,9 +88,9 @@ func (BoardInvitation) TableName() string {
 }
 
 type Task struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	Title       string         `gorm:"size:255;not null" json:"title"`
-	Description string         `gorm:"type:text" json:"description"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	Title       string `gorm:"size:255;not null" json:"title"`
+	Description string `gorm:"type:text" json:"description"`
 	// varchar(50) debe coincidir con la migración 202608061900_widen_task_status y
 	// con STATUS_MAX_LENGTH del frontend (phaseStatus.ts): el status de una fase
 	// custom se deriva de su nombre y puede superar los 20 caracteres.

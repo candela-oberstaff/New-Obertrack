@@ -8,7 +8,22 @@ export type { User, Tenant, ProfileChangeRequest, EmployeeSummary, EmployeeWorkH
 export type { Message, Channel, DMChannel, MessageReaction, ChannelMember, UserStatus } from './chat'
 
 // Re-export from tutorials types
-export type { Tutorial, TutorialAudience, CreateTutorialInput, UpdateTutorialInput } from './tutorials'
+export type {
+  Tutorial,
+  TutorialAudience,
+  TutorialContentType,
+  TutorialViewSource,
+  TutorialMetrics,
+  TutorialAudienceStat,
+  TutorialViewer,
+  TutorialTarget,
+  TutorialAudienceOption,
+  TutorialAudienceOptions,
+  TutorialAudiencePreview,
+  CreateTutorialInput,
+  UpdateTutorialInput,
+} from './tutorials'
+export { EMPTY_TARGET, isEmptyTarget } from './tutorials'
 
 // Re-export from rbac types (roles y grupos por empresa)
 export type { PermissionLevel, CompanyRole, CompanyGroup } from './rbac'

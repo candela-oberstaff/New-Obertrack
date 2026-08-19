@@ -26,7 +26,8 @@ import {
   LogOut,
   Volume2,
   VolumeX,
-  Hourglass
+  Hourglass,
+  Sparkles
 } from 'lucide-react'
 import styles from './Notifications.module.css'
 
@@ -44,6 +45,7 @@ const LIVE_NOTIFICATION_TYPES = new Set([
   'board_request_approved',
   'board_request_rejected',
   'board_member_left',
+  'novedad',
 ])
 
 const ALERT_NOTIFICATION_TYPES = new Set([
@@ -51,6 +53,7 @@ const ALERT_NOTIFICATION_TYPES = new Set([
   'mention',
   'support',
   'board_invitation',
+  'novedad',
 ])
 
 const RECONNECT_BASE_DELAY = 1000
@@ -157,6 +160,12 @@ export default function Notifications() {
               message.type === 'task_completed'
             ) {
               window.dispatchEvent(new CustomEvent('task-assigned'))
+            }
+
+            // Novedad recién publicada: quien ya está dentro no debería tener
+            // que recargar para verla emerger.
+            if (message.type === 'novedad') {
+              window.dispatchEvent(new CustomEvent('novedad-published'))
             }
           }
         } catch (error) {
@@ -320,6 +329,7 @@ export default function Notifications() {
       case 'board_invitation_rejected':
       case 'board_request_rejected': return <XCircle size={18} className="text-red-500" />
       case 'board_member_left': return <LogOut size={18} className="text-gray-500" />
+      case 'novedad': return <Sparkles size={18} className="text-violet-500" />
       default: return <Bell size={18} className="text-gray-500" />
     }
   }

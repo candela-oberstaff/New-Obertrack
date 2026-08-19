@@ -326,7 +326,11 @@ export default function InductionSettings() {
             onChange={(v) => setConfig({ ...config, tutorial_id: Number(v) || null })}
             options={[
               { value: 0, label: 'Sin video (solo cuestionario)' },
-              ...tutorials.map((t) => ({ value: t.id, label: t.title })),
+              // La landing de inducción reproduce un video: una novedad de
+              // imagen o de texto no sirve como material aquí.
+              ...tutorials
+                .filter((t) => (t.content_type || 'video') === 'video')
+                .map((t) => ({ value: t.id, label: t.title })),
             ]}
           />
         </div>

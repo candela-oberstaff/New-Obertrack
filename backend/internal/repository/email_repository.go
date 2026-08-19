@@ -61,11 +61,11 @@ func (r *emailRepository) GetTemplateByID(id uint) (*models.EmailTemplate, error
 
 func (r *emailRepository) UpdateTemplate(template *models.EmailTemplate) error {
 	return r.db.Model(template).Updates(map[string]interface{}{
-		"title":      template.Title,
-		"subject":    template.Subject,
-		"content":    template.Content,
-		"type":       template.Type,
-		"is_active":  template.IsActive,
+		"title":     template.Title,
+		"subject":   template.Subject,
+		"content":   template.Content,
+		"type":      template.Type,
+		"is_active": template.IsActive,
 	}).Error
 }
 

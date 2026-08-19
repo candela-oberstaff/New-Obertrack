@@ -8,9 +8,9 @@ import (
 // WrapInPremiumTemplate takes raw HTML content and wraps it in a modern, premium design
 // WITHOUT a header logo (since content templates already provide their own logo).
 func WrapInPremiumTemplate(title string, content string) string {
-	bgLight := "#f5f2fb"      // Lavender Mist
-	textColor := "#060b23"    // Prussian Blue
-	
+	bgLight := "#f5f2fb"   // Lavender Mist
+	textColor := "#060b23" // Prussian Blue
+
 	companyName := os.Getenv("COMPANY_NAME")
 	if companyName == "" {
 		companyName = "Oberstaff"
@@ -44,4 +44,3 @@ func WrapInPremiumTemplate(title string, content string) string {
 </html>
 	`, title, bgLight, bgLight, textColor, content, 2026, companyName)
 }
-

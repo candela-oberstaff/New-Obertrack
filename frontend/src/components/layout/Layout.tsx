@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useQueryClient } from '@tanstack/react-query'
 import { authService } from '../../services/api'
 import Notifications from '../Notifications'
+import { NovedadAnnouncer } from '../Tutorials/NovedadAnnouncer'
 import { useState, useEffect } from 'react'
 import { channelService } from '../../services/api'
 import {
@@ -336,6 +337,10 @@ export default function Layout() {
         <div className={`${styles['outlet-container']} ${isChatPage ? styles['chat-layout'] : ''}`}>
           <Outlet />
         </div>
+
+        {/* Las novedades sin ver salen al frente nada más entrar, sin depender
+            de que alguien se acuerde de visitar la sección. */}
+        <NovedadAnnouncer />
 
         {push.canPrompt && (
           <div

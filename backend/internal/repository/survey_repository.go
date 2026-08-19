@@ -50,7 +50,7 @@ func (r *surveyRepository) UpdateSurvey(survey *models.Survey) error {
 		if err := tx.Where("survey_id = ?", survey.ID).Delete(&models.SurveyQuestion{}).Error; err != nil {
 			return err
 		}
-		
+
 		// Reset IDs of questions to let GORM create them as new records
 		for i := range survey.Questions {
 			survey.Questions[i].ID = 0

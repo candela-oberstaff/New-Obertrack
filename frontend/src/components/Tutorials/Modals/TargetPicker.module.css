@@ -1,0 +1,254 @@
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #334155;
+  user-select: none;
+}
+
+.switch input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.switch span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.switch small {
+  font-size: 12px;
+  font-weight: 400;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #64748b;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  width: auto;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.tab.active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.search {
+  padding: 9px 12px;
+  font-size: 13.5px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  font-family: inherit;
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.15);
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  max-height: 176px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.option {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  color: #334155;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.option:last-child {
+  border-bottom: none;
+}
+
+.option:hover {
+  background: #f8fafc;
+}
+
+.option input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.option small {
+  font-size: 11.5px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  margin: 0;
+  padding: 18px 14px;
+  font-size: 12.5px;
+  color: #94a3b8;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.managers {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+}
+
+.managers input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  background: rgba(168, 85, 247, 0.1);
+  color: #7c3aed;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.15);
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.chip button:hover {
+  background: rgba(124, 58, 237, 0.3);
+}
+
+/* La cifra de alcance es la que decide si el público quedó bien acotado, así
+   que se destaca del resto del bloque. */
+.reach {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid rgba(168, 85, 247, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(244, 114, 182, 0.07), rgba(168, 85, 247, 0.07));
+}
+
+.reach strong {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  color: #7c3aed;
+}
+
+.reach span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.reach small {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+.managers span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.managers small {
+  font-size: 11.5px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.reach-empty {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.reach-empty strong {
+  color: #dc2626;
+}

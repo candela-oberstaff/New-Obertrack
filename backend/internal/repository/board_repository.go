@@ -73,8 +73,8 @@ func (r *boardRepository) GetByIDAndTenant(id, tenantID uint) (*models.Board, er
 	var board models.Board
 	if err := r.db.Where("tenant_id = ?", tenantID).
 		Preload("Members").Preload("Creator").Preload("Phases", func(db *gorm.DB) *gorm.DB {
-			return db.Order("\"order\" ASC")
-		}).First(&board, id).Error; err != nil {
+		return db.Order("\"order\" ASC")
+	}).First(&board, id).Error; err != nil {
 		return nil, err
 	}
 	return &board, nil

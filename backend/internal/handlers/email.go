@@ -161,6 +161,12 @@ type HybridRecipients struct {
 
 // recipientColumns son los campos del usuario que alimentan las variables de
 // personalización ({{nombre}}, {{empresa}}, ...). Ver utils.EmailRecipient.
+//
+// Las cuentas de sistema (is_system) quedan fuera de TODA resolución de
+// destinatarios. El bot es una fila real en users, superadmin y activa, así que
+// aparecía como seleccionable; un envío a su dirección rebota duro y termina en
+// la lista de bloqueados de Brevo. Se filtra en el backend para que ninguna ruta
+// —campaña, plantilla o grupo de audiencia— pueda alcanzarlo.
 const recipientColumns = "u.name, u.email, u.job_title, u.company_name, u.industry, u.phone_number, u.country, u.state, u.city"
 
 // resolveRecipients expande un recipient_list al conjunto final de
@@ -217,7 +223,7 @@ func (h *EmailHandler) usersByIDs(ids []int) []utils.EmailRecipient {
 	}
 	placeholders, args := sqlPlaceholders(ids)
 	query := fmt.Sprintf(
-		"SELECT %s FROM users u WHERE u.id IN (%s) AND u.deleted_at IS NULL",
+		"SELECT %s FROM users u WHERE u.id IN (%s) AND u.deleted_at IS NULL AND u.is_system = false",
 		recipientColumns, placeholders,
 	)
 	var users []utils.EmailRecipient
@@ -231,7 +237,7 @@ func (h *EmailHandler) usersByGroups(groupIDs []int) []utils.EmailRecipient {
 	}
 	placeholders, args := sqlPlaceholders(groupIDs)
 	query := fmt.Sprintf(
-		"SELECT DISTINCT %s FROM users u JOIN audience_group_members agm ON u.id = agm.user_id WHERE agm.audience_group_id IN (%s) AND u.deleted_at IS NULL",
+		"SELECT DISTINCT %s FROM users u JOIN audience_group_members agm ON u.id = agm.user_id WHERE agm.audience_group_id IN (%s) AND u.deleted_at IS NULL AND u.is_system = false",
 		recipientColumns, placeholders,
 	)
 	var users []utils.EmailRecipient

@@ -110,10 +110,16 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 	{
 		tutorials.GET("", tutorialsView, d.tutorial.GetAll)
 		tutorials.GET("/views", tutorialsView, d.tutorial.GetMyViews)
+		tutorials.GET("/pending", tutorialsView, d.tutorial.GetPending)
+		tutorials.GET("/audience-options", middleware.RequireSuperadmin(), d.tutorial.GetAudienceOptions)
+		tutorials.POST("/audience-preview", middleware.RequireSuperadmin(), d.tutorial.PreviewAudience)
 		tutorials.GET("/:id", tutorialsView, d.tutorial.GetByID)
 		tutorials.POST("", middleware.RequireSuperadmin(), d.tutorial.Create)
 		tutorials.POST("/reorder", middleware.RequireSuperadmin(), d.tutorial.Reorder)
 		tutorials.POST("/:id/view", tutorialsView, d.tutorial.RecordView)
+		tutorials.POST("/:id/click", tutorialsView, d.tutorial.RecordClick)
+		tutorials.POST("/:id/remind", middleware.RequireSuperadmin(), d.tutorial.RemindPending)
+		tutorials.GET("/:id/metrics", middleware.RequireSuperadmin(), d.tutorial.GetMetrics)
 		tutorials.PUT("/:id", middleware.RequireSuperadmin(), d.tutorial.Update)
 		tutorials.DELETE("/:id", middleware.RequireSuperadmin(), d.tutorial.Delete)
 	}

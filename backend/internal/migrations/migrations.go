@@ -1262,6 +1262,7 @@ func Run(db *gorm.DB) error {
 				bot := &models.User{
 					Name:         models.SystemBotName,
 					Email:        models.SystemBotEmail,
+					IsSystem:     true,
 					Password:     string(hash),
 					UserType:     models.UserTypeSuperadmin,
 					IsSuperadmin: true,
@@ -1917,6 +1918,144 @@ func Run(db *gorm.DB) error {
 			},
 			Rollback: func(tx *gorm.DB) error {
 				return tx.Exec(`DROP INDEX IF EXISTS idx_email_events_event_timestamp`).Error
+			},
+		},
+		{
+			// La novedad ahora se ANUNCIA: al publicarla se reparten
+			// notificaciones y emerge al iniciar sesión hasta que se ve.
+			// announced_at es la marca de ese reparto. Las novedades ya
+			// existentes quedan en NULL a propósito: nadie debería recibir de
+			// golpe un aviso por todo lo que se publicó antes.
+			ID: "202608191200_tutorial_announced_at",
+			Migrate: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.Tutorial{}, "announced_at") {
+					return nil
+				}
+				log.Println("Adding announced_at to tutorials...")
+				return tx.Migrator().AddColumn(&models.Tutorial{}, "announced_at")
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.Tutorial{}, "announced_at")
+			},
+		},
+		{
+			// Cuántos días insiste el aviso emergente de cada novedad. Las
+			// filas existentes toman el default (2 días), que es inocuo:
+			// ninguna de ellas tiene announced_at, así que no emergen.
+			ID: "202608191600_tutorial_announce_days",
+			Migrate: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.Tutorial{}, "announce_days") {
+					return nil
+				}
+				log.Println("Adding announce_days to tutorials...")
+				return tx.Migrator().AddColumn(&models.Tutorial{}, "announce_days")
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.Tutorial{}, "announce_days")
+			},
+		},
+		{
+			// Las novedades dejan de ser solo video: ahora también pueden ser
+			// una imagen o un texto con formato. Todo lo existente queda como
+			// 'video', que es lo que era.
+			ID: "202608191800_tutorial_content_types",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding content_type, image_url and body to tutorials...")
+				if err := tx.AutoMigrate(&models.Tutorial{}); err != nil {
+					return err
+				}
+				return tx.Exec(`UPDATE tutorials SET content_type = 'video' WHERE content_type IS NULL OR content_type = ''`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, column := range []string{"content_type", "image_url", "body"} {
+					if err := tx.Migrator().DropColumn(&models.Tutorial{}, column); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
+		{
+			// Origen de cada vista de una novedad. Lo existente se marca como
+			// 'seccion', que es de donde venía todo antes del aviso emergente.
+			ID: "202608192000_tutorial_view_source",
+			Migrate: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.TutorialView{}, "source") {
+					return nil
+				}
+				log.Println("Adding source to tutorial_views...")
+				if err := tx.Migrator().AddColumn(&models.TutorialView{}, "source"); err != nil {
+					return err
+				}
+				return tx.Exec(`UPDATE tutorial_views SET source = 'seccion' WHERE source IS NULL OR source = ''`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.TutorialView{}, "source")
+			},
+		},
+		{
+			// Público objetivo de una novedad: empresas, países, grupos de
+			// audiencia y el interruptor de "solo managers". Vacío en todo lo
+			// existente, que sigue yendo a su audiencia completa.
+			ID: "202608192200_tutorial_target_spec",
+			Migrate: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&models.Tutorial{}, "target_spec") {
+					return nil
+				}
+				log.Println("Adding target_spec to tutorials...")
+				return tx.Migrator().AddColumn(&models.Tutorial{}, "target_spec")
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.Tutorial{}, "target_spec")
+			},
+		},
+		{
+			// El paquete que completa el ciclo de una novedad: boton de accion
+			// (y su medicion), programacion y caducidad, freno del
+			// recordatorio y acuse de lectura.
+			ID: "202608200900_tutorial_cta_schedule_ack",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding CTA, schedule and acknowledgement to tutorials...")
+				if err := tx.AutoMigrate(&models.Tutorial{}); err != nil {
+					return err
+				}
+				if err := tx.AutoMigrate(&models.TutorialView{}); err != nil {
+					return err
+				}
+				return tx.AutoMigrate(&models.TutorialClick{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropTable(&models.TutorialClick{}); err != nil {
+					return err
+				}
+				if err := tx.Migrator().DropColumn(&models.TutorialView{}, "acknowledged_at"); err != nil {
+					return err
+				}
+				for _, column := range []string{"cta_label", "cta_url", "publish_at", "expires_at", "reminded_at", "require_ack"} {
+					if err := tx.Migrator().DropColumn(&models.Tutorial{}, column); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
+		{
+			ID: "202608181500_users_is_system",
+			Migrate: func(tx *gorm.DB) error {
+				// Marca las cuentas que no son personas. Antes se las reconocía
+				// comparando el correo en cada consulta que las tuviera que
+				// excluir, y bastaba olvidarlo en una para que el bot recibiera
+				// correos o contara como si te hubiera escrito un compañero.
+				log.Println("Adding users.is_system and flagging the system bot...")
+				if err := tx.AutoMigrate(&models.User{}); err != nil {
+					return err
+				}
+				return tx.Model(&models.User{}).
+					Where("email = ?", models.SystemBotEmail).
+					Update("is_system", true).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.User{}, "is_system")
 			},
 		},
 		// Future migrations go here

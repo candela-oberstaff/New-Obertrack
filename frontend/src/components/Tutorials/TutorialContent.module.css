@@ -1,0 +1,118 @@
+.video-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.image-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Texto con formato: el editor enriquecido produce p/h/ul/img, así que el
+   estilo vive aquí y no en cada pantalla que lo muestre. */
+.body {
+  font-size: 15.5px;
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.body > :first-child { margin-top: 0; }
+.body > :last-child { margin-bottom: 0; }
+
+.body h1, .body h2, .body h3, .body h4 {
+  margin: 22px 0 10px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.body h1 { font-size: 24px; }
+.body h2 { font-size: 20px; }
+.body h3 { font-size: 17px; }
+
+.body p { margin: 0 0 12px; }
+
+.body ul, .body ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.body li { margin-bottom: 6px; }
+
+.body a {
+  color: #a855f7;
+  text-decoration: underline;
+}
+
+.body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  margin: 12px 0;
+}
+
+.body blockquote {
+  margin: 14px 0;
+  padding: 8px 16px;
+  border-left: 3px solid rgba(168, 85, 247, 0.6);
+}
+
+.tone-light {
+  color: #334155;
+}
+
+.tone-light h1, .tone-light h2, .tone-light h3, .tone-light h4 {
+  color: #0f172a;
+}
+
+.tone-light blockquote {
+  color: #475569;
+  background: #f8fafc;
+}
+
+.tone-dark {
+  color: #cbd5e1;
+}
+
+.tone-dark h1, .tone-dark h2, .tone-dark h3, .tone-dark h4 {
+  color: #fff;
+}
+
+.tone-dark blockquote {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.error {
+  padding: 32px;
+  text-align: center;
+  border-radius: 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #dc2626;
+  font-size: 14px;
+}

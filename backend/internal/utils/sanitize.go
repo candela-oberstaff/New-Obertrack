@@ -36,7 +36,7 @@ func SanitizeHTML(input string) string {
 
 	// CORRECCIÓN: Usamos backticks para evitar el "unknown escape" en Windows/Go
 	input = regexp.MustCompile(`\s+on\w+\s*=`).ReplaceAllString(input, " ")
-	
+
 	// Conservamos los estilos inline pero neutralizamos inyecciones arcaicas de IE
 	input = strings.ReplaceAll(input, "expression(", "")
 	input = strings.ReplaceAll(input, "behavior:", "")

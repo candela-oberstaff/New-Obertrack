@@ -1,0 +1,14 @@
+/* La fecha manda y la hora ocupa lo justo: son una sola decisión partida en
+   dos controles, así que van pegados en una fila. */
+.field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px;
+  gap: 8px;
+  align-items: start;
+}
+
+@media (max-width: 560px) {
+  .field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

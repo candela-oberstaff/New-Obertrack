@@ -114,7 +114,6 @@ func (r *metricsRepository) GetEmailMetrics(days int) (map[string]interface{}, e
 	}, nil
 }
 
-
 func (r *metricsRepository) GetSurveyMetrics(days int) (map[string]interface{}, error) {
 	var surveys []models.Survey
 	// Filter surveys created in the last X days

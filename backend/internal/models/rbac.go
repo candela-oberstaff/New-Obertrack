@@ -21,18 +21,18 @@ func IsValidPermissionLevel(level string) bool {
 // Permissions guarda un objeto JSON {"tasks":"edit","hours":"view",...}; la
 // aplicación de estos permisos en cada módulo se conecta gradualmente.
 type Role struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	TenantID    uint           `gorm:"not null;index" json:"tenant_id"`
-	Name        string         `gorm:"size:100;not null" json:"name"`
-	Description string         `gorm:"type:text" json:"description"`
-	Permissions string         `gorm:"type:text;not null;default:'{}'" json:"permissions"`
-	CreatedBy   uint           `gorm:"not null" json:"created_by"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	TenantID    uint   `gorm:"not null;index" json:"tenant_id"`
+	Name        string `gorm:"size:100;not null" json:"name"`
+	Description string `gorm:"type:text" json:"description"`
+	Permissions string `gorm:"type:text;not null;default:'{}'" json:"permissions"`
+	CreatedBy   uint   `gorm:"not null" json:"created_by"`
 	// Columna calculada (COUNT de user_roles): read-only y fuera de migración,
 	// para que GORM la escanee del SELECT sin crear una columna real.
-	UserCount int64 `gorm:"-" json:"user_count"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	UserCount int64          `gorm:"-" json:"user_count"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (Role) TableName() string {
@@ -52,13 +52,13 @@ func (UserRole) TableName() string {
 
 // Group es un equipo de usuarios dentro de una empresa (tenant).
 type Group struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	TenantID    uint           `gorm:"not null;index" json:"tenant_id"`
-	Name        string         `gorm:"size:100;not null" json:"name"`
-	Description string         `gorm:"type:text" json:"description"`
-	CreatedBy   uint           `gorm:"not null" json:"created_by"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	TenantID    uint   `gorm:"not null;index" json:"tenant_id"`
+	Name        string `gorm:"size:100;not null" json:"name"`
+	Description string `gorm:"type:text" json:"description"`
+	CreatedBy   uint   `gorm:"not null" json:"created_by"`
 	// Columna calculada (COUNT de group_members): read-only y fuera de migración.
-	MemberCount int64 `gorm:"-" json:"member_count"`
+	MemberCount int64          `gorm:"-" json:"member_count"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`

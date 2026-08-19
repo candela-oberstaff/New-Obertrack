@@ -778,7 +778,9 @@ type ChatDigestCandidate struct {
 //   - no están conectados (sin presencia 'online');
 //   - no se les envió este aviso en la ventana resendAfter;
 //   - los canales SILENCIADOS no cuentan (silenciar también silencia el correo);
-//   - se excluye al bot de sistema y cuentas inactivas.
+//   - no cuentan los mensajes escritos por CUENTAS DE SISTEMA (is_system):
+//     este aviso dice "tu equipo te escribió", y un mensaje del bot no es eso;
+//   - se excluyen las cuentas de sistema e inactivas como destinatarias.
 func (r *channelRepository) ListUsersNeedingChatDigest(pendingFor, resendAfter time.Duration) ([]ChatDigestCandidate, error) {
 	now := time.Now()
 	var out []ChatDigestCandidate
@@ -791,19 +793,25 @@ func (r *channelRepository) ListUsersNeedingChatDigest(pendingFor, resendAfter t
 			AND m.user_id <> cm.user_id
 			AND m.is_deleted = false
 			AND m.created_at > GREATEST(cm.joined_at, COALESCE(cm.last_read_at, cm.joined_at))
+		-- El autor importa: este aviso dice "tu equipo te escribió", y un mensaje
+		-- del bot no es eso. Sin este filtro, a quien solo recibió avisos de
+		-- sistema (una tarea asignada, por ejemplo) le llegaba igual el correo
+		-- diciendo que tenía mensajes del equipo: era el caso de la gente SIN
+		-- conversaciones que reportaba recibirlo.
+		JOIN users author ON author.id = m.user_id AND author.is_system = false
 		LEFT JOIN muted_channels mut ON mut.user_id = cm.user_id AND mut.channel_id = cm.channel_id
 		LEFT JOIN user_statuses us ON us.user_id = u.id
 		LEFT JOIN chat_digest_logs dl ON dl.user_id = u.id
 		WHERE u.is_active = true
 		  AND u.deleted_at IS NULL
 		  AND u.email <> ''
-		  AND u.email <> ?
+		  AND u.is_system = false
 		  AND mut.user_id IS NULL
 		  AND (us.status IS NULL OR us.status <> 'online')
 		  AND (dl.sent_at IS NULL OR dl.sent_at < ?)
 		GROUP BY u.id, u.name, u.email
 		HAVING MIN(m.created_at) < ?`,
-		models.SystemBotEmail, now.Add(-resendAfter), now.Add(-pendingFor),
+		now.Add(-resendAfter), now.Add(-pendingFor),
 	).Scan(&out).Error
 	return out, err
 }

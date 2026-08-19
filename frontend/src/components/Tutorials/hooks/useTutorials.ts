@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { tutorialService } from '../../../services/api'
-import type { Tutorial, CreateTutorialInput, UpdateTutorialInput } from '../../../types'
+import type { Tutorial, CreateTutorialInput, UpdateTutorialInput, TutorialViewSource } from '../../../types'
 
 interface UseTutorialsReturn {
   tutorials: Tutorial[]
@@ -13,7 +13,7 @@ interface UseTutorialsReturn {
   updateTutorial: (id: number, data: UpdateTutorialInput) => Promise<void>
   deleteTutorial: (id: number) => Promise<void>
   reorderTutorials: (ids: number[]) => Promise<void>
-  recordView: (id: number) => Promise<void>
+  recordView: (id: number, source?: TutorialViewSource, acknowledged?: boolean) => Promise<void>
 }
 
 const TUTORIALS_KEY = ['tutorials']
@@ -93,11 +93,11 @@ export function useTutorials(): UseTutorialsReturn {
     }
   }, [qc, setTutorials])
 
-  const recordView = useCallback(async (id: number) => {
-    if (viewedIds.has(id)) return
+  const recordView = useCallback(async (id: number, source: TutorialViewSource = 'seccion', acknowledged = false) => {
+    if (viewedIds.has(id) && !acknowledged) return
     qc.setQueryData<number[]>(VIEWS_KEY, (old) => Array.from(new Set([...(old ?? []), id])))
     try {
-      await tutorialService.recordView(id)
+      await tutorialService.recordView(id, source, acknowledged)
     } catch (error) {
       console.error('Error recording view:', error)
     }

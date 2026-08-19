@@ -57,6 +57,10 @@ type UserRepository interface {
 	// usa el alcance del supervisor, que resuelve su árbol como un conjunto de
 	// IDs y después lo materializa.
 	GetByIDs(ids []uint) ([]models.User, error)
+	// ListActiveByTypes devuelve los usuarios ACTIVOS de los tipos dados. Lo usa
+	// el público objetivo de las novedades, que necesita la ficha entera
+	// (empresa, país, si tiene equipo a cargo) para decidir a quién alcanza.
+	ListActiveByTypes(types []models.UserType) ([]models.User, error)
 	// ListActiveSupervisors lista los supervisores activos con empresa asignada.
 	// Lo recorre el watcher de escalado, que trabaja supervisor por supervisor.
 	ListActiveSupervisors() ([]models.User, error)
@@ -80,8 +84,13 @@ func (r *userRepository) GetAll(role, isManager, search string, companyID uint, 
 	var total int64
 
 	// Build two separate queries to avoid session pollution in GORM v2
-	countQuery := r.db.Model(&models.User{})
-	findQuery := r.db.Model(&models.User{})
+	//
+	// Las cuentas de sistema quedan fuera de TODO listado: no son personas, y
+	// aparecían como seleccionables en el selector de destinatarios de campañas
+	// (el bot es superadmin activo). Filtrarlo aquí lo saca de una vez de todas
+	// las pantallas que se alimentan de esta consulta.
+	countQuery := r.db.Model(&models.User{}).Where("is_system = false")
+	findQuery := r.db.Model(&models.User{}).Where("is_system = false")
 
 	if role != "" {
 		countQuery = countQuery.Where("user_type = ?", role)
@@ -329,4 +338,25 @@ func (r *userRepository) GetReportsByManager(managerID uint) ([]models.User, err
 		Order("name ASC").
 		Find(&reports).Error
 	return reports, err
+}
+
+// ListActiveByTypes lista los usuarios activos de los tipos indicados. Se
+// seleccionan solo las columnas que necesita el público objetivo: traer la
+// ficha completa de toda la plataforma para repartir un aviso sería caro.
+func (r *userRepository) ListActiveByTypes(types []models.UserType) ([]models.User, error) {
+	if len(types) == 0 {
+		return []models.User{}, nil
+	}
+	raw := make([]string, 0, len(types))
+	for _, t := range types {
+		raw = append(raw, string(t))
+	}
+	var users []models.User
+	if err := r.db.Model(&models.User{}).
+		Select("id", "name", "email", "user_type", "empleador_id", "country", "is_manager", "is_supervisor").
+		Where("is_active = ? AND user_type IN ?", true, raw).
+		Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
 }

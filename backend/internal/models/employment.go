@@ -20,17 +20,17 @@ const (
 // fuente de verdad de TODAS las membresías (incluidas las múltiples y las
 // terminadas) y la base sobre la que se construye el expediente.
 type Employment struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	UserID      uint           `gorm:"not null;index:idx_employment_user_company" json:"user_id"`
-	CompanyID   uint           `gorm:"not null;index:idx_employment_user_company" json:"company_id"`
-	JobTitle    string         `gorm:"size:255" json:"job_title"`
-	ManagerID   *uint          `gorm:"index" json:"manager_id,omitempty"`
-	Status      string         `gorm:"size:20;not null;default:'active';index" json:"status"`
-	StartedAt   time.Time      `json:"started_at"`
-	StartReason string         `gorm:"type:text" json:"start_reason,omitempty"`
-	ObersuiteID string `gorm:"size:64;index" json:"obersuite_id,omitempty"`
-	EndedAt     *time.Time     `json:"ended_at,omitempty"`
-	EndReason   string         `gorm:"type:text" json:"end_reason,omitempty"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	UserID      uint       `gorm:"not null;index:idx_employment_user_company" json:"user_id"`
+	CompanyID   uint       `gorm:"not null;index:idx_employment_user_company" json:"company_id"`
+	JobTitle    string     `gorm:"size:255" json:"job_title"`
+	ManagerID   *uint      `gorm:"index" json:"manager_id,omitempty"`
+	Status      string     `gorm:"size:20;not null;default:'active';index" json:"status"`
+	StartedAt   time.Time  `json:"started_at"`
+	StartReason string     `gorm:"type:text" json:"start_reason,omitempty"`
+	ObersuiteID string     `gorm:"size:64;index" json:"obersuite_id,omitempty"`
+	EndedAt     *time.Time `json:"ended_at,omitempty"`
+	EndReason   string     `gorm:"type:text" json:"end_reason,omitempty"`
 	// EndSummary guarda un snapshot inmutable al terminar el empleo (horas,
 	// tareas, antigüedad...). Se llena en la fase 3; nullable hasta entonces.
 	EndSummary string         `gorm:"type:text" json:"end_summary,omitempty"`

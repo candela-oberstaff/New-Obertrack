@@ -310,7 +310,8 @@
 .tutorial-card-footer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   margin-top: auto;
 }
 
@@ -468,11 +469,58 @@
 }
 
 .tutorial-form-body {
-  padding: 24px;
-  overflow-y: auto;
+  /* Sin padding propio: el cuerpo del modal ya lo trae, y sumarle otro dejaba
+     los campos con 48px de aire a cada lado. */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: 16px 16px;
+}
+
+/* Por defecto cada campo ocupa la fila entera; los cortos se marcan como
+   mitad para emparejarse de dos en dos. */
+.tutorial-form-field {
+  grid-column: 1 / -1;
+}
+
+.tutorial-form-half {
+  grid-column: span 1;
+}
+
+/* Separador con nombre: parte el formulario en "qué es la novedad" y "cómo se
+   publica", que es como se decide en la cabeza de quien la escribe. */
+.tutorial-form-section {
+  grid-column: 1 / -1;
   display: flex;
-  flex-direction: column;
-  gap: 18px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.tutorial-form-section::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+.tutorial-form-section:first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 720px) {
+  .tutorial-form-body {
+    grid-template-columns: 1fr;
+  }
+
+  .tutorial-form-half {
+    grid-column: 1 / -1;
+  }
 }
 
 .tutorial-form-field {
@@ -480,6 +528,9 @@
   flex-direction: column;
   gap: 6px;
 }
+
+/* La rejilla del cuerpo necesita que el campo siga siendo una columna flex por
+   dentro, así que el ancho se controla aparte (arriba) y no aquí. */
 
 .tutorial-form-field label {
   font-size: 13px;
@@ -640,13 +691,32 @@
 }
 
 .tutorial-form-toggle {
+  grid-column: 1 / -1;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 11px;
   cursor: pointer;
-  font-size: 13px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  font-size: 13.5px;
+  font-weight: 600;
   color: #334155;
   user-select: none;
+}
+
+.tutorial-form-toggle span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tutorial-form-toggle small {
+  font-size: 12px;
+  font-weight: 400;
+  color: #94a3b8;
+  line-height: 1.4;
 }
 
 .tutorial-form-toggle input {
@@ -736,4 +806,197 @@
   .tutorial-card-actions {
     opacity: 1;
   }
+}
+
+/* ── Formato de la novedad (video / imagen / texto) ─────────────────────── */
+
+.tutorial-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.tutorial-type-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 14px 10px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: auto;
+}
+
+.tutorial-type-option:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.tutorial-type-option strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.tutorial-type-option small {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+.tutorial-type-option.selected {
+  border-color: var(--primary);
+  background: linear-gradient(135deg, rgba(244, 114, 182, 0.08), rgba(168, 85, 247, 0.08));
+  color: var(--primary);
+}
+
+.tutorial-type-option.selected strong {
+  color: var(--primary);
+}
+
+.tutorial-image-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  padding: 30px 16px;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tutorial-image-drop:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(168, 85, 247, 0.04);
+}
+
+.tutorial-image-drop strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tutorial-image-drop small {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.tutorial-image-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tutorial-image-preview img {
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.tutorial-image-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.tutorial-card-cover {
+  width: 100%;
+  height: 128px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+.tutorial-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ── "¿A quién le llega?": tipo de cuenta + público objetivo + alcance ───── */
+
+.tutorial-audience-card {
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.tutorial-audience-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary);
+}
+
+.tutorial-audience-card-head strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.tutorial-audience-card-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Chapas de la tarjeta: formato, aviso vivo y público acotado. Van con icono
+   además de color, para que se distingan sin depender del tono. */
+.tutorial-card-format {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+
+.tutorial-card-badge.announcing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #7c3aed;
+  background: rgba(168, 85, 247, 0.12);
+}
+
+.tutorial-card-badge.targeted {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #be185d;
+  background: rgba(236, 72, 153, 0.1);
+}
+
+.tutorial-card-badge.scheduled {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #0369a1;
+  background: rgba(14, 165, 233, 0.12);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.tutorial-card-badge.ack {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #0f766e;
+  background: rgba(20, 184, 166, 0.12);
 }

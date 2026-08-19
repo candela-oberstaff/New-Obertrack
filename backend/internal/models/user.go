@@ -43,13 +43,22 @@ type User struct {
 	// sin tocarse. Lo propio del rol es el alcance —ve el árbol completo bajo su
 	// mando y no solo sus reportes directos— y se resuelve aparte, recorriendo
 	// employment_managers.
-	IsSupervisor bool   `gorm:"default:false" json:"is_supervisor"`
-	IsSuperadmin bool   `gorm:"default:false" json:"is_superadmin"`
-	IsActive     bool   `gorm:"default:true" json:"is_active"`
-	EmpleadorID  *uint  `gorm:"index" json:"empleador_id,omitempty"`
-	Empleador    *User  `gorm:"foreignKey:EmpleadorID" json:"-"`
-	CompanyName  string `gorm:"size:255" json:"company_name"`
-	Industry     string `gorm:"size:255" json:"industry"`
+	IsSupervisor bool `gorm:"default:false" json:"is_supervisor"`
+	IsSuperadmin bool `gorm:"default:false" json:"is_superadmin"`
+	// IsSystem marca las cuentas que NO son personas —hoy solo el bot del chat,
+	// que existe como usuario real para poder firmar mensajes de sistema—.
+	//
+	// Existe porque compararlas por correo en cada consulta no escalaba: el bot
+	// se colaba en el aviso de "tu equipo te escribió" y en el selector de
+	// destinatarios de campañas, y cada punto había que recordarlo por separado.
+	// Con la bandera se filtra una vez y no hay lista de la que pueda volver a
+	// aparecer.
+	IsSystem    bool   `gorm:"not null;default:false;index" json:"is_system"`
+	IsActive    bool   `gorm:"default:true" json:"is_active"`
+	EmpleadorID *uint  `gorm:"index" json:"empleador_id,omitempty"`
+	Empleador   *User  `gorm:"foreignKey:EmpleadorID" json:"-"`
+	CompanyName string `gorm:"size:255" json:"company_name"`
+	Industry    string `gorm:"size:255" json:"industry"`
 	// ClientSince es la fecha de alta REAL de la empresa como cliente. Solo
 	// aplica a las cuentas empleador. Existe aparte de created_at porque ese es
 	// cuándo se creó el registro en Obertrack, que no coincide con el alta

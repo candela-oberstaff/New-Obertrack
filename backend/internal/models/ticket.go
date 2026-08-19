@@ -12,8 +12,8 @@ type Contact struct {
 	Phone           string         `gorm:"size:50;index" json:"phone"`
 	WaID            string         `gorm:"size:100;index" json:"wa_id"` // WhatsApp internal ID (e.g. 123@lid or 123@c.us)
 	Email           string         `gorm:"size:255;index" json:"email"`
-	CompanyName     string         `gorm:"size:255" json:"company_name"`     // Optional company name
-	ParentContactID *uint          `gorm:"index" json:"parent_contact_id"`    // For linking secondary contacts to a primary company contact
+	CompanyName     string         `gorm:"size:255" json:"company_name"`   // Optional company name
+	ParentContactID *uint          `gorm:"index" json:"parent_contact_id"` // For linking secondary contacts to a primary company contact
 	ParentContact   *Contact       `gorm:"foreignKey:ParentContactID" json:"parent_contact,omitempty"`
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
@@ -52,38 +52,38 @@ func IsLocalOrigin(origin string) bool {
 }
 
 type Ticket struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	ContactID   *uint          `gorm:"index" json:"contact_id,omitempty"`
-	Contact     *Contact       `gorm:"foreignKey:ContactID" json:"contact,omitempty"`
-	UserID      *uint          `gorm:"index" json:"user_id,omitempty"` // Professional referenced by an internal alert
-	Origin      string         `gorm:"size:20;index" json:"origin"` // "internal" = Obertrack alert; channel-tagged otherwise
+	ID        uint     `gorm:"primaryKey" json:"id"`
+	ContactID *uint    `gorm:"index" json:"contact_id,omitempty"`
+	Contact   *Contact `gorm:"foreignKey:ContactID" json:"contact,omitempty"`
+	UserID    *uint    `gorm:"index" json:"user_id,omitempty"` // Professional referenced by an internal alert
+	Origin    string   `gorm:"size:20;index" json:"origin"`    // "internal" = Obertrack alert; channel-tagged otherwise
 	// Session es la sesión de WAHA (el número de WhatsApp) de la que proviene la
 	// conversación. Sin esto, cambiar de sesión dejaba los chats de la cuenta
 	// anterior mezclados en la bandeja, sin manera de separarlos. Vacío en los
 	// tickets que no son de WhatsApp.
-	Session string `gorm:"size:100;index" json:"session,omitempty"`
-	Title       string         `gorm:"size:255" json:"title"`
-	Description string         `gorm:"type:text" json:"description,omitempty"` // Internal alert body (reason/dates)
+	Session     string `gorm:"size:100;index" json:"session,omitempty"`
+	Title       string `gorm:"size:255" json:"title"`
+	Description string `gorm:"type:text" json:"description,omitempty"` // Internal alert body (reason/dates)
 
 	// Denormalized fields for internal work-hour-rejection alerts (follow-up + report).
-	ProfessionalEmail string `gorm:"size:255" json:"professional_email,omitempty"`
-	ProfessionalPhone string `gorm:"size:50" json:"professional_phone,omitempty"`
-	CompanyName       string `gorm:"size:255" json:"company_name,omitempty"` // Professional's employer company
-	RejectedByName    string `gorm:"size:255" json:"rejected_by_name,omitempty"`
-	Reason            string `gorm:"type:text" json:"reason,omitempty"`
-	WorkDates         string `gorm:"size:255" json:"work_dates,omitempty"`
-	Channel     string         `gorm:"-" json:"channel,omitempty"` // Zoho channel: WhatsApp, Email, etc.
-	Stage       TicketStage    `gorm:"type:varchar(50);default:'new';index" json:"stage"`
-	Status      string         `gorm:"size:50;default:'open'" json:"status"` // open/closed
-	AssignedTo  *uint          `gorm:"index" json:"assigned_to,omitempty"`
-	Assignee    *User          `gorm:"foreignKey:AssignedTo" json:"assignee,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	ProfessionalEmail string         `gorm:"size:255" json:"professional_email,omitempty"`
+	ProfessionalPhone string         `gorm:"size:50" json:"professional_phone,omitempty"`
+	CompanyName       string         `gorm:"size:255" json:"company_name,omitempty"` // Professional's employer company
+	RejectedByName    string         `gorm:"size:255" json:"rejected_by_name,omitempty"`
+	Reason            string         `gorm:"type:text" json:"reason,omitempty"`
+	WorkDates         string         `gorm:"size:255" json:"work_dates,omitempty"`
+	Channel           string         `gorm:"-" json:"channel,omitempty"` // Zoho channel: WhatsApp, Email, etc.
+	Stage             TicketStage    `gorm:"type:varchar(50);default:'new';index" json:"stage"`
+	Status            string         `gorm:"size:50;default:'open'" json:"status"` // open/closed
+	AssignedTo        *uint          `gorm:"index" json:"assigned_to,omitempty"`
+	Assignee          *User          `gorm:"foreignKey:AssignedTo" json:"assignee,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	DeletedAt         gorm.DeletedAt `gorm:"index" json:"-"`
 
-	Messages []TicketMessage `json:"messages,omitempty"`
-	ZohoID   string          `gorm:"-" json:"zoho_id"`
-	Sentiment   string         `gorm:"-" json:"sentiment,omitempty"`
+	Messages  []TicketMessage `json:"messages,omitempty"`
+	ZohoID    string          `gorm:"-" json:"zoho_id"`
+	Sentiment string          `gorm:"-" json:"sentiment,omitempty"`
 }
 
 func (Ticket) TableName() string {
@@ -119,7 +119,7 @@ type TicketMessage struct {
 	// reemplaza por un índice normal y se pierde la unicidad —que es lo que hace
 	// que el ON CONFLICT de CreateMessageIfNew deduplique—, con el resultado de que
 	// cada reimportación del historial duplica los mensajes.
-	ExternalID string `gorm:"size:255" json:"external_id"` // WAHA ID or Brevo Message-ID
+	ExternalID string         `gorm:"size:255" json:"external_id"` // WAHA ID or Brevo Message-ID
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
@@ -133,8 +133,8 @@ type TicketMessage struct {
 	//
 	// Vacío = no aplica: mensajes entrantes, notas internas y todo el histórico
 	// anterior al outbox, que se consideran ya entregados.
-	DeliveryStatus   string     `gorm:"size:20;index:idx_msg_delivery" json:"delivery_status,omitempty"`
-	DeliveryAttempts int        `gorm:"not null;default:0" json:"delivery_attempts,omitempty"`
+	DeliveryStatus   string `gorm:"size:20;index:idx_msg_delivery" json:"delivery_status,omitempty"`
+	DeliveryAttempts int    `gorm:"not null;default:0" json:"delivery_attempts,omitempty"`
 	// NextAttemptAt es el instante a partir del cual el worker puede retomar el
 	// envío. NULL = "ya". Sobrevive al reinicio, que es lo que hace que el backoff
 	// sea real y no un sleep en memoria.
@@ -191,7 +191,7 @@ func (TicketMessage) TableName() string {
 // shared by both Zoho and internal tickets (discriminated by Origin).
 type TicketTransfer struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
-	Origin      string    `gorm:"size:20;index" json:"origin"` // internal | zoho
+	Origin      string    `gorm:"size:20;index" json:"origin"`     // internal | zoho
 	TicketRef   string    `gorm:"size:64;index" json:"ticket_ref"` // zoho ticket id, or internal ticket id
 	TicketTitle string    `gorm:"size:255" json:"ticket_title"`
 	FromUserID  *uint     `gorm:"index" json:"from_user_id,omitempty"`

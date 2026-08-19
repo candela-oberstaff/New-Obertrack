@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -22,25 +23,50 @@ func NewTutorialHandler(service service.TutorialService) *TutorialHandler {
 type CreateTutorialRequest struct {
 	Title          string `json:"title"`
 	Description    string `json:"description"`
+	ContentType    string `json:"content_type"`
 	GoogleDriveURL string `json:"google_drive_url"`
+	ImageURL       string `json:"image_url"`
+	Body           string `json:"body"`
 	IconName       string `json:"icon_name"`
 	Category       string `json:"category"`
 	Audience       string `json:"audience"`
 	DurationMin    int    `json:"duration_min"`
 	OrderIndex     int    `json:"order_index"`
-	IsActive       *bool  `json:"is_active"`
+	// AnnounceDays son los días que el aviso emergente insiste con la novedad.
+	// Ausente = el default del servicio; 0 = solo notificación, sin emergente.
+	AnnounceDays *int `json:"announce_days"`
+	// Target acota el publico por encima del tipo de cuenta. Ausente = sin acotar.
+	Target *models.TutorialTarget `json:"target"`
+	// Boton de accion opcional.
+	CTALabel string `json:"cta_label"`
+	CTAURL   string `json:"cta_url"`
+	// Programacion.
+	PublishAt  *time.Time `json:"publish_at"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	RequireAck bool       `json:"require_ack"`
+	IsActive   *bool      `json:"is_active"`
 }
 
 type UpdateTutorialRequest struct {
-	Title          *string `json:"title"`
-	Description    *string `json:"description"`
-	GoogleDriveURL *string `json:"google_drive_url"`
-	IconName       *string `json:"icon_name"`
-	Category       *string `json:"category"`
-	Audience       *string `json:"audience"`
-	DurationMin    *int    `json:"duration_min"`
-	OrderIndex     *int    `json:"order_index"`
-	IsActive       *bool   `json:"is_active"`
+	Title          *string                `json:"title"`
+	Description    *string                `json:"description"`
+	ContentType    *string                `json:"content_type"`
+	GoogleDriveURL *string                `json:"google_drive_url"`
+	ImageURL       *string                `json:"image_url"`
+	Body           *string                `json:"body"`
+	IconName       *string                `json:"icon_name"`
+	Category       *string                `json:"category"`
+	Audience       *string                `json:"audience"`
+	DurationMin    *int                   `json:"duration_min"`
+	OrderIndex     *int                   `json:"order_index"`
+	AnnounceDays   *int                   `json:"announce_days"`
+	Target         *models.TutorialTarget `json:"target"`
+	CTALabel       *string                `json:"cta_label"`
+	CTAURL         *string                `json:"cta_url"`
+	PublishAt      *time.Time             `json:"publish_at"`
+	ExpiresAt      *time.Time             `json:"expires_at"`
+	RequireAck     *bool                  `json:"require_ack"`
+	IsActive       *bool                  `json:"is_active"`
 }
 
 type ReorderTutorialsRequest struct {
@@ -109,8 +135,32 @@ func (h *TutorialHandler) Create(c *gin.Context) {
 	if req.IsActive != nil {
 		isActive = *req.IsActive
 	}
+	announceDays := -1 // El servicio traduce el negativo a su default.
+	if req.AnnounceDays != nil {
+		announceDays = *req.AnnounceDays
+	}
 
-	tutorial, err := h.service.Create(userID, req.Title, req.Description, req.GoogleDriveURL, req.IconName, req.Category, req.Audience, req.DurationMin, req.OrderIndex, isActive)
+	tutorial, err := h.service.Create(userID, service.TutorialInput{
+		Title:        req.Title,
+		Description:  req.Description,
+		ContentType:  req.ContentType,
+		VideoURL:     req.GoogleDriveURL,
+		ImageURL:     req.ImageURL,
+		Body:         req.Body,
+		IconName:     req.IconName,
+		Category:     req.Category,
+		Audience:     req.Audience,
+		DurationMin:  req.DurationMin,
+		OrderIndex:   req.OrderIndex,
+		AnnounceDays: announceDays,
+		IsActive:     isActive,
+		Target:       targetOrEmpty(req.Target),
+		CTALabel:     req.CTALabel,
+		CTAURL:       req.CTAURL,
+		PublishAt:    req.PublishAt,
+		ExpiresAt:    req.ExpiresAt,
+		RequireAck:   req.RequireAck,
+	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -139,8 +189,17 @@ func (h *TutorialHandler) Update(c *gin.Context) {
 	if req.Description != nil {
 		updates["description"] = *req.Description
 	}
+	if req.ContentType != nil {
+		updates["content_type"] = *req.ContentType
+	}
 	if req.GoogleDriveURL != nil {
 		updates["google_drive_url"] = *req.GoogleDriveURL
+	}
+	if req.ImageURL != nil {
+		updates["image_url"] = *req.ImageURL
+	}
+	if req.Body != nil {
+		updates["body"] = *req.Body
 	}
 	if req.IconName != nil {
 		updates["icon_name"] = *req.IconName
@@ -157,6 +216,28 @@ func (h *TutorialHandler) Update(c *gin.Context) {
 	if req.OrderIndex != nil {
 		updates["order_index"] = *req.OrderIndex
 	}
+	if req.AnnounceDays != nil {
+		updates["announce_days"] = *req.AnnounceDays
+	}
+	if req.Target != nil {
+		// Viaja como struct: el servicio decide como se guarda.
+		updates["target"] = *req.Target
+	}
+	if req.CTALabel != nil {
+		updates["cta_label"] = *req.CTALabel
+	}
+	if req.CTAURL != nil {
+		updates["cta_url"] = *req.CTAURL
+	}
+	if req.PublishAt != nil {
+		updates["publish_at"] = *req.PublishAt
+	}
+	if req.ExpiresAt != nil {
+		updates["expires_at"] = *req.ExpiresAt
+	}
+	if req.RequireAck != nil {
+		updates["require_ack"] = *req.RequireAck
+	}
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive
 	}
@@ -166,7 +247,7 @@ func (h *TutorialHandler) Update(c *gin.Context) {
 		return
 	}
 
-	tutorial, err := h.service.Update(uint(id), updates)
+	tutorial, err := h.service.Update(middleware.GetUserID(c), uint(id), updates)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -205,6 +286,15 @@ func (h *TutorialHandler) Reorder(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Orden actualizado"})
 }
 
+type RecordViewRequest struct {
+	// Source distingue si la vista salió del aviso a pantalla completa o de la
+	// sección. Cuerpo opcional: sin él se asume la sección.
+	Source string `json:"source"`
+	// Acknowledged marca que la persona confirmó haber leído la novedad, en
+	// las que lo exigen. Se sella aparte de la vista porque es evidencia.
+	Acknowledged bool `json:"acknowledged"`
+}
+
 func (h *TutorialHandler) RecordView(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -212,13 +302,125 @@ func (h *TutorialHandler) RecordView(c *gin.Context) {
 		return
 	}
 
+	var req RecordViewRequest
+	_ = c.ShouldBindJSON(&req)
+
 	userID := middleware.GetUserID(c)
-	if err := h.service.RecordView(uint(id), userID); err != nil {
+	if err := h.service.RecordView(uint(id), userID, req.Source, req.Acknowledged); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Vista registrada"})
+}
+
+// GetPending devuelve las novedades que el usuario todavía no ha visto. Es lo
+// que la app consulta al entrar para mostrarlas en una ventana emergente: la
+// audiencia se resuelve igual que en el listado, así que nadie ve por sorpresa
+// una novedad que no le tocaba.
+func (h *TutorialHandler) GetPending(c *gin.Context) {
+	tutorials, err := h.service.GetPendingAnnouncements(middleware.GetUserID(c), audienceForRequest(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch pending tutorials", "details": err.Error()})
+		return
+	}
+	if tutorials == nil {
+		tutorials = []models.Tutorial{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": tutorials})
+}
+
+// targetOrEmpty normaliza el publico ausente a "sin acotar".
+func targetOrEmpty(target *models.TutorialTarget) models.TutorialTarget {
+	if target == nil {
+		return models.TutorialTarget{}
+	}
+	return *target
+}
+
+type PreviewAudienceRequest struct {
+	Audience string                 `json:"audience"`
+	Target   *models.TutorialTarget `json:"target"`
+}
+
+// PreviewAudience responde a cuanta gente llegaria la novedad con la audiencia
+// y el publico elegidos. Es lo que deja acotar sin publicar a ciegas.
+func (h *TutorialHandler) PreviewAudience(c *gin.Context) {
+	var req PreviewAudienceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	preview, err := h.service.PreviewAudience(req.Audience, targetOrEmpty(req.Target))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, preview)
+}
+
+// GetAudienceOptions lista empresas, paises y grupos elegibles como publico.
+func (h *TutorialHandler) GetAudienceOptions(c *gin.Context) {
+	options, err := h.service.GetAudienceOptions()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch audience options", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, options)
+}
+
+// RecordClick anota que la persona pulsó el botón de acción de la novedad.
+func (h *TutorialHandler) RecordClick(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tutorial ID"})
+		return
+	}
+
+	if err := h.service.RecordClick(uint(id), middleware.GetUserID(c)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Clic registrado"})
+}
+
+// RemindPending vuelve a avisar a quienes todavía no han visto la novedad.
+func (h *TutorialHandler) RemindPending(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tutorial ID"})
+		return
+	}
+
+	reminded, err := h.service.RemindPending(middleware.GetUserID(c), uint(id))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"reminded": reminded})
+}
+
+// GetMetrics devuelve el desempeño de una novedad. Solo para superadmin: es
+// quien publica y el único que ve la sección completa.
+func (h *TutorialHandler) GetMetrics(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tutorial ID"})
+		return
+	}
+
+	metrics, err := h.service.GetMetrics(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, metrics)
 }
 
 func (h *TutorialHandler) GetMyViews(c *gin.Context) {

@@ -15,13 +15,13 @@ const (
 )
 
 type Channel struct {
-	ID            uint           `gorm:"primaryKey" json:"id"`
-	Name          string         `gorm:"size:100;not null;uniqueIndex:idx_channel_name_type_tenant" json:"name"`
-	Description   string         `gorm:"size:500" json:"description"`
-	Type          ChannelType    `gorm:"type:varchar(20);not null;default:'public';uniqueIndex:idx_channel_name_type_tenant" json:"type"`
-	CreatedBy     uint           `gorm:"not null;index" json:"created_by"`
-	TenantID      uint           `gorm:"uniqueIndex:idx_channel_name_type_tenant" json:"tenant_id"`
-	CreatedByUser User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	ID            uint        `gorm:"primaryKey" json:"id"`
+	Name          string      `gorm:"size:100;not null;uniqueIndex:idx_channel_name_type_tenant" json:"name"`
+	Description   string      `gorm:"size:500" json:"description"`
+	Type          ChannelType `gorm:"type:varchar(20);not null;default:'public';uniqueIndex:idx_channel_name_type_tenant" json:"type"`
+	CreatedBy     uint        `gorm:"not null;index" json:"created_by"`
+	TenantID      uint        `gorm:"uniqueIndex:idx_channel_name_type_tenant" json:"tenant_id"`
+	CreatedByUser User        `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	// IsAnnouncement marca un canal de ANUNCIOS: solo publican quienes lo
 	// gestionan (creador, admins del canal, superadmin); el resto lee y
 	// reacciona, y los hilos quedan abiertos para comentar. Es el "canal
@@ -34,10 +34,10 @@ type Channel struct {
 	// (GetChannelsByUser/ByCompany) gate on is_active = true. The gorm.DeletedAt below
 	// is NEVER set by our delete path — it exists only so GORM's hard-delete tooling
 	// has somewhere to write; if it ever diverges from IsActive, IsActive wins.
-	IsActive      bool           `gorm:"default:true" json:"is_active"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
-	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
+	IsActive  bool           `gorm:"default:true" json:"is_active"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Members []User `gorm:"many2many:channel_members" json:"members,omitempty"`
 }
@@ -47,9 +47,9 @@ func (Channel) TableName() string {
 }
 
 type ChannelMember struct {
-	ChannelID uint      `gorm:"primaryKey;index:idx_member_user_channel" json:"channel_id"`
-	UserID    uint      `gorm:"primaryKey;index:idx_member_user_channel" json:"user_id"`
-	Role      string    `gorm:"size:20;default:'member'" json:"role"` // admin, member
+	ChannelID  uint       `gorm:"primaryKey;index:idx_member_user_channel" json:"channel_id"`
+	UserID     uint       `gorm:"primaryKey;index:idx_member_user_channel" json:"user_id"`
+	Role       string     `gorm:"size:20;default:'member'" json:"role"` // admin, member
 	JoinedAt   time.Time  `json:"joined_at"`
 	LastReadAt *time.Time `json:"last_read_at"`
 	CreatedAt  time.Time  `json:"created_at"`
