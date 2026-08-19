@@ -959,7 +959,7 @@ export default function TenantDetail() {
           no se rellena con eventos de ejemplo. */}
       {tab === 'expediente' && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', marginBottom: 20, overflow: 'visible' }}>
             {ACTIVITY_CATEGORIES.map(cat => {
               const active = actCategory === cat.value
               return (
@@ -977,6 +977,7 @@ export default function TenantDetail() {
                     fontWeight: 600,
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
+                    flexShrink: 0,
                   }}
                   aria-pressed={active}
                 >
@@ -989,45 +990,46 @@ export default function TenantDetail() {
                 </button>
               )
             })}
-            {/* Filtro por persona. Las opciones salen del propio expediente, así
-                que incluyen a quien ya causó baja; se busca por nombre porque
-                una empresa grande trae decenas. */}
-            <div style={{ minWidth: 230, marginLeft: 'auto' }}>
-              <Select
-                fullWidth
-                clearable
-                searchable
-                placeholder="Todas las personas"
-                value={actPerson || ''}
-                onChange={v => setActPerson(v ? Number(v) : 0)}
-                ariaLabel="Filtrar el expediente por persona"
-                options={actPeople.map(p => ({ value: p.user_id, label: p.name }))}
-              />
+            {/* Filtro por persona + botones de acción: van juntos en el lado
+                derecho de la barra de pestañas. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', flexShrink: 0 }}>
+              <div style={{ minWidth: 230 }}>
+                <Select
+                  fullWidth
+                  clearable
+                  searchable
+                  placeholder="Todas las personas"
+                  value={actPerson || ''}
+                  onChange={v => setActPerson(v ? Number(v) : 0)}
+                  ariaLabel="Filtrar el expediente por persona"
+                  options={actPeople.map(p => ({ value: p.user_id, label: p.name }))}
+                />
+              </div>
+              {canAnnotate && (
+                <>
+                  {actCategory === 'contact' && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      leftIcon={<Phone size={14} />}
+                      onClick={openContact}
+                    >
+                      Registrar
+                    </Button>
+                  )}
+                  {actCategory === 'note' && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      leftIcon={<Plus size={14} />}
+                      onClick={openNewNote}
+                    >
+                      Añadir nota
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
-            {canAnnotate && (
-              <>
-                {actCategory === 'contact' && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    leftIcon={<Phone size={14} />}
-                    onClick={openContact}
-                  >
-                    Registrar
-                  </Button>
-                )}
-                {actCategory === 'note' && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    leftIcon={<Plus size={14} />}
-                    onClick={openNewNote}
-                  >
-                    Añadir nota
-                  </Button>
-                )}
-              </>
-            )}
           </div>
 
           {actError && <p className={styles.errorMsg}>{actError}</p>}
