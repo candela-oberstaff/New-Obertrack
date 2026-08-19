@@ -1024,7 +1024,7 @@ export default function TenantDetail() {
                       leftIcon={<Plus size={14} />}
                       onClick={openNewNote}
                     >
-                      Añadir nota
+                      Añadir
                     </Button>
                   )}
                 </>
