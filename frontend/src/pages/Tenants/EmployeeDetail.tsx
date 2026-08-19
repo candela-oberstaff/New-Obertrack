@@ -17,6 +17,8 @@ import { WORK_TYPE } from '../../utils/workHours'
 import { groupByDay } from './activityGrouping'
 import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
 import { EmployeeFicha, EmployeeKpis, timeSince } from './EmployeeFicha'
+import { openWaConversation } from '../../lib/whatsappInbox'
+import { useNotification } from '../../context/NotificationContext'
 import { EmployeeSeguimiento } from './EmployeeSeguimiento'
 import { EmployeeSoporte } from './EmployeeSoporte'
 import styles from './Tenants.module.css'
@@ -26,6 +28,7 @@ const ACTIVITY_PER_PAGE = 20
 export default function EmployeeDetail() {
   const { id, eid } = useParams<{ id: string; eid: string }>()
   const navigate = useNavigate()
+  const notify = useNotification()
   const tenantId = Number(id)
   const employeeId = Number(eid)
   const { tracking, isLoading, error, toggleStatus, resetPassword } = useEmployeeTracking(employeeId)
@@ -118,6 +121,11 @@ export default function EmployeeDetail() {
   })()
   const phone = user.phone_number?.trim()
   const waNumber = phone?.replace(/\D/g, '')
+
+  const openWhatsApp = async () => {
+    const ok = await openWaConversation(phone, user.name, navigate)
+    if (!ok) notify.error('No se pudo abrir la conversación de WhatsApp. Revisa la bandeja e inténtalo de nuevo.')
+  }
   // Antigüedad en ESTA empresa. El empleo manda sobre el alta de la cuenta: es
   // la fecha que se corrige desde la ficha del profesional y la que la empresa
   // reconoce como el día que entró.
@@ -157,17 +165,18 @@ export default function EmployeeDetail() {
         </div>
         <div className={styles.headerActions}>
           {/* El teléfono es un dato muerto si hay que copiarlo a mano: desde
-              aquí se abre la conversación directamente. */}
+              aquí se abre la conversación directamente, y en NUESTRA bandeja —
+              por wa.me el mensaje salía del WhatsApp personal de quien atiende y
+              la respuesta no quedaba registrada. */}
           {waNumber && (
-            <a
+            <button
+              type="button"
               className={styles.secondaryBtn}
-              href={`https://wa.me/${waNumber}`}
-              target="_blank"
-              rel="noreferrer noopener"
-              title={`Escribir a ${phone} por WhatsApp`}
+              onClick={openWhatsApp}
+              title={`Abrir la conversación de WhatsApp con ${phone}`}
             >
               <MessageSquare size={16} /> WhatsApp
-            </a>
+            </button>
           )}
           <button className={styles.secondaryBtn} onClick={handleReset}>
             <RefreshCw size={16} /> Resetear contraseña

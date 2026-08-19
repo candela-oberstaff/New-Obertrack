@@ -646,9 +646,17 @@ export default function AdminUserDetail() {
   // Empleo activo del profesional (empresa actual): el campo MANAGER de arriba
   // gestiona el conjunto de managers de ESE empleo cuando el multi-manager está ON.
   const activeEmployment = employments.find((e: any) => e.company_id === user.empleador_id && e.status === 'active')
-  // Tope del selector de fecha de ingreso: nadie empieza mañana (el backend lo
-  // rechaza igual; aquí solo evita el viaje).
-  const todayISO = new Date().toISOString().slice(0, 10)
+  // Tope del selector de fecha de ingreso.
+  //
+  // La incorporación PUEDE ser futura: se contrata a alguien hoy para que
+  // empiece la semana que viene, y antes el campo obligaba a esperar al día de
+  // la incorporación para poder cargarla. El tope de dos años es el mismo que
+  // aplica el backend, y está solo para atajar el año tecleado de más.
+  const maxStartISO = (() => {
+    const d = new Date()
+    d.setFullYear(d.getFullYear() + 2)
+    return d.toISOString().slice(0, 10)
+  })()
 
   let specific: { label: string; value: React.ReactNode }[] = []
   if (user.user_type === 'empleador') {
@@ -897,7 +905,7 @@ export default function AdminUserDetail() {
                           <DatePicker
                             compact
                             value={startDraft[emp.id] ?? String(emp.started_at ?? '').slice(0, 10)}
-                            max={ended && emp.ended_at ? String(emp.ended_at).slice(0, 10) : todayISO}
+                            max={ended && emp.ended_at ? String(emp.ended_at).slice(0, 10) : maxStartISO}
                             disabled={startBusy === emp.id}
                             onChange={v => handleEmploymentStart(emp, v)}
                             title="Fecha de ingreso"

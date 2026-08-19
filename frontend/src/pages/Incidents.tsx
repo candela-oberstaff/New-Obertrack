@@ -20,7 +20,8 @@ import {
   type IncidentStatus,
 } from '../services/admin.service'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../components/Auth/countries'
-import { ticketService } from '../services/ticket.service'
+import { openWaConversation } from '../lib/whatsappInbox'
+import { useNotification } from '../context/NotificationContext'
 import { EmailComposerModal, type ComposerRecipient } from '../components/Admin/EmailComposerModal'
 import { Select } from '../components/ui/Select'
 import { useCloseGuard } from '../components/ui/useCloseGuard'
@@ -246,6 +247,7 @@ function IncidentDetailModal({ id, onClose }: { id: number; onClose: () => void 
   const [composeFor, setComposeFor] = useState<ComposerRecipient | null>(null)
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const notify = useNotification()
   const [broadcastOpen, setBroadcastOpen] = useState(false)
 
   const { data, isLoading, isError } = useQuery({
@@ -295,14 +297,8 @@ function IncidentDetailModal({ id, onClose }: { id: number; onClose: () => void 
   // solo como respaldo) y chat interno.
   const openWhatsApp = async (p: IncidentProfessional) => {
     adminService.logContact(p.id, 'whatsapp')
-    try {
-      const chat = await ticketService.openWaChat(p.phone_number || '', p.name)
-      if (!chat.ticket_id) throw new Error('sin conversación')
-      navigate(`/tickets/wa/${chat.ticket_id}`)
-    } catch {
-      const digits = (p.phone_number || '').replace(/\D/g, '')
-      if (digits) window.open(`https://wa.me/${digits}`, '_blank', 'noopener,noreferrer')
-    }
+    const ok = await openWaConversation(p.phone_number, p.name, navigate)
+    if (!ok) notify.error('No se pudo abrir la conversación de WhatsApp. Revisa la bandeja e inténtalo de nuevo.')
   }
 
   const contactButtons = (p: IncidentProfessional) => {

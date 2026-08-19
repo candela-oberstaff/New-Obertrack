@@ -13,6 +13,43 @@ type AuditRecorder interface {
 	Record(entry models.AuditLog)
 }
 
+// Claves con las que un handler enriquece SU propia entrada de auditoría.
+//
+// El middleware corre después del handler y ya no puede leer el cuerpo de la
+// petición (se consumió al parsearlo), así que el detalle lo aporta quien lo
+// conoce. Sin esto, apagar un correo del sistema quedaba registrado como un
+// "admin.update" indistinguible de editar un usuario: la ruta colapsa al primer
+// segmento y el valor nuevo no aparecía en ninguna parte.
+const (
+	auditActionCtxKey = "audit_action"
+	auditEntityCtxKey = "audit_entity"
+	auditDetailCtxKey = "audit_detail"
+)
+
+// SetAudit precisa la entrada que el middleware está por escribir: la acción
+// legible, la entidad tocada y un detalle (JSON) de lo que cambió. Los campos
+// vacíos se dejan como los deduce el middleware.
+func SetAudit(c *gin.Context, action, entityID, detail string) {
+	if action != "" {
+		c.Set(auditActionCtxKey, action)
+	}
+	if entityID != "" {
+		c.Set(auditEntityCtxKey, entityID)
+	}
+	if detail != "" {
+		c.Set(auditDetailCtxKey, detail)
+	}
+}
+
+func auditOverride(c *gin.Context, key string) string {
+	if v, ok := c.Get(key); ok {
+		if s, _ := v.(string); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
 var mutatingMethods = map[string]bool{
 	"POST": true, "PUT": true, "PATCH": true, "DELETE": true,
 }
@@ -44,7 +81,7 @@ func AuditMiddleware(audit AuditRecorder) gin.HandlerFunc {
 			tenantID = &t
 		}
 
-		target := firstParam(c, "id", "ticketId", "messageId", "attachmentId", "phaseId", "eid")
+		target := firstParam(c, "id", "ticketId", "messageId", "attachmentId", "phaseId", "eid", "key")
 		entry := models.AuditLog{
 			Kind:       "activity",
 			ActorID:    actorID,
@@ -62,6 +99,16 @@ func AuditMiddleware(audit AuditRecorder) gin.HandlerFunc {
 			Success:    status < 400,
 			IP:         c.ClientIP(),
 			UserAgent:  c.Request.UserAgent(),
+		}
+
+		if v := auditOverride(c, auditActionCtxKey); v != "" {
+			entry.Action = v
+		}
+		if v := auditOverride(c, auditEntityCtxKey); v != "" {
+			entry.EntityID, entry.TargetID = v, v
+		}
+		if v := auditOverride(c, auditDetailCtxKey); v != "" {
+			entry.Changes = v
 		}
 
 		go audit.Record(entry)

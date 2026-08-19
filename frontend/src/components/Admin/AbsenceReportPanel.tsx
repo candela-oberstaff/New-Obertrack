@@ -6,6 +6,8 @@ import { Select } from '../ui/Select'
 import { FollowUpCell } from './FollowUpCell'
 import type { AbsenceReportItem, FollowUpInfo } from '../../hooks/useAdmin'
 import { adminService } from '../../services/api'
+import { openWaConversation, waDigits } from '../../lib/whatsappInbox'
+import { useNotification } from '../../context/NotificationContext'
 import styles from './Admin.module.css'
 
 const PER_PAGE = 10
@@ -87,6 +89,7 @@ export function AbsenceReportPanel({
   dataTour,
 }: AbsenceReportPanelProps) {
   const navigate = useNavigate()
+  const notify = useNotification()
   const withPerson = showPerson ?? !showCompany
   const [person, setPerson] = useState<number | ''>('')
   const [search, setSearch] = useState('')
@@ -116,9 +119,14 @@ export function AbsenceReportPanel({
   const emailHref = (g: AbsenceGroup) =>
     `mailto:${g.email}?subject=${encodeURIComponent('Seguimiento de ausencias en Obertrack')}&body=${encodeURIComponent(absenceFollowUp(g))}`
 
-  const whatsappHref = (g: AbsenceGroup) => {
-    const digits = (g.phone_number || '').replace(/\D/g, '')
-    return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(absenceFollowUp(g))}` : null
+  // Igual que el semáforo de inactividad: el seguimiento se hace por nuestra
+  // bandeja, no por el WhatsApp personal de quien hace clic, para que la
+  // respuesta del profesional quede registrada. wa.me solo como respaldo.
+  const openWhatsApp = async (g: AbsenceGroup) => {
+    if (!waDigits(g.phone_number)) return
+    adminService.logContact(g.user_id, 'whatsapp')
+    const ok = await openWaConversation(g.phone_number, g.name, navigate, { draft: absenceFollowUp(g) })
+    if (!ok) notify.error('No se pudo abrir la conversación de WhatsApp. Revisa la bandeja e inténtalo de nuevo.')
   }
 
   const columns = showCompany ? 7 : 6
@@ -178,7 +186,7 @@ export function AbsenceReportPanel({
             <tbody>
               {paginated.map(g => {
                 const expanded = expandedUserId === g.user_id
-                const waLink = whatsappHref(g)
+                const hasPhone = !!waDigits(g.phone_number)
                 return (
                   <Fragment key={g.user_id}>
                     <tr
@@ -229,10 +237,10 @@ export function AbsenceReportPanel({
                           <a href={emailHref(g)} onClick={() => adminService.logContact(g.user_id, 'email')} className={styles['btn-icon']} title={`Enviar email a ${g.email}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Mail size={16} />
                           </a>
-                          {waLink ? (
-                            <a href={waLink} target="_blank" rel="noopener noreferrer" onClick={() => adminService.logContact(g.user_id, 'whatsapp')} className={styles['btn-icon']} title={`Escribir por WhatsApp (${g.phone_number})`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
+                          {hasPhone ? (
+                            <button type="button" onClick={() => openWhatsApp(g)} className={styles['btn-icon']} title={`Abrir la conversación de WhatsApp en la bandeja (${g.phone_number})`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
                               <MessageCircle size={16} />
-                            </a>
+                            </button>
                           ) : (
                             <span className={styles['btn-icon']} title="Sin teléfono registrado" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, cursor: 'not-allowed' }}>
                               <MessageCircle size={16} />

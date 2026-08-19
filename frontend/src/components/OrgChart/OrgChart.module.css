@@ -39,6 +39,60 @@
   margin-bottom: 8px;
 }
 
+.zoomBar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+.zoomBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #475569;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.zoomBtn:hover:not(:disabled) {
+  background: #fff;
+  color: var(--primary, #7c3aed);
+}
+
+.zoomBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* El porcentaje es además el botón de "ajustar al ancho": es donde la mano ya
+   está cuando el zoom no termina de quedar bien. */
+.zoomLevel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 68px;
+  justify-content: center;
+}
+
+.zoomLevel:hover {
+  background: #fff;
+  color: var(--primary, #7c3aed);
+}
+
 .expandBtn {
   display: inline-flex;
   align-items: center;
@@ -140,24 +194,39 @@
    Árbol de arriba abajo con los conectores dibujados por CSS (bordes de los
    pseudo-elementos) en vez de SVG: así las líneas siguen a las cajas cuando el
    texto cambia de tamaño, sin recalcular nada. */
+/* El lienzo: una ventana de tamaño fijo por la que se mira el árbol, que se
+   mueve por detrás. overflow:hidden y no auto porque ya no hay scroll — el
+   desplazamiento es la traslación del contenido. */
 .tree {
-  overflow: auto;
-  padding: 4px 4px 12px;
-  /* Se agarra el fondo para mover el árbol, como un tablero. */
+  position: relative;
+  overflow: hidden;
+  height: 460px;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 1px 1px, #e2e8f0 1px, transparent 0) 0 0 / 22px 22px;
+  /* Se agarra el fondo para mover el árbol, como en una pizarra. */
   cursor: grab;
   /* Sin esto, arrastrar el lienzo va seleccionando los nombres a su paso. */
   user-select: none;
+  touch-action: none;
 }
 
 .panning {
   cursor: grabbing;
 }
 
-/* A pantalla completa el lienzo ocupa lo que queda de ventana: sin alto propio
-   no habría hacia dónde desplazarse en vertical. */
+.canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  will-change: transform;
+}
+
+/* A pantalla completa el lienzo ocupa lo que queda de ventana. */
 .fullscreen .tree {
   height: calc(100vh - 116px);
-  max-height: none;
+  border-radius: 14px;
 }
 
 .tree ul {
@@ -167,6 +236,19 @@
   padding: 22px 0 0;
   margin: 0;
   list-style: none;
+}
+
+/* La raíz mide lo que mide el árbol, no lo que mide la ventana.
+   Sin esto, un árbol más ancho que el contenedor quedaba PARCIALMENTE
+   INALCANZABLE: al centrar con justify-content dentro de algo con scroll, lo
+   que se desborda por la izquierda no se puede alcanzar ni arrastrando ni con
+   la barra —el navegador no genera scroll hacia atrás del origen—. Con
+   max-content el área desplazable pasa a ser el árbol entero, y el min-width
+   conserva el centrado cuando sí entra. */
+.treeRoot {
+  /* Mide exactamente lo que el árbol: es lo que permite centrarlo y moverlo
+     por su tamaño real, sin quedar recortado contra el ancho de la ventana. */
+  width: max-content;
 }
 
 .tree li {

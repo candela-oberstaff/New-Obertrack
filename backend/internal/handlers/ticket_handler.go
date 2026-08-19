@@ -160,15 +160,15 @@ func ticketDTOFromInternal(t models.Ticket) gin.H {
 		assigneeEmail = t.Assignee.Email
 	}
 	return gin.H{
-		"id":                 t.ID,
-		"zoho_id":            "",
-		"assigned_to":        t.AssignedTo,
-		"assignee_name":      assigneeName,
-		"assignee_email":     assigneeEmail,
-		"title":              t.Title,
-		"description":        t.Description,
-		"stage":              t.Stage,
-		"status":             t.Status,
+		"id":             t.ID,
+		"zoho_id":        "",
+		"assigned_to":    t.AssignedTo,
+		"assignee_name":  assigneeName,
+		"assignee_email": assigneeEmail,
+		"title":          t.Title,
+		"description":    t.Description,
+		"stage":          t.Stage,
+		"status":         t.Status,
 		// El origen real y no un literal: por aquí pasan tanto las alertas
 		// internas como las altas de Obersuite, y la bandeja las etiqueta distinto.
 		"origin":             t.Origin,

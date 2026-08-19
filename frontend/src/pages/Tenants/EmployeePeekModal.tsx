@@ -5,6 +5,8 @@ import { Modal, Button, Skeleton } from '../../components/ui'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
 import Avatar from '../../components/Common/Avatar'
 import { EmployeeFicha, EmployeeKpis } from './EmployeeFicha'
+import { openWaConversation } from '../../lib/whatsappInbox'
+import { useNotification } from '../../context/NotificationContext'
 import styles from './Tenants.module.css'
 import peek from './EmployeePeek.module.css'
 
@@ -28,6 +30,7 @@ interface Props {
  */
 export function EmployeePeekModal({ employeeId, tenantId, canManage, onClose, onOpenFull }: Props) {
   const navigate = useNavigate()
+  const notify = useNotification()
   const confirm = useConfirm()
   const { tracking, isLoading, error, toggleStatus, resetPassword } = useEmployeeTracking(employeeId)
   const { employees } = useTenantDetail(tenantId)
@@ -36,6 +39,11 @@ export function EmployeePeekModal({ employeeId, tenantId, canManage, onClose, on
   const manager = user?.manager_id ? employees.find(e => e.id === user.manager_id) : null
   const phone = user?.phone_number?.trim()
   const waNumber = phone?.replace(/\D/g, '')
+
+  const openWhatsApp = async () => {
+    const ok = await openWaConversation(phone, user?.name, navigate)
+    if (!ok) notify.error('No se pudo abrir la conversación de WhatsApp. Revisa la bandeja e inténtalo de nuevo.')
+  }
 
   const handleReset = async () => {
     const ok = await confirm({
@@ -85,19 +93,19 @@ export function EmployeePeekModal({ employeeId, tenantId, canManage, onClose, on
               devolver el acceso, quitarlo. Todo lo que exige leer antes (el
               expediente, las gestiones, los tickets) vive en la ficha completa. */}
           {/* Todas las acciones son el mismo primitivo, así comparten alto y
-              radio. El de WhatsApp es un <a> de verdad (abre otra pestaña), y
-              toma prestadas sus clases para no ser el único distinto. */}
+              radio. El de WhatsApp lleva a la conversación en nuestra bandeja,
+              no a wa.me: por fuera el mensaje sale del WhatsApp personal de
+              quien atiende y la respuesta no queda registrada. */}
           <div className={peek.actions}>
             {waNumber && (
-              <a
+              <button
+                type="button"
                 className="ui-btn ui-btn--secondary ui-btn--md"
-                href={`https://wa.me/${waNumber}`}
-                target="_blank"
-                rel="noreferrer noopener"
-                title={`Escribir a ${phone} por WhatsApp`}
+                onClick={openWhatsApp}
+                title={`Abrir la conversación de WhatsApp con ${phone}`}
               >
                 <MessageSquare size={16} /> WhatsApp
-              </a>
+              </button>
             )}
             {canManage && (
               <>

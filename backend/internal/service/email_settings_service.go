@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -61,10 +62,10 @@ type EmailType struct {
 var emailCatalog = []EmailType{
 	{
 		Key: EmailKindWorkHourReport, Category: EmailCategoryAutomatic,
-		Name:        "Reporte de jornadas",
-		Description: "Resumen de actividades del período con PDF y Excel adjuntos.",
-		Trigger:     "Según la programación de arriba (diaria, semanal o mensual). En la frecuencia mensual también cierra el mes aprobando las jornadas pendientes.",
-		Recipient:   "Cada empresa",
+		Name:             "Reporte de jornadas",
+		Description:      "Resumen de actividades del período con PDF y Excel adjuntos.",
+		Trigger:          "Según la programación de arriba (diaria, semanal o mensual). En la frecuencia mensual también cierra el mes aprobando las jornadas pendientes.",
+		Recipient:        "Cada empresa",
 		ManagedElsewhere: "Se enciende y programa en «Envío automático de reportes».",
 	},
 	{
@@ -174,8 +175,23 @@ func NewEmailSettingsService(repo repository.EmailSettingRepository, brevo *Brev
 	return &EmailSettingsService{repo: repo, cache: map[string]bool{}, brevo: brevo}
 }
 
-// Enabled dice si un tipo de correo puede salir. Sin fila guardada (o ante un
-// fallo de base) responde true: el silencio nunca debe nacer de un error.
+// Enabled dice si un tipo de correo puede salir.
+//
+// Sin fila guardada responde true: la ausencia significa "nunca se tocó", y por
+// defecto todos los correos están encendidos.
+//
+// Ante un FALLO DE BASE el criterio cambia según el tipo. Antes se respondía
+// siempre true —"el silencio nunca debe nacer de un error"—, que es correcto
+// para recuperar contraseña: preferimos un correo de más antes que dejar a
+// alguien sin poder entrar. Pero aplicado a un correo automático que alguien
+// apagó a propósito, convertía el interruptor en algo que funciona CASI
+// siempre, y en silencio: el correo salía y no quedaba constancia de que se
+// había ignorado el apagado. Peor que no tener interruptor, porque nadie
+// desconfía de él.
+//
+// Ahora solo los tipos Essential se dejan pasar ante un error; el resto se
+// frena. Y en ambos casos queda un log, para que la próxima vez esto se
+// responda leyendo los logs en vez de deduciéndolo.
 func (s *EmailSettingsService) Enabled(kind string) bool {
 	s.mu.RLock()
 	fresh := s.loaded && time.Now().Before(s.expires)
@@ -191,7 +207,14 @@ func (s *EmailSettingsService) Enabled(kind string) bool {
 
 	rows, err := s.repo.List()
 	if err != nil {
-		return true
+		allow := isEssentialEmailKind(kind)
+		log.Printf(
+			"[Correos] no se pudieron leer los interruptores (%v): %q se %s por ser %s",
+			err, kind,
+			map[bool]string{true: "DEJA PASAR", false: "FRENA"}[allow],
+			map[bool]string{true: "esencial", false: "no esencial"}[allow],
+		)
+		return allow
 	}
 	next := make(map[string]bool, len(rows))
 	for _, r := range rows {
@@ -242,6 +265,20 @@ func (s *EmailSettingsService) SetEnabled(kind string, enabled bool, userID uint
 // y se quitó: un único clic capaz de tumbar TODOS los correos —incluidos los de
 // recuperar y crear contraseña, que dejan a la gente sin poder entrar— es un
 // riesgo que no compensa la comodidad. El apagado se hace tipo por tipo.
+
+// isEssentialEmailKind marca los correos sin los cuales alguien queda fuera de
+// la plataforma (crear y recuperar contraseña). Son los únicos que se dejan
+// pasar cuando no se puede consultar el estado de los interruptores.
+func isEssentialEmailKind(kind string) bool {
+	for _, t := range emailCatalog {
+		if t.Key == kind {
+			return t.Essential
+		}
+	}
+	// Un tipo desconocido no llega aquí desde el sistema (el catálogo es el
+	// contrato), así que ante la duda no se envía.
+	return false
+}
 
 func isKnownEmailKind(kind string) bool {
 	for _, t := range emailCatalog {

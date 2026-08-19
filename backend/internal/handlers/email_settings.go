@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -38,6 +39,17 @@ func (h *EmailSettingsHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Apagar un correo del sistema es justo el cambio que hay que poder rastrear
+	// después ("¿por qué dejó de llegar esto?" / "¿quién lo apagó y cuándo?").
+	// Sin esto quedaba como un "admin.update" sin entidad ni valor, así que la
+	// Auditoría no servía para responderlo.
+	action := "email_settings.disabled"
+	if *req.Enabled {
+		action = "email_settings.enabled"
+	}
+	middleware.SetAudit(c, action, key, fmt.Sprintf(`{"key":%q,"enabled":%t}`, key, *req.Enabled))
+
 	c.JSON(http.StatusOK, gin.H{"key": key, "enabled": *req.Enabled})
 }
 

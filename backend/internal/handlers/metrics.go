@@ -1,10 +1,10 @@
 package handlers
 
 import (
-	"net/http"
-	"strconv"
 	"github.com/gin-gonic/gin"
 	"github.com/obertrack/backend/internal/repository"
+	"net/http"
+	"strconv"
 )
 
 type MetricsHandler struct {
@@ -36,9 +36,9 @@ func (h *MetricsHandler) GetGlobalMetrics(c *gin.Context) {
 
 	// For the extra metrics (heatmap, segments, trends), we'll provide simulated data
 	// derived from current date to make it look dynamic but consistent
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"emails": emailMetrics,
+		"emails":  emailMetrics,
 		"surveys": surveyMetrics,
 		"advanced": gin.H{
 			"segments": []gin.H{
@@ -47,7 +47,7 @@ func (h *MetricsHandler) GetGlobalMetrics(c *gin.Context) {
 			},
 			"devices": gin.H{
 				"desktop": 0.65,
-				"mobile": 0.35,
+				"mobile":  0.35,
 			},
 		},
 	})

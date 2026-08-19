@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -143,7 +144,9 @@ func (n *SupportNotifier) send(batch []SupportTicketInfo) {
 	}
 	for _, r := range recipients {
 		if err := n.brevoSvc.SendEmailKind(EmailKindSupportTicket, r.Email, r.Name, subject, html); err != nil {
-			log.Printf("[SupportNotifier] no se pudo enviar a %s: %v", r.Email, err)
+			if !errors.Is(err, ErrEmailKindDisabled) {
+				log.Printf("[SupportNotifier] no se pudo enviar a %s: %v", r.Email, err)
+			}
 		}
 	}
 }

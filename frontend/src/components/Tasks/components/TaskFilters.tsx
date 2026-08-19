@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Filter, X, Calendar, ArrowUpDown, Clock, AlertTriangle } from 'lucide-react'
 import { DatePicker } from '../../ui'
 import styles from '../../../pages/Tasks.module.css'
+import { Select } from '../../ui/Select'
 
 export interface TaskFiltersState {
   priority: string
@@ -83,15 +84,14 @@ export function TaskFilters({ filters, onChange }: TaskFiltersProps) {
             <label className={styles['task-filters-label']}>
               <ArrowUpDown size={13} /> Urgencia
             </label>
-            <select
-              className={styles['task-filters-select']}
+            <Select
               value={filters.priority}
-              onChange={(e) => onChange({ ...filters, priority: e.target.value })}
-            >
-              {PRIORITY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+              onChange={(v) => onChange({ ...filters, priority: String(v) })}
+              className="ui-select__trigger--compact"
+              ariaLabel="Prioridad"
+              fullWidth
+              options={PRIORITY_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+            />
           </div>
 
           <div className={styles['task-filters-section']}>

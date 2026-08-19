@@ -1895,6 +1895,30 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.SupervisorEscalationLog{})
 			},
 		},
+		{
+			ID: "202608181200_email_events_timestamp_index",
+			Migrate: func(tx *gorm.DB) error {
+				// email_events pasa a recibir un evento por cada correo que sale
+				// del sistema —no solo campañas: avisos de tareas, recordatorios
+				// de horas, tickets, inducciones—, y con 'request' y 'delivered'
+				// suscritos son al menos dos filas por envío. La tabla crece sin
+				// techo.
+				//
+				// Las métricas de Correos filtran por timestamp, y hasta ahora
+				// los únicos índices eran campaign_id y email: esas consultas
+				// recorrían la tabla entera. Vacía no se notaba; con meses de
+				// envíos encima, sí. El índice compuesto sirve además a los
+				// conteos por tipo de evento, que es como se consultan siempre.
+				log.Println("Indexing email_events by (event, timestamp) for the email metrics queries...")
+				return tx.Exec(`
+					CREATE INDEX IF NOT EXISTS idx_email_events_event_timestamp
+					ON email_events (event, "timestamp")
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`DROP INDEX IF EXISTS idx_email_events_event_timestamp`).Error
+			},
+		},
 		// Future migrations go here
 	})
 

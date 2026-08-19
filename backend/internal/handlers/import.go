@@ -33,8 +33,8 @@ func (h *AdminHandler) DownloadImportTemplate(c *gin.Context) {
 	defer func() { _ = f.Close() }()
 
 	headerStyle, _ := f.NewStyle(&excelize.Style{
-		Font: &excelize.Font{Bold: true, Color: "FFFFFF", Size: 11},
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"6D28D9"}, Pattern: 1},
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF", Size: 11},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"6D28D9"}, Pattern: 1},
 		Alignment: &excelize.Alignment{Vertical: "center"},
 		Border: []excelize.Border{
 			{Type: "bottom", Color: "DDD9EF", Style: 1},

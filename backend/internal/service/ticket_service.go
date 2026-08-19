@@ -628,7 +628,7 @@ func (s *ticketService) LookupWhatsAppChat(phone string) (*WhatsAppChatLookup, e
 	if digits == "" {
 		return out, nil
 	}
-	
+
 	out.IsRegistered = s.contactIsPlatformUser(digits)
 
 	ticket, err := s.repo.FindWhatsAppTicketByPhoneDigits(digits, s.wahaSvc.GetSession())

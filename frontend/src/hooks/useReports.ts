@@ -14,7 +14,15 @@ function getMonthRange(monthStr: string) {
 
 export function useReports(user: User | null) {
   const { error: showError } = useNotification()
-  const isSuperadmin = !!user?.is_superadmin
+
+  // Quien lee a nivel plataforma: elige la empresa antes de ver nada, en vez de
+  // quedar atado a la suya.
+  //
+  // Customer success entra aquí junto al superadmin porque atiende a todas las
+  // cuentas —el panel de empresas y el expediente ya lo tratan igual—. Antes
+  // caía en la rama del usuario común y el informe salía de sí mismo: vacío,
+  // porque un CS no carga jornadas.
+  const crossCompany = !!user?.is_superadmin || user?.user_type === 'customer_success'
 
   const [selectedEmployee, setSelectedEmployee] = useState<number | ''>('')
   const [selectedCompanyId, setSelectedCompanyIdState] = useState<number | null>(() => {
@@ -34,20 +42,21 @@ export function useReports(user: User | null) {
   // Company selector (superadmin only)
   const { data: companies = [] } = useQuery({
     queryKey: ['report-companies'],
-    enabled: isSuperadmin,
+    enabled: crossCompany,
     queryFn: async (): Promise<{ id: number; company_name: string }[]> => {
       const res: any = await adminService.getTenants()
       return (res || []).map((t: any) => ({ id: t.id, company_name: t.company_name || t.owner_name || `Empresa ${t.id}` }))
     },
   })
 
-  // Employees: superadmin → scoped to selected company; others → their team.
-  const canSeeEmployees = isSuperadmin || user?.is_manager || user?.user_type === 'empleador'
+  // Empleados: quien lee a nivel plataforma, los de la empresa elegida; el
+  // resto, los de su equipo.
+  const canSeeEmployees = crossCompany || user?.is_manager || user?.user_type === 'empleador'
   const { data: employees = [] } = useQuery({
-    queryKey: ['report-employees', isSuperadmin, selectedCompanyId, user?.id],
-    enabled: !!canSeeEmployees && (!isSuperadmin || !!selectedCompanyId),
+    queryKey: ['report-employees', crossCompany, selectedCompanyId, user?.id],
+    enabled: !!canSeeEmployees && (!crossCompany || !!selectedCompanyId),
     queryFn: async (): Promise<{ id: number; name: string }[]> => {
-      if (isSuperadmin) {
+      if (crossCompany) {
         const data: any = await adminService.getTenantEmployees(selectedCompanyId as number)
         return (data || []).map((e: any) => ({ id: e.id, name: e.name || e.email }))
       }
@@ -60,12 +69,12 @@ export function useReports(user: User | null) {
   const userIdFilter = selectedEmployee
     ? String(selectedEmployee)
     : user?.user_type === 'profesional' ? String(user.id) : undefined
-  const companyId = isSuperadmin && selectedCompanyId ? selectedCompanyId : undefined
+  const companyId = crossCompany && selectedCompanyId ? selectedCompanyId : undefined
 
   const reportQ = useQuery({
     queryKey: ['report-data', month, userIdFilter ?? null, companyId ?? null],
     // Superadmin must pick a company first; everyone else loads once user is known.
-    enabled: !!user && (!isSuperadmin || !!selectedCompanyId),
+    enabled: !!user && (!crossCompany || !!selectedCompanyId),
     queryFn: async () => {
       const [hoursRes, tasksRes] = await Promise.allSettled([
         workHourService.getAll({ user_id: userIdFilter, start_date: startDate, end_date: endDate, company_id: companyId }),
@@ -121,7 +130,7 @@ export function useReports(user: User | null) {
   }, [tasks])
 
   return {
-    isSuperadmin,
+    crossCompany,
     companies, selectedCompanyId, setSelectedCompanyId,
     employees, selectedEmployee, setSelectedEmployee,
     workHours, tasks, month, setMonth,

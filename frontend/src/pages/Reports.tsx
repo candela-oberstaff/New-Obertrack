@@ -21,7 +21,7 @@ import styles from './Reports.module.css'
 export default function Reports() {
   const { user } = useAuth()
   const {
-    isSuperadmin,
+    crossCompany,
     companies, selectedCompanyId, setSelectedCompanyId,
     employees, selectedEmployee, setSelectedEmployee,
     workHours, tasks, month, setMonth,
@@ -60,7 +60,7 @@ export default function Reports() {
       </div>
 
       <div className={styles['reports-filters']} data-tour="reports-filters">
-        {isSuperadmin && (
+        {crossCompany && (
           <Select
             value={selectedCompanyId ?? ''}
             onChange={(v) => setSelectedCompanyId(v ? Number(v) : null)}
@@ -107,7 +107,7 @@ export default function Reports() {
         </div>
       </div>
 
-      {isSuperadmin && !selectedCompanyId ? (
+      {crossCompany && !selectedCompanyId ? (
         <div className={styles['reports-loading']} style={{ textAlign: 'center' }}>
           <Calendar size={56} style={{ color: 'var(--primary)', opacity: 0.5, marginBottom: '16px' }} />
           <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--black)', marginBottom: '8px' }}>Selecciona una empresa</h2>

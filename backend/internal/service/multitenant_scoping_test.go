@@ -251,6 +251,70 @@ func TestWorkHoursGetAll_SuperadminWithCompany_FiltersByTenant(t *testing.T) {
 	}
 }
 
+// Customer success lee a nivel plataforma igual que el superadmin: atiende a
+// todas las cuentas, así que en Reportes elige empresa en vez de quedar atado a
+// la suya. Antes caía en la rama del usuario común y el informe salía de sí
+// mismo, es decir vacío.
+//
+// Lo que NO cambia es la garantía de aislamiento: sin empresa elegida no se
+// consulta nada, para no mezclar tenants en la misma vista.
+func TestWorkHoursGetAll_CustomerSuccessSinEmpresa_NoConsultaNada(t *testing.T) {
+	repo := &fakeWHRepo{}
+	s := &workHourService{repo: repo}
+
+	res, total, err := s.GetAll(1, "customer_success", true, false, 0, 0, "", "", "", 0, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 0 || total != 0 {
+		t.Fatal("customer success sin empresa elegida no debe ver horas")
+	}
+	if repo.findCalled {
+		t.Fatal("no se debe consultar el repositorio (guarda contra fuga entre tenants)")
+	}
+}
+
+func TestWorkHoursGetAll_CustomerSuccessConEmpresa_FiltraPorEsaEmpresa(t *testing.T) {
+	repo := &fakeWHRepo{}
+	s := &workHourService{repo: repo}
+
+	if _, _, err := s.GetAll(1, "customer_success", true, false, 0, 7, "", "", "", 0, 50); err != nil {
+		t.Fatal(err)
+	}
+	if got := uintFilter(t, repo.findFilters, "tenant_id"); got != 7 {
+		t.Fatalf("tenant_id: se esperaba 7, llegó %d", got)
+	}
+}
+
+func TestTaskGetAll_CustomerSuccessConEmpresa_FiltraPorEsaEmpresa(t *testing.T) {
+	repo := &fakeTaskRepo{}
+	s := &taskService{repo: repo}
+
+	if _, _, err := s.GetAll(1, "customer_success", false, true, 0, 7, "", "", "", "", "", "", 0, 50); err != nil {
+		t.Fatal(err)
+	}
+	if got := uintFilter(t, repo.findFilters, "tenant_id"); got != 7 {
+		t.Fatalf("tenant_id: se esperaba 7, llegó %d", got)
+	}
+}
+
+// El profesional común sigue viendo solo lo suyo: el permiso nuevo es de
+// lectura por empresa y no debe filtrarse a nadie más.
+func TestWorkHoursGetAll_ProfesionalSigueViendoSoloLoSuyo(t *testing.T) {
+	repo := &fakeWHRepo{}
+	s := &workHourService{repo: repo}
+
+	if _, _, err := s.GetAll(42, "profesional", false, false, 3, 7, "", "", "", 0, 50); err != nil {
+		t.Fatal(err)
+	}
+	if got := uintFilter(t, repo.findFilters, "user_id"); got != 42 {
+		t.Fatalf("user_id: se esperaba 42, llegó %d", got)
+	}
+	if _, scoped := repo.findFilters["tenant_id"]; scoped {
+		t.Fatal("un profesional no debe poder elegir empresa con company_id")
+	}
+}
+
 func TestWorkHoursSummary_SuperadminWithoutCompany_ZeroWithoutQuery(t *testing.T) {
 	repo := &fakeWHRepo{}
 	s := &workHourService{repo: repo}

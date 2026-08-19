@@ -1,5 +1,5 @@
 import {
-  useEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useMemo, useRef, useState,
   type MutableRefObject, type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
@@ -14,7 +14,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { Network, List, Building2, Maximize2, Minimize2 } from 'lucide-react'
+import { Network, List, Building2, Maximize2, Minimize2, ZoomIn, ZoomOut, Scan } from 'lucide-react'
 import Avatar from '../Common/Avatar'
 import { buildForest, dropRejection, teamSizes, type OrgPerson, type OrgTreeNode } from './orgTree'
 import styles from './OrgChart.module.css'
@@ -85,34 +85,135 @@ export function OrgChart({ people, onReassign, hint, profileHref }: OrgChartProp
 
   const dragged = dragId != null ? people.find(p => p.user_id === dragId) ?? null : null
 
-  // ── Desplazamiento tipo lienzo ────────────────────────────────────────────
-  // Agarrar el fondo y arrastrar mueve el árbol, como en un tablero. Se hace
-  // moviendo el scroll del contenedor y NO con transform: dnd-kit calcula las
-  // zonas de soltado desde el DOM, y una transformación le desalinea el
-  // arrastre de personas. El scroll ya lo tiene en cuenta.
+  // ── Lienzo ────────────────────────────────────────────────────────────────
+  // El árbol se mueve trasladándolo, no desplazando el scroll del contenedor.
+  // La diferencia importa: con scroll solo se puede mover lo que desborda, así
+  // que en cuanto el árbol entraba entero —al alejarlo, por ejemplo— se quedaba
+  // clavado. Una pizarra se mueve siempre.
+  //
+  // Trasladar es seguro para el arrastre de personas: las tarjetas no aplican
+  // el transform de dnd-kit (el fantasma lo dibuja DragOverlay), y la detección
+  // es pointerWithin, que compara la posición del puntero contra rectángulos ya
+  // trasladados. Ambos viven en coordenadas de la ventana, así que siguen
+  // coincidiendo.
   const panRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLUListElement | null>(null)
   const [panning, setPanning] = useState(false)
-  const panFrom = useRef({ x: 0, y: 0, left: 0, top: 0 })
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const panFrom = useRef({ x: 0, y: 0, ox: 0, oy: 0 })
+
+  // No se deja empujar el árbol fuera de la vista: siempre queda un asomo por
+  // el que volver a agarrarlo. Sin esto es fácil perderlo de un manotazo.
+  const clampOffset = (x: number, y: number) => {
+    const box = panRef.current
+    const el = contentRef.current
+    if (!box || !el) return { x, y }
+    const w = el.getBoundingClientRect().width
+    const h = el.getBoundingClientRect().height
+    const KEEP = 120
+    return {
+      x: Math.min(box.clientWidth - KEEP, Math.max(KEEP - w, x)),
+      y: Math.min(box.clientHeight - KEEP, Math.max(KEEP - h, y)),
+    }
+  }
+
+  // ── Zoom ──────────────────────────────────────────────────────────────────
+  // Con 30 o 40 personas el árbol es más ancho que cualquier pantalla, y
+  // desplazarse no alcanza: hay que poder alejarse para verlo entero.
+  //
+  // Se usa la propiedad 'zoom' y no 'transform: scale' porque zoom SÍ afecta al
+  // layout: el área desplazable pasa a medir el árbol ya reducido, en vez de
+  // conservar el tamaño original y dejar un vacío alrededor. Y como
+  // getBoundingClientRect devuelve las medidas ya ajustadas, dnd-kit sigue
+  // ubicando bien las zonas de soltado —que era el motivo para no usar scale—.
+  const [zoom, setZoom] = useState(1)
+  const MIN_ZOOM = 0.3
+  const MAX_ZOOM = 1.2
+
+  const naturalWidth = () => {
+    const el = contentRef.current
+    if (!el) return 0
+    // El rect ya viene multiplicado por el zoom; se deshace para saber cuánto
+    // mide el árbol de verdad.
+    return el.getBoundingClientRect().width / zoom
+  }
+
+  // Deja la raíz del árbol centrada y arriba, que es desde donde se lee.
+  const centerView = useCallback(() => {
+    const box = panRef.current
+    const el = contentRef.current
+    if (!box || !el) return
+    const w = el.getBoundingClientRect().width
+    setOffset({ x: Math.round((box.clientWidth - w) / 2), y: 16 })
+  }, [])
+
+  const fitToWidth = useCallback(() => {
+    const box = panRef.current
+    const natural = naturalWidth()
+    if (!box || !natural) return
+    const available = box.clientWidth - 24
+    const next = Math.min(1, Math.max(MIN_ZOOM, available / natural))
+    setZoom(Math.round(next * 100) / 100)
+  }, [zoom])
+
+  const stepZoom = (delta: number) =>
+    setZoom(z => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round((z + delta) * 100) / 100)))
+
+  // Al abrir la vista ampliada se ajusta solo para que entre el árbol entero:
+  // ampliar y seguir sin ver a nadie no ayudaba a nadie.
+  useEffect(() => {
+    if (view !== 'tree') return
+    const id = requestAnimationFrame(() => { if (fullscreen) fitToWidth(); centerView() })
+    return () => cancelAnimationFrame(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreen, view])
+
+  // Cambiar el zoom mueve el punto de referencia; se vuelve a centrar para no
+  // perder de vista dónde estabas.
+  useEffect(() => {
+    if (view !== 'tree') return
+    const id = requestAnimationFrame(centerView)
+    return () => cancelAnimationFrame(id)
+  }, [zoom, view, centerView])
+
+  // La rueda mueve el lienzo y con Ctrl (o Cmd) acerca y aleja, como en
+  // cualquier pizarra. Va con addEventListener y passive:false porque React
+  // registra onWheel como pasivo y ahí preventDefault no surte efecto: sin eso
+  // la rueda desplazaría la página entera por detrás.
+  useEffect(() => {
+    const box = panRef.current
+    if (!box || view !== 'tree') return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      if (e.ctrlKey || e.metaKey) {
+        stepZoom(e.deltaY > 0 ? -0.1 : 0.1)
+        return
+      }
+      setOffset(o => clampOffset(o.x - e.deltaX, o.y - e.deltaY))
+    }
+    box.addEventListener('wheel', onWheel, { passive: false })
+    return () => box.removeEventListener('wheel', onWheel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, zoom])
 
   const startPan = (e: ReactPointerEvent<HTMLDivElement>) => {
-    // Solo con ratón: en pantallas táctiles el desplazamiento nativo ya hace
-    // esto, y capturar el puntero se lo rompería.
-    if (e.pointerType !== 'mouse' || e.button !== 0) return
+    if (e.button !== 0) return
     // Arrancar sobre una tarjeta es mover a esa persona, no el lienzo.
     if ((e.target as HTMLElement).closest('[data-org-person]')) return
     const el = panRef.current
     if (!el) return
-    panFrom.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
+    panFrom.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y }
     setPanning(true)
     el.setPointerCapture(e.pointerId)
   }
 
   const movePan = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!panning) return
-    const el = panRef.current
-    if (!el) return
-    el.scrollLeft = panFrom.current.left - (e.clientX - panFrom.current.x)
-    el.scrollTop = panFrom.current.top - (e.clientY - panFrom.current.y)
+    const from = panFrom.current
+    setOffset(clampOffset(
+      from.ox + (e.clientX - from.x),
+      from.oy + (e.clientY - from.y),
+    ))
   }
 
   const endPan = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -223,6 +324,38 @@ export function OrgChart({ people, onReassign, hint, profileHref }: OrgChartProp
             <List size={14} /> Lista
           </button>
         </div>
+        {view === 'tree' && (
+          <div className={styles.zoomBar}>
+            <button
+              type="button"
+              className={styles.zoomBtn}
+              onClick={() => stepZoom(-0.1)}
+              disabled={zoom <= MIN_ZOOM}
+              title="Alejar"
+              aria-label="Alejar"
+            >
+              <ZoomOut size={14} />
+            </button>
+            <button
+              type="button"
+              className={styles.zoomLevel}
+              onClick={fitToWidth}
+              title="Ajustar el árbol al ancho disponible"
+            >
+              <Scan size={13} /> {Math.round(zoom * 100)}%
+            </button>
+            <button
+              type="button"
+              className={styles.zoomBtn}
+              onClick={() => stepZoom(0.1)}
+              disabled={zoom >= MAX_ZOOM}
+              title="Acercar"
+              aria-label="Acercar"
+            >
+              <ZoomIn size={14} />
+            </button>
+          </div>
+        )}
         <button
           type="button"
           className={styles.expandBtn}
@@ -257,9 +390,18 @@ export function OrgChart({ people, onReassign, hint, profileHref }: OrgChartProp
             onPointerUp={endPan}
             onPointerCancel={endPan}
           >
-            <ul className={styles.treeRoot}>
-              {forest.map(node => <TreeNode key={node.person.user_id} node={node} {...shared} />)}
-            </ul>
+            {/* El zoom va en el árbol y la traslación en la capa de afuera: si
+                compartieran elemento, el zoom multiplicaría el desplazamiento y
+                el lienzo no seguiría al puntero. */}
+            <div
+              className={styles.canvas}
+              data-org-canvas=""
+              style={{ transform: `translate3d(${offset.x}px, ${offset.y}px, 0)` }}
+            >
+              <ul ref={contentRef} className={styles.treeRoot} style={{ zoom }}>
+                {forest.map(node => <TreeNode key={node.person.user_id} node={node} {...shared} />)}
+              </ul>
+            </div>
           </div>
         ) : (
           <div className={`${styles.branch} ${styles.branchRoot}`}>

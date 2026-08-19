@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,20 @@ import (
 	"strconv"
 	"strings"
 )
+
+// ErrEmailKindDisabled lo devuelve un envío cuyo TIPO está apagado en
+// Configuración → Correos.
+//
+// Antes estos envíos devolvían nil, con la idea de "no romper el flujo que lo
+// disparó". Para los watchers está bien —no hay nadie mirando—, pero los flujos
+// que le reportan el resultado a una persona interpretaban ese nil como
+// "enviado": una campaña con el interruptor cerrado respondía "enviada a 330",
+// se marcaba como enviada y quedaba bloqueada para reenviar, sin haber salido
+// un solo correo.
+//
+// Quien no le importe lo descarta con errors.Is; quien tenga a alguien delante
+// lo muestra.
+var ErrEmailKindDisabled = errors.New("el tipo de correo está desactivado en Configuración → Correos")
 
 // BrevoService handles email dispatch via the Brevo (Sendinblue) Transactional API.
 type BrevoService struct {
@@ -32,12 +47,14 @@ func (s *BrevoService) AllowsKind(kind string) bool {
 
 // SendEmailKind es SendEmail respetando el interruptor del tipo. Es el camino
 // que deben usar TODOS los envíos del sistema: así el panel de Configuración
-// los gobierna sin tocar código. Un correo apagado no es un error: se registra
-// y se devuelve nil para no romper el flujo que lo disparó.
+// los gobierna sin tocar código.
+//
+// Un correo apagado devuelve ErrEmailKindDisabled: no es un fallo, pero tampoco
+// un envío. Quien no tenga a nadie delante lo descarta con errors.Is.
 func (s *BrevoService) SendEmailKind(kind, toEmail, toName, subject, htmlContent string) error {
 	if !s.AllowsKind(kind) {
 		log.Printf("[Brevo] correo %q omitido: está desactivado en Configuración → Correos", kind)
-		return nil
+		return ErrEmailKindDisabled
 	}
 	return s.SendEmail(toEmail, toName, subject, htmlContent)
 }
@@ -47,7 +64,7 @@ func (s *BrevoService) SendEmailKind(kind, toEmail, toName, subject, htmlContent
 func (s *BrevoService) SendEmailKindTagged(kind, toEmail, toName, subject, htmlContent string, tags []string) error {
 	if !s.AllowsKind(kind) {
 		log.Printf("[Brevo] correo %q omitido: está desactivado en Configuración → Correos", kind)
-		return nil
+		return ErrEmailKindDisabled
 	}
 	return s.SendEmailTagged(toEmail, toName, subject, htmlContent, tags)
 }
@@ -56,7 +73,7 @@ func (s *BrevoService) SendEmailKindTagged(kind, toEmail, toName, subject, htmlC
 func (s *BrevoService) SendEmailKindWithAttachments(kind, toEmail, toName, subject, htmlContent string, attachments []BrevoAttachment) error {
 	if !s.AllowsKind(kind) {
 		log.Printf("[Brevo] correo %q omitido: está desactivado en Configuración → Correos", kind)
-		return nil
+		return ErrEmailKindDisabled
 	}
 	return s.SendEmailWithAttachments(toEmail, toName, subject, htmlContent, attachments)
 }
