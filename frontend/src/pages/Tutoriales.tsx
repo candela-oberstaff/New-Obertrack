@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Plus, BookOpen, Search, Compass, GraduationCap } from 'lucide-react'
+import { Plus, BookOpen, Search, Compass, GraduationCap, LayoutGrid, List } from 'lucide-react'
 import { startCurrentPageTour } from '../lib/tour'
 import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { useTutorialsPageState, ALL_CATEGORIES, ALL_AUDIENCES } from '../components/Tutorials/hooks/useTutorialsPageState'
 import { TutorialCard } from '../components/Tutorials/TutorialCard'
+import { TutorialTable } from '../components/Tutorials/TutorialTable'
 import { TutorialPlayerModal } from '../components/Tutorials/Modals/TutorialPlayerModal'
 import { TutorialFormModal } from '../components/Tutorials/Modals/TutorialFormModal'
 import { TutorialMetricsModal } from '../components/Tutorials/Modals/TutorialMetricsModal'
@@ -33,6 +34,8 @@ export default function Tutoriales() {
     setSelectedTutorial,
     metricsTutorial,
     setMetricsTutorial,
+    viewMode,
+    setViewMode,
     handleOpenTutorial,
     showFormModal,
     editingTutorial,
@@ -179,6 +182,26 @@ export default function Tutoriales() {
               ))}
             </div>
           )}
+          <div className={styles['tutorials-view-switch']} role="group" aria-label="Forma de ver las novedades">
+            <button
+              type="button"
+              className={viewMode === 'cards' ? styles['active'] : ''}
+              onClick={() => setViewMode('cards')}
+              title="Ver en tarjetas"
+              aria-pressed={viewMode === 'cards'}
+            >
+              <LayoutGrid size={16} /> Tarjetas
+            </button>
+            <button
+              type="button"
+              className={viewMode === 'table' ? styles['active'] : ''}
+              onClick={() => setViewMode('table')}
+              title="Ver en tabla"
+              aria-pressed={viewMode === 'table'}
+            >
+              <List size={16} /> Tabla
+            </button>
+          </div>
           <div className={styles['tutorials-search']} data-tour="tutoriales-search">
             <Search size={16} />
             <input
@@ -216,6 +239,16 @@ export default function Tutoriales() {
           <h2>Sin resultados</h2>
           <p>Prueba a cambiar la categoría o el término de búsqueda.</p>
         </div>
+      ) : viewMode === 'table' ? (
+        <TutorialTable
+          tutorials={filteredTutorials}
+          isAdmin={isAdmin}
+          viewedIds={viewedIds}
+          onOpen={handleOpenTutorial}
+          onEdit={openEdit}
+          onDelete={handleDelete}
+          onMetrics={setMetricsTutorial}
+        />
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={filteredTutorials.map(t => t.id)} strategy={rectSortingStrategy}>

@@ -1,4 +1,5 @@
 export { TutorialCard } from './TutorialCard'
+export { TutorialTable } from './TutorialTable'
 export { TutorialIcon, TUTORIAL_ICONS, TUTORIAL_ICON_NAMES } from './icons'
 
 export { NovedadAnnouncer } from './NovedadAnnouncer'

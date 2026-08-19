@@ -1000,3 +1000,41 @@
   color: #0f766e;
   background: rgba(20, 184, 166, 0.12);
 }
+
+/* Conmutador tarjetas / tabla. Dos formas de mirar lo mismo: la tarjeta para
+   leer una novedad, la tabla para compararlas todas. */
+.tutorials-view-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.tutorials-view-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  width: auto;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.tutorials-view-switch button:hover {
+  color: #0f172a;
+}
+
+.tutorials-view-switch button.active {
+  background: #fff;
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}

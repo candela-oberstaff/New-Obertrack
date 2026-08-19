@@ -29,6 +29,23 @@ const EMPTY_FORM: CreateTutorialInput = {
   is_active: true,
 }
 
+/**
+ * Tarjetas o tabla. Se recuerda en el navegador porque es una preferencia de
+ * cómo trabaja cada quien —el que publica quiere comparar, el que lee quiere
+ * mirar— y volver a elegirla en cada visita sería un peaje diario.
+ */
+export type TutorialViewMode = 'cards' | 'table'
+
+const VIEW_MODE_KEY = 'obertrack.novedades.view'
+
+function readViewMode(): TutorialViewMode {
+  try {
+    return localStorage.getItem(VIEW_MODE_KEY) === 'table' ? 'table' : 'cards'
+  } catch {
+    return 'cards'
+  }
+}
+
 export const ALL_CATEGORIES = '__all__'
 export const ALL_AUDIENCES = '__all__'
 
@@ -52,6 +69,12 @@ export function useTutorialsPageState() {
 
   const [selectedTutorial, setSelectedTutorial] = useState<Tutorial | null>(null)
   const [metricsTutorial, setMetricsTutorial] = useState<Tutorial | null>(null)
+  const [viewMode, setViewModeState] = useState<TutorialViewMode>(readViewMode)
+
+  const setViewMode = useCallback((mode: TutorialViewMode) => {
+    setViewModeState(mode)
+    try { localStorage.setItem(VIEW_MODE_KEY, mode) } catch { /* modo incógnito */ }
+  }, [])
   const [showFormModal, setShowFormModal] = useState(false)
   const [editingTutorial, setEditingTutorial] = useState<Tutorial | null>(null)
   const [formData, setFormData] = useState<CreateTutorialInput>(EMPTY_FORM)
@@ -225,6 +248,8 @@ export function useTutorialsPageState() {
     setSelectedTutorial,
     metricsTutorial,
     setMetricsTutorial,
+    viewMode,
+    setViewMode,
     handleOpenTutorial,
     showFormModal,
     editingTutorial,
