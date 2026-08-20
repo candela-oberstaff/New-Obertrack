@@ -1834,7 +1834,7 @@ button.kpiGridItem:hover .kpiGridValue {
 }
 
 .kpiGridValue {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 800;
   color: #0f172a;
   transition: color 0.12s ease;

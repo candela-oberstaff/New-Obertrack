@@ -604,26 +604,26 @@ export default function TenantDetail() {
   // Iconos en estilo "suave": fondo pastel + icono del mismo tono (igual que las
   // tarjetas del panel admin), en vez de gradientes saturados.
   const kpis = [
-    { value: createdLabel, label: 'Fecha de alta', icon: <Calendar size={24} />, bg: '#ecfeff', color: '#0891b2' },
-    { value: tenant.user_count, label: 'Profesionales', icon: <Users size={24} />, bg: '#fae8ff', color: 'var(--primary)' },
-    { value: tenant.board_count, label: 'Tableros', icon: <LayoutGrid size={24} />, bg: '#fef3c7', color: '#d97706' },
-    { value: tenant.task_count, label: 'Tareas', icon: <CheckSquare size={24} />, bg: '#ede9fe', color: '#8b5cf6' },
-    { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: '#d1fae5', color: '#059669' },
-    { value: `${(tenant.pending_hours ?? 0).toFixed(1)} h`, label: 'Horas por aprobar', icon: <Hourglass size={24} />, bg: '#ffedd5', color: '#ea580c' },
-    { value: tenant.open_tickets ?? 0, label: 'Tickets abiertos', icon: <Inbox size={24} />, bg: '#fee2e2', color: '#dc2626' },
+    { value: createdLabel, label: 'Fecha de alta', icon: <Calendar size={24} />, bg: '#f1f5f9', color: '#64748b' },
+    { value: tenant.user_count, label: 'Profesionales', icon: <Users size={24} />, bg: '#f1f5f9', color: '#64748b' },
+    { value: tenant.board_count, label: 'Tableros', icon: <LayoutGrid size={24} />, bg: '#f1f5f9', color: '#64748b' },
+    { value: tenant.task_count, label: 'Tareas', icon: <CheckSquare size={24} />, bg: '#f1f5f9', color: '#64748b' },
+    { value: `${(tenant.hours_this_month ?? 0).toFixed(1)} h`, label: 'Horas este mes', icon: <Clock size={24} />, bg: '#f1f5f9', color: '#64748b' },
+    { value: `${(tenant.pending_hours ?? 0).toFixed(1)} h`, label: 'Horas por aprobar', icon: <Hourglass size={24} />, bg: '#f1f5f9', color: '#64748b' },
+    { value: tenant.open_tickets ?? 0, label: 'Tickets abiertos', icon: <Inbox size={24} />, bg: '#f1f5f9', color: '#64748b' },
     {
       value: <span style={{ color: HEALTH_COLOR[contactHealth.level], fontWeight: 800 }}>{contactHealth.label}</span>,
       label: 'Último contacto',
       icon: <Send size={24} />,
-      bg: '#e0f2fe',
-      color: '#0284c7'
+      bg: '#f1f5f9',
+      color: '#64748b'
     },
     {
       value: <span style={{ color: HEALTH_COLOR[activityHealth.level], fontWeight: 800 }}>{activityHealth.label}</span>,
       label: 'Última actividad',
       icon: <Activity size={24} />,
-      bg: '#e2e8f0',
-      color: '#475569'
+      bg: '#f1f5f9',
+      color: '#64748b'
     },
   ]
 
