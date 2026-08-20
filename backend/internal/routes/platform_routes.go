@@ -118,6 +118,7 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		tutorials.POST("/reorder", middleware.RequireSuperadmin(), d.tutorial.Reorder)
 		tutorials.POST("/:id/view", tutorialsView, d.tutorial.RecordView)
 		tutorials.POST("/:id/click", tutorialsView, d.tutorial.RecordClick)
+		tutorials.POST("/:id/shown", tutorialsView, d.tutorial.RecordShow)
 		tutorials.POST("/:id/remind", middleware.RequireSuperadmin(), d.tutorial.RemindPending)
 		tutorials.GET("/:id/metrics", middleware.RequireSuperadmin(), d.tutorial.GetMetrics)
 		tutorials.PUT("/:id", middleware.RequireSuperadmin(), d.tutorial.Update)

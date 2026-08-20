@@ -126,3 +126,41 @@ func TestTargetCriteriaCombineWithAnd(t *testing.T) {
 		}
 	}
 }
+
+func TestAudiencesForUser(t *testing.T) {
+	has := func(list []string, want string) bool {
+		for _, item := range list {
+			if item == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	empresa := AudiencesForUser(string(UserTypeEmployer), false)
+	if !has(empresa, TutorialAudienceAll) || !has(empresa, TutorialAudienceEmployer) {
+		t.Error("una empresa debería alcanzar las audiencias 'all' y 'empleador'")
+	}
+	if has(empresa, TutorialAudienceProfessional) || has(empresa, TutorialAudienceManager) {
+		t.Error("una empresa no debería ver lo de profesionales ni lo de managers")
+	}
+
+	profesional := AudiencesForUser(string(UserTypeProfessional), false)
+	if !has(profesional, TutorialAudienceProfessional) {
+		t.Error("un profesional debería alcanzar su audiencia")
+	}
+	if has(profesional, TutorialAudienceManager) {
+		t.Error("un profesional sin equipo no debería ver lo de managers")
+	}
+
+	// El manager es un profesional con equipo: ve lo suyo Y lo de profesionales.
+	manager := AudiencesForUser(string(UserTypeProfessional), true)
+	if !has(manager, TutorialAudienceManager) || !has(manager, TutorialAudienceProfessional) {
+		t.Errorf("un manager debería alcanzar ambas audiencias: %v", manager)
+	}
+
+	// Sin filtro para el superadmin: ve todas.
+	if AudiencesForUser(string(UserTypeSuperadmin), false) != nil {
+		t.Error("el superadmin no debería llevar filtro de audiencia")
+	}
+}

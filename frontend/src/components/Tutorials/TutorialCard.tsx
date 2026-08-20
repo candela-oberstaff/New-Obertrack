@@ -181,6 +181,9 @@ export function TutorialCard({ tutorial, isAdmin, isViewed, sortable, onOpen, on
         {isAdmin && tutorial.audience === 'profesional' && (
           <span className={`${styles['tutorial-card-badge']} ${styles['audience-profesional']}`}>Profesionales</span>
         )}
+        {isAdmin && tutorial.audience === 'manager' && (
+          <span className={`${styles['tutorial-card-badge']} ${styles['audience-manager']}`}>Managers</span>
+        )}
       </div>
     </article>
   )

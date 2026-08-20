@@ -24,6 +24,7 @@ const AUDIENCE_LABELS: Record<string, string> = {
   all: 'Todos',
   empleador: 'Empresas',
   profesional: 'Profesionales',
+  manager: 'Managers',
 }
 
 function isAnnouncementOpen(tutorial: Tutorial): boolean {

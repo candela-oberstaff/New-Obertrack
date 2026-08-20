@@ -167,6 +167,9 @@ export function TargetPicker({ audience, value, onChange }: TargetPickerProps) {
             )}
           </div>
 
+          {/* Con la audiencia puesta en Managers este filtro ya está aplicado:
+              mostrarlo sería ofrecer dos veces la misma decisión. */}
+          {audience !== 'manager' && (
           <label className={styles['managers']}>
             <input
               type="checkbox"
@@ -182,6 +185,7 @@ export function TargetPicker({ audience, value, onChange }: TargetPickerProps) {
               <small>Managers y supervisores. Las cuentas de empresa no llevan esta marca.</small>
             </span>
           </label>
+          )}
 
           {chips.length > 0 && (
             <div className={styles['chips']}>

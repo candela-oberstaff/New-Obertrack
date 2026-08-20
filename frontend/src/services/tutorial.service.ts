@@ -47,6 +47,11 @@ export const tutorialService = {
     await api.post(`/tutorials/${id}/view`, { source, acknowledged })
   },
 
+  /** Anota que el aviso a pantalla completa se mostró una vez más. */
+  recordShow: async (id: number) => {
+    await api.post(`/tutorials/${id}/shown`, {})
+  },
+
   /** Anota que se pulsó el botón de acción de la novedad. */
   recordClick: async (id: number) => {
     await api.post(`/tutorials/${id}/click`, {})

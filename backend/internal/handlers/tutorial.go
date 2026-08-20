@@ -35,6 +35,8 @@ type CreateTutorialRequest struct {
 	// AnnounceDays son los días que el aviso emergente insiste con la novedad.
 	// Ausente = el default del servicio; 0 = solo notificación, sin emergente.
 	AnnounceDays *int `json:"announce_days"`
+	// AnnounceMaxShows limita cuantas veces aparece el aviso. 0 = sin limite.
+	AnnounceMaxShows *int `json:"announce_max_shows"`
 	// Target acota el publico por encima del tipo de cuenta. Ausente = sin acotar.
 	Target *models.TutorialTarget `json:"target"`
 	// Boton de accion opcional.
@@ -48,25 +50,26 @@ type CreateTutorialRequest struct {
 }
 
 type UpdateTutorialRequest struct {
-	Title          *string                `json:"title"`
-	Description    *string                `json:"description"`
-	ContentType    *string                `json:"content_type"`
-	GoogleDriveURL *string                `json:"google_drive_url"`
-	ImageURL       *string                `json:"image_url"`
-	Body           *string                `json:"body"`
-	IconName       *string                `json:"icon_name"`
-	Category       *string                `json:"category"`
-	Audience       *string                `json:"audience"`
-	DurationMin    *int                   `json:"duration_min"`
-	OrderIndex     *int                   `json:"order_index"`
-	AnnounceDays   *int                   `json:"announce_days"`
-	Target         *models.TutorialTarget `json:"target"`
-	CTALabel       *string                `json:"cta_label"`
-	CTAURL         *string                `json:"cta_url"`
-	PublishAt      *time.Time             `json:"publish_at"`
-	ExpiresAt      *time.Time             `json:"expires_at"`
-	RequireAck     *bool                  `json:"require_ack"`
-	IsActive       *bool                  `json:"is_active"`
+	Title            *string                `json:"title"`
+	Description      *string                `json:"description"`
+	ContentType      *string                `json:"content_type"`
+	GoogleDriveURL   *string                `json:"google_drive_url"`
+	ImageURL         *string                `json:"image_url"`
+	Body             *string                `json:"body"`
+	IconName         *string                `json:"icon_name"`
+	Category         *string                `json:"category"`
+	Audience         *string                `json:"audience"`
+	DurationMin      *int                   `json:"duration_min"`
+	OrderIndex       *int                   `json:"order_index"`
+	AnnounceDays     *int                   `json:"announce_days"`
+	AnnounceMaxShows *int                   `json:"announce_max_shows"`
+	Target           *models.TutorialTarget `json:"target"`
+	CTALabel         *string                `json:"cta_label"`
+	CTAURL           *string                `json:"cta_url"`
+	PublishAt        *time.Time             `json:"publish_at"`
+	ExpiresAt        *time.Time             `json:"expires_at"`
+	RequireAck       *bool                  `json:"require_ack"`
+	IsActive         *bool                  `json:"is_active"`
 }
 
 type ReorderTutorialsRequest struct {
@@ -76,17 +79,18 @@ type ReorderTutorialsRequest struct {
 // audienceForRequest maps the authenticated user's type to the tutorial audience
 // they're allowed to see. Empty string means no filter: superadmins and platform
 // staff (customer_success) see tutorials for every audience.
-func audienceForRequest(c *gin.Context) string {
+// audienceForRequest traduce quién pide a qué audiencias le alcanzan. Vacío =
+// sin filtro: superadmin y personal de plataforma ven todas. Un manager recibe
+// dos audiencias, la de profesional y la suya, porque el rol de manager va
+// dentro de los profesionales y no en lugar de ellos.
+func audienceForRequest(c *gin.Context) []string {
 	if middleware.IsSuperadmin(c) {
-		return ""
+		return nil
 	}
-	switch middleware.GetUserRole(c) {
-	case string(models.UserTypeEmployer):
-		return models.TutorialAudienceEmployer
-	case string(models.UserTypeProfessional):
-		return models.TutorialAudienceProfessional
-	}
-	return ""
+	return models.AudiencesForUser(
+		middleware.GetUserRole(c),
+		middleware.IsManager(c) || middleware.IsSupervisor(c),
+	)
 }
 
 func (h *TutorialHandler) GetAll(c *gin.Context) {
@@ -114,10 +118,18 @@ func (h *TutorialHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	if audience := audienceForRequest(c); audience != "" &&
-		tutorial.Audience != models.TutorialAudienceAll && tutorial.Audience != audience {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Tutorial no encontrado"})
-		return
+	if audiences := audienceForRequest(c); len(audiences) > 0 {
+		allowed := false
+		for _, audience := range audiences {
+			if tutorial.Audience == audience {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Tutorial no encontrado"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, tutorial)
@@ -139,27 +151,32 @@ func (h *TutorialHandler) Create(c *gin.Context) {
 	if req.AnnounceDays != nil {
 		announceDays = *req.AnnounceDays
 	}
+	announceMaxShows := 0 // Sin tope, que es como se comportaba siempre.
+	if req.AnnounceMaxShows != nil {
+		announceMaxShows = *req.AnnounceMaxShows
+	}
 
 	tutorial, err := h.service.Create(userID, service.TutorialInput{
-		Title:        req.Title,
-		Description:  req.Description,
-		ContentType:  req.ContentType,
-		VideoURL:     req.GoogleDriveURL,
-		ImageURL:     req.ImageURL,
-		Body:         req.Body,
-		IconName:     req.IconName,
-		Category:     req.Category,
-		Audience:     req.Audience,
-		DurationMin:  req.DurationMin,
-		OrderIndex:   req.OrderIndex,
-		AnnounceDays: announceDays,
-		IsActive:     isActive,
-		Target:       targetOrEmpty(req.Target),
-		CTALabel:     req.CTALabel,
-		CTAURL:       req.CTAURL,
-		PublishAt:    req.PublishAt,
-		ExpiresAt:    req.ExpiresAt,
-		RequireAck:   req.RequireAck,
+		Title:            req.Title,
+		Description:      req.Description,
+		ContentType:      req.ContentType,
+		VideoURL:         req.GoogleDriveURL,
+		ImageURL:         req.ImageURL,
+		Body:             req.Body,
+		IconName:         req.IconName,
+		Category:         req.Category,
+		Audience:         req.Audience,
+		DurationMin:      req.DurationMin,
+		OrderIndex:       req.OrderIndex,
+		AnnounceDays:     announceDays,
+		AnnounceMaxShows: announceMaxShows,
+		IsActive:         isActive,
+		Target:           targetOrEmpty(req.Target),
+		CTALabel:         req.CTALabel,
+		CTAURL:           req.CTAURL,
+		PublishAt:        req.PublishAt,
+		ExpiresAt:        req.ExpiresAt,
+		RequireAck:       req.RequireAck,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -218,6 +235,9 @@ func (h *TutorialHandler) Update(c *gin.Context) {
 	}
 	if req.AnnounceDays != nil {
 		updates["announce_days"] = *req.AnnounceDays
+	}
+	if req.AnnounceMaxShows != nil {
+		updates["announce_max_shows"] = *req.AnnounceMaxShows
 	}
 	if req.Target != nil {
 		// Viaja como struct: el servicio decide como se guarda.
@@ -370,6 +390,22 @@ func (h *TutorialHandler) GetAudienceOptions(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, options)
+}
+
+// RecordShow anota que el aviso a pantalla completa se mostró una vez más.
+func (h *TutorialHandler) RecordShow(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tutorial ID"})
+		return
+	}
+
+	if err := h.service.RecordShow(uint(id), middleware.GetUserID(c)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Aparición registrada"})
 }
 
 // RecordClick anota que la persona pulsó el botón de acción de la novedad.

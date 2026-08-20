@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { tutorialService } from '../../services/api'
@@ -73,6 +73,15 @@ export function NovedadAnnouncer() {
     window.addEventListener('novedad-published', onPublished)
     return () => window.removeEventListener('novedad-published', onPublished)
   }, [qc])
+
+  // Cada aparición se cuenta una sola vez por novedad y sesión. Es lo que
+  // sostiene el tope de veces: sin esto, recargar la página lo esquivaría.
+  const reported = useRef<Set<number>>(new Set())
+  useEffect(() => {
+    if (!current || reported.current.has(current.id)) return
+    reported.current.add(current.id)
+    void tutorialService.recordShow(current.id).catch(() => {})
+  }, [current])
 
   if (!current) return null
 

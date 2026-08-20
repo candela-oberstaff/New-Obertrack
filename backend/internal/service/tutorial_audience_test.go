@@ -145,3 +145,39 @@ func TestPreviewAudienceGroupsAndCountry(t *testing.T) {
 		t.Errorf("alcance por grupo y país = %d, esperaba 1", preview.Reach)
 	}
 }
+
+func TestPreviewAudienceManagers(t *testing.T) {
+	svc := audienceFixture()
+
+	// Ana (manager) y Sara (supervisora). El resto de profesionales y las dos
+	// empresas quedan fuera: el rol vive dentro de los profesionales.
+	preview, err := svc.PreviewAudience(models.TutorialAudienceManager, models.TutorialTarget{})
+	if err != nil {
+		t.Fatalf("previsualización falló: %v", err)
+	}
+	if preview.Reach != 2 {
+		t.Errorf("alcance de managers = %d, esperaba 2", preview.Reach)
+	}
+	for _, row := range preview.ByAudience {
+		if row.UserType == string(models.UserTypeEmployer) {
+			t.Error("las empresas no entran en la audiencia de managers")
+		}
+	}
+}
+
+func TestNormalizeAnnounceShows(t *testing.T) {
+	cases := map[int]int{
+		// El 0 es una elección válida: sin tope de veces.
+		0:                    0,
+		1:                    1,
+		5:                    5,
+		maxAnnounceShows:     maxAnnounceShows,
+		maxAnnounceShows + 1: maxAnnounceShows,
+		-3:                   0,
+	}
+	for in, want := range cases {
+		if got := normalizeAnnounceShows(in); got != want {
+			t.Errorf("normalizeAnnounceShows(%d) = %d, esperaba %d", in, got, want)
+		}
+	}
+}

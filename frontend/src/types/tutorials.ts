@@ -1,7 +1,7 @@
 import type { User } from './tasks'
 
 /** Audiencia del tutorial: 'all' (todos), 'empleador' (empresas) o 'profesional'. */
-export type TutorialAudience = 'all' | 'empleador' | 'profesional'
+export type TutorialAudience = 'all' | 'empleador' | 'profesional' | 'manager'
 
 /**
  * Qué lleva dentro la novedad: un video (Drive/YouTube), una imagen subida o
@@ -86,6 +86,8 @@ export interface Tutorial {
   announced_at?: string | null
   /** Días que el aviso emergente insiste con la novedad. 0 = sin emergente. */
   announce_days: number
+  /** Veces que puede aparecer el aviso a una misma persona. 0 = sin límite. */
+  announce_max_shows: number
   created_by: number
   creator?: User
   created_at: string
@@ -106,6 +108,8 @@ export interface CreateTutorialInput {
   duration_min: number
   order_index: number
   announce_days: number
+  /** Veces que puede aparecer el aviso a una misma persona. 0 = sin límite. */
+  announce_max_shows: number
   cta_label: string
   cta_url: string
   publish_at?: string | null

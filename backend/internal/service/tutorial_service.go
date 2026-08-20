@@ -40,13 +40,15 @@ type TutorialInput struct {
 	DurationMin  int
 	OrderIndex   int
 	AnnounceDays int
-	IsActive     bool
+	// AnnounceMaxShows limita cuantas veces aparece el aviso. 0 = sin limite.
+	AnnounceMaxShows int
+	IsActive         bool
 	// Target acota el público por encima del tipo de cuenta.
 	Target models.TutorialTarget
 }
 
 type TutorialService interface {
-	GetAll(onlyActive bool, audience string) ([]models.Tutorial, error)
+	GetAll(onlyActive bool, audiences []string) ([]models.Tutorial, error)
 	GetByID(id uint) (*models.Tutorial, error)
 	Create(userID uint, in TutorialInput) (*models.Tutorial, error)
 	Update(actorID, id uint, updates map[string]interface{}) (*models.Tutorial, error)
@@ -55,6 +57,8 @@ type TutorialService interface {
 	RecordView(tutorialID, userID uint, source string, acknowledged bool) error
 	// RecordClick anota que alguien pulso el boton de accion de la novedad.
 	RecordClick(tutorialID, userID uint) error
+	// RecordShow anota que el aviso se le mostro una vez mas a esa persona.
+	RecordShow(tutorialID, userID uint) error
 	// RemindPending vuelve a avisar SOLO a quienes no la han visto y reabre la
 	// ventana del aviso. Devuelve a cuanta gente se le recordo.
 	RemindPending(actorID, tutorialID uint) (int, error)
@@ -63,7 +67,7 @@ type TutorialService interface {
 	GetUserViewedIDs(userID uint) ([]uint, error)
 	// GetPendingAnnouncements son las novedades que este usuario todavía no ha
 	// visto y que emergen al iniciar sesión.
-	GetPendingAnnouncements(userID uint, audience string) ([]models.Tutorial, error)
+	GetPendingAnnouncements(userID uint, audiences []string) ([]models.Tutorial, error)
 	// GetMetrics es el desempeño de una novedad: a cuántos llegó, cuántos la
 	// vieron y por dónde.
 	GetMetrics(tutorialID uint) (*models.TutorialMetrics, error)
@@ -113,6 +117,22 @@ func encodeTarget(target models.TutorialTarget) string {
 
 // normalizeAnnounceDays acota la ventana del aviso. El 0 es intencional y se
 // respeta: significa "avisa por la campanita, pero no interrumpas a nadie".
+// Tope de apariciones del aviso. Más de diez veces delante de la misma persona
+// deja de ser un aviso y pasa a ser un castigo.
+const maxAnnounceShows = 10
+
+// normalizeAnnounceShows acota el número de apariciones. El 0 se respeta:
+// significa "sin límite, manda solo el plazo en días".
+func normalizeAnnounceShows(shows int) int {
+	if shows < 0 {
+		return 0
+	}
+	if shows > maxAnnounceShows {
+		return maxAnnounceShows
+	}
+	return shows
+}
+
 func normalizeAnnounceDays(days int) int {
 	if days < 0 {
 		return defaultAnnounceDays
@@ -133,12 +153,20 @@ func announceRecipientTypes(audience string) []models.UserType {
 	switch audience {
 	case models.TutorialAudienceEmployer:
 		types = append(types, models.UserTypeEmployer)
-	case models.TutorialAudienceProfessional:
+	case models.TutorialAudienceProfessional, models.TutorialAudienceManager:
+		// Los managers son profesionales; el filtro de "con equipo a cargo" lo
+		// aplica resolveAudience, que es quien tiene las fichas delante.
 		types = append(types, models.UserTypeProfessional)
 	default:
 		types = append(types, models.UserTypeEmployer, models.UserTypeProfessional)
 	}
 	return types
+}
+
+// hasTeam responde si esa persona tiene gente a cargo. El supervisor cuenta
+// como manager (todo supervisor lo es).
+func hasTeam(user *models.User) bool {
+	return user != nil && (user.IsManager || user.IsSupervisor)
 }
 
 // announcementSummary es el cuerpo del aviso: la descripción de la novedad,
@@ -169,6 +197,21 @@ func (s *tutorialService) resolveAudience(audience string, target models.Tutoria
 	if err != nil {
 		return nil, err
 	}
+
+	// Audiencia "manager": dentro de los profesionales, solo quienes tienen
+	// equipo a cargo. El superadmin sigue recibiendo el aviso, como en el
+	// resto de audiencias.
+	if audience == models.TutorialAudienceManager {
+		managers := make([]models.User, 0, len(candidates))
+		for i := range candidates {
+			user := candidates[i]
+			if user.UserType == models.UserTypeSuperadmin || hasTeam(&user) {
+				managers = append(managers, user)
+			}
+		}
+		candidates = managers
+	}
+
 	if target.IsEmpty() {
 		return candidates, nil
 	}
@@ -205,7 +248,7 @@ func (s *tutorialService) announce(tutorial *models.Tutorial, actorID uint) {
 	if err != nil {
 		return
 	}
-	title := "Nueva novedad: " + tutorial.Title
+	title := "Novedades: " + tutorial.Title
 	message := announcementSummary(tutorial.Description)
 	data := map[string]interface{}{"link": "/novedades", "tutorial_id": tutorial.ID}
 	for _, user := range recipients {
@@ -341,8 +384,8 @@ func normalizeAudience(audience string) (string, error) {
 	return audience, nil
 }
 
-func (s *tutorialService) GetAll(onlyActive bool, audience string) ([]models.Tutorial, error) {
-	return s.repo.FindAll(onlyActive, audience)
+func (s *tutorialService) GetAll(onlyActive bool, audiences []string) ([]models.Tutorial, error) {
+	return s.repo.FindAll(onlyActive, audiences)
 }
 
 func (s *tutorialService) GetByID(id uint) (*models.Tutorial, error) {
@@ -381,27 +424,28 @@ func (s *tutorialService) Create(userID uint, in TutorialInput) (*models.Tutoria
 	}
 
 	tutorial := &models.Tutorial{
-		Title:          utils.SanitizeHTML(in.Title),
-		Description:    utils.SanitizeHTML(in.Description),
-		ContentType:    contentType,
-		GoogleDriveURL: strings.TrimSpace(in.VideoURL),
-		ImageURL:       strings.TrimSpace(in.ImageURL),
-		Body:           utils.SanitizeHTML(in.Body),
-		IconName:       iconName,
-		Category:       utils.SanitizeHTML(category),
-		Audience:       audience,
-		DurationMin:    in.DurationMin,
-		OrderIndex:     in.OrderIndex,
-		AnnounceDays:   normalizeAnnounceDays(in.AnnounceDays),
-		TargetSpec:     encodeTarget(in.Target),
-		Target:         in.Target,
-		CTALabel:       utils.SanitizeHTML(ctaLabel),
-		CTAURL:         ctaURL,
-		PublishAt:      in.PublishAt,
-		ExpiresAt:      in.ExpiresAt,
-		RequireAck:     in.RequireAck,
-		IsActive:       in.IsActive,
-		CreatedBy:      userID,
+		Title:            utils.SanitizeHTML(in.Title),
+		Description:      utils.SanitizeHTML(in.Description),
+		ContentType:      contentType,
+		GoogleDriveURL:   strings.TrimSpace(in.VideoURL),
+		ImageURL:         strings.TrimSpace(in.ImageURL),
+		Body:             utils.SanitizeHTML(in.Body),
+		IconName:         iconName,
+		Category:         utils.SanitizeHTML(category),
+		Audience:         audience,
+		DurationMin:      in.DurationMin,
+		OrderIndex:       in.OrderIndex,
+		AnnounceDays:     normalizeAnnounceDays(in.AnnounceDays),
+		AnnounceMaxShows: normalizeAnnounceShows(in.AnnounceMaxShows),
+		TargetSpec:       encodeTarget(in.Target),
+		Target:           in.Target,
+		CTALabel:         utils.SanitizeHTML(ctaLabel),
+		CTAURL:           ctaURL,
+		PublishAt:        in.PublishAt,
+		ExpiresAt:        in.ExpiresAt,
+		RequireAck:       in.RequireAck,
+		IsActive:         in.IsActive,
+		CreatedBy:        userID,
 	}
 	// Publicar es anunciar: la novedad nace con su marca de anuncio y desde ese
 	// momento emerge al iniciar sesión. Un borrador (is_active=false) no se
@@ -517,6 +561,9 @@ func (s *tutorialService) Update(actorID, id uint, updates map[string]interface{
 	if days, ok := updates["announce_days"].(int); ok {
 		updates["announce_days"] = normalizeAnnounceDays(days)
 	}
+	if shows, ok := updates["announce_max_shows"].(int); ok {
+		updates["announce_max_shows"] = normalizeAnnounceShows(shows)
+	}
 
 	if len(updates) == 0 {
 		return tutorial, nil
@@ -566,6 +613,13 @@ func (s *tutorialService) RecordView(tutorialID, userID uint, source string, ack
 		source = models.TutorialViewFromSection
 	}
 	return s.repo.RecordView(tutorialID, userID, source, acknowledged)
+}
+
+func (s *tutorialService) RecordShow(tutorialID, userID uint) error {
+	if tutorialID == 0 || userID == 0 {
+		return errors.New("IDs inválidos")
+	}
+	return s.repo.RecordShow(tutorialID, userID)
 }
 
 func (s *tutorialService) RecordClick(tutorialID, userID uint) error {
@@ -820,11 +874,11 @@ func (s *tutorialService) GetUserViewedIDs(userID uint) ([]uint, error) {
 	return s.repo.GetUserViewedIDs(userID)
 }
 
-func (s *tutorialService) GetPendingAnnouncements(userID uint, audience string) ([]models.Tutorial, error) {
+func (s *tutorialService) GetPendingAnnouncements(userID uint, audiences []string) ([]models.Tutorial, error) {
 	if userID == 0 {
 		return []models.Tutorial{}, nil
 	}
-	pending, err := s.repo.FindPendingAnnouncements(userID, audience, time.Now(), maxPendingAnnouncements)
+	pending, err := s.repo.FindPendingAnnouncements(userID, audiences, time.Now(), maxPendingAnnouncements)
 	if err != nil {
 		return nil, err
 	}

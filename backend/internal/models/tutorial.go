@@ -29,12 +29,36 @@ const (
 	TutorialAudienceAll          = "all"         // Visible para empresas y profesionales
 	TutorialAudienceEmployer     = "empleador"   // Solo usuarios tipo empresa
 	TutorialAudienceProfessional = "profesional" // Solo usuarios tipo profesional
+	// TutorialAudienceManager son los profesionales con equipo a cargo
+	// (managers y supervisores). Es un rol dentro de los profesionales, no un
+	// tipo de cuenta aparte: por eso quien es manager ve TAMBIÉN las novedades
+	// dirigidas a profesionales.
+	TutorialAudienceManager = "manager"
 )
 
 func IsValidTutorialAudience(audience string) bool {
 	return audience == TutorialAudienceAll ||
 		audience == TutorialAudienceEmployer ||
-		audience == TutorialAudienceProfessional
+		audience == TutorialAudienceProfessional ||
+		audience == TutorialAudienceManager
+}
+
+// AudiencesForUser son las audiencias que alcanzan a una persona. Se usa para
+// filtrar tanto el listado como el aviso emergente: un manager entra por su
+// audiencia de profesional y además por la de manager.
+func AudiencesForUser(userType string, hasTeam bool) []string {
+	switch userType {
+	case string(UserTypeEmployer):
+		return []string{TutorialAudienceAll, TutorialAudienceEmployer}
+	case string(UserTypeProfessional):
+		audiences := []string{TutorialAudienceAll, TutorialAudienceProfessional}
+		if hasTeam {
+			audiences = append(audiences, TutorialAudienceManager)
+		}
+		return audiences
+	}
+	// Sin filtro: superadmin y personal de plataforma ven todas.
+	return nil
 }
 
 type Tutorial struct {
@@ -91,12 +115,16 @@ type Tutorial struct {
 	RemindedAt *time.Time `json:"reminded_at,omitempty"`
 	// RequireAck exige confirmar la lectura en vez de bastar con cerrar. Para
 	// lo que tiene consecuencias: cambios de pago, politicas, obligaciones.
-	RequireAck bool           `gorm:"not null;default:false" json:"require_ack"`
-	CreatedBy  uint           `gorm:"not null;index" json:"created_by"`
-	Creator    User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"`
-	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+	RequireAck bool `gorm:"not null;default:false" json:"require_ack"`
+	// AnnounceMaxShows es cuántas veces se le puede mostrar el aviso a una
+	// misma persona. 0 = sin límite (manda solo el plazo en días). Es el freno
+	// para quien nunca cierra el aviso y lo esquiva recargando.
+	AnnounceMaxShows int            `gorm:"not null;default:0" json:"announce_max_shows"`
+	CreatedBy        uint           `gorm:"not null;index" json:"created_by"`
+	Creator          User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	DeletedAt        gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (Tutorial) TableName() string {
@@ -212,6 +240,21 @@ type TutorialClick struct {
 
 func (TutorialClick) TableName() string {
 	return "tutorial_clicks"
+}
+
+// TutorialShow cuenta cuántas veces se le ha mostrado el aviso a una persona.
+// Es distinto de la vista: la vista se registra al cerrarlo, y esto se registra
+// cada vez que aparece, lo haya cerrado o no.
+type TutorialShow struct {
+	TutorialID  uint      `gorm:"primaryKey;autoIncrement:false" json:"tutorial_id"`
+	UserID      uint      `gorm:"primaryKey;autoIncrement:false" json:"user_id"`
+	ShownCount  int       `gorm:"not null;default:0" json:"shown_count"`
+	LastShownAt time.Time `json:"last_shown_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (TutorialShow) TableName() string {
+	return "tutorial_shows"
 }
 
 func (TutorialView) TableName() string {

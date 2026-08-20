@@ -345,6 +345,13 @@
   background: #d1fae5;
 }
 
+/* Managers: un tono propio, para no confundirlos con los profesionales a los
+   que además alcanzan. */
+.tutorial-card-badge.audience-manager {
+  color: #b45309;
+  background: #fef3c7;
+}
+
 .tutorial-modal-overlay {
   position: fixed;
   inset: 0;

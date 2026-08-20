@@ -103,22 +103,49 @@ func TestRequirePermission(t *testing.T) {
 }
 
 func TestAudienceForRequest(t *testing.T) {
+	// Devuelve TODAS las audiencias que alcanzan a quien pide. Nil = sin
+	// filtro, que es lo que ven el superadmin y el personal de plataforma.
 	cases := []struct {
-		role    string
-		isSuper bool
-		want    string
+		name      string
+		role      string
+		isSuper   bool
+		isManager bool
+		want      []string
 	}{
-		{"superadmin", true, ""}, // ve todas las audiencias
-		{string(models.UserTypeEmployer), false, models.TutorialAudienceEmployer},
-		{string(models.UserTypeProfessional), false, models.TutorialAudienceProfessional},
-		{string(models.UserTypeCustomerSuccess), false, ""}, // soporte ve todo
-		{string(models.UserTypeITAnalyst), false, ""},
+		{"superadmin ve todas", "superadmin", true, false, nil},
+		{"soporte ve todas", string(models.UserTypeCustomerSuccess), false, false, nil},
+		{"IT ve todas", string(models.UserTypeITAnalyst), false, false, nil},
+		{
+			"empresa",
+			string(models.UserTypeEmployer), false, false,
+			[]string{models.TutorialAudienceAll, models.TutorialAudienceEmployer},
+		},
+		{
+			"profesional sin equipo",
+			string(models.UserTypeProfessional), false, false,
+			[]string{models.TutorialAudienceAll, models.TutorialAudienceProfessional},
+		},
+		{
+			// El manager es profesional y además manager: le llegan las dos.
+			"profesional con equipo",
+			string(models.UserTypeProfessional), false, true,
+			[]string{models.TutorialAudienceAll, models.TutorialAudienceProfessional, models.TutorialAudienceManager},
+		},
 	}
 	for _, tc := range cases {
-		c, _ := permCtx(http.MethodGet, tc.role, tc.isSuper)
-		if got := audienceForRequest(c); got != tc.want {
-			t.Errorf("audienceForRequest(role=%s, super=%v) = %q, esperaba %q", tc.role, tc.isSuper, got, tc.want)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := permCtx(http.MethodGet, tc.role, tc.isSuper)
+			c.Set("is_manager", tc.isManager)
+			got := audienceForRequest(c)
+			if len(got) != len(tc.want) {
+				t.Fatalf("audienceForRequest = %v, esperaba %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("audienceForRequest = %v, esperaba %v", got, tc.want)
+				}
+			}
+		})
 	}
 }
 

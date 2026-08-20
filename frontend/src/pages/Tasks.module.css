@@ -1470,10 +1470,30 @@
 .form-row {
   display: flex;
   gap: 12px;
+  /* El panel esconde el desbordamiento horizontal, así que una fila que no
+     pueda encoger se recorta por la derecha en vez de avisar. */
+  min-width: 0;
 }
 
 .form-row .form-group {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* El DatePicker trae su propia caja (borde, esquinas y el botón del
+   calendario). La regla genérica de arriba, `.form-group input`, le ganaba por
+   especificidad y le metía un borde y 12px de relleno de más: eso ensanchaba
+   los dos campos de fecha hasta pasarse del ancho del panel, y el botón del
+   calendario quedaba cortado. Aquí se le devuelve lo suyo. */
+.form-group :global(.ui-datepicker__input) {
+  padding: 10px 0 10px 14px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.form-group :global(.ui-datepicker__input:focus) {
+  outline: none;
 }
 
 .form-actions {

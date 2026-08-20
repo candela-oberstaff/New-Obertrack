@@ -59,7 +59,7 @@ export function NovedadOverlay({
     <>
       <div className={styles['badge-row']}>
         <span className={styles['badge']}>
-          <Sparkles size={13} /> {preview ? 'Previsualización' : 'Nueva novedad'}
+          <Sparkles size={13} /> {preview ? 'Previsualización' : 'Novedades'}
         </span>
         {total > 1 && <span className={styles['counter']}>{position} de {total}</span>}
         {mustAcknowledge && (

@@ -14,7 +14,7 @@ import (
 )
 
 type TutorialRepository interface {
-	FindAll(onlyActive bool, audience string) ([]models.Tutorial, error)
+	FindAll(onlyActive bool, audiences []string) ([]models.Tutorial, error)
 	GetByID(id uint) (*models.Tutorial, error)
 	Create(tutorial *models.Tutorial) error
 	Update(tutorial *models.Tutorial, updates map[string]interface{}) error
@@ -23,6 +23,8 @@ type TutorialRepository interface {
 	RecordView(tutorialID, userID uint, source string, acknowledged bool) error
 	// RecordClick deja constancia de que alguien pulso el boton de accion.
 	RecordClick(tutorialID, userID uint) error
+	// RecordShow suma una aparicion del aviso para esa persona.
+	RecordShow(tutorialID, userID uint) error
 	// ClickersFor son los usuarios que pulsaron el boton de una novedad.
 	ClickersFor(tutorialID uint) (map[uint]bool, error)
 	// ListDuePublications son las novedades programadas cuya hora ya llego.
@@ -35,7 +37,7 @@ type TutorialRepository interface {
 	GetUserViewedIDs(userID uint) ([]uint, error)
 	// FindPendingAnnouncements lista las novedades ANUNCIADAS que este usuario
 	// todavía no ha visto: es lo que emerge al iniciar sesión.
-	FindPendingAnnouncements(userID uint, audience string, now time.Time, limit int) ([]models.Tutorial, error)
+	FindPendingAnnouncements(userID uint, audiences []string, now time.Time, limit int) ([]models.Tutorial, error)
 	// MarkAnnounced sella el momento del anuncio de una novedad.
 	MarkAnnounced(id uint, at time.Time) error
 	// ViewsFor devuelve las vistas crudas de una novedad. Las métricas se
@@ -57,16 +59,17 @@ func NewTutorialRepository(db *gorm.DB) TutorialRepository {
 	return &tutorialRepository{db: db}
 }
 
-// FindAll lists tutorials. audience == "" means no audience filter (platform staff);
-// otherwise only tutorials targeted at that audience or at everyone are returned.
-func (r *tutorialRepository) FindAll(onlyActive bool, audience string) ([]models.Tutorial, error) {
+// FindAll lista las novedades. audiences vacío = sin filtro (superadmin y
+// personal de plataforma); si no, solo las dirigidas a alguna de esas
+// audiencias. Un manager llega con dos: la de profesional y la de manager.
+func (r *tutorialRepository) FindAll(onlyActive bool, audiences []string) ([]models.Tutorial, error) {
 	var tutorials []models.Tutorial
 	query := r.db.Model(&models.Tutorial{}).Preload("Creator")
 	if onlyActive {
 		query = query.Where("is_active = ?", true)
 	}
-	if audience != "" {
-		query = query.Where("audience IN ?", []string{models.TutorialAudienceAll, audience})
+	if len(audiences) > 0 {
+		query = query.Where("audience IN ?", audiences)
 	}
 	if err := query.Order("order_index ASC, created_at DESC").Find(&tutorials).Error; err != nil {
 		return nil, err
@@ -146,6 +149,27 @@ func (r *tutorialRepository) RecordClick(tutorialID, userID uint) error {
 	}).Create(&click).Error
 }
 
+// RecordShow suma una aparición. Se cuenta por persona y novedad: interesa
+// cuántas veces se le ha puesto delante a alguien, no el total del sistema.
+func (r *tutorialRepository) RecordShow(tutorialID, userID uint) error {
+	now := time.Now()
+	show := models.TutorialShow{
+		TutorialID:  tutorialID,
+		UserID:      userID,
+		ShownCount:  1,
+		LastShownAt: now,
+		UpdatedAt:   now,
+	}
+	return r.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "tutorial_id"}, {Name: "user_id"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"shown_count":   gorm.Expr("tutorial_shows.shown_count + 1"),
+			"last_shown_at": now,
+			"updated_at":    now,
+		}),
+	}).Create(&show).Error
+}
+
 func (r *tutorialRepository) ClickersFor(tutorialID uint) (map[uint]bool, error) {
 	var ids []uint
 	if err := r.db.Model(&models.TutorialClick{}).
@@ -223,15 +247,21 @@ func (r *tutorialRepository) UsersInGroups(groupIDs []uint) (map[uint]bool, erro
 //
 // El publico objetivo NO se filtra aqui (vive en JSON): lo aplica el servicio
 // sobre estas pocas filas, con la misma regla que uso el reparto.
-func (r *tutorialRepository) FindPendingAnnouncements(userID uint, audience string, now time.Time, limit int) ([]models.Tutorial, error) {
+func (r *tutorialRepository) FindPendingAnnouncements(userID uint, audiences []string, now time.Time, limit int) ([]models.Tutorial, error) {
 	var tutorials []models.Tutorial
 	query := r.db.Model(&models.Tutorial{}).
 		Where("is_active = ?", true).
 		Where("announced_at IS NOT NULL AND announce_days > 0").
 		Where("announced_at + (announce_days * INTERVAL '1 day') > ?", now).
-		Where("NOT EXISTS (SELECT 1 FROM tutorial_views v WHERE v.tutorial_id = tutorials.id AND v.user_id = ?)", userID)
-	if audience != "" {
-		query = query.Where("audience IN ?", []string{models.TutorialAudienceAll, audience})
+		Where("NOT EXISTS (SELECT 1 FROM tutorial_views v WHERE v.tutorial_id = tutorials.id AND v.user_id = ?)", userID).
+		// Tope de apariciones: con announce_max_shows a 0 no se aplica.
+		Where(`announce_max_shows = 0 OR NOT EXISTS (
+			SELECT 1 FROM tutorial_shows s
+			WHERE s.tutorial_id = tutorials.id AND s.user_id = ?
+			  AND s.shown_count >= tutorials.announce_max_shows
+		)`, userID)
+	if len(audiences) > 0 {
+		query = query.Where("audience IN ?", audiences)
 	}
 	if err := query.Order("announced_at DESC").Limit(limit).Find(&tutorials).Error; err != nil {
 		return nil, err

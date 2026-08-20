@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Check, AlertCircle, PlayCircle, HardDrive, Video, Image as ImageIcon, FileText, Upload, Trash2, Users, BellRing, Layers, Eye, MousePointerClick } from 'lucide-react'
+import { Check, AlertCircle, PlayCircle, HardDrive, Video, Image as ImageIcon, FileText, Upload, Trash2, Users, BellRing, Layers, Eye, MousePointerClick, Repeat } from 'lucide-react'
 import { TUTORIAL_ICON_NAMES, TutorialIcon } from '../icons'
 import { parseVideoUrl, getProviderLabel } from '../utils'
 import { useDirtySnapshot } from '../../ui/useCloseGuard'
@@ -53,8 +53,23 @@ const CTA_DESTINATIONS = [
 
 const AUDIENCE_OPTIONS = [
   { value: 'all', label: 'Todos (empresas y profesionales)' },
-  { value: 'empleador', label: 'Solo empresas' },
-  { value: 'profesional', label: 'Solo profesionales' },
+  { value: 'empleador', label: 'Empresas' },
+  { value: 'profesional', label: 'Profesionales' },
+  { value: 'manager', label: 'Managers (con equipo a cargo)' },
+]
+
+/**
+ * Veces que puede aparecer el aviso a una misma persona. Es un tope aparte del
+ * plazo en días: uno corta por tiempo y el otro por insistencia. Manda el que
+ * se cumpla primero.
+ */
+const ANNOUNCE_SHOWS_OPTIONS = [
+  { value: 0, label: 'Sin límite de veces' },
+  { value: 1, label: '1 vez' },
+  { value: 2, label: '2 veces' },
+  { value: 3, label: '3 veces' },
+  { value: 5, label: '5 veces' },
+  { value: 10, label: '10 veces' },
 ]
 
 /** Los tres formatos que puede tener una novedad, en el orden del selector. */
@@ -333,7 +348,7 @@ export function TutorialFormModal({
           />
         </div>
 
-        <div className={field}>
+        <div className={`${field} ${half}`}>
           <label>Aviso al iniciar sesión</label>
           <Select
             options={ANNOUNCE_DAYS_OPTIONS}
@@ -344,9 +359,26 @@ export function TutorialFormModal({
             ariaLabel="Días que el aviso emergente insiste con la novedad"
           />
           <small className={styles['tutorial-form-hint']}>
-            Se muestra a pantalla completa hasta que la persona lo cierra, o hasta cumplirse el plazo.
+            Sale a pantalla completa hasta que la persona lo cierra, o hasta cumplirse el plazo.
           </small>
         </div>
+
+        {formData.announce_days > 0 && (
+          <div className={`${field} ${half}`}>
+            <label>Veces que aparece</label>
+            <Select
+              options={ANNOUNCE_SHOWS_OPTIONS}
+              value={formData.announce_max_shows}
+              onChange={(value) => setFormData({ ...formData, announce_max_shows: Number(value) })}
+              leftIcon={<Repeat size={15} />}
+              fullWidth
+              ariaLabel="Veces que el aviso puede aparecerle a una misma persona"
+            />
+            <small className={styles['tutorial-form-hint']}>
+              Tope por persona. Deja de salir con lo que ocurra primero: el plazo o estas veces.
+            </small>
+          </div>
+        )}
 
         <div className={`${field} ${half}`}>
           <label>Botón de acción</label>

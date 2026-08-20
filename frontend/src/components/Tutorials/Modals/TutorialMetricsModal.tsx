@@ -17,6 +17,7 @@ interface TutorialMetricsModalProps {
 const USER_TYPE_LABELS: Record<string, string> = {
   empleador: 'Empresas',
   profesional: 'Profesionales',
+  manager: 'Managers',
 }
 
 /** Resume el público acotado en una frase legible. */

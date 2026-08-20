@@ -61,10 +61,13 @@ export default function Tutoriales() {
 
   const canReorder = isAdmin && categoryFilter === ALL_CATEGORIES && audienceFilter === ALL_AUDIENCES && !searchQuery.trim()
 
+  // Previsualización por rol: qué vería cada uno. El manager ve lo suyo y
+  // además lo de profesionales, igual que en la aplicación real.
   const audienceTabs = [
-    { value: ALL_AUDIENCES, label: 'Todas las audiencias', count: tutorials.length },
-    { value: 'empleador', label: 'Vista empresas', count: tutorials.filter(t => t.audience === 'all' || t.audience === 'empleador').length },
-    { value: 'profesional', label: 'Vista profesionales', count: tutorials.filter(t => t.audience === 'all' || t.audience === 'profesional').length },
+    { value: ALL_AUDIENCES, label: 'Todos los roles', count: tutorials.length },
+    { value: 'empleador', label: 'Empresa', count: tutorials.filter(t => t.audience === 'all' || t.audience === 'empleador').length },
+    { value: 'profesional', label: 'Profesional', count: tutorials.filter(t => t.audience === 'all' || t.audience === 'profesional').length },
+    { value: 'manager', label: 'Manager', count: tutorials.filter(t => t.audience === 'all' || t.audience === 'profesional' || t.audience === 'manager').length },
   ]
 
   const greeting = (() => {

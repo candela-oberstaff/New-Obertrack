@@ -2058,6 +2058,25 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropColumn(&models.User{}, "is_system")
 			},
 		},
+		{
+			// Tope de veces que aparece el aviso a una misma persona, y la
+			// tabla que lleva la cuenta. 0 = sin tope, que es como se comportó
+			// hasta ahora todo lo publicado.
+			ID: "202608201100_tutorial_announce_max_shows",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding announce_max_shows and tutorial_shows...")
+				if err := tx.AutoMigrate(&models.Tutorial{}); err != nil {
+					return err
+				}
+				return tx.AutoMigrate(&models.TutorialShow{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropTable(&models.TutorialShow{}); err != nil {
+					return err
+				}
+				return tx.Migrator().DropColumn(&models.Tutorial{}, "announce_max_shows")
+			},
+		},
 		// Future migrations go here
 	})
 
