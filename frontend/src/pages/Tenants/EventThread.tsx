@@ -274,18 +274,21 @@ export function EventThread(props: EventThreadProps) {
 
       {open && (
         <div className={styles.threadBody}>
-          {/* Archivos de la nota, no de un comentario. Van etiquetados para que
-              se entienda por qué están sueltos y no dentro de un mensaje. */}
-          {attachments.length > 0 && (
-            <div className={styles.looseFiles}>
-              <span className={styles.looseFilesLabel}>Archivos de esta entrada</span>
-              <div className={styles.attachmentGrid}>
-                {attachments.map(a => (
-                  <AttachmentChip key={`att-${a.id}`} tenantId={tenantId} attachment={a} canEdit={canEdit} onDelete={removeAttachment} />
-                ))}
+          {/* Archivos sueltos de la nota: se muestran con el mismo formato que los comentarios (avatar, autor, fecha y hora) */}
+          {attachments.map(a => (
+            <div key={`att-row-${a.id}`} className={styles.comment}>
+              <Avatar name={a.author || 'Sistema'} size="sm" />
+              <div className={styles.commentMain}>
+                <div className={styles.commentHead}>
+                  <strong>{a.author || 'Sistema'}</strong>
+                  <span>{timeLabel(a.created_at)}</span>
+                </div>
+                <div className={styles.attachmentGrid} style={{ marginTop: 6 }}>
+                  <AttachmentChip tenantId={tenantId} attachment={a} canEdit={canEdit} onDelete={removeAttachment} />
+                </div>
               </div>
             </div>
-          )}
+          ))}
 
           {comments.map(c => (
             <div key={`c-${c.id}`} className={styles.comment}>

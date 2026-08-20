@@ -8,7 +8,7 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-width: 170px;
+  min-width: 120px;
   background: var(--white, #ffffff);
   border: 1px solid #e2e8f0;
   border-radius: 10px;

@@ -751,12 +751,111 @@
 
 /* Las notas las escribe una persona, no las deriva el sistema: se presentan
    como un bloque con cabecera propia, no como una línea más del historial. */
+/* Contenedor con scroll interno para el expediente */
+.timelineScrollContainer {
+  max-height: 550px;
+  overflow-y: auto;
+  padding-right: 12px;
+  margin-bottom: 12px;
+}
+
+.timelineScrollContainer::-webkit-scrollbar {
+  width: 6px;
+}
+
+.timelineScrollContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.timelineScrollContainer::-webkit-scrollbar-thumb {
+  background: var(--glass-border, #cbd5e1);
+  border-radius: 999px;
+}
+
+/* Ocultar línea vertical del timeline cuando solo se muestran notas */
+.isNotesOnly .timelineItem::before {
+  display: none;
+}
+
+/* Fila de nota con borde arriba y abajo para contraste */
+.noteTimelineItem {
+  margin-bottom: 0;
+  padding: 12px 12px;
+ border-bottom: 1px solid #dddddd; 
+border-bottom: 1px solid #dddddd;
+  margin-top: -1px; /* colapsa bordes entre notas adyacentes */
+  border-radius: 0;
+  transition: background-color 0.15s ease;
+}
+
+.noteTimelineItem:first-child {
+  border-radius: 6px 6px 0 0;
+  margin-top: 0;
+}
+
+.noteTimelineItem:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+.noteTimelineItem:only-child {
+  border-radius: 6px;
+  margin-top: 0;
+}
+
+.noteTimelineItem:hover:not(.isPinnedRow) {
+  background-color: rgba(148, 163, 184, 0.07);
+}
+
+/* Fila completa para notas fijadas */
+.isPinnedRow {
+  background-color: rgba(204, 51, 204, 0.02);
+  border-top-color: rgba(204, 51, 204, 0.15) !important;
+  border-bottom-color: rgba(204, 51, 204, 0.15) !important;
+}
+
+.isPinnedRow:hover {
+  background-color: rgba(204, 51, 204, 0.04);
+}
+
+/* Contenedor del avatar que hace de nodo de timeline */
+.noteAvatarNode {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+/* Tarjeta de nota rediseñada como fila de chat (plana) */
 .timelineCard.isNote {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  border-left: 3px solid #0891b2;
-  background: rgba(8, 145, 178, 0.05);
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.timelineCard.isNote:hover {
+  border-color: transparent;
+  box-shadow: none;
+  background-color: transparent;
+}
+
+.timelineCard.isNote.isPinnedCard {
+  border-left: 2px solid var(--primary, #cc33cc);
+  border-radius: 0;
+  padding-left: 10px;
+  background: transparent;
+}
+
+.timelineCard.isNote.isPinnedCard:hover {
+  background-color: transparent;
 }
 
 .noteHeader {
@@ -764,6 +863,38 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  width: 100%;
+}
+
+.noteUser {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.noteDateDivider {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.noteDateTime {
+  font-size: 12px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.notePinText {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary, #cc33cc);
+  background: rgba(204, 51, 204, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .noteTitle {
@@ -774,7 +905,7 @@
   font-weight: 800;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #0e7490;
+  color: var(--primary, #cc33cc);
 }
 
 /* Deja claro que la nota es del equipo de la plataforma: la empresa no la ve. */
@@ -1639,24 +1770,31 @@ button.sidebarKpiItem:hover .sidebarKpiValue {
 .kpiGrid3x2 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 50px 50px;
+  gap: 20px;
 }
 
 .kpiGridItem {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: transparent;
-  border: none;
-  padding: 10px 14px;
-  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  padding: 16px 20px;
+  border-radius: 12px;
   text-align: left;
   font-family: inherit;
   cursor: default;
-  transition: background-color 0.12s ease, opacity 0.12s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   color: inherit;
   text-decoration: none;
   width: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.kpiGridItem:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+  transform: translateY(-2px);
 }
 
 button.kpiGridItem {
@@ -1664,7 +1802,9 @@ button.kpiGridItem {
 }
 
 button.kpiGridItem:hover {
-  background-color: rgba(0, 0, 0, 0.03);
+  background-color: #ffffff;
+  border-color: var(--primary, #cc33cc);
+  box-shadow: 0 10px 15px -3px rgba(204, 51, 204, 0.08), 0 4px 6px -2px rgba(204, 51, 204, 0.03);
 }
 
 button.kpiGridItem:hover .kpiGridValue {

@@ -56,6 +56,8 @@ func registerWorkRoutes(api *gin.RouterGroup, d *deps) {
 		tasks.DELETE("/:id", tasksEdit, d.task.Delete)
 		tasks.POST("/:id/toggle-completion", tasksEdit, d.task.ToggleCompletion)
 		tasks.POST("/:id/comments", tasksEdit, d.task.AddComment)
+		tasks.PUT("/:id/comments/:commentId", tasksEdit, d.task.UpdateComment)
+		tasks.DELETE("/:id/comments/:commentId", tasksEdit, d.task.DeleteComment)
 		tasks.POST("/:id/attachments", tasksEdit, d.task.AddAttachment)
 		tasks.DELETE("/:id/attachments/:attachmentId", tasksEdit, d.task.DeleteAttachment)
 	}

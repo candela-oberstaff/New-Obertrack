@@ -1,15 +1,10 @@
 import { useState, useMemo, useEffect } from 'react'
-import type { Task, TaskAttachment } from '../../../types'
+import type { Task } from '../../../types'
 import { ColumnType } from '../types'
-import { TaskAttachmentsSection } from './TaskAttachmentsSection'
-import { TaskCommentsSection } from './TaskCommentsSection'
 import { Select } from '../../ui/Select'
-import { useConfirm } from '../../ui/ConfirmProvider'
-import { Pencil, Trash2, X, Download, CheckCheck } from 'lucide-react'
+import { X, Download, CheckCheck } from 'lucide-react'
 import { sanitizeRichHtml } from '../../../utils/sanitize'
 import { formatDateOnly } from '../../../utils/date'
-
-type TaskComment = NonNullable<Task['comments']>[number]
 
 // Iconos (lucide) como SVG en línea para los botones que se inyectan dentro del
 // HTML de la descripción.
@@ -73,35 +68,18 @@ async function downloadImage(src: string) {
 interface TaskDetailViewProps {
   task: Task
   columns: ColumnType[]
-  attachments: TaskAttachment[]
-  comments: TaskComment[]
-  isLoadingComments: boolean
-  isDeleting: boolean
   styles: any
   onStatusChange: (status: string) => Promise<void>
-  onEdit: () => void
-  onDelete: () => void
-  refreshTask: () => Promise<void>
-  onAttachmentAdded: (attachment: TaskAttachment) => void
-  onAttachmentDeleted: (id: number) => void
+  children?: React.ReactNode
 }
 
 export function TaskDetailView({
   task,
   columns,
-  attachments,
-  comments,
-  isLoadingComments,
-  isDeleting,
   styles,
   onStatusChange,
-  onEdit,
-  onDelete,
-  refreshTask,
-  onAttachmentAdded,
-  onAttachmentDeleted
+  children
 }: TaskDetailViewProps) {
-  const confirm = useConfirm()
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   // Descripción con los botones (ampliar/descargar) ya inyectados en cada imagen.
@@ -146,16 +124,6 @@ export function TaskDetailView({
       low: '#22c55e',
     }
     return colors[priority] || '#6b7280'
-  }
-
-  const handleDelete = async () => {
-    const ok = await confirm({
-      title: 'Eliminar tarea',
-      message: '¿Seguro que deseas eliminar esta tarea? Esta acción no se puede deshacer.',
-      confirmLabel: 'Eliminar',
-      variant: 'danger',
-    })
-    if (ok) onDelete()
   }
 
   return (
@@ -261,30 +229,7 @@ export function TaskDetailView({
         </div>
       </div>
 
-      <TaskAttachmentsSection
-        taskId={task.id}
-        attachments={attachments}
-        onAttachmentAdded={onAttachmentAdded}
-        onAttachmentDeleted={onAttachmentDeleted}
-        styles={styles}
-      />
-
-      <TaskCommentsSection
-        taskId={task.id}
-        comments={comments}
-        isLoadingComments={isLoadingComments}
-        refreshTask={refreshTask}
-        styles={styles}
-      />
-
-      <div className={styles['panel-actions']}>
-        <button className={styles['btn-edit']} onClick={onEdit}>
-          <Pencil size={16} /> Editar
-        </button>
-        <button className={styles['btn-delete']} onClick={handleDelete} disabled={isDeleting}>
-          {isDeleting ? 'Eliminando...' : <><Trash2 size={16} /> Eliminar</>}
-        </button>
-      </div>
+      {children}
 
       {lightboxSrc && (
         <div className={styles['img-lightbox']} onClick={() => setLightboxSrc(null)}>

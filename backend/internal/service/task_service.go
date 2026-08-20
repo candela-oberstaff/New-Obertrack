@@ -22,6 +22,8 @@ type TaskService interface {
 	Delete(id uint, tenantID uint, userID uint, role string, isManager, isSuperadmin bool) error
 	ToggleCompletion(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool) (*models.Task, error)
 	AddComment(id uint, tenantID uint, userID uint, content string, isSuperadmin bool) (*models.Comment, error)
+	UpdateComment(commentID uint, userID uint, content string, isSuperadmin bool) (*models.Comment, error)
+	DeleteComment(commentID uint, userID uint, isSuperadmin bool) error
 	AddAttachment(taskID uint, tenantID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint, isSuperadmin bool) (*models.TaskAttachment, error)
 	DeleteAttachment(attachmentID uint, tenantID uint, isSuperadmin bool) error
 

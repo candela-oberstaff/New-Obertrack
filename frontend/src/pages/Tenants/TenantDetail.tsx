@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, cloneElement } from 'react'
+import { useState, useEffect, useRef, cloneElement, useMemo, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, User, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip, MoreVertical } from 'lucide-react'
+import { ArrowLeft, Building2, Users, User, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip, MoreVertical } from 'lucide-react'
 import { useImagePaste } from '../../hooks/useImagePaste'
 import type { TenantContactChannel } from '../../services/admin.service'
 import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
@@ -84,13 +84,13 @@ export default function TenantDetail() {
   const [actCategory, setActCategory] = useState('lifecycle')
   const [actPerson, setActPerson] = useState(0)
   const [actPage, setActPage] = useState(1)
-  const actPageSize = actCategory === 'note' ? 3 : 5
+  const actPageSize = actCategory === 'note' ? 1000 : 5
   const {
     activity,
     total: actTotal,
     counts: actCounts,
     people: actPeople,
-    pinnedNotes,
+    // pinnedNotes, -- eliminado: las notas fijadas se renderizan desde 'activity' directamente
     threads,
     isLoading: actLoading,
     isFetching: actFetching,
@@ -107,6 +107,38 @@ export default function TenantDetail() {
     deleteAttachment,
   } = useTenantActivity(tenantId, actCategory, actPerson, actPage, actPageSize)
 
+  // Ordenar las notas fijadas arriba del expediente cuando estamos en la pestaña de notas
+  const processedActivity = useMemo(() => {
+    if (actCategory !== 'note') return activity
+
+    const pinned = activity.filter(a => a.pinned)
+    const unpinned = activity.filter(a => !a.pinned)
+
+    const sortFn = (x: any, y: any) => {
+      const timeX = new Date(x.timestamp).getTime()
+      const timeY = new Date(y.timestamp).getTime()
+      return timeY - timeX // newest first
+    }
+
+    pinned.sort(sortFn)
+    unpinned.sort(sortFn)
+
+    return [...pinned, ...unpinned]
+  }, [activity, actCategory])
+
+  const lastPinnedId = useMemo(() => {
+    if (actCategory !== 'note') return null
+    const pinned = activity.filter(a => a.pinned)
+    if (pinned.length === 0) return null
+
+    const sortFn = (x: any, y: any) => {
+      const timeX = new Date(x.timestamp).getTime()
+      const timeY = new Date(y.timestamp).getTime()
+      return timeY - timeX // newest first
+    }
+    pinned.sort(sortFn)
+    return pinned[pinned.length - 1]?.event_id || null
+  }, [activity, actCategory])
 
   const [actSubTab, setActSubTab] = useState<'inactividad' | 'ausencias'>('inactividad')
   const actTotalPages = Math.max(1, Math.ceil(actTotal / actPageSize))
@@ -349,7 +381,11 @@ export default function TenantDetail() {
   }
 
   const handleTogglePin = async (note: { event_id: number; pinned?: boolean }) => {
-    await setNotePinned(note.event_id, !note.pinned)
+    try {
+      await setNotePinned(note.event_id, !note.pinned)
+    } catch (err: any) {
+      notify.error(err?.response?.data?.error || 'No se pudo cambiar el estado de la nota')
+    }
   }
 
   const handleDeleteNote = async (eventId: number) => {
@@ -1034,38 +1070,6 @@ export default function TenantDetail() {
 
               {actError && <p className={styles.errorMsg}>{actError}</p>}
 
-              {/* Notas fijadas: avisos vigentes, no historia. Van arriba y fuera de
-              la cronología, así que no dependen del filtro ni de la página. */}
-              {pinnedNotes.length > 0 && (
-                <div className={styles.pinnedBox}>
-                  <span className={styles.pinnedTitle}>
-                    <Pin size={13} /> Fijado en este expediente
-                  </span>
-                  {pinnedNotes.map(note => (
-                    <div key={`pinned-${note.event_id}`} className={styles.pinnedItem}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p className={styles.noteBody}>{note.details}</p>
-                        <span className={styles.timelineMeta} style={{ marginTop: 4 }}>
-                          <strong style={{ color: '#64748b', fontWeight: 600 }}>{note.user || 'Sistema'}</strong>
-                          <span>{new Date(note.timestamp).toLocaleDateString('es-ES')}</span>
-                          {note.edited_at && <span className={styles.noteEdited}>editada</span>}
-                        </span>
-                      </div>
-                      {canAnnotate && (
-                        <button
-                          type="button"
-                          className={styles.iconBtn}
-                          onClick={() => handleTogglePin(note)}
-                          title="Dejar de fijar"
-                          aria-label="Dejar de fijar esta nota"
-                        >
-                          <PinOff size={15} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
 
               {actLoading ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -1093,166 +1097,180 @@ export default function TenantDetail() {
                 <>
                   {/* Mientras llega la página nueva se atenúa la anterior: se ve que
                   algo está pasando sin vaciar la lista. */}
-                  <div className={styles.timeline} style={{ opacity: actFetching ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
-                    {groupByDay(activity).map(group => (
-                      <div key={group.key} className={styles.timelineDay}>
-                        <div className={styles.timelineDayLabel}>
-                          <span className={styles.timelineDayChip}>
-                            {group.label}
-                            <span className={styles.timelineDayCount}>
-                              {group.items.length} {group.items.length === 1 ? 'movimiento' : 'movimientos'}
+                  <div className={styles.timelineScrollContainer}>
+                    {/* Pinned section eliminada: las notas fijadas se muestran ya en la lista
+                    principal con el estilo isPinnedCard y ordenadas al inicio. */}
+                    <div className={`${styles.timeline} ${actCategory === 'note' ? styles.isNotesOnly : ''}`} style={{ opacity: actFetching ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
+                      {groupByDay(processedActivity).map((group, gi) => (
+                        <div key={`${group.key}-${gi}`} className={styles.timelineDay}>
+                          {/* Comentado a petición del usuario:
+                          <div className={styles.timelineDayLabel}>
+                            <span className={styles.timelineDayChip}>
+                              {group.label}
+                              <span className={styles.timelineDayCount}>
+                                {group.items.length} {group.items.length === 1 ? 'movimiento' : 'movimientos'}
+                              </span>
                             </span>
-                          </span>
-                        </div>
-                        {group.items.map((a, i) => {
-                          const date = new Date(a.timestamp)
-                          const valid = !isNaN(date.getTime())
-                          const st = ACTIVITY_STYLE[a.type] || ACTIVITY_FALLBACK
-                          const Icon = st.icon
-                          const isNote = a.type === 'company_note'
-                          return (
-                            <div key={a.event_id ? `note-${a.event_id}` : `act-${actPage}-${group.key}-${i}`} className={styles.timelineItem}>
-                              <div className={styles.timelineNode} style={{ color: st.color }}>
-                                <Icon size={15} />
-                              </div>
-                              <div className={`${styles.timelineCard} ${isNote ? styles.isNote : ''}`}>
-                                {isNote ? (
-                                  <>
-                                    {/* Cabecera explícita: quién la escribió, que es
-                                    interna, y si se corrigió después. */}
-                                    <div className={styles.noteHeader}>
-                                      <span className={styles.noteTitle}>
-                                        <StickyNote size={13} /> Nota interna del equipo
-                                      </span>
-                                      <span className={styles.noteScope}>· No la ve la empresa</span>
-                                      {a.pinned && (
-                                        <span className={styles.noteScope} style={{ color: '#0e7490' }}>
-                                          · fijada
-                                        </span>
-                                      )}
-                                      {a.edited_at && <span className={styles.noteEdited}>· editada</span>}
-                                      {canAnnotate && (
-                                        <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                                          <button
-                                            type="button"
-                                            className={styles.iconBtn}
-                                            onClick={() => handleTogglePin(a)}
-                                            title={a.pinned ? 'Dejar de fijar' : 'Fijar arriba del expediente'}
-                                            aria-label={a.pinned ? 'Dejar de fijar esta nota' : 'Fijar esta nota arriba del expediente'}
-                                          >
-                                            {a.pinned ? <PinOff size={15} /> : <Pin size={15} />}
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className={styles.iconBtn}
-                                            onClick={() => openEditNote(a)}
-                                            title="Editar nota"
-                                            aria-label="Editar esta nota"
-                                          >
-                                            <Pencil size={14} />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className={`${styles.iconBtn} ${styles.danger}`}
-                                            onClick={() => handleDeleteNote(a.event_id)}
-                                            title="Eliminar nota"
-                                            aria-label={`Eliminar la nota de ${a.user || 'Sistema'}`}
-                                          >
-                                            <Trash2 size={15} />
-                                          </button>
+                          </div>
+                          */}
+                          {group.items.map((a, i) => {
+                            const date = new Date(a.timestamp)
+                            const valid = !isNaN(date.getTime())
+                            const st = ACTIVITY_STYLE[a.type] || ACTIVITY_FALLBACK
+                            const Icon = st.icon
+                            const isNote = a.type === 'company_note'
+                            return (
+                              <Fragment key={a.event_id ? `note-${a.event_id}` : `act-${actPage}-${group.key}-${i}`}>
+                                <div className={`${styles.timelineItem} ${isNote ? styles.noteTimelineItem : ''} ${isNote && a.pinned ? styles.isPinnedRow : ''}`}>
+                                  {isNote ? (
+                                    <div className={styles.noteAvatarNode}>
+                                      <Avatar name={a.user || 'Sistema'} size="sm" />
+                                    </div>
+                                  ) : (
+                                    <div className={styles.timelineNode} style={{ color: st.color }}>
+                                      <Icon size={15} />
+                                    </div>
+                                  )}
+                                  <div className={`${styles.timelineCard} ${isNote ? styles.isNote : ''} ${isNote && a.pinned ? styles.isPinnedCard : ''}`}>
+                                    {isNote ? (
+                                      <>
+                                        <div className={styles.noteHeader}>
+                                          <strong className={styles.noteUser}>{a.user || 'Sistema'}</strong>
+                                          <span className={styles.noteDateDivider}>•</span>
+                                          <span className={styles.noteDateTime}>
+                                            {valid
+                                              ? `${date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+                                              : '—'}
+                                          </span>
+                                          {a.pinned && (
+                                            <span className={styles.notePinText}>
+                                              <Pin size={11} /> fijada
+                                            </span>
+                                          )}
+                                          {a.edited_at && <span className={styles.noteEdited}>· editada</span>}
+                                          {canAnnotate && (
+                                            <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                                              <button
+                                                type="button"
+                                                className={styles.iconBtn}
+                                                onClick={() => handleTogglePin(a)}
+                                                title={a.pinned ? 'Dejar de fijar' : 'Fijar arriba del expediente'}
+                                                aria-label={a.pinned ? 'Dejar de fijar esta nota' : 'Fijar esta nota arriba del expediente'}
+                                              >
+                                                {a.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className={styles.iconBtn}
+                                                onClick={() => openEditNote(a)}
+                                                title="Editar nota"
+                                                aria-label="Editar esta nota"
+                                              >
+                                                <Pencil size={14} />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className={`${styles.iconBtn} ${styles.danger}`}
+                                                onClick={() => handleDeleteNote(a.event_id)}
+                                                title="Eliminar nota"
+                                                aria-label={`Eliminar la nota de ${a.user || 'Sistema'}`}
+                                              >
+                                                <Trash2 size={15} />
+                                              </button>
+                                            </div>
+                                          )}
                                         </div>
-                                      )}
-                                    </div>
-                                    <p className={styles.noteBody}>{a.details}</p>
-                                    <div className={styles.timelineMeta}>
-                                      <strong style={{ color: '#64748b', fontWeight: 600 }}>{a.user || 'Sistema'}</strong>
-                                      <span className={styles.timelineTime}>
-                                        {valid ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                                      </span>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p className={styles.timelineText}>{a.details}</p>
-                                    <div className={styles.timelineMeta}>
-                                      <span className={styles.timelineTag} style={{ color: st.color }}>
-                                        {ACTIVITY_LABEL[a.type] || a.type}
-                                      </span>
-                                      {/* En un contacto, el canal es la mitad de la
-                                      información: no es lo mismo haberles
-                                      escrito que haberles llamado. */}
-                                      {a.channel && CONTACT_STYLE[a.channel] && (
-                                        <span className={styles.timelineTag} style={{ color: st.color }}>
-                                          {(() => { const CI = CONTACT_STYLE[a.channel!].icon; return <CI size={11} /> })()}
-                                          {CONTACT_STYLE[a.channel].label}
-                                        </span>
-                                      )}
-                                      <strong style={{ color: '#64748b', fontWeight: 600 }}>{a.user || 'Sistema'}</strong>
-                                      {/* La fecha vive en la cabecera del día: aquí
-                                      basta la hora. */}
-                                      <span className={styles.timelineTime}>
-                                        {valid ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                                      </span>
-                                    </div>
+                                        <p className={styles.noteBody}>{a.details}</p>
+                                      </>
+                                    ) : (
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <p className={styles.timelineText}>{a.details}</p>
+                                        <div className={styles.timelineMeta}>
+                                          <span className={styles.timelineTag} style={{ color: st.color }}>
+                                            {ACTIVITY_LABEL[a.type] || a.type}
+                                          </span>
+                                          {/* En un contacto, el canal es la mitad de la
+                                          información: no es lo mismo haberles
+                                          escrito que haberles llamado. */}
+                                          {a.channel && CONTACT_STYLE[a.channel] && (
+                                            <span className={styles.timelineTag} style={{ color: st.color }}>
+                                              {(() => { const CI = CONTACT_STYLE[a.channel!].icon; return <CI size={11} /> })()}
+                                              {CONTACT_STYLE[a.channel].label}
+                                            </span>
+                                          )}
+                                          <strong style={{ color: '#64748b', fontWeight: 600 }}>{a.user || 'Sistema'}</strong>
+                                          {/* La fecha vive en la cabecera del día: aquí
+                                          basta la hora. */}
+                                          <span className={styles.timelineTime}>
+                                            {valid ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Comentarios y archivos. Solo cuelgan de las
+                                    entradas que existen como registro: las
+                                    derivadas (jornadas, altas, gestiones de CS)
+                                    llegan con event_id 0 y no hay a qué atarlas. */}
+                                    {a.event_id > 0 && (
+                                      <EventThread
+                                        key={`thread-${a.event_id}`}
+                                        tenantId={tenantId}
+                                        eventId={a.event_id}
+                                        thread={threads[a.event_id]}
+                                        canEdit={canAnnotate}
+                                        addComment={addComment}
+                                        updateComment={updateComment}
+                                        deleteComment={deleteComment}
+                                        addAttachment={addAttachment}
+                                        deleteAttachment={deleteAttachment}
+                                      />
+                                    )}
                                   </div>
+                                </div>
+                                {isNote && a.event_id === lastPinnedId && (
+                                  <div style={{ borderBottom: '1px dashed var(--glass-border, #e2e8f0)', margin: '12px 12px 12px 58px' }} />
                                 )}
-
-                                {/* Comentarios y archivos. Solo cuelgan de las
-                                entradas que existen como registro: las
-                                derivadas (jornadas, altas, gestiones de CS)
-                                llegan con event_id 0 y no hay a qué atarlas. */}
-                                {a.event_id > 0 && (
-                                  <EventThread
-                                    key={`thread-${a.event_id}`}
-                                    tenantId={tenantId}
-                                    eventId={a.event_id}
-                                    thread={threads[a.event_id]}
-                                    canEdit={canAnnotate}
-                                    addComment={addComment}
-                                    updateComment={updateComment}
-                                    deleteComment={deleteComment}
-                                    addAttachment={addAttachment}
-                                    deleteAttachment={deleteAttachment}
-                                  />
-                                )}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
-                    <span style={{ fontSize: '13px', color: '#64748b' }}>
-                      Mostrando {(actPage - 1) * actPageSize + 1}–{Math.min(actPage * actPageSize, actTotal)} de {actTotal} movimientos
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button
-                        type="button"
-                        className={styles.iconBtn}
-                        onClick={() => setActPage(p => Math.max(1, p - 1))}
-                        disabled={actPage <= 1}
-                        style={{ opacity: actPage <= 1 ? 0.4 : 1, cursor: actPage <= 1 ? 'not-allowed' : 'pointer' }}
-                        title="Página anterior"
-                      >
-                        <ChevronLeft size={16} />
-                      </button>
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
-                        Página {actPage} de {actTotalPages}
-                      </span>
-                      <button
-                        type="button"
-                        className={styles.iconBtn}
-                        onClick={() => setActPage(p => Math.min(actTotalPages, p + 1))}
-                        disabled={actPage >= actTotalPages}
-                        style={{ opacity: actPage >= actTotalPages ? 0.4 : 1, cursor: actPage >= actTotalPages ? 'not-allowed' : 'pointer' }}
-                        title="Página siguiente"
-                      >
-                        <ChevronRight size={16} />
-                      </button>
+                              </Fragment>
+                            )
+                          })}
+                        </div>
+                      ))}
                     </div>
                   </div>
+
+                  {actCategory !== 'note' && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
+                      <span style={{ fontSize: '13px', color: '#64748b' }}>
+                        Mostrando {(actPage - 1) * actPageSize + 1}–{Math.min(actPage * actPageSize, actTotal)} de {actTotal} movimientos
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                          type="button"
+                          className={styles.iconBtn}
+                          onClick={() => setActPage(p => Math.max(1, p - 1))}
+                          disabled={actPage <= 1}
+                          style={{ opacity: actPage <= 1 ? 0.4 : 1, cursor: actPage <= 1 ? 'not-allowed' : 'pointer' }}
+                          title="Página anterior"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                          Página {actPage} de {actTotalPages}
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.iconBtn}
+                          onClick={() => setActPage(p => Math.min(actTotalPages, p + 1))}
+                          disabled={actPage >= actTotalPages}
+                          style={{ opacity: actPage >= actTotalPages ? 0.4 : 1, cursor: actPage >= actTotalPages ? 'not-allowed' : 'pointer' }}
+                          title="Página siguiente"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </>

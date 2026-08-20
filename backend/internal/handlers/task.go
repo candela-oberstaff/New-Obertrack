@@ -304,6 +304,56 @@ func (h *TaskHandler) AddComment(c *gin.Context) {
 	c.JSON(http.StatusCreated, comment)
 }
 
+func (h *TaskHandler) UpdateComment(c *gin.Context) {
+	commentID, err := strconv.ParseUint(c.Param("commentId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"})
+		return
+	}
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	userID := middleware.GetUserID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	updated, err := h.service.UpdateComment(uint(commentID), userID, req.Content, isSuperadmin)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "comentario no encontrado" {
+			status = http.StatusNotFound
+		} else if err.Error() == "no tienes permiso para editar este comentario" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
+func (h *TaskHandler) DeleteComment(c *gin.Context) {
+	commentID, err := strconv.ParseUint(c.Param("commentId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"})
+		return
+	}
+	userID := middleware.GetUserID(c)
+	isSuperadmin := middleware.IsSuperadmin(c)
+	if err := h.service.DeleteComment(uint(commentID), userID, isSuperadmin); err != nil {
+		status := http.StatusInternalServerError
+		if err.Error() == "comentario no encontrado" {
+			status = http.StatusNotFound
+		} else if err.Error() == "no tienes permiso para eliminar este comentario" {
+			status = http.StatusForbidden
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Comentario eliminado"})
+}
+
 func (h *TaskHandler) AddAttachment(c *gin.Context) {
 	taskIDStr := c.Param("id")
 	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
