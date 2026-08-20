@@ -37,7 +37,7 @@ const TEAM_FOLLOWUPS = [
 
 type TeamFollowUp = '' | (typeof TEAM_FOLLOWUPS)[number]['value']
 
-const PER_PAGE = 10
+const PER_PAGE = 4
 
 export interface TeamActivityPanelProps {
   items: TeamInactivityItem[]
@@ -147,8 +147,6 @@ export function TeamActivityPanel({
     })
     .sort((a, b) => b.days_inactive - a.days_inactive || (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }))
 
-  const yellowCount = base.filter(u => u.days_inactive === 1).length
-  const redCount = base.filter(u => u.days_inactive >= 2).length
   const hasFilters = !!(search.trim() || tier || company !== '' || followUpFilter || person !== '')
   const clearFilters = () => { setSearch(''); setTier(''); setCompany(''); setFollowUpFilter(''); setPerson('') }
 
@@ -177,44 +175,23 @@ export function TeamActivityPanel({
 
   return (
     <div style={{ marginBottom: '32px' }} data-tour={dataTour}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Actividad de equipo</h3>
-          <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>{description}</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {/* Los chips cuentan sobre lo que ya filtraron empresa, gestión y
-              búsqueda: si dijeran el total global, contradirían a la tabla que
-              tienen justo debajo. */}
-          <button
-            type="button"
-            onClick={() => setTier(tier === 'yellow' ? '' : 'yellow')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', border: tier === 'yellow' ? '1px solid #f59e0b' : '1px solid #e2e8f0', background: 'rgba(245,158,11,0.1)', color: '#b45309', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
-          >
-            🟡 1 día: {yellowCount}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTier(tier === 'red' ? '' : 'red')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '999px', border: tier === 'red' ? '1px solid #ef4444' : '1px solid #e2e8f0', background: 'rgba(239,68,68,0.1)', color: '#b91c1c', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
-          >
-            🔴 2+ días: {redCount}
-          </button>
-          <div className={styles['search-box']}>
-            <Search size={16} />
-            <input
-              type="text"
-              placeholder={showCompany ? 'Buscar por nombre, correo o empresa...' : 'Buscar por nombre o correo...'}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
+      <div style={{ marginBottom: '14px' }}>
+        <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Actividad de equipo</h3>
+        <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>{description}</p>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+        <div className={styles['search-box']} style={{ margin: 0, minWidth: '220px', flex: '1 1 220px' }}>
+          <Search size={16} />
+          <input
+            type="text"
+            placeholder={showCompany ? 'Buscar por nombre, correo o empresa...' : 'Buscar por nombre o correo...'}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         {showCompany && (
-          <div style={{ minWidth: 220 }}>
+          <div style={{ minWidth: 200, flex: '0 1 auto' }}>
             <Select
               fullWidth
               clearable
@@ -226,7 +203,7 @@ export function TeamActivityPanel({
           </div>
         )}
         {withPerson && (
-          <div style={{ minWidth: 230 }}>
+          <div style={{ minWidth: 200, flex: '0 1 auto' }}>
             <Select
               fullWidth
               clearable
@@ -238,7 +215,7 @@ export function TeamActivityPanel({
             />
           </div>
         )}
-        <div style={{ minWidth: 190 }}>
+        <div style={{ minWidth: 170, flex: '0 1 auto' }}>
           <Select
             fullWidth
             clearable
@@ -248,7 +225,7 @@ export function TeamActivityPanel({
             options={TEAM_FOLLOWUPS.map(f => ({ value: f.value, label: f.label }))}
           />
         </div>
-        <div style={{ minWidth: 180 }}>
+        <div style={{ minWidth: 170, flex: '0 1 auto' }}>
           <Select
             fullWidth
             clearable
@@ -259,7 +236,7 @@ export function TeamActivityPanel({
           />
         </div>
         {hasFilters && (
-          <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={clearFilters}
@@ -268,10 +245,10 @@ export function TeamActivityPanel({
             >
               <X size={14} /> Limpiar filtros
             </button>
-            <span style={{ fontSize: '13px', color: '#64748b' }}>
+            <span style={{ fontSize: '13px', color: '#64748b', whiteSpace: 'nowrap' }}>
               {filtered.length} de {items.length} profesionales
             </span>
-          </>
+          </div>
         )}
       </div>
 

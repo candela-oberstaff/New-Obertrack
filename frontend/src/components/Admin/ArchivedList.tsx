@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserMinus, Ban, Eye, Archive } from 'lucide-react'
+import { UserMinus, Ban, Eye, Archive, ChevronLeft, ChevronRight } from 'lucide-react'
 import Avatar from '../Common/Avatar'
 
 interface ArchivedEntry {
@@ -32,6 +33,7 @@ const fmtDate = (v?: string) => {
 // desactivadas). Cada fila lleva al detalle de la persona, donde se reactiva.
 export function ArchivedList({ entries, showCompany = true }: ArchivedListProps) {
   const navigate = useNavigate()
+  const [page, setPage] = useState(1)
   const keyOf = (e: ArchivedEntry) => `${e.kind}-${e.user_id}-${e.employment_id}`
 
   if (entries.length === 0) {
@@ -43,9 +45,14 @@ export function ArchivedList({ entries, showCompany = true }: ArchivedListProps)
     )
   }
 
+  const PER_PAGE = 7
+  const totalPages = Math.max(1, Math.ceil(entries.length / PER_PAGE))
+  const currentPage = Math.min(page, totalPages)
+  const paginated = entries.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {entries.map((e) => {
+      {paginated.map((e) => {
         const ended = e.kind === 'ended_employment'
         return (
           <div
@@ -78,6 +85,61 @@ export function ArchivedList({ entries, showCompany = true }: ArchivedListProps)
           </div>
         )
       })}
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
+          <span style={{ fontSize: '13px', color: '#64748b' }}>
+            Mostrando {(currentPage - 1) * PER_PAGE + 1}–{Math.min(currentPage * PER_PAGE, entries.length)} de {entries.length} archivados
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                color: '#334155',
+                cursor: currentPage <= 1 ? 'not-allowed' : 'pointer',
+                opacity: currentPage <= 1 ? 0.4 : 1
+              }}
+              title="Página anterior"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+              Página {currentPage} de {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                background: '#fff',
+                color: '#334155',
+                cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer',
+                opacity: currentPage >= totalPages ? 0.4 : 1
+              }}
+              title="Página siguiente"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

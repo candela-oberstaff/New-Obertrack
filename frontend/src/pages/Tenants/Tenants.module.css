@@ -317,13 +317,18 @@
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.iconBtn:hover {
+  background: #f1f5f9;
+  color: #334155;
 }
 
 .iconBtn.danger { color: #b91c1c; }
-.iconBtn.danger:hover { background: rgba(239, 68, 68, 0.12); }
+.iconBtn.danger:hover { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
 .iconBtn.success { color: #059669; }
-.iconBtn.success:hover { background: rgba(16, 185, 129, 0.12); }
+.iconBtn.success:hover { background: rgba(16, 185, 129, 0.12); color: #059669; }
 
 .chevron { color: #cbd5e1; }
 
@@ -746,12 +751,111 @@
 
 /* Las notas las escribe una persona, no las deriva el sistema: se presentan
    como un bloque con cabecera propia, no como una línea más del historial. */
+/* Contenedor con scroll interno para el expediente */
+.timelineScrollContainer {
+  max-height: 550px;
+  overflow-y: auto;
+  padding-right: 12px;
+  margin-bottom: 12px;
+}
+
+.timelineScrollContainer::-webkit-scrollbar {
+  width: 6px;
+}
+
+.timelineScrollContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.timelineScrollContainer::-webkit-scrollbar-thumb {
+  background: var(--glass-border, #cbd5e1);
+  border-radius: 999px;
+}
+
+/* Ocultar línea vertical del timeline cuando solo se muestran notas */
+.isNotesOnly .timelineItem::before {
+  display: none;
+}
+
+/* Fila de nota con borde arriba y abajo para contraste */
+.noteTimelineItem {
+  margin-bottom: 0;
+  padding: 12px 12px;
+ border-bottom: 1px solid #dddddd; 
+border-bottom: 1px solid #dddddd;
+  margin-top: -1px; /* colapsa bordes entre notas adyacentes */
+  border-radius: 0;
+  transition: background-color 0.15s ease;
+}
+
+.noteTimelineItem:first-child {
+  border-radius: 6px 6px 0 0;
+  margin-top: 0;
+}
+
+.noteTimelineItem:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+.noteTimelineItem:only-child {
+  border-radius: 6px;
+  margin-top: 0;
+}
+
+.noteTimelineItem:hover:not(.isPinnedRow) {
+  background-color: rgba(148, 163, 184, 0.07);
+}
+
+/* Fila completa para notas fijadas */
+.isPinnedRow {
+  background-color: rgba(204, 51, 204, 0.02);
+  border-top-color: rgba(204, 51, 204, 0.15) !important;
+  border-bottom-color: rgba(204, 51, 204, 0.15) !important;
+}
+
+.isPinnedRow:hover {
+  background-color: rgba(204, 51, 204, 0.04);
+}
+
+/* Contenedor del avatar que hace de nodo de timeline */
+.noteAvatarNode {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+/* Tarjeta de nota rediseñada como fila de chat (plana) */
 .timelineCard.isNote {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  border-left: 3px solid #0891b2;
-  background: rgba(8, 145, 178, 0.05);
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.timelineCard.isNote:hover {
+  border-color: transparent;
+  box-shadow: none;
+  background-color: transparent;
+}
+
+.timelineCard.isNote.isPinnedCard {
+  border-left: 2px solid var(--primary, #cc33cc);
+  border-radius: 0;
+  padding-left: 10px;
+  background: transparent;
+}
+
+.timelineCard.isNote.isPinnedCard:hover {
+  background-color: transparent;
 }
 
 .noteHeader {
@@ -759,6 +863,38 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  width: 100%;
+}
+
+.noteUser {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.noteDateDivider {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.noteDateTime {
+  font-size: 12px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.notePinText {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary, #cc33cc);
+  background: rgba(204, 51, 204, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .noteTitle {
@@ -769,7 +905,7 @@
   font-weight: 800;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #0e7490;
+  color: var(--primary, #cc33cc);
 }
 
 /* Deja claro que la nota es del equipo de la plataforma: la empresa no la ve. */
@@ -1358,3 +1494,363 @@
   justify-content: flex-end;
   margin-top: 14px;
 }
+
+/* ── Paginador y Botones de Acción Circulares ── */
+
+.pagerActionsContainer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.circleActionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  background: var(--glass-bg, #ffffff);
+  color: #475569; /* Gris */
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+}
+
+.circleActionBtn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+  transform: translateY(-1px);
+}
+
+.circleActionBtn:active {
+  transform: translateY(0) scale(0.96);
+}
+
+.dropdownWrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.dropdownMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  background: #ffffff;
+  border: 1px solid var(--glass-border, #e2e8f0);
+  border-radius: var(--radius, 8px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+  min-width: 190px;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+
+.dropdownItem:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.dropdownItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdownItemDanger {
+  color: #ef4444;
+}
+
+.dropdownItemDanger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.08);
+  color: #b91c1c;
+}
+
+.dropdownItemSuccess {
+  color: #10b981;
+}
+
+.dropdownItemSuccess:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.08);
+  color: #059669;
+}
+
+/* ── Reestructuración de Ficha de Empresa (Dos Columnas) ── */
+
+.companyLogoSm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: #fff;
+  font-weight: 800;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.twoColumnGrid {
+  display: grid;
+  grid-template-columns: 290px 1fr;
+  gap: 24px;
+  align-items: flex-start;
+  margin-top: 20px;
+}
+
+.leftSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 290px;
+}
+
+.rightContentArea {
+  min-width: 0; /* Evita que el flexbox se rompa por desborde */
+}
+
+.sidebarCard {
+  background: var(--glass-bg, #ffffff);
+  border: 1px solid var(--glass-border, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.sidebarCardTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 16px 0;
+  border-bottom: 1px solid var(--glass-border, #e2e8f0);
+  padding-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sidebarFieldsList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sidebarField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebarFieldIconRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: #334155;
+  word-break: break-word;
+}
+
+.sidebarLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.sidebarValue {
+  font-size: 13.5px;
+  color: #334155;
+  word-break: break-word;
+}
+
+.sidebarKpiList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sidebarKpiItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  cursor: default;
+  text-decoration: none;
+  color: inherit;
+  transition: opacity 0.12s ease;
+}
+
+button.sidebarKpiItem {
+  cursor: pointer;
+}
+
+button.sidebarKpiItem:hover {
+  opacity: 0.85;
+}
+
+button.sidebarKpiItem:hover .sidebarKpiValue {
+  color: var(--primary);
+}
+
+.sidebarKpiIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.sidebarKpiContent {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.sidebarKpiLabel {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.sidebarKpiValue {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  transition: color 0.12s ease;
+}
+
+@media (max-width: 1024px) {
+  .twoColumnGrid {
+    grid-template-columns: 1fr;
+  }
+  .leftSidebar {
+    width: 100%;
+  }
+}
+
+/* ── Reestructuración de KPIs en Cuadrícula 3x2 (Resumen) ── */
+
+.kpiGrid3x2 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.kpiGridItem {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  padding: 16px 20px;
+  border-radius: 12px;
+  text-align: left;
+  font-family: inherit;
+  cursor: default;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: inherit;
+  text-decoration: none;
+  width: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.kpiGridItem:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+  transform: translateY(-2px);
+}
+
+button.kpiGridItem {
+  cursor: pointer;
+}
+
+button.kpiGridItem:hover {
+  background-color: #ffffff;
+  border-color: var(--primary, #cc33cc);
+  box-shadow: 0 10px 15px -3px rgba(204, 51, 204, 0.08), 0 4px 6px -2px rgba(204, 51, 204, 0.03);
+}
+
+button.kpiGridItem:hover .kpiGridValue {
+  color: var(--primary);
+}
+
+.kpiGridIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.kpiGridContent {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.kpiGridLabel {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.kpiGridValue {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  transition: color 0.12s ease;
+}
+
+@media (max-width: 768px) {
+  .kpiGrid3x2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .kpiGrid3x2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+

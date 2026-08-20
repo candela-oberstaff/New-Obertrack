@@ -8,7 +8,7 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-width: 170px;
+  min-width: 120px;
   background: var(--white, #ffffff);
   border: 1px solid #e2e8f0;
   border-radius: 10px;
@@ -111,8 +111,15 @@
 }
 
 @keyframes ui-datepicker-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .ui-datepicker__header {

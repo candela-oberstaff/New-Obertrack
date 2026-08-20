@@ -95,3 +95,9 @@ backend/matches.txt
 backend/temp_ticket*.json
 frontend/build_output.txt
 **/vendor/
+
+# Artefactos de compilación de Gradle (app móvil). Cambian en cada build, son
+# binarios y ficheros de bloqueo, y sólo sirven para generar conflictos: nada de
+# esto es fuente ni hace falta para compilar desde cero.
+.gradle/
+**/.gradle/
