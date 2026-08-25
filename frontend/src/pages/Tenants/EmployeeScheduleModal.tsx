@@ -91,9 +91,9 @@ export default function EmployeeScheduleModal({
 
   const isDirty = employee
     ? scheduleType !== (employee.schedule_type || '') ||
-      selectedDays.join(', ') !== (employee.schedule_days || '') ||
-      startTime !== (employee.schedule_start_time || '') ||
-      endTime !== (employee.schedule_end_time || '')
+    selectedDays.join(', ') !== (employee.schedule_days || '') ||
+    startTime !== (employee.schedule_start_time || '') ||
+    endTime !== (employee.schedule_end_time || '')
     : false
 
   return (
