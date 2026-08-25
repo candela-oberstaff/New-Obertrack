@@ -301,6 +301,8 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.POST("/tenants", d.admin.CreateTenant)
 		admin.GET("/tenants/:id", d.admin.GetTenant)
 		admin.GET("/tenants/:id/employees", d.admin.GetTenantEmployees)
+		admin.PUT("/tenants/:id/employees/:userId/schedule", d.admin.UpdateEmployeeSchedule)
+		admin.DELETE("/tenants/:id/employees/:userId/schedule", d.admin.DeleteEmployeeSchedule)
 		admin.GET("/tenants/:id/tickets", d.admin.GetTenantTickets)
 		admin.GET("/tenants/:id/activity", d.admin.GetTenantActivity)
 		admin.GET("/tenants/:id/activity/people", d.admin.GetTenantActivityPeople)

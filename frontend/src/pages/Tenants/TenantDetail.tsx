@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, cloneElement, useMemo, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, User, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip, MoreVertical } from 'lucide-react'
+import { ArrowLeft, Building2, Users, User, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip, MoreVertical, Eye, Briefcase, CalendarDays, Settings } from 'lucide-react'
 import { useImagePaste } from '../../hooks/useImagePaste'
 import type { TenantContactChannel } from '../../services/admin.service'
 import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
@@ -40,6 +40,7 @@ import { INDUSTRY_OPTIONS } from '../../components/Auth/industries'
 import { ArchivedList } from '../../components/Admin/ArchivedList'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
 import { OrgChartPanel } from '../../components/OrgChart/OrgChartPanel'
+import EmployeeScheduleModal from './EmployeeScheduleModal'
 import styles from './Tenants.module.css'
 
 const EMP_PER_PAGE = 5
@@ -63,6 +64,18 @@ function generatePassword(): string {
   if (!/\d/.test(pw)) pw = pw.slice(0, -1) + '7'
   if (!/[a-zA-Z]/.test(pw)) pw = pw.slice(0, -1) + 'k'
   return pw
+}
+
+const formatTimeToAMPM = (timeStr: string | undefined): string => {
+  if (!timeStr) return '—'
+  const parts = timeStr.split(':')
+  if (parts.length < 2) return timeStr
+  let hour = parseInt(parts[0], 10)
+  const minute = parts[1]
+  const ampm = hour >= 12 ? 'pm' : 'am'
+  hour = hour % 12
+  hour = hour ? hour : 12
+  return `${hour}:${minute} ${ampm}`
 }
 
 export default function TenantDetail() {
@@ -163,8 +176,10 @@ export default function TenantDetail() {
   const [contactDetail, setContactDetail] = useState('')
   const [contactSaving, setContactSaving] = useState(false)
   const [contactError, setContactError] = useState<string | null>(null)
+  const [scheduleModalEmployee, setScheduleModalEmployee] = useState<EmployeeSummary | null>(null)
+  const [scheduleViewEmployee, setScheduleViewEmployee] = useState<EmployeeSummary | null>(null)
 
-  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados'>('resumen')
+  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados' | 'horarios'>('resumen')
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -236,6 +251,8 @@ export default function TenantDetail() {
   const [empRole, setEmpRole] = useState('')
   const [empStatus, setEmpStatus] = useState('')
   const [empPage, setEmpPage] = useState(1)
+  const [schedPage, setSchedPage] = useState(1)
+  const [schedSearch, setSchedSearch] = useState('')
   // Profesional del vistazo rápido (null = ninguno abierto).
   const [peekEmployee, setPeekEmployee] = useState<number | null>(null)
 
@@ -278,6 +295,8 @@ export default function TenantDetail() {
     setEmpRole('')
     setEmpStatus('')
     setEmpPage(1)
+    setSchedPage(1)
+    setSchedSearch('')
     setActCategory('lifecycle')
     setActPerson(0)
     setActPage(1)
@@ -433,6 +452,18 @@ export default function TenantDetail() {
   const empTotalPages = Math.max(1, Math.ceil(empFiltered.length / EMP_PER_PAGE))
   const empCurrentPage = Math.min(empPage, empTotalPages)
   const empPaginated = empFiltered.slice((empCurrentPage - 1) * EMP_PER_PAGE, empCurrentPage * EMP_PER_PAGE)
+
+  const schedFiltered = employees
+    .filter(emp => {
+      const q = schedSearch.trim().toLowerCase()
+      if (q && !(emp.name?.toLowerCase().includes(q) || emp.email?.toLowerCase().includes(q))) return false
+      return true
+    })
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' }))
+
+  const schedTotalPages = Math.max(1, Math.ceil(schedFiltered.length / 5))
+  const schedCurrentPage = Math.min(schedPage, schedTotalPages)
+  const schedPaginated = schedFiltered.slice((schedCurrentPage - 1) * 5, schedCurrentPage * 5)
 
   // Igual que en el listado de empresas: la ficha del profesional hereda el
   // orden filtrado de esta tabla para poder recorrer la plantilla de una.
@@ -779,6 +810,9 @@ export default function TenantDetail() {
               Tickets{(tenant.open_tickets ?? 0) > 0 ? ` (${tenant.open_tickets})` : ''}
             </button>
             <button className={tab === 'archivados' ? styles.subTabActive : styles.subTab} onClick={() => setTab('archivados')}>Archivados</button>
+            {canAnnotate && (
+              <button className={tab === 'horarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('horarios')}>Horarios</button>
+            )}
           </div>
 
           {tab === 'resumen' && (
@@ -1366,6 +1400,157 @@ export default function TenantDetail() {
             )
           )}
 
+          {tab === 'horarios' && canAnnotate && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 20 }}>
+                <div className={styles.searchBox} style={{ margin: 0 }}>
+                  <Search size={18} />
+                  <input
+                    type="text"
+                    placeholder="Buscar profesional"
+                    value={schedSearch}
+                    onChange={(e) => {
+                      setSchedSearch(e.target.value)
+                      setSchedPage(1)
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Profesional</th>
+                      <th>Jornada</th>
+                      <th>Días</th>
+                      <th>Horario</th>
+                      <th>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedPaginated.map(emp => (
+                      <tr key={emp.id} className={styles.row}>
+                        <td>
+                          <div className={styles.companyCell}>
+                            <Avatar src={emp.avatar} name={emp.name} size="sm" />
+                            <div className={styles.ownerCell}>
+                              <span>{emp.name}</span>
+                              <small>{emp.email}</small>
+                            </div>
+                          </div>
+                        </td>
+                        <td>{emp.schedule_type || <span style={{ color: '#94a3b8' }}>—</span>}</td>
+                        <td>{emp.schedule_days || <span style={{ color: '#94a3b8' }}>—</span>}</td>
+                        <td>
+                          {emp.schedule_start_time ? (
+                            `${formatTimeToAMPM(emp.schedule_start_time)} - ${formatTimeToAMPM(emp.schedule_end_time)}`
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>—</span>
+                          )}
+                        </td>
+                        <td>
+                          {emp.schedule_type ? (
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setScheduleViewEmployee(emp)}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  width: '36px', height: '36px',
+                                  border: '1px solid #e2e8f0', borderRadius: '10px',
+                                  background: '#f8fafc', color: '#10b981',
+                                  cursor: 'pointer', transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.background = '#e2e8f0')}
+                                onMouseLeave={e => (e.currentTarget.style.background = '#f8fafc')}
+                                title="Ver Horario"
+                              >
+                                <Eye size={18} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setScheduleModalEmployee(emp)}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  width: '36px', height: '36px',
+                                  border: '1px solid #e2e8f0', borderRadius: '10px',
+                                  background: '#f8fafc', color: '#f59e0b',
+                                  cursor: 'pointer', transition: 'all 0.15s ease',
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.background = '#e2e8f0')}
+                                onMouseLeave={e => (e.currentTarget.style.background = '#f8fafc')}
+                                title="Editar Horario"
+                              >
+                                <Pencil size={18} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setScheduleModalEmployee(emp)}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                width: '36px', height: '36px',
+                                border: '1px solid #e2e8f0', borderRadius: '10px',
+                                background: '#f8fafc', color: '#3b82f6',
+                                cursor: 'pointer', transition: 'all 0.15s ease',
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = '#e2e8f0')}
+                              onMouseLeave={e => (e.currentTarget.style.background = '#f8fafc')}
+                              title="Configurar Horario"
+                            >
+                              <Settings size={18} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {schedFiltered.length === 0 && (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: 'center', padding: '32px 0', color: '#64748b' }}>
+                          No se encontraron profesionales que coincidan con la búsqueda
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                {schedTotalPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 16px' }}>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>
+                      Mostrando {(schedCurrentPage - 1) * 5 + 1}–{Math.min(schedCurrentPage * 5, schedFiltered.length)} de {schedFiltered.length} profesionales
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        className={styles.iconBtn}
+                        onClick={() => setSchedPage(p => Math.max(1, p - 1))}
+                        disabled={schedCurrentPage <= 1}
+                        style={{ opacity: schedCurrentPage <= 1 ? 0.4 : 1, cursor: schedCurrentPage <= 1 ? 'not-allowed' : 'pointer' }}
+                        title="Página anterior"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                        Página {schedCurrentPage} de {schedTotalPages}
+                      </span>
+                      <button
+                        type="button"
+                        className={styles.iconBtn}
+                        onClick={() => setSchedPage(p => Math.min(schedTotalPages, p + 1))}
+                        disabled={schedCurrentPage >= schedTotalPages}
+                        style={{ opacity: schedCurrentPage >= schedTotalPages ? 0.4 : 1, cursor: schedCurrentPage >= schedTotalPages ? 'not-allowed' : 'pointer' }}
+                        title="Página siguiente"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           {/* Tickets de la empresa: las alertas que genera la plataforma sobre su
           gente y las conversaciones de WhatsApp de su número, juntas. Cada fila
           lleva a su detalle real, que es donde se trabaja el ticket. */}
@@ -1786,6 +1971,66 @@ export default function TenantDetail() {
           onOpenFull={seedEmployeeNav}
         />
       )}
+
+      <EmployeeScheduleModal
+        tenantId={tenantId}
+        employee={scheduleModalEmployee}
+        onClose={() => setScheduleModalEmployee(null)}
+        onSaved={refresh}
+      />
+
+      {/* Modal de solo lectura: ver el horario de un profesional */}
+      <Modal
+        isOpen={!!scheduleViewEmployee}
+        onClose={() => setScheduleViewEmployee(null)}
+        title={`Horario — ${scheduleViewEmployee?.name ?? ''}`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setScheduleViewEmployee(null)}>Cerrar</Button>
+            <Button onClick={() => {
+              setScheduleModalEmployee(scheduleViewEmployee)
+              setScheduleViewEmployee(null)
+            }}>Editar Horario</Button>
+          </>
+        }
+      >
+        {scheduleViewEmployee && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', background: 'var(--surface-2, #f8fafc)', borderRadius: '10px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: 'rgba(139,92,246,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Briefcase size={18} color="#7c3aed" />
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>Tipo de Jornada</div>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary, #1e293b)' }}>{scheduleViewEmployee.schedule_type || '—'}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', background: 'var(--surface-2, #f8fafc)', borderRadius: '10px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: 'rgba(59,130,246,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <CalendarDays size={18} color="#2563eb" />
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>Días Laborales</div>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary, #1e293b)' }}>{scheduleViewEmployee.schedule_days || '—'}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', background: 'var(--surface-2, #f8fafc)', borderRadius: '10px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: 'rgba(16,185,129,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Clock size={18} color="#059669" />
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>Horario</div>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary, #1e293b)' }}>
+                  {scheduleViewEmployee.schedule_start_time
+                    ? `${formatTimeToAMPM(scheduleViewEmployee.schedule_start_time)} — ${formatTimeToAMPM(scheduleViewEmployee.schedule_end_time)}`
+                    : '—'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

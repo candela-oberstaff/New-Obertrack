@@ -98,6 +98,8 @@ type AdminService interface {
 	GetTenants() ([]repository.TenantSummary, error)
 	GetTenant(id uint) (*repository.TenantSummary, error)
 	GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error)
+	UpdateEmployeeSchedule(tenantID, userID uint, scheduleType, scheduleDays, startTime, endTime string) error
+	DeleteEmployeeSchedule(tenantID, userID uint) error
 	GetTenantTickets(id uint) ([]repository.TenantTicket, error)
 	GetEmployeeTickets(userID uint) ([]repository.TenantTicket, error)
 	GetTenantActivities(id uint, category string, userID uint, offset, limit int) ([]repository.TenantActivity, int64, error)
@@ -1041,6 +1043,14 @@ func (s *adminService) GetTenant(id uint) (*repository.TenantSummary, error) {
 
 func (s *adminService) GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error) {
 	return s.repo.GetTenantEmployees(id)
+}
+
+func (s *adminService) UpdateEmployeeSchedule(tenantID, userID uint, scheduleType, scheduleDays, startTime, endTime string) error {
+	return s.repo.UpdateEmployeeSchedule(tenantID, userID, scheduleType, scheduleDays, startTime, endTime)
+}
+
+func (s *adminService) DeleteEmployeeSchedule(tenantID, userID uint) error {
+	return s.repo.DeleteEmployeeSchedule(tenantID, userID)
 }
 
 func (s *adminService) GetEmployeeTracking(userID uint) (map[string]interface{}, error) {

@@ -1018,6 +1018,60 @@ func (h *AdminHandler) GetTenantEmployees(c *gin.Context) {
 	c.JSON(http.StatusOK, employees)
 }
 
+func (h *AdminHandler) UpdateEmployeeSchedule(c *gin.Context) {
+	tenantID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+	userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	var req struct {
+		ScheduleType      string `json:"schedule_type"`
+		ScheduleDays      string `json:"schedule_days"`
+		ScheduleStartTime string `json:"schedule_start_time"`
+		ScheduleEndTime   string `json:"schedule_end_time"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	err = h.service.UpdateEmployeeSchedule(uint(tenantID), uint(userID), req.ScheduleType, req.ScheduleDays, req.ScheduleStartTime, req.ScheduleEndTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update employee schedule"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Schedule updated successfully"})
+}
+
+func (h *AdminHandler) DeleteEmployeeSchedule(c *gin.Context) {
+	tenantID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+	userID, err := strconv.ParseUint(c.Param("userId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	err = h.service.DeleteEmployeeSchedule(uint(tenantID), uint(userID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete employee schedule"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Schedule deleted successfully"})
+}
+
 // GetTenantTickets lista los tickets de la empresa para la pestaña Tickets de
 // su ficha.
 func (h *AdminHandler) GetTenantTickets(c *gin.Context) {
