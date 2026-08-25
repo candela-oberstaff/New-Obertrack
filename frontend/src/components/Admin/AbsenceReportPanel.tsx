@@ -10,7 +10,7 @@ import { openWaConversation, waDigits } from '../../lib/whatsappInbox'
 import { useNotification } from '../../context/NotificationContext'
 import styles from './Admin.module.css'
 
-const PER_PAGE = 10
+const PER_PAGE = 5
 
 /** Una ausencia sin resolver es distinta de una ya aprobada o rechazada. */
 export function absenceStatus(item: { approved?: boolean; rejected?: boolean }) {
@@ -138,9 +138,18 @@ export function AbsenceReportPanel({
           <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>Reporte de ausencias</h3>
           <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>{description}</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', flexShrink: 0 }}>
+          <div className={styles['search-box']} style={{ margin: 0, minWidth: '180px' }}>
+            <Search size={16} />
+            <input
+              type="text"
+              placeholder={showCompany ? 'Buscar por nombre, correo o empresa...' : 'Buscar por nombre o correo...'}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           {withPerson && (
-            <div style={{ minWidth: 240 }}>
+            <div style={{ minWidth: '180px' }}>
               <Select
                 fullWidth
                 clearable
@@ -152,15 +161,6 @@ export function AbsenceReportPanel({
               />
             </div>
           )}
-          <div className={styles['search-box']}>
-            <Search size={16} />
-            <input
-              type="text"
-              placeholder={showCompany ? 'Buscar por nombre, correo o empresa...' : 'Buscar por nombre o correo...'}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
         </div>
       </div>
 

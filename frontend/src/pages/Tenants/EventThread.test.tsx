@@ -121,10 +121,22 @@ describe('EventThread', () => {
     }
     render(<EventThread {...props()} thread={thread} />)
 
-    // Los sueltos van bajo su propio rótulo para que se entienda por qué no
-    // pertenecen a ningún mensaje.
-    expect(screen.getByText(/archivos de esta entrada/i)).toBeInTheDocument()
-    expect(screen.getByText('en-la-entrada.pdf')).toBeInTheDocument()
-    expect(screen.getByText('en-comentario.png')).toBeInTheDocument()
+    // El hilo nace plegado y resume lo que guarda, así que primero hay que abrirlo.
+    fireEvent.click(screen.getByRole('button', { name: /1 comentario · 1 archivo/i }))
+
+    // Ambos archivos se ven. Los sueltos ya no van bajo un rótulo propio: desde que
+    // se presentan con el mismo formato que un comentario (autor y hora), lo que los
+    // distingue es que ocupan su propia fila en vez de colgar de un mensaje. Eso es
+    // lo que se comprueba aquí: que no se mezclan.
+    const entrada = screen.getByText('en-la-entrada.pdf')
+    const comentario = screen.getByText('en-comentario.png')
+    expect(entrada).toBeInTheDocument()
+    expect(comentario).toBeInTheDocument()
+
+    // El archivo del comentario cuelga del bloque que contiene su texto; el de la
+    // entrada, no. Si algún día volvieran a mezclarse, esto falla.
+    const bloqueDelComentario = screen.getByText('Con captura').closest('div')?.parentElement
+    expect(bloqueDelComentario).toContainElement(comentario)
+    expect(bloqueDelComentario).not.toContainElement(entrada)
   })
 })

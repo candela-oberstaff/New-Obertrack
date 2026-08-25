@@ -27,6 +27,8 @@ type TaskRepository interface {
 	Delete(id uint) error
 	AddComment(comment *models.Comment) error
 	GetComment(id uint) (*models.Comment, error)
+	UpdateComment(id uint, content string) error
+	DeleteComment(id uint) error
 	AddAttachment(attachment *models.TaskAttachment) error
 	DeleteAttachment(attachment *models.TaskAttachment) error
 	GetAttachmentByID(id uint) (*models.TaskAttachment, error)
@@ -249,6 +251,14 @@ func (r *taskRepository) GetComment(id uint) (*models.Comment, error) {
 		return nil, err
 	}
 	return &comment, nil
+}
+
+func (r *taskRepository) UpdateComment(id uint, content string) error {
+	return r.db.Model(&models.Comment{}).Where("id = ?", id).Update("content", content).Error
+}
+
+func (r *taskRepository) DeleteComment(id uint) error {
+	return r.db.Delete(&models.Comment{}, id).Error
 }
 
 func (r *taskRepository) AddAttachment(attachment *models.TaskAttachment) error {

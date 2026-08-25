@@ -22,6 +22,7 @@ interface TaskDetailEditFormProps {
   }) => Promise<void>
   isUpdating: boolean
   styles: any
+  children?: React.ReactNode
 }
 
 export function TaskDetailEditForm({
@@ -31,7 +32,8 @@ export function TaskDetailEditForm({
   onCancel,
   onSave,
   isUpdating,
-  styles
+  styles,
+  children
 }: TaskDetailEditFormProps) {
   const [assigneeSearch, setAssigneeSearch] = useState('')
   const [formData, setFormData] = useState({
@@ -213,6 +215,7 @@ export function TaskDetailEditForm({
           </div>
         </div>
       </div>
+      {children}
       <div className={styles['form-actions']}>
         <button onClick={onCancel} disabled={isUpdating}>Cancelar</button>
         <button className={styles['btn-primary']} onClick={handleSave} disabled={isUpdating}>

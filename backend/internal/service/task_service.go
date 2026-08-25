@@ -25,6 +25,8 @@ type TaskService interface {
 	// reciente al más antiguo, con el nombre de quien los hizo ya resuelto.
 	StatusHistory(id uint, tenantID uint, isSuperadmin bool) ([]TaskStatusEntry, error)
 	AddComment(id uint, tenantID uint, userID uint, content string, isSuperadmin bool) (*models.Comment, error)
+	UpdateComment(commentID uint, userID uint, content string, isSuperadmin bool) (*models.Comment, error)
+	DeleteComment(commentID uint, userID uint, isSuperadmin bool) error
 	AddAttachment(taskID uint, tenantID uint, fileName, fileURL string, fileSize int64, mimeType string, uploadedBy uint, isSuperadmin bool) (*models.TaskAttachment, error)
 	DeleteAttachment(attachmentID uint, tenantID uint, isSuperadmin bool) error
 

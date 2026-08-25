@@ -62,6 +62,13 @@ export const taskService = {
     const { data } = await api.post(`/tasks/${id}/comments`, { content })
     return data
   },
+  updateComment: async (taskId: number, commentId: number, content: string) => {
+    const { data } = await api.put(`/tasks/${taskId}/comments/${commentId}`, { content })
+    return data
+  },
+  deleteComment: async (taskId: number, commentId: number) => {
+    await api.delete(`/tasks/${taskId}/comments/${commentId}`)
+  },
   addAttachment: async (id: number, file: File) => {
     const formData = new FormData()
     formData.append('file', file)

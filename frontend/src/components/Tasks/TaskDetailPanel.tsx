@@ -6,7 +6,11 @@ import styles from '../../pages/Tasks.module.css'
 import { X } from 'lucide-react'
 import { TaskDetailEditForm } from './components/TaskDetailEditForm'
 import { TaskDetailView } from './components/TaskDetailView'
+import { TaskAttachmentsSection } from './components/TaskAttachmentsSection'
+import { TaskCommentsSection } from './components/TaskCommentsSection'
 import { useCloseGuard } from '../ui/useCloseGuard'
+import { useConfirm } from '../ui/ConfirmProvider'
+import { Pencil, Trash2 } from 'lucide-react'
 
 interface TaskDetailPanelProps {
   task: Task | null
@@ -18,6 +22,7 @@ interface TaskDetailPanelProps {
 }
 
 export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, columns }: TaskDetailPanelProps) {
+  const confirm = useConfirm()
   const [isEditing, setIsEditing] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -66,7 +71,7 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
     setIsUpdating(true)
     try {
       await onUpdate(task.id, formData)
-      setIsEditing(false)
+      onClose()
     } finally {
       setIsUpdating(false)
     }
@@ -90,6 +95,14 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
   }
 
   const handleDeleteTask = async () => {
+    const ok = await confirm({
+      title: 'Eliminar tarea',
+      message: '¿Seguro que deseas eliminar esta tarea? Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar',
+      variant: 'danger',
+    })
+    if (!ok) return
+
     setIsDeleting(true)
     try {
       await onDelete(task.id)
@@ -116,23 +129,55 @@ export function TaskDetailPanel({ task, users, onClose, onUpdate, onDelete, colu
             onSave={handleSave}
             isUpdating={isUpdating}
             styles={styles}
-          />
+          >
+            <TaskAttachmentsSection
+              taskId={fullTask.id}
+              attachments={attachments}
+              onAttachmentAdded={handleAttachmentAdded}
+              onAttachmentDeleted={handleAttachmentDeleted}
+              styles={styles}
+            />
+            <TaskCommentsSection
+              taskId={fullTask.id}
+              comments={taskComments}
+              isLoadingComments={isLoadingComments}
+              refreshTask={refreshTask}
+              styles={styles}
+            />
+          </TaskDetailEditForm>
         ) : (
           <TaskDetailView
             task={fullTask}
             columns={columns}
-            attachments={attachments}
-            comments={taskComments}
-            isLoadingComments={isLoadingComments}
-            isDeleting={isDeleting}
             styles={styles}
             onStatusChange={handleStatusChange}
-            onEdit={() => setIsEditing(true)}
-            onDelete={handleDeleteTask}
-            refreshTask={refreshTask}
-            onAttachmentAdded={handleAttachmentAdded}
-            onAttachmentDeleted={handleAttachmentDeleted}
-          />
+          >
+            <TaskAttachmentsSection
+              taskId={fullTask.id}
+              attachments={attachments}
+              onAttachmentAdded={handleAttachmentAdded}
+              onAttachmentDeleted={handleAttachmentDeleted}
+              styles={styles}
+            />
+            <TaskCommentsSection
+              taskId={fullTask.id}
+              comments={taskComments}
+              isLoadingComments={isLoadingComments}
+              refreshTask={refreshTask}
+              styles={styles}
+            />
+          </TaskDetailView>
+        )}
+
+        {!isEditing && (
+          <div className={styles['panel-actions']}>
+            <button className={styles['btn-edit']} onClick={() => setIsEditing(true)}>
+              <Pencil size={16} /> Editar
+            </button>
+            <button className={styles['btn-delete']} onClick={handleDeleteTask} disabled={isDeleting}>
+              {isDeleting ? 'Eliminando...' : <><Trash2 size={16} /> Eliminar</>}
+            </button>
+          </div>
         )}
       </div>
     </div>
