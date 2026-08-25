@@ -28,6 +28,12 @@ func sampleEmail(kind, toName string) (subject, body string) {
 		return "Invitación a tu inducción en Obertrack",
 			BuildInductionInviteHTML(toName, frontendLink("/induccion"))
 
+	case EmailKindTestimonialRequest:
+		return "Nos gustaría conocer tu experiencia",
+			BuildTestimonialRequestHTML(toName,
+				"Nos encantaría conocer tu experiencia trabajando con nosotros. Te tomará menos de cinco minutos y nos ayuda muchísimo.",
+				frontendLink("/testimonio"))
+
 	case EmailKindWorkHourReport:
 		return "Obertrack - Reporte de Jornadas (Julio 2026)", sampleBody(
 			"Reporte de Jornadas — Julio 2026",

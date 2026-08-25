@@ -1058,6 +1058,65 @@
   font-weight: 600;
 }
 
+/* Antigüedad en la columna. Sólo aparece a partir de dos días: mostrarla en cada
+   tarjeta la convertiría en ruido, y lo que interesa señalar es lo que se quedó
+   quieto. El tono ámbar entra a la semana, cuando ya merece una mirada. */
+.card-stale {
+  font-size: 11px;
+  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-stale-warn {
+  color: #d97706;
+  font-weight: 600;
+}
+
+/* Línea de antigüedad del panel de detalle ("En proceso desde hace 4 días"). */
+.task-age {
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -8px 0 16px 0;
+}
+
+.task-history-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: #3b82f6;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.task-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-history-item {
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+  padding-left: 12px;
+  border-left: 2px solid #e2e8f0;
+}
+
+.task-history-when {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
 .card-assignees {
   display: flex;
   margin-left: auto;
@@ -3465,3 +3524,82 @@
   }
 }
 
+/* Formulario aportado al cruzar una puerta de fase, dentro del historial de la
+   tarea. Va sangrado bajo su movimiento para que se lea como parte de él y no como
+   otra entrada. */
+.task-gate-data {
+  margin: 6px 0 0 0;
+  padding: 8px 10px;
+  background: var(--gray-100, #f0eef8);
+  border-radius: var(--radius-sm, 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-gate-data > div {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.task-gate-data dt {
+  font-weight: 600;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.task-gate-data dt::after {
+  content: ':';
+}
+
+.task-gate-data dd {
+  margin: 0;
+  color: #334155;
+  word-break: break-word;
+}
+
+/* Cada respuesta en su línea: etiqueta arriba, valor debajo. En columna y no en
+   línea porque los valores son enlaces y rutas largas, y alinearlos horizontalmente
+   dejaba la etiqueta perdida a la izquierda de un churro de texto. */
+.task-gate-data > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.task-gate-data dt::after {
+  content: '';
+}
+
+.task-gate-data dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.task-gate-data dd a {
+  color: #2563eb;
+  word-break: break-all;
+}
+
+/* El adjunto se presenta como una ficha con su nombre real, no como la ruta con la
+   que se guardó en disco. */
+.task-gate-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #334155 !important;
+  word-break: break-word;
+}
+
+.task-gate-file:hover {
+  border-color: #2563eb;
+  color: #2563eb !important;
+}

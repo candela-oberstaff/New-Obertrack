@@ -19,6 +19,12 @@ const (
 	// y el siguiente agente que abre la ficha no sabe si ya se le escribió.
 	// El canal va en Channel; Detail lleva el asunto o el resumen.
 	CompanyEventContact = "contact"
+	// CompanyEventTestimonial queda cuando se aprueba un testimonio de la
+	// empresa. Vive en el expediente —y no solo en el módulo de Testimonios—
+	// porque quien abre la ficha de un cliente necesita ver que habló bien de
+	// nosotros y cuándo: es material para el seguimiento comercial, no solo
+	// para marketing.
+	CompanyEventTestimonial = "testimonial"
 )
 
 // Canales por los que el equipo puede contactar con una empresa. Email y
@@ -68,6 +74,11 @@ type CompanyEvent struct {
 	// Channel solo aplica a los contactos (email, whatsapp, call, meeting).
 	// Vacío en el resto de eventos.
 	Channel string `gorm:"size:20" json:"channel,omitempty"`
+	// RefID apunta a la fila del módulo que originó la entrada (hoy solo el
+	// testimonio). Es lo que permite volver del expediente al registro completo
+	// —con su firma y su constancia— en lugar de dejar un texto sin salida.
+	// Nulo en las entradas que nacen aquí mismo, como las notas.
+	RefID *uint `gorm:"index" json:"ref_id,omitempty"`
 }
 
 func (CompanyEvent) TableName() string {

@@ -33,6 +33,7 @@ func (r *dmTaskRepo) Create(task *models.Task) error {
 func (r *dmTaskRepo) SyncAssignees(_ *models.Task, _ []uint) error          { return nil }
 func (r *dmTaskRepo) Update(_ *models.Task, _ map[string]interface{}) error { return nil }
 func (r *dmTaskRepo) NextOrder(_ uint, _ string) int                        { return 0 }
+func (r *dmTaskRepo) AddStatusHistory(_ *models.TaskStatusHistory) error    { return nil }
 func (r *dmTaskRepo) GetByID(_ uint) (*models.Task, error) {
 	r.getCalls++
 	// La 1ª lectura (authorizeTaskByID) devuelve el estado previo; las siguientes
@@ -167,7 +168,7 @@ func TestUpdate_NonDeadlineChangeSendsNoDeadlineDM(t *testing.T) {
 	s, dms := newDMTaskServiceWith(&dmTaskRepo{final: task}, board)
 
 	// El empleador 9 solo cambia la prioridad; no reasigna (assignees nil).
-	if _, _, err := s.Update(100, 0, 9, "empleador", false, true, map[string]interface{}{"priority": "high"}, nil); err != nil {
+	if _, _, err := s.Update(100, 0, 9, "empleador", false, true, map[string]interface{}{"priority": "high"}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -191,7 +192,7 @@ func TestUpdate_RealDeadlineChangeSendsDeadlineDM(t *testing.T) {
 	board := &models.Board{ID: 1, CreatedBy: 9}
 	s, dms := newDMTaskServiceWith(&dmTaskRepo{initial: initial, final: final}, board)
 
-	if _, _, err := s.Update(100, 0, 9, "empleador", false, true, map[string]interface{}{"end_date": "2026-10-09"}, nil); err != nil {
+	if _, _, err := s.Update(100, 0, 9, "empleador", false, true, map[string]interface{}{"end_date": "2026-10-09"}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 

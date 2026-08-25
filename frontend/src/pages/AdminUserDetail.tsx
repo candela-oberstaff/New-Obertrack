@@ -706,8 +706,6 @@ export default function AdminUserDetail() {
         ) : (managerName || 'Sin asignar'),
       },
     ]
-  } else if (user.user_type === 'customer_success') {
-    specific = [{ label: 'Empresa asignada', value: empresaName || 'Soporte global' }]
   }
 
   const fields = [...specific, ...common]

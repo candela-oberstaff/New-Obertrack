@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTasksPageState } from '../components/Tasks/hooks/useTasksPageState'
+import { GateModal } from '../components/Tasks/GateModal'
+import { BoardAutomationsModal } from '../components/Tasks/Modals/BoardAutomationsModal'
+import { workflowService } from '../services/workflow.service'
 import { canEditModule } from '../lib/permissions'
 
 import { TasksBoard } from '../components/Tasks/components/TasksBoard'
@@ -29,7 +32,8 @@ import {
   LogOut,
   LayoutGrid,
   ChartNoAxesGantt,
-  CalendarDays
+  CalendarDays,
+  Zap
 } from 'lucide-react'
 import styles from './Tasks.module.css'
 import { phaseStatusId } from '../components/Tasks/phaseStatus'
@@ -98,6 +102,9 @@ export default function Tasks() {
     handleMoveTask,
     handleReorderColumn,
     handleDeleteTask,
+    pendingGate,
+    submitGate,
+    cancelGate,
     getCurrentColumns,
     openBoardModal,
     fetchPublicBoards,
@@ -125,6 +132,39 @@ export default function Tasks() {
   // Permiso del rol sobre el módulo Tareas: con "Ver" se ocultan las acciones
   // de creación/edición (el backend igual las bloquea con 403).
   const canEditTasks = canEditModule(user, 'tasks')
+
+  // Automatizaciones del tablero. El botón sólo se enseña a quien el backend va a
+  // dejar entrar (RequireWorkflowsAccess): un profesional raso no configura reglas
+  // que disparan correos a media empresa. El alcance tablero a tablero lo comprueba
+  // el servidor, así que esto sólo evita ofrecer una puerta que iba a rebotar.
+  const [showAutomationsModal, setShowAutomationsModal] = useState(false)
+  const canConfigureAutomations =
+    !!isSuperadmin ||
+    user?.user_type === 'empleador' ||
+    !!user?.is_manager ||
+    !!user?.is_supervisor
+
+  // Cuántas reglas están encendidas EN ESTE tablero. El botón lo dice sin abrirlo:
+  // apagado es un rayo hueco y gris; con algo activo se enciende en ámbar y lleva el
+  // número. Saber si un tablero está automatizado no debería costar dos clics, sobre
+  // todo cuando una de esas reglas puede estar bloqueando una columna.
+  const [activeAutomations, setActiveAutomations] = useState(0)
+
+  useEffect(() => {
+    const boardId = selectedBoard?.id
+    if (!canConfigureAutomations || !boardId) {
+      setActiveAutomations(0)
+      return
+    }
+    let cancelado = false
+    workflowService
+      .recipes(boardId)
+      .then((rs) => { if (!cancelado) setActiveAutomations(rs.filter((r) => r.enabled).length) })
+      // Un 403 aquí significa que este tablero no es tuyo: el rayo se queda apagado
+      // y el modal lo explicará si alguien lo abre.
+      .catch(() => { if (!cancelado) setActiveAutomations(0) })
+    return () => { cancelado = true }
+  }, [selectedBoard?.id, canConfigureAutomations])
 
   const [taskScope, setTaskScope] = useState<TaskScope>(
     () => (localStorage.getItem('tasks_scope') === 'mine' ? 'mine' : 'all')
@@ -469,6 +509,27 @@ export default function Tasks() {
                         </button>
                       </>
                     )}
+                    {canConfigureAutomations && (
+                      <button
+                        className={styles['btn-icon']}
+                        onClick={() => setShowAutomationsModal(true)}
+                        title={
+                          activeAutomations > 0
+                            ? `${activeAutomations} automatización(es) activa(s) en este tablero`
+                            : 'Automatizaciones del tablero'
+                        }
+                        style={{ marginLeft: '4px', position: 'relative', color: activeAutomations > 0 ? '#f59e0b' : undefined }}
+                      >
+                        {/* Relleno sólo cuando hay algo corriendo: el rayo hueco y el
+                            lleno se distinguen de un vistazo aunque no se lea el número. */}
+                        <Zap size={18} fill={activeAutomations > 0 ? 'currentColor' : 'none'} />
+                        {activeAutomations > 0 && (
+                          <span style={{ position: 'absolute', top: -2, right: -2, background: '#f59e0b', color: '#fff', fontSize: 10, fontWeight: 800, minWidth: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                            {activeAutomations}
+                          </span>
+                        )}
+                      </button>
+                    )}
                   </>
                 )}
               </>
@@ -782,6 +843,24 @@ export default function Tasks() {
         onRemovePhase={handleRemovePhase}
         isSavingPhase={isSavingPhase}
       />
+
+      <BoardAutomationsModal
+        isOpen={showAutomationsModal}
+        onClose={() => setShowAutomationsModal(false)}
+        selectedBoard={selectedBoard}
+        onActiveCountChange={setActiveAutomations}
+      />
+
+      {/* Puerta de fase. Se monta aquí, una sola vez, porque el movimiento puede
+          venir de arrastrar una tarjeta o de cambiar el estado desde la ficha, y el
+          formulario es el mismo en ambos casos. */}
+      {pendingGate && (
+        <GateModal
+          requirement={pendingGate.requirement}
+          onSubmit={submitGate}
+          onCancel={cancelGate}
+        />
+      )}
     </div>
   )
 }

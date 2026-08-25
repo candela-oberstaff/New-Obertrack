@@ -20,6 +20,7 @@ const EMPTY_CREATE_FORM: CreateUserForm = {
   name: '', email: '', password: '', userType: 'profesional',
   jobTitle: '', phoneNumber: '', selectedCompanyId: '', managerId: '',
   companyName: '', industry: '', country: '', province: '', city: '', location: '', address: '',
+  isManager: false, isSupervisor: false,
 }
 
 // Lista de profesionales para el EMPLEADOR (user_type === 'empleador'), acotada a
@@ -101,6 +102,10 @@ export default function EmpresaEmployees() {
       const location = form.location.trim()
       if (location) payload.location = location
       if (form.managerId) payload.manager_id = Number(form.managerId)
+      // El nivel se elige en el alta. Supervisor implica manager: se manda
+      // coherente aunque el backend vuelva a imponerlo.
+      if (form.isManager || form.isSupervisor) payload.is_manager = true
+      if (form.isSupervisor) payload.is_supervisor = true
       const res = await employerService.createEmployee(payload)
       setTempPassword(res.temp_password)
       queryClient.invalidateQueries({ queryKey: ['employer', 'employees'] })

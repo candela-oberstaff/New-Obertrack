@@ -1,4 +1,4 @@
-import { Activity, Sparkles, UserPlus, UserMinus, Clock, ClipboardList, Ban, CheckCircle2, StickyNote, Send, Mail, MessageSquare, Phone, Users } from 'lucide-react'
+import { Activity, Sparkles, UserPlus, UserMinus, Clock, ClipboardList, Ban, CheckCircle2, StickyNote, Send, Mail, MessageSquare, Phone, Users, MessageSquareQuote } from 'lucide-react'
 
 // Presentación de los movimientos del expediente. Vive fuera de la pantalla de
 // la empresa porque el MISMO expediente se lee desde dos sitios: entero en la
@@ -17,6 +17,7 @@ export const ACTIVITY_STYLE: Record<string, { icon: typeof Activity; color: stri
   company_reactivated: { icon: CheckCircle2, color: '#059669' },
   company_note: { icon: StickyNote, color: '#0891b2' },
   company_contact: { icon: Send, color: '#4f46e5' },
+  company_testimonial: { icon: MessageSquareQuote, color: '#c026d3' },
 }
 
 // Un tipo desconocido (uno nuevo del backend que aún no está en la tabla) se
@@ -35,6 +36,7 @@ export const ACTIVITY_LABEL: Record<string, string> = {
   company_reactivated: 'Reactivación',
   company_note: 'Nota',
   company_contact: 'Contacto',
+  company_testimonial: 'Testimonio',
 }
 
 // Icono y etiqueta por canal de contacto. El canal viaja aparte del texto para

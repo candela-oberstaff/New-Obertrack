@@ -248,7 +248,7 @@ const SurveyViewer: React.FC = () => {
                                       ? (Array.isArray(gridAnswers[row]) ? gridAnswers[row].includes(col) : false)
                                       : gridAnswers[row] === col}
                                     onChange={() => {
-                                      let updated: Record<string, any> = { ...gridAnswers };
+                                      const updated: Record<string, any> = { ...gridAnswers };
                                       if (q.type === 'checkbox_grid') {
                                         const prev: string[] = Array.isArray(updated[row]) ? updated[row] : [];
                                         updated[row] = prev.includes(col) ? prev.filter(v => v !== col) : [...prev, col];

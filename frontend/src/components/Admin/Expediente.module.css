@@ -418,6 +418,22 @@
 
 .kindEvaluation { color: #7c3aed; }
 .kindNote { color: #0369a1; }
+.kindTestimonial { color: #c026d3; }
+
+/* Salida de la nota hacia el módulo de Testimonios. Enlace, no botón: es
+   navegación, no una acción sobre la nota. */
+.noteLink {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c026d3;
+  cursor: pointer;
+}
+
+.noteLink:hover { text-decoration: underline; }
 
 .noteBody {
   margin: 0;

@@ -15,6 +15,62 @@ func isEmployerRole(role string) bool {
 	return role == string(models.UserTypeEmployer) || role == "empleador"
 }
 
+// resolveManagersFor devuelve los managers de un usuario DENTRO de una empresa.
+//
+// Existe porque hay tres fuentes del mismo dato —users.manager_id (relación
+// canónica), employments.manager_id (espejo por empresa) y employment_managers
+// (tabla N-a-N)— y cuál manda depende del flag MultiManagerReads, que hoy está
+// encendido en desarrollo y apagado en producción. Cualquier consumidor que elija
+// una fuente por su cuenta acaba resolviendo personas distintas en cada entorno, y
+// esa divergencia se descubre tarde y mal: en un aviso que llegó a quien no era.
+//
+// Misma disciplina de flag que countManagerReports, y misma semántica de unión
+// cuando está apagado: se combinan las dos fuentes del puntero en vez de elegir
+// una, porque un empleo recién creado puede tener aún sólo una de las dos escrita.
+func resolveManagersFor(
+	userRepo repository.UserRepository,
+	empRepo repository.EmploymentRepository,
+	userID, companyID uint,
+) []uint {
+	if userID == 0 {
+		return nil
+	}
+
+	seen := make(map[uint]bool)
+	out := []uint{}
+	add := func(id uint) {
+		// Nadie es manager de sí mismo, y un 0 es "sin manager", no un usuario.
+		if id == 0 || id == userID || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+
+	if MultiManagerReadsEnabled() && companyID > 0 {
+		ids, err := empRepo.ListManagerIDs(userID, companyID)
+		if err == nil {
+			for _, id := range ids {
+				add(id)
+			}
+		}
+		// Con el flag encendido la tabla N-a-N es la fuente; si viniera vacía por
+		// un empleo aún sin espejar, el puntero de abajo la completa.
+	}
+
+	if companyID > 0 {
+		if emp, err := empRepo.GetActive(userID, companyID); err == nil && emp != nil && emp.ManagerID != nil {
+			add(*emp.ManagerID)
+		}
+	}
+
+	if u, err := userRepo.GetByID(userID); err == nil && u != nil && u.ManagerID != nil {
+		add(*u.ManagerID)
+	}
+
+	return out
+}
+
 // countManagerReports devuelve cuántos profesionales están a cargo de managerID,
 // combinando la relación canónica users.manager_id (la que escribe toda
 // asignación) con employments.manager_id (espejo per-empresa). Toma el mayor de

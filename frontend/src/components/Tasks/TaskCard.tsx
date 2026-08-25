@@ -1,9 +1,15 @@
-import { Paperclip } from 'lucide-react'
+import { Paperclip, Clock } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Task } from '../../types'
-import { parseDateOnly, formatDateOnly, todayMidnight } from '../../utils/date'
+import { parseDateOnly, formatDateOnly, todayMidnight, daysSince } from '../../utils/date'
 import styles from '../../pages/Tasks.module.css'
+
+// A partir de cuántos días la tarjeta declara su antigüedad, y a partir de cuántos
+// lo hace en ámbar. Ponerlo en cada tarjeta sería ruido: lo que hay que ver de un
+// vistazo es qué se quedó quieto, no cuándo se movió lo que se mueve a diario.
+const STALE_AFTER_DAYS = 2
+const STALE_WARN_DAYS = 7
 
 interface TaskCardProps {
   task: Task
@@ -23,6 +29,10 @@ export function TaskCard({ task, isDragging, isPlaceholder, onClick }: TaskCardP
     return colors[priority] || '#6b7280'
   }
 
+  // Una tarea terminada no está "estancada": lleva ahí lo que lleve y está bien.
+  const daysInColumn = task.completed ? null : daysSince(task.status_changed_at)
+  const showStale = daysInColumn !== null && daysInColumn >= STALE_AFTER_DAYS
+
   return (
     <div
       className={`${styles['kanban-card']} ${isDragging ? (styles['dragging'] || 'dragging') : ''} ${isPlaceholder ? (styles['placeholder'] || 'placeholder') : ''} ${task.completed ? (styles['completed'] || 'completed') : ''}`}
@@ -41,6 +51,15 @@ export function TaskCard({ task, isDragging, isPlaceholder, onClick }: TaskCardP
           {task.end_date && (
             <span className={`${styles['card-date']} ${!task.completed && parseDateOnly(task.end_date).getTime() < todayMidnight().getTime() ? styles['card-date-overdue'] : ''}`}>
               {formatDateOnly(task.end_date, { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          )}
+          {showStale && (
+            <span
+              className={`${styles['card-stale']} ${daysInColumn >= STALE_WARN_DAYS ? styles['card-stale-warn'] : ''}`}
+              title={`Sin moverse de esta columna desde hace ${daysInColumn} días`}
+            >
+              <Clock size={11} />
+              {daysInColumn} d aquí
             </span>
           )}
         </div>

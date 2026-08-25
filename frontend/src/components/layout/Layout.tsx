@@ -37,6 +37,7 @@ import {
   Trash2,
   SlidersHorizontal,
   Video,
+  MessageSquareQuote,
 } from 'lucide-react'
 
 // Módulo de permisos (roles) que gobierna cada entrada del sidebar.
@@ -174,6 +175,7 @@ export default function Layout() {
     { path: '/admin/tenants', label: 'Empresas', icon: <Building2 size={20} />, show: isSuper || isCS },
     { path: '/admin/mapa', label: 'Mapa', icon: <MapPin size={20} />, show: isPlatformAdmin },
     { path: '/admin/incidentes', label: 'Incidentes', icon: <AlertTriangle size={20} />, show: isPlatformAdmin },
+    { path: '/testimonios', label: 'Testimonios', icon: <MessageSquareQuote size={20} />, show: isPlatformAdmin },
     { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: false },
     { path: '/tickets/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isCS || isSuper || isIT },
     { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} />, show: isSuper || isCS },

@@ -156,12 +156,38 @@ export interface Task {
   tenant_id?: number
   /** Orden manual dentro de su columna (0 = arriba). */
   order?: number
+  /**
+   * Cuándo entró la tarea en su columna ACTUAL. No confundir con updated_at, que
+   * se pisa al editar cualquier campo: sólo este sirve para la antigüedad.
+   * Ausente en tareas anteriores a la migración que no se hayan movido desde.
+   */
+  status_changed_at?: string
+  /** Versión del cambio; la usa el backend para deduplicar automatizaciones. */
+  revision?: number
   created_at: string
   updated_at: string
   creator?: User
   assignees?: User[]
   comments?: Comment[]
   attachments?: TaskAttachment[]
+}
+
+/** Una fila de la bitácora de movimientos de columna de una tarea. */
+export interface TaskStatusHistoryEntry {
+  id: number
+  task_id: number
+  tenant_id: number
+  /** Vacío = fila de creación de la tarea. */
+  from_status: string
+  to_status: string
+  changed_by?: number
+  /** Vacío = el movimiento no lo hizo una persona. */
+  actor_name: string
+  changed_at: string
+  /** Presente si el movimiento cruzó una PUERTA de fase: qué regla la exigió. */
+  gate_workflow_id?: number
+  /** El formulario que se rellenó para cruzarla, como JSON. */
+  form_data?: string
 }
 
 export interface TaskAttachment {
@@ -287,4 +313,41 @@ export interface ColumnType {
   id: string
   title: string
   color: string
+}
+
+/** Un campo del formulario que exige una puerta de fase. */
+export interface TaskGateField {
+  key: string
+  label: string
+  type: 'text' | 'textarea' | 'url' | 'select' | 'file' | 'date' | 'number'
+  required: boolean
+  help?: string
+  placeholder?: string
+  options?: { value: string; label: string }[]
+  min?: number
+  max?: number
+  max_length?: number
+}
+
+export interface TaskGateForm {
+  title: string
+  description?: string
+  fields: TaskGateField[]
+}
+
+/**
+ * Lo que responde el servidor (422) cuando una columna exige un formulario y el
+ * movimiento llegó sin él, o con él incompleto.
+ *
+ * El formulario viaja DENTRO de la respuesta a propósito: así el cliente puede
+ * dibujar el modal sin conocer la puerta de antemano, y una puerta nueva funciona
+ * sin desplegar frontend.
+ */
+export interface TaskGateRequirement {
+  workflow_id: number
+  workflow: string
+  to_status: string
+  form: TaskGateForm
+  /** Mensaje por campo. Vacío en el primer rechazo, relleno tras una validación fallida. */
+  errors?: Record<string, string>
 }

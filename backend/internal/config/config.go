@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/obertrack/backend/internal/utils"
@@ -35,6 +36,12 @@ type Config struct {
 	// (managers y los profesionales de esos managers). Default false: un
 	// supervisor se comporta exactamente como el manager que ya es.
 	SupervisorScope bool
+	// WorkflowRunsPerHour acota cuántas ejecuciones de automatización puede encolar
+	// una empresa por hora. Es el freno ante una operación masiva —una importación,
+	// mover cincuenta tarjetas de golpe— que dispararía un aviso por cada una. El
+	// antibucle evita que las reglas se llamen entre sí; esto evita que una persona,
+	// sin querer, provoque una avalancha. 0 = sin límite.
+	WorkflowRunsPerHour int
 
 	// --- Integración Ontop (módulo Wallet) ---
 	// Credenciales de la cuenta Ontop usadas por el backend como proxy. NUNCA se
@@ -83,6 +90,8 @@ func LoadConfig() *Config {
 		MultiManagerReads: getBoolEnv("MULTI_MANAGER_READS", false),
 		// Feature flag Fase 2 del supervisor: OFF por defecto.
 		SupervisorScope: getBoolEnv("SUPERVISOR_SCOPE", false),
+
+		WorkflowRunsPerHour: getIntEnv("WORKFLOW_RUNS_PER_HOUR", 500),
 
 		// Ontop (Wallet). Default a sandbox/staging; las credenciales se inyectan
 		// por entorno (nunca se hardcodean).
@@ -206,6 +215,21 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getIntEnv lee un entero de entorno. Un valor ilegible cae al default en vez de
+// abortar el arranque: un límite mal escrito no puede tumbar el servicio entero.
+func getIntEnv(key string, defaultValue int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return defaultValue
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 {
+		log.Printf("[config] %s=%q no es un entero válido; se usa %d", key, value, defaultValue)
+		return defaultValue
+	}
+	return n
 }
 
 // getBoolEnv lee un flag booleano de entorno. Acepta "true"/"1" (cualquier

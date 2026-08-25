@@ -98,6 +98,30 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		inductions.POST("/users/:userId/invite", d.induction.Invite)
 	}
 
+	// Testimonios: pedirlos, revisarlos y descargar la constancia firmada.
+	// Mismo alcance que Admin y Empresas —superadmin y Customer Success—, que es
+	// el equipo que trata con profesionales y empresas todos los días.
+	//
+	// El prefijo es "/testimonials" (plural) para no chocar con el comodín de la
+	// página pública, que vive en /api/testimonial/:token.
+	testimonials := api.Group("/testimonials")
+	testimonials.Use(requireSupportInboxAccess())
+	{
+		testimonials.GET("/templates", d.testimonial.Templates)
+		testimonials.GET("", d.testimonial.List)
+		testimonials.POST("", d.testimonial.Request)
+		testimonials.POST("/bulk", d.testimonial.RequestMany)
+		testimonials.GET("/:id", d.testimonial.Get)
+		testimonials.POST("/:id/resend", d.testimonial.Resend)
+		testimonials.POST("/:id/review", d.testimonial.Review)
+		testimonials.POST("/:id/request-changes", d.testimonial.RequestChanges)
+		testimonials.GET("/:id/signature", d.testimonial.Signature)
+		testimonials.GET("/:id/consent.pdf", d.testimonial.ConsentPDF)
+		// Borrar un testimonio firmado destruye evidencia de consentimiento, así
+		// que queda reservado al superadmin.
+		testimonials.DELETE("/:id", middleware.RequireSuperadmin(), d.testimonial.Delete)
+	}
+
 	// Módulo "tutorials": ver requiere al menos "view"; la gestión sigue siendo
 	// solo de superadmins (que no se restringen por roles).
 	tutorialsView := handlers.RequirePermission(d.rbacSvc, "tutorials", models.PermissionView)

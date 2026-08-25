@@ -2,6 +2,7 @@ package repository
 
 import (
 	"strings"
+	"time"
 
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
@@ -30,6 +31,24 @@ type TaskRepository interface {
 	DeleteAttachment(attachment *models.TaskAttachment) error
 	GetAttachmentByID(id uint) (*models.TaskAttachment, error)
 	SyncAssignees(task *models.Task, userIDs []uint) error
+	// AddStatusHistory registra un movimiento de columna. Lo llama el servicio en
+	// modo best-effort: la bitácora no debe poder tumbar la operación que la
+	// origina.
+	AddStatusHistory(entry *models.TaskStatusHistory) error
+	// StatusHistory devuelve los movimientos de una tarea, del más reciente al más
+	// antiguo. limit <= 0 devuelve todos.
+	StatusHistory(taskID uint, limit int) ([]models.TaskStatusHistory, error)
+	// UpdateWithStatusHistory aplica los cambios y escribe la bitácora en la MISMA
+	// transacción. Lo usa el camino de PUERTA de fase, donde el formulario tiene el
+	// mismo peso que el movimiento: si el registro de quién aprobó qué no se puede
+	// guardar, el movimiento no debe ocurrir. En el camino normal la bitácora sigue
+	// siendo best-effort, porque ahí perderla sólo cuesta una línea de historial.
+	UpdateWithStatusHistory(task *models.Task, updates map[string]interface{}, entry *models.TaskStatusHistory) error
+	// ListByDueDate devuelve las tareas SIN terminar de una empresa cuya fecha de fin
+	// cae en el rango [desde, hasta], con asignados y tablero ya cargados. La usa el
+	// barrido del tiempo, que necesita la tarea entera para armar el snapshot: sin
+	// asignados no hay a quién avisar, y sin tablero no hay ámbito que comprobar.
+	ListByDueDate(tenantID uint, desde, hasta time.Time, limit int) ([]models.Task, error)
 }
 
 type taskRepository struct {
@@ -111,7 +130,10 @@ func (r *taskRepository) FindAll(filters map[string]interface{}, offset, limit i
 		return nil, 0, err
 	}
 
-	if err := query.Select("tasks.id, tasks.title, tasks.status, tasks.priority, tasks.start_date, tasks.end_date, tasks.completed, tasks.created_by, tasks.board_id, tasks.tenant_id, tasks.order, tasks.visible_para, tasks.created_at, tasks.updated_at, tasks.deleted_at").
+	// status_changed_at viaja en la lista (no sólo en el detalle) porque la
+	// antigüedad en columna se muestra en la tarjeta del tablero; omitirla aquí la
+	// dejaría en cero en toda la vista de kanban sin que nada fallara.
+	if err := query.Select("tasks.id, tasks.title, tasks.status, tasks.priority, tasks.start_date, tasks.end_date, tasks.completed, tasks.created_by, tasks.board_id, tasks.tenant_id, tasks.order, tasks.revision, tasks.status_changed_at, tasks.visible_para, tasks.created_at, tasks.updated_at, tasks.deleted_at").
 		Preload("Assignees").Preload("Attachments").
 		Offset(offset).Limit(limit).Order("tasks.created_at DESC").Find(&tasks).Error; err != nil {
 		return nil, 0, err
@@ -139,12 +161,38 @@ func (r *taskRepository) GetByIDAndTenant(id, tenantID uint) (*models.Task, erro
 	return &task, nil
 }
 
+// ListByDueDate acota por fecha, no por "vencida": quien llama decide qué ventana
+// mira. Las completadas quedan fuera porque una tarea terminada no vence.
+func (r *taskRepository) ListByDueDate(tenantID uint, desde, hasta time.Time, limit int) ([]models.Task, error) {
+	var tasks []models.Task
+	q := r.db.
+		Where("tenant_id = ? AND completed = ? AND end_date IS NOT NULL", tenantID, false).
+		Where("end_date >= ? AND end_date <= ?", desde, hasta).
+		Preload("Assignees").
+		Order("end_date ASC, id ASC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	return tasks, q.Find(&tasks).Error
+}
+
 func (r *taskRepository) Create(task *models.Task) error {
 	return r.db.Create(task).Error
 }
 
+// Update aplica `updates` sobre la tarea e incrementa su revisión EN EL MISMO
+// statement. La revisión es la "versión del cambio" de la que el motor de workflows
+// deriva su clave de idempotencia; hacerlo en una escritura aparte abriría una
+// ventana en la que dos cambios distintos comparten revisión.
+//
+// El mapa del llamador no se muta: taskService lo sigue inspeccionando después.
 func (r *taskRepository) Update(task *models.Task, updates map[string]interface{}) error {
-	return r.db.Model(task).Updates(updates).Error
+	patch := make(map[string]interface{}, len(updates)+1)
+	for k, v := range updates {
+		patch[k] = v
+	}
+	patch["revision"] = gorm.Expr("revision + 1")
+	return r.db.Model(task).Updates(patch).Error
 }
 
 // ReorderTasks fija el orden manual de las tarjetas de una columna: order =
@@ -219,6 +267,17 @@ func (r *taskRepository) DeleteAttachment(attachment *models.TaskAttachment) err
 	return r.db.Delete(attachment).Error
 }
 
+// SyncAssignees reemplaza el conjunto de asignados y bumpea la revisión de la tarea.
+//
+// El bump es necesario aquí y no basta con el de Update: una edición que sólo toque
+// asignados no pasa por Update (taskService únicamente lo llama si hay campos que
+// escribir), así que sin esto dos reasignaciones consecutivas compartirían revisión y
+// la segunda se descartaría como duplicada. Va aparte del Replace porque este opera
+// sobre task_users, no sobre tasks.
+//
+// Que una edición con campos Y asignados bumpee dos veces es inocuo: la revisión sólo
+// tiene que ser monotónica y cambiar en cada mutación, y el emisor lee el valor final
+// de la tarea recargada.
 func (r *taskRepository) SyncAssignees(task *models.Task, userIDs []uint) error {
 	var users []models.User
 	if len(userIDs) > 0 {
@@ -226,5 +285,37 @@ func (r *taskRepository) SyncAssignees(task *models.Task, userIDs []uint) error 
 			return err
 		}
 	}
-	return r.db.Model(task).Association("Assignees").Replace(users)
+	if err := r.db.Model(task).Association("Assignees").Replace(users); err != nil {
+		return err
+	}
+	return r.db.Model(&models.Task{}).Where("id = ?", task.ID).
+		UpdateColumn("revision", gorm.Expr("revision + 1")).Error
+}
+
+func (r *taskRepository) AddStatusHistory(entry *models.TaskStatusHistory) error {
+	return r.db.Create(entry).Error
+}
+
+func (r *taskRepository) UpdateWithStatusHistory(task *models.Task, updates map[string]interface{}, entry *models.TaskStatusHistory) error {
+	patch := make(map[string]interface{}, len(updates)+1)
+	for k, v := range updates {
+		patch[k] = v
+	}
+	patch["revision"] = gorm.Expr("revision + 1")
+
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(task).Updates(patch).Error; err != nil {
+			return err
+		}
+		return tx.Create(entry).Error
+	})
+}
+
+func (r *taskRepository) StatusHistory(taskID uint, limit int) ([]models.TaskStatusHistory, error) {
+	var rows []models.TaskStatusHistory
+	query := r.db.Where("task_id = ?", taskID).Order("changed_at DESC, id DESC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	return rows, query.Find(&rows).Error
 }

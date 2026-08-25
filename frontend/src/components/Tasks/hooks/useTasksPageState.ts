@@ -191,6 +191,10 @@ export function useTasksPageState() {
     reorderColumn,
     deleteTask,
     fetchTasks,
+    // Puertas de fase: un movimiento detenido a la espera de su formulario.
+    pendingGate,
+    submitGate,
+    cancelGate,
   } = useTasks({
     boardId: selectedBoard?.id,
     companyId: isSuperadmin ? selectedCompanyId : null,
@@ -724,6 +728,9 @@ export function useTasksPageState() {
     handleMoveTask,
     handleReorderColumn,
     handleDeleteTask,
+    pendingGate,
+    submitGate,
+    cancelGate,
     getCurrentColumns,
     openBoardModal,
     fetchPublicBoards,

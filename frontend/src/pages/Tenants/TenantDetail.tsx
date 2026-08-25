@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip } from 'lucide-react'
+import { ArrowLeft, Building2, Users, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, StickyNote, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip, ArrowRight } from 'lucide-react'
 import { useImagePaste } from '../../hooks/useImagePaste'
 import type { TenantContactChannel } from '../../services/admin.service'
 import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
@@ -1176,6 +1176,19 @@ export default function TenantDetail() {
                                   <span className={styles.timelineTime}>
                                     {valid ? date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '—'}
                                   </span>
+                                  {/* Un testimonio es más que su cita: tiene
+                                      firma, permisos y constancia. La entrada
+                                      abre el registro completo en su módulo en
+                                      vez de quedarse en el texto. */}
+                                  {a.type === 'company_testimonial' && !!a.ref_id && (
+                                    <button
+                                      type="button"
+                                      className={styles.timelineLink}
+                                      onClick={() => navigate(`/testimonios?open=${a.ref_id}`)}
+                                    >
+                                      Ver testimonio <ArrowRight size={12} />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             )}

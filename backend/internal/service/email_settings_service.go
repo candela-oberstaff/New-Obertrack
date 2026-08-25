@@ -14,19 +14,20 @@ import (
 // Claves del catálogo de correos. Son el contrato entre el emisor (que llama a
 // SendEmailKind con su clave) y el panel de Configuración → Correos.
 const (
-	EmailKindChatDigest        = "chat_digest"
-	EmailKindInactivityAlert   = "inactivity_alert"
-	EmailKindWorkHourReport    = "workhour_report"
-	EmailKindSupportTicket     = "support_ticket"
-	EmailKindPasswordReset     = "password_reset"
-	EmailKindAccountSetup      = "account_setup"
-	EmailKindAccessCredentials = "access_credentials"
-	EmailKindInductionInvite   = "induction_invite"
-	EmailKindIncidentBroadcast = "incident_broadcast"
-	EmailKindSurveyInvite      = "survey_invite"
-	EmailKindTicketReply       = "ticket_reply"
-	EmailKindManualComposer    = "manual_composer"
-	EmailKindCampaign          = "campaign"
+	EmailKindChatDigest         = "chat_digest"
+	EmailKindInactivityAlert    = "inactivity_alert"
+	EmailKindWorkHourReport     = "workhour_report"
+	EmailKindSupportTicket      = "support_ticket"
+	EmailKindPasswordReset      = "password_reset"
+	EmailKindAccountSetup       = "account_setup"
+	EmailKindAccessCredentials  = "access_credentials"
+	EmailKindInductionInvite    = "induction_invite"
+	EmailKindTestimonialRequest = "testimonial_request"
+	EmailKindIncidentBroadcast  = "incident_broadcast"
+	EmailKindSurveyInvite       = "survey_invite"
+	EmailKindTicketReply        = "ticket_reply"
+	EmailKindManualComposer     = "manual_composer"
+	EmailKindCampaign           = "campaign"
 )
 
 // EmailCategory agrupa los correos en el panel.
@@ -116,6 +117,13 @@ var emailCatalog = []EmailType{
 		Description: "Invita a completar el proceso de inducción.",
 		Trigger:     "Al asignar una inducción a alguien.",
 		Recipient:   "El profesional",
+	},
+	{
+		Key: EmailKindTestimonialRequest, Category: EmailCategoryEvent,
+		Name:        "Solicitud de testimonio",
+		Description: "Invita a escribir y firmar un testimonio.",
+		Trigger:     "Al pedir un testimonio desde el panel de Testimonios.",
+		Recipient:   "El profesional o la empresa",
 	},
 	{
 		Key: EmailKindIncidentBroadcast, Category: EmailCategoryEvent,

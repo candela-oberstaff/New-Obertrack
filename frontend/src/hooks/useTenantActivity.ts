@@ -13,6 +13,9 @@ export const ACTIVITY_CATEGORIES = [
   // ("¿ya hablamos con ellos?"), y las notas son el detalle de eso.
   { value: 'contact', label: 'Contactos' },
   { value: 'note', label: 'Notas' },
+  // Los testimonios tienen filtro propio: al preparar material comercial se
+  // busca qué dijo este cliente, no se rebusca entre las notas internas.
+  { value: 'testimonial', label: 'Testimonios' },
 ] as const
 
 export interface TenantActivity {
@@ -30,6 +33,11 @@ export interface TenantActivity {
   edited_at?: string
   /** Solo en contactos: por qué vía se contactó con la empresa. */
   channel?: TenantContactChannel
+  /**
+   * Registro del módulo que originó la entrada (hoy solo el testimonio). Sirve
+   * para volver al original desde el expediente. 0 = no lleva a ningún sitio.
+   */
+  ref_id?: number
 }
 
 export interface TenantActivityPerson {

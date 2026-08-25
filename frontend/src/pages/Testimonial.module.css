@@ -1,0 +1,705 @@
+/* Página pública del testimonio — wizard de dos paneles.
+   Se renderiza fuera del Layout autenticado (igual que la inducción), así que
+   trae su propia tipografía y usa los tokens de marca de Obertrack
+   (orquídea #cc33cc, índigo #512868, navy #060b23) literales. */
+
+.page {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  box-sizing: border-box;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(1000px 500px at 15% -10%, rgba(204, 51, 204, 0.14), transparent 60%),
+    radial-gradient(900px 500px at 100% 110%, rgba(81, 40, 104, 0.16), transparent 55%),
+    #f5f2fb;
+}
+
+.shell {
+  display: flex;
+  width: 100%;
+  max-width: 1020px;
+  min-height: 620px;
+  background: #ffffff;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 30px 60px -20px rgba(6, 11, 35, 0.35), 0 12px 24px -12px rgba(6, 11, 35, 0.2);
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===================== Panel de marca (izquierda) ===================== */
+
+.brand {
+  width: 320px;
+  flex-shrink: 0;
+  padding: 34px 30px;
+  display: flex;
+  flex-direction: column;
+  color: #ffffff;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, #060b23 0%, #2a1245 48%, #7a1f7a 100%);
+}
+
+.brand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.brandTop,
+.brandBody,
+.brandFoot {
+  position: relative;
+  z-index: 1;
+}
+
+.logo {
+  height: 34px;
+  width: auto;
+  display: block;
+}
+
+.brandBody {
+  margin-top: 44px;
+  flex: 1;
+}
+
+.brandKicker {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.brandName {
+  margin: 8px 0 0;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  word-break: break-word;
+}
+
+.brandRole {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.brandText {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* Stepper vertical. */
+.stepper {
+  list-style: none;
+  margin: 34px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step_todo,
+.step_active,
+.step_done {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stepDot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: all 0.25s ease;
+}
+
+.step_todo {
+  color: rgba(255, 255, 255, 0.45);
+}
+.step_todo .stepDot {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.step_active {
+  color: #ffffff;
+}
+.step_active .stepDot {
+  background: #ffffff;
+  color: #7a1f7a;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.16);
+}
+
+.step_done {
+  color: rgba(255, 255, 255, 0.85);
+}
+.step_done .stepDot {
+  background: #cc33cc;
+  color: #ffffff;
+}
+
+.stepLabel {
+  min-width: 0;
+}
+
+.brandFoot {
+  margin: 24px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ===================== Panel de contenido (derecha) ===================== */
+
+.content {
+  flex: 1;
+  min-width: 0;
+  padding: 40px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.paneHead {
+  margin-bottom: 14px;
+}
+
+.paneTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #060b23;
+  letter-spacing: -0.4px;
+  line-height: 1.3;
+}
+
+.note {
+  margin: 0 0 26px;
+  color: #5c5680;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+/* ===================== Campos ===================== */
+
+.field {
+  margin-bottom: 24px;
+}
+
+.fieldLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #060b23;
+  margin-bottom: 10px;
+}
+
+.required {
+  color: #cc33cc;
+}
+
+.optional {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8880a8;
+  background: #f5f2fb;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.textArea,
+.textInput {
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid #ddd6ec;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #060b23;
+  background: #faf8fe;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.textArea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.textArea:focus,
+.textInput:focus {
+  outline: none;
+  border-color: #cc33cc;
+  background: #ffffff;
+}
+
+.counterRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.counter {
+  font-size: 12px;
+  color: #8880a8;
+}
+
+.counterOk {
+  font-size: 12px;
+  font-weight: 600;
+  color: #15803d;
+}
+
+/* --- Estrellas --- */
+
+.stars {
+  display: flex;
+  gap: 6px;
+}
+
+.star {
+  background: none;
+  border: 0;
+  padding: 4px;
+  cursor: pointer;
+  color: #d8cfe8;
+  line-height: 0;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.star:hover {
+  transform: scale(1.12);
+}
+
+.starOn {
+  color: #f59e0b;
+}
+
+/* --- Preguntas guía (plegable) --- */
+
+.promptsBox {
+  border: 1px solid #ece7f6;
+  border-radius: 14px;
+  background: #faf8fe;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.promptsToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #7a1f7a;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chevron,
+.chevronOpen {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.promptsBody {
+  padding: 0 16px 16px;
+}
+
+.promptsHint {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #8880a8;
+}
+
+.prompt + .prompt {
+  margin-top: 16px;
+}
+
+.promptLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2a2440;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+/* ===================== Autorización ===================== */
+
+.form {
+  display: flex;
+  flex-direction: column;
+}
+
+.consentBox {
+  border: 1px solid #ece7f6;
+  border-left: 3px solid #cc33cc;
+  border-radius: 12px;
+  background: #faf8fe;
+  padding: 18px 20px;
+  margin-bottom: 26px;
+}
+
+.consentText {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #2a2440;
+  text-align: justify;
+}
+
+.consentVersion {
+  margin: 12px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #a99cc4;
+}
+
+.checkList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 15px;
+  border: 1px solid #ece7f6;
+  border-radius: 12px;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 14.5px;
+  color: #2a2440;
+  line-height: 1.5;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.check:hover {
+  border-color: #d6a8e0;
+}
+
+.check input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin: 1px 0 0;
+  accent-color: #cc33cc;
+  cursor: pointer;
+}
+
+/* La casilla que otorga el permiso se separa de las de alcance: es la decisión
+   importante de la pantalla y no debe leerse como una opción más de la lista. */
+.consentCheck {
+  border-color: #cc33cc;
+  background: #fdf2fd;
+  font-weight: 600;
+  margin-bottom: 26px;
+}
+
+/* ===================== Acciones ===================== */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding-top: 8px;
+}
+
+.primaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #cc33cc 0%, #8a2be2 100%);
+  color: #ffffff;
+  border: 0;
+  border-radius: 12px;
+  padding: 13px 26px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 8px 20px -8px rgba(204, 51, 204, 0.55);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px -8px rgba(204, 51, 204, 0.6);
+}
+
+.primaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.secondaryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #ffffff;
+  color: #5c5680;
+  border: 1px solid #ddd6ec;
+  border-radius: 12px;
+  padding: 13px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.18s ease;
+}
+
+.secondaryBtn:hover:not(:disabled) {
+  border-color: #b9a6d4;
+}
+
+.secondaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===================== Estados ===================== */
+
+.state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 20px 0;
+}
+
+.stateIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.iconOk {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.iconWarn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.iconNeutral {
+  background: #f5f2fb;
+  color: #7a1f7a;
+}
+
+.stateTitle {
+  margin: 8px 0 6px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #060b23;
+  letter-spacing: -0.4px;
+}
+
+.stateText {
+  margin: 0 auto;
+  max-width: 42ch;
+  color: #5c5680;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid #ece7f6;
+  border-top-color: #cc33cc;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ===================== Responsive ===================== */
+
+@media (max-width: 760px) {
+  .page {
+    padding: 0;
+  }
+
+  .shell {
+    flex-direction: column;
+    max-width: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+  }
+
+  .brand {
+    width: auto;
+    padding: 24px 22px;
+  }
+
+  .brandBody {
+    margin-top: 20px;
+  }
+
+  .brandName {
+    font-size: 23px;
+  }
+
+  .brandText {
+    display: none;
+  }
+
+  /* En móvil el stepper va horizontal para no comerse el alto de la pantalla. */
+  .stepper {
+    flex-direction: row;
+    gap: 8px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  .stepLabel {
+    display: none;
+  }
+
+  .brandFoot {
+    display: none;
+  }
+
+  .content {
+    padding: 26px 22px 36px;
+  }
+
+  .actions {
+    justify-content: stretch;
+  }
+
+  .actions .primaryBtn,
+  .actions .secondaryBtn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+
+/* Aviso de corrección: lo primero que ve quien vuelve tras una devolución. Usa
+   el ámbar de "atención", no el rojo de error: no hizo nada mal, solo falta un
+   ajuste. */
+.changeBox {
+  border: 1px solid #fde68a;
+  border-left: 3px solid #f59e0b;
+  border-radius: 12px;
+  background: #fffbeb;
+  padding: 16px 18px;
+  margin-bottom: 26px;
+}
+
+.changeTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.changeReason {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #060b23;
+  white-space: pre-wrap;
+}
+
+.changeHint {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #92400e;
+}

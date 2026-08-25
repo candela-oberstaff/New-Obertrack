@@ -13,10 +13,35 @@ import (
 )
 
 // Audiencias del expediente: controlan qué entradas (notas/documentos) se ven.
+//
+// Son TRES y no dos porque "la empresa" no es una sola cosa: el equipo de
+// Obertrack y la empresa cliente abren la misma pantalla pero no deben ver lo
+// mismo. Un testimonio sobre Oberstaff, por ejemplo, es material nuestro y no
+// tiene por qué aparecer en la ficha que RR.HH. del cliente lee de su empleado.
 const (
-	AudienceCompany      = "company"      // RR.HH.: ve todo
+	AudiencePlatform     = "platform"     // Obertrack (superadmin / CS): ve todo
+	AudienceCompany      = "company"      // La empresa cliente: todo lo suyo
 	AudienceProfessional = "professional" // El profesional: solo lo compartido
 )
+
+// platformOnlyNoteKinds son los tipos de nota que solo ve el equipo de
+// Obertrack. Nacen de módulos nuestros, no de la relación laboral, y para la
+// empresa cliente serían ruido —o peor, información que no le corresponde—.
+var platformOnlyNoteKinds = map[string]bool{
+	models.NoteKindTestimonial: true,
+}
+
+// hidesNote indica si una audiencia NO debe ver una nota.
+func hidesNote(audience string, kind, visibility string) bool {
+	if audience == AudienceProfessional {
+		return visibility != models.ExpedienteShared
+	}
+	if audience == AudiencePlatform {
+		return false
+	}
+	// La empresa cliente: todo lo del empleo, salvo lo que es nuestro.
+	return platformOnlyNoteKinds[kind]
+}
 
 // EmploymentView es una membresía con los nombres resueltos (empresa, manager)
 // para la UI del expediente.
@@ -165,7 +190,9 @@ type EmploymentService interface {
 	GetCVPDF(userID uint) ([]byte, string, error)
 	// GetExpedientePDF genera el PDF del expediente completo de un empleo
 	// (audiencia empresa). Devuelve bytes + el nombre del profesional.
-	GetExpedientePDF(employmentID uint) ([]byte, string, error)
+	// GetExpedientePDF arma el PDF del expediente para una audiencia: el PDF
+	// que descarga la empresa cliente no puede llevar lo que su pantalla oculta.
+	GetExpedientePDF(employmentID uint, audience string) ([]byte, string, error)
 	// UpdateNote edita una evaluación/nota existente.
 	UpdateNote(noteID uint, kind string, rating *int, content, visibility string) (*models.EmploymentNote, error)
 	// UpdateDocument edita los metadatos de un documento (título, visibilidad,
@@ -725,7 +752,7 @@ func (s *employmentService) GetExpediente(employmentID uint, audience string) (*
 	noteViews := make([]ExpedienteNoteView, 0)
 	if useFrozen {
 		for _, nv := range frozen.Notes {
-			if audience == AudienceProfessional && nv.Visibility != models.ExpedienteShared {
+			if hidesNote(audience, nv.Kind, nv.Visibility) {
 				continue
 			}
 			noteViews = append(noteViews, nv)
@@ -733,7 +760,7 @@ func (s *employmentService) GetExpediente(employmentID uint, audience string) (*
 	} else {
 		notes, _ := s.repo.ListNotes(employmentID)
 		for _, n := range notes {
-			if audience == AudienceProfessional && n.Visibility != models.ExpedienteShared {
+			if hidesNote(audience, n.Kind, n.Visibility) {
 				continue
 			}
 			nv := ExpedienteNoteView{EmploymentNote: n}
@@ -910,8 +937,8 @@ func (s *employmentService) GetCVPDF(userID uint) ([]byte, string, error) {
 	return bytes, name, err
 }
 
-func (s *employmentService) GetExpedientePDF(employmentID uint) ([]byte, string, error) {
-	exp, err := s.GetExpediente(employmentID, AudienceCompany)
+func (s *employmentService) GetExpedientePDF(employmentID uint, audience string) ([]byte, string, error) {
+	exp, err := s.GetExpediente(employmentID, audience)
 	if err != nil {
 		return nil, "", err
 	}

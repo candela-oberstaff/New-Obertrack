@@ -19,21 +19,29 @@ const (
 const (
 	NoteKindNote       = "note"       // Anotación libre (seguimiento, incidencia)
 	NoteKindEvaluation = "evaluation" // Evaluación de desempeño (puede traer rating)
+	// NoteKindTestimonial es el testimonio que la persona escribió y firmó,
+	// archivado al aprobarlo. No lo escribe la empresa como los otros dos: lo
+	// deja el módulo de Testimonios para que quede rastro en el expediente.
+	NoteKindTestimonial = "testimonial"
 )
 
 // EmploymentNote es una evaluación o anotación que la empresa registra sobre un
 // profesional durante un empleo. Forma parte del expediente laboral.
 type EmploymentNote struct {
-	ID           uint           `gorm:"primaryKey" json:"id"`
-	EmploymentID uint           `gorm:"not null;index" json:"employment_id"`
-	AuthorID     uint           `gorm:"not null" json:"author_id"`
-	Kind         string         `gorm:"size:20;not null;default:'note'" json:"kind"`
-	Rating       *int           `json:"rating,omitempty"` // 1..5, solo en evaluaciones
-	Content      string         `gorm:"type:text;not null" json:"content"`
-	Visibility   string         `gorm:"size:20;not null;default:'private'" json:"visibility"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	EmploymentID uint   `gorm:"not null;index" json:"employment_id"`
+	AuthorID     uint   `gorm:"not null" json:"author_id"`
+	Kind         string `gorm:"size:20;not null;default:'note'" json:"kind"`
+	Rating       *int   `json:"rating,omitempty"` // 1..5, solo en evaluaciones
+	Content      string `gorm:"type:text;not null" json:"content"`
+	Visibility   string `gorm:"size:20;not null;default:'private'" json:"visibility"`
+	// RefID apunta a la fila del módulo que originó la nota (hoy solo el
+	// testimonio), para poder volver al registro completo desde el expediente.
+	// Nulo en las notas y evaluaciones, que nacen aquí mismo.
+	RefID     *uint          `gorm:"index" json:"ref_id,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (EmploymentNote) TableName() string {

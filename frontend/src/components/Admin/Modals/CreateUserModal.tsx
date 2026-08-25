@@ -4,6 +4,7 @@ import { Select } from '../../ui/Select'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../Auth/countries'
 import { useCloseGuard } from '../../ui/useCloseGuard'
 import styles from '../Admin.module.css'
+import { HierarchyLevelSelector } from './HierarchyLevelSelector'
 
 export interface CreateUserForm {
   name: string
@@ -14,6 +15,11 @@ export interface CreateUserForm {
   phoneNumber: string
   selectedCompanyId: number | ''
   managerId: number | ''
+  // Nivel en la jerarquía. Se pide AL CREAR y no sólo al editar: darlo de alta como
+  // profesional para después reabrir su ficha y subirlo a manager eran dos pasos
+  // donde siempre debió haber uno, y la fuente de que medio equipo quedara sin nivel.
+  isManager: boolean
+  isSupervisor: boolean
   companyName: string
   industry: string
   country: string
@@ -143,7 +149,7 @@ export function CreateUserModal({
               <Select
                 fullWidth
                 value={form.userType}
-                onChange={v => setForm(f => ({ ...f, userType: String(v), companyName: '', industry: '', selectedCompanyId: '', phoneNumber: '', country: '', province: '', city: '', location: '', address: '', jobTitle: '' }))}
+                onChange={v => setForm(f => ({ ...f, userType: String(v), companyName: '', industry: '', selectedCompanyId: '', phoneNumber: '', country: '', province: '', city: '', location: '', address: '', jobTitle: '', isManager: false, isSupervisor: false }))}
                 options={[
                   { value: 'profesional', label: 'Profesional (presta servicios)' },
                   { value: 'empleador', label: 'Empresa' },
@@ -168,6 +174,16 @@ export function CreateUserModal({
                   style={inputStyle}
                 />
               </div>
+
+              {/* Sólo para profesionales: en customer_success la bandera de manager
+                  significa otra cosa (la jerarquía de soporte) y en el resto de tipos
+                  no aplica. */}
+              <HierarchyLevelSelector
+                value={{ is_manager: form.isManager, is_supervisor: form.isSupervisor }}
+                onChange={levels => setForm(f => ({
+                  ...f, isManager: levels.is_manager, isSupervisor: levels.is_supervisor,
+                }))}
+              />
 
               <div>
                 <label style={labelStyle}>Teléfono de contacto</label>

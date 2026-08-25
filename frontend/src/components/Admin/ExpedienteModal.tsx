@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { FileText, Star, Trash2, Upload, Lock, Eye, Clock3, CheckSquare, CalendarDays, CalendarX, ClipboardList, Send, Snowflake, Download, Pencil, CalendarClock, StickyNote, X } from 'lucide-react'
 import { adminService, authService, employerService, uploadService } from '../../services/api'
@@ -58,6 +59,21 @@ const NOTE_KINDS = [
   { value: 'evaluation', label: 'Evaluación' },
 ]
 
+// Etiqueta y color de cada tipo de nota. 'testimonial' NO se ofrece en el
+// selector de arriba a propósito: esas notas no se escriben a mano, las deja el
+// módulo de Testimonios al aprobar uno. Aquí solo hay que saber pintarlas.
+const NOTE_KIND_LABEL: Record<string, string> = {
+  note: 'Nota',
+  evaluation: 'Evaluación',
+  testimonial: 'Testimonio',
+}
+
+const NOTE_KIND_CLASS: Record<string, string> = {
+  note: styles.kindNote,
+  evaluation: styles.kindEvaluation,
+  testimonial: styles.kindTestimonial,
+}
+
 const fmtHours = (n: number) => (Math.round((n || 0) * 10) / 10).toLocaleString('es-ES')
 
 const fmtSize = (b: number) =>
@@ -68,6 +84,11 @@ const fmtSize = (b: number) =>
 // cada entrada puede marcarse como compartida para que el profesional la vea.
 export function ExpedienteModal({ userId, employment, canManage, onClose, selfMode = false, employerMode = false, inline = false }: ExpedienteModalProps) {
   const empId = employment.id
+  const navigate = useNavigate()
+  // Solo el equipo de Obertrack (superadmin / CS) puede abrir el módulo de
+  // Testimonios. Ni la empresa cliente ni el propio profesional tienen esa
+  // pantalla, así que a ellos no se les ofrece el enlace.
+  const adminMode = !employerMode && !selfMode
   // El profesional solo lee; el empleador gestiona a su gente; el admin todo.
   const manage = employerMode || (canManage && !selfMode)
 
@@ -468,10 +489,12 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
             {data?.notes.map(n => (
               <div key={n.id} className={styles.note}>
                 <div className={styles.noteHead}>
-                  <span className={`${styles.noteKind} ${n.kind === 'evaluation' ? styles.kindEvaluation : styles.kindNote}`}>
-                    {n.kind === 'evaluation' ? 'Evaluación' : 'Nota'}
+                  <span className={`${styles.noteKind} ${NOTE_KIND_CLASS[n.kind] ?? styles.kindNote}`}>
+                    {NOTE_KIND_LABEL[n.kind] ?? 'Nota'}
                   </span>
-                  {n.kind === 'evaluation' && n.rating > 0 && (
+                  {/* La calificación acompaña tanto a una evaluación como a un
+                      testimonio: en ambos casos las estrellas son del autor. */}
+                  {(n.kind === 'evaluation' || n.kind === 'testimonial') && n.rating > 0 && (
                     <span className={styles.starsRead}>
                       {Array.from({ length: n.rating }).map((_, i) => <Star key={i} size={13} fill="#f59e0b" />)}
                     </span>
@@ -480,7 +503,24 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
                   <span className={styles.rowMeta}>
                     {n.author_name || 'Autor'} · {new Date(n.created_at).toLocaleDateString('es-ES')}
                   </span>
-                  {manage && (
+                  {/* Un testimonio no se edita desde aquí: lo escribió y firmó
+                      otra persona, y su versión buena vive en el módulo de
+                      Testimonios. Editarlo aquí lo convertiría además en una
+                      nota normal, porque el formulario solo maneja esos dos
+                      tipos. */}
+                  {/* Un testimonio archivado es la punta de un registro con
+                      firma, permisos y constancia: la nota lleva de vuelta a él
+                      en vez de quedarse en la cita. */}
+                  {n.kind === 'testimonial' && n.ref_id > 0 && adminMode && (
+                    <button
+                      type="button"
+                      className={styles.noteLink}
+                      onClick={() => navigate(`/testimonios?open=${n.ref_id}`)}
+                    >
+                      Ver testimonio
+                    </button>
+                  )}
+                  {manage && n.kind !== 'testimonial' && (
                     <>
                       <button className={styles.rowAction} onClick={() => startEditNote(n)} title="Editar" disabled={busy}>
                         <Pencil size={14} />

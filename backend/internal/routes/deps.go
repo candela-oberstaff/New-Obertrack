@@ -55,6 +55,8 @@ type deps struct {
 	emailPreview  *handlers.EmailPreviewHandler
 	googleCal     *handlers.GoogleCalendarHandler
 	meeting       *handlers.MeetingHandler
+	workflow      *handlers.WorkflowHandler
+	testimonial   *handlers.TestimonialHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -96,6 +98,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	profileChangeRepo := repository.NewProfileChangeRequestRepository(db)
 	inductionRepo := repository.NewInductionRepository(db)
 	googleCalRepo := repository.NewGoogleCalendarRepository(db)
+	testimonialRepo := repository.NewTestimonialRepository(db)
 
 	// Integrations
 	brevoSvc := service.NewBrevoService()
@@ -170,6 +173,13 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// cuestionario calificado (Encuestas) en una landing pública que decide su
 	// acceso. Si no está configurada, no interfiere con el alta.
 	inductionSvc := service.NewInductionService(inductionRepo, userRepo, brevoSvc, authSvc, ticketSvc, cfg.FrontendURL)
+	// Testimonios: se piden por correo y se firman en una página pública, sin
+	// sesión. Necesita el directorio de subidas porque ahí se guarda el trazo de
+	// la firma, que es parte de la evidencia del consentimiento.
+	testimonialSvc := service.NewTestimonialService(
+		testimonialRepo, userRepo, employmentRepo, adminRepo,
+		brevoSvc, notifSvc, os.Getenv("UPLOAD_PATH"), cfg.FrontendURL,
+	)
 	// Puente Obersuite (captación) → Obertrack (gestión): materializa la
 	// contratación de un candidato como profesional + empleo activo.
 	onboardingSvc := service.NewOnboardingService(userRepo, employmentRepo, employmentSvc, uploadSvc, authSvc, inductionSvc, ticketSvc)
@@ -215,6 +225,32 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// Watcher diario: alerta a la empresa sobre documentos del expediente que
 	// están por vencer (contratos, certificados...).
 	service.NewDocumentExpiryWatcher(employmentRepo, userRepo, notifSvc).Start()
+
+	// Motor de automatizaciones (Fase 1). El emisor va enganchado a taskService con
+	// el mismo patrón inyectado que Google Calendar; el worker procesa la cola en
+	// segundo plano. Sin reglas activas en una empresa, el emisor es una consulta
+	// indexada que no encuentra nada: el módulo de Tareas se comporta igual que antes.
+	workflowSvc := service.NewWorkflowService(
+		repository.NewWorkflowRepository(db), taskRepo, boardRepo, userRepo,
+		employmentRepo, notifSvc, brevoSvc,
+	)
+	workflowSvc.SetSystemDM(channelSvc.PostSystemDM)
+	taskSvc.SetWorkflowEmitter(workflowSvc.OnEvent)
+	// Puertas de fase: la mitad SÍNCRONA del motor. Se evalúa dentro del request que
+	// mueve la tarjeta y puede impedir el movimiento, así que va cableada aparte del
+	// emisor asíncrono.
+	taskSvc.SetGateChecker(workflowSvc.CheckGate)
+	// Borrar una columna vigilada por una puerta encendida dejaría la regla apuntando
+	// al vacío. El tablero pregunta antes de borrar.
+	boardSvc.SetPhaseGuard(workflowSvc.PhaseInUse)
+	// Tope por empresa y hora: el freno ante una operación masiva que dispararía un
+	// aviso por tarjeta. Configurable con WORKFLOW_RUNS_PER_HOUR.
+	workflowSvc.SetRunQuota(cfg.WorkflowRunsPerHour)
+	// Y el camino inverso: el motor escribe sobre las tareas a través del propio
+	// taskService, con el privilegio acotado de ApplyAsSystem. Cablearlo aquí (y no
+	// dándole el repositorio) mantiene toda la lógica de tareas en un solo sitio.
+	workflowSvc.SetTaskMutator(taskSvc)
+	workflowSvc.Start()
 
 	// Watcher del chat: correo de respaldo a quien acumula mensajes sin leer y
 	// no se conecta — el mensaje interno deja de depender de que se le ocurra
@@ -288,6 +324,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		emailPreview:  handlers.NewEmailPreviewHandler(),
 		googleCal:     handlers.NewGoogleCalendarHandler(googleCalSvc, cfg.FrontendURL),
 		meeting:       handlers.NewMeetingHandler(meetingSvc),
+		workflow:      handlers.NewWorkflowHandler(workflowSvc),
+		testimonial:   handlers.NewTestimonialHandler(testimonialSvc),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,

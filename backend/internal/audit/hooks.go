@@ -19,6 +19,18 @@ import (
 // (prevents infinite recursion). Add high-volume/ephemeral tables here if needed.
 var auditSkipTables = map[string]bool{
 	"audit_logs": true,
+	// task_status_history YA ES una bitácora append-only de cambios, con actor y
+	// con el valor anterior —que es más de lo que la entrada "data" sabría
+	// registrar—. Auditarla duplicaría cada movimiento de tarjeta en audit_logs
+	// sin aportar un dato nuevo.
+	"task_status_history": true,
+	// Las ejecuciones del motor de workflows escriben una fila por ejecución y una
+	// por paso. Ya son su propia bitácora, con estado, error y motivo, así que
+	// auditarlas duplicaría el volumen de audit_logs sin añadir un dato nuevo.
+	// Las reglas en sí (workflows, workflow_steps) SÍ se auditan: son
+	// configuración, y quién cambió una regla que avisa a media empresa importa.
+	"workflow_runs":      true,
+	"workflow_step_runs": true,
 }
 
 // redactKeys are masked in the changes JSON to avoid storing secrets.

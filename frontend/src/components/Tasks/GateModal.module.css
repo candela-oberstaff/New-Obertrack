@@ -1,0 +1,226 @@
+/* Modal de una puerta de fase. Sobre los tokens de index.css, como el resto. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 11, 35, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--white, #fff);
+  border-radius: var(--radius-lg, 20px);
+  box-shadow: var(--shadow-lg, 0 20px 25px -5px rgba(6, 11, 35, 0.18));
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: 20px 22px 12px;
+  border-bottom: 1px solid var(--gray-100, #f0eef8);
+}
+
+/* Deja claro de entrada por qué apareció esto: no es un formulario más, es un
+   requisito de la columna. Sin este marco, un modal inesperado se lee como un error. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--primary, #cc33cc);
+  background: var(--primary-soft, #f5f2fb);
+  border-radius: 999px;
+  padding: 3px 10px;
+  margin-bottom: 8px;
+}
+
+.header h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--black, #060b23);
+  margin: 0;
+}
+
+.description {
+  margin: 6px 0 0 0;
+  font-size: 0.84rem;
+  color: var(--gray-500, #5c5680);
+  line-height: 1.5;
+}
+
+.body {
+  padding: 16px 22px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--black, #060b23);
+}
+
+.required {
+  color: var(--danger, #ef4444);
+}
+
+.input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--gray-200, #ddd9ef);
+  border-radius: var(--radius-sm, 8px);
+  font-size: 0.88rem;
+  font-family: inherit;
+  color: var(--black, #060b23);
+  background: var(--white, #fff);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary, #cc33cc);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.12);
+}
+
+.input:disabled {
+  background: var(--gray-100, #f0eef8);
+  cursor: not-allowed;
+}
+
+.inputError {
+  border-color: var(--danger, #ef4444);
+}
+
+.help {
+  font-size: 0.75rem;
+  color: var(--gray-400, #8880a8);
+}
+
+.error {
+  font-size: 0.75rem;
+  color: var(--danger, #ef4444);
+  font-weight: 500;
+}
+
+/* Adjunto */
+
+.file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fileButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px dashed var(--gray-300, #b8b2d4);
+  border-radius: var(--radius-sm, 8px);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--gray-500, #5c5680);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.fileButton:hover {
+  border-color: var(--primary, #cc33cc);
+  color: var(--primary, #cc33cc);
+}
+
+.fileLink {
+  font-size: 0.8rem;
+  color: var(--accent-alt, #007fff);
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 22px;
+  padding: 9px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm, 8px);
+  color: #b91c1c;
+  font-size: 0.82rem;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px 20px;
+}
+
+.cancel,
+.submit {
+  padding: 9px 18px;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.cancel {
+  background: none;
+  border-color: var(--gray-200, #ddd9ef);
+  color: var(--gray-500, #5c5680);
+}
+
+.cancel:hover:not(:disabled) {
+  background: var(--gray-100, #f0eef8);
+}
+
+.submit {
+  background: var(--primary, #cc33cc);
+  color: var(--white, #fff);
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--primary-light, #d966d6);
+}
+
+.cancel:disabled,
+.submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .input,
+  .fileButton,
+  .cancel,
+  .submit {
+    transition: none;
+  }
+}
+
+/* El desplegable propio no acepta la clase de error de los inputs, así que el aviso
+   se pinta en su contenedor: mismo rojo, mismo sitio que en los demás campos. */
+.selectError :global(.ui-select__trigger) {
+  border-color: #dc2626;
+}

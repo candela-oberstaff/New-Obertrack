@@ -51,6 +51,7 @@ func registerWorkRoutes(api *gin.RouterGroup, d *deps) {
 		tasks.GET("/status-counts", d.task.GetBoardStatusCounts)
 		tasks.POST("", tasksEdit, d.task.Create)
 		tasks.GET("/:id", d.task.GetByID)
+		tasks.GET("/:id/history", d.task.StatusHistory)
 		tasks.PUT("/reorder", tasksEdit, d.task.Reorder)
 		tasks.PUT("/:id", tasksEdit, d.task.Update)
 		tasks.DELETE("/:id", tasksEdit, d.task.Delete)
@@ -58,6 +59,28 @@ func registerWorkRoutes(api *gin.RouterGroup, d *deps) {
 		tasks.POST("/:id/comments", tasksEdit, d.task.AddComment)
 		tasks.POST("/:id/attachments", tasksEdit, d.task.AddAttachment)
 		tasks.DELETE("/:id/attachments/:attachmentId", tasksEdit, d.task.DeleteAttachment)
+	}
+
+	// Automatizaciones. Van aquí y no en platform_routes porque su ámbito es el
+	// TABLERO: viven con boards y tasks, no con las herramientas de plataforma.
+	//
+	// El portero es propio y fail-closed (RequireWorkflowsAccess), no
+	// RequirePermission: ese deja pasar a quien no tiene roles RBAC asignados, y
+	// este módulo puede disparar correos a media empresa. El alcance por tablero lo
+	// comprueba además el servicio en cada operación.
+	workflows := api.Group("/workflows")
+	workflows.Use(handlers.RequireWorkflowsAccess())
+	{
+		workflows.GET("", d.workflow.List)
+		workflows.GET("/recipes", d.workflow.Recipes)
+		workflows.POST("/recipes", d.workflow.SetRecipe)
+		workflows.GET("/:id/runs", d.workflow.Runs)
+		// Puertas propias: el constructor. Van bajo el mismo portero que el resto del
+		// módulo, y el servicio comprueba además el alcance tablero a tablero.
+		workflows.GET("/gates", d.workflow.Gates)
+		workflows.POST("/gates", d.workflow.CreateGate)
+		workflows.PUT("/gates/:id", d.workflow.UpdateGate)
+		workflows.DELETE("/gates/:id", d.workflow.DeleteGate)
 	}
 
 	// Permisos por rol (módulo "hours"): lecturas exigen "view", escrituras

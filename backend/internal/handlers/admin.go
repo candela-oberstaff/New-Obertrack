@@ -709,6 +709,11 @@ func (h *AdminHandler) CreateEmployee(c *gin.Context) {
 		City        string `json:"city"`
 		Location    string `json:"location"`
 		ManagerID   *uint  `json:"manager_id"`
+		// El nivel se decide en el alta y no en una edición posterior: darlo de
+		// alta y volver a entrar a su ficha para subirlo a manager eran dos pasos
+		// donde siempre debió haber uno. UpdateEmployee ya aceptaba estas dos.
+		IsManager    bool `json:"is_manager"`
+		IsSupervisor bool `json:"is_supervisor"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -739,6 +744,10 @@ func (h *AdminHandler) CreateEmployee(c *gin.Context) {
 		"state":        req.State,
 		"city":         req.City,
 		"location":     req.Location,
+		// Supervisor implica manager; el servicio impone la misma regla, pero se
+		// manda coherente para que un cliente viejo no cree un supervisor suelto.
+		"is_manager":    req.IsManager || req.IsSupervisor,
+		"is_supervisor": req.IsSupervisor,
 	}
 	if req.ManagerID != nil && *req.ManagerID > 0 {
 		payload["manager_id"] = *req.ManagerID
@@ -1634,11 +1643,26 @@ func (h *AdminHandler) GetMyCompanyEmployment(c *gin.Context) {
 	c.JSON(http.StatusOK, view)
 }
 
+// expedienteAudience decide qué versión del expediente se devuelve a partir de
+// QUIÉN pregunta, no de por qué ruta entró.
+//
+// El mismo handler lo consumen el panel de Obertrack (/admin) y la empresa
+// cliente (/employer), y no deben ver lo mismo: hay entradas que nacen de
+// módulos nuestros —un testimonio sobre Oberstaff— y no le corresponden al
+// cliente. Mirar al solicitante y no a la ruta evita que añadir un endpoint
+// nuevo mañana se salte el filtro sin que nadie lo note.
+func expedienteAudience(c *gin.Context) string {
+	if middleware.IsSuperadmin(c) || middleware.GetUserRole(c) == string(models.UserTypeCustomerSuccess) {
+		return service.AudiencePlatform
+	}
+	return service.AudienceCompany
+}
+
 // GetUserExpediente devuelve el expediente completo de un empleo (resumen,
-// notas y documentos) para la audiencia empresa.
+// notas y documentos), acotado a lo que su solicitante puede ver.
 func (h *AdminHandler) GetUserExpediente(c *gin.Context) {
 	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
-	exp, err := h.employmentSvc.GetExpediente(uint(empID), service.AudienceCompany)
+	exp, err := h.employmentSvc.GetExpediente(uint(empID), expedienteAudience(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -1768,7 +1792,7 @@ func (h *AdminHandler) DeleteEmploymentDocument(c *gin.Context) {
 // DownloadExpedientePDF descarga el expediente completo de un empleo en PDF.
 func (h *AdminHandler) DownloadExpedientePDF(c *gin.Context) {
 	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
-	bytes, name, err := h.employmentSvc.GetExpedientePDF(uint(empID))
+	bytes, name, err := h.employmentSvc.GetExpedientePDF(uint(empID), expedienteAudience(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

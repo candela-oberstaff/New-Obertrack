@@ -1,0 +1,685 @@
+/* Automatizaciones de un tablero. Se apoya en los tokens de index.css (--primary,
+   --radius, --gray-*, --shadow-*) en vez de repetir hex a mano: tiene que envejecer
+   con la marca, no aparte de ella.
+
+   Vive dentro del modal del tablero, así que aquí no hay cabecera de página ni
+   selector de tablero: el tablero ya lo eligió quien abrió el modal. */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* ── Secciones ──
+   Avisar, cambiar la tarea y bloquear el tablero son tres decisiones distintas. En
+   una lista corrida se encendían con la misma ligereza, así que van separadas y con
+   una línea que dice qué implica encender algo de ese grupo. */
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 2px 0;
+}
+
+.section-head h4 {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--gray-500, #5c5680);
+}
+
+.section-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--gray-400, #8880a8);
+  background: var(--gray-100, #f0eef8);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.section-note {
+  margin: 0 0 10px 0;
+  font-size: 0.79rem;
+  color: var(--gray-400, #8880a8);
+  line-height: 1.45;
+}
+
+/* Cuántas están encendidas. Responde de un vistazo a "¿tengo algo corriendo?",
+   que es lo primero que se pregunta quien vuelve a esta pantalla. */
+.counter {
+  font-size: 0.78rem;
+  color: var(--gray-500, #5c5680);
+}
+
+.counter strong {
+  color: var(--primary, #cc33cc);
+  font-size: 0.95rem;
+}
+
+/* ── Avisos y vacíos ── */
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  border-radius: var(--radius, 12px);
+  padding: 10px 14px;
+  font-size: 0.86rem;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  padding: 48px 20px;
+  border: 1px dashed var(--gray-200, #ddd9ef);
+  border-radius: var(--radius, 12px);
+  color: var(--gray-500, #5c5680);
+}
+
+.empty svg {
+  color: var(--gray-300, #b8b2d4);
+}
+
+.empty p {
+  margin: 0;
+  font-weight: 600;
+  color: var(--black, #060b23);
+}
+
+.empty span {
+  font-size: 0.84rem;
+  max-width: 44ch;
+}
+
+.muted {
+  color: var(--gray-400, #8880a8);
+  font-size: 0.82rem;
+  margin: 10px 0 0 0;
+  line-height: 1.5;
+}
+
+/* El interruptor bloqueado por falta de columna: en ámbar, como el resto del
+   lenguaje de las puertas, y no en gris, que se confunde con "apagada". */
+.switch-blocked {
+  color: #b45309 !important;
+  font-size: 0.66rem !important;
+  text-align: center;
+  line-height: 1.2;
+  max-width: 64px;
+}
+
+/* ── Puertas propias (constructor) ──
+   Se listan más compactas que las recetas: una receta hay que leerla entera antes de
+   encenderla, y una puerta propia la escribió alguien de la casa, que ya sabe qué
+   hace. Lo que importa de un vistazo es dónde actúa y cuánto pide. */
+
+.gates {
+  list-style: none;
+  margin: 0 0 10px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gate {
+  border: 1px solid var(--gray-200, #ddd9ef);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius, 12px);
+  background: var(--white, #fff);
+  padding: 11px 14px;
+}
+
+.gate-on {
+  border-left-color: #d97706;
+  background: linear-gradient(90deg, rgba(217, 119, 6, 0.05) 0%, rgba(217, 119, 6, 0) 220px);
+}
+
+.gate-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.gate-text {
+  min-width: 0;
+}
+
+.gate-text h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 2px 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--black, #060b23);
+}
+
+.gate-text h3 svg {
+  color: #b45309;
+  flex-shrink: 0;
+}
+
+.gate-acciones {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.gate-acciones button {
+  border: none;
+  background: none;
+  color: var(--gray-400, #8880a8);
+  padding: 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.gate-acciones button:hover {
+  background: var(--gray-100, #f0eef8);
+  color: var(--black, #060b23);
+}
+
+.gate-borrar:hover {
+  color: #b91c1c !important;
+  background: #fef2f2 !important;
+}
+
+.gate .switch input:checked + .slider {
+  background: #d97706;
+}
+
+.nueva-puerta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  border: 1px dashed var(--gray-300, #b8b2d4);
+  background: none;
+  border-radius: var(--radius, 12px);
+  padding: 11px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--gray-500, #5c5680);
+  cursor: pointer;
+}
+
+.nueva-puerta:hover {
+  border-color: #d97706;
+  color: #b45309;
+}
+
+/* El constructor abierto: caja propia para que se lea como un modo aparte y no como
+   una tarjeta más de la lista. */
+.builder-wrap {
+  border: 1px solid #fde68a;
+  background: #fffdf7;
+  border-radius: var(--radius, 12px);
+  padding: 14px;
+}
+
+/* ── Tarjetas ── */
+
+/* Rejilla fluida, el mismo patrón que Incidentes y Sesiones. En una sola columna a
+   pantalla completa las descripciones se estirarían a líneas de más de 1500 px, que
+   es lo peor que se puede hacer con un texto que hay que leer. Así se aprovecha el
+   ancho y cada tarjeta conserva una medida legible.
+   align-items: start evita que desplegar la actividad de una tarjeta estire a sus
+   vecinas de fila. */
+.recipes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* min(420px, 100%) evita que la columna mínima desborde en pantallas más
+     estrechas que la propia medida: por debajo de 420 px la tarjeta se adapta. */
+  grid-template-columns: repeat(auto-fill, minmax(min(390px, 100%), 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.recipe {
+  border: 1px solid var(--gray-200, #ddd9ef);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius, 12px);
+  background: var(--white, #fff);
+  padding: 14px 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.recipe:hover {
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(6, 11, 35, 0.08));
+}
+
+/* Una regla encendida se distingue SIN tener que leer el interruptor: banda de
+   marca a la izquierda y fondo levemente teñido. En una lista de cuatro, saber
+   cuáles están vivas tiene que costar cero. */
+.recipe-on {
+  border-left-color: var(--primary, #cc33cc);
+  background: linear-gradient(
+    90deg,
+    rgba(204, 51, 204, 0.04) 0%,
+    rgba(204, 51, 204, 0) 220px
+  );
+}
+
+.recipe-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.recipe-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.recipe-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.recipe-head h3 {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--black, #060b23);
+  margin: 0;
+}
+
+/* Cuándo salta. Es lo que más se consulta y lo que peor se lee en prosa. */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+  background: var(--gray-100, #f0eef8);
+  color: var(--gray-500, #5c5680);
+}
+
+/* Una puerta no avisa: impide. Se marca en ámbar y con candado porque mezclar las
+   dos clases de automatización en el mismo gris haría que alguien encendiera un
+   bloqueo creyendo que activaba un aviso. */
+.trigger-gate {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.recipe-desc {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--gray-500, #5c5680);
+  line-height: 1.5;
+}
+
+/* A quién avisa. Neutro y con icono: antes iba en azul de enlace y parecía
+   pulsable, que es prometer una interacción que no existe. */
+.recipe-who {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0 0;
+  font-size: 0.82rem;
+  color: var(--gray-500, #5c5680);
+  line-height: 1.45;
+}
+
+.recipe-who svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--gray-400, #8880a8);
+}
+
+/* ── Interruptor ── */
+
+.recipe-switch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: var(--gray-300, #b8b2d4);
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+.slider::before {
+  content: '';
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: var(--white, #fff);
+  border-radius: 50%;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(6, 11, 35, 0.08));
+  transition: transform 0.2s ease;
+}
+
+.switch input:checked + .slider {
+  background: var(--primary, #cc33cc);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(18px);
+}
+
+.switch input:disabled + .slider {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.switch input:focus-visible + .slider {
+  outline: 2px solid var(--primary, #cc33cc);
+  outline-offset: 2px;
+}
+
+.switch-state {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--gray-400, #8880a8);
+}
+
+.recipe-on .switch-state {
+  color: var(--primary, #cc33cc);
+}
+
+/* ── Actividad ── */
+
+.recipe-footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--gray-100, #f0eef8);
+}
+
+.history-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--gray-500, #5c5680);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.history-btn:hover {
+  color: var(--primary, #cc33cc);
+}
+
+.runs {
+  list-style: none;
+  margin: 12px 0 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.run {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.run-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+}
+
+.run-task {
+  font-weight: 600;
+  color: var(--black, #060b23);
+}
+
+.run-when {
+  color: var(--gray-400, #8880a8);
+  font-size: 0.76rem;
+}
+
+/* El motivo se sangra bajo su ejecución para que se lea como explicación de
+   esa fila y no como otra entrada más. */
+.run-reason,
+.run-error {
+  font-size: 0.78rem;
+  padding-left: 2px;
+  line-height: 1.45;
+}
+
+.run-reason {
+  color: var(--gray-400, #8880a8);
+}
+
+.run-error {
+  color: var(--danger, #ef4444);
+}
+
+.badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+  background: var(--gray-100, #f0eef8);
+  color: var(--gray-500, #5c5680);
+}
+
+.badge-done {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.badge-failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* "Sin efecto" no es un error: la regla decidió no actuar y dice por qué. Se deja
+   en gris para que no compita con los fallos de verdad. */
+.badge-skipped {
+  background: var(--gray-100, #f0eef8);
+  color: var(--gray-500, #5c5680);
+}
+
+.badge-pending,
+.badge-running {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* ── Carga ── */
+
+.skeleton-card {
+  border-radius: var(--radius, 12px);
+  background: linear-gradient(
+    90deg,
+    var(--gray-100, #f0eef8) 25%,
+    var(--gray-200, #ddd9ef) 37%,
+    var(--gray-100, #f0eef8) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+.skeleton-card {
+  height: 118px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-card {
+    animation: none;
+  }
+  .recipe,
+  .slider,
+  .slider::before,
+  .history-btn {
+    transition: none;
+  }
+}
+
+/* ── Móvil ── */
+
+@media (max-width: 640px) {
+  .recipe-main {
+    gap: 12px;
+  }
+}
+
+/* Columna sobre la que actúa una puerta. Va debajo de la explicación porque es la
+   segunda pregunta que se hace quien la va a encender: primero a quién afecta,
+   después dónde. */
+.recipe-column {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--gray-500, #5c5680);
+}
+
+.recipe-column svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--gray-400, #8880a8);
+}
+
+.recipe-column strong {
+  color: var(--primary, #cc33cc);
+}
+
+.recipe-column-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.recipe-column-picker span {
+  font-size: 0.75rem;
+  color: var(--gray-400, #8880a8);
+}
+
+/* ── Puertas activas ──
+   Una puerta encendida está IMPIDIENDO que la gente mueva tarjetas. Que se vea
+   igual que un aviso encendido invita a confundirlas, así que conserva el ámbar
+   del distintivo en todo su estado activo: banda, interruptor y etiqueta. */
+
+.recipe-gate.recipe-on {
+  border-left-color: #d97706;
+  background: linear-gradient(
+    90deg,
+    rgba(217, 119, 6, 0.05) 0%,
+    rgba(217, 119, 6, 0) 220px
+  );
+}
+
+.recipe-gate .switch input:checked + .slider {
+  background: #d97706;
+}
+
+.recipe-gate .switch input:focus-visible + .slider {
+  outline-color: #d97706;
+}
+
+.recipe-gate.recipe-on .switch-state {
+  color: #b45309;
+}
+
+.recipe-gate .recipe-column strong {
+  color: #b45309;
+}
+
+/* Dónde conviene poner la puerta. Va ANTES del selector, no después: es lo que hay
+   que saber para elegir, no una nota al pie de lo ya elegido. */
+.recipe-column-hint {
+  font-size: 0.74rem;
+  color: var(--gray-500, #5c5680);
+  line-height: 1.45;
+}
+
+/* Puerta huérfana: la columna que vigilaba se borró. Va en rojo y no en ámbar
+   porque no es una advertencia sobre lo que va a pasar, sino un hecho: ahora mismo
+   esa regla no hace nada. */
+.recipe-column-broken {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 0.74rem;
+  color: #b91c1c;
+  line-height: 1.45;
+}
+
+.recipe-column-broken svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Aviso bajo el selector cuando la puerta ya está viva: cambiarla mueve el punto de
+   control al instante, no lo deja preparado. */
+.recipe-column-warn {
+  font-size: 0.72rem;
+  color: #b45309;
+}
+
+/* Distintivo de las reglas que MODIFICAN la tarea. Índigo, distinto tanto del gris
+   de los avisos como del ámbar de las puertas: son tres cosas que hacen cosas
+   distintas y se activan con criterios distintos. */
+.trigger-mutates {
+  background: #e0e7ff;
+  color: #4338ca;
+}

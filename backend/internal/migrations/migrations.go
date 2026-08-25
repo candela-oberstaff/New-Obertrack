@@ -2077,6 +2077,272 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropColumn(&models.Tutorial{}, "announce_max_shows")
 			},
 		},
+		{
+			// Fase 0 del motor de workflows. Dos columnas y una bitácora:
+			//  - tasks.status_changed_at responde a "cuándo entró en esta columna",
+			//    que updated_at no puede responder porque se pisa al editar
+			//    cualquier campo (basta cambiar el título).
+			//  - tasks.revision es la versión del cambio de la que el motor deriva
+			//    su clave de idempotencia. Sin ella no hay forma de distinguir dos
+			//    disparos del mismo cambio de dos cambios idénticos consecutivos:
+			//    una edición de prioridad no deja rastro en ninguna tabla, y
+			//    task_users tiene PK compuesta, sin id ni timestamps.
+			//  - task_status_history es el historial de movimientos que alimenta la
+			//    antigüedad visible y, más adelante, schedule.task_stale.
+			ID: "202608201700_task_revision_status_history",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding tasks.revision, tasks.status_changed_at and task_status_history...")
+				if err := tx.AutoMigrate(&models.Task{}); err != nil {
+					return err
+				}
+				if err := tx.AutoMigrate(&models.TaskStatusHistory{}); err != nil {
+					return err
+				}
+				// Relleno: para lo ya existente, updated_at es la mejor
+				// aproximación disponible a "cuándo entró en su columna". No se
+				// inventan filas de historial — la bitácora arranca vacía y se
+				// llena con los movimientos futuros, que sí son ciertos.
+				return tx.Exec(
+					`UPDATE tasks SET status_changed_at = updated_at WHERE status_changed_at IS NULL`,
+				).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropTable(&models.TaskStatusHistory{}); err != nil {
+					return err
+				}
+				if err := tx.Migrator().DropColumn(&models.Task{}, "status_changed_at"); err != nil {
+					return err
+				}
+				return tx.Migrator().DropColumn(&models.Task{}, "revision")
+			},
+		},
+		{
+			// Fase 1 del motor de workflows: reglas, pasos, ejecuciones y el
+			// resultado de cada paso. Las dos primeras son configuración; las dos
+			// últimas son, a la vez, bitácora y cola de trabajo.
+			ID: "202608201800_workflow_engine",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating workflow engine tables...")
+				if err := tx.AutoMigrate(
+					&models.Workflow{},
+					&models.WorkflowStep{},
+					&models.WorkflowRun{},
+					&models.WorkflowStepRun{},
+				); err != nil {
+					return err
+				}
+				// Índice parcial para la toma de trabajo: el worker sólo mira las
+				// pendientes, así que indexar también las done/failed —que son la
+				// inmensa mayoría con el tiempo— sólo engordaría el índice.
+				return tx.Exec(`
+					CREATE INDEX IF NOT EXISTS idx_wf_run_claim_pending
+					ON workflow_runs (id)
+					WHERE status = 'pending'`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					&models.WorkflowStepRun{},
+					&models.WorkflowRun{},
+					&models.WorkflowStep{},
+					&models.Workflow{},
+				)
+			},
+		},
+		{
+			// El ámbito de una regla (el tablero) pasó de vivir dentro del JSON de
+			// trigger_config a ser columna propia, y se añadió recipe_key para
+			// reconocer las reglas nacidas de una receta. Va como migración aparte
+			// de la que creó las tablas para cubrir las bases donde aquella ya
+			// corrió: AutoMigrate no vuelve a pasar sobre una migración aplicada.
+			ID: "202608201900_workflow_board_scope",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding workflows.board_id and workflows.recipe_key...")
+				return tx.AutoMigrate(&models.Workflow{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&models.Workflow{}, "recipe_key"); err != nil {
+					return err
+				}
+				return tx.Migrator().DropColumn(&models.Workflow{}, "board_id")
+			},
+		},
+		{
+			// Modo Workflow: puertas de fase. La regla gana un esquema de formulario y
+			// la bitácora de movimientos gana el formulario enviado al cruzarla, que es
+			// donde queda el rastro de quién aprobó qué y con qué datos.
+			ID: "202608211000_workflow_phase_gates",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding workflows.form_schema and gate columns on task_status_history...")
+				if err := tx.AutoMigrate(&models.Workflow{}); err != nil {
+					return err
+				}
+				return tx.AutoMigrate(&models.TaskStatusHistory{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, c := range []string{"gate_workflow_id", "form_data"} {
+					if err := tx.Migrator().DropColumn(&models.TaskStatusHistory{}, c); err != nil {
+						return err
+					}
+				}
+				return tx.Migrator().DropColumn(&models.Workflow{}, "form_schema")
+			},
+		},
+		{
+			// Consecuencia según la respuesta: un paso puede llevar sus propias
+			// condiciones, además de las de la regla. Es lo que deja que una misma
+			// puerta cierre la tarea si aprueban y la devuelva si rechazan, sin
+			// necesitar dos reglas —y dos formularios— sobre la misma columna.
+			ID: "202608241800_workflow_step_conditions",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding workflow_steps.conditions...")
+				return tx.AutoMigrate(&models.WorkflowStep{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.WorkflowStep{}, "conditions")
+			},
+		},
+		{
+			// La receta "aviso por chat al asignar" duplicaba el mensaje directo que
+			// Tareas ya manda al sumar responsables: quien la tenía encendida recibía
+			// el aviso dos veces. Se retiró del catálogo, y quitarla de allí sin más
+			// habría dejado las reglas vivas disparando desde una pantalla que ya no
+			// las muestra. Se apagan, no se borran: su historial de ejecuciones sigue
+			// siendo la explicación de los avisos que salieron.
+			ID: "202608242200_retire_chat_assign_recipe",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Disabling retired recipe asignacion_por_chat...")
+				return tx.Model(&models.Workflow{}).
+					Where("recipe_key = ?", "asignacion_por_chat").
+					Update("enabled", false).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// No se vuelven a encender: no se sabe cuáles estaban activas antes,
+				// y encender reglas que mandan avisos "por si acaso" es peor que
+				// dejarlas apagadas.
+				return nil
+			},
+		},
+		{
+			// Reglas huérfanas: una automatización encendida por un SUPERADMIN se
+			// guardaba con el inquilino del actor (0) en vez del inquilino del
+			// tablero. El motor busca las reglas por el inquilino de la tarea, así
+			// que esas filas no se disparaban nunca: encendidas en la pantalla y
+			// mudas en el motor. Además, al no encontrarlas, el superadmin creaba una
+			// segunda copia de recetas que la empresa ya tenía activas.
+			//
+			// Las duplicadas se archivan (nunca ejecutaron nada; adoptarlas
+			// duplicaría los avisos de la empresa) y las únicas se adoptan APAGADAS:
+			// encender una regla que manda correos es una decisión de una persona, no
+			// de una migración.
+			ID: "202608242300_adopt_orphan_workflows",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Reassigning workflows stored under the wrong tenant...")
+				if err := tx.Exec(`
+					UPDATE workflows w
+					   SET deleted_at = NOW()
+					  FROM boards b
+					 WHERE b.id = w.board_id
+					   AND w.deleted_at IS NULL
+					   AND b.tenant_id <> 0
+					   AND w.tenant_id <> b.tenant_id
+					   AND EXISTS (
+						   SELECT 1 FROM workflows t
+						    WHERE t.board_id = w.board_id
+						      AND t.recipe_key = w.recipe_key
+						      AND t.tenant_id = b.tenant_id
+						      AND t.deleted_at IS NULL)`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					UPDATE workflows w
+					   SET tenant_id = b.tenant_id, enabled = false
+					  FROM boards b
+					 WHERE b.id = w.board_id
+					   AND w.deleted_at IS NULL
+					   AND b.tenant_id <> 0
+					   AND w.tenant_id <> b.tenant_id`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// Irreversible a propósito: devolverlas al inquilino 0 sería devolver
+				// reglas mudas, y no queda registro de cuáles estaban encendidas.
+				return nil
+			},
+		},
+		{
+			// Testimonios: solicitud, respuesta firmada y evidencia del
+			// consentimiento en una sola tabla. Es un módulo nuevo y aislado —
+			// nada existente la referencia—, así que crear la tabla basta.
+			ID: "202608241200_testimonials",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating testimonials table...")
+				return tx.AutoMigrate(&models.Testimonial{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.Testimonial{})
+			},
+		},
+		{
+			// Los testimonios aprobados bajan al expediente de su autor. filed_at
+			// marca que ya se archivó, para que volver a aprobar (tras corregir
+			// la cita) no deje una entrada nueva cada vez.
+			ID: "202608241800_testimonial_filed_at",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding testimonials.filed_at...")
+				return tx.AutoMigrate(&models.Testimonial{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.Testimonial{}, "filed_at")
+			},
+		},
+		{
+			// Las entradas que un módulo deja en un expediente guardan a qué
+			// registro suyo apuntan, para poder volver al original (hoy: el
+			// testimonio, con su firma y su constancia).
+			ID: "202608242000_expediente_ref_id",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding ref_id to company_events and employment_notes...")
+				if err := tx.AutoMigrate(&models.CompanyEvent{}); err != nil {
+					return err
+				}
+				return tx.AutoMigrate(&models.EmploymentNote{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&models.EmploymentNote{}, "ref_id"); err != nil {
+					return err
+				}
+				return tx.Migrator().DropColumn(&models.CompanyEvent{}, "ref_id")
+			},
+		},
+		{
+			// Devolver un testimonio para que su autor lo corrija: motivo, cuándo
+			// se devolvió, cuántas vueltas lleva y el rastro de las firmas que
+			// quedaron atrás al volver a firmar.
+			ID: "202608242300_testimonial_changes_requested",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding change_reason and signature_trail to testimonials...")
+				return tx.AutoMigrate(&models.Testimonial{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, c := range []string{"change_reason", "change_requested_at", "revisions", "signature_trail"} {
+					if err := tx.Migrator().DropColumn(&models.Testimonial{}, c); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
+		{
+			// Cómo se firmó (trazo, imagen cargada o nombre tipografiado). Es
+			// parte de la evidencia: las tres valen, pero no prueban lo mismo.
+			ID: "202608250100_testimonial_signature_mode",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding testimonials.signature_mode...")
+				return tx.AutoMigrate(&models.Testimonial{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.Testimonial{}, "signature_mode")
+			},
+		},
 		// Future migrations go here
 	})
 

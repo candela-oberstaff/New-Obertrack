@@ -4,6 +4,7 @@ import { useDirtySnapshot } from '../../ui/useCloseGuard'
 import { Modal, Button, DatePicker, toISODate } from '../../ui'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../Auth/countries'
 import styles from '../Admin.module.css'
+import { HierarchyLevelSelector } from './HierarchyLevelSelector'
 
 interface UserModalProps {
   title: string
@@ -57,24 +58,6 @@ export function UserModal({
   // conserva la casilla de siempre. En modo empleador el tipo no viaja en el
   // formulario porque se fuerza profesional fuera de este componente.
   const showLevelSelector = employerMode || form.user_type === 'profesional'
-
-  const hierarchyLevel = form.is_supervisor
-    ? 'supervisor'
-    : form.is_manager
-      ? 'manager'
-      : 'profesional'
-
-  const LEVELS = [
-    { value: 'profesional', label: 'Profesional', hint: 'Registra sus horas y tareas. No aprueba a nadie.' },
-    { value: 'manager', label: 'Manager', hint: 'Aprueba las horas de los profesionales a su cargo.' },
-    { value: 'supervisor', label: 'Supervisor', hint: 'Tiene managers a su cargo: ve y aprueba todo lo que cuelga de él.' },
-  ]
-
-  const setLevel = (value: string) => setForm({
-    ...form,
-    is_manager: value !== 'profesional',
-    is_supervisor: value === 'supervisor',
-  })
 
   return (
     <Modal
@@ -144,26 +127,10 @@ export function UserModal({
         )}
 
         {showLevelSelector && (
-          <div className={styles['form-group']}>
-            <label>Nivel en la jerarquía</label>
-            <div className={styles['level-group']} role="radiogroup" aria-label="Nivel en la jerarquía">
-              {LEVELS.map(l => (
-                <button
-                  key={l.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={hierarchyLevel === l.value}
-                  className={`${styles['level-btn']} ${hierarchyLevel === l.value ? styles['active'] : ''}`}
-                  onClick={() => setLevel(l.value)}
-                >
-                  {l.label}
-                </button>
-              ))}
-            </div>
-            <p className={styles['level-hint']}>
-              {LEVELS.find(l => l.value === hierarchyLevel)?.hint}
-            </p>
-          </div>
+          <HierarchyLevelSelector
+            value={form}
+            onChange={levels => setForm({ ...form, ...levels })}
+          />
         )}
 
         {!employerMode && form.user_type === 'empleador' && (

@@ -143,7 +143,7 @@ export default function RecipientSelector({ value, onChange }: Props) {
   const applyExpress = () => {
     const lines = expressRaw.split(/[\n,;]/).map(l => l.trim()).filter(Boolean)
     const contacts = lines.map(line => {
-      const emailMatch = line.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/)
+      const emailMatch = line.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
       if (!emailMatch) return null
       const email = emailMatch[0]
       const name = line.replace(email, '').replace(/[<>]/g, '').trim() || email.split('@')[0]

@@ -1,5 +1,5 @@
 import api from './client'
-import type { Task, PaginatedResponse, CreateTaskInput } from '../types'
+import type { Task, PaginatedResponse, CreateTaskInput, TaskStatusHistoryEntry, TaskGateRequirement } from '../types'
 
 export const taskService = {
   getAll: async (params?: { 
@@ -27,12 +27,23 @@ export const taskService = {
     const { data } = await api.get<Record<number, Record<string, number>>>('/tasks/status-counts', { params })
     return data
   },
+  // Bitácora de movimientos entre columnas, de la más reciente a la más antigua.
+  // Vive en su propio endpoint y no dentro de getById porque sólo la mira quien
+  // abre el historial, y una tarjeta muy movida acumula bastantes filas.
+  getHistory: async (id: number) => {
+    const { data } = await api.get<TaskStatusHistoryEntry[]>(`/tasks/${id}/history`)
+    return data
+  },
   create: async (taskData: CreateTaskInput) => {
     const { data } = await api.post<Task>('/tasks', taskData)
     return data
   },
-  update: async (id: number, taskData: Partial<Task>) => {
-    const { data } = await api.put<Task>(`/tasks/${id}`, taskData)
+  // `gate` lleva el formulario cuando la columna destino tiene una puerta. Se envía
+  // aparte de los campos de la tarea porque no es parte de ella: es lo que se aportó
+  // para poder moverla, y el servidor lo guarda en el historial, no en la tarjeta.
+  update: async (id: number, taskData: Partial<Task>, gate?: Record<string, unknown>) => {
+    const body = gate ? { ...taskData, gate } : taskData
+    const { data } = await api.put<Task>(`/tasks/${id}`, body)
     return data
   },
   delete: async (id: number) => {
@@ -62,4 +73,17 @@ export const taskService = {
   deleteAttachment: async (taskId: number, attachmentId: number) => {
     await api.delete(`/tasks/${taskId}/attachments/${attachmentId}`)
   },
+}
+
+/**
+ * Extrae el requisito de puerta de un error de axios, o null si el error era otra
+ * cosa. Se comprueba el 422 Y la forma del cuerpo: un 422 de otro origen no debe
+ * acabar abriendo un modal vacío.
+ */
+export function gateFromError(err: unknown): TaskGateRequirement | null {
+  const res = (err as { response?: { status?: number; data?: { gate?: TaskGateRequirement } } })?.response
+  if (res?.status !== 422) return null
+  const gate = res.data?.gate
+  if (!gate || !Array.isArray(gate.form?.fields)) return null
+  return gate
 }

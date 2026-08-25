@@ -140,6 +140,34 @@ func BuildInductionInviteHTML(name, landingLink string) string {
 	return brandedEmailShell("Completa tu inducción", body)
 }
 
+// BuildTestimonialRequestHTML: solicitud de testimonio. `intro` es la nota
+// personal que el equipo escribió al pedirlo; se muestra tal cual para que el
+// correo no suene a plantilla.
+func BuildTestimonialRequestHTML(name, intro, link string) string {
+	body := emailGreeting(name) +
+		emailParagraph(intro) +
+		emailParagraph("Solo tienes que escribir unas líneas y firmar la autorización en la misma página. No necesitas cuenta ni contraseña.") +
+		emailButton("Escribir mi testimonio", link) +
+		emailNote("Este enlace es personal, no lo compartas. Si prefieres no participar, puedes ignorar este correo.") +
+		emailFallbackLink(link)
+	return brandedEmailShell("Nos gustaría conocer tu experiencia", body)
+}
+
+// BuildTestimonialChangesHTML: el testimonio vuelve a su autor con un motivo.
+// El motivo va destacado porque es lo único que de verdad tiene que leer.
+func BuildTestimonialChangesHTML(name, reason, link string) string {
+	body := emailGreeting(name) +
+		emailParagraph("Gracias por enviarnos tu testimonio. Antes de poder usarlo necesitamos que corrijas un detalle:") +
+		`<div style="background:` + emailBgColor + `;border-left:3px solid #cc33cc;border-radius:12px;padding:16px 18px;margin-bottom:24px;">
+			<p style="font-size:15px;line-height:1.6;margin:0;color:` + emailInkColor + `;font-family:sans-serif;">` + reason + `</p>
+		</div>` +
+		emailParagraph("Al abrir el enlace encontrarás lo que ya habías escrito, así que solo tienes que ajustar eso y volver a firmar.") +
+		emailButton("Corregir mi testimonio", link) +
+		emailNote("Se vuelve a firmar porque la firma anterior autorizaba el texto sin corregir.") +
+		emailFallbackLink(link)
+	return brandedEmailShell("Un detalle por corregir", body)
+}
+
 // BuildSupportAlertHTML: alerta interna al equipo de Soporte.
 func BuildSupportAlertHTML(rows, link string) string {
 	body := `<p style="margin:0 0 16px 0;font-family:sans-serif;">Se ha creado un nuevo ticket de soporte. Estos son los detalles:</p>

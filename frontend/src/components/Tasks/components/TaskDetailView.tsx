@@ -1,15 +1,65 @@
 import { useState, useMemo, useEffect } from 'react'
-import type { Task, TaskAttachment } from '../../../types'
+import type { Task, TaskAttachment, TaskStatusHistoryEntry } from '../../../types'
 import { ColumnType } from '../types'
+import { taskService } from '../../../services/task.service'
 import { TaskAttachmentsSection } from './TaskAttachmentsSection'
 import { TaskCommentsSection } from './TaskCommentsSection'
 import { Select } from '../../ui/Select'
 import { useConfirm } from '../../ui/ConfirmProvider'
-import { Pencil, Trash2, X, Download, CheckCheck } from 'lucide-react'
+import { Pencil, Trash2, X, Download, CheckCheck, Clock, Paperclip } from 'lucide-react'
 import { sanitizeRichHtml } from '../../../utils/sanitize'
-import { formatDateOnly } from '../../../utils/date'
+import { formatDateOnly, formatDaysSince } from '../../../utils/date'
 
 type TaskComment = NonNullable<Task['comments']>[number]
+
+interface GateEntry {
+  key: string
+  label: string
+  type: string
+  value: string
+}
+
+// El formulario que se rellenó para cruzar una puerta viaja como JSON. Se lee con
+// tolerancia deliberada: es un registro histórico, puede venir de un esquema que ya
+// cambió o de una versión anterior del formato, y un contenido inesperado tiene que
+// ignorarse en vez de romper la ficha de la tarea.
+//
+// Se admiten dos formas: la actual, con etiqueta y tipo junto al valor, y la primera,
+// que era un simple mapa clave→valor. En esa vieja la clave hace de etiqueta, que es
+// lo único que se puede decir con honestidad sobre lo que se preguntó entonces.
+function parseGateData(raw?: string): GateEntry[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return []
+
+    if (Array.isArray(parsed.fields)) {
+      return parsed.fields
+        .filter((f: unknown) => !!f && typeof f === 'object')
+        .map((f: Record<string, unknown>) => ({
+          key: String(f.key ?? ''),
+          label: String(f.label || f.key || ''),
+          type: String(f.type ?? 'text'),
+          value: String(f.value ?? ''),
+        }))
+        .filter((f: GateEntry) => f.value !== '')
+    }
+
+    return Object.entries(parsed as Record<string, unknown>).map(([k, v]) => ({
+      key: k, label: k, type: 'text', value: String(v),
+    }))
+  } catch {
+    return []
+  }
+}
+
+// Los archivos subidos se guardan como <usuario>_<marca de tiempo>_<nombre>. Enseñar
+// eso entero es enseñar fontanería: en el historial interesa el nombre que la persona
+// reconoce.
+function fileLabel(url: string): string {
+  const last = url.split('/').pop() ?? url
+  return decodeURIComponent(last.replace(/^[0-9]+_[0-9]+_/, ''))
+}
 
 // Iconos (lucide) como SVG en línea para los botones que se inyectan dentro del
 // HTML de la descripción.
@@ -138,6 +188,44 @@ export function TaskDetailView({
     return () => document.removeEventListener('keydown', onKey)
   }, [lightboxSrc])
 
+  // Antigüedad en la columna actual y bitácora de movimientos. El historial se pide
+  // sólo al desplegarlo: la mayoría de las veces que se abre una tarea no se mira.
+  const [history, setHistory] = useState<TaskStatusHistoryEntry[] | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyError, setHistoryError] = useState(false)
+
+  // Otra tarea: se empieza de cero, con el historial plegado.
+  useEffect(() => {
+    setHistory(null)
+    setShowHistory(false)
+    setHistoryError(false)
+  }, [task.id])
+
+  // La misma tarea se movió de columna: lo cargado ya no incluye ese movimiento.
+  // Se invalida, pero NO se pliega el panel: quien acaba de mover la tarjeta con
+  // el historial abierto espera ver aparecer su movimiento, no que se le cierre.
+  useEffect(() => {
+    setHistory(null)
+    setHistoryError(false)
+  }, [task.status])
+
+  // Carga perezosa: la mayoría de las veces que se abre una tarea no se mira el
+  // historial, así que sólo se pide cuando hace falta mostrarlo.
+  useEffect(() => {
+    if (!showHistory || history !== null || historyError) return
+    let cancelled = false
+    taskService
+      .getHistory(task.id)
+      .then((rows) => { if (!cancelled) setHistory(rows) })
+      .catch(() => { if (!cancelled) setHistoryError(true) })
+    return () => { cancelled = true }
+  }, [showHistory, history, historyError, task.id])
+
+  const columnTitle = (statusId: string) =>
+    columns.find((c) => c.id === statusId)?.title || statusId
+
+  const ageLabel = formatDaysSince(task.status_changed_at)
+
   const getPriorityColor = (priority: string) => {
     const colors: Record<string, string> = {
       urgent: '#ef4444',
@@ -205,6 +293,82 @@ export function TaskDetailView({
       </div>
 
       <h3 className={styles['task-title']}>{task.title}</h3>
+
+      {/* Antigüedad en la columna actual. Sin fecha sellada (tareas anteriores a
+          la bitácora que nadie ha movido desde) no se muestra nada en vez de
+          inventar un "hoy" que sería falso. */}
+      {ageLabel && (
+        <div className={styles['task-age']}>
+          <Clock size={13} />
+          <span>
+            En <strong>{columnTitle(task.status)}</strong> desde {ageLabel}
+          </span>
+          <button
+            type="button"
+            className={styles['task-history-toggle']}
+            onClick={() => setShowHistory((v) => !v)}
+          >
+            {showHistory ? 'Ocultar historial' : 'Ver historial'}
+          </button>
+        </div>
+      )}
+
+      {showHistory && (
+        <div className={styles['task-section']}>
+          <h4>Historial de columnas</h4>
+          {historyError ? (
+            <p>No se pudo cargar el historial.</p>
+          ) : history === null ? (
+            <p>Cargando…</p>
+          ) : history.length === 0 ? (
+            <p>Esta tarea no ha cambiado de columna desde que existe la bitácora.</p>
+          ) : (
+            <ul className={styles['task-history-list']}>
+              {history.map((h) => (
+                <li key={h.id} className={styles['task-history-item']}>
+                  {h.from_status === ''
+                    ? <>Creada en <strong>{columnTitle(h.to_status)}</strong></>
+                    : <>De <strong>{columnTitle(h.from_status)}</strong> a <strong>{columnTitle(h.to_status)}</strong></>}
+                  {h.actor_name && <> · {h.actor_name}</>}
+                  {/* Lo aportado al cruzar la puerta. Es el rastro que pedía el
+                      concepto: qué usuario aprobó, cuándo y con qué datos. */}
+                  {(() => {
+                    const aportado = parseGateData(h.form_data)
+                    if (aportado.length === 0) return null
+                    return (
+                      <dl className={styles['task-gate-data']}>
+                        {aportado.map((f) => (
+                          <div key={f.key}>
+                            <dt>{f.label}</dt>
+                            <dd>
+                              {f.type === 'file' ? (
+                                <a className={styles['task-gate-file']} href={f.value} target="_blank" rel="noreferrer">
+                                  <Paperclip size={12} />
+                                  {fileLabel(f.value)}
+                                </a>
+                              ) : /^https?:\/\//.test(f.value) ? (
+                                <a href={f.value} target="_blank" rel="noreferrer">{f.value}</a>
+                              ) : (
+                                f.value
+                              )}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )
+                  })()}
+                  <span className={styles['task-history-when']}>
+                    {new Date(h.changed_at).toLocaleString('es-ES', {
+                      day: 'numeric', month: 'short', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className={styles['task-section']}>
         <h4>Descripción</h4>

@@ -1,0 +1,267 @@
+/* Recuadro de firma. Se usa en la página pública del testimonio, que vive
+   fuera del Layout autenticado, así que los colores van literales (los tokens
+   de marca de Obertrack) y no como variables de tema. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pad {
+  position: relative;
+  height: 170px;
+  border: 1px dashed #cbb8e0;
+  border-radius: 14px;
+  background: #ffffff;
+  overflow: hidden;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.pad:hover {
+  border-color: #cc33cc;
+}
+
+.pad:focus-within {
+  border-color: #cc33cc;
+  box-shadow: 0 6px 20px -10px rgba(204, 51, 204, 0.45);
+}
+
+.padDisabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* Sin esto, arrastrar el dedo para firmar hace scroll de la página en lugar
+     de dibujar. */
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* Marca de agua: desaparece en cuanto hay trazo. No intercepta el puntero para
+   que se pueda empezar a firmar justo encima de ella. */
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #b6a9cf;
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Renglón guía, como en un papel. */
+.baseline {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 38px;
+  height: 1px;
+  background: #ece7f6;
+  pointer-events: none;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hint {
+  font-size: 12px;
+  color: #8880a8;
+  line-height: 1.5;
+}
+
+.clearBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid #ddd6ec;
+  border-radius: 10px;
+  padding: 7px 13px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5c5680;
+  cursor: pointer;
+  transition: border-color 0.18s ease, color 0.18s ease;
+}
+
+.clearBtn:hover:not(:disabled) {
+  border-color: #cc33cc;
+  color: #cc33cc;
+}
+
+.clearBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+
+/* ===================== Pestañas de modalidad ===================== */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: #f5f2fb;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  border: 0;
+  background: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #7a7095;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab:hover:not(:disabled) {
+  color: #cc33cc;
+}
+
+.tabOn {
+  background: #ffffff;
+  color: #cc33cc;
+  box-shadow: 0 1px 3px rgba(6, 11, 35, 0.12);
+}
+
+.tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===================== Subir una imagen ===================== */
+
+.fileInput {
+  display: none;
+}
+
+.dropZone {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #8b7fae;
+  cursor: pointer;
+}
+
+.dropZone:hover:not(:disabled) {
+  color: #cc33cc;
+}
+
+.dropZone:disabled {
+  cursor: not-allowed;
+}
+
+.dropHint {
+  font-size: 12px;
+  font-weight: 500;
+  color: #b6a9cf;
+}
+
+/* La firma cargada se muestra entera y centrada, sin recortar: hay que poder
+   comprobar que salió bien antes de enviarla. */
+.preview {
+  position: absolute;
+  inset: 10px;
+  margin: auto;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 20px);
+  object-fit: contain;
+}
+
+.error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #b91c1c;
+}
+
+/* ===================== Nombre escrito ===================== */
+
+.typedInput {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #ddd6ec;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 15px;
+  color: #060b23;
+  background: #faf8fe;
+  box-sizing: border-box;
+}
+
+.typedInput:focus {
+  outline: none;
+  border-color: #cc33cc;
+  background: #ffffff;
+}
+
+/* Cada opción se muestra CON la letra que representa: elegir una fuente por su
+   nombre a ciegas no dice nada. */
+.fontList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fontOption {
+  border: 1px solid #ece7f6;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px 18px;
+  font-size: 30px;
+  line-height: 1.35;
+  color: #1a1330;
+  cursor: pointer;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.fontOption:hover:not(:disabled) {
+  border-color: #d6a8e0;
+}
+
+.fontOn {
+  border-color: #cc33cc;
+  background: #fdf2fd;
+}
+
+.fontOption:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

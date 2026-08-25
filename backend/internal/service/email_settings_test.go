@@ -109,6 +109,7 @@ func TestCatalogo_CubreTodosLosTiposEnUso(t *testing.T) {
 		EmailKindChatDigest, EmailKindInactivityAlert, EmailKindWorkHourReport,
 		EmailKindSupportTicket, EmailKindPasswordReset, EmailKindAccountSetup,
 		EmailKindAccessCredentials, EmailKindInductionInvite, EmailKindIncidentBroadcast,
+		EmailKindTestimonialRequest,
 		EmailKindSurveyInvite, EmailKindTicketReply, EmailKindManualComposer,
 		EmailKindCampaign,
 	}

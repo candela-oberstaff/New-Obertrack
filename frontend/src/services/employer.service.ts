@@ -18,6 +18,8 @@ export const employerService = {
       city?: string
       location?: string
       manager_id?: number
+      is_manager?: boolean
+      is_supervisor?: boolean
     },
   ): Promise<{ user: User; temp_password: string }> => {
     const { data } = await api.post('/employer/employees', payload)

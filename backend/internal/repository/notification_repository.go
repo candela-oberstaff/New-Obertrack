@@ -15,6 +15,11 @@ type NotificationRepository interface {
 	MarkAllAsRead(userID uint) error
 	GetUnreadCount(userID uint) (int64, error)
 	DeleteByTaskID(taskID uint) error
+	// ExistsRecentForTask indica si ya se avisó a este usuario sobre esta tarea
+	// desde `since`. Es la base de la deduplicación de avisos: el módulo de Tareas
+	// notifica por su cuenta desde siempre, y una regla de workflow sobre el mismo
+	// cambio duplicaría la campanita.
+	ExistsRecentForTask(userID uint, taskID uint, since time.Time) (bool, error)
 }
 
 type notificationRepository struct {
@@ -52,5 +57,30 @@ func (r *notificationRepository) GetUnreadCount(userID uint) (int64, error) {
 }
 
 func (r *notificationRepository) DeleteByTaskID(taskID uint) error {
-	return r.db.Where("data LIKE ?", "%\"task_id\":"+strconv.FormatUint(uint64(taskID), 10)+"%").Delete(&models.Notification{}).Error
+	return r.db.Where(taskIDJSONWhere, taskIDJSONPattern(taskID)).Delete(&models.Notification{}).Error
+}
+
+func (r *notificationRepository) ExistsRecentForTask(userID uint, taskID uint, since time.Time) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.Notification{}).
+		Where("user_id = ? AND created_at >= ?", userID, since).
+		Where(taskIDJSONWhere, taskIDJSONPattern(taskID)).
+		Limit(1).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// taskIDJSONWhere compara el task_id por TEXTO en vez de con los operadores JSON de
+// Postgres, porque la columna admite filas antiguas cuyo contenido no es JSON válido
+// y ->> reventaría sobre ellas en lugar de simplemente no coincidir.
+//
+// El cast a text es obligatorio: `data` es de tipo json, y json no tiene operador
+// LIKE. Sin él, Postgres responde "operator does not exist: json ~~ unknown" y la
+// consulta falla ENTERA. Así estuvo DeleteByTaskID desde su origen: como su error se
+// descarta en taskService.Delete, borrar una tarea nunca llegó a borrar sus
+// notificaciones y nadie se enteró.
+const taskIDJSONWhere = "data::text LIKE ?"
+
+func taskIDJSONPattern(taskID uint) string {
+	return "%\"task_id\":" + strconv.FormatUint(uint64(taskID), 10) + "%"
 }

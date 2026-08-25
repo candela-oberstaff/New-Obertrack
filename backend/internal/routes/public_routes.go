@@ -82,6 +82,21 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 		induction.POST("/:token/submit", d.induction.Submit)
 	}
 
+	// Testimonios. PÚBLICA a propósito, igual que la inducción: quien firma
+	// puede no tener sesión (una empresa que delega en su gerente, un
+	// profesional cuyo empleo ya terminó) y su única credencial es el token del
+	// enlace que recibió por correo. Se limita la tasa para que el token no sea
+	// adivinable por fuerza bruta.
+	//
+	// El prefijo es "/testimonial" (singular) para no chocar con el grupo
+	// interno "/testimonials", que vive bajo sesión.
+	testimonial := api.Group("/testimonial")
+	testimonial.Use(middleware.AuthRateLimitMiddleware())
+	{
+		testimonial.GET("/:token", d.testimonial.Landing)
+		testimonial.POST("/:token/submit", d.testimonial.Submit)
+	}
+
 	// Vista previa de plantillas de correo — SOLO en desarrollo. Permite iterar
 	// el diseño de los correos sin enviarlos. En release no se registra: expone
 	// la estructura de correos internos.

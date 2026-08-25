@@ -41,12 +41,29 @@ type BoardService interface {
 	CancelInvitation(invID, userID uint, role string, isManager, isSuperadmin bool) error
 	RemoveMember(boardID, targetUserID, tenantID, userID uint, role string, isManager, isSuperadmin bool) (*models.Board, error)
 	LeaveBoard(userID, boardID uint) error
+
+	// SetPhaseGuard cablea la comprobación de automatizaciones antes de borrar una
+	// columna. Va en la interfaz porque quien la cablea (deps) trabaja contra ella.
+	SetPhaseGuard(fn func(tenantID, boardID, phaseID uint) (string, bool))
 }
 
 type boardService struct {
 	repo     repository.BoardRepository
 	userRepo repository.UserRepository
 	notifSvc NotificationService
+	// phaseGuard pregunta si alguna automatización vigila una columna, y devuelve
+	// el nombre de la regla. Se inyecta por callback —igual que el emisor del motor
+	// en taskService— para no acoplar los tableros al módulo de automatizaciones.
+	// Sin cablear, borrar columnas se comporta como siempre.
+	phaseGuard func(tenantID, boardID, phaseID uint) (string, bool)
+}
+
+// SetPhaseGuard cablea la comprobación de automatizaciones antes de borrar una
+// columna. Sin ella, borrar la columna que vigilaba una puerta dejaba la regla viva
+// apuntando a una columna que ya no existe: encendida en la pantalla y muda en el
+// motor. Ahora se avisa ANTES, que es cuando se puede hacer algo al respecto.
+func (s *boardService) SetPhaseGuard(fn func(tenantID, boardID, phaseID uint) (string, bool)) {
+	s.phaseGuard = fn
 }
 
 func NewBoardService(
@@ -413,6 +430,17 @@ func (s *boardService) RemovePhase(boardID, phaseID, tenantID, userID uint, role
 	tasks, _, _ := s.repo.FindTasksByPhase(boardID, PhaseColumnID(*phaseToRemove))
 	if len(tasks) > 0 {
 		return nil, errors.New("No se puede eliminar la fase porque tiene tareas. Muévelas o elimínalas primero.")
+	}
+
+	// Y lo mismo con las automatizaciones que la vigilan: se avisa en vez de borrar,
+	// por la misma razón que con las tareas. Sólo frenan las ENCENDIDAS; una apagada
+	// no está haciendo nada y ya se señala en su propia pantalla.
+	if s.phaseGuard != nil {
+		// El tenant sale del TABLERO y no de quien borra: un superadmin tiene tenant 0
+		// y no encontraría ninguna regla.
+		if regla, enUso := s.phaseGuard(board.TenantID, boardID, phaseID); enUso {
+			return nil, fmt.Errorf("No se puede eliminar la fase: la automatización %q actúa sobre ella. Cámbiala de columna o apágala primero.", regla)
+		}
 	}
 
 	if err := s.repo.RemovePhase(board, phaseID); err != nil {

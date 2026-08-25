@@ -53,6 +53,8 @@ const EMPTY_CREATE_FORM = {
   industry: '',
   selectedCompanyId: '' as number | '',
   managerId: '' as number | '',
+  isManager: false,
+  isSupervisor: false,
   phoneNumber: '',
   country: '',
   province: '',
@@ -177,7 +179,7 @@ export default function Admin() {
     e.preventDefault()
     setCreateError('')
 
-    const { name, email, password, userType, companyName, industry, selectedCompanyId, phoneNumber, country, province, city, location, address, jobTitle } = createForm
+    const { name, email, password, userType, companyName, industry, selectedCompanyId, phoneNumber, country, province, city, location, address, jobTitle, isManager, isSupervisor } = createForm
 
     if (userType === 'profesional') {
       if (!selectedCompanyId) { setCreateError('Debes seleccionar una empresa'); return }
@@ -210,6 +212,11 @@ export default function Admin() {
         location: location || undefined,
         address: userType === 'empleador' ? address : undefined,
         job_title: userType === 'profesional' ? jobTitle : undefined,
+        // El nivel sólo viaja para los profesionales: en los demás tipos la bandera
+        // de manager significa otra cosa o no aplica, y el backend la rechazaría.
+        // Supervisor implica manager, y el servidor lo vuelve a imponer.
+        is_manager: userType === 'profesional' ? isManager || isSupervisor : undefined,
+        is_supervisor: userType === 'profesional' ? isSupervisor : undefined,
       })
       setShowCreateModal(false)
     } catch (err: any) {

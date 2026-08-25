@@ -27,11 +27,14 @@ import {
   Volume2,
   VolumeX,
   Hourglass,
-  Sparkles
+  Sparkles,
+  MessageSquareQuote
 } from 'lucide-react'
 import styles from './Notifications.module.css'
 
 const LIVE_NOTIFICATION_TYPES = new Set([
+  'testimonial_request',
+  'testimonial',
   'task_assigned',
   'mention',
   'support',
@@ -49,6 +52,7 @@ const LIVE_NOTIFICATION_TYPES = new Set([
 ])
 
 const ALERT_NOTIFICATION_TYPES = new Set([
+  'testimonial_request',
   'task_assigned',
   'mention',
   'support',
@@ -160,6 +164,13 @@ export default function Notifications() {
               message.type === 'task_completed'
             ) {
               window.dispatchEvent(new CustomEvent('task-assigned'))
+            }
+
+            // Una automatización acaba de tocar una tarea: puede haberla movido de
+            // columna, reasignado o cambiado la prioridad. Quien tenga el tablero
+            // abierto lo está viendo desactualizado hasta que recargue.
+            if (message.type === 'workflow') {
+              window.dispatchEvent(new CustomEvent('tasks-changed'))
             }
 
             // Novedad recién publicada: quien ya está dentro no debería tener
@@ -330,6 +341,10 @@ export default function Notifications() {
       case 'board_request_rejected': return <XCircle size={18} className="text-red-500" />
       case 'board_member_left': return <LogOut size={18} className="text-gray-500" />
       case 'novedad': return <Sparkles size={18} className="text-violet-500" />
+      // Testimonios: la solicitud (a quien escribe) y el aviso de recepción
+      // (a quien lo pidió). Comparten icono porque son el mismo asunto.
+      case 'testimonial_request':
+      case 'testimonial': return <MessageSquareQuote size={18} className="text-fuchsia-500" />
       default: return <Bell size={18} className="text-gray-500" />
     }
   }

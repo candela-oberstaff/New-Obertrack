@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -33,14 +34,18 @@ type CreateTaskRequest struct {
 }
 
 type UpdateTaskRequest struct {
-	Title       *string    `json:"title"`
-	Description *string    `json:"description"`
-	Status      *string    `json:"status"`
-	Priority    *string    `json:"priority"`
-	StartDate   *time.Time `json:"start_date"`
-	EndDate     *time.Time `json:"end_date"`
-	Completed   *bool      `json:"completed"`
-	Assignees   *[]uint    `json:"assignees"`
+	// Gate es el formulario de la PUERTA de fase, cuando la columna destino exige
+	// uno. Ausente en un movimiento normal; el servidor responde 422 con la
+	// definición del formulario cuando hace falta y no vino.
+	Gate        map[string]any `json:"gate,omitempty"`
+	Title       *string        `json:"title"`
+	Description *string        `json:"description"`
+	Status      *string        `json:"status"`
+	Priority    *string        `json:"priority"`
+	StartDate   *time.Time     `json:"start_date"`
+	EndDate     *time.Time     `json:"end_date"`
+	Completed   *bool          `json:"completed"`
+	Assignees   *[]uint        `json:"assignees"`
 }
 
 func (h *TaskHandler) GetAll(c *gin.Context) {
@@ -124,6 +129,32 @@ func (h *TaskHandler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
+// StatusHistory expone los movimientos de columna de una tarea. Es de sólo lectura
+// y respeta la misma autorización que el detalle: quien puede abrir la tarea puede
+// ver por dónde pasó.
+func (h *TaskHandler) StatusHistory(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		return
+	}
+
+	entries, err := h.service.StatusHistory(uint(id), middleware.GetTenantID(c), middleware.IsSuperadmin(c))
+	if err != nil {
+		// Mismo criterio que GetByID: "no existe" y "no es tuya" son cosas
+		// distintas y colapsarlas en 404 hace que un fallo de permisos se lea
+		// como una tarea borrada.
+		if err.Error() == "No tienes permiso para acceder a esta tarea" {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, entries)
+}
+
 func (h *TaskHandler) Create(c *gin.Context) {
 	var req CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -142,6 +173,25 @@ func (h *TaskHandler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, task)
+}
+
+// respondGate traduce el rechazo de una PUERTA de fase a un 422 que lleva consigo la
+// definición del formulario. Devuelve false si el error no era de puerta.
+//
+// 422 y no 400 a propósito: la petición está bien formada, lo que ocurre es que la
+// regla de negocio exige algo más. Y el formulario viaja EN la respuesta para que el
+// cliente pueda dibujar el modal sin conocer la puerta de antemano — así una app que
+// no se ha actualizado respeta igualmente una puerta recién creada.
+func respondGate(c *gin.Context, err error) bool {
+	var gate *service.GateRequiredError
+	if !errors.As(err, &gate) {
+		return false
+	}
+	c.JSON(http.StatusUnprocessableEntity, gin.H{
+		"error": gate.Error(),
+		"gate":  gate,
+	})
+	return true
 }
 
 func (h *TaskHandler) Update(c *gin.Context) {
@@ -192,8 +242,11 @@ func (h *TaskHandler) Update(c *gin.Context) {
 	role := middleware.GetUserRole(c)
 	isManager := middleware.IsManager(c)
 
-	task, _, err := h.service.Update(uint(id), tenantID, userID, role, isManager, isSuperadmin, updates, req.Assignees)
+	task, _, err := h.service.Update(uint(id), tenantID, userID, role, isManager, isSuperadmin, updates, req.Assignees, req.Gate)
 	if err != nil {
+		if respondGate(c, err) {
+			return
+		}
 		status := http.StatusInternalServerError
 		if err.Error() == "Access denied" {
 			status = http.StatusForbidden
@@ -265,6 +318,9 @@ func (h *TaskHandler) ToggleCompletion(c *gin.Context) {
 	isManager := middleware.IsManager(c)
 	task, err := h.service.ToggleCompletion(uint(id), tenantID, userID, role, isManager, isSuperadmin)
 	if err != nil {
+		if respondGate(c, err) {
+			return
+		}
 		status := http.StatusInternalServerError
 		if err.Error() == "Access denied" {
 			status = http.StatusForbidden

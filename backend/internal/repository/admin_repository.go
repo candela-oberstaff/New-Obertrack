@@ -76,6 +76,11 @@ const (
 	// la pregunta que más se hace soporte al abrir una ficha —"¿ya hablamos con
 	// ellos?"— y mezclarla con las notas la volvería a esconder.
 	TenantActivityContact = "contact"
+	// TenantActivityTestimonial son los testimonios que la empresa firmó y el
+	// equipo aprobó. Tienen categoría propia —y no caen en "notas"— porque se
+	// buscan por sí mismos: al preparar material comercial se quiere ver qué
+	// dijo este cliente, sin rebuscar entre las anotaciones internas.
+	TenantActivityTestimonial = "testimonial"
 )
 
 // TenantActivityPerson es una persona que aparece en el expediente, para
@@ -105,6 +110,9 @@ type TenantActivity struct {
 	// va aparte del texto para que la interfaz pueda distinguirlos de un
 	// vistazo sin leer el detalle.
 	Channel string `json:"channel,omitempty"`
+	// RefID apunta al registro del módulo de origen (hoy el testimonio), para
+	// poder abrirlo desde el expediente. 0 = la entrada no lleva a ningún sitio.
+	RefID uint `json:"ref_id,omitempty"`
 }
 
 // TenantActivityCount es cuántos movimientos hay de una categoría, con el
@@ -1021,7 +1029,7 @@ var tenantEventsCTE = `
 		COALESCE(owner.company_name, '-') as company,
 		'Empresa registrada en la plataforma' as details,
 		owner.created_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
 	FROM users owner WHERE owner.id = @tid
 
 	UNION ALL
@@ -1033,7 +1041,7 @@ var tenantEventsCTE = `
 			(CASE WHEN COALESCE(emp.job_title, '') <> '' THEN ' como ' || emp.job_title ELSE '' END) ||
 			(CASE WHEN COALESCE(emp.start_reason, '') <> '' THEN ' — ' || emp.start_reason ELSE '' END) as details,
 		emp.started_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
 	FROM employments emp
 	JOIN users u ON u.id = emp.user_id
 	JOIN users owner ON owner.id = @tid
@@ -1047,7 +1055,7 @@ var tenantEventsCTE = `
 		'Finalizó su empleo' ||
 			(CASE WHEN COALESCE(emp.end_reason, '') <> '' THEN ' — ' || emp.end_reason ELSE '' END) as details,
 		emp.ended_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
 	FROM employments emp
 	JOIN users u ON u.id = emp.user_id
 	JOIN users owner ON owner.id = @tid
@@ -1061,7 +1069,7 @@ var tenantEventsCTE = `
 		COALESCE(e.company_name, '-') as company,
 		CASE WHEN wh.work_type = 'complete' THEN 'Registró jornada completa' ELSE 'Registró ausencia' END as details,
 		wh.created_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
 	FROM work_hours wh
 	JOIN users u ON u.id = wh.user_id
 	LEFT JOIN users e ON e.id = u.empleador_id
@@ -1078,7 +1086,7 @@ var tenantEventsCTE = `
 			(CASE f.status WHEN 'contacted' THEN 'Contactado' WHEN 'justified' THEN 'Justificado' WHEN 'escalated' THEN 'Escalado' ELSE f.status END) ||
 			(CASE WHEN COALESCE(f.note, '') <> '' THEN ' — ' || f.note ELSE '' END) as details,
 		f.created_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
 	FROM follow_ups f
 	JOIN users u ON u.id = f.user_id
 	LEFT JOIN users c ON c.id = @tid
@@ -1093,6 +1101,7 @@ var tenantEventsCTE = `
 		(CASE ce.type
 			WHEN 'note' THEN ` + quoted(TenantActivityNote) + `
 			WHEN 'contact' THEN ` + quoted(TenantActivityContact) + `
+			WHEN 'testimonial' THEN ` + quoted(TenantActivityTestimonial) + `
 			ELSE ` + quoted(TenantActivityLifecycle) + ` END) as category,
 		COALESCE(actor.name, '') as actor, COALESCE(actor.id, 0) as actor_id,
 		COALESCE(owner.company_name, '-') as company,
@@ -1100,6 +1109,7 @@ var tenantEventsCTE = `
 			WHEN 'suspended' THEN 'Acceso suspendido'
 			WHEN 'reactivated' THEN 'Acceso reactivado'
 			WHEN 'note' THEN COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido')
+			WHEN 'testimonial' THEN COALESCE(NULLIF(ce.detail, ''), 'Testimonio aprobado')
 			WHEN 'contact' THEN
 				(CASE ce.channel
 					WHEN 'email' THEN 'Correo enviado a la empresa'
@@ -1110,34 +1120,44 @@ var tenantEventsCTE = `
 				|| (CASE WHEN COALESCE(ce.detail, '') <> '' THEN ' — ' || ce.detail ELSE '' END)
 			ELSE ce.type END) as details,
 		ce.created_at as timestamp, ce.id as event_id,
-		ce.pinned, ce.edited_at, COALESCE(ce.channel, '') as channel
+		ce.pinned, ce.edited_at, COALESCE(ce.channel, '') as channel,
+		COALESCE(ce.ref_id, 0) as ref_id
 	FROM company_events ce
 	JOIN users owner ON owner.id = ce.company_id
 	LEFT JOIN users actor ON actor.id = ce.by_user_id
 	WHERE ce.company_id = @tid
 `
 
+// tenantActivityRow es una fila cruda del expediente tal como sale del Raw.
+//
+// Es plana —y no un struct con TenantActivity embebido— para no depender de cómo
+// promociona GORM los campos anónimos al escanear. El precio es que hay que
+// mantenerla en espejo con TenantActivity: si se añade un campo allí y aquí no,
+// el valor llega SIEMPRE en cero y sin ningún error, porque escanear una columna
+// que nadie recoge no falla. Lo fija TestTenantActivityRow_EspejaTenantActivity.
+type tenantActivityRow struct {
+	Type      string
+	Category  string
+	User      string
+	UserID    uint
+	Company   string
+	Details   string
+	Timestamp time.Time
+	EventID   uint
+	RefID     uint
+	Pinned    bool
+	EditedAt  *time.Time
+	Channel   string
+	// Total es el recuento de la ventana, no un campo del movimiento.
+	Total int64
+}
+
 func (r *adminRepository) GetTenantActivities(tenantID uint, category string, userID uint, offset, limit int) ([]TenantActivity, int64, error) {
-	// Fila plana (y no un struct con TenantActivity embebido) para no depender
-	// de cómo promociona GORM los campos anónimos al escanear un Raw.
-	rows := []struct {
-		Type      string
-		Category  string
-		User      string
-		UserID    uint
-		Company   string
-		Details   string
-		Timestamp time.Time
-		EventID   uint
-		Pinned    bool
-		EditedAt  *time.Time
-		Channel   string
-		Total     int64
-	}{}
+	rows := []tenantActivityRow{}
 
 	err := r.db.Raw(`
 		WITH events AS (`+tenantEventsCTE+`)
-		SELECT type, category, actor AS "user", actor_id AS user_id, company, details, timestamp, event_id,
+		SELECT type, category, actor AS "user", actor_id AS user_id, company, details, timestamp, event_id, ref_id,
 			pinned, edited_at, channel,
 			COUNT(*) OVER() AS total
 		FROM events
@@ -1167,6 +1187,7 @@ func (r *adminRepository) GetTenantActivities(tenantID uint, category string, us
 			Details:   row.Details,
 			Timestamp: row.Timestamp,
 			EventID:   row.EventID,
+			RefID:     row.RefID,
 			Pinned:    row.Pinned,
 			EditedAt:  row.EditedAt,
 			Channel:   row.Channel,

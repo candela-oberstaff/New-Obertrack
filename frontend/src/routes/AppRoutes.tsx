@@ -45,6 +45,8 @@ const Soporte = lazy(() => import('../pages/Soporte'))
 const Papelera = lazy(() => import('../pages/Papelera'))
 const AppSettings = lazy(() => import('../pages/AppSettings'))
 const Induction = lazy(() => import('../pages/Induction'))
+const Testimonial = lazy(() => import('../pages/Testimonial'))
+const Testimonials = lazy(() => import('../pages/Testimonials'))
 
 export function AppRoutes() {
   return (
@@ -57,6 +59,10 @@ export function AppRoutes() {
             aquí todavía no tiene cuenta activa y su credencial es el token del
             enlace que recibió por correo. */}
         <Route path="/induccion/:token" element={<Induction />} />
+        {/* Testimonio. Va SIN guard por el mismo motivo que la inducción: quien
+            firma puede no tener sesión y su credencial es el token del enlace
+            que recibió por correo. */}
+        <Route path="/testimonio/:token" element={<Testimonial />} />
         <Route
           path="/"
           element={
@@ -68,6 +74,10 @@ export function AppRoutes() {
           <Route index element={<Navigate to={ROUTES.dashboard} replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="tasks" element={<Tasks />} />
+          {/* Las automatizaciones se configuran dentro del tablero sobre el que
+              actúan, no en una pantalla aparte con su propio selector. La ruta se
+              queda como redirección por los enlaces ya guardados. */}
+          <Route path="automatizaciones" element={<Navigate to="/tasks" replace />} />
           <Route path="work-hours" element={<WorkHours />} />
           {/* Sesiones: sin guard de rol propio. El permiso del módulo "meetings"
               lo aplican el backend y el sidebar, igual que Tareas u Horas.
@@ -96,6 +106,8 @@ export function AppRoutes() {
           <Route path="admin/email" element={<CustomerSuccessRoute><EmailCampaigns /></CustomerSuccessRoute>} />
           <Route path="admin/mapa" element={<PlatformAdminRoute><ProfessionalsMap /></PlatformAdminRoute>} />
           <Route path="admin/incidentes" element={<PlatformAdminRoute><Incidents /></PlatformAdminRoute>} />
+          {/* Testimonios: mismo alcance que Admin y Empresas (superadmin + CS). */}
+          <Route path="testimonios" element={<PlatformAdminRoute><Testimonials /></PlatformAdminRoute>} />
           {WALLET_ENABLED && <Route path="wallet" element={<Wallet />} />}
           <Route path="admin/metrics" element={<PlatformTechRoute><Metrics /></PlatformTechRoute>} />
           <Route path="admin/audit" element={<PlatformTechRoute><AuditLogs /></PlatformTechRoute>} />
