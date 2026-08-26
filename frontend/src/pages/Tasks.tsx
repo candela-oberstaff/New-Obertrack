@@ -11,6 +11,7 @@ import { TasksTimelineView } from '../components/Tasks/components/TasksTimelineV
 import { TasksCalendarView } from '../components/Tasks/components/TasksCalendarView'
 import { TaskScopeToggle, type TaskScope } from '../components/Tasks/components/TaskScopeToggle'
 import { Select } from '../components/ui/Select'
+import { ViewToggle } from '../components/ui/ViewToggle'
 import { Skeleton } from '../components/ui'
 import { TaskDetailPanel } from '../components/Tasks/TaskDetailPanel'
 import { NewTaskModal } from '../components/Tasks/Modals/NewTaskModal'
@@ -538,32 +539,16 @@ export default function Tasks() {
         </div>
         <div className={styles['header-right']}>
           {selectedBoard && (
-            <div className={styles['view-toggle'] || 'view-toggle'} role="group" aria-label="Vista de tareas">
-              <button
-                type="button"
-                className={`${styles['view-toggle-btn'] || 'view-toggle-btn'} ${tasksView === 'kanban' ? styles['view-toggle-active'] || 'view-toggle-active' : ''}`}
-                onClick={() => setTasksView('kanban')}
-                title="Vista kanban"
-              >
-                <LayoutGrid size={16} />
-              </button>
-              <button
-                type="button"
-                className={`${styles['view-toggle-btn'] || 'view-toggle-btn'} ${tasksView === 'timeline' ? styles['view-toggle-active'] || 'view-toggle-active' : ''}`}
-                onClick={() => setTasksView('timeline')}
-                title="Vista de timeline"
-              >
-                <ChartNoAxesGantt size={16} />
-              </button>
-              <button
-                type="button"
-                className={`${styles['view-toggle-btn'] || 'view-toggle-btn'} ${tasksView === 'calendario' ? styles['view-toggle-active'] || 'view-toggle-active' : ''}`}
-                onClick={() => setTasksView('calendario')}
-                title="Vista de calendario"
-              >
-                <CalendarDays size={16} />
-              </button>
-            </div>
+            <ViewToggle
+              value={tasksView}
+              onChange={setTasksView}
+              ariaLabel="Vista de tareas"
+              options={[
+                { value: 'kanban', icon: <LayoutGrid size={16} />, label: 'Vista kanban' },
+                { value: 'timeline', icon: <ChartNoAxesGantt size={16} />, label: 'Vista de timeline' },
+                { value: 'calendario', icon: <CalendarDays size={16} />, label: 'Vista de calendario' },
+              ]}
+            />
           )}
           {selectedBoard && (
             <TaskScopeToggle

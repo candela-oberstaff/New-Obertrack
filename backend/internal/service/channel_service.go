@@ -146,6 +146,9 @@ type ChannelService interface {
 	// tablero enlaza a conversaciones cerradas justamente para analizarlas.
 	HasSupportTicket(channelID uint) (bool, error)
 	ListMySupportTickets(userID uint) ([]MySupportTicket, error)
+	// ListMySupportPage es la versión paginada y filtrada por estado, que es lo que
+	// consume la pantalla de Soporte.
+	ListMySupportPage(userID uint, estado string, page, limit int) (MySupportPage, error)
 	NotifySupportReply(channelID, senderID uint, content string, alreadyNotified []uint)
 	// ClaimSupportTicket asigna el ticket al agente que lo toma. Sin takeover el
 	// claim es atómico: si otro agente ya lo tiene, devuelve error en vez de

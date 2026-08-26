@@ -20,6 +20,9 @@ type NotificationRepository interface {
 	// notifica por su cuenta desde siempre, y una regla de workflow sobre el mismo
 	// cambio duplicaría la campanita.
 	ExistsRecentForTask(userID uint, taskID uint, since time.Time) (bool, error)
+	// ExistsRecentNativeForTask sólo mira los avisos NATIVOS (los que no vienen de una
+	// automatización), que son los que la deduplicación tiene que atrapar.
+	ExistsRecentNativeForTask(userID uint, taskID uint, since time.Time) (bool, error)
 }
 
 type notificationRepository struct {
@@ -64,6 +67,24 @@ func (r *notificationRepository) ExistsRecentForTask(userID uint, taskID uint, s
 	var count int64
 	err := r.db.Model(&models.Notification{}).
 		Where("user_id = ? AND created_at >= ?", userID, since).
+		Where(taskIDJSONWhere, taskIDJSONPattern(taskID)).
+		Limit(1).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// ExistsRecentNativeForTask es la anterior acotada a los avisos NATIVOS de tareas.
+//
+// La deduplicación existe para que el aviso que manda Tareas por su cuenta y el que
+// manda una regla no lleguen los dos por el mismo cambio. Aplicada entre dos avisos de
+// REGLA callaba decisiones distintas del motor —mover la misma tarjeta dos veces en un
+// minuto producía dos hechos y un solo aviso—, y desde fuera eso no se distingue de
+// una automatización rota.
+func (r *notificationRepository) ExistsRecentNativeForTask(userID uint, taskID uint, since time.Time) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.Notification{}).
+		Where("user_id = ? AND created_at >= ?", userID, since).
+		Where("type <> ?", "workflow").
 		Where(taskIDJSONWhere, taskIDJSONPattern(taskID)).
 		Limit(1).
 		Count(&count).Error

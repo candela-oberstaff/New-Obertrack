@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -258,8 +259,10 @@ func (s *WorkflowService) actionNotify(cfg stepConfig, ctx WorkflowContext, reci
 	title := interpolate(defaultText(cfg.Title, "Automatización de Obertrack"), ctx)
 	message := interpolate(defaultText(cfg.Message, "La tarea {{tarea.titulo}} requiere tu atención"), ctx)
 
+	entregados := make([]uint, 0, len(recipients))
+	omitidos := make([]uint, 0)
 	for _, uid := range recipients {
-		err := s.notifSvc.CreateNotification(uid, "workflow", title, message, map[string]interface{}{
+		creado, err := s.notifSvc.CreateNotificationChecked(uid, "workflow", title, message, map[string]interface{}{
 			"task_id":  ctx.Task.ID,
 			"board_id": ctx.Board.ID,
 			// Al aviso de una automatización se llega sin contexto: nadie estaba
@@ -267,14 +270,34 @@ func (s *WorkflowService) actionNotify(cfg stepConfig, ctx WorkflowContext, reci
 			// lleve a la tarea y no a la pantalla.
 			"link": taskDeepLink(ctx.Task.ID, ctx.Board.ID, ctx.Empresa),
 		})
+		if errors.Is(err, ErrNotificationSuppressed) {
+			// La deduplicación se lo tragó porque Tareas ya avisó de esta tarea hace
+			// menos de un minuto. No es un fallo y no se reintenta —reintentar no
+			// haría llegar nada— pero se registra: apuntar como "notificado" a quien
+			// no recibió nada es lo que convierte el registro en un adorno.
+			omitidos = append(omitidos, uid)
+			continue
+		}
 		if err != nil {
 			// Un destinatario que falla aborta el paso y lo reintenta entero. Los
-			// avisos ya entregados no se duplican porque CreateNotification
-			// deduplica por (usuario, tipo, tarea) en una ventana corta.
+			// avisos ya entregados no se duplican porque la deduplicación los atrapa.
 			return nil, "", fmt.Errorf("notificando al usuario %d: %w", uid, err)
 		}
+		if creado {
+			entregados = append(entregados, uid)
+		}
 	}
-	return map[string]any{"notificados": recipients}, "", nil
+
+	out := map[string]any{"notificados": entregados}
+	if len(omitidos) > 0 {
+		out["omitidos_por_duplicado"] = omitidos
+	}
+	// Todos omitidos: el paso no entregó nada, y decirlo como "hecho" es mentir en el
+	// único sitio donde alguien va a mirar cuando pregunte por qué no le llegó.
+	if len(entregados) == 0 && len(omitidos) > 0 {
+		return out, "Tareas ya había avisado de esta tarea hace menos de un minuto", nil
+	}
+	return out, "", nil
 }
 
 func (s *WorkflowService) actionChatDM(cfg stepConfig, ctx WorkflowContext, recipients []uint) (map[string]any, string, error) {

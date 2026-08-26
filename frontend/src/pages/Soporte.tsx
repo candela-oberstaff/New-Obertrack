@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LifeBuoy, CheckCircle2, MessageCircle, Clock, Plus, Inbox, RotateCcw } from 'lucide-react'
+import { LifeBuoy, CheckCircle2, MessageCircle, Clock, Plus, Inbox, RotateCcw, ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react'
 import { channelService } from '../services/api'
 import { useNotification } from '../context/NotificationContext'
 import { Select } from '../components/ui/Select'
+import { ViewToggle } from '../components/ui/ViewToggle'
 import type { MySupportTicket, SupportStatus } from '../types/chat'
 import styles from './Soporte.module.css'
 
@@ -37,6 +38,24 @@ const PRIORITY_META: Record<string, string> = {
   Media: styles.prioMed,
   Baja: styles.prioLow,
 }
+
+type SupportFilter = '' | 'open' | 'resolved'
+type SupportView = 'grid' | 'list'
+
+// Cuadrícula para mirar, lista para buscar: con pocas solicitudes la tarjeta se lee
+// mejor, y en cuanto son muchas lo que se quiere es recorrerlas rápido. La elección se
+// recuerda por navegador, como en Tareas: es una preferencia de cómo trabaja cada uno,
+// no un ajuste de la empresa.
+const VIEW_OPTIONS = [
+  { value: 'grid' as const, icon: <LayoutGrid size={16} />, label: 'Vista de tarjetas' },
+  { value: 'list' as const, icon: <List size={16} />, label: 'Vista de lista' },
+]
+
+const FILTERS: { key: SupportFilter; label: string }[] = [
+  { key: '', label: 'Todas' },
+  { key: 'open', label: 'Abiertas' },
+  { key: 'resolved', label: 'Resueltas' },
+]
 
 const STEPS: { key: SupportStatus; label: string }[] = [
   { key: 'open', label: 'Enviada' },
@@ -93,11 +112,38 @@ export default function Soporte() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const { data: tickets = [], isLoading } = useQuery({
-    queryKey: ['my-support-tickets'],
-    queryFn: () => channelService.getMySupportTickets(),
+  // Filtro y página. Van en el estado y no en la URL porque esta pantalla se abre
+  // desde el menú y desde los avisos, y un enlace con ?page=3 no significaría nada
+  // para quien lo recibe.
+  const [filter, setFilter] = useState<SupportFilter>('')
+  const [page, setPage] = useState(1)
+  const [view, setView] = useState<SupportView>(
+    () => (localStorage.getItem('soporte_view') === 'list' ? 'list' : 'grid'),
+  )
+
+  useEffect(() => {
+    localStorage.setItem('soporte_view', view)
+  }, [view])
+
+  const { data: pageData, isLoading, isFetching } = useQuery({
+    queryKey: ['my-support-tickets', filter, page],
+    queryFn: () => channelService.getMySupportPage(filter, page),
     refetchInterval: 30_000,
+    // Mantener la página anterior mientras llega la nueva evita el parpadeo a vacío
+    // al cambiar de filtro o de página, que es lo que hace sentir lenta una lista.
+    placeholderData: (prev) => prev,
   })
+
+  const tickets = pageData?.data ?? []
+  const total = pageData?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / (pageData?.limit || 10)))
+
+  // Cambiar de filtro siempre vuelve al principio: la página 3 de "abiertas" no
+  // tiene por qué existir en "resueltas".
+  const changeFilter = (f: SupportFilter) => {
+    setFilter(f)
+    setPage(1)
+  }
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -134,9 +180,12 @@ export default function Soporte() {
     mutation.mutate()
   }
 
-  const hasTickets = tickets.length > 0
-  const openCount = tickets.filter((t) => t.status !== 'resolved').length
-  const resolvedCount = tickets.filter((t) => t.status === 'resolved').length
+  const openCount = pageData?.open ?? 0
+  const resolvedCount = pageData?.resolved ?? 0
+  // "Tiene solicitudes" es una pregunta sobre TODAS, no sobre la página: con el
+  // filtro en "abiertas" y ninguna abierta, la pantalla no debe comportarse como si
+  // la persona nunca hubiera escrito a soporte.
+  const hasTickets = openCount + resolvedCount > 0
 
   return (
     <div className={styles.page}>
@@ -251,17 +300,92 @@ export default function Soporte() {
               {openCount} abierta{openCount === 1 ? '' : 's'} · {resolvedCount} resuelta{resolvedCount === 1 ? '' : 's'}
             </span>
           </div>
-          <div className={styles.ticketList}>
+          {/* Filtrar por estado es la pregunta que se hace todo el mundo al entrar:
+              "¿me queda algo abierto?". Va delante de la lista, no escondido. */}
+          <div className={styles.listControls}>
+          <div className={styles.filters} role="tablist" aria-label="Filtrar solicitudes">
+            {FILTERS.map((f) => (
+              <button
+                key={f.key || 'all'}
+                type="button"
+                role="tab"
+                aria-selected={filter === f.key}
+                className={`${styles.filterBtn} ${filter === f.key ? styles.filterActive : ''}`}
+                onClick={() => changeFilter(f.key)}
+              >
+                {f.label}
+                {f.key === 'open' && openCount > 0 && (
+                  <span className={styles.filterCount}>{openCount}</span>
+                )}
+              </button>
+            ))}
+          </div>
+            <ViewToggle
+              value={view}
+              onChange={setView}
+              options={VIEW_OPTIONS}
+              ariaLabel="Cambiar la vista de las solicitudes"
+            />
+          </div>
+
+          <div
+            className={`${styles.ticketList} ${view === 'grid' ? styles.ticketGrid : ''} ${isFetching ? styles.listBusy : ''}`}
+          >
             {tickets.map((t) => (
               <TicketRow
                 key={t.id}
                 ticket={t}
+                compact={view === 'list'}
                 onOpen={() => navigate(`/chat?channel=${t.channel_id}`)}
                 onReopen={() => reopenMutation.mutate(t.id)}
                 reopening={reopenMutation.isPending && reopenMutation.variables === t.id}
               />
             ))}
           </div>
+
+          {tickets.length === 0 && !isLoading && (
+            <p className={styles.filterEmpty}>
+              {filter === 'open'
+                ? 'No tienes solicitudes abiertas. Todo lo que escribiste está resuelto.'
+                : filter === 'resolved'
+                  ? 'Todavía no hay solicitudes resueltas.'
+                  : 'No hay solicitudes que mostrar.'}
+            </p>
+          )}
+
+          {/* La paginación sólo aparece cuando hay más de una página: enseñar
+              "Página 1 de 1" es ruido. */}
+          {totalPages > 1 && (
+            <div className={styles.pager}>
+              <span className={styles.pagerInfo}>
+                {(page - 1) * (pageData?.limit || 10) + 1}–
+                {Math.min(page * (pageData?.limit || 10), total)} de {total}
+              </span>
+              <div className={styles.pagerBtns}>
+                <button
+                  type="button"
+                  className={styles.pagerBtn}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  aria-label="Página anterior"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className={styles.pagerPage}>
+                  {page} de {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className={styles.pagerBtn}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  aria-label="Página siguiente"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -300,15 +424,22 @@ interface TicketRowProps {
   onOpen: () => void
   onReopen: () => void
   reopening: boolean
+  /** Vista de lista: la misma información, apretada para recorrer muchas de un vistazo. */
+  compact?: boolean
 }
 
-function TicketRow({ ticket, onOpen, onReopen, reopening }: TicketRowProps) {
+function TicketRow({ ticket, onOpen, onReopen, reopening, compact = false }: TicketRowProps) {
   const meta = STATUS_META[ticket.status] ?? STATUS_META.open
   const activity = ticket.last_message_at || ticket.updated_at
   const title = ticket.subject || ticket.last_message || 'Solicitud de soporte'
 
   return (
-    <div className={styles.ticketCard} onClick={onOpen} role="button" tabIndex={0}>
+    <div
+      className={`${styles.ticketCard} ${compact ? styles.ticketCompact : ''}`}
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+    >
       <div className={styles.ticketTop}>
         <span className={`${styles.badge} ${meta.className}`}>{meta.label}</span>
         {ticket.priority && (
@@ -318,16 +449,28 @@ function TicketRow({ ticket, onOpen, onReopen, reopening }: TicketRowProps) {
         {ticket.status === 'assigned' && ticket.assignee_name && (
           <span className={styles.assignee}>Atiende {ticket.assignee_name}</span>
         )}
+        {/* Sólo lo trae la solicitud viva: todas cuelgan del mismo canal de soporte
+            y repetirlo en cada tarjeta hacía creer que había mensajes nuevos en
+            todas. */}
         {ticket.unread_count > 0 && (
           <span className={styles.unread}>
-            {ticket.unread_count} nuevo{ticket.unread_count > 1 ? 's' : ''}
+            {ticket.unread_count} sin leer
           </span>
         )}
       </div>
 
       <p className={styles.title}>{title}</p>
 
-      <StatusStepper status={ticket.status} />
+      {/* El último mensaje de la conversación. Llegaba del servidor y no se pintaba:
+          "Actualizado hace 53 d" dice cuándo pasó algo, esto dice QUÉ pasó, que es
+          lo que permite reconocer una solicitud sin abrirla. */}
+      {ticket.last_message && !compact && (
+        <p className={styles.preview}>{ticket.last_message}</p>
+      )}
+
+      {/* El recorrido sólo en las abiertas: en una resuelta los tres pasos están
+          hechos y la línea no informa de nada, sólo ocupa media tarjeta. */}
+      {ticket.status !== 'resolved' && !compact && <StatusStepper status={ticket.status} />}
 
       <div className={styles.ticketFooter}>
         <span className={styles.meta}>

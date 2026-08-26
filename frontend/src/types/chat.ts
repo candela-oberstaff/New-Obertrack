@@ -86,9 +86,22 @@ export interface MySupportTicket {
   created_at: string
   updated_at: string
   resolved_at?: string
+  /** Mensajes sin leer de la CONVERSACIÓN. Sólo lo trae la solicitud viva: todas
+   *  las de una persona comparten el mismo canal de soporte. */
   unread_count: number
   last_message?: string
   last_message_at?: string
+}
+
+/** Una página de solicitudes propias, con los totales para la cabecera. */
+export interface MySupportPage {
+  data: MySupportTicket[]
+  total: number
+  page: number
+  limit: number
+  /** Totales GLOBALES, no los de esta página. */
+  open: number
+  resolved: number
 }
 
 export interface DMChannel extends Channel {

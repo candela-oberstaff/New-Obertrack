@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"time"
 
@@ -9,6 +10,26 @@ import (
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/websocket"
 )
+
+// ErrNotificationSuppressed dice que el aviso NO se creó porque ya había uno nativo
+// sobre la misma tarea dentro de la ventana. No es un fallo —es la deduplicación
+// haciendo su trabajo— pero quien llama tiene que poder distinguirlo de una entrega:
+// darlo por enviado es lo que hacía que el registro de una automatización dijera
+// "notificados" sobre un aviso que nadie recibió.
+var ErrNotificationSuppressed = errors.New("aviso omitido: ya se avisó de esta tarea")
+
+// CreateNotification crea el aviso y devuelve sólo el error, que es lo que espera la
+// treintena de sitios que la llaman. Quien necesite saber si el aviso llegó a crearse
+// —hoy, el motor de automatizaciones, que lo escribe en su registro— usa la de abajo.
+func (s *notificationService) CreateNotification(userID uint, notifType, title, message string, data map[string]interface{}) error {
+	_, err := s.CreateNotificationChecked(userID, notifType, title, message, data)
+	if errors.Is(err, ErrNotificationSuppressed) {
+		// Para el resto de la aplicación, que la deduplicación se lo trague no es un
+		// fallo del que haya que enterarse.
+		return nil
+	}
+	return err
+}
 
 // taskIDFrom extrae el task_id del payload de un aviso. Devuelve false cuando el
 // aviso no va sobre una tarea (bienvenidas, horas, soporte...), que es la señal de
@@ -32,6 +53,10 @@ func taskIDFrom(data map[string]interface{}) (uint, bool) {
 
 type NotificationService interface {
 	CreateNotification(userID uint, notifType, title, message string, data map[string]interface{}) error
+	// CreateNotificationChecked además dice si el aviso llegó a crearse o lo tragó la
+	// deduplicación. Lo usa el motor de automatizaciones para no apuntar como
+	// "notificado" a quien no recibió nada.
+	CreateNotificationChecked(userID uint, notifType, title, message string, data map[string]interface{}) (bool, error)
 	GetNotifications(userID uint) ([]models.Notification, error)
 	MarkAsRead(id uint, userID uint) error
 	MarkAllAsRead(userID uint) error
@@ -64,7 +89,11 @@ func NewNotificationService(repo repository.NotificationRepository, pusher *WebP
 // lo bastante corto como para no tragarse dos cambios reales seguidos.
 const notifyDedupWindow = time.Minute
 
-func (s *notificationService) CreateNotification(userID uint, notifType, title, message string, data map[string]interface{}) error {
+// CreateNotificationChecked crea el aviso y dice si de verdad se creó. Devuelve
+// ErrNotificationSuppressed cuando lo tragó la deduplicación: no es un fallo, pero
+// tampoco es una entrega, y confundir las dos cosas es lo que hacía que el registro de
+// una automatización dijera "notificados" sobre un aviso que nadie recibió.
+func (s *notificationService) CreateNotificationChecked(userID uint, notifType, title, message string, data map[string]interface{}) (bool, error) {
 	dataJSON := ""
 	if data != nil {
 		b, _ := json.Marshal(data)
@@ -72,17 +101,25 @@ func (s *notificationService) CreateNotification(userID uint, notifType, title, 
 	}
 
 	// Deduplicación por (usuario, tarea) dentro de la ventana: gana el primero en
-	// llegar. Se hace por tarea y no por tipo a propósito, porque el aviso nativo y
-	// el de la regla llevan tipos distintos ("task_updated" vs "workflow") y
-	// comparar el tipo no atraparía justo el caso que hay que atrapar.
+	// llegar. Se hace por tarea y no por tipo porque el aviso nativo y el de la regla
+	// llevan tipos distintos ("task_updated" vs "workflow"), y comparar el tipo no
+	// atraparía justo el caso que hay que atrapar.
+	//
+	// Lo que sí se mira es que el aviso ya enviado sea NATIVO. Entre dos avisos de
+	// regla no se deduplica: son dos decisiones distintas del motor —mover la misma
+	// tarjeta dos veces en un minuto son dos hechos— y callar la segunda hace que la
+	// automatización parezca rota justo cuando alguien la está enseñando.
 	if taskID, ok := taskIDFrom(data); ok {
-		recent, err := s.repo.ExistsRecentForTask(userID, taskID, time.Now().Add(-notifyDedupWindow))
+		recent, err := s.repo.ExistsRecentNativeForTask(userID, taskID, time.Now().Add(-notifyDedupWindow))
 		if err != nil {
 			// Fallo al comprobar: se avisa igual. Un duplicado ocasional molesta;
 			// perder el aviso porque la comprobación falló es peor.
 			log.Printf("[notifications] no se pudo comprobar duplicados de la tarea %d para el usuario %d: %v", taskID, userID, err)
 		} else if recent {
-			return nil
+			// Suprimido a propósito, pero quien llame tiene que poder saberlo: dar
+			// esto por "entregado" es lo que hacía que el registro de la regla dijera
+			// "notificados" sobre un aviso que nadie recibió.
+			return false, ErrNotificationSuppressed
 		}
 	}
 
@@ -95,7 +132,7 @@ func (s *notificationService) CreateNotification(userID uint, notifType, title, 
 	}
 
 	if err := s.repo.Create(notification); err != nil {
-		return err
+		return false, err
 	}
 
 	// Emit WebSocket notification
@@ -119,7 +156,7 @@ func (s *notificationService) CreateNotification(userID uint, notifType, title, 
 		go s.pusher.SendToUser(userID, title, message, link)
 	}
 
-	return nil
+	return true, nil
 }
 
 func (s *notificationService) GetNotifications(userID uint) ([]models.Notification, error) {

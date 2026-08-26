@@ -121,6 +121,9 @@ type ChannelRepository interface {
 	GetActiveSupportTicketByChannel(channelID uint) (*models.SupportTicket, error)
 	GetSupportTicketsByChannelIDs(channelIDs []uint) ([]models.SupportTicket, error)
 	GetSupportTicketsByRequester(requesterID uint) ([]models.SupportTicket, error)
+	// PageSupportTicketsByRequester es la versión paginada y filtrada por estado.
+	// estado: "open", "resolved" o "" (todas).
+	PageSupportTicketsByRequester(requesterID uint, estado string, offset, limit int) ([]models.SupportTicket, int64, error)
 	GetPendingSupportTickets(companyID uint) ([]models.SupportTicket, error)
 	GetAllSupportTickets() ([]models.SupportTicket, error)
 	UpdateSupportTicket(ticket *models.SupportTicket, updates map[string]interface{}) error
@@ -981,6 +984,33 @@ func (r *channelRepository) GetSupportTicketsByRequester(requesterID uint) ([]mo
 		Where("requester_id = ?", requesterID).
 		Order("updated_at DESC").Find(&tickets).Error
 	return tickets, err
+}
+
+// PageSupportTicketsByRequester devuelve una PÁGINA de las solicitudes de una persona,
+// con el total para poder paginar.
+//
+// abiertas / resueltas se filtran en la base y no en el cliente: filtrar después de
+// traerlo todo es traerlo todo, que es justo lo que la paginación viene a evitar.
+func (r *channelRepository) PageSupportTicketsByRequester(requesterID uint, estado string, offset, limit int) ([]models.SupportTicket, int64, error) {
+	q := r.db.Model(&models.SupportTicket{}).Where("requester_id = ?", requesterID)
+	switch estado {
+	case "open":
+		q = q.Where("status <> ?", models.SupportStatusResolved)
+	case "resolved":
+		q = q.Where("status = ?", models.SupportStatusResolved)
+	}
+
+	var total int64
+	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var tickets []models.SupportTicket
+	err := q.Preload("Assignee").
+		Order("updated_at DESC").
+		Offset(offset).Limit(limit).
+		Find(&tickets).Error
+	return tickets, total, err
 }
 
 func (r *channelRepository) GetAllSupportTickets() ([]models.SupportTicket, error) {

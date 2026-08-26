@@ -1003,8 +1003,26 @@ func (h *ChannelHandler) ListPendingSupport(c *gin.Context) {
 	c.JSON(http.StatusOK, tickets)
 }
 
+// ListMySupportTickets devuelve las solicitudes de quien pregunta.
+//
+// Con ?page= responde una PÁGINA con sus totales; sin parámetros mantiene la lista
+// entera de antes. El modo viejo se conserva a propósito: la app móvil y cualquier
+// cliente sin actualizar siguen llamando aquí, y cambiar la forma de la respuesta sin
+// avisar les rompería la pantalla de soporte.
 func (h *ChannelHandler) ListMySupportTickets(c *gin.Context) {
 	userID := middleware.GetUserID(c)
+
+	if c.Query("page") != "" || c.Query("status") != "" {
+		page, _ := strconv.Atoi(c.Query("page"))
+		limit, _ := strconv.Atoi(c.Query("limit"))
+		out, err := h.svc.ListMySupportPage(userID, c.Query("status"), page, limit)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, out)
+		return
+	}
 
 	tickets, err := h.svc.ListMySupportTickets(userID)
 	if err != nil {

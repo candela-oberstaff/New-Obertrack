@@ -945,19 +945,149 @@ func (s *channelService) HasSupportTicket(channelID uint) (bool, error) {
 }
 
 type MySupportTicket struct {
-	ID            uint       `json:"id"`
-	ChannelID     uint       `json:"channel_id"`
-	Subject       string     `json:"subject,omitempty"`
-	Priority      string     `json:"priority,omitempty"`
-	Module        string     `json:"module,omitempty"`
-	Status        string     `json:"status"`
-	AssigneeName  string     `json:"assignee_name,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	ResolvedAt    *time.Time `json:"resolved_at,omitempty"`
+	ID           uint       `json:"id"`
+	ChannelID    uint       `json:"channel_id"`
+	Subject      string     `json:"subject,omitempty"`
+	Priority     string     `json:"priority,omitempty"`
+	Module       string     `json:"module,omitempty"`
+	Status       string     `json:"status"`
+	AssigneeName string     `json:"assignee_name,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+	// UnreadCount es lo que la persona no ha leído EN LA CONVERSACIÓN de la que
+	// cuelga esta solicitud. Todas las solicitudes de alguien comparten el mismo
+	// canal de soporte, así que sólo se rellena en la solicitud VIVA: repetirlo en
+	// cada tarjeta hacía creer que había cinco mensajes nuevos en cada una, cuando
+	// eran los mismos cinco de la única conversación.
 	UnreadCount   int64      `json:"unread_count"`
 	LastMessage   string     `json:"last_message,omitempty"`
 	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
+}
+
+// MySupportPage es una página de solicitudes con lo necesario para paginar y para
+// titular la pantalla sin pedir la lista entera.
+type MySupportPage struct {
+	Data  []MySupportTicket `json:"data"`
+	Total int64             `json:"total"`
+	Page  int               `json:"page"`
+	Limit int               `json:"limit"`
+	// Open y Resolved son los totales GLOBALES, no los de esta página: son el
+	// resumen de la cabecera y no pueden depender de por dónde vayas paginando.
+	Open     int64 `json:"open"`
+	Resolved int64 `json:"resolved"`
+}
+
+const mySupportPageSize = 10
+
+// ListMySupportPage devuelve una página de las solicitudes de una persona.
+//
+// La versión anterior devolvía TODAS y la pantalla las pintaba enteras: con seis se
+// veía bien y con sesenta era un muro. Además pedía mensajes y no leídos por cada
+// una —dos consultas por solicitud— cuando todas cuelgan del mismo canal.
+func (s *channelService) ListMySupportPage(userID uint, estado string, page, limit int) (MySupportPage, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit <= 0 || limit > 50 {
+		limit = mySupportPageSize
+	}
+
+	tickets, total, err := s.repo.PageSupportTicketsByRequester(userID, estado, (page-1)*limit, limit)
+	if err != nil {
+		return MySupportPage{}, err
+	}
+
+	// Los totales de la cabecera se cuentan aparte, sobre todas las solicitudes: son
+	// el resumen de "1 abierta · 5 resueltas" y no pueden depender del filtro.
+	var abiertas, resueltas int64
+	if _, t, cerr := s.repo.PageSupportTicketsByRequester(userID, "open", 0, 1); cerr == nil {
+		abiertas = t
+	}
+	if _, t, cerr := s.repo.PageSupportTicketsByRequester(userID, "resolved", 0, 1); cerr == nil {
+		resueltas = t
+	}
+
+	out := MySupportPage{
+		Data: s.decorateMySupport(userID, tickets), Total: total,
+		Page: page, Limit: limit, Open: abiertas, Resolved: resueltas,
+	}
+	return out, nil
+}
+
+// decorateMySupport rellena lo que no está en la fila: el último mensaje y lo no
+// leído. Se resuelve UNA vez por canal, no una por solicitud: todas las de una
+// persona comparten el canal de soporte, así que preguntarlo por cada una era repetir
+// la misma consulta tantas veces como tarjetas hubiera en pantalla.
+func (s *channelService) decorateMySupport(userID uint, tickets []models.SupportTicket) []MySupportTicket {
+	type canalInfo struct {
+		unread  int64
+		preview string
+		at      *time.Time
+	}
+	cache := map[uint]canalInfo{}
+	info := func(channelID uint) canalInfo {
+		if c, ok := cache[channelID]; ok {
+			return c
+		}
+		c := canalInfo{}
+		if unread, uerr := s.repo.GetUnreadCount(channelID, userID); uerr == nil {
+			c.unread = unread
+		}
+		if msgs, merr := s.repo.GetMessages(channelID, 1, nil, 0); merr == nil && len(msgs) > 0 {
+			last := msgs[len(msgs)-1]
+			preview := strings.TrimSpace(last.Content)
+			if len([]rune(preview)) > 140 {
+				preview = string([]rune(preview)[:140]) + "…"
+			}
+			c.preview = preview
+			lm := last.CreatedAt
+			c.at = &lm
+		}
+		cache[channelID] = c
+		return c
+	}
+
+	// Cuál es la solicitud viva de cada canal: la más reciente que no está resuelta.
+	// Es la única que lleva el contador de no leídos, porque es la conversación que
+	// sigue abierta.
+	viva := map[uint]uint{}
+	for i := range tickets {
+		t := tickets[i]
+		if t.Status == models.SupportStatusResolved {
+			continue
+		}
+		if _, ya := viva[t.ChannelID]; !ya {
+			viva[t.ChannelID] = t.ID
+		}
+	}
+
+	out := make([]MySupportTicket, 0, len(tickets))
+	for i := range tickets {
+		t := tickets[i]
+		c := info(t.ChannelID)
+		dto := MySupportTicket{
+			ID:            t.ID,
+			ChannelID:     t.ChannelID,
+			Subject:       t.Subject,
+			Priority:      t.Priority,
+			Module:        t.Module,
+			Status:        t.Status,
+			CreatedAt:     t.CreatedAt,
+			UpdatedAt:     t.UpdatedAt,
+			ResolvedAt:    t.ResolvedAt,
+			LastMessage:   c.preview,
+			LastMessageAt: c.at,
+		}
+		if viva[t.ChannelID] == t.ID {
+			dto.UnreadCount = c.unread
+		}
+		if t.Assignee != nil {
+			dto.AssigneeName = t.Assignee.Name
+		}
+		out = append(out, dto)
+	}
+	return out
 }
 
 func (s *channelService) ListMySupportTickets(userID uint) ([]MySupportTicket, error) {

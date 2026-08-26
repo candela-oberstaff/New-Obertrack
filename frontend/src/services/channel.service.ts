@@ -1,6 +1,6 @@
 import api from './client'
 import type { User } from '../types'
-import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket, MySupportTicket, SupportAgentRef, GlobalSearchHit } from '../types/chat'
+import type { Channel, ChannelMember, Message, DMChannel, MessageReaction, UserStatus, SupportTicket, MySupportTicket, MySupportPage, SupportAgentRef, GlobalSearchHit } from '../types/chat'
 
 export const channelService = {
   getChannels: async (companyId?: number | null): Promise<Channel[]> => {
@@ -145,6 +145,21 @@ export const channelService = {
   },
   getMySupportTickets: async (): Promise<MySupportTicket[]> => {
     const { data } = await api.get<MySupportTicket[]>('/channels/support/mine')
+    return data
+  },
+  /**
+   * Una PÁGINA de mis solicitudes, filtrada por estado. El servidor devuelve además
+   * los totales globales de abiertas y resueltas: son el resumen de la cabecera y no
+   * pueden depender de por dónde vayas paginando.
+   */
+  getMySupportPage: async (
+    status: 'open' | 'resolved' | '' ,
+    page: number,
+    limit = 10,
+  ): Promise<MySupportPage> => {
+    const { data } = await api.get<MySupportPage>('/channels/support/mine', {
+      params: { page, limit, ...(status ? { status } : {}) },
+    })
     return data
   },
   // Gestión de tickets de soporte (Customer Success / superadmin).

@@ -3,7 +3,7 @@
   flex-direction: column;
   gap: 12px;
   padding: 20px;
-  max-width: 640px;
+  max-width: 1180px;
   margin: 0 auto;
   width: 100%;
 }
@@ -26,6 +26,13 @@
   margin: 0;
   color: var(--text-secondary, #64748b);
   font-size: 0.9rem;
+}
+
+/* El formulario NO se estira con la página: un campo de texto de mil píxeles de
+   ancho se lee peor, no mejor. La anchura extra es para la lista. */
+.form,
+.helper {
+  max-width: 640px;
 }
 
 .form {
@@ -410,4 +417,213 @@
 
 .chatBtn:hover {
   background: var(--bg-hover, #f8fafc);
+}
+
+/* ── Filtros y paginación ──
+   Se añaden al hacer la lista paginada: con seis solicitudes bastaba con pintarlas
+   todas, con sesenta la pantalla era un muro por el que había que rodar. */
+
+.filters {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 12px 0;
+  flex-wrap: wrap;
+}
+
+.filterBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--gray-200, #ddd9ef);
+  background: var(--white, #fff);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--gray-500, #5c5680);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.filterBtn:hover {
+  border-color: var(--gray-300, #b8b2d4);
+  color: var(--black, #060b23);
+}
+
+.filterActive {
+  background: var(--primary, #cc33cc);
+  border-color: var(--primary, #cc33cc);
+  color: #fff;
+}
+
+/* Cuántas hay abiertas, dentro de su propia pestaña: es el único número que
+   alguien busca al entrar aquí. */
+.filterCount {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.filterBtn:not(.filterActive) .filterCount {
+  background: var(--gray-100, #f0eef8);
+  color: var(--gray-500, #5c5680);
+}
+
+/* Mientras llega la página siguiente la lista se atenúa en vez de vaciarse: el
+   parpadeo a blanco es lo que hace sentir lenta una lista que en realidad no lo es. */
+.listBusy {
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.filterEmpty {
+  margin: 4px 0 0 0;
+  padding: 22px 16px;
+  text-align: center;
+  border: 1px dashed var(--gray-200, #ddd9ef);
+  border-radius: var(--radius, 12px);
+  color: var(--gray-500, #5c5680);
+  font-size: 0.88rem;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.pagerInfo {
+  font-size: 0.8rem;
+  color: var(--gray-400, #8880a8);
+}
+
+.pagerBtns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.pagerBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--gray-200, #ddd9ef);
+  background: var(--white, #fff);
+  border-radius: 9px;
+  padding: 6px 9px;
+  color: var(--gray-500, #5c5680);
+  cursor: pointer;
+}
+
+.pagerBtn:hover:not(:disabled) {
+  border-color: var(--primary, #cc33cc);
+  color: var(--primary, #cc33cc);
+}
+
+.pagerBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagerPage {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--gray-500, #5c5680);
+  white-space: nowrap;
+}
+
+/* El último mensaje de la conversación: una línea, recortada. Es lo que permite
+   reconocer una solicitud sin abrirla. */
+.preview {
+  margin: 4px 0 0 0;
+  font-size: 0.84rem;
+  color: var(--gray-500, #5c5680);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Cuadrícula y lista ──
+   Dos formas de mirar lo mismo. En tarjetas cabe el último mensaje y el recorrido,
+   que es lo que ayuda cuando hay pocas; en lista se quitan los dos y entran muchas
+   más de un vistazo, que es lo que hace falta cuando se acumulan. */
+
+.listControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.listControls .filters {
+  margin-bottom: 0;
+}
+
+/* Tres por fila en pantalla ancha. min(320px, 100%) evita que la columna mínima
+   desborde en móvil, donde la tarjeta pasa a ocupar el ancho entero. */
+.ticketGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  align-items: start;
+  gap: 14px;
+}
+
+/* La fila compacta: todo en una línea salvo el título. Sin el recorrido ni el último
+   mensaje, que en esta vista son ruido. */
+.ticketCompact {
+  padding: 12px 16px;
+}
+
+.ticketCompact .title {
+  margin: 2px 0 0 0;
+  font-size: 0.95rem;
+}
+
+.ticketCompact .ticketFooter {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+@media (min-width: 900px) {
+  .ticketCompact {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    grid-template-areas:
+      'chips  acciones'
+      'titulo acciones';
+    align-items: center;
+    column-gap: 16px;
+  }
+
+  .ticketCompact .ticketTop {
+    grid-area: chips;
+    margin: 0;
+  }
+
+  .ticketCompact .title {
+    grid-area: titulo;
+  }
+
+  /* Fecha y botones comparten la columna derecha: en una lista, las acciones tienen
+     que caer siempre en el mismo sitio para poder recorrerlas con la vista. */
+  .ticketCompact .ticketFooter {
+    grid-area: acciones;
+    margin: 0;
+    padding: 0;
+    border-top: none;
+    justify-content: flex-end;
+    gap: 14px;
+  }
 }

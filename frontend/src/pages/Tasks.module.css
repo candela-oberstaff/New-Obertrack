@@ -3155,39 +3155,9 @@
 
 /* ============ Toggle de vistas (kanban / lista / calendario) ============ */
 
-.view-toggle {
-  display: inline-flex;
-  align-items: center;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 10px;
-  padding: 3px;
-  gap: 2px;
-}
-
-.view-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: #64748b;
-  cursor: pointer;
-  padding: 7px 10px;
-  border-radius: 8px;
-  transition: all 0.15s;
-}
-
-.view-toggle-btn:hover {
-  color: var(--black);
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.view-toggle-btn.view-toggle-active {
-  background: white;
-  color: var(--primary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-}
+/* El conmutador de vista vive ahora en components/ui/ViewToggle: lo comparten
+   Tareas y Soporte, y tenerlo dos veces era la forma segura de que acabaran
+   pareciéndose sólo de lejos. */
 
 /* ============ Vista Timeline (Gantt) ============ */
 

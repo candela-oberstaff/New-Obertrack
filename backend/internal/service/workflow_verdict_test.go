@@ -427,3 +427,42 @@ func TestEnlace_OmiteLoQueNoSabe(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Avisos omitidos por deduplicación
+// ---------------------------------------------------------------------------
+
+// La deduplicación existe para que el aviso nativo de Tareas y el de una regla no
+// lleguen los dos por el mismo cambio. Cuando se lo traga, el paso NO entregó nada: si
+// lo apunta como "notificado", quien revise el registro buscando por qué no le llegó
+// el aviso encuentra una mentira.
+func TestAviso_ElOmitidoPorDuplicadoNoSeApuntaComoEntregado(t *testing.T) {
+	actual := &models.Task{ID: 100, Status: models.TaskStatusInProcess, Priority: models.PriorityMedium}
+	s, _ := mutSvc(actual, map[uint]*models.User{7: activeUser(7, "Ana")})
+	s.notifSvc = &notifSuprimido{}
+
+	ctx := snapshotCtx("en_proceso", "medium", 7)
+	out, skip, err := s.runAction(
+		mutStep(models.ActionNotify, stepConfig{Recipient: models.RecipientAssignees, Title: "X", Message: "Y"}),
+		mutRun(), ctx)
+
+	if err != nil {
+		t.Fatalf("omitir no es fallar: %v", err)
+	}
+	if skip == "" {
+		t.Fatal("si no se entregó nada, el paso tiene que decir por qué")
+	}
+	if notificados, _ := out["notificados"].([]uint); len(notificados) != 0 {
+		t.Fatalf("nadie recibió el aviso: %+v", out)
+	}
+	if omitidos, _ := out["omitidos_por_duplicado"].([]uint); len(omitidos) != 1 {
+		t.Fatalf("el registro tiene que decir a quién se omitió: %+v", out)
+	}
+}
+
+// notifSuprimido simula la deduplicación tragándose todos los avisos.
+type notifSuprimido struct{ fakeNotifSvc }
+
+func (n *notifSuprimido) CreateNotificationChecked(_ uint, _, _, _ string, _ map[string]interface{}) (bool, error) {
+	return false, ErrNotificationSuppressed
+}
