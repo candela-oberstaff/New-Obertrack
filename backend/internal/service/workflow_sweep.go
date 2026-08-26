@@ -107,30 +107,57 @@ func (s *WorkflowService) sweepTrigger(trigger string, now time.Time) {
 		return
 	}
 
-	desde, hasta := sweepWindow(trigger, now)
 	for _, tenantID := range tenants {
 		if tenantID == 0 {
 			continue
 		}
-		tasks, terr := s.taskRepo.ListByDueDate(tenantID, desde, hasta, sweepMaxTasks)
-		if terr != nil {
-			log.Printf("[workflow] barrido %s: no se pudieron leer las tareas de la empresa %d: %v",
-				trigger, tenantID, terr)
-			continue
-		}
-		for i := range tasks {
-			task := tasks[i]
-			s.OnEvent(WorkflowEvent{
-				Type:     trigger,
-				TenantID: tenantID,
-				Task:     &task,
-				// No lo hizo nadie: lo hizo el calendario. Marcarlo como sistema es
-				// lo que permite que una regla diga "cuando lo mueva una persona" sin
-				// dispararse también con esto.
-				ActorIsSystem: true,
-			})
-		}
+		s.sweepTenant(trigger, tenantID, now)
 	}
+}
+
+// sweepTenant es la pasada de una empresa. Se separa del recorrido para poder correrla
+// SOLA: al encender una receta de calendario hay que mirar el reloj en ese momento, y
+// no dejar a quien la encendió una hora sin señal de vida preguntándose si funciona.
+func (s *WorkflowService) sweepTenant(trigger string, tenantID uint, now time.Time) {
+	desde, hasta := sweepWindow(trigger, now)
+	tasks, terr := s.taskRepo.ListByDueDate(tenantID, desde, hasta, sweepMaxTasks)
+	if terr != nil {
+		log.Printf("[workflow] barrido %s: no se pudieron leer las tareas de la empresa %d: %v",
+			trigger, tenantID, terr)
+		return
+	}
+	for i := range tasks {
+		task := tasks[i]
+		s.OnEvent(WorkflowEvent{
+			Type:     trigger,
+			TenantID: tenantID,
+			Task:     &task,
+			// No lo hizo nadie: lo hizo el calendario. Marcarlo como sistema es
+			// lo que permite que una regla diga "cuando lo mueva una persona" sin
+			// dispararse también con esto.
+			ActorIsSystem: true,
+		})
+	}
+}
+
+// SweepTenantNow mira el reloj YA para una empresa, sin esperar al tick.
+//
+// Lo llama el interruptor al encender una receta de calendario. Sin esto, encender la
+// regla y no ver nada durante hasta una hora es indistinguible de que no funcione, y
+// la deduplicación por fecha de fin hace que adelantarse no cueste nada: lo que ya
+// avisó no vuelve a avisar en la pasada de la hora en punto.
+//
+// Va en segundo plano: quien pulsa el interruptor no tiene por qué esperar a que se
+// recorran las tareas vencidas de su empresa.
+func (s *WorkflowService) SweepTenantNow(tenantID uint) {
+	if s == nil || tenantID == 0 {
+		return
+	}
+	go func() {
+		now := time.Now()
+		s.sweepTenant(models.TriggerTaskOverdue, tenantID, now)
+		s.sweepTenant(models.TriggerTaskDueSoon, tenantID, now)
+	}()
 }
 
 // sweepWindow traduce el disparador a un rango de fechas de fin.

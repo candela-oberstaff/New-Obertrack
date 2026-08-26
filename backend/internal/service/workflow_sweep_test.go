@@ -205,3 +205,81 @@ func (r *purgeRepo) PurgeRunsBefore(done, failed time.Time) (int64, error) {
 	r.llamadas++
 	return 0, nil
 }
+
+// Encender una receta de calendario mira el reloj EN ESE MOMENTO. Sin esto, quien la
+// enciende con tareas ya vencidas delante no ve nada hasta la hora en punto, y una hora
+// de silencio no se distingue de que no funcione.
+func TestBarrido_EncenderLaRecetaMiraElRelojYa(t *testing.T) {
+	regla := rule(1, models.TriggerTaskOverdue, 1, "")
+	s, repo, _ := sweepSvc([]models.Workflow{regla}, []models.Task{venceEl(100, "2026-08-20")})
+
+	// La pasada inmediata corre en segundo plano: se llama a la función que hace el
+	// trabajo, que es lo que interesa fijar aquí.
+	s.sweepTenant(models.TriggerTaskOverdue, 42, time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC))
+
+	if len(repo.queued) != 1 {
+		t.Fatalf("debería haber avisado sin esperar al tick, got %d", len(repo.queued))
+	}
+
+	// Y adelantarse no cuesta nada: la pasada de la hora en punto no repite el aviso.
+	s.sweepOnce(time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC))
+	if len(repo.queued) != 1 {
+		t.Fatalf("la pasada horaria no debe repetir lo ya avisado, got %d", len(repo.queued))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// La fecha que ya estaba pasada al escribirla
+// ---------------------------------------------------------------------------
+
+// El barrido atrapa "pasó el tiempo mientras la tarjeta seguía ahí". Esto atrapa el
+// otro caso: una tarea que nace vencida, o a la que le mueven la fecha al pasado. Sin
+// él había que esperar a la hora en punto, y una hora de silencio se parece demasiado a
+// que no funcione.
+func TestVencimiento_LoQueYaNaceVencidoAvisaAlMomento(t *testing.T) {
+	ayer := time.Now().AddDate(0, 0, -3)
+	manana := time.Now().AddDate(0, 0, 1)
+	pasado := time.Now().AddDate(0, 0, 5)
+
+	casos := []struct {
+		nombre     string
+		fecha      *time.Time
+		completa   bool
+		disparador string
+	}{
+		{"vencida", &ayer, false, models.TriggerTaskOverdue},
+		{"vence mañana", &manana, false, models.TriggerTaskDueSoon},
+		{"vence más adelante", &pasado, false, ""},
+		{"sin fecha", nil, false, ""},
+		// Una tarea terminada no vence: avisar de ella sería ruido sobre trabajo
+		// que ya está hecho.
+		{"vencida pero completada", &ayer, true, ""},
+	}
+
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			var emitido []WorkflowEvent
+			s := &taskService{emitWorkflow: func(ev WorkflowEvent) { emitido = append(emitido, ev) }}
+
+			s.emitDueState(&models.Task{
+				ID: 100, TenantID: 42, EndDate: c.fecha, Completed: c.completa,
+			})
+
+			if c.disparador == "" {
+				if len(emitido) != 0 {
+					t.Fatalf("no debería emitir nada, got %+v", emitido)
+				}
+				return
+			}
+			if len(emitido) != 1 || emitido[0].Type != c.disparador {
+				t.Fatalf("se esperaba %s, got %+v", c.disparador, emitido)
+			}
+			// Marcado como sistema, igual que el barrido: el hecho es "está vencida",
+			// no "alguien la creó". Los dos caminos tienen que verse idénticos desde
+			// una regla.
+			if !emitido[0].ActorIsSystem {
+				t.Fatal("el vencimiento lo pone el calendario, no la persona")
+			}
+		})
+	}
+}

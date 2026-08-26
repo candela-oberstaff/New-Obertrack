@@ -60,34 +60,24 @@ type recipeStep struct {
 // workflowRecipes es el catálogo de la v1. Los cuatro cubren los avisos que más se
 // piden y, entre los cuatro, ejercitan los cuatro disparadores y las tres acciones.
 var workflowRecipes = []WorkflowRecipe{
-	{
-		Key:         "en_proceso_sin_responsable",
-		Name:        "Trabajo empezado sin responsable",
-		Description: "Cuando una tarea entra en una columna sin tener a nadie asignado.",
-		// El destinatario NO es "el manager del asignado": si no hay asignado,
-		// tampoco hay manager. Se usa la cadena del líder del proyecto, que baja
-		// por aproximaciones hasta encontrar a alguien con capacidad de repartirla.
-		Explain:     "Avisa al líder del proyecto: manager del responsable, o supervisor del tablero, o quien creó el tablero.",
-		TriggerType: models.TriggerTaskStatusChanged,
-		Conditions:  `{"all":[{"field":"tiene_responsable","op":"eq","value":false},{"field":"completada","op":"eq","value":false}]}`,
-		Steps: []recipeStep{
-			{
-				ActionType: models.ActionNotify,
-				Config: mustJSON(stepConfig{
-					Recipient: models.RecipientProjectLead,
-					Title:     "Tarea sin responsable",
-					Message:   `"{{tarea.titulo}}" pasó a {{tarea.estado}} y no tiene a nadie asignado`,
-				}),
-			},
-		},
-	},
+	// RETIRADA: "en_proceso_sin_responsable" (avisaba al líder del proyecto cuando
+	// una tarea entraba en una columna sin nadie asignado).
+	//
+	// La cubre entera "asignar_si_empieza_sin_responsable": mismo disparador, misma
+	// condición y el MISMO aviso al mismo destinatario, más la asignación y el
+	// comentario. Tener las dos era ofrecer el mismo hecho con dos nombres, y quien
+	// encendía ambas recibía el aviso por duplicado.
 	{
 		Key:         "prioridad_urgente",
 		Name:        "Tarea marcada como urgente",
 		Description: "Cuando alguien sube la prioridad de una tarea a urgente.",
 		Explain:     "Avisa a los responsables y a sus managers.",
 		TriggerType: models.TriggerTaskPriorityChanged,
-		Conditions:  `{"all":[{"field":"prioridad","op":"eq","value":"urgent"}]}`,
+		// "Cuando ALGUIEN la sube" hay que comprobarlo, no sólo decirlo: sin la
+		// segunda condición, esta receta también reaccionaba al cambio que hace
+		// "Marcar urgente al vencer", y quien tuviera las dos encendidas recibía dos
+		// avisos por el mismo hecho.
+		Conditions: `{"all":[{"field":"prioridad","op":"eq","value":"urgent"},{"field":"actor_es_sistema","op":"eq","value":false}]}`,
 		Steps: []recipeStep{
 			{
 				ActionType: models.ActionNotify,
@@ -223,7 +213,7 @@ var workflowRecipes = []WorkflowRecipe{
 		Key:         "urgente_al_vencer",
 		Name:        "Marcar urgente al vencer",
 		Description: "Cuando pasa la fecha de fin, sube la prioridad sin que nadie tenga que mirarlo.",
-		Explain:     "Pone la tarea en urgente y avisa a los responsables. Actúa aunque nadie toque la tarjeta.",
+		Explain:     "Pone la tarea en urgente y avisa a los responsables y a sus managers. Actúa aunque nadie toque la tarjeta.",
 		TriggerType: models.TriggerTaskOverdue,
 		Mutates:     true,
 		// Ya urgente no se vuelve a subir: sería una acción sin efecto y un aviso de
@@ -241,6 +231,18 @@ var workflowRecipes = []WorkflowRecipe{
 					Recipient: models.RecipientAssignees,
 					Title:     "Tu tarea pasó a urgente",
 					Message:   `"{{tarea.titulo}}" venció el {{tarea.fecha_fin}} y se marcó como urgente`,
+				}),
+			},
+			{
+				// El manager también, porque esta receta absorbió a la que hacía lo
+				// mismo al mover la tarjeta ("urgente si va con retraso") y aquella sí
+				// escalaba. Retirarla sin heredar su destinatario habría sido perder
+				// una capacidad por el camino, no simplificar.
+				ActionType: models.ActionNotify,
+				Config: mustJSON(stepConfig{
+					Recipient: models.RecipientAssigneeManager,
+					Title:     "Una tarea de tu equipo pasó a urgente",
+					Message:   `"{{tarea.titulo}}" ({{tarea.asignados}}) venció el {{tarea.fecha_fin}}`,
 				}),
 			},
 		},
@@ -313,7 +315,7 @@ var workflowRecipes = []WorkflowRecipe{
 		Key:         "asignar_si_empieza_sin_responsable",
 		Name:        "Asignar sola si empieza sin responsable",
 		Description: "Cuando una tarea cambia de columna y no tiene a nadie asignado.",
-		Explain:     "Se la asigna al líder del proyecto y lo deja explicado en un comentario de la tarea.",
+		Explain:     "Se la asigna al líder del proyecto —manager del responsable, supervisor del tablero o quien creó el tablero—, lo deja explicado en un comentario y le avisa.",
 		TriggerType: models.TriggerTaskStatusChanged,
 		Mutates:     true,
 		Conditions:  `{"all":[{"field":"tiene_responsable","op":"eq","value":false},{"field":"completada","op":"eq","value":false}]}`,
@@ -340,39 +342,13 @@ var workflowRecipes = []WorkflowRecipe{
 			},
 		},
 	},
-	{
-		Key:         "urgente_si_va_con_retraso",
-		Name:        "Marcar urgente lo que va con retraso",
-		Description: "Cuando una tarea se mueve y su fecha de fin ya pasó.",
-		Explain:     "Sube la prioridad a urgente y avisa a los responsables y a sus managers.",
-		TriggerType: models.TriggerTaskStatusChanged,
-		Mutates:     true,
-		// Se excluye lo que ya es urgente: sin eso, la regla se dispararía para
-		// reescribir el mismo valor y generaría ruido en la bitácora.
-		Conditions: `{"all":[{"field":"esta_vencida","op":"eq","value":true},{"field":"completada","op":"eq","value":false},{"field":"prioridad","op":"neq","value":"urgent"}]}`,
-		Steps: []recipeStep{
-			{
-				ActionType: models.ActionSetPriority,
-				Config:     mustJSON(stepConfig{Priority: string(models.PriorityUrgent)}),
-			},
-			{
-				ActionType: models.ActionNotify,
-				Config: mustJSON(stepConfig{
-					Recipient: models.RecipientAssignees,
-					Title:     "Tarea con retraso marcada urgente",
-					Message:   `"{{tarea.titulo}}" venció el {{tarea.fecha_fin}} y pasó a urgente`,
-				}),
-			},
-			{
-				ActionType: models.ActionNotify,
-				Config: mustJSON(stepConfig{
-					Recipient: models.RecipientAssigneeManager,
-					Title:     "Retraso en tu equipo",
-					Message:   `"{{tarea.titulo}}" ({{tarea.asignados}}) venció el {{tarea.fecha_fin}}`,
-				}),
-			},
-		},
-	},
+	// RETIRADA: "urgente_si_va_con_retraso" (subía a urgente al MOVER una tarjeta ya
+	// vencida).
+	//
+	// Dependía de que alguien la moviera, que es justo lo que no pasa con el trabajo
+	// olvidado. La cubre "urgente_al_vencer", que hace lo mismo por calendario —sin
+	// esperar a que nadie la toque— y desde ahora avisa también a los managers, que
+	// era lo único que ésta añadía.
 }
 
 func findRecipe(key string) (WorkflowRecipe, bool) {

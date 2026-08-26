@@ -2343,6 +2343,74 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropColumn(&models.Testimonial{}, "signature_mode")
 			},
 		},
+		{
+			// Avisos con enlace corto. Todas las notificaciones de tarea mandaban a
+			// "/tasks" a secas, pudiendo abrir la tarjeta de la que hablan: se te
+			// contaba un problema y luego te dejaban buscándolo a mano. Las nuevas ya
+			// llevan el enlace completo; esto completa las que quedaron escritas antes.
+			//
+			// No se inventa nada: el tablero y la tarea ya están en la propia fila. Sólo
+			// se tocan las que llevan task_id y el enlace corto, para no pisar avisos de
+			// otros módulos que legítimamente apuntan a la pantalla.
+			ID: "202608260900_backfill_task_notification_links",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Backfilling deep links on task notifications...")
+				// La empresa sale de la tarea, no del aviso: es lo que necesita un
+				// superadmin para cambiar de foco antes de ver el tablero. Si la tarea
+				// ya no existe, se completa con lo que haya en el propio aviso.
+				return tx.Exec(`
+					UPDATE notifications n
+					   SET data = jsonb_set(
+							 n.data::jsonb,
+							 '{link}',
+							 to_jsonb(
+							   '/tasks?task=' || (n.data::jsonb ->> 'task_id') ||
+							   coalesce('&board=' || (n.data::jsonb ->> 'board_id'), '') ||
+							   coalesce('&company=' || t.tenant_id::text, '')
+							 )
+						   -- La columna es json, no jsonb: sin el segundo cast, Postgres
+						   -- rechaza el UPDATE entero.
+						   )::text::json
+					  FROM tasks t
+					 WHERE t.id = (n.data::jsonb ->> 'task_id')::bigint
+					   AND n.data::text LIKE '%"link":"/tasks"%'
+					   AND n.data::text LIKE '%task_id%'`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// Volver a acortarlos sería devolver enlaces que no llevan a ninguna
+				// parte: se deja como está.
+				return nil
+			},
+		},
+		// Nota: los avisos cuya tarea ya se borró quedan fuera del JOIN y conservan su
+		// enlace corto. Es lo correcto: un enlace a una tarjeta que no existe llevaría
+		// a un error en vez de a la pantalla de Tareas.
+		{
+			// Poda del catálogo: dos recetas que otra cubría entera.
+			//
+			//   en_proceso_sin_responsable → la absorbe asignar_si_empieza_sin_responsable
+			//   urgente_si_va_con_retraso  → la absorbe urgente_al_vencer
+			//
+			// Se apagan, no se borran: su historial de ejecuciones sigue explicando los
+			// avisos que salieron. Quitarlas del catálogo sin apagarlas habría dejado
+			// reglas vivas disparando desde una pantalla que ya no las muestra.
+			ID: "202608261500_prune_duplicate_recipes",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Disabling recipes superseded by others...")
+				return tx.Model(&models.Workflow{}).
+					Where("recipe_key IN ?", []string{
+						"en_proceso_sin_responsable",
+						"urgente_si_va_con_retraso",
+					}).
+					Update("enabled", false).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// No se vuelven a encender: no queda constancia de cuáles estaban
+				// activas, y encender reglas que mandan avisos "por si acaso" es peor
+				// que dejarlas apagadas.
+				return nil
+			},
+		},
 		// Future migrations go here
 	})
 

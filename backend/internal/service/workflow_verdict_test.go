@@ -104,11 +104,10 @@ func TestVeredicto_MueveALaColumnaDeCierreDelTablero(t *testing.T) {
 	if len(m.applied) != 1 || m.applied[0].updates["status"] != "entregado" {
 		t.Fatalf("no se aplicó el movimiento esperado: %+v", m.applied)
 	}
-	// Y hereda la justificación de la puerta: si la columna de cierre tuviera su
-	// propia puerta, este movimiento puede atravesarla porque una persona ya
-	// respondió el formulario que lo provocó.
-	if !m.applied[0].cause.GateJustified {
-		t.Fatal("la consecuencia de una puerta debe viajar justificada")
+	// La cadena causal viaja con el movimiento: es lo que permite que lo que este
+	// cambio provoque nazca con la profundidad correcta y no se dispare en bucle.
+	if m.applied[0].cause.RunID == 0 || m.applied[0].cause.WorkflowID == 0 {
+		t.Fatalf("la consecuencia tiene que llevar su causa: %+v", m.applied[0].cause)
 	}
 }
 
@@ -301,11 +300,60 @@ func TestReceta_UnCambioDeFormaRespetaLoGuardado(t *testing.T) {
 	}
 }
 
-// La receta retirada no puede reaparecer: encenderla otra vez devolvería el aviso
-// duplicado que motivó quitarla.
-func TestReceta_LaDeChatAlAsignarYaNoSeOfrece(t *testing.T) {
-	if _, ok := findRecipe("asignacion_por_chat"); ok {
-		t.Fatal("asignacion_por_chat duplica el DM nativo de Tareas: no debe estar en el catálogo")
+// Las recetas retiradas no pueden reaparecer: cada una volvería a traer el duplicado
+// que motivó quitarla.
+//
+// El criterio de la poda es que OTRA la cubra entera. Por eso, junto a cada retirada se
+// comprueba que su sustituta sigue en pie: retirar sin sustituta sería perder una
+// capacidad, no simplificar el catálogo.
+func TestReceta_LasRetiradasNoVuelvenYSuSustitutaSigue(t *testing.T) {
+	casos := []struct{ retirada, cubierta string }{
+		// Duplicaba el mensaje directo que Tareas ya manda al asignar.
+		{"asignacion_por_chat", ""},
+		// Mismo disparador, misma condición y el mismo aviso al mismo destinatario.
+		{"en_proceso_sin_responsable", "asignar_si_empieza_sin_responsable"},
+		// Dependía de que alguien moviera la tarjeta; la de calendario no.
+		{"urgente_si_va_con_retraso", "urgente_al_vencer"},
+	}
+	for _, c := range casos {
+		if _, ok := findRecipe(c.retirada); ok {
+			t.Fatalf("%q está retirada: no debe volver al catálogo", c.retirada)
+		}
+		if c.cubierta == "" {
+			continue
+		}
+		sustituta, ok := findRecipe(c.cubierta)
+		if !ok {
+			t.Fatalf("%q se retiró porque %q la cubría, y esa ya no está", c.retirada, c.cubierta)
+		}
+		// Y la sustituta tiene que seguir avisando: es la mitad que la retirada
+		// aportaba, y perderla en silencio sería el error que la poda quiere evitar.
+		avisa := false
+		for _, st := range sustituta.Steps {
+			if st.ActionType == models.ActionNotify {
+				avisa = true
+			}
+		}
+		if !avisa {
+			t.Fatalf("%q tiene que seguir avisando para cubrir a %q", c.cubierta, c.retirada)
+		}
+	}
+}
+
+// La prioridad que sube el propio motor no puede disparar el aviso de "alguien la subió
+// a urgente": con las dos recetas encendidas, un solo hecho daba dos avisos.
+func TestReceta_ElAvisoDeUrgenteNoReaccionaAlMotor(t *testing.T) {
+	r, ok := findRecipe("prioridad_urgente")
+	if !ok {
+		t.Fatal("falta la receta")
+	}
+	campos := map[string]any{"prioridad": "urgent", "actor_es_sistema": true}
+	if aplica, _ := evalConditions(r.Conditions, campos); aplica {
+		t.Fatal("un cambio hecho por el motor no es 'alguien la marcó como urgente'")
+	}
+	campos["actor_es_sistema"] = false
+	if aplica, _ := evalConditions(r.Conditions, campos); !aplica {
+		t.Fatal("cuando la sube una persona sí tiene que avisar")
 	}
 }
 

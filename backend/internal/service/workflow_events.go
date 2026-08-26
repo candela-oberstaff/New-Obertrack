@@ -335,11 +335,4 @@ type WorkflowCause struct {
 	// Depth es la profundidad de la ejecución que lo provoca; lo que ella emita
 	// nacerá con Depth+1.
 	Depth int
-	// GateJustified marca las ejecuciones nacidas de una PUERTA ya cruzada.
-	//
-	// Es lo que decide si una acción automática puede entrar en una columna cerrada:
-	// puede, porque la justificación existe —una persona rellenó el formulario— y
-	// viaja con la cadena. Una acción suelta que lo intente queda saltada, porque
-	// dejarla pasar abriría justo el agujero que la puerta previene.
-	GateJustified bool
 }

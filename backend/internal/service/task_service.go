@@ -268,11 +268,15 @@ func (s *taskService) ApplyAsSystem(taskID uint, updates map[string]interface{},
 		newStatus = st
 	}
 
-	// PUERTA. Una acción automática sólo atraviesa una columna cerrada si su
-	// ejecución nace de otra puerta YA cruzada: entonces la justificación existe, la
-	// dio una persona, y viaja con la cadena causal. Si no, se rechaza — dejar pasar
-	// al motor abriría exactamente el agujero que la puerta previene.
-	if newStatus != oldStatus && !cause.GateJustified {
+	// PUERTA. Una acción automática NUNCA atraviesa una columna cerrada.
+	//
+	// Antes sí lo hacía cuando su ejecución nacía de otra puerta ya cruzada: la
+	// justificación la había dado una persona y viajaba con la cadena. Sonaba
+	// razonable y era falso — las dos puertas preguntan cosas distintas. Aprobar una
+	// revisión colaba la tarjeta en la columna de cierre sin rellenar el formulario de
+	// cierre, y entonces "nadie entra aquí sin responder esto" dejaba de ser cierto,
+	// que es lo único que una puerta promete.
+	if newStatus != oldStatus {
 		if _, gerr := s.checkGate(task, newStatus, nil); gerr != nil {
 			return nil, gerr
 		}
@@ -370,6 +374,41 @@ func (s *taskService) emitSystemChange(task *models.Task, prevStatus, prevPriori
 		ev.NewAssignees = added
 		s.emit(ev)
 	}
+}
+
+// emitDueState mira la fecha de fin AHORA y emite el hecho que corresponda.
+//
+// El barrido del calendario atrapa "pasó el tiempo mientras la tarjeta seguía ahí".
+// Esto atrapa el otro caso: la fecha ya estaba pasada cuando alguien la escribió. Sin
+// él, una tarea que nace vencida —o a la que le mueven la fecha al pasado— no producía
+// nada hasta la hora en punto, y esperar una hora se parece demasiado a que no funcione.
+//
+// Va marcado como sistema y sin actor, igual que el barrido: el hecho es "está
+// vencida", no "alguien la creó". Que los dos caminos se vean idénticos es lo que
+// permite que una regla no tenga que distinguirlos, y la deduplicación por fecha de fin
+// impide que avisen dos veces.
+func (s *taskService) emitDueState(task *models.Task) {
+	if s.emitWorkflow == nil || task == nil || task.EndDate == nil || task.Completed {
+		return
+	}
+	hoy := time.Now().Truncate(24 * time.Hour)
+	vence := task.EndDate.Truncate(24 * time.Hour)
+
+	tipo := ""
+	switch {
+	case vence.Before(hoy):
+		tipo = models.TriggerTaskOverdue
+	case vence.Equal(hoy.AddDate(0, 0, 1)):
+		tipo = models.TriggerTaskDueSoon
+	default:
+		return
+	}
+	s.emit(WorkflowEvent{
+		Type:          tipo,
+		TenantID:      task.TenantID,
+		Task:          task,
+		ActorIsSystem: true,
+	})
 }
 
 // taskDeepLink arma el enlace que abre LA TARJETA, no la pantalla de tareas.
@@ -803,6 +842,9 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, tenantID uint, titl
 		Task:     finalTask,
 		ActorID:  userID,
 	})
+	// Una tarea puede nacer ya vencida, o venciendo mañana: eso es un hecho del
+	// calendario desde el primer segundo, no dentro de una hora.
+	s.emitDueState(finalTask)
 	if len(finalTask.Assignees) > 0 {
 		assigned := make([]uint, 0, len(finalTask.Assignees))
 		for _, a := range finalTask.Assignees {
@@ -1080,6 +1122,13 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 		}
 	}
 	s.emitTaskChange(task, oldStatus, oldPriority, addedAssignees, updaterUserID)
+
+	// Mover la fecha al pasado es vencer la tarea en ese momento; moverla a mañana la
+	// pone en víspera. Se mira sólo cuando la fecha CAMBIÓ: repetirlo en cada edición
+	// no aportaría nada —la deduplicación lo descartaría— y sí una consulta de más.
+	if deadlineChanged {
+		s.emitDueState(task)
+	}
 
 	// Puerta cruzada: además de los eventos del cambio, la regla que puso la puerta
 	// recibe su propia ejecución con lo que la persona respondió. Es lo que convierte

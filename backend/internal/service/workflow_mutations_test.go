@@ -224,20 +224,36 @@ func TestMutacion_NoSeCuelaPorUnaPuerta(t *testing.T) {
 
 // Pero una consecuencia nacida de una puerta YA cruzada sí pasa: la justificación
 // existe, la dio una persona, y viaja con la cadena.
-func TestMutacion_LaConsecuenciaDeUnaPuertaSiAtraviesaOtra(t *testing.T) {
+// Y tampoco la atraviesa por venir de OTRA puerta ya cruzada.
+//
+// Durante un tiempo sí: la justificación la había dado una persona al rellenar el
+// primer formulario y viajaba con la cadena. Sonaba razonable y era falso — las dos
+// puertas preguntan cosas distintas. Aprobar una revisión colaba la tarjeta en la
+// columna de cierre sin rellenar el formulario de cierre, y entonces "nadie entra aquí
+// sin responder esto" dejaba de ser cierto, que es lo único que una puerta promete.
+func TestMutacion_LaConsecuenciaDeUnaPuertaTampocoAtraviesaOtra(t *testing.T) {
 	actual := &models.Task{ID: 100, Status: models.TaskStatusInProcess, Priority: models.PriorityMedium}
 	s, m := mutSvc(actual, nil)
+	// La columna destino tiene su propia puerta.
+	m.gateErr = &GateRequiredError{WorkflowID: 9, Workflow: "Cierre de proyecto", ToStatus: "finalizado"}
 
 	ctx := snapshotCtx("en_proceso", "medium")
 	ctx.Trigger = models.TriggerTaskEnteringPhase
 
-	if _, why, err := s.runAction(
+	_, why, err := s.runAction(
 		mutStep(models.ActionSetStatus, stepConfig{Status: "finalizado"}),
-		mutRun(), ctx); err != nil || why != "" {
-		t.Fatalf("debería aplicarse: why=%q err=%v", why, err)
+		mutRun(), ctx)
+
+	if err != nil {
+		t.Fatalf("una puerta en el destino no es un fallo que reintentar: %v", err)
 	}
-	if !m.applied[0].cause.GateJustified {
-		t.Fatal("la consecuencia de una puerta debe viajar justificada")
+	// Y el motivo tiene que nombrar la puerta: es lo que explica por qué la tarjeta
+	// se quedó donde estaba.
+	if !strings.Contains(why, "Cierre de proyecto") {
+		t.Fatalf("el motivo debería nombrar la puerta que la frenó, got %q", why)
+	}
+	if len(m.applied) != 0 {
+		t.Fatalf("no debería haberse movido nada: %+v", m.applied)
 	}
 }
 

@@ -117,6 +117,19 @@ func (s *WorkflowService) Recipes(a WorkflowActor, boardID uint) ([]RecipeState,
 	return out, nil
 }
 
+// despertarCalendario mira el reloj YA si la receta que se acaba de encender es de
+// las que dependen del tiempo.
+//
+// Las demás recetas reaccionan al primer cambio que ocurra, así que encenderlas y ver
+// algo es cuestión de mover una tarjeta. Las de calendario no: sin esto, quien enciende
+// "avisar cuando una tarea vence" con tareas ya vencidas delante no ve nada hasta la
+// hora en punto, y una hora de silencio es indistinguible de que no funcione.
+func (s *WorkflowService) despertarCalendario(r WorkflowRecipe, tenantID uint) {
+	if r.TriggerType == models.TriggerTaskOverdue || r.TriggerType == models.TriggerTaskDueSoon {
+		s.SweepTenantNow(tenantID)
+	}
+}
+
 // SetRecipeEnabled enciende o apaga una receta en un tablero, materializándola la
 // primera vez. Es la única escritura que expone la Fase 1: sin constructor, la
 // pantalla se reduce a este interruptor.
@@ -161,6 +174,9 @@ func (s *WorkflowService) SetRecipeEnabled(a WorkflowActor, boardID uint, recipe
 				return nil, err
 			}
 			wf.Enabled = enabled
+			if enabled {
+				s.despertarCalendario(recipe, board.TenantID)
+			}
 		}
 		return wf, nil
 	}
@@ -222,6 +238,7 @@ func (s *WorkflowService) SetRecipeEnabled(a WorkflowActor, boardID uint, recipe
 	if err := s.repo.CreateWorkflow(created); err != nil {
 		return nil, fmt.Errorf("creando la automatización: %w", err)
 	}
+	s.despertarCalendario(recipe, board.TenantID)
 	return created, nil
 }
 

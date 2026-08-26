@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/obertrack/backend/internal/models"
 )
@@ -47,10 +48,6 @@ func (s *WorkflowService) runMutation(step models.WorkflowStep, cfg stepConfig, 
 		RunID:      run.ID,
 		WorkflowID: run.WorkflowID,
 		Depth:      run.Depth,
-		// Una consecuencia nacida de una PUERTA hereda su justificación: la dio una
-		// persona al rellenar el formulario, y es lo que permite que el movimiento
-		// automático entre en una columna cerrada.
-		GateJustified: ctx.Trigger == models.TriggerTaskEnteringPhase,
 	}
 
 	switch step.ActionType {
@@ -135,6 +132,11 @@ func (s *WorkflowService) mutateStatus(cfg stepConfig, ctx WorkflowContext, caus
 		// Una puerta en la columna destino devuelve GateRequiredError. No es un
 		// fallo que merezca reintentos: reintentar no va a rellenar un formulario.
 		if gate, ok := err.(*GateRequiredError); ok {
+			// Y se le dice a quien lo provocó. Si no, la tarjeta simplemente no se
+			// mueve: quien acaba de aprobar una revisión ve que no pasa nada y da por
+			// rota la automatización, cuando lo que ocurre es que falta un formulario
+			// que sólo una persona puede rellenar.
+			s.avisarPuertaPendiente(ctx, destino, gate.Workflow)
 			return nil, fmt.Sprintf("la columna %q exige un formulario (%s) y una automatización no puede rellenarlo", destino, gate.Workflow), nil
 		}
 		return nil, "", err
@@ -203,4 +205,32 @@ func isValidPriority(p string) bool {
 		return true
 	}
 	return false
+}
+
+// avisarPuertaPendiente le cuenta a quien provocó la ejecución que la tarjeta se
+// quedó a las puertas de la columna destino, y por qué.
+//
+// Sin esto, el motor "no hacer nada" y "no poder hacerlo" se ven igual desde fuera. El
+// aviso lleva el enlace a la tarjeta para que mover a mano —y rellenar el formulario
+// que falta— sea el siguiente clic y no una búsqueda.
+func (s *WorkflowService) avisarPuertaPendiente(ctx WorkflowContext, destino, puerta string) {
+	// Sin persona detrás no hay a quién avisar: lo provocó el calendario o el propio
+	// motor, y ahí el registro de la regla es el sitio correcto.
+	if s.notifSvc == nil || ctx.Actor.ID == 0 || ctx.Actor.EsSistema {
+		return
+	}
+	if err := s.notifSvc.CreateNotification(
+		ctx.Actor.ID,
+		"workflow",
+		"La tarjeta no pasó de columna",
+		fmt.Sprintf(`"%s" no pudo pasar a %s: esa columna pide el formulario de %q. Muévela tú para completarlo.`,
+			ctx.Task.Titulo, destino, puerta),
+		map[string]interface{}{
+			"task_id":  ctx.Task.ID,
+			"board_id": ctx.Board.ID,
+			"link":     taskDeepLink(ctx.Task.ID, ctx.Board.ID, ctx.Empresa),
+		},
+	); err != nil {
+		log.Printf("[workflow] no se pudo avisar de la puerta pendiente en la tarea %d: %v", ctx.Task.ID, err)
+	}
 }
