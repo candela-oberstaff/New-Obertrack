@@ -15,6 +15,18 @@ type BoardStatusCount struct {
 	Count   int64  `json:"count"`
 }
 
+// UserLoad es la carga de trabajo VIVA de una persona: lo que todavía tiene por
+// hacer. Lo terminado no cuenta, que es lo que permite que quien va al día vuelva a
+// aparecer como disponible.
+type UserLoad struct {
+	UserID uint `json:"user_id"`
+	// Abiertas son las tareas asignadas que no están completadas ni en finalizado.
+	Abiertas int `json:"abiertas"`
+	// Vencidas son las abiertas cuya fecha de fin ya pasó. Sirve de desempate: tres
+	// tareas todas atrasadas pesan más que tres tranquilas.
+	Vencidas int `json:"vencidas"`
+}
+
 type TaskRepository interface {
 	FindAll(filters map[string]interface{}, offset, limit int) ([]models.Task, int64, error)
 	CountByBoardAndStatus(tenantID uint) ([]BoardStatusCount, error)
@@ -51,6 +63,13 @@ type TaskRepository interface {
 	// barrido del tiempo, que necesita la tarea entera para armar el snapshot: sin
 	// asignados no hay a quién avisar, y sin tablero no hay ámbito que comprobar.
 	ListByDueDate(tenantID uint, desde, hasta time.Time, limit int) ([]models.Task, error)
+	// OpenLoadByUser cuenta la carga viva de cada uno de `userIDs` en la empresa.
+	// Se cuenta en TODA la empresa y no sólo en un tablero: alguien hasta arriba de
+	// trabajo en otro tablero está igual de ocupado, y repartirle más por no mirar
+	// allí es justo el problema que esto viene a resolver.
+	//
+	// Quien no aparezca en el resultado es que no tiene ninguna: carga cero.
+	OpenLoadByUser(tenantID uint, userIDs []uint) (map[uint]UserLoad, error)
 }
 
 type taskRepository struct {
@@ -176,6 +195,35 @@ func (r *taskRepository) ListByDueDate(tenantID uint, desde, hasta time.Time, li
 		q = q.Limit(limit)
 	}
 	return tasks, q.Find(&tasks).Error
+}
+
+func (r *taskRepository) OpenLoadByUser(tenantID uint, userIDs []uint) (map[uint]UserLoad, error) {
+	out := map[uint]UserLoad{}
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	var rows []UserLoad
+	// Model(&Task{}) y no una consulta cruda: así el filtro de borrado lógico lo
+	// pone GORM. Escrito a mano se olvida, y las tareas borradas volverían a contar
+	// como carga de alguien.
+	err := r.db.Model(&models.Task{}).
+		Select(`task_users.user_id AS user_id,
+		        COUNT(*) AS abiertas,
+		        SUM(CASE WHEN tasks.end_date IS NOT NULL AND tasks.end_date < ? THEN 1 ELSE 0 END) AS vencidas`,
+			time.Now()).
+		Joins("JOIN task_users ON task_users.task_id = tasks.id").
+		Where("tasks.tenant_id = ? AND tasks.completed = ? AND tasks.status <> ?",
+			tenantID, false, models.TaskStatusDone).
+		Where("task_users.user_id IN ?", userIDs).
+		Group("task_users.user_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.UserID] = row
+	}
+	return out, nil
 }
 
 func (r *taskRepository) Create(task *models.Task) error {

@@ -51,6 +51,11 @@ const (
 	RecipientEmployer        = "empleador"
 	RecipientActor           = "actor"
 	RecipientFixedUser       = "usuario_fijo"
+	// RecipientLeastLoaded es quien está MÁS LIBRE del tablero: el miembro con menos
+	// tareas abiertas de toda la empresa. Repartir por jerarquía amontona el trabajo
+	// siempre en la misma persona; lo terminado no cuenta como carga, que es
+	// justamente lo que hace que quien va al día vuelva a estar disponible.
+	RecipientLeastLoaded = "menos_cargado"
 	// RecipientProjectLead es la cadena de respaldo del "líder del proyecto":
 	// manager del asignado → supervisor del tablero → creador del tablero →
 	// empleador. Existe porque el modelo no tiene un rol de líder por tablero.

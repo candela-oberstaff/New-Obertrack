@@ -315,29 +315,33 @@ var workflowRecipes = []WorkflowRecipe{
 		Key:         "asignar_si_empieza_sin_responsable",
 		Name:        "Asignar sola si empieza sin responsable",
 		Description: "Cuando una tarea cambia de columna y no tiene a nadie asignado.",
-		Explain:     "Se la asigna al líder del proyecto —manager del responsable, supervisor del tablero o quien creó el tablero—, lo deja explicado en un comentario y le avisa.",
+		Explain:     "Se la asigna a quien esté más libre del tablero —el que tenga menos tareas sin terminar—, lo deja explicado en un comentario y le avisa. Lo que ya está en finalizado no cuenta como carga.",
 		TriggerType: models.TriggerTaskStatusChanged,
 		Mutates:     true,
 		Conditions:  `{"all":[{"field":"tiene_responsable","op":"eq","value":false},{"field":"completada","op":"eq","value":false}]}`,
 		Steps: []recipeStep{
 			{
 				ActionType: models.ActionAssign,
-				Config:     mustJSON(stepConfig{Recipient: models.RecipientProjectLead}),
+				Config:     mustJSON(stepConfig{Recipient: models.RecipientLeastLoaded}),
 			},
 			{
 				// Un cambio automático sin explicación deja a la gente preguntándose
 				// quién tocó su tarjeta. El comentario lo cuenta donde se va a leer.
 				ActionType: models.ActionComment,
 				Config: mustJSON(stepConfig{
-					Content: `Asignada automáticamente: entró en {{tarea.estado}} sin responsable.`,
+					Content: `Asignada automáticamente: entró en {{tarea.estado}} sin responsable y se repartió a quien tenía menos tareas sin terminar.`,
 				}),
 			},
 			{
 				ActionType: models.ActionNotify,
 				Config: mustJSON(stepConfig{
-					Recipient: models.RecipientProjectLead,
+					// A los que ACABA de asignar el paso anterior, no a quien
+					// resuelva la carga otra vez: entre un paso y el siguiente la
+					// carga puede cambiar y se avisaría a alguien distinto del
+					// asignado. Si no se asignó a nadie, este paso se salta solo.
+					Recipient: models.RecipientNewAssignees,
 					Title:     "Se te asignó una tarea sin responsable",
-					Message:   `"{{tarea.titulo}}" pasó a {{tarea.estado}} sin nadie asignado`,
+					Message:   `"{{tarea.titulo}}" pasó a {{tarea.estado}} sin nadie asignado y eres quien menos tareas sin terminar tiene ahora mismo`,
 				}),
 			},
 		},

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/obertrack/backend/internal/models"
@@ -141,11 +142,65 @@ func (s *WorkflowService) resolveRecipients(cfg stepConfig, run *models.Workflow
 		return s.activeOnly(s.boardSupervisors(ctx.Board.ID)),
 			"el tablero no tiene supervisores entre sus miembros"
 
+	case models.RecipientLeastLoaded:
+		return s.leastLoadedMember(ctx, run.TenantID)
+
 	case models.RecipientProjectLead:
 		return s.projectLead(ctx, run.TenantID)
 	}
 
 	return nil, fmt.Sprintf("clase de destinatario desconocida: %q", cfg.Recipient)
+}
+
+// leastLoadedMember elige al miembro del tablero que está MÁS LIBRE.
+//
+// La carga se mide en tareas VIVAS —ni completadas ni en finalizado— y en toda la
+// empresa, no sólo en este tablero: quien está hasta arriba en otro sitio está
+// ocupado igual. Que lo terminado no cuente es lo que hace que quien va al día
+// vuelva a la cola: acabar el trabajo tiene que abrir hueco, no cerrarlo.
+//
+// El desempate es en cascada y a propósito determinista: menos tareas abiertas →
+// menos atrasadas → id más bajo. Sin el último criterio dos personas empatadas se
+// turnarían al azar y la misma regla daría resultados distintos en cada ejecución,
+// que en un reintento significaría asignar a alguien diferente del primer intento.
+func (s *WorkflowService) leastLoadedMember(ctx WorkflowContext, tenantID uint) ([]uint, string) {
+	board, err := s.boardRepo.GetByID(ctx.Board.ID)
+	if err != nil || board == nil {
+		return nil, "no se pudo leer el tablero para repartir por carga"
+	}
+
+	candidatos := make([]uint, 0, len(board.Members))
+	for _, m := range board.Members {
+		// La cuenta de la empresa es miembro de sus tableros pero no ejecuta tareas:
+		// darle trabajo sería esconderlo, no repartirlo.
+		if m.ID == tenantID {
+			continue
+		}
+		candidatos = append(candidatos, m.ID)
+	}
+	candidatos = s.activeOnly(candidatos)
+	if len(candidatos) == 0 {
+		return nil, "el tablero no tiene miembros activos entre los que repartir"
+	}
+
+	cargas, err := s.taskRepo.OpenLoadByUser(tenantID, candidatos)
+	if err != nil {
+		return nil, "no se pudo calcular la carga de trabajo del equipo"
+	}
+
+	sort.Slice(candidatos, func(i, j int) bool {
+		// Quien no está en el mapa no tiene ninguna tarea: el valor cero ES la
+		// respuesta correcta, y por eso no hace falta comprobar la existencia.
+		a, b := cargas[candidatos[i]], cargas[candidatos[j]]
+		if a.Abiertas != b.Abiertas {
+			return a.Abiertas < b.Abiertas
+		}
+		if a.Vencidas != b.Vencidas {
+			return a.Vencidas < b.Vencidas
+		}
+		return candidatos[i] < candidatos[j]
+	})
+	return candidatos[:1], ""
 }
 
 // projectLead es la cadena de respaldo del "líder del proyecto". El modelo no tiene

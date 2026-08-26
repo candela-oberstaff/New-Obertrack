@@ -445,6 +445,33 @@ func applyStepEffect(ctx *WorkflowContext, out map[string]any) {
 		ctx.Task.PrioridadAnterior = ctx.Task.Prioridad
 		ctx.Task.Prioridad = v
 	}
+	// Una asignación hecha por un paso cambia a quién apuntan los siguientes. Sin
+	// esto pasaban dos cosas: el aviso de "te asignaron" no encontraba a nadie
+	// —"nuevos asignados" seguía vacío—, y un segundo paso de asignar reconstruía la
+	// lista desde el snapshot viejo, BORRANDO lo que había asignado el primero.
+	if ids := idsDeSalida(out["asignados"]); len(ids) > 0 {
+		ctx.Task.NuevosAsignados = ids
+		ctx.Task.AsignadosIDs = append(append([]uint{}, ctx.Task.AsignadosIDs...), ids...)
+	}
+}
+
+// idsDeSalida lee una lista de ids de la salida de un paso. Acepta las dos formas
+// que toma: []uint recién ejecutada, y []any de float64 cuando se repone desde el
+// JSON guardado al reintentar.
+func idsDeSalida(v any) []uint {
+	switch t := v.(type) {
+	case []uint:
+		return t
+	case []any:
+		out := make([]uint, 0, len(t))
+		for _, item := range t {
+			if f, ok := item.(float64); ok && f > 0 {
+				out = append(out, uint(f))
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // authorStillInScope aplica la regla de alcance de §4.3 del plan: el empleador
