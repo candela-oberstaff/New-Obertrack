@@ -9,6 +9,7 @@ import { openWaConversation } from '../../lib/whatsappInbox'
 import { useNotification } from '../../context/NotificationContext'
 import styles from './Tenants.module.css'
 import peek from './EmployeePeek.module.css'
+import { roleLabel } from '../../lib/permissions'
 
 interface Props {
   employeeId: number
@@ -78,7 +79,7 @@ export function EmployeePeekModal({ employeeId, tenantId, canManage, onClose, on
                 <span className={`${styles.badge} ${user.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
                   {user.is_active ? 'Activo' : 'Inactivo'}
                 </span>
-                <span className={styles.typeBadge}>{user.is_manager ? 'manager' : user.user_type}</span>
+                <span className={styles.typeBadge}>{roleLabel(user)}</span>
               </div>
             </div>
           </div>

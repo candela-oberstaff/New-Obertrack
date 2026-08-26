@@ -100,6 +100,24 @@ type BrevoEmailRequest struct {
 	Tags []string `json:"tags,omitempty"`
 }
 
+// BrevoMessageVersion es una copia personalizada dentro de un envío por lotes: su
+// destinatario y, si hace falta, su propio asunto y cuerpo.
+type BrevoMessageVersion struct {
+	To []BrevoContact `json:"to"`
+	// Subject y HTMLContent sólo se mandan cuando difieren del global. La API exige
+	// que el global exista igualmente: por eso el lote siempre lleva los dos.
+	Subject     string `json:"subject,omitempty"`
+	HTMLContent string `json:"htmlContent,omitempty"`
+}
+
+type BrevoBatchRequest struct {
+	Sender          BrevoContact          `json:"sender"`
+	Subject         string                `json:"subject"`
+	HTMLContent     string                `json:"htmlContent"`
+	MessageVersions []BrevoMessageVersion `json:"messageVersions"`
+	Tags            []string              `json:"tags,omitempty"`
+}
+
 type BrevoErrorResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -120,13 +138,13 @@ type BrevoSendResponse struct {
 //
 // Con el messageId se busca el envío en el panel de Brevo (Transactional >
 // Logs) y se ve qué le pasó de verdad.
-func logAccepted(resp *http.Response, toEmail, subject string) {
+func logAccepted(resp *http.Response, que string) {
 	var out BrevoSendResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || out.MessageID == "" {
-		log.Printf("[brevo] aceptado para %s (%q) pero sin messageId en la respuesta", toEmail, subject)
+		log.Printf("[brevo] aceptado: %s (sin messageId en la respuesta)", que)
 		return
 	}
-	log.Printf("[brevo] aceptado para %s (%q) messageId=%s", toEmail, subject, out.MessageID)
+	log.Printf("[brevo] aceptado: %s messageId=%s", que, out.MessageID)
 }
 
 // recipient arma el destinatario para Brevo, que RECHAZA la petición entera con
@@ -230,10 +248,28 @@ func (s *BrevoService) SendEmailTagged(toEmail, toName, subject, htmlContent str
 		return fmt.Errorf("BREVO_API_KEY is not configured")
 	}
 
-	// Wrap HTML with Obertrack header/logo and footer if it is not already wrapped
-	wrappedHTML := htmlContent
-	if !strings.Contains(htmlContent, "<!-- Obertrack Logo -->") && !strings.Contains(htmlContent, "<!-- Oberstaff Logo -->") && !strings.Contains(htmlContent, "<html") {
-		wrappedHTML = fmt.Sprintf(`<!DOCTYPE html>
+	payload := BrevoEmailRequest{
+		Sender:      s.from,
+		To:          []BrevoContact{recipient(toEmail, toName)},
+		Subject:     subject,
+		HTMLContent: wrapBrevoHTML(htmlContent),
+		Tags:        tags,
+	}
+
+	return s.post(payload, toEmail+" ("+subject+")")
+}
+
+// wrapBrevoHTML mete el contenido en la plantilla de marca, salvo que ya venga
+// envuelto. Se extrajo de SendEmailTagged para que el envío por lotes vista cada
+// versión exactamente igual que el envío individual: dos envolturas distintas es como
+// acaban divergiendo el correo de prueba y el de verdad.
+func wrapBrevoHTML(htmlContent string) string {
+	if strings.Contains(htmlContent, "<!-- Obertrack Logo -->") ||
+		strings.Contains(htmlContent, "<!-- Oberstaff Logo -->") ||
+		strings.Contains(htmlContent, "<html") {
+		return htmlContent
+	}
+	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
 	<meta charset="utf-8">
@@ -266,16 +302,11 @@ func (s *BrevoService) SendEmailTagged(toEmail, toName, subject, htmlContent str
 	</div>
 </body>
 </html>`, htmlContent)
-	}
+}
 
-	payload := BrevoEmailRequest{
-		Sender:      s.from,
-		To:          []BrevoContact{recipient(toEmail, toName)},
-		Subject:     subject,
-		HTMLContent: wrappedHTML,
-		Tags:        tags,
-	}
-
+// post manda un payload ya armado. Lo comparten el envío individual y el de lotes.
+// `que` describe el envío para el log (a quién, o cuántos en un lote).
+func (s *BrevoService) post(payload any, que string) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal email payload: %w", err)
@@ -303,7 +334,7 @@ func (s *BrevoService) SendEmailTagged(toEmail, toName, subject, htmlContent str
 		return fmt.Errorf("brevo API error [%d]: %s - %s", resp.StatusCode, brevoErr.Code, brevoErr.Message)
 	}
 
-	logAccepted(resp, toEmail, subject)
+	logAccepted(resp, que)
 	return nil
 }
 
@@ -347,7 +378,7 @@ func (s *BrevoService) SendEmailWithAttachments(toEmail, toName, subject, htmlCo
 		return fmt.Errorf("brevo API error [%d]: %s - %s", resp.StatusCode, brevoErr.Code, brevoErr.Message)
 	}
 
-	logAccepted(resp, toEmail, subject)
+	logAccepted(resp, toEmail+" ("+subject+")")
 	return nil
 }
 
@@ -361,6 +392,103 @@ func (s *BrevoService) SendBulk(recipients []BrevoContact, subject, htmlContent 
 		}
 	}
 	return errs
+}
+
+// BatchRecipient es una persona dentro de un envío masivo, con el asunto y el cuerpo
+// ya personalizados si la plantilla llevaba variables.
+type BatchRecipient struct {
+	Email   string
+	Name    string
+	Subject string
+	HTML    string
+}
+
+// Tamaño de cada petición. La API admite hasta 1000 versiones, pero cuando cada una
+// lleva su propio HTML el cuerpo de la petición crece con la plantilla entera por
+// persona: a 60 KB de plantilla, 1000 versiones serían 60 MB. Con contenido idéntico
+// para todos ese problema no existe y se puede ir mucho más arriba.
+const (
+	brevoBatchSizePersonalized = 50
+	brevoBatchSizeUniform      = 500
+)
+
+// SendBatchKind manda el mismo correo a mucha gente en POCAS peticiones, una copia
+// separada por persona.
+//
+// Antes se mandaba de una en una: quinientos destinatarios eran quinientas llamadas
+// seguidas, con quien pulsó "enviar" esperando delante de la pantalla. No consume
+// menos créditos —Brevo cobra por correo entregado, no por llamada— pero convierte
+// minutos en segundos y deja de exponerse al límite de peticiones por segundo.
+//
+// Cada persona va en su propia "versión", nunca en un mismo `to`: así nadie ve las
+// direcciones de los demás, igual que con el envío individual.
+//
+// Devuelve cuántos se aceptaron y los errores por destinatario. Un lote que falla se
+// cuenta como fallo de TODOS los suyos: la API acepta o rechaza la petición entera, y
+// dar por enviados a los de un lote rechazado sería mentir en el informe.
+func (s *BrevoService) SendBatchKind(kind string, recipients []BatchRecipient, subject, htmlContent string, tags []string) (int, []string) {
+	if len(recipients) == 0 {
+		return 0, nil
+	}
+	if !s.AllowsKind(kind) {
+		return 0, nil
+	}
+	if s.apiKey == "" {
+		return 0, []string{"BREVO_API_KEY is not configured"}
+	}
+
+	// ¿Alguien lleva contenido propio? Eso decide el tamaño del lote.
+	personalizado := false
+	for _, r := range recipients {
+		if (r.HTML != "" && r.HTML != htmlContent) || (r.Subject != "" && r.Subject != subject) {
+			personalizado = true
+			break
+		}
+	}
+	tam := brevoBatchSizeUniform
+	if personalizado {
+		tam = brevoBatchSizePersonalized
+	}
+
+	enviados := 0
+	var fallos []string
+	for inicio := 0; inicio < len(recipients); inicio += tam {
+		fin := inicio + tam
+		if fin > len(recipients) {
+			fin = len(recipients)
+		}
+		lote := recipients[inicio:fin]
+
+		versiones := make([]BrevoMessageVersion, 0, len(lote))
+		for _, r := range lote {
+			v := BrevoMessageVersion{To: []BrevoContact{recipient(r.Email, r.Name)}}
+			if r.Subject != "" && r.Subject != subject {
+				v.Subject = r.Subject
+			}
+			if r.HTML != "" && r.HTML != htmlContent {
+				v.HTMLContent = wrapBrevoHTML(r.HTML)
+			}
+			versiones = append(versiones, v)
+		}
+
+		payload := BrevoBatchRequest{
+			Sender:  s.from,
+			Subject: subject,
+			// El global es obligatorio aunque cada versión traiga el suyo: sin él la
+			// API rechaza el htmlContent por versión.
+			HTMLContent:     wrapBrevoHTML(htmlContent),
+			MessageVersions: versiones,
+			Tags:            tags,
+		}
+		if err := s.post(payload, fmt.Sprintf("lote de %d (%q)", len(lote), subject)); err != nil {
+			for _, r := range lote {
+				fallos = append(fallos, fmt.Sprintf("%s: %s", r.Email, err.Error()))
+			}
+			continue
+		}
+		enviados += len(lote)
+	}
+	return enviados, fallos
 }
 
 func getEnvOrDefault(key, fallback string) string {

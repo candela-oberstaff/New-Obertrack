@@ -9,6 +9,7 @@ import { formatDateOnly } from '../utils/date'
 import { htmlToText } from '../utils/sanitize'
 import { WORK_TYPE } from '../utils/workHours'
 import styles from './Tenants/Tenants.module.css'
+import { roleLabel } from '../lib/permissions'
 
 export default function UserDetail() {
   const { id } = useParams<{ id: string }>()
@@ -81,7 +82,7 @@ export default function UserDetail() {
             </div>
             <div className={styles.detailMeta}>
               <span>{user.email}</span>
-              <span className={styles.typeBadge}>{user.is_superadmin ? 'superadmin' : user.is_manager ? 'manager' : user.user_type}</span>
+              <span className={styles.typeBadge}>{user.is_superadmin ? 'Superadmin' : roleLabel(user)}</span>
             </div>
           </div>
         </div>

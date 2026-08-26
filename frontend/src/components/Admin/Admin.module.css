@@ -586,6 +586,11 @@
 .badge.manager { background: #ffedd5; color: #f97316; }
 .badge.empleador { background: #dcfce7; color: #22c55e; }
 .badge.profesional { background: var(--primary-soft); color: var(--primary); }
+/* Manager y supervisor comparten color: los dos "tienen gente a cargo", y el texto ya
+   los distingue. Tres tonos para tres niveles obligaría a aprenderse una leyenda. */
+.badge.customer_success { background: #cffafe; color: #0e7490; }
+.badge.analista_it { background: #ede9fe; color: #6d28d9; }
+.badge.superadmin { background: #fee2e2; color: #ef4444; }
 
 .status-badge {
   display: inline-flex;

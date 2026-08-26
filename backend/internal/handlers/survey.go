@@ -196,9 +196,14 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 	}
 
 	if len(recipientIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No recipients specified"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "No elegiste destinatarios. Abre la encuesta, entra en Configuración y marca a quién va dirigida.",
+		})
 		return
 	}
+	// Nota: más abajo se descartan los destinatarios de otra empresa (salvo para un
+	// superadmin). Si se quedan TODOS fuera, `users` viene vacío y la respuesta lo
+	// dice explícitamente en vez de contestar "enviada a 0".
 
 	// Fetch users (respect tenant unless superadmin)
 	var users []models.User
@@ -213,6 +218,17 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 			}
 			users = append(users, *user)
 		}
+	}
+
+	// Se eligieron destinatarios pero no quedó ninguno: o ya no existen, o son de otra
+	// empresa y el filtro de arriba los descartó. Sin esto la respuesta era "enviada"
+	// con sent=0, que es la peor forma de fallar: la encuesta se marcaba activa y
+	// nadie la había recibido.
+	if len(users) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Ninguno de los destinatarios elegidos puede recibirla: o ya no están, o pertenecen a otra empresa. Vuelve a elegirlos en Configuración.",
+		})
+		return
 	}
 
 	successCount := 0
@@ -273,13 +289,20 @@ func (h *SurveyHandler) SendSurvey(c *gin.Context) {
 		}
 	}
 
+	// Ni una sola vía funcionó. El motivo más común no es un fallo técnico: es que la
+	// encuesta va sólo por correo y ese tipo de correo está apagado en Configuración →
+	// Correos. Decirlo aquí ahorra el viaje de ir a mirar los registros del servidor.
 	if successCount == 0 && len(users) > 0 {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":  "No se pudo enviar la encuesta a ningún destinatario",
-			"errors": errors,
-		})
+		motivo := "No se pudo enviar la encuesta a ningún destinatario."
+		if survey.SendByEmail && !survey.SendByInApp && !h.brevoSvc.AllowsKind(service.EmailKindSurveyInvite) {
+			motivo = "La encuesta va sólo por correo y los correos de encuesta están apagados en Configuración → Correos. Enciéndelos, o marca también el aviso dentro de la aplicación."
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": motivo, "errors": errors})
 		return
 	}
+
+	// Salió para unos y no para otros: la respuesta ya lleva `sent` y `errors`, y la
+	// pantalla avisa de quién se quedó fuera en vez de cantar un éxito completo.
 
 	survey.Status = models.SurveyStatusActive
 	h.repo.UpdateSurvey(survey)

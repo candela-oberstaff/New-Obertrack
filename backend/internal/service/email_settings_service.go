@@ -28,6 +28,12 @@ const (
 	EmailKindTicketReply        = "ticket_reply"
 	EmailKindManualComposer     = "manual_composer"
 	EmailKindCampaign           = "campaign"
+	// EmailKindWorkflow se enviaba con la cadena "workflow" escrita a mano en el
+	// sitio del envío. Como no estaba en el catálogo, no salía en la pantalla, no se
+	// podía crear su fila —SetEnabled rechaza claves desconocidas— y una clave sin
+	// fila se considera ENCENDIDA: era el único correo del sistema imposible de
+	// apagar, y encima automático.
+	EmailKindWorkflow = "workflow"
 )
 
 // EmailCategory agrupa los correos en el panel.
@@ -68,6 +74,13 @@ var emailCatalog = []EmailType{
 		Trigger:          "Según la programación de arriba (diaria, semanal o mensual). En la frecuencia mensual también cierra el mes aprobando las jornadas pendientes.",
 		Recipient:        "Cada empresa",
 		ManagedElsewhere: "Se enciende y programa en «Envío automático de reportes».",
+	},
+	{
+		Key: EmailKindWorkflow, Category: EmailCategoryAutomatic,
+		Name:        "Correos de automatizaciones",
+		Description: "El correo que manda una regla del tablero cuando su receta lo incluye.",
+		Trigger:     "Cuando se cumple el disparador de una automatización con acción de correo.",
+		Recipient:   "Quien indique la regla: responsables, managers o el líder del proyecto.",
 	},
 	{
 		Key: EmailKindChatDigest, Category: EmailCategoryAutomatic,

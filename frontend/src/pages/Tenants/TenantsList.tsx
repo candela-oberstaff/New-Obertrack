@@ -17,6 +17,7 @@ import { openWaConversation } from '../../lib/whatsappInbox'
 import { useNotification } from '../../context/NotificationContext'
 import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
 import styles from './Tenants.module.css'
+import { roleLabel } from '../../lib/permissions'
 
 export default function TenantsList() {
   const navigate = useNavigate()
@@ -709,7 +710,7 @@ export default function TenantsList() {
                       <Avatar src={u.avatar} name={u.name} size="sm" />
                       <div className={styles.ownerCell}>
                         <span>{u.name}</span>
-                        <small>{u.email} · {u.is_manager ? 'manager' : u.user_type}</small>
+                        <small>{u.email} · {roleLabel(u)}</small>
                       </div>
                     </button>
                   ))}

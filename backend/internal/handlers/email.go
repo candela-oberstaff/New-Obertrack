@@ -266,8 +266,11 @@ func sqlPlaceholders(ids []int) (string, []interface{}) {
 func (h *EmailHandler) dispatchPersonalized(recipients map[string]utils.EmailRecipient, subject, htmlContent string, tags ...string) (int, []string) {
 	personalize := utils.HasEmailVariables(htmlContent) || utils.HasEmailVariables(subject)
 
-	sent := 0
-	var sendErrors []string
+	// Se arma la lista completa y se manda POR LOTES, no de una en una. Quinientos
+	// destinatarios eran quinientas llamadas seguidas a Brevo con quien pulsó
+	// "enviar" esperando delante: la personalización se sigue resolviendo aquí
+	// —cada quien recibe su propio cuerpo— pero viaja agrupada.
+	lista := make([]service.BatchRecipient, 0, len(recipients))
 	for _, r := range recipients {
 		body, subj := htmlContent, subject
 		if personalize {
@@ -275,13 +278,12 @@ func (h *EmailHandler) dispatchPersonalized(recipients map[string]utils.EmailRec
 			body = utils.RenderVariablesHTML(htmlContent, data)
 			subj = utils.RenderVariablesText(subject, data)
 		}
-		if err := h.brevoSvc.SendEmailKindTagged(service.EmailKindCampaign, r.Email, r.Name, subj, body, tags); err != nil {
-			sendErrors = append(sendErrors, fmt.Sprintf("%s: %s", r.Email, err.Error()))
-			continue
-		}
-		sent++
+		lista = append(lista, service.BatchRecipient{
+			Email: r.Email, Name: r.Name, Subject: subj, HTML: body,
+		})
 	}
-	return sent, sendErrors
+
+	return h.brevoSvc.SendBatchKind(service.EmailKindCampaign, lista, subject, htmlContent, tags)
 }
 
 // SendTestEmail manda una única copia de prueba a quien la pide.

@@ -13,7 +13,7 @@ import { CreateUserModal, type CreateUserForm } from '../../components/Admin/Mod
 import { ImportUsersModal } from '../../components/Admin/Modals/ImportUsersModal'
 import { ExportUsersModal } from '../../components/Admin/Modals/ExportUsersModal'
 import { setRecordNav } from '../../lib/recordNav'
-import { hierarchyLabel } from '../../lib/permissions'
+import { roleLabel } from '../../lib/permissions'
 import styles from '../../components/Admin/Admin.module.css'
 
 const EMPTY_CREATE_FORM: CreateUserForm = {
@@ -413,7 +413,7 @@ export default function EmpresaEmployees() {
                   <td>{u.email}</td>
                   <td>
                     <span className={`${styles['badge']} ${styles[u.user_type] || ''}`}>
-                      {hierarchyLabel(u) ?? u.user_type}
+                      {roleLabel(u)}
                     </span>
                   </td>
                   <td>

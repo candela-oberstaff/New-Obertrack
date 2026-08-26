@@ -22,6 +22,7 @@ import { useNotification } from '../../context/NotificationContext'
 import { EmployeeSeguimiento } from './EmployeeSeguimiento'
 import { EmployeeSoporte } from './EmployeeSoporte'
 import styles from './Tenants.module.css'
+import { roleLabel } from '../../lib/permissions'
 
 const ACTIVITY_PER_PAGE = 20
 
@@ -158,7 +159,7 @@ export default function EmployeeDetail() {
             </div>
             <div className={styles.detailMeta}>
               <span>{user.email}</span>
-              <span className={styles.typeBadge}>{user.is_manager ? 'manager' : user.user_type}</span>
+              <span className={styles.typeBadge}>{roleLabel(user)}</span>
               {user.job_title?.trim() && <span>{user.job_title}</span>}
             </div>
           </div>

@@ -37,6 +37,48 @@ export function hierarchyLabel(
   return null
 }
 
+// Etiqueta COMPLETA del rol, para las listas donde se muestra una sola cosa por
+// persona: el nivel si lo tiene, y si no el tipo de cuenta con su nombre de pantalla.
+//
+// Manager y supervisor no son tipos, son niveles encima de un profesional, así que
+// pintar user_type a secas hacía que un supervisor apareciera como "Profesional" en el
+// listado general. Varias pantallas ya lo resolvían a mano con `is_manager ? 'manager'
+// : user_type`, que no contempla supervisor: ahí un supervisor salía como "manager".
+export function roleLabel(
+  user: { user_type?: string; is_manager?: boolean; is_supervisor?: boolean } | null | undefined,
+): string {
+  if (!user) return '—'
+  const tipo = user.user_type ?? ''
+  if (tipo === 'profesional' || tipo === 'empleado') {
+    const nivel = hierarchyLabel(user)
+    if (nivel) return nivel
+  }
+  return ROLE_LABELS[tipo] ?? tipo
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  superadmin: 'Superadmin',
+  empleador: 'Empresa',
+  customer_success: 'Customer Success',
+  analista_it: 'Analista IT',
+  profesional: 'Profesional',
+  empleado: 'Profesional',
+}
+
+// Clase del distintivo. Se separa de la etiqueta porque el color AGRUPA —manager y
+// supervisor comparten el ámbar de "tiene gente a cargo"— mientras que el texto
+// distingue. Tres tonos para tres niveles obligaría a aprenderse una leyenda.
+export function roleBadgeClass(
+  user: { user_type?: string; is_manager?: boolean; is_supervisor?: boolean } | null | undefined,
+): string {
+  if (!user) return ''
+  const tipo = user.user_type ?? ''
+  if ((tipo === 'profesional' || tipo === 'empleado') && hierarchyLabel(user)) {
+    return 'manager'
+  }
+  return tipo
+}
+
 // Jerarquía de soporte: solo superadmins y Customer Success Managers gestionan
 // al equipo (transferencias de tickets y reporte de rechazos).
 export function isSupportManager(user: User | null | undefined): boolean {

@@ -8,6 +8,36 @@ import SurveyResults from './SurveyResults';
 import SurveyCard from './components/SurveyCard';
 import { surveyService, Survey } from '../../../../services/surveyService';
 import { useConfirm } from '../../../ui/ConfirmProvider';
+import { useNotification } from '../../../../context/NotificationContext';
+
+/**
+ * Traduce un fallo de la API al motivo que el servidor dio.
+ *
+ * Antes todo terminaba en «Error al procesar la encuesta»: quien lo veía no podía
+ * hacer nada con eso y quien lo reportaba tampoco. El servidor sí explica lo que pasó
+ * —no hay destinatarios, no se pudo enviar a ninguno, la encuesta no existe—, así que
+ * lo que hace falta es dejar de tragárselo.
+ */
+function motivoDelError(err: any, porDefecto: string): string {
+  const data = err?.response?.data;
+  const detalle = data?.error || data?.message;
+  if (!detalle) {
+    // Sin respuesta del servidor: o no llegó la petición, o cayó por el camino.
+    return err?.message === 'Network Error'
+      ? 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo otra vez.'
+      : porDefecto;
+  }
+  // Los mensajes que llegan en inglés vienen de validaciones antiguas: se traducen
+  // aquí para no dejar al usuario con un texto que no puede accionar.
+  const traducciones: Record<string, string> = {
+    'No recipients specified':
+      'No elegiste destinatarios. Ábrela en Configuración y marca a quién va dirigida.',
+    'Survey not found': 'Esa encuesta ya no existe: puede que la hayan borrado.',
+    'Failed to parse recipient list':
+      'La lista de destinatarios quedó corrupta. Vuelve a elegirlos en Configuración.',
+  };
+  return traducciones[detalle] || detalle;
+}
 
 interface SurveysProps {
   setHeaderAction: (node: React.ReactNode) => void;
@@ -18,6 +48,7 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
   const [editingSurvey, setEditingSurvey] = useState<Survey | null>(null);
   const [viewingResultsFor, setViewingResultsFor] = useState<number | null>(null);
   const confirm = useConfirm();
+  const notify = useNotification();
   const qc = useQueryClient();
 
   const { data: surveys = [], isLoading: loading } = useQuery<Survey[]>({
@@ -61,10 +92,19 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
       }
 
       if (sendImmediately && surveyId) {
-        await surveyService.sendSurvey(surveyId);
-        alert('¡Encuesta enviada con éxito!');
+        const res: any = await surveyService.sendSurvey(surveyId);
+        // Un envío puede salir bien PARA UNOS y fallar para otros. Decir sólo
+        // "enviada con éxito" esconde a quien se quedó fuera.
+        const fallidos = res?.errors?.length ?? 0;
+        if (fallidos > 0) {
+          notify.warning(
+            `Encuesta enviada a ${res?.sent ?? 0} persona(s), pero ${fallidos} no la recibieron. Revisa sus correos.`,
+          );
+        } else {
+          notify.success(`Encuesta enviada a ${res?.sent ?? 0} persona(s).`);
+        }
       } else {
-        alert('Borrador guardado.');
+        notify.success('Borrador guardado.');
       }
 
       setShowBuilder(false);
@@ -72,7 +112,7 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
       fetchSurveys();
     } catch (err) {
       console.error('Error saving/sending survey', err);
-      alert('Error al procesar la encuesta');
+      notify.error(motivoDelError(err, 'No se pudo procesar la encuesta.'));
     }
   };
 
@@ -89,7 +129,7 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
       fetchSurveys();
     } catch (err) {
       console.error('Error deleting survey', err);
-      alert('Error al eliminar la encuesta');
+      notify.error(motivoDelError(err, 'No se pudo eliminar la encuesta.'));
     }
   };
 

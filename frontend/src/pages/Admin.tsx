@@ -43,6 +43,7 @@ import { authService, adminService } from '../services/api'
 import { setRecordNav } from '../lib/recordNav'
 import { useAuth } from '../context/AuthContext'
 import styles from '../components/Admin/Admin.module.css'
+import { roleLabel, roleBadgeClass } from '../lib/permissions'
 
 const EMPTY_CREATE_FORM = {
   name: '',
@@ -1166,8 +1167,11 @@ export default function Admin() {
                       </td>
                       <td>{u.email}</td>
                       <td>
-                        <span className={`${styles['badge']} ${styles[u.user_type] || ''}`}>
-                          {u.user_type}
+                        {/* El nivel manda sobre el tipo: un supervisor aparecía aquí
+                            como "Profesional", que es justo lo que no se puede
+                            reconocer de un vistazo en una lista de cien personas. */}
+                        <span className={`${styles['badge']} ${styles[roleBadgeClass(u)] || ''}`}>
+                          {roleLabel(u)}
                         </span>
                       </td>
                       <td>

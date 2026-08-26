@@ -327,10 +327,11 @@ func (s *WorkflowService) actionEmail(cfg stepConfig, ctx WorkflowContext, recip
 		if err != nil || u == nil || u.Email == "" {
 			continue
 		}
-		// SendEmailKind respeta los interruptores por tipo de Configuración →
-		// Correos, así que una empresa puede apagar los correos de automatización
-		// sin tener que apagar las reglas.
-		if err := s.brevoSvc.SendEmailKind("workflow", u.Email, u.Name, subject, body); err != nil {
+		// La CONSTANTE, no la cadena: escrita a mano, la clave no estaba en el
+		// catálogo y una clave sin fila se da por encendida, así que este correo no
+		// se podía apagar desde Configuración → Correos por mucho que el comentario
+		// de antes dijera lo contrario.
+		if err := s.brevoSvc.SendEmailKind(EmailKindWorkflow, u.Email, u.Name, subject, body); err != nil {
 			return nil, "", fmt.Errorf("enviando correo a %s: %w", u.Email, err)
 		}
 		sent = append(sent, uid)
