@@ -800,18 +800,57 @@ export default function TenantDetail() {
 
         {/* Columna Derecha: Tabs y Contenido de las pestañas */}
         <div className={styles.rightContentArea}>
-          <div className={styles.subTabs}>
-            <button className={tab === 'resumen' ? styles.subTabActive : styles.subTab} onClick={() => setTab('resumen')}>Resumen</button>
-            <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Profesionales ({employees.length})</button>
-            <button className={tab === 'organigrama' ? styles.subTabActive : styles.subTab} onClick={() => setTab('organigrama')}>Organigrama</button>
-            <button className={tab === 'expediente' ? styles.subTabActive : styles.subTab} onClick={() => setTab('expediente')}>Expediente</button>
-            <button className={tab === 'actividad' ? styles.subTabActive : styles.subTab} onClick={() => setTab('actividad')}>Actividad</button>
-            <button className={tab === 'tickets' ? styles.subTabActive : styles.subTab} onClick={() => setTab('tickets')}>
-              Tickets{(tenant.open_tickets ?? 0) > 0 ? ` (${tenant.open_tickets})` : ''}
-            </button>
-            <button className={tab === 'archivados' ? styles.subTabActive : styles.subTab} onClick={() => setTab('archivados')}>Archivados</button>
-            {canAnnotate && (
-              <button className={tab === 'horarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('horarios')}>Horarios</button>
+          {/* Navegación principal: desplegable de sección + desplegable de categoría (expediente) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 24 }}>
+            <div style={{ minWidth: 200 }}>
+              <Select
+                fullWidth
+                placeholder="Sección"
+                value={tab}
+                onChange={v => setTab(String(v) as 'resumen' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados' | 'horarios')}
+                options={[
+                  { value: 'resumen', label: 'Resumen' },
+                  { value: 'usuarios', label: `Profesionales (${employees.length})` },
+                  { value: 'organigrama', label: 'Organigrama' },
+                  { value: 'expediente', label: 'Expediente' },
+                  { value: 'actividad', label: 'Actividad' },
+                  { value: 'tickets', label: `Tickets${(tenant.open_tickets ?? 0) > 0 ? ` (${tenant.open_tickets})` : ''}` },
+                  { value: 'archivados', label: 'Archivados' },
+                  ...(canAnnotate ? [{ value: 'horarios', label: 'Horarios' }] : []),
+                ]}
+              />
+            </div>
+            {/* Cuando la sección es "Expediente", aparece el desplegable de categoría */}
+            {tab === 'expediente' && (
+              <div style={{ minWidth: 200 }}>
+                <Select
+                  fullWidth
+                  placeholder="Categoría"
+                  value={actCategory ?? ''}
+                  onChange={v => setActCategory(String(v))}
+                  options={ACTIVITY_CATEGORIES.map(cat => ({
+                    value: cat.value,
+                    label: actCounts[cat.value] !== undefined
+                      ? `${cat.label} (${actCounts[cat.value]})`
+                      : cat.label,
+                  }))}
+                />
+              </div>
+            )}
+            {/* Cuando la sección es "Actividad", aparece el desplegable Inactividad / Ausencias */}
+            {tab === 'actividad' && (
+              <div style={{ minWidth: 180 }}>
+                <Select
+                  fullWidth
+                  placeholder="Vista"
+                  value={actSubTab}
+                  onChange={v => setActSubTab(String(v) as 'inactividad' | 'ausencias')}
+                  options={[
+                    { value: 'inactividad', label: `Inactividad (${teamInactive.length})` },
+                    { value: 'ausencias',   label: `Ausencias (${tenantAbsence?.items?.length || 0})` },
+                  ]}
+                />
+              </div>
             )}
           </div>
 
@@ -1029,77 +1068,45 @@ export default function TenantDetail() {
           no se rellena con eventos de ejemplo. */}
           {tab === 'expediente' && (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', marginBottom: 20, overflow: 'visible' }}>
-                {ACTIVITY_CATEGORIES.map(cat => {
-                  const active = actCategory === cat.value
-                  return (
-                    <button
-                      key={cat.value || 'all'}
-                      type="button"
-                      onClick={() => setActCategory(cat.value)}
-                      style={{
-                        padding: '7px 14px',
-                        borderRadius: '999px',
-                        border: active ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
-                        background: active ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
-                        color: active ? 'var(--primary)' : '#64748b',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                      }}
-                      aria-pressed={active}
-                    >
-                      {cat.label}
-                      {/* El contador se calcula con el MISMO filtro de persona que
-                      la lista, así que nunca promete más de lo que enseña. */}
-                      {actCounts[cat.value] !== undefined && (
-                        <span className={styles.chipCount}>{actCounts[cat.value]}</span>
-                      )}
-                    </button>
-                  )
-                })}
-                {/* Filtro por persona + botones de acción: van juntos en el lado
-                derecho de la barra de pestañas. */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', flexShrink: 0 }}>
-                  <div style={{ minWidth: 230 }}>
-                    <Select
-                      fullWidth
-                      clearable
-                      searchable
-                      placeholder="Todas las personas"
-                      value={actPerson || ''}
-                      onChange={v => setActPerson(v ? Number(v) : 0)}
-                      ariaLabel="Filtrar el expediente por persona"
-                      options={actPeople.map(p => ({ value: p.user_id, label: p.name }))}
-                    />
-                  </div>
-                  {canAnnotate && (
-                    <>
-                      {actCategory === 'contact' && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          leftIcon={<Phone size={14} />}
-                          onClick={openContact}
-                        >
-                          Registrar
-                        </Button>
-                      )}
-                      {actCategory === 'note' && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          leftIcon={<Plus size={14} />}
-                          onClick={openNewNote}
-                        >
-                          Añadir
-                        </Button>
-                      )}
-                    </>
-                  )}
+
+              {/* Filtro por persona + botones de acción: fila separada, alineada a la izquierda */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 20 }}>
+                <div style={{ minWidth: 230 }}>
+                  <Select
+                    fullWidth
+                    clearable
+                    searchable
+                    placeholder="Todas las personas"
+                    value={actPerson || ''}
+                    onChange={v => setActPerson(v ? Number(v) : 0)}
+                    ariaLabel="Filtrar el expediente por persona"
+                    options={actPeople.map(p => ({ value: p.user_id, label: p.name }))}
+                  />
                 </div>
+                {canAnnotate && (
+                  <>
+                    {actCategory === 'contact' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        leftIcon={<Phone size={14} />}
+                        onClick={openContact}
+                      >
+                        Registrar
+                      </Button>
+                    )}
+                    {actCategory === 'note' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        leftIcon={<Plus size={14} />}
+                        onClick={openNewNote}
+                      >
+                        Añadir
+                      </Button>
+                    )}
+                  </>
+                )}
               </div>
 
               {actError && <p className={styles.errorMsg}>{actError}</p>}
@@ -1316,47 +1323,6 @@ export default function TenantDetail() {
           columna ni el filtro de empresa, que aquí sobran. */}
           {tab === 'actividad' && (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 20 }}>
-                <button
-                  type="button"
-                  onClick={() => setActSubTab('inactividad')}
-                  style={{
-                    padding: '7px 14px',
-                    borderRadius: '999px',
-                    border: actSubTab === 'inactividad' ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
-                    background: actSubTab === 'inactividad' ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
-                    color: actSubTab === 'inactividad' ? 'var(--primary)' : '#64748b',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
-                  aria-pressed={actSubTab === 'inactividad'}
-                >
-                  Inactividad
-                  <span className={styles.chipCount}>{teamInactive.length}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActSubTab('ausencias')}
-                  style={{
-                    padding: '7px 14px',
-                    borderRadius: '999px',
-                    border: actSubTab === 'ausencias' ? '1px solid var(--primary)' : '1px solid var(--glass-border, #e2e8f0)',
-                    background: actSubTab === 'ausencias' ? 'rgba(204, 51, 204, 0.1)' : 'transparent',
-                    color: actSubTab === 'ausencias' ? 'var(--primary)' : '#64748b',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
-                  aria-pressed={actSubTab === 'ausencias'}
-                >
-                  Ausencias
-                  <span className={styles.chipCount}>{tenantAbsence?.items?.length || 0}</span>
-                </button>
-              </div>
 
               {actSubTab === 'inactividad' ? (
                 <TeamActivityPanel
