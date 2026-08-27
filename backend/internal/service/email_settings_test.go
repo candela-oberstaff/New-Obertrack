@@ -33,15 +33,15 @@ func (f *fakeSettingRepo) Upsert(s *models.EmailSetting) error {
 func TestEnabled_SinFilaGuardadaEstaEncendido(t *testing.T) {
 	// La ausencia de fila significa "nunca se tocó": por defecto todo sale.
 	s := NewEmailSettingsService(&fakeSettingRepo{}, nil)
-	if !s.Enabled(EmailKindChatDigest) {
+	if !s.Enabled(EmailKindInactivityAlert) {
 		t.Fatal("sin fila guardada el correo debe estar encendido")
 	}
 }
 
 func TestEnabled_RespetaElApagado(t *testing.T) {
-	repo := &fakeSettingRepo{rows: []models.EmailSetting{{Key: EmailKindChatDigest, Enabled: false}}}
+	repo := &fakeSettingRepo{rows: []models.EmailSetting{{Key: EmailKindSurveyInvite, Enabled: false}}}
 	s := NewEmailSettingsService(repo, nil)
-	if s.Enabled(EmailKindChatDigest) {
+	if s.Enabled(EmailKindSurveyInvite) {
 		t.Fatal("un correo apagado no debe poder salir")
 	}
 	// Apagar uno no apaga los demás.
@@ -65,7 +65,7 @@ func TestEnabled_AnteFalloDeBaseSoloPasanLosEsenciales(t *testing.T) {
 
 	// El resto se frena: si alguien lo apagó a propósito, un error de base no
 	// puede ser la razón por la que vuelve a salir.
-	for _, kind := range []string{EmailKindChatDigest, EmailKindInactivityAlert, EmailKindCampaign, EmailKindManualComposer} {
+	for _, kind := range []string{EmailKindInactivityAlert, EmailKindCampaign, EmailKindManualComposer} {
 		if s.Enabled(kind) {
 			t.Errorf("%s no es esencial: ante un fallo de base no debe salir", kind)
 		}
@@ -77,16 +77,16 @@ func TestSetEnabled_GuardaYSurteEfectoDeInmediato(t *testing.T) {
 	s := NewEmailSettingsService(repo, nil)
 
 	// Se consulta antes para dejar el caché cargado: apagar tiene que invalidarlo.
-	if !s.Enabled(EmailKindChatDigest) {
+	if !s.Enabled(EmailKindInactivityAlert) {
 		t.Fatal("debía arrancar encendido")
 	}
-	if err := s.SetEnabled(EmailKindChatDigest, false, 7); err != nil {
+	if err := s.SetEnabled(EmailKindInactivityAlert, false, 7); err != nil {
 		t.Fatalf("SetEnabled falló: %v", err)
 	}
 	if len(repo.upserted) != 1 || repo.upserted[0].Enabled {
 		t.Fatalf("debía guardarse enabled=false; llegó %+v", repo.upserted)
 	}
-	if s.Enabled(EmailKindChatDigest) {
+	if s.Enabled(EmailKindInactivityAlert) {
 		t.Fatal("tras apagarlo no debe seguir saliendo (caché sin invalidar)")
 	}
 }
@@ -106,7 +106,7 @@ func TestSetEnabled_RechazaTipoDesconocido(t *testing.T) {
 // no aparece en Configuración y nadie puede apagarlo.
 func TestCatalogo_CubreTodosLosTiposEnUso(t *testing.T) {
 	enUso := []string{
-		EmailKindChatDigest, EmailKindInactivityAlert, EmailKindWorkHourReport,
+		EmailKindInactivityAlert, EmailKindWorkHourReport,
 		EmailKindSupportTicket, EmailKindPasswordReset, EmailKindAccountSetup,
 		EmailKindAccessCredentials, EmailKindInductionInvite, EmailKindIncidentBroadcast,
 		EmailKindTestimonialRequest,

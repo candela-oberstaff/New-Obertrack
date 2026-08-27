@@ -38,6 +38,7 @@ import {
   SlidersHorizontal,
   Video,
   MessageSquareQuote,
+  Gauge,
 } from 'lucide-react'
 
 // Módulo de permisos (roles) que gobierna cada entrada del sidebar.
@@ -179,6 +180,10 @@ export default function Layout() {
     { path: '/tickets', label: 'Tickets', icon: <Inbox size={20} />, show: false },
     { path: '/tickets/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isCS || isSuper || isIT },
     { path: '/admin/tools', label: 'Tools', icon: <Wrench size={20} />, show: isSuper || isCS },
+    // Métricas: hasta ahora solo se llegaba por la redirección del dashboard
+    // del analista de IT, así que Customer Success no sabía que existía —y es
+    // la pantalla que contesta qué empresas y qué personas usan la app—.
+    { path: '/admin/metrics', label: 'Métricas', icon: <Gauge size={20} />, show: isSuper || isCS || isIT },
     { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} />, show: isSuper || isIT },
     { path: '/admin/settings', label: 'Configuración', icon: <SlidersHorizontal size={20} />, show: isSuper },
     { path: '/papelera', label: 'Papelera', icon: <Trash2 size={20} />, show: isSuper },

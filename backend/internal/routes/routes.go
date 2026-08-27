@@ -16,6 +16,12 @@ func RegisterRoutes(r *gin.Engine, db *gorm.DB, cfg *config.Config) {
 
 		api.Use(middleware.AuthMiddleware(cfg.JWTSecret, d.tvGetter))
 		api.Use(middleware.AuditMiddleware(d.auditSvc))
+		// Contador de uso real (pestaña Uso de Métricas). Va después de la
+		// auditoría y solo suma en memoria: la auditoría dice QUÉ cambió
+		// alguien —solo escrituras—, y esto dice si la app se usa, que incluye
+		// a quien entra únicamente a mirar.
+		d.activitySvc.Start()
+		api.Use(middleware.ActivityMiddleware(d.activitySvc))
 		{
 			registerAccountRoutes(api, d)
 			registerWorkRoutes(api, d)

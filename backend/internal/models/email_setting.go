@@ -3,7 +3,7 @@ package models
 import "time"
 
 // EmailSetting es el interruptor persistido de UN tipo de correo del sistema
-// (por ejemplo "support_ticket" o "chat_digest"). Solo se guarda la fila
+// (por ejemplo "support_ticket" o "inactivity_alert"). Solo se guarda la fila
 // cuando alguien cambia el valor: la ausencia de fila significa "activo", que
 // es el comportamiento por defecto de todos los correos.
 //

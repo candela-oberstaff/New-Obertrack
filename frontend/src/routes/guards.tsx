@@ -119,6 +119,29 @@ export function PlatformTechRoute({ children }: RouteGuardProps) {
   return <>{children}</>
 }
 
+// Métricas: superadmin, analista de IT y Customer Success.
+//
+// Va aparte de PlatformTechRoute aunque hoy solo sume un rol: esa guarda cubre
+// también Auditoría, una de las cuatro pantallas que Customer Success no ve.
+// Espeja a middleware.RequireUsageMetrics en el backend.
+export function MetricsRoute({ children }: RouteGuardProps) {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  if (!user) {
+    return <Navigate to={ROUTES.login} replace />
+  }
+
+  if (!user.is_superadmin && user.user_type !== 'analista_it' && user.user_type !== 'customer_success') {
+    return <Navigate to={UNAUTHORIZED_REDIRECT_PATH} replace />
+  }
+
+  return <>{children}</>
+}
+
 export function CustomerSuccessRoute({ children }: RouteGuardProps) {
   const { user, isLoading } = useAuth()
 

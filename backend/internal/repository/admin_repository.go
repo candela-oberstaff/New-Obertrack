@@ -326,6 +326,9 @@ type AdminRepository interface {
 	// Dedup de alertas de inactividad (watcher diario).
 	GetRecentlyAlertedUserIDs(since time.Time) ([]uint, error)
 	MarkUsersAlerted(alerts []models.InactivityAlert) error
+	// Mismo par para el aviso de empresas sin uso (StaleCompanyWatcher).
+	GetRecentlyAlertedCompanyIDs(since time.Time) ([]uint, error)
+	MarkCompaniesAlerted(alerts []models.CompanyUsageAlert) error
 
 	// Ranking de antigüedad de profesionales (métricas de customer success).
 	GetSeniorityRanking() ([]SeniorityItem, error)
@@ -565,6 +568,21 @@ func (r *adminRepository) GetRecentlyAlertedUserIDs(since time.Time) ([]uint, er
 }
 
 func (r *adminRepository) MarkUsersAlerted(alerts []models.InactivityAlert) error {
+	if len(alerts) == 0 {
+		return nil
+	}
+	return r.db.Save(&alerts).Error
+}
+
+func (r *adminRepository) GetRecentlyAlertedCompanyIDs(since time.Time) ([]uint, error) {
+	var ids []uint
+	err := r.db.Model(&models.CompanyUsageAlert{}).
+		Where("last_alerted_at >= ?", since).
+		Pluck("company_id", &ids).Error
+	return ids, err
+}
+
+func (r *adminRepository) MarkCompaniesAlerted(alerts []models.CompanyUsageAlert) error {
 	if len(alerts) == 0 {
 		return nil
 	}
@@ -824,11 +842,25 @@ const tenantSelect = `
 		-- deducirla leyendo el expediente entero.
 		(SELECT MAX(ce.created_at) FROM company_events ce
 			WHERE ce.company_id = u.id AND ce.type = 'contact') as last_contact_at,
-		-- Última señal de vida de ELLOS: la jornada o la tarea más reciente. No
-		-- se mezcla con lo anterior a propósito —una empresa a la que llamamos
-		-- ayer pero que no entra hace dos meses es justo el caso que hay que
-		-- ver, y un solo campo lo escondería—.
+		-- Última señal de vida de ELLOS: la vez más reciente que alguien de la
+		-- empresa abrió la app, registró una jornada o creó una tarea. No se
+		-- mezcla con lo anterior a propósito —una empresa a la que llamamos ayer
+		-- pero que no entra hace dos meses es justo el caso que hay que ver, y un
+		-- solo campo lo escondería—.
+		--
+		-- El uso de la app va primero porque es la señal más temprana: dejar de
+		-- entrar precede a dejar de cargar horas, así que una cuenta que se está
+		-- enfriando se detecta semanas antes por aquí. Las otras dos se
+		-- conservan porque cubren el tramo anterior a que existiera el contador
+		-- (ver models/user_activity.go: no hay relleno hacia atrás).
+		--
+		-- GREATEST ignora los NULL, así que una empresa sin ninguna de las tres
+		-- señales sigue devolviendo NULL y se pinta como "nunca".
 		GREATEST(
+			(SELECT MAX(a.last_at) FROM user_activity_daily a
+				JOIN users au ON au.id = a.user_id
+				WHERE a.module = 'app' AND au.deleted_at IS NULL
+				  AND (CASE WHEN au.user_type = 'empleador' THEN au.id ELSE au.empleador_id END) = u.id),
 			(SELECT MAX(wh.created_at) FROM work_hours wh
 				WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL),
 			(SELECT MAX(t2.created_at) FROM tasks t2

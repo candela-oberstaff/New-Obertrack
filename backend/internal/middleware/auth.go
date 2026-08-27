@@ -135,6 +135,25 @@ func RequirePlatformTech() gin.HandlerFunc {
 	}
 }
 
+// RequireUsageMetrics abre las métricas de USABILIDAD a superadmin, analista
+// de IT y Customer Success.
+//
+// Va aparte de RequirePlatformTech aunque hoy solo sume un rol: esa guarda
+// cubre también /admin/audit-logs, y la auditoría es una de las cuatro
+// pantallas que Customer Success no ve. Ampliarla habría abierto las dos de
+// una vez sin que nadie lo pidiera.
+func RequireUsageMetrics() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role := GetUserRole(c)
+		if IsSuperadmin(c) || role == "analista_it" || role == "customer_success" {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": "Acceso a métricas requerido"})
+		c.Abort()
+	}
+}
+
 // BlockCustomerSuccess cierra una ruta a Customer Success dejando pasar al resto.
 //
 // Es la forma de expresar las excepciones del rol: CS tiene el alcance de un

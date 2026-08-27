@@ -2411,6 +2411,74 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			// Retiro del correo de respaldo "tienes mensajes sin leer" (orden
+			// directa del equipo, 2026-08-27): la ruta de envío se eliminó del
+			// código, así que su registro de envíos y su interruptor del panel
+			// sobran. La fila de email_settings se borra porque una clave fuera
+			// del catálogo ya no se puede ver ni editar desde Configuración.
+			ID: "202608271200_drop_chat_digest",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Dropping chat_digest_logs (correo de digest retirado)...")
+				if err := tx.Exec(`DELETE FROM email_settings WHERE key = 'chat_digest'`).Error; err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.ChatDigestLog{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// El interruptor no se restaura: sin la ruta de envío en el
+				// código, la fila no gobernaría nada.
+				return tx.AutoMigrate(&models.ChatDigestLog{})
+			},
+		},
+		{
+			// Contador de uso real de la app, para la pestaña Uso de Métricas
+			// (Customer Success). Ver models/user_activity.go.
+			//
+			// No hay relleno hacia atrás a propósito: audit_logs solo guarda
+			// escrituras, así que reconstruir el pasado con eso daría un "% de
+			// uso" que subestima justo a los módulos de consulta. Es preferible
+			// un panel que empieza vacío y dice desde cuándo mide, a uno que
+			// arranca con una cifra falsa que nadie va a volver a cuestionar.
+			ID: "202608280900_user_activity_daily",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating user_activity_daily (contador de uso)...")
+				return tx.AutoMigrate(&models.UserActivityDaily{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.UserActivityDaily{})
+			},
+		},
+		{
+			// Aviso de "empresa sin abrir la app" (StaleCompanyWatcher).
+			//
+			// El interruptor se siembra APAGADO, al revés que el resto del
+			// catálogo —donde la ausencia de fila significa encendido—. Un
+			// correo automático nuevo que se estrena solo, contra un plan de
+			// Brevo compartido y sin que nadie lo haya pedido todavía, es
+			// exactamente la forma en que aparecieron los envíos fantasma que
+			// costó semanas localizar. El equipo lo enciende desde
+			// Configuración → Correos cuando quiera recibirlo; el aviso interno
+			// (campanita) sí funciona desde el primer día y no cuesta nada.
+			ID: "202608281000_stale_company_alerts",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating company_usage_alerts (aviso de empresa sin uso)...")
+				if err := tx.AutoMigrate(&models.CompanyUsageAlert{}); err != nil {
+					return err
+				}
+				return tx.Exec(`
+					INSERT INTO email_settings (key, enabled, updated_by, updated_at)
+					VALUES ('stale_company', false, 0, NOW())
+					ON CONFLICT (key) DO NOTHING
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DELETE FROM email_settings WHERE key = 'stale_company'`).Error; err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.CompanyUsageAlert{})
+			},
+		},
 		// Future migrations go here
 	})
 

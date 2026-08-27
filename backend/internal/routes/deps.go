@@ -35,6 +35,7 @@ type deps struct {
 	email         *handlers.EmailHandler
 	survey        *handlers.SurveyHandler
 	metrics       *handlers.MetricsHandler
+	usage         *handlers.UsageHandler
 	tutorial      *handlers.TutorialHandler
 	rbac          *handlers.RBACHandler
 	ticket        *handlers.TicketHandler
@@ -64,6 +65,9 @@ type deps struct {
 	rbacSvc service.RBACService
 	// auditSvc is attached as a global middleware in RegisterRoutes.
 	auditSvc service.AuditService
+	// activitySvc cuenta el uso real de la app; se engancha como middleware
+	// global en RegisterRoutes y arranca ahí su volcado periódico.
+	activitySvc *service.ActivityService
 	// employmentSvc is needed by the expediente-ownership route middleware.
 	employmentSvc service.EmploymentService
 }
@@ -84,6 +88,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	emailRepo := repository.NewEmailRepository(db)
 	surveyRepo := repository.NewSurveyRepository(db)
 	metricsRepo := repository.NewMetricsRepository(db)
+	usageRepo := repository.NewUsageRepository(db)
 	boardRepo := repository.NewBoardRepository(db)
 	taskRepo := repository.NewTaskRepository(db)
 	adminRepo := repository.NewAdminRepository(db)
@@ -222,6 +227,11 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// profesionales con 2+ días sin registrar horas.
 	service.NewInactivityWatcher(adminRepo, userRepo, notifSvc, brevoSvc, slackSvc).Start()
 
+	// Watcher diario: avisa a CS de las empresas donde NADIE abrió la app en
+	// dos semanas. Mira empresas, no personas, y por eso llega antes que el de
+	// arriba: una cuenta deja de entrar mucho antes de dejar de cargar horas.
+	service.NewStaleCompanyWatcher(usageRepo, adminRepo, userRepo, notifSvc, brevoSvc, slackSvc).Start()
+
 	// Watcher diario: alerta a la empresa sobre documentos del expediente que
 	// están por vencer (contratos, certificados...).
 	service.NewDocumentExpiryWatcher(employmentRepo, userRepo, notifSvc).Start()
@@ -251,11 +261,6 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// dándole el repositorio) mantiene toda la lógica de tareas en un solo sitio.
 	workflowSvc.SetTaskMutator(taskSvc)
 	workflowSvc.Start()
-
-	// Watcher del chat: correo de respaldo a quien acumula mensajes sin leer y
-	// no se conecta — el mensaje interno deja de depender de que se le ocurra
-	// entrar a la plataforma.
-	service.NewChatDigestWatcher(channelRepo, brevoSvc).Start()
 
 	// Watcher del supervisor: si en su árbol quedan jornadas sin aprobar hace
 	// demasiado, se le avisa a él. El aviso normal sigue yendo solo al manager
@@ -304,6 +309,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		email:         handlers.NewEmailHandler(emailRepo, brevoSvc),
 		survey:        handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
 		metrics:       handlers.NewMetricsHandler(metricsRepo),
+		usage:         handlers.NewUsageHandler(usageRepo),
 		tutorial:      handlers.NewTutorialHandler(tutorialSvc),
 		rbac:          handlers.NewRBACHandler(rbacSvc),
 		ticket:        handlers.NewTicketHandler(db, zohoSvc, ticketSvc, channelSvc),
@@ -330,6 +336,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,
 		auditSvc:      auditSvc,
+		activitySvc:   service.NewActivityService(usageRepo),
 		employmentSvc: employmentSvc,
 	}
 }

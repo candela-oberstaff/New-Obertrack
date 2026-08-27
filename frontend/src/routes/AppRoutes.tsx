@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from '../components/layout/Layout'
 import { ROUTES } from '../constants/routes'
-import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, PlatformAdminRoute, NovedadesRoute, EmployerRoute, OrgChartRoute, SupportRoute, SupportInboxRoute } from './guards'
+import { AdminRoute, AuthRoute, ProtectedRoute, ReportsRoute, CustomerSuccessRoute, PlatformTechRoute, MetricsRoute, PlatformAdminRoute, NovedadesRoute, EmployerRoute, OrgChartRoute, SupportRoute, SupportInboxRoute } from './guards'
 import { LoadingScreen } from './LoadingScreen'
 import { WALLET_ENABLED, GOOGLE_INTEGRATIONS_ENABLED } from '../config/features'
 
@@ -109,7 +109,7 @@ export function AppRoutes() {
           {/* Testimonios: mismo alcance que Admin y Empresas (superadmin + CS). */}
           <Route path="testimonios" element={<PlatformAdminRoute><Testimonials /></PlatformAdminRoute>} />
           {WALLET_ENABLED && <Route path="wallet" element={<Wallet />} />}
-          <Route path="admin/metrics" element={<PlatformTechRoute><Metrics /></PlatformTechRoute>} />
+          <Route path="admin/metrics" element={<MetricsRoute><Metrics /></MetricsRoute>} />
           <Route path="admin/audit" element={<PlatformTechRoute><AuditLogs /></PlatformTechRoute>} />
           <Route path="admin/settings" element={<AdminRoute><AppSettings /></AdminRoute>} />
           <Route path="papelera" element={<AdminRoute><Papelera /></AdminRoute>} />

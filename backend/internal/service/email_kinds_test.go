@@ -63,7 +63,7 @@ func TestCorreos_NingunEnvioUsaUnaClaveFueraDelCatalogo(t *testing.T) {
 // la cadena escrita a mano.
 func TestCorreos_ElCatalogoCubreTodasLasClavesDeclaradas(t *testing.T) {
 	declaradas := []string{
-		EmailKindChatDigest, EmailKindInactivityAlert, EmailKindWorkHourReport,
+		EmailKindInactivityAlert, EmailKindWorkHourReport,
 		EmailKindSupportTicket, EmailKindPasswordReset, EmailKindAccountSetup,
 		EmailKindAccessCredentials, EmailKindInductionInvite, EmailKindTestimonialRequest,
 		EmailKindIncidentBroadcast, EmailKindSurveyInvite, EmailKindTicketReply,

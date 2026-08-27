@@ -31,6 +31,11 @@ var auditSkipTables = map[string]bool{
 	// configuración, y quién cambió una regla que avisa a media empresa importa.
 	"workflow_runs":      true,
 	"workflow_step_runs": true,
+	// user_activity_daily son contadores de uso que se vuelcan por lotes cada
+	// pocos segundos. Auditarlos escribiría miles de filas al día en audit_logs
+	// diciendo "el contador subió", y la propia medición del uso se convertiría
+	// en la mayor fuente de ruido de la auditoría.
+	"user_activity_daily": true,
 }
 
 // redactKeys are masked in the changes JSON to avoid storing secrets.

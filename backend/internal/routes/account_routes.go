@@ -423,5 +423,19 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 
 	// Diagnóstico técnico de plataforma: superadmins y analistas de IT.
 	api.GET("/admin/audit-logs", middleware.RequirePlatformTech(), d.audit.GetLogs)
-	api.GET("/metrics", middleware.RequirePlatformTech(), d.metrics.GetGlobalMetrics)
+
+	// Métricas. Customer Success entra aquí: la pregunta que trabaja a diario
+	// —qué empresas y qué personas usan de verdad la herramienta— se contesta
+	// en esta pantalla, y hasta ahora la tenía cerrada.
+	metrics := api.Group("/metrics")
+	metrics.Use(middleware.RequireUsageMetrics())
+	{
+		metrics.GET("", d.metrics.GetGlobalMetrics)
+		metrics.GET("/usage", d.usage.GetUsageSummary)
+		metrics.GET("/usage/companies", d.usage.GetCompanyUsage)
+		metrics.GET("/usage/people", d.usage.GetPeopleUsage)
+		metrics.GET("/usage/activation", d.usage.GetNeverActive)
+		metrics.GET("/usage/online", d.usage.GetOnlineUsers)
+		metrics.GET("/usage/export", d.usage.ExportUsage)
+	}
 }

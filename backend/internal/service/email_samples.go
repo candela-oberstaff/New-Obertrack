@@ -10,9 +10,6 @@ import "fmt"
 func sampleEmail(kind, toName string) (subject, body string) {
 	switch kind {
 
-	case EmailKindChatDigest:
-		return "💬 Tienes mensajes esperando en Obertrack", buildChatDigestHTML(toName, 5)
-
 	case EmailKindSupportTicket:
 		n := &SupportNotifier{}
 		return "🎫 Nuevo ticket de soporte", n.buildHTML(SupportTicketInfo{

@@ -206,6 +206,26 @@ func (h *NotificationHub) IsOnline(userID uint) bool {
 	return len(h.byUser[userID]) > 0
 }
 
+// OnlineUserIDs devuelve quiénes tienen ahora mismo al menos un socket de
+// notificaciones abierto. Es la señal de "está en la app" que usa el panel de
+// uso de Customer Success.
+//
+// No se confunde con user_statuses: esa tabla la escribe la pantalla de Chat
+// (y solo ella), así que marca "online" a quien tiene el chat abierto y deja
+// como desconectado a quien lleva toda la mañana en Tareas. Este hub, en
+// cambio, vive en el layout entero.
+func (h *NotificationHub) OnlineUserIDs() []uint {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	ids := make([]uint, 0, len(h.byUser))
+	for userID, conns := range h.byUser {
+		if len(conns) > 0 {
+			ids = append(ids, userID)
+		}
+	}
+	return ids
+}
+
 func (h *NotificationHub) NotifyUser(userID uint, notifType string, data interface{}) {
 	if userID == broadcastUserID {
 		return

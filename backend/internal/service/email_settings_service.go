@@ -13,9 +13,14 @@ import (
 
 // Claves del catálogo de correos. Son el contrato entre el emisor (que llama a
 // SendEmailKind con su clave) y el panel de Configuración → Correos.
+// NOTA: existió EmailKindChatDigest ("chat_digest"), el correo de respaldo
+// "tienes mensajes sin leer". Se retiró por completo por decisión del equipo
+// (2026-08-27): llevaba semanas generando envíos fantasma y consumiendo el
+// plan de Brevo. Su tabla de registro y su interruptor se limpian en la
+// migración 202608271200_drop_chat_digest.
 const (
-	EmailKindChatDigest         = "chat_digest"
 	EmailKindInactivityAlert    = "inactivity_alert"
+	EmailKindStaleCompany       = "stale_company"
 	EmailKindWorkHourReport     = "workhour_report"
 	EmailKindSupportTicket      = "support_ticket"
 	EmailKindPasswordReset      = "password_reset"
@@ -83,17 +88,17 @@ var emailCatalog = []EmailType{
 		Recipient:   "Quien indique la regla: responsables, managers o el líder del proyecto.",
 	},
 	{
-		Key: EmailKindChatDigest, Category: EmailCategoryAutomatic,
-		Name:        "Mensajes de chat sin leer",
-		Description: "«Tienes N mensajes esperando en Obertrack», con enlace al chat.",
-		Trigger:     "Cada 30 min: a quien lleva 2 h o más con mensajes sin leer y no está conectado. Máximo uno al día por persona.",
-		Recipient:   "El usuario con mensajes pendientes",
-	},
-	{
 		Key: EmailKindInactivityAlert, Category: EmailCategoryAutomatic,
 		Name:        "Alerta de inactividad",
 		Description: "Profesionales que llevan días sin registrar horas.",
 		Trigger:     "Chequeo diario: 2+ días sin registrar. No repite la misma persona en 7 días.",
+		Recipient:   "Equipo de Customer Success",
+	},
+	{
+		Key: EmailKindStaleCompany, Category: EmailCategoryAutomatic,
+		Name:        "Empresa sin usar la app",
+		Description: "Empresas donde nadie ha abierto la app en dos semanas.",
+		Trigger:     "Chequeo diario: 14 días sin que nadie de la empresa entre. No repite la misma empresa en 14 días.",
 		Recipient:   "Equipo de Customer Success",
 	},
 	{

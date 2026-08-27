@@ -2,10 +2,10 @@ package models
 
 import "time"
 
-// ChatDigestLog registra el último correo de "tienes mensajes sin leer" que se
-// le envió a un usuario. Existe para que el aviso no se repita en cada pasada
-// del watcher: como máximo un correo por usuario por ventana (24 h), aunque
-// siga sin conectarse.
+// ChatDigestLog registraba el último correo de "tienes mensajes sin leer"
+// enviado a cada usuario. Ese correo se RETIRÓ del sistema (2026-08-27) y su
+// tabla se elimina en la migración 202608271200_drop_chat_digest; el struct
+// solo permanece porque las migraciones históricas lo referencian.
 type ChatDigestLog struct {
 	UserID uint      `gorm:"primaryKey" json:"user_id"`
 	SentAt time.Time `json:"sent_at"`

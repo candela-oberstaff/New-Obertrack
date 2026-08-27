@@ -27,6 +27,7 @@ import { openWaConversation } from '../../lib/whatsappInbox'
 import { useNotification } from '../../context/NotificationContext'
 import { groupByDay } from './activityGrouping'
 import { healthSignal, HEALTH_COLOR } from './accountHealth'
+import { TenantUsage } from './TenantUsage'
 import { EventThread } from './EventThread'
 import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -164,7 +165,7 @@ export default function TenantDetail() {
   const [contactSaving, setContactSaving] = useState(false)
   const [contactError, setContactError] = useState<string | null>(null)
 
-  const [tab, setTab] = useState<'resumen' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados'>('resumen')
+  const [tab, setTab] = useState<'resumen' | 'uso' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados'>('resumen')
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -623,7 +624,11 @@ export default function TenantDetail() {
       label: 'Última actividad',
       icon: <Activity size={24} />,
       bg: '#f1f5f9',
-      color: '#64748b'
+      color: '#64748b',
+      // "Hace 40 días" plantea la pregunta y no la contesta: quién dejó de
+      // entrar y qué dejaron de usar está una pestaña más allá, así que la
+      // tarjeta lleva hasta ahí en vez de obligar a buscarla.
+      onClick: () => setTab('uso'),
     },
   ]
 
@@ -771,6 +776,7 @@ export default function TenantDetail() {
         <div className={styles.rightContentArea}>
           <div className={styles.subTabs}>
             <button className={tab === 'resumen' ? styles.subTabActive : styles.subTab} onClick={() => setTab('resumen')}>Resumen</button>
+            <button className={tab === 'uso' ? styles.subTabActive : styles.subTab} onClick={() => setTab('uso')}>Uso</button>
             <button className={tab === 'usuarios' ? styles.subTabActive : styles.subTab} onClick={() => setTab('usuarios')}>Profesionales ({employees.length})</button>
             <button className={tab === 'organigrama' ? styles.subTabActive : styles.subTab} onClick={() => setTab('organigrama')}>Organigrama</button>
             <button className={tab === 'expediente' ? styles.subTabActive : styles.subTab} onClick={() => setTab('expediente')}>Expediente</button>
@@ -812,6 +818,10 @@ export default function TenantDetail() {
           )}
 
 
+
+          {tab === 'uso' && (
+            <TenantUsage companyId={tenantId} companyName={tenant.company_name} />
+          )}
 
           {tab === 'usuarios' && (
             employees.length === 0 ? (

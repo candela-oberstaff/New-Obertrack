@@ -89,13 +89,6 @@ type ChannelRepository interface {
 	// Mentions
 	CreateMention(mention *models.Mention) error
 
-	// --- Correo de respaldo "tienes mensajes sin leer" ---
-	// ListUsersNeedingChatDigest devuelve los usuarios desconectados con
-	// mensajes pendientes hace más de pendingFor y sin aviso en resendAfter.
-	ListUsersNeedingChatDigest(pendingFor, resendAfter time.Duration) ([]ChatDigestCandidate, error)
-	// MarkChatDigestSent registra el envío (upsert) para no repetirlo.
-	MarkChatDigestSent(userID uint) error
-
 	// Users
 	GetActiveUsers(tenantID uint, isSuperadmin bool) ([]models.User, error)
 	FindUserByNamePrefix(name string, tenantID uint) (*models.User, error)
@@ -761,69 +754,6 @@ func (r *channelRepository) GetTotalUnreadCount(userID, companyFilter uint) (int
 
 func (r *channelRepository) CreateMention(mention *models.Mention) error {
 	return r.db.Create(mention).Error
-}
-
-// Correo de respaldo
-
-// ChatDigestCandidate es un usuario al que le espera actividad de chat sin
-// leer y no está conectado para enterarse.
-type ChatDigestCandidate struct {
-	UserID uint
-	Name   string
-	Email  string
-	Unread int64
-}
-
-// ListUsersNeedingChatDigest arma, en UNA consulta, los destinatarios del
-// correo de respaldo con el MISMO predicado de no-leídos del sidebar:
-//   - tienen mensajes sin leer cuyo MÁS ANTIGUO lleva pendiente > pendingFor
-//     (no es actividad recién llegada que van a ver enseguida);
-//   - no están conectados (sin presencia 'online');
-//   - no se les envió este aviso en la ventana resendAfter;
-//   - los canales SILENCIADOS no cuentan (silenciar también silencia el correo);
-//   - no cuentan los mensajes escritos por CUENTAS DE SISTEMA (is_system):
-//     este aviso dice "tu equipo te escribió", y un mensaje del bot no es eso;
-//   - se excluyen las cuentas de sistema e inactivas como destinatarias.
-func (r *channelRepository) ListUsersNeedingChatDigest(pendingFor, resendAfter time.Duration) ([]ChatDigestCandidate, error) {
-	now := time.Now()
-	var out []ChatDigestCandidate
-	err := r.db.Raw(`
-		SELECT u.id AS user_id, u.name, u.email, COUNT(m.id) AS unread
-		FROM users u
-		JOIN channel_members cm ON cm.user_id = u.id
-		JOIN channels ch ON ch.id = cm.channel_id AND ch.is_active = true
-		JOIN channel_messages m ON m.channel_id = cm.channel_id
-			AND m.user_id <> cm.user_id
-			AND m.is_deleted = false
-			AND m.created_at > GREATEST(cm.joined_at, COALESCE(cm.last_read_at, cm.joined_at))
-		-- El autor importa: este aviso dice "tu equipo te escribió", y un mensaje
-		-- del bot no es eso. Sin este filtro, a quien solo recibió avisos de
-		-- sistema (una tarea asignada, por ejemplo) le llegaba igual el correo
-		-- diciendo que tenía mensajes del equipo: era el caso de la gente SIN
-		-- conversaciones que reportaba recibirlo.
-		JOIN users author ON author.id = m.user_id AND author.is_system = false
-		LEFT JOIN muted_channels mut ON mut.user_id = cm.user_id AND mut.channel_id = cm.channel_id
-		LEFT JOIN user_statuses us ON us.user_id = u.id
-		LEFT JOIN chat_digest_logs dl ON dl.user_id = u.id
-		WHERE u.is_active = true
-		  AND u.deleted_at IS NULL
-		  AND u.email <> ''
-		  AND u.is_system = false
-		  AND mut.user_id IS NULL
-		  AND (us.status IS NULL OR us.status <> 'online')
-		  AND (dl.sent_at IS NULL OR dl.sent_at < ?)
-		GROUP BY u.id, u.name, u.email
-		HAVING MIN(m.created_at) < ?`,
-		now.Add(-resendAfter), now.Add(-pendingFor),
-	).Scan(&out).Error
-	return out, err
-}
-
-func (r *channelRepository) MarkChatDigestSent(userID uint) error {
-	return r.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"sent_at"}),
-	}).Create(&models.ChatDigestLog{UserID: userID, SentAt: time.Now()}).Error
 }
 
 // Users

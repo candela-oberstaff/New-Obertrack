@@ -4,24 +4,32 @@ import {
   Mail,
   CheckCircle2,
   Calendar,
-  Activity
+  Activity,
+  Gauge
 } from 'lucide-react';
 import styles from './Metrics.module.css';
 import { metricsService } from '../services/metrics.service';
 import EmailTab from '../components/Admin/Metrics/EmailTab';
+import UsageTab from '../components/Admin/Metrics/UsageTab';
 import SurveyTab from '../components/Admin/Metrics/SurveyTab';
 import { Select } from '../components/ui/Select';
 
 const MetricsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'emails' | 'surveys'>('emails');
+  // Uso es la pestaña de entrada: la pregunta con la que se abre esta pantalla
+  // —¿quién usa la app?— pesa más que el rendimiento de una campaña de correo.
+  const [activeTab, setActiveTab] = useState<'usage' | 'emails' | 'surveys'>('usage');
   const [days, setDays] = useState(30);
 
   const { data = null, isLoading: loading } = useQuery({
     queryKey: ['metrics', days],
     queryFn: () => metricsService.getGlobalMetrics(days),
+    // Solo hace falta para Emails y Encuestas. La pestaña Uso trae lo suyo, y
+    // cargar esto al entrar retrasaría la pantalla por dos pestañas que puede
+    // que nadie abra.
+    enabled: activeTab !== 'usage',
   });
 
-  if (loading && !data) return (
+  if (activeTab !== 'usage' && loading && !data) return (
     <div className={styles.loading}>
       <Activity size={48} className={styles.spin} />
       <p>Analizando datos de rendimiento...</p>
@@ -33,7 +41,7 @@ const MetricsPage: React.FC = () => {
       <header className={styles.metricsHeader} data-tour="metrics-header">
         <div>
           <h1>Métricas</h1>
-          <p>Visualización real del engagement basada en eventos registrados</p>
+          <p>Uso real de la app, empresa por empresa y persona por persona</p>
         </div>
         <div className={styles.headerActions} data-tour="metrics-period">
           <Select
@@ -51,6 +59,12 @@ const MetricsPage: React.FC = () => {
       </header>
 
       <nav className={styles.metricsTabs} data-tour="metrics-tabs">
+        <button
+          className={activeTab === 'usage' ? styles.active : ''}
+          onClick={() => setActiveTab('usage')}
+        >
+          <Gauge size={18} /> Uso
+        </button>
         <button
           className={activeTab === 'emails' ? styles.active : ''}
           onClick={() => setActiveTab('emails')}
@@ -71,6 +85,7 @@ const MetricsPage: React.FC = () => {
           value={activeTab}
           onChange={(v) => setActiveTab(v as any)}
           options={[
+            { value: 'usage', label: 'Uso' },
             { value: 'emails', label: 'Emails' },
             { value: 'surveys', label: 'Encuestas' },
           ]}
@@ -78,6 +93,7 @@ const MetricsPage: React.FC = () => {
       </div>
 
       <div className={styles.tabContent} data-tour="metrics-content">
+        {activeTab === 'usage' && <UsageTab days={days} />}
         {activeTab === 'emails' && <EmailTab data={data} />}
         {activeTab === 'surveys' && <SurveyTab data={data} />}
       </div>
