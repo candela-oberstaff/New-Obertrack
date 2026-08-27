@@ -847,7 +847,7 @@ export default function TenantDetail() {
                   onChange={v => setActSubTab(String(v) as 'inactividad' | 'ausencias')}
                   options={[
                     { value: 'inactividad', label: `Inactividad (${teamInactive.length})` },
-                    { value: 'ausencias',   label: `Ausencias (${tenantAbsence?.items?.length || 0})` },
+                    { value: 'ausencias', label: `Ausencias (${tenantAbsence?.items?.length || 0})` },
                   ]}
                 />
               </div>
