@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -323,7 +325,20 @@ func (h *SurveyHandler) UpdateSurvey(c *gin.Context) {
 
 	survey.ID = uint(id)
 	if err := h.repo.UpdateSurvey(&survey); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update survey"})
+		// Quitar una pregunta ya contestada no es una avería: es una decisión que le
+		// toca a quien edita, y el mensaje le dice qué puede hacer en su lugar.
+		var respondida repository.ErrPreguntaRespondida
+		if errors.As(err, &respondida) {
+			c.JSON(http.StatusConflict, gin.H{"error": respondida.Error()})
+			return
+		}
+		// Cualquier otro fallo se cuenta tal cual y se deja en el registro. Antes se
+		// contestaba "Failed to update survey" y el motivo real no aparecía en
+		// ningún sitio: ni en pantalla ni en los registros del servidor.
+		log.Printf("survey %d: no se pudo guardar: %v", survey.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "No se pudo guardar la encuesta: " + err.Error(),
+		})
 		return
 	}
 
