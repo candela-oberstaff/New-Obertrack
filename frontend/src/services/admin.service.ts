@@ -427,6 +427,14 @@ export const adminService = {
     const { data } = await api.get(`/admin/tenants/${id}/employees`)
     return data
   },
+  updateEmployeeSchedule: async (tenantId: number, userId: number, payload: { schedule_type: string; schedule_days: string; schedule_start_time: string; schedule_end_time: string }) => {
+    const { data } = await api.put(`/admin/tenants/${tenantId}/employees/${userId}/schedule`, payload)
+    return data
+  },
+  deleteEmployeeSchedule: async (tenantId: number, userId: number) => {
+    const { data } = await api.delete(`/admin/tenants/${tenantId}/employees/${userId}/schedule`)
+    return data
+  },
   getEmployeeTracking: async (id: number) => {
     const { data } = await api.get(`/admin/employees/${id}/tracking`)
     return data

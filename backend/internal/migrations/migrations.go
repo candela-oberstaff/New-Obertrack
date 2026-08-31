@@ -2479,6 +2479,45 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.CompanyUsageAlert{})
 			},
 		},
+		{
+			ID: "202608251500_add_schedule_fields_to_employments",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding schedule columns to employments table...")
+				return tx.AutoMigrate(&models.Employment{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, col := range []string{"schedule_type", "schedule_days", "schedule_start_time", "schedule_end_time"} {
+					if err := tx.Migrator().DropColumn(&models.Employment{}, col); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
+		{
+			// Nueva migración con SQL directo para garantizar la creación de las
+			// columnas de horario, independientemente de si la anterior ya corrió.
+			ID: "202608251530_ensure_schedule_columns_employments",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Ensuring schedule columns exist in employments table...")
+				sqls := []string{
+					`ALTER TABLE employments ADD COLUMN IF NOT EXISTS schedule_type VARCHAR(50) NOT NULL DEFAULT ''`,
+					`ALTER TABLE employments ADD COLUMN IF NOT EXISTS schedule_days VARCHAR(100) NOT NULL DEFAULT ''`,
+					`ALTER TABLE employments ADD COLUMN IF NOT EXISTS schedule_start_time VARCHAR(10) NOT NULL DEFAULT ''`,
+					`ALTER TABLE employments ADD COLUMN IF NOT EXISTS schedule_end_time VARCHAR(10) NOT NULL DEFAULT ''`,
+				}
+				for _, s := range sqls {
+					if err := tx.Exec(s).Error; err != nil {
+						return err
+					}
+				}
+				log.Println("Schedule columns ready.")
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return nil // no-op; las columnas anteriores son inofensivas
+			},
+		},
 		// Future migrations go here
 	})
 

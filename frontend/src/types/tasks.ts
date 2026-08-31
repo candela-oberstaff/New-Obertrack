@@ -108,6 +108,10 @@ export interface EmployeeSummary {
   /** Ingreso a la empresa (employments.started_at), no el alta de la cuenta.
    *  Cae a created_at solo si la persona aún no tiene empleo registrado. */
   started_at?: string
+  schedule_type?: string
+  schedule_days?: string
+  schedule_start_time?: string
+  schedule_end_time?: string
 }
 
 export interface EmployeeWorkHour {

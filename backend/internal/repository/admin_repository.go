@@ -259,6 +259,10 @@ type EmployeeSummary struct {
 	// fecha que la empresa reconoce como suya y la que se corrige desde la
 	// ficha del profesional.
 	StartedAt time.Time `json:"started_at"`
+	ScheduleType      string    `json:"schedule_type"`
+	ScheduleDays      string    `json:"schedule_days"`
+	ScheduleStartTime string    `json:"schedule_start_time"`
+	ScheduleEndTime   string    `json:"schedule_end_time"`
 }
 
 type EmployeeWorkHour struct {
@@ -313,6 +317,8 @@ type AdminRepository interface {
 	GetTenantPinnedNotes(tenantID uint) ([]TenantActivity, error)
 
 	GetTenantEmployees(tenantID uint) ([]EmployeeSummary, error)
+	UpdateEmployeeSchedule(tenantID, userID uint, scheduleType, scheduleDays, startTime, endTime string) error
+	DeleteEmployeeSchedule(tenantID, userID uint) error
 	// GetTenantTickets lista los tickets de la empresa (alertas internas sobre
 	// su gente + conversaciones de WhatsApp de su número).
 	GetTenantTickets(tenantID uint) ([]TenantTicket, error)
@@ -970,7 +976,12 @@ const employeeMetrics = `
 	COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh WHERE wh.user_id = u.id AND wh.deleted_at IS NULL AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
 	(SELECT COUNT(*) FROM task_users tu WHERE tu.user_id = u.id) as tasks_assigned,
 	(SELECT COUNT(*) FROM task_users tu JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL WHERE tu.user_id = u.id AND t.completed = true) as tasks_completed,
-	(SELECT MAX(wh.work_date) FROM work_hours wh WHERE wh.user_id = u.id AND wh.deleted_at IS NULL) as last_active
+	(SELECT MAX(wh.work_date) FROM work_hours wh WHERE wh.user_id = u.id AND wh.deleted_at IS NULL) as last_active,
+	-- Campos de horario: se leen del empleo activo en la empresa actual
+	COALESCE((SELECT em.schedule_type FROM employments em WHERE em.user_id = u.id AND em.company_id = u.empleador_id AND em.status = 'active' AND em.deleted_at IS NULL LIMIT 1), '') as schedule_type,
+	COALESCE((SELECT em.schedule_days FROM employments em WHERE em.user_id = u.id AND em.company_id = u.empleador_id AND em.status = 'active' AND em.deleted_at IS NULL LIMIT 1), '') as schedule_days,
+	COALESCE((SELECT em.schedule_start_time FROM employments em WHERE em.user_id = u.id AND em.company_id = u.empleador_id AND em.status = 'active' AND em.deleted_at IS NULL LIMIT 1), '') as schedule_start_time,
+	COALESCE((SELECT em.schedule_end_time FROM employments em WHERE em.user_id = u.id AND em.company_id = u.empleador_id AND em.status = 'active' AND em.deleted_at IS NULL LIMIT 1), '') as schedule_end_time
 `
 
 func (r *adminRepository) GetTenantEmployees(tenantID uint) ([]EmployeeSummary, error) {
@@ -1339,4 +1350,20 @@ func (r *adminRepository) SetCompanyNotePinned(companyID, noteID uint, pinned bo
 		Where("id = ? AND company_id = ? AND type = ?", noteID, companyID, models.CompanyEventNote).
 		Update("pinned", pinned)
 	return res.RowsAffected, res.Error
+}
+
+func (r *adminRepository) UpdateEmployeeSchedule(tenantID, userID uint, scheduleType, scheduleDays, startTime, endTime string) error {
+	return r.db.Exec(`
+		UPDATE employments
+		SET schedule_type = ?, schedule_days = ?, schedule_start_time = ?, schedule_end_time = ?
+		WHERE company_id = ? AND user_id = ? AND status = 'active' AND deleted_at IS NULL
+	`, scheduleType, scheduleDays, startTime, endTime, tenantID, userID).Error
+}
+
+func (r *adminRepository) DeleteEmployeeSchedule(tenantID, userID uint) error {
+	return r.db.Exec(`
+		UPDATE employments
+		SET schedule_type = '', schedule_days = '', schedule_start_time = '', schedule_end_time = ''
+		WHERE company_id = ? AND user_id = ? AND status = 'active' AND deleted_at IS NULL
+	`, tenantID, userID).Error
 }

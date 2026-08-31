@@ -31,6 +31,12 @@ type Employment struct {
 	ObersuiteID string     `gorm:"size:64;index" json:"obersuite_id,omitempty"`
 	EndedAt     *time.Time `json:"ended_at,omitempty"`
 	EndReason   string     `gorm:"type:text" json:"end_reason,omitempty"`
+	// Horario laboral del profesional en esta empresa. Todos son opcionales:
+	// se rellenan desde la pestaña "Horarios" de la vista de detalle de empresa.
+	ScheduleType      string `gorm:"size:50" json:"schedule_type,omitempty"`
+	ScheduleDays      string `gorm:"size:100" json:"schedule_days,omitempty"`
+	ScheduleStartTime string `gorm:"size:10" json:"schedule_start_time,omitempty"`
+	ScheduleEndTime   string `gorm:"size:10" json:"schedule_end_time,omitempty"`
 	// EndSummary guarda un snapshot inmutable al terminar el empleo (horas,
 	// tareas, antigüedad...). Se llena en la fase 3; nullable hasta entonces.
 	EndSummary string         `gorm:"type:text" json:"end_summary,omitempty"`
