@@ -150,6 +150,17 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
+		// El chequeo previo usa GetByEmail, que NO ve las cuentas borradas
+		// —GORM le añade "deleted_at IS NULL"—, así que una en la Papelera se le
+		// cuela y revienta aquí contra el índice único.
+		//
+		// El mensaje es genérico a propósito, al revés que en el panel de
+		// administración: este formulario es público, y decir "está en la
+		// Papelera de tal empresa" le confirmaría a un desconocido que esa
+		// persona existe y dónde trabaja.
+		if isDuplicateEmailErr(err) {
+			return nil, "", "", &emailTakenError{msg: "Ese correo ya está registrado."}
+		}
 		return nil, "", "", err
 	}
 

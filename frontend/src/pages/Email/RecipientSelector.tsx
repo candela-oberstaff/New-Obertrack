@@ -1,8 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, X, Users, Mail, UserCheck, Check, MapPin } from 'lucide-react'
+import { Search, X, Users, Mail, UserCheck, Check, MapPin, Building2 } from 'lucide-react'
 import { emailService } from '../../services/emailService'
 import { audienceService, AudienceGroup } from '../../services/audienceService'
 import { Select } from '../../components/ui/Select'
+import {
+  buildCompanyIndex,
+  companyNameOf,
+  companyOptions,
+  matchesCompany,
+} from '../../lib/recipientCompany'
 
 export interface RecipientValue {
   userIds: number[]
@@ -18,6 +24,10 @@ interface User {
   is_manager: boolean
   is_superadmin: boolean
   country?: string
+  // La empresa de un profesional no está en su fila: solo trae el id de su
+  // empleador, y el nombre vive en la cuenta empleador. Ver lib/recipientCompany.
+  company_name?: string
+  empleador_id?: number
 }
 
 // Valor del filtro de país cuando se quiere ver a quienes NO tienen país
@@ -39,6 +49,7 @@ export default function RecipientSelector({ value, onChange }: Props) {
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('all')
   const [countryFilter, setCountryFilter] = useState<string>('all')
+  const [companyFilter, setCompanyFilter] = useState<string>('all')
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [groups, setGroups] = useState<AudienceGroup[]>([])
   const [expressRaw, setExpressRaw] = useState('')
@@ -97,14 +108,29 @@ export default function RecipientSelector({ value, onChange }: Props) {
     return options
   }, [usersByRole, countryFilter])
 
+  // El índice se arma con TODA la gente, no con usersByRole: los nombres de
+  // empresa salen de las cuentas empleador, y filtrando por "Profesionales"
+  // esas cuentas ya no están en la lista.
+  const companyIndex = useMemo(() => buildCompanyIndex(allUsers), [allUsers])
+
+  const companySelectOptions = useMemo(
+    () => companyOptions(usersByRole, companyIndex, companyFilter),
+    [usersByRole, companyIndex, companyFilter],
+  )
+
   const filteredUsers = useMemo(() => {
     const q = query.toLowerCase()
     return usersByRole.filter(u => {
+      // La búsqueda mira también la empresa: escribir el nombre del cliente es
+      // lo primero que intenta quien quiere acotar un envío.
       const matchQuery =
         u.name?.toLowerCase().includes(q) ||
-        u.email?.toLowerCase().includes(q)
+        u.email?.toLowerCase().includes(q) ||
+        companyNameOf(u, companyIndex).toLowerCase().includes(q)
 
       if (!matchQuery) return false
+
+      if (!matchesCompany(u, companyIndex, companyFilter)) return false
 
       const country = (u.country ?? '').trim()
       if (countryFilter === NO_COUNTRY) return country === ''
@@ -112,7 +138,7 @@ export default function RecipientSelector({ value, onChange }: Props) {
 
       return true
     })
-  }, [usersByRole, query, countryFilter])
+  }, [usersByRole, query, countryFilter, companyFilter, companyIndex])
 
   const toggleUser = (id: number) => {
     const ids = value.userIds.includes(id)
@@ -233,6 +259,28 @@ export default function RecipientSelector({ value, onChange }: Props) {
                   operativo (que no se puede tocar) y además lo recortaba el
                   overflow del panel. Este monta el menú en un portal, trae
                   buscador solo. */}
+              <div className="flex items-center gap-2 pt-1">
+                <div className="flex-1 min-w-0">
+                  <Select
+                    options={[{ value: 'all', label: 'Todas las empresas' }, ...companySelectOptions]}
+                    value={companyFilter}
+                    onChange={v => setCompanyFilter(String(v))}
+                    leftIcon={<Building2 size={13} />}
+                    className="ui-select__trigger--compact"
+                    ariaLabel="Filtrar por empresa"
+                    fullWidth
+                  />
+                </div>
+                {companyFilter !== 'all' && (
+                  <button
+                    onClick={() => setCompanyFilter('all')}
+                    className="text-[10px] font-bold text-slate-500 hover:text-slate-700 shrink-0"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+
               <div className="flex items-center gap-2 pt-1">
                 <div className="flex-1 min-w-0">
                   <Select

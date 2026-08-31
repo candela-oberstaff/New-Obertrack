@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/obertrack/backend/internal/middleware"
+	"github.com/obertrack/backend/internal/apperrors"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/service"
@@ -299,7 +300,10 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 	user, err := h.service.CreateUser(payload)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if err.Error() == "Invalid user type" || strings.Contains(err.Error(), "Manager inválido") {
+		switch {
+		case errors.Is(err, apperrors.ErrEmailTaken):
+			status = http.StatusConflict
+		case err.Error() == "Invalid user type" || strings.Contains(err.Error(), "Manager inválido"):
 			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
@@ -758,11 +762,12 @@ func (h *AdminHandler) CreateEmployee(c *gin.Context) {
 		status := http.StatusInternalServerError
 		msg := err.Error()
 		switch {
-		case strings.Contains(strings.ToLower(msg), "unique") ||
-			strings.Contains(strings.ToLower(msg), "duplicate") ||
-			strings.Contains(msg, "already registered"):
+		// El servicio ya trae la frase que dice dónde está la cuenta que ocupa
+		// el correo (Papelera, desactivada, o activa en otra empresa), así que
+		// aquí solo se fija el código: reescribirla con un "ya existe" genérico
+		// tiraría justo el dato que desbloquea a quien la está creando.
+		case errors.Is(err, apperrors.ErrEmailTaken):
 			status = http.StatusConflict
-			msg = "Ya existe un usuario con ese correo"
 		case msg == "Invalid user type" ||
 			strings.Contains(msg, "Manager inválido") ||
 			strings.Contains(msg, "no es válida"):

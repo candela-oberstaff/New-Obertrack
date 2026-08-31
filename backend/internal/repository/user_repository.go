@@ -11,6 +11,14 @@ type UserRepository interface {
 	CountCompanies() (int64, error)
 	GetByID(id uint) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
+	// FindAnyByEmail busca el correo SIN el filtro de borrado lógico.
+	//
+	// Existe para explicar el choque del índice único: users.email es un índice
+	// único a secas, no parcial, así que una cuenta en la Papelera sigue
+	// ocupando su correo. GetByEmail no la ve —GORM le añade
+	// "deleted_at IS NULL"—, y sin esta consulta el panel solo podría decir
+	// "ya existe" sin poder decir dónde ni qué hacer.
+	FindAnyByEmail(email string) (*models.User, error)
 	// FindActiveByPhoneDigits busca un usuario ACTIVO cuyo teléfono coincida con
 	// los dígitos dados (se comparan los últimos 10, para tolerar prefijos de
 	// país: WhatsApp entrega "58414..." y la ficha puede tener "0414...").
@@ -167,6 +175,17 @@ func (r *userRepository) GetByID(id uint) (*models.User, error) {
 func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 	var user models.User
 	if err := r.db.Where("email = ?", email).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *userRepository) FindAnyByEmail(email string) (*models.User, error) {
+	var user models.User
+	// Unscoped: incluye las filas con deleted_at, que son justo las que hay que
+	// encontrar. LOWER a los dos lados porque el índice es sensible a mayúsculas
+	// pero quien escribe el correo en el formulario no lo es.
+	if err := r.db.Unscoped().Where("LOWER(email) = LOWER(?)", email).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil

@@ -24,6 +24,10 @@ var (
 	// Two concurrent imports would race creating the same contacts and tickets,
 	// so the second caller is turned away instead of queued (maps to HTTP 409).
 	ErrSyncInProgress = errors.New("a history sync is already running")
+	// ErrEmailTaken indicates the email is already registered — including by an
+	// account sitting in the trash, since users.email is a plain unique index and
+	// a soft-deleted row keeps its address reserved (maps to HTTP 409).
+	ErrEmailTaken = errors.New("email already registered")
 	// ErrConflict indicates the resource changed under the caller — e.g. another
 	// agent claimed the ticket first — so the action no longer applies (maps to
 	// HTTP 409).

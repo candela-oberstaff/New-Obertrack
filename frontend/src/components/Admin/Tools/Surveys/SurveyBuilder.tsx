@@ -1,11 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Save, Send, Plus, Trash2, GripVertical, Settings, Star, X, Search, Check } from 'lucide-react';
+import {
+  buildCompanyIndex,
+  companyNameOf,
+  companyOptions,
+  matchesCompany,
+} from '../../../../lib/recipientCompany';
 import styles from './SurveyBuilder.module.css';
 import commonStyles from '../Tools.module.css';
 import { Select } from '../../../ui/Select';
 import { SurveyQuestion } from '../../../../services/surveyService';
 import { userService } from '../../../../services/user.service';
+
+const filterSelectStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  border: '1px solid #cbd5e1',
+  borderRadius: 8,
+  fontSize: 12,
+  outline: 'none',
+  background: 'white',
+  cursor: 'pointer',
+  width: '100%',
+};
 
 interface SurveyBuilderProps {
   onBack: () => void;
@@ -33,6 +50,7 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [companyFilter, setCompanyFilter] = useState('all');
   const [isSending, setIsSending] = useState(false);
 
   const { data: availableUsers = [] } = useQuery({
@@ -51,26 +69,20 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
     }
   }, [initialData]);
 
-  const toggleRecipient = (userId: number) => {
-    if (selectedRecipients.includes(userId)) {
-      setSelectedRecipients(selectedRecipients.filter(id => id !== userId));
-    } else {
-      setSelectedRecipients([...selectedRecipients, userId]);
-    }
-  };
+  const companyIndex = useMemo(() => buildCompanyIndex(availableUsers), [availableUsers]);
 
-  const selectAll = () => {
-    setSelectedRecipients(availableUsers.map(u => u.id));
-  };
-
-  const selectNone = () => {
-    setSelectedRecipients([]);
-  };
-
-  const filteredUsers = availableUsers.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
-                          u.email.toLowerCase().includes(userSearch.toLowerCase());
+  const filteredUsers = useMemo(() => availableUsers.filter(u => {
+    const q = userSearch.toLowerCase();
+    // La búsqueda mira también la empresa: escribir el nombre del cliente era
+    // lo primero que intentaba quien quería acotar el envío, y hasta ahora
+    // devolvía cero resultados sin explicar por qué.
+    const matchesSearch =
+      u.name.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      companyNameOf(u, companyIndex).toLowerCase().includes(q);
     if (!matchesSearch) return false;
+
+    if (!matchesCompany(u, companyIndex, companyFilter)) return false;
 
     if (roleFilter !== 'all') {
       if (roleFilter === 'superadmin') return u.is_superadmin || u.user_type === 'superadmin';
@@ -79,7 +91,32 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
     }
 
     return true;
-  });
+  }), [availableUsers, companyIndex, userSearch, companyFilter, roleFilter]);
+
+  const toggleRecipient = (userId: number) => {
+    if (selectedRecipients.includes(userId)) {
+      setSelectedRecipients(selectedRecipients.filter(id => id !== userId));
+    } else {
+      setSelectedRecipients([...selectedRecipients, userId]);
+    }
+  };
+
+  // Solo lo que se está viendo, y SUMANDO a lo ya elegido.
+  //
+  // Antes marcaba availableUsers —la plataforma entera— con lo que un envío
+  // acotado a una empresa terminaba saliendo para todo el mundo: el botón está
+  // justo encima de los filtros, así que "Todos" se lee como "todos estos".
+  // Suma en vez de reemplazar para poder componer varios filtros seguidos sin
+  // perder lo marcado en el anterior.
+  const selectAllFiltered = () => {
+    setSelectedRecipients(prev =>
+      Array.from(new Set([...prev, ...filteredUsers.map(u => u.id)])));
+  };
+
+  const selectNone = () => {
+    setSelectedRecipients([]);
+  };
+
 
   const addQuestion = (type: 'text' | 'rating' | 'choice' | 'checkbox' | 'dropdown' | 'linear_scale' | 'grid' | 'checkbox_grid') => {
     let defaultOptions: string | undefined = undefined;
@@ -282,7 +319,9 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                   <div className={styles.sectionHeaderFlex}>
                     <h4>Destinatarios ({selectedRecipients.length})</h4>
                     <div className={styles.selectionActions}>
-                      <button onClick={selectAll}>Todos</button>
+                      <button onClick={selectAllFiltered} disabled={filteredUsers.length === 0}>
+                        Marcar los {filteredUsers.length} visibles
+                      </button>
                       <button onClick={selectNone}>Ninguno</button>
                     </div>
                   </div>
@@ -298,16 +337,17 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                       />
                     </div>
                     <select
-                      style={{
-                        padding: '8px 12px',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: 8,
-                        fontSize: 12,
-                        outline: 'none',
-                        background: 'white',
-                        cursor: 'pointer',
-                        width: '100%',
-                      }}
+                      style={filterSelectStyle}
+                      value={companyFilter}
+                      onChange={e => setCompanyFilter(e.target.value)}
+                    >
+                      <option value="all">Todas las empresas</option>
+                      {companyOptions(availableUsers, companyIndex, companyFilter).map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <select
+                      style={filterSelectStyle}
                       value={roleFilter}
                       onChange={e => setRoleFilter(e.target.value)}
                     >

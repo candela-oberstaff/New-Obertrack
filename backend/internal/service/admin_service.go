@@ -521,6 +521,13 @@ func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, err
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
+		// El choque del índice único de correo se traduce a una instrucción: la
+		// cuenta que lo ocupa puede estar en la Papelera o desactivada, y en
+		// ninguno de esos casos aparece en el listado desde donde se intenta
+		// crearla. Ver email_conflict.go.
+		if isDuplicateEmailErr(err) {
+			return nil, describeEmailConflict(s.userRepo, user.Email)
+		}
 		return nil, err
 	}
 	return user, nil
@@ -1354,6 +1361,13 @@ func (s *adminService) CreateTenant(name, companyName, email, password string) (
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
+		// El choque del índice único de correo se traduce a una instrucción: la
+		// cuenta que lo ocupa puede estar en la Papelera o desactivada, y en
+		// ninguno de esos casos aparece en el listado desde donde se intenta
+		// crearla. Ver email_conflict.go.
+		if isDuplicateEmailErr(err) {
+			return nil, describeEmailConflict(s.userRepo, user.Email)
+		}
 		return nil, err
 	}
 	return user, nil
@@ -1380,6 +1394,13 @@ func (s *adminService) CreateSuperAdmin(name, email, password string, force bool
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
+		// El choque del índice único de correo se traduce a una instrucción: la
+		// cuenta que lo ocupa puede estar en la Papelera o desactivada, y en
+		// ninguno de esos casos aparece en el listado desde donde se intenta
+		// crearla. Ver email_conflict.go.
+		if isDuplicateEmailErr(err) {
+			return nil, describeEmailConflict(s.userRepo, user.Email)
+		}
 		return nil, err
 	}
 	return user, nil
