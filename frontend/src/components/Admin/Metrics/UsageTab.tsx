@@ -30,7 +30,7 @@ import {
 } from '../../../services/usage.service';
 import { adminService } from '../../../services/admin.service';
 import { healthSignal, HEALTH_COLOR } from '../../../pages/Tenants/accountHealth';
-import { Delta, healthOf, ModuleBars, moduleLabel, Pager, trackedDaysFrom, UsageNotice } from './usageShared';
+import { Delta, healthOf, ModuleBars, moduleLabel, Pager, trackedDaysFrom, USAGE_PAGE_SIZE, UsageNotice } from './usageShared';
 import { Select } from '../../ui/Select';
 import { Button } from '../../ui/Button';
 import { Modal } from '../../ui/Modal';
@@ -66,14 +66,14 @@ const UsageTab: React.FC<UsageTabProps> = ({ days }) => {
   const { data: people } = useQuery({
     queryKey: ['usage-people', days, scope, search, status, companyFilter, page],
     queryFn: () =>
-      usageService.getPeople({ days, scope, q: search, status, companyId: companyFilter, page, limit: 25 }),
+      usageService.getPeople({ days, scope, q: search, status, companyId: companyFilter, page, limit: USAGE_PAGE_SIZE }),
     enabled: board === 'people',
     placeholderData: (prev) => prev,
   });
 
   const { data: activation } = useQuery({
     queryKey: ['usage-activation', scope, page],
-    queryFn: () => usageService.getActivation(scope, page, 25),
+    queryFn: () => usageService.getActivation(scope, page, USAGE_PAGE_SIZE),
     enabled: board === 'activation',
     placeholderData: (prev) => prev,
   });
@@ -113,6 +113,11 @@ const UsageTab: React.FC<UsageTabProps> = ({ days }) => {
       ...companies.map((c: CompanyUsage) => ({ value: c.company_id, label: c.company_name })),
     ],
     [companies],
+  );
+
+  const pagedCompanies = useMemo(
+    () => companies.slice((page - 1) * USAGE_PAGE_SIZE, page * USAGE_PAGE_SIZE),
+    [companies, page],
   );
 
   const switchBoard = (next: UsageBoard) => {
@@ -310,7 +315,8 @@ const UsageTab: React.FC<UsageTabProps> = ({ days }) => {
         </div>
 
         {board === 'companies' && (
-          <div className={styles.tableWrap}>
+          <>
+            <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
                 <tr>
@@ -329,7 +335,7 @@ const UsageTab: React.FC<UsageTabProps> = ({ days }) => {
                     <td colSpan={7} className={styles.empty}>Sin empresas que mostrar.</td>
                   </tr>
                 )}
-                {companies.map((c: CompanyUsage) => {
+                {pagedCompanies.map((c: CompanyUsage) => {
                   const health = healthOf(c.rate, c.active_users);
                   const signal = healthSignal(c.last_active);
                   return (
@@ -365,6 +371,14 @@ const UsageTab: React.FC<UsageTabProps> = ({ days }) => {
               </tbody>
             </table>
           </div>
+            <Pager
+              total={companies.length}
+              page={page}
+              shown={pagedCompanies.length}
+              onPage={setPage}
+              noun="empresa"
+            />
+          </>
         )}
 
         {board === 'people' && (

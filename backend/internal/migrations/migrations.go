@@ -2518,6 +2518,22 @@ func Run(db *gorm.DB) error {
 				return nil // no-op; las columnas anteriores son inofensivas
 			},
 		},
+		{
+			// Adjuntos colgados de una evaluación o anotación concreta, no del
+			// expediente en general: el informe firmado que sostiene la nota.
+			// Ver models/expediente.go (EmploymentDocument.NoteID).
+			//
+			// Nullable y sin relleno: los documentos que ya existen son sueltos
+			// del expediente y así se quedan, que es lo que son.
+			ID: "202608311200_employment_document_note_id",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Adding note_id to employment_documents...")
+				return tx.AutoMigrate(&models.EmploymentDocument{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.EmploymentDocument{}, "note_id")
+			},
+		},
 		// Future migrations go here
 	})
 

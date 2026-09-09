@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, X, Users, Mail, UserCheck, Check, MapPin, Building2 } from 'lucide-react'
+import { Search, X, Users, Mail, UserCheck, Check, MapPin, Building2, AlertTriangle } from 'lucide-react'
 import { emailService } from '../../services/emailService'
 import { audienceService, AudienceGroup } from '../../services/audienceService'
 import { Select } from '../../components/ui/Select'
@@ -180,6 +180,34 @@ export default function RecipientSelector({ value, onChange }: Props) {
 
   const totalSelected = value.userIds.length + (value.groupIds?.length ?? 0) + (value.expressContacts?.length ?? 0)
 
+  // A qué empresas le va a llegar el envío, y quién está elegido pero oculto
+  // por el filtro actual.
+  //
+  // "Seleccionar todos" suma a lo ya marcado, así que acotar a un cliente,
+  // marcar, y cambiar de cliente deja a los dos dentro sin que nada lo diga:
+  // los primeros desaparecen de la lista pero no del envío. En una campaña eso
+  // son correos reales a gente que no tocaba.
+  const selectionByCompany = useMemo(() => {
+    const chosen = new Set(value.userIds)
+    const counts = new Map<string, number>()
+    for (const u of allUsers) {
+      if (!chosen.has(u.id)) continue
+      const name = companyNameOf(u, companyIndex) || 'Sin empresa'
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+  }, [value.userIds, allUsers, companyIndex])
+
+  const hiddenSelected = useMemo(() => {
+    const visible = new Set(filteredUsers.map(u => u.id))
+    return value.userIds.filter(id => !visible.has(id))
+  }, [value.userIds, filteredUsers])
+
+  const dropHiddenSelected = () => {
+    const visible = new Set(filteredUsers.map(u => u.id))
+    onChange({ ...value, userIds: value.userIds.filter(id => visible.has(id)) })
+  }
+
   return (
     <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
       {/* Header */}
@@ -315,6 +343,36 @@ export default function RecipientSelector({ value, onChange }: Props) {
                   </button>
                 </div>
               </div>
+
+              {selectionByCompany.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-2">
+                  {selectionByCompany.map(([name, count]) => (
+                    <span
+                      key={name}
+                      className="text-[10px] text-purple-800 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5 whitespace-nowrap"
+                    >
+                      {name} <strong className="font-extrabold">{count}</strong>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {hiddenSelected.length > 0 && (
+                <div className="flex items-center gap-2 mt-2 px-2.5 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 leading-snug">
+                  <AlertTriangle size={14} className="shrink-0" />
+                  <span>
+                    {hiddenSelected.length} destinatario{hiddenSelected.length === 1 ? '' : 's'} de la
+                    selección no {hiddenSelected.length === 1 ? 'aparece' : 'aparecen'} con el filtro
+                    actual. Se {hiddenSelected.length === 1 ? 'le' : 'les'} enviará igual.
+                  </span>
+                  <button
+                    onClick={dropHiddenSelected}
+                    className="ml-auto shrink-0 border border-amber-300 bg-white rounded-md px-2 py-1 font-bold hover:bg-amber-100"
+                  >
+                    Quitarlos
+                  </button>
+                </div>
+              )}
             </div>
 
             {loading ? (

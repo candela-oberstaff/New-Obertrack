@@ -1,28 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Save, Send, Plus, Trash2, GripVertical, Settings, Star, X, Search, Check } from 'lucide-react';
+import { ArrowLeft, Save, Send, Plus, Trash2, GripVertical, Settings, Star, X, Search, Check, Building2, UserCog } from 'lucide-react';
 import {
   buildCompanyIndex,
   companyNameOf,
   companyOptions,
   matchesCompany,
 } from '../../../../lib/recipientCompany';
+import { AlertTriangle } from 'lucide-react';
 import styles from './SurveyBuilder.module.css';
 import commonStyles from '../Tools.module.css';
 import { Select } from '../../../ui/Select';
 import { SurveyQuestion } from '../../../../services/surveyService';
 import { userService } from '../../../../services/user.service';
-
-const filterSelectStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  border: '1px solid #cbd5e1',
-  borderRadius: 8,
-  fontSize: 12,
-  outline: 'none',
-  background: 'white',
-  cursor: 'pointer',
-  width: '100%',
-};
 
 interface SurveyBuilderProps {
   onBack: () => void;
@@ -115,6 +105,35 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
 
   const selectNone = () => {
     setSelectedRecipients([]);
+  };
+
+  // Quién está elegido, agrupado por empresa.
+  //
+  // Es la respuesta a "¿a quién le va a llegar esto?", y hasta ahora no estaba
+  // en ninguna parte: al cambiar el filtro, lo marcado antes desaparecía de la
+  // lista pero seguía en el envío. Se acotaba a un cliente, se marcaba, se
+  // cambiaba de cliente, y salía para los dos sin que nada lo dijera.
+  const selectionByCompany = useMemo(() => {
+    const chosen = new Set(selectedRecipients);
+    const counts = new Map<string, number>();
+    for (const u of availableUsers) {
+      if (!chosen.has(u.id)) continue;
+      const name = companyNameOf(u, companyIndex) || 'Sin empresa';
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [selectedRecipients, availableUsers, companyIndex]);
+
+  // Elegidos que el filtro actual NO está mostrando. Son los que se cuelan en
+  // un envío sin que nadie los vea.
+  const hiddenSelected = useMemo(() => {
+    const visible = new Set(filteredUsers.map(u => u.id));
+    return selectedRecipients.filter(id => !visible.has(id));
+  }, [selectedRecipients, filteredUsers]);
+
+  const dropHiddenSelected = () => {
+    const visible = new Set(filteredUsers.map(u => u.id));
+    setSelectedRecipients(prev => prev.filter(id => visible.has(id)));
   };
 
 
@@ -326,6 +345,33 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                     </div>
                   </div>
 
+                  {/* A quién le va a llegar, por empresa. Sin esto, lo elegido
+                      bajo un filtro anterior viaja invisible en el envío. */}
+                  {selectionByCompany.length > 0 && (
+                    <div className={styles.selectionSummary}>
+                      {selectionByCompany.map(([name, count]) => (
+                        <span key={name} className={styles.selectionChip}>
+                          {name} <strong>{count}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {hiddenSelected.length > 0 && (
+                    <div className={styles.selectionWarning}>
+                      <AlertTriangle size={15} />
+                      <span>
+                        {hiddenSelected.length} destinatario{hiddenSelected.length === 1 ? '' : 's'} que
+                        {hiddenSelected.length === 1 ? ' sigue' : ' siguen'} en la selección no
+                        {hiddenSelected.length === 1 ? ' aparece' : ' aparecen'} con el filtro actual.
+                        {hiddenSelected.length === 1 ? ' Se le' : ' Se les'} enviará igual.
+                      </span>
+                      <button type="button" onClick={dropHiddenSelected}>
+                        Quitarlos
+                      </button>
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
                     <div className={styles.searchContainer} style={{ marginBottom: 0 }}>
                       <Search size={16} />
@@ -336,28 +382,35 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                         onChange={e => setUserSearch(e.target.value)}
                       />
                     </div>
-                    <select
-                      style={filterSelectStyle}
+                    {/* searchable: la lista de empresas crece con la cartera y
+                        buscar por nombre es más rápido que recorrerla. */}
+                    <Select
+                      fullWidth
+                      searchable
                       value={companyFilter}
-                      onChange={e => setCompanyFilter(e.target.value)}
-                    >
-                      <option value="all">Todas las empresas</option>
-                      {companyOptions(availableUsers, companyIndex, companyFilter).map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    <select
-                      style={filterSelectStyle}
+                      onChange={v => { setCompanyFilter(String(v)); }}
+                      ariaLabel="Filtrar por empresa"
+                      leftIcon={<Building2 size={14} />}
+                      options={[
+                        { value: 'all', label: 'Todas las empresas' },
+                        ...companyOptions(availableUsers, companyIndex, companyFilter),
+                      ]}
+                    />
+                    <Select
+                      fullWidth
                       value={roleFilter}
-                      onChange={e => setRoleFilter(e.target.value)}
-                    >
-                      <option value="all">Todos los tipos de usuario</option>
-                      <option value="profesional">Profesionales</option>
-                      <option value="empleador">Empresas (Empleadores)</option>
-                      <option value="customer_success">Customer Success</option>
-                      <option value="manager">Managers</option>
-                      <option value="superadmin">Administradores</option>
-                    </select>
+                      onChange={v => setRoleFilter(String(v))}
+                      ariaLabel="Filtrar por tipo de usuario"
+                      leftIcon={<UserCog size={14} />}
+                      options={[
+                        { value: 'all', label: 'Todos los tipos de usuario' },
+                        { value: 'profesional', label: 'Profesionales' },
+                        { value: 'empleador', label: 'Empresas (Empleadores)' },
+                        { value: 'customer_success', label: 'Customer Success' },
+                        { value: 'manager', label: 'Managers' },
+                        { value: 'superadmin', label: 'Administradores' },
+                      ]}
+                    />
                   </div>
 
                   <div className={styles.userList}>

@@ -396,7 +396,7 @@ func (s *onboardingService) attachCV(employmentID, companyID uint, cv *HireCV) s
 
 	fileURL := "/api/uploads/" + filename
 	if _, err := s.employmentSvc.AddDocument(
-		employmentID, companyID, "CV", filename, fileURL,
+		employmentID, companyID, nil, "CV", filename, fileURL,
 		int64(len(data)), mime, models.ExpedientePrivate, nil,
 	); err != nil {
 		return "CV no adjuntado: " + err.Error()

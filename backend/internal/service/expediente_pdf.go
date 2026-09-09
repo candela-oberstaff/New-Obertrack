@@ -221,8 +221,8 @@ func generateExpedientePDF(exp *ExpedienteView, professionalName string) ([]byte
 	pdfKV(pdf, tr, "Tareas", fmt.Sprintf("%d / %d completadas", exp.Summary.TasksCompleted, exp.Summary.TasksAssigned))
 	pdfKV(pdf, tr, "Ausencias", fmt.Sprintf("%d", exp.Summary.Absences))
 
-	// Evaluaciones y notas
-	pdfSection(pdf, tr, "Evaluaciones y notas")
+	// Evaluaciones
+	pdfSection(pdf, tr, "Evaluaciones")
 	if len(exp.Notes) == 0 {
 		pdfMuted(pdf, tr, "Sin evaluaciones ni notas.")
 	}
