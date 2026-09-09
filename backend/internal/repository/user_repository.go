@@ -1,11 +1,14 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
 )
 
 type UserRepository interface {
+	GetObersuiteCompanies() ([]ObersuiteCompanyRecord, error)
 	GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	Count(role, isManager, isActive string, companyID uint) (int64, error)
 	CountCompanies() (int64, error)
@@ -379,3 +382,51 @@ func (r *userRepository) ListActiveByTypes(types []models.UserType) ([]models.Us
 	}
 	return users, nil
 }
+
+// ObersuiteCompanyRecord contiene los campos crudos de una empresa para Obersuite.
+type ObersuiteCompanyRecord struct {
+	ID                 uint       `json:"id"`
+	Name               string     `json:"name"`
+	IsActive           bool       `json:"is_active"`
+	ResponsibleName    string     `json:"responsible_name"`
+	ResponsibleEmail   string     `json:"responsible_email"`
+	Industry           string     `json:"industry"`
+	Country            string     `json:"country"`
+	State              string     `json:"state"`
+	City               string     `json:"city"`
+	Address            string     `json:"address"`
+	ProfessionalsCount int        `json:"professionals_count"`
+	BoardsCount        int        `json:"boards_count"`
+	TasksCount         int        `json:"tasks_count"`
+	LastContactAt      *time.Time `json:"last_contact_at"`
+}
+
+// GetObersuiteCompanies consulta todas las empresas registradas (empleadores)
+// calculando profesionales activos, tableros, tareas y la fecha del último contacto.
+func (r *userRepository) GetObersuiteCompanies() ([]ObersuiteCompanyRecord, error) {
+	var records []ObersuiteCompanyRecord
+	err := r.db.Raw(`
+		SELECT
+			u.id,
+			COALESCE(NULLIF(u.company_name, ''), u.name) as name,
+			u.is_active,
+			u.name as responsible_name,
+			u.email as responsible_email,
+			COALESCE(u.industry, '') as industry,
+			COALESCE(u.country, '') as country,
+			COALESCE(u.state, '') as state,
+			COALESCE(u.city, '') as city,
+			COALESCE(u.address, '') as address,
+			(SELECT COUNT(DISTINCT p.id) FROM users p 
+			 WHERE (p.empleador_id = u.id OR EXISTS (SELECT 1 FROM employments e WHERE e.user_id = p.id AND e.company_id = u.id AND e.status = 'active' AND e.deleted_at IS NULL))
+			   AND p.user_type = 'profesional' AND p.deleted_at IS NULL) as professionals_count,
+			(SELECT COUNT(*) FROM boards b WHERE b.tenant_id = u.id AND b.deleted_at IS NULL) as boards_count,
+			(SELECT COUNT(*) FROM tasks t WHERE t.tenant_id = u.id AND t.deleted_at IS NULL) as tasks_count,
+			(SELECT MAX(ce.created_at) FROM company_events ce WHERE ce.company_id = u.id AND ce.type = 'contact') as last_contact_at
+		FROM users u
+		WHERE u.user_type = 'empleador' AND u.deleted_at IS NULL
+		ORDER BY LOWER(COALESCE(NULLIF(u.company_name, ''), u.name)) ASC
+	`).Scan(&records).Error
+	return records, err
+}
+
