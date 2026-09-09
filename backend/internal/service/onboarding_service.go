@@ -25,11 +25,28 @@ import (
 // El diseño es IDEMPOTENTE por email: un mismo hire reintentado (reintento del
 // webhook, doble clic) no crea profesionales ni empleos duplicados.
 type OnboardingService interface {
-	// ListCompanies devuelve las empresas [{id,name}] para que el reclutador en
-	// Obersuite elija de un dropdown y nos envíe el company_id estable.
-	ListCompanies() ([]map[string]interface{}, error)
+	// ListCompanies devuelve las empresas con sus atributos completos para Obersuite.
+	ListCompanies() ([]ObersuiteCompany, error)
 	// Hire materializa la contratación. Ver HireRequest / HireResult.
 	Hire(req HireRequest) (*HireResult, error)
+}
+
+// ObersuiteCompany contiene los atributos completos de una empresa para Obersuite.
+type ObersuiteCompany struct {
+	ID                 uint   `json:"id"`
+	Name               string `json:"name"`
+	Status             string `json:"status"` // "active" o "suspended"
+	ResponsibleName    string `json:"responsible_name"`
+	ResponsibleEmail   string `json:"responsible_email"`
+	Industry           string `json:"industry"`
+	Country            string `json:"country"`
+	State              string `json:"state"`
+	City               string `json:"city"`
+	Address            string `json:"address"`
+	ProfessionalsCount int    `json:"professionals_count"`
+	BoardsCount        int    `json:"boards_count"`
+	TasksCount         int    `json:"tasks_count"`
+	LastContact        string `json:"last_contact"`
 }
 
 // HireCV es el CV del candidato tal como viaja en el webhook: binario en base64.
@@ -106,8 +123,73 @@ func NewOnboardingService(
 	}
 }
 
-func (s *onboardingService) ListCompanies() ([]map[string]interface{}, error) {
-	return s.authSvc.GetPublicCompanies()
+func (s *onboardingService) ListCompanies() ([]ObersuiteCompany, error) {
+	records, err := s.userRepo.GetObersuiteCompanies()
+	if err != nil {
+		return nil, err
+	}
+	companies := make([]ObersuiteCompany, 0, len(records))
+	for _, r := range records {
+		status := "suspended"
+		if r.IsActive {
+			status = "active"
+		}
+		companies = append(companies, ObersuiteCompany{
+			ID:                 r.ID,
+			Name:               r.Name,
+			Status:             status,
+			ResponsibleName:    r.ResponsibleName,
+			ResponsibleEmail:   r.ResponsibleEmail,
+			Industry:           r.Industry,
+			Country:            r.Country,
+			State:              r.State,
+			City:               r.City,
+			Address:            r.Address,
+			ProfessionalsCount: r.ProfessionalsCount,
+			BoardsCount:        r.BoardsCount,
+			TasksCount:         r.TasksCount,
+			LastContact:        FormatLastContact(r.LastContactAt),
+		})
+	}
+	return companies, nil
+}
+
+// FormatLastContact convierte la fecha de último contacto en lenguaje natural en español:
+// "hoy", "ayer", "hace X días", "hace X mes(es)", "hace X año(s)", o "nunca" si es nulo.
+func FormatLastContact(t *time.Time) string {
+	if t == nil || t.IsZero() {
+		return "nunca"
+	}
+	now := time.Now()
+	y1, m1, d1 := t.Date()
+	y2, m2, d2 := now.Date()
+	t1 := time.Date(y1, m1, d1, 0, 0, 0, 0, time.UTC)
+	t2 := time.Date(y2, m2, d2, 0, 0, 0, 0, time.UTC)
+	diffDays := int(t2.Sub(t1).Hours() / 24)
+	if diffDays < 0 {
+		diffDays = 0
+	}
+	if diffDays == 0 {
+		return "hoy"
+	}
+	if diffDays == 1 {
+		return "ayer"
+	}
+	if diffDays < 30 {
+		return fmt.Sprintf("hace %d días", diffDays)
+	}
+	months := diffDays / 30
+	if months < 12 {
+		if months == 1 {
+			return "hace 1 mes"
+		}
+		return fmt.Sprintf("hace %d meses", months)
+	}
+	years := diffDays / 365
+	if years <= 1 {
+		return "hace 1 año"
+	}
+	return fmt.Sprintf("hace %d años", years)
 }
 
 func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {

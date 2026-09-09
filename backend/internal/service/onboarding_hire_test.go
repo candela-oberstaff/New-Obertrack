@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
@@ -56,6 +57,31 @@ func (f *fakeHireUserRepo) Update(user *models.User, updates map[string]interfac
 	}
 	f.updates[user.ID] = updates
 	return nil
+}
+
+func (f *fakeHireUserRepo) GetObersuiteCompanies() ([]repository.ObersuiteCompanyRecord, error) {
+	var records []repository.ObersuiteCompanyRecord
+	for _, u := range f.byID {
+		if u.UserType == models.UserTypeEmployer {
+			name := u.CompanyName
+			if name == "" {
+				name = u.Name
+			}
+			records = append(records, repository.ObersuiteCompanyRecord{
+				ID:               u.ID,
+				Name:             name,
+				IsActive:         u.IsActive,
+				ResponsibleName:  u.Name,
+				ResponsibleEmail: u.Email,
+				Industry:         u.Industry,
+				Country:          u.Country,
+				State:            u.State,
+				City:             u.City,
+				Address:          u.Address,
+			})
+		}
+	}
+	return records, nil
 }
 
 type fakeHireEmploymentRepo struct {
@@ -464,5 +490,102 @@ func TestHire_UnFalloDelTicketNoRompeLaContratacion(t *testing.T) {
 	}
 	if result.UserID == 0 || result.EmploymentID == 0 {
 		t.Fatalf("la contratación quedó a medias: %+v", result)
+	}
+}
+
+func TestListCompanies_IncluyeAtributosCompletos(t *testing.T) {
+	svc, userRepo, _, _, _ := newHireSvc(false)
+	company := userRepo.byID[10] // Empresa Ejemplo
+	company.CompanyName = "Empresa Ejemplo"
+	company.Name = "Hermann Tschernko"
+	company.Email = "empresa@ejemplo.com"
+	company.Industry = "Construcción"
+	company.Country = "España"
+	company.State = "Sevilla"
+	company.City = "Sevilla"
+	company.Address = "Av. República Argentina 24"
+
+	companies, err := svc.ListCompanies()
+	if err != nil {
+		t.Fatalf("ListCompanies error: %v", err)
+	}
+	if len(companies) != 1 {
+		t.Fatalf("se esperaba 1 empresa, hubo %d", len(companies))
+	}
+
+	c := companies[0]
+	if c.ID != 10 {
+		t.Errorf("ID esperado 10, obtenido %d", c.ID)
+	}
+	if c.Name != "Empresa Ejemplo" {
+		t.Errorf("Name esperado 'Empresa Ejemplo', obtenido %s", c.Name)
+	}
+	if c.Status != "active" {
+		t.Errorf("Status esperado 'active', obtenido %s", c.Status)
+	}
+	if c.ResponsibleName != "Hermann Tschernko" {
+		t.Errorf("ResponsibleName esperado 'Hermann Tschernko', obtenido %s", c.ResponsibleName)
+	}
+	if c.ResponsibleEmail != "empresa@ejemplo.com" {
+		t.Errorf("ResponsibleEmail esperado 'empresa@ejemplo.com', obtenido %s", c.ResponsibleEmail)
+	}
+	if c.Industry != "Construcción" {
+		t.Errorf("Industry esperada 'Construcción', obtenida %s", c.Industry)
+	}
+	if c.Country != "España" {
+		t.Errorf("Country esperado 'España', obtenido %s", c.Country)
+	}
+	if c.State != "Sevilla" {
+		t.Errorf("State esperado 'Sevilla', obtenido %s", c.State)
+	}
+	if c.City != "Sevilla" {
+		t.Errorf("City esperada 'Sevilla', obtenida %s", c.City)
+	}
+	if c.Address != "Av. República Argentina 24" {
+		t.Errorf("Address esperada 'Av. República Argentina 24', obtenida %s", c.Address)
+	}
+	if c.LastContact != "nunca" {
+		t.Errorf("LastContact esperado 'nunca', obtenido %s", c.LastContact)
+	}
+}
+
+func TestFormatLastContact(t *testing.T) {
+	if got := FormatLastContact(nil); got != "nunca" {
+		t.Errorf("esperado 'nunca', obtenido %q", got)
+	}
+
+	now := time.Now()
+	if got := FormatLastContact(&now); got != "hoy" {
+		t.Errorf("esperado 'hoy', obtenido %q", got)
+	}
+
+	ayer := now.AddDate(0, 0, -1)
+	if got := FormatLastContact(&ayer); got != "ayer" {
+		t.Errorf("esperado 'ayer', obtenido %q", got)
+	}
+
+	sieteDias := now.AddDate(0, 0, -7)
+	if got := FormatLastContact(&sieteDias); got != "hace 7 días" {
+		t.Errorf("esperado 'hace 7 días', obtenido %q", got)
+	}
+
+	unMes := now.AddDate(0, -1, 0)
+	if got := FormatLastContact(&unMes); got != "hace 1 mes" {
+		t.Errorf("esperado 'hace 1 mes', obtenido %q", got)
+	}
+
+	dosMeses := now.AddDate(0, -2, 0)
+	if got := FormatLastContact(&dosMeses); got != "hace 2 meses" {
+		t.Errorf("esperado 'hace 2 meses', obtenido %q", got)
+	}
+
+	unAno := now.AddDate(-1, 0, 0)
+	if got := FormatLastContact(&unAno); got != "hace 1 año" {
+		t.Errorf("esperado 'hace 1 año', obtenido %q", got)
+	}
+
+	dosAnos := now.AddDate(-2, 0, 0)
+	if got := FormatLastContact(&dosAnos); got != "hace 2 años" {
+		t.Errorf("esperado 'hace 2 años', obtenido %q", got)
 	}
 }

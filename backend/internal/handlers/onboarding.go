@@ -19,8 +19,8 @@ func NewOnboardingHandler(svc service.OnboardingService) *OnboardingHandler {
 	return &OnboardingHandler{svc: svc}
 }
 
-// ListCompanies devuelve las empresas [{id,name}] para alimentar el dropdown de
-// contratación en Obersuite. El reclutador elige una y nos envía su id.
+// ListCompanies devuelve las empresas con sus atributos completos (id, name,
+// status, responsible, ubicación, contadores y último contacto) para la integración con Obersuite.
 func (h *OnboardingHandler) ListCompanies(c *gin.Context) {
 	companies, err := h.svc.ListCompanies()
 	if err != nil {
