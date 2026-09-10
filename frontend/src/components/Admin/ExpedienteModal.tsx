@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FileText, Star, Trash2, Upload, Lock, Eye, Clock3, CheckSquare, CalendarDays, CalendarX, ClipboardList, Send, Snowflake, Download, Pencil, CalendarClock, StickyNote, X, Paperclip, Play, Music } from 'lucide-react'
+import { FileText, Star, Trash2, Upload, Lock, Eye, Clock3, CheckSquare, CalendarDays, CalendarX, Send, Snowflake, Download, Pencil, CalendarClock, StickyNote, X, Paperclip, Play, Music } from 'lucide-react'
 import { adminService, authService, employerService, uploadService } from '../../services/api'
 import { useDirtySnapshot } from '../ui/useCloseGuard'
 import { Modal, Button, Select, DatePicker } from '../ui'
@@ -56,12 +56,12 @@ const CONTACT_CHANNEL: Record<string, { label: string; icon: string }> = {
   chat: { label: 'Chat interno', icon: '💬' },
 }
 
-const GESTION_KIND: Record<string, string> = { inactivity: 'Inactividad', absence: 'Ausencia' }
-const GESTION_STATUS: Record<string, { label: string; className: string }> = {
-  contacted: { label: 'Contactado', className: styles.pillInfo },
-  justified: { label: 'Justificado', className: styles.pillSuccess },
-  escalated: { label: 'Escalado', className: styles.pillWarn },
-}
+// const GESTION_KIND: Record<string, string> = { inactivity: 'Inactividad', absence: 'Ausencia' }
+// const GESTION_STATUS: Record<string, { label: string; className: string }> = {
+//   contacted: { label: 'Contactado', className: styles.pillInfo },
+//   justified: { label: 'Justificado', className: styles.pillSuccess },
+//   escalated: { label: 'Escalado', className: styles.pillWarn },
+// }
 
 const NOTE_KINDS = [
   { value: 'note', label: 'Nota' },
@@ -428,7 +428,7 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
         )}
       </section>
 
-      {/* Gestiones de CS (inactividad / ausencia) */}
+      {/* Gestiones de CS (inactividad / ausencia) - Ocultado temporalmente
       <section className={styles.section}>
         <div className={styles.sectionHead}>
           <h4 className={styles.sectionTitle}>Gestiones de seguimiento</h4>
@@ -457,6 +457,7 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
           </div>
         )}
       </section>
+      */}
 
       {/* Historial de contactos */}
       <section className={styles.section}>

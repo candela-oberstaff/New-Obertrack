@@ -36,7 +36,7 @@ func (r *surveyRepository) CreateSurvey(survey *models.Survey) error {
 
 func (r *surveyRepository) GetSurveys() ([]models.Survey, error) {
 	var surveys []models.Survey
-	err := r.db.Preload("Questions").Preload("Responses").Find(&surveys).Error
+	err := r.db.Preload("Questions").Preload("Responses.User").Preload("Responses.Answers").Find(&surveys).Error
 	return surveys, err
 }
 

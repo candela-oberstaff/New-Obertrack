@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, cloneElement, useMemo, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, User, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, Plus, Trash2, Pin, PinOff, Send, Phone, Paperclip, MoreVertical, ArrowRight, Eye, Briefcase, CalendarDays, Settings } from 'lucide-react'
+import { ArrowLeft, Building2, Users, User, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, Plus, Trash2, Pin, PinOff, Send, Paperclip, MoreVertical, ArrowRight, Eye, Briefcase, CalendarDays, Settings } from 'lucide-react'
 import { useImagePaste } from '../../hooks/useImagePaste'
 import type { TenantContactChannel } from '../../services/admin.service'
 import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
@@ -11,6 +11,7 @@ import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from
 const MANUAL_CONTACT_CHANNELS: { value: TenantContactChannel; label: string }[] = [
   { value: 'call', label: 'Llamada telefónica' },
   { value: 'meeting', label: 'Reunión' },
+  { value: 'whatsapp', label: 'WhatsApp' },
 ]
 
 const NOTE_MAX_LENGTH = 2000
@@ -23,6 +24,7 @@ import type { TenantActivity } from '../../hooks'
 import { TeamActivityPanel } from '../../components/Admin/TeamActivityPanel'
 import { AbsenceReportPanel } from '../../components/Admin/AbsenceReportPanel'
 import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
+import { surveyService } from '../../services/surveyService'
 import { ticketService } from '../../services/ticket.service'
 import { openWaConversation } from '../../lib/whatsappInbox'
 import { useNotification } from '../../context/NotificationContext'
@@ -110,7 +112,7 @@ export default function TenantDetail() {
   const [actCategory, setActCategory] = useState('lifecycle')
   const [actPerson, setActPerson] = useState(0)
   const [actPage, setActPage] = useState(1)
-  const actPageSize = actCategory === 'note' ? 1000 : 5
+  const actPageSize = (actCategory === 'note' || actCategory === 'contact') ? 1000 : 5
   const {
     activity,
     total: actTotal,
@@ -133,12 +135,27 @@ export default function TenantDetail() {
     deleteAttachment,
   } = useTenantActivity(tenantId, actCategory, actPerson, actPage, actPageSize)
 
-  // Ordenar las notas fijadas arriba del expediente cuando estamos en la pestaña de notas
-  const processedActivity = useMemo(() => {
-    if (actCategory !== 'note') return activity
+  const [noteFilterEmployeeId, setNoteFilterEmployeeId] = useState<number | null>(null)
 
-    const pinned = activity.filter(a => a.pinned)
-    const unpinned = activity.filter(a => !a.pinned)
+  // Ordenar las notas fijadas arriba del expediente cuando estamos en la pestaña de notas y aplicar filtro de profesional destinatario
+  const processedActivity = useMemo(() => {
+    if (actCategory !== 'note' && actCategory !== 'contact') return activity
+
+    let list = activity
+    if (noteFilterEmployeeId) {
+      const targetEmp = employees.find(e => e.id === noteFilterEmployeeId)
+      if (targetEmp) {
+        const empNameLower = targetEmp.name.trim().toLowerCase()
+        const tag = `[${targetEmp.name.trim()}]`.toLowerCase()
+        list = list.filter(a => {
+          const det = (a.details || '').toLowerCase()
+          return det.includes(tag) || det.includes(empNameLower)
+        })
+      }
+    }
+
+    const pinned = list.filter(a => a.pinned)
+    const unpinned = list.filter(a => !a.pinned)
 
     const sortFn = (x: any, y: any) => {
       const timeX = new Date(x.timestamp).getTime()
@@ -150,7 +167,7 @@ export default function TenantDetail() {
     unpinned.sort(sortFn)
 
     return [...pinned, ...unpinned]
-  }, [activity, actCategory])
+  }, [activity, actCategory, noteFilterEmployeeId, employees])
 
   const lastPinnedId = useMemo(() => {
     if (actCategory !== 'note') return null
@@ -169,6 +186,7 @@ export default function TenantDetail() {
   const [actSubTab, setActSubTab] = useState<'inactividad' | 'ausencias'>('inactividad')
   const actTotalPages = Math.max(1, Math.ceil(actTotal / actPageSize))
   const [noteOpen, setNoteOpen] = useState(false)
+  const [noteEmployeeIds, setNoteEmployeeIds] = useState<number[]>([])
   const [noteText, setNoteText] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteError, setNoteError] = useState<string | null>(null)
@@ -183,8 +201,29 @@ export default function TenantDetail() {
     setNoteFiles(prev => [...prev, ...files])
   })
 
+  // Archivos en cola para contacto
+  const [contactFiles, setContactFiles] = useState<File[]>([])
+  const contactFileRef = useRef<HTMLInputElement>(null)
+  const { onPaste: onContactPaste, onDrop: onContactDrop } = useImagePaste(files => {
+    setContactFiles(prev => [...prev, ...files])
+  })
+
+  // Modal para ver respuestas detalladas de una encuesta
+  const [selectedSurveyResponse, setSelectedSurveyResponse] = useState<{
+    surveyId: number
+    surveyTitle: string
+    surveyDescription?: string
+    questions: any[]
+    responseId: number
+    userId: number
+    user?: any
+    completedAt: string
+    answers: any[]
+  } | null>(null)
+
   // Registro manual de un contacto que pasó fuera de la plataforma.
   const [contactOpen, setContactOpen] = useState(false)
+  const [contactTargets, setContactTargets] = useState<string[]>([])
   const [contactChannel, setContactChannel] = useState<TenantContactChannel>('call')
   const [contactDetail, setContactDetail] = useState('')
   const [contactSaving, setContactSaving] = useState(false)
@@ -297,6 +336,66 @@ export default function TenantDetail() {
   const ticketTotalPages = Math.max(1, Math.ceil(tickets.length / TICKETS_PER_PAGE))
   const ticketsSlice = tickets.slice((ticketPage - 1) * TICKETS_PER_PAGE, ticketPage * TICKETS_PER_PAGE)
 
+  // Encuestas realizadas por profesionales de esta empresa
+  const { data: allSurveys = [], isLoading: surveysLoading } = useQuery({
+    queryKey: ['tenant-surveys', tenantId],
+    queryFn: () => surveyService.getSurveys(),
+    enabled: !!tenantId && tab === 'expediente',
+  })
+
+  const employeeIds = useMemo(() => new Set(employees.map(e => e.id)), [employees])
+
+  const tenantSurveyResponses = useMemo(() => {
+    const list: Array<{
+      surveyId: number
+      surveyTitle: string
+      surveyDescription?: string
+      questions: any[]
+      responseId: number
+      userId: number
+      user?: any
+      completedAt: string
+      answers: any[]
+    }> = []
+
+    allSurveys.forEach((s: any) => {
+      if (!Array.isArray(s.responses)) return
+      s.responses.forEach((r: any) => {
+        if (employeeIds.has(r.user_id)) {
+          if (noteFilterEmployeeId && r.user_id !== noteFilterEmployeeId) {
+            return
+          }
+          const emp = employees.find(e => e.id === r.user_id)
+          list.push({
+            surveyId: s.id,
+            surveyTitle: s.title,
+            surveyDescription: s.description,
+            questions: s.questions || [],
+            responseId: r.id,
+            userId: r.user_id,
+            user: emp || r.user,
+            completedAt: r.completed_at || r.created_at,
+            answers: r.answers || [],
+          })
+        }
+      })
+    })
+
+    list.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())
+    return list
+  }, [allSurveys, employeeIds, employees, noteFilterEmployeeId])
+
+  const totalTenantSurveyCount = useMemo(() => {
+    let count = 0
+    allSurveys.forEach((s: any) => {
+      if (!Array.isArray(s.responses)) return
+      s.responses.forEach((r: any) => {
+        if (employeeIds.has(r.user_id)) count++
+      })
+    })
+    return count
+  }, [allSurveys, employeeIds])
+
   useEffect(() => {
     setEmpPage(1)
   }, [empSearch, empRole, empStatus])
@@ -312,12 +411,16 @@ export default function TenantDetail() {
     setSchedSearch('')
     setActCategory('lifecycle')
     setActPerson(0)
+    setNoteFilterEmployeeId(null)
     setActPage(1)
   }, [tenantId])
 
   // Cambiar de filtro reordena el expediente entero: seguir en la página 7 del
   // anterior no significa nada.
-  useEffect(() => { setActPage(1) }, [actCategory, actPerson])
+  useEffect(() => {
+    setActPage(1)
+    setNoteFilterEmployeeId(null)
+  }, [actCategory, actPerson])
 
   // Si al borrar la última nota de la página esta se queda vacía, se retrocede
   // en vez de dejar al usuario mirando un hueco.
@@ -327,6 +430,7 @@ export default function TenantDetail() {
 
   const openNewNote = () => {
     setNoteEditingId(null)
+    setNoteEmployeeIds(actPerson > 0 ? [actPerson] : [])
     setNoteText('')
     setNoteError(null)
     setNoteOpen(true)
@@ -334,6 +438,7 @@ export default function TenantDetail() {
 
   const openEditNote = (note: { event_id: number; details: string }) => {
     setNoteEditingId(note.event_id)
+    setNoteEmployeeIds([])
     setNoteText(note.details)
     setNoteError(null)
     setNoteOpen(true)
@@ -356,9 +461,17 @@ export default function TenantDetail() {
         // entrada, que ya existe.
         await uploadNoteFiles(noteEditingId)
       } else {
-        // La nota primero: los archivos necesitan una entrada a la que colgarse,
-        // igual que en los comentarios del expediente.
-        const eventId = await addNote(text)
+        // Si se asociaron profesionales específicos, se referencian en el detalle
+        let finalDetail = text
+        if (noteEmployeeIds.length > 0) {
+          const selectedEmps = employees.filter(e => noteEmployeeIds.includes(e.id))
+          if (selectedEmps.length > 0) {
+            const empNames = selectedEmps.map(e => e.name).join(', ')
+            finalDetail = `[${empNames}] ${text}`
+          }
+        }
+
+        const eventId = await addNote(finalDetail)
         await uploadNoteFiles(eventId)
         // La nota nueva es lo más reciente: se ve en la primera página.
         setActPage(1)
@@ -367,6 +480,7 @@ export default function TenantDetail() {
       setNoteText('')
       setNoteFiles([])
       setNoteEditingId(null)
+      setNoteEmployeeIds([])
     } catch (err: any) {
       setNoteError(err?.response?.data?.error || 'No se pudo guardar la nota')
     } finally {
@@ -388,9 +502,33 @@ export default function TenantDetail() {
     }
   }
 
+  const supervisors = useMemo(() => {
+    return employees.filter(e => e.is_manager || e.user_type === 'supervisor' || e.user_type === 'empleador')
+  }, [employees])
+
+  const contactTargetOptions = useMemo(() => {
+    return supervisors.map(sup => ({
+      value: String(sup.id),
+      label: `${sup.name} (${sup.email})`,
+    }))
+  }, [supervisors])
+
+  const uploadContactFiles = async (eventId: number) => {
+    if (!eventId || contactFiles.length === 0) return
+    for (const file of contactFiles) {
+      try {
+        await addAttachment(eventId, file)
+      } catch (err: any) {
+        throw new Error(err?.response?.data?.error || `No se pudo adjuntar "${file.name}"`)
+      }
+    }
+  }
+
   const openContact = () => {
     setContactChannel('call')
+    setContactTargets([])
     setContactDetail('')
+    setContactFiles([])
     setContactError(null)
     setContactOpen(true)
   }
@@ -399,12 +537,25 @@ export default function TenantDetail() {
     setContactSaving(true)
     setContactError(null)
     try {
-      await logContact(contactChannel, contactDetail.trim())
+      let finalDetail = contactDetail.trim()
+      if (contactTargets.length > 0) {
+        const selectedSups = supervisors.filter(s => contactTargets.includes(String(s.id)))
+        if (selectedSups.length > 0) {
+          const supNames = selectedSups.map(s => s.name).join(', ')
+          finalDetail = finalDetail ? `[${supNames}] ${finalDetail}` : `[${supNames}]`
+        }
+      }
+      const eventId = await logContact(contactChannel, finalDetail)
+      if (eventId) {
+        await uploadContactFiles(eventId)
+      }
       // El contacto recién registrado es lo más reciente: se ve en la primera
       // página del expediente.
       setActPage(1)
       setContactOpen(false)
       setContactDetail('')
+      setContactFiles([])
+      setContactTargets([])
     } catch (err: any) {
       setContactError(err?.response?.data?.error || 'No se pudo registrar el contacto')
     } finally {
@@ -849,7 +1000,7 @@ export default function TenantDetail() {
                 tabs={ACTIVITY_CATEGORIES.map(cat => ({
                   id: cat.value,
                   label: cat.label,
-                  count: actCounts[cat.value],
+                  count: cat.value === 'surveys' ? totalTenantSurveyCount : actCounts[cat.value],
                 }))}
               />
             </div>
@@ -1091,30 +1242,71 @@ export default function TenantDetail() {
           {tab === 'expediente' && (
             <>
 
-              {/* Filtro por persona + botones de acción: fila separada, alineada a la izquierda */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 20 }}>
-                <div style={{ minWidth: 230 }}>
-                  <Select
-                    fullWidth
-                    clearable
-                    searchable
-                    placeholder="Todas las personas"
-                    value={actPerson || ''}
-                    onChange={v => setActPerson(v ? Number(v) : 0)}
-                    ariaLabel="Filtrar el expediente por persona"
-                    options={actPeople.map(p => ({ value: p.user_id, label: p.name }))}
-                  />
-                </div>
+              {/* Filtro por persona / autor / destinatario + botones de acción */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 20 }}>
+                {actCategory !== 'surveys' && (
+                  <div style={{ minWidth: 230 }}>
+                    <Select
+                      fullWidth
+                      clearable
+                      searchable
+                      placeholder="(Quien registró)"
+                      value={actPerson || ''}
+                      onChange={v => setActPerson(v ? Number(v) : 0)}
+                      ariaLabel="Filtrar por la persona que registró el movimiento o nota"
+                      options={actPeople.map(p => ({ value: p.user_id, label: p.name }))}
+                    />
+                  </div>
+                )}
+
+                {/* Filtro por profesional destinatario (en Notas) o profesional que respondió (en Encuestas) */}
+                {(actCategory === 'note' || actCategory === 'surveys') && (
+                  <div style={{ minWidth: 250 }}>
+                    <Select
+                      fullWidth
+                      clearable
+                      searchable
+                      placeholder={actCategory === 'surveys' ? 'Filtrar por profesional' : 'Destinatario (profesional)'}
+                      value={noteFilterEmployeeId ? String(noteFilterEmployeeId) : ''}
+                      onChange={v => setNoteFilterEmployeeId(v ? Number(v) : null)}
+                      ariaLabel={actCategory === 'surveys' ? 'Filtrar por el profesional que respondió' : 'Filtrar notas por el profesional para quien se escribió'}
+                      options={employees.map(emp => ({
+                        value: emp.id,
+                        label: `${emp.name} (${emp.email})`,
+                      }))}
+                    />
+                  </div>
+                )}
+
+                {/* Filtro por supervisor destinatario (en Comunicaciones) */}
+                {actCategory === 'contact' && (
+                  <div style={{ minWidth: 250 }}>
+                    <Select
+                      fullWidth
+                      clearable
+                      searchable
+                      placeholder="Destinatario (supervisor)"
+                      value={noteFilterEmployeeId ? String(noteFilterEmployeeId) : ''}
+                      onChange={v => setNoteFilterEmployeeId(v ? Number(v) : null)}
+                      ariaLabel="Filtrar comunicaciones por el supervisor destinatario"
+                      options={supervisors.map(sup => ({
+                        value: sup.id,
+                        label: `${sup.name} (${sup.email})`,
+                      }))}
+                    />
+                  </div>
+                )}
+
                 {canAnnotate && (
                   <>
                     {actCategory === 'contact' && (
                       <Button
                         size="sm"
                         variant="secondary"
-                        leftIcon={<Phone size={14} />}
+                        leftIcon={<Plus size={14} />}
                         onClick={openContact}
                       >
-                        Registrar
+                        Añadir
                       </Button>
                     )}
                     {actCategory === 'note' && (
@@ -1131,25 +1323,117 @@ export default function TenantDetail() {
                 )}
               </div>
 
-              {actError && <p className={styles.errorMsg}>{actError}</p>}
-
+              {actCategory === 'surveys' ? (
+                surveysLoading ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={68} radius={12} />)}
+                  </div>
+                ) : tenantSurveyResponses.length === 0 ? (
+                  <div className={styles.empty}>
+                    <CheckSquare size={40} />
+                    <p>
+                      {noteFilterEmployeeId !== null
+                        ? 'No hay encuestas respondidas por este profesional'
+                        : 'No hay encuestas respondidas por profesionales de esta empresa'}
+                    </p>
+                    {noteFilterEmployeeId !== null && (
+                      <button
+                        type="button"
+                        onClick={() => setNoteFilterEmployeeId(null)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: 10, padding: '8px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        <X size={14} /> Limpiar filtro
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className={styles.timelineScrollContainer}>
+                    <div className={`${styles.timeline} ${styles.isNotesOnly}`}>
+                      {tenantSurveyResponses.map((item, i) => {
+                        const date = new Date(item.completedAt)
+                        const valid = !isNaN(date.getTime())
+                        const userName = item.user?.name || `Profesional #${item.userId}`
+                        return (
+                          <div key={`survey-resp-${item.responseId}-${i}`} className={`${styles.timelineItem} ${styles.noteTimelineItem}`}>
+                            <div className={styles.noteAvatarNode}>
+                              <Avatar name={userName} size="sm" />
+                            </div>
+                            <div
+                              className={`${styles.timelineCard} ${styles.clickableCard} ${styles.isNote}`}
+                              role="button"
+                              tabIndex={0}
+                              title="Ver respuestas de la encuesta"
+                              onClick={() => setSelectedSurveyResponse(item)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  setSelectedSurveyResponse(item)
+                                }
+                              }}
+                            >
+                              <div className={styles.noteHeader}>
+                                <strong className={styles.noteUser}>{userName}</strong>
+                                <span className={styles.noteDateDivider}>•</span>
+                                <span className={styles.noteDateTime}>
+                                  {valid
+                                    ? `${date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+                                    : '—'}
+                                </span>
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  padding: '2px 8px',
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  background: 'rgba(16, 185, 129, 0.1)',
+                                  color: '#059669',
+                                  marginLeft: 6
+                                }}>
+                                  <CheckCircle2 size={12} /> Respondida
+                                </span>
+                                <div style={{ marginLeft: 'auto' }}>
+                                  <span style={{ fontSize: 13, color: 'var(--primary, #cc33cc)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    <Eye size={14} /> Ver respuestas
+                                  </span>
+                                </div>
+                              </div>
+                              <p className={styles.noteBody} style={{ fontWeight: 600, color: '#1e293b', marginBottom: 4 }}>
+                                📋 {item.surveyTitle}
+                              </p>
+                              {item.surveyDescription && (
+                                <p style={{ fontSize: 13, color: '#64748b', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {item.surveyDescription}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              ) : (
+                <>
+                  {actError && <p className={styles.errorMsg}>{actError}</p>}
 
               {actLoading ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                   {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={56} radius={12} />)}
                 </div>
-              ) : activity.length === 0 ? (
+              ) : processedActivity.length === 0 ? (
                 <div className={styles.empty}>
                   <Activity size={40} />
                   <p>
-                    {actCategory !== 'lifecycle' || actPerson !== 0
+                    {actCategory !== 'lifecycle' || actPerson !== 0 || noteFilterEmployeeId !== null
                       ? 'Sin movimientos con estos filtros'
                       : 'Sin movimientos en el expediente'}
                   </p>
-                  {(actCategory !== 'lifecycle' || actPerson !== 0) && (
+                  {(actCategory !== 'lifecycle' || actPerson !== 0 || noteFilterEmployeeId !== null) && (
                     <button
                       type="button"
-                      onClick={() => { setActCategory('lifecycle'); setActPerson(0) }}
+                      onClick={() => { setActCategory('lifecycle'); setActPerson(0); setNoteFilterEmployeeId(null) }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: 10, padding: '8px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
                     >
                       <X size={14} /> Limpiar filtros
@@ -1163,7 +1447,7 @@ export default function TenantDetail() {
                   <div className={styles.timelineScrollContainer}>
                     {/* Pinned section eliminada: las notas fijadas se muestran ya en la lista
                     principal con el estilo isPinnedCard y ordenadas al inicio. */}
-                    <div className={`${styles.timeline} ${actCategory === 'note' ? styles.isNotesOnly : ''}`} style={{ opacity: actFetching ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
+                    <div className={`${styles.timeline} ${(actCategory === 'note' || actCategory === 'contact') ? styles.isNotesOnly : ''}`} style={{ opacity: actFetching ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
                       {groupByDay(processedActivity).map((group, gi) => (
                         <div key={`${group.key}-${gi}`} className={styles.timelineDay}>
                           {/* Comentado a petición del usuario:
@@ -1182,10 +1466,12 @@ export default function TenantDetail() {
                             const st = ACTIVITY_STYLE[a.type] || ACTIVITY_FALLBACK
                             const Icon = st.icon
                             const isNote = a.type === 'company_note'
+                            const isContact = a.type === 'company_contact'
+                            const isCardStyle = isNote || isContact
                             return (
-                              <Fragment key={a.event_id ? `note-${a.event_id}` : `act-${actPage}-${group.key}-${i}`}>
-                                <div className={`${styles.timelineItem} ${isNote ? styles.noteTimelineItem : ''} ${isNote && a.pinned ? styles.isPinnedRow : ''}`}>
-                                  {isNote ? (
+                              <Fragment key={a.event_id ? `${a.type}-${a.event_id}` : `act-${actPage}-${group.key}-${i}`}>
+                                <div className={`${styles.timelineItem} ${isCardStyle ? styles.noteTimelineItem : ''} ${isNote && a.pinned ? styles.isPinnedRow : ''}`}>
+                                  {isCardStyle ? (
                                     <div className={styles.noteAvatarNode}>
                                       <Avatar name={a.user || 'Sistema'} size="sm" />
                                     </div>
@@ -1195,7 +1481,7 @@ export default function TenantDetail() {
                                     </div>
                                   )}
                                   <div
-                                    className={`${styles.timelineCard} ${styles.clickableCard} ${isNote ? styles.isNote : ''} ${isNote && a.pinned ? styles.isPinnedCard : ''}`}
+                                    className={`${styles.timelineCard} ${styles.clickableCard} ${isCardStyle ? styles.isNote : ''} ${isNote && a.pinned ? styles.isPinnedCard : ''}`}
                                     role="button"
                                     tabIndex={0}
                                     title="Ver el detalle del movimiento"
@@ -1207,7 +1493,7 @@ export default function TenantDetail() {
                                       }
                                     }}
                                   >
-                                    {isNote ? (
+                                    {isCardStyle ? (
                                       <>
                                         <div className={styles.noteHeader}>
                                           <strong className={styles.noteUser}>{a.user || 'Sistema'}</strong>
@@ -1217,13 +1503,30 @@ export default function TenantDetail() {
                                               ? `${date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
                                               : '—'}
                                           </span>
-                                          {a.pinned && (
+                                          {isContact && a.channel && CONTACT_STYLE[a.channel] && (
+                                            <span style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: 5,
+                                              padding: '2px 8px',
+                                              borderRadius: 999,
+                                              fontSize: 12,
+                                              fontWeight: 600,
+                                              background: '#f1f5f9',
+                                              color: '#475569',
+                                              marginLeft: 6
+                                            }}>
+                                              {(() => { const CI = CONTACT_STYLE[a.channel!].icon; return <CI size={12} /> })()}
+                                              {CONTACT_STYLE[a.channel].label}
+                                            </span>
+                                          )}
+                                          {isNote && a.pinned && (
                                             <span className={styles.notePinText}>
                                               <Pin size={11} /> fijada
                                             </span>
                                           )}
                                           {a.edited_at && <span className={styles.noteEdited}>· editada</span>}
-                                          {canAnnotate && (
+                                          {isNote && canAnnotate && (
                                             <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                                               <button
                                                 type="button"
@@ -1255,7 +1558,7 @@ export default function TenantDetail() {
                                             </div>
                                           )}
                                         </div>
-                                        <p className={styles.noteBody}>{a.details}</p>
+                                        <p className={styles.noteBody}>{a.details || '(Sin resumen adicional)'}</p>
                                       </>
                                     ) : (
                                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1318,7 +1621,7 @@ export default function TenantDetail() {
                     </div>
                   </div>
 
-                  {actCategory !== 'note' && (
+                  {actCategory !== 'note' && actCategory !== 'contact' && actCategory !== 'surveys' && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', padding: '14px 4px' }}>
                       <span style={{ fontSize: '13px', color: '#64748b' }}>
                         Mostrando {(actPage - 1) * actPageSize + 1}–{Math.min(actPage * actPageSize, actTotal)} de {actTotal} movimientos
@@ -1354,6 +1657,8 @@ export default function TenantDetail() {
               )}
             </>
           )}
+        </>
+      )}
 
           {/* Actividad de la empresa: quién no está registrando horas y qué
           ausencias hay este mes, con la misma gestión y las mismas vías de
@@ -1715,12 +2020,12 @@ export default function TenantDetail() {
       <Modal
         isOpen={noteOpen}
         isDirty={noteText.trim() !== '' || noteFiles.length > 0}
-        onClose={() => { setNoteOpen(false); setNoteFiles([]) }}
+        onClose={() => { setNoteOpen(false); setNoteFiles([]); setNoteEmployeeIds([]) }}
         title={noteEditingId !== null ? 'Editar nota del expediente' : 'Añadir nota al expediente'}
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => { setNoteOpen(false); setNoteFiles([]) }} disabled={noteSaving}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => { setNoteOpen(false); setNoteFiles([]); setNoteEmployeeIds([]) }} disabled={noteSaving}>Cancelar</Button>
             <Button onClick={handleSaveNote} loading={noteSaving} disabled={!noteText.trim()}>
               {noteEditingId !== null ? 'Guardar cambios' : 'Guardar nota'}
             </Button>
@@ -1732,6 +2037,30 @@ export default function TenantDetail() {
             ? 'Se conserva la fecha original y quedará marcada como editada, para que el expediente siga siendo fiel.'
             : `Lo que el sistema no puede deducir solo: una llamada, un acuerdo, un aviso. Queda fechada y firmada con tu nombre en el expediente de ${tenant.company_name}, y solo la ve el equipo de la plataforma.`}
         </p>
+
+        {/* Desplegable de profesional asociado (opcional con multiselección) */}
+        {noteEditingId === null && (
+          <div className={styles.field} style={{ marginBottom: 14 }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+              Profesionales asociados <span style={{ fontWeight: 400, color: '#94a3b8' }}>(opcional — puedes seleccionar varios)</span>
+            </label>
+            <Select
+              fullWidth
+              multiple
+              clearable
+              searchable
+              placeholder="General — Toda la empresa (o selecciona profesionales...)"
+              value={noteEmployeeIds}
+              onChange={(v: any) => setNoteEmployeeIds(Array.isArray(v) ? v.map(Number) : (v ? [Number(v)] : []))}
+              options={employees.map(emp => ({
+                value: emp.id,
+                label: `${emp.name} (${emp.email})`,
+              }))}
+              disabled={noteSaving}
+            />
+          </div>
+        )}
+
         {/* Arrastrar sobre el modal entero, no solo sobre el textarea: soltar un
             archivo un centímetro al lado y ver cómo el navegador lo abre en otra
             pestaña es la forma más fácil de perder lo escrito. */}
@@ -1804,36 +2133,59 @@ export default function TenantDetail() {
 
       <Modal
         isOpen={contactOpen}
-        isDirty={contactDetail.trim() !== ''}
-        onClose={() => setContactOpen(false)}
+        isDirty={contactDetail.trim() !== '' || contactFiles.length > 0}
+        onClose={() => { setContactOpen(false); setContactTargets([]); setContactFiles([]) }}
         title="Registrar contacto con la empresa"
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setContactOpen(false)} disabled={contactSaving}>Cancelar</Button>
-            <Button onClick={handleSaveContact} loading={contactSaving}>Registrar</Button>
+            <Button variant="secondary" onClick={() => { setContactOpen(false); setContactTargets([]); setContactFiles([]) }} disabled={contactSaving}>Cancelar</Button>
+            <Button onClick={handleSaveContact} loading={contactSaving}>Guardar</Button>
           </>
         }
       >
         <p className={styles.modalHint}>
           Para lo que pasa fuera de la plataforma. Los correos y los WhatsApp que
           salen desde aquí se registran solos: esto es para dejar constancia de
-          una llamada o una reunión con {tenant.company_name}.
+          una llamada, un WhatsApp o una reunión con {tenant.company_name}.
         </p>
-        <div className={styles.field}>
-          <label>Vía</label>
+
+        {/* Desplegable de destinatario: Supervisores */}
+        <div className={styles.field} style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+            Supervisores asociados <span style={{ fontWeight: 400, color: '#94a3b8' }}>(opcional — puedes seleccionar varios)</span>
+          </label>
+          <Select
+            fullWidth
+            multiple
+            clearable
+            searchable
+            placeholder="Empresa — Toda la empresa (o selecciona supervisores...)"
+            value={contactTargets}
+            onChange={(v: any) => setContactTargets(Array.isArray(v) ? v.map(String) : (v ? [String(v)] : []))}
+            options={contactTargetOptions}
+            disabled={contactSaving}
+          />
+        </div>
+
+        <div className={styles.field} style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+            Vía
+          </label>
           <Select
             fullWidth
             value={contactChannel}
             onChange={v => setContactChannel(String(v) as TenantContactChannel)}
             options={MANUAL_CONTACT_CHANNELS.map(c => ({ value: c.value, label: c.label }))}
+            disabled={contactSaving}
           />
         </div>
-        <div className={styles.field}>
+        <div className={styles.field} onDrop={onContactDrop} onDragOver={e => e.preventDefault()}>
           <label>Resumen <span style={{ color: '#94a3b8', fontWeight: 400 }}>(opcional)</span></label>
           <textarea
             value={contactDetail}
             onChange={(e) => setContactDetail(e.target.value.slice(0, NOTE_MAX_LENGTH))}
+            onPaste={onContactPaste}
             placeholder="Ej: Repasamos las horas pendientes de aprobar; lo revisan esta semana."
             rows={4}
             autoFocus
@@ -1842,8 +2194,129 @@ export default function TenantDetail() {
           <span style={{ display: 'block', marginTop: 4, textAlign: 'right', fontSize: '12px', color: contactDetail.length >= NOTE_MAX_LENGTH ? '#dc2626' : '#94a3b8' }}>
             {contactDetail.length}/{NOTE_MAX_LENGTH}
           </span>
+
+          {contactFiles.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {contactFiles.map((f, i) => (
+                <span key={`${f.name}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, background: '#f1f5f9', fontSize: 12, color: '#334155', maxWidth: '100%' }}>
+                  <Paperclip size={12} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setContactFiles(prev => prev.filter((_, idx) => idx !== i))}
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'inline-flex', color: '#94a3b8' }}
+                    title="Quitar este archivo"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+            <input
+              ref={contactFileRef}
+              type="file"
+              multiple
+              hidden
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.webm"
+              onChange={(e) => {
+                setContactFiles(prev => [...prev, ...Array.from(e.target.files || [])])
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => contactFileRef.current?.click()}
+              disabled={contactSaving}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: 'transparent', color: '#475569', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              title="Adjuntar un archivo a este contacto"
+            >
+              <Paperclip size={14} /> Adjuntar
+            </button>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>pega o arrastra imágenes · PDF, Word, Excel, imagen o audio</span>
+          </div>
         </div>
         {contactError && <p className={styles.errorMsg}>{contactError}</p>}
+      </Modal>
+
+      {/* Modal para ver respuestas detalladas de una encuesta */}
+      <Modal
+        isOpen={selectedSurveyResponse !== null}
+        onClose={() => setSelectedSurveyResponse(null)}
+        title={selectedSurveyResponse?.surveyTitle || 'Detalle de la encuesta'}
+        size="lg"
+        footer={
+          <Button variant="secondary" onClick={() => setSelectedSurveyResponse(null)}>
+            Cerrar
+          </Button>
+        }
+      >
+        {selectedSurveyResponse && (
+          <div>
+            <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>
+                    {selectedSurveyResponse.user?.name || `Profesional #${selectedSurveyResponse.userId}`}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                    {selectedSurveyResponse.user?.email || ''}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  Respondida el {new Date(selectedSurveyResponse.completedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })} a las {new Date(selectedSurveyResponse.completedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+              {selectedSurveyResponse.surveyDescription && (
+                <p style={{ fontSize: 13, color: '#475569', marginTop: 8, marginBottom: 0 }}>
+                  {selectedSurveyResponse.surveyDescription}
+                </p>
+              )}
+            </div>
+
+            <h4 style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 12 }}>
+              Preguntas y respuestas ({selectedSurveyResponse.questions?.length || 0})
+            </h4>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {selectedSurveyResponse.questions?.map((q: any, idx: number) => {
+                const ans = selectedSurveyResponse.answers?.find((a: any) => a.question_id === q.id)
+                let displayVal = 'Sin respuesta'
+                if (ans) {
+                  if (ans.number_value !== undefined && ans.number_value !== null && ans.number_value !== 0) {
+                    displayVal = `${ans.number_value} / 5`
+                  } else if (ans.text_value) {
+                    try {
+                      const parsed = JSON.parse(ans.text_value)
+                      if (Array.isArray(parsed)) {
+                        displayVal = parsed.join(', ')
+                      } else if (typeof parsed === 'object' && parsed !== null) {
+                        displayVal = Object.entries(parsed).map(([k, v]) => `${k}: ${v}`).join(' · ')
+                      } else {
+                        displayVal = String(parsed)
+                      }
+                    } catch {
+                      displayVal = ans.text_value
+                    }
+                  }
+                }
+
+                return (
+                  <div key={q.id || idx} style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid #f1f5f9', background: '#ffffff', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginBottom: 6 }}>
+                      {idx + 1}. {q.text}
+                    </div>
+                    <div style={{ fontSize: 13, color: ans ? '#0f172a' : '#94a3b8', background: '#f8fafc', padding: '8px 12px', borderRadius: 6, border: '1px solid #edf2f7' }}>
+                      {displayVal}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal

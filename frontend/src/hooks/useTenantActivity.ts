@@ -13,9 +13,10 @@ export const ACTIVITY_CATEGORIES = [
   // ("¿ya hablamos con ellos?"), y las notas son el detalle de eso.
   { value: 'contact', label: 'Comunicaciones' },
   { value: 'note', label: 'Notas' },
+  { value: 'surveys', label: 'Encuestas' },
   // Los testimonios tienen filtro propio: al preparar material comercial se
   // busca qué dijo este cliente, no se rebusca entre las notas internas.
-  { value: 'testimonial', label: 'Testimonios' },
+  // { value: 'testimonial', label: 'Testimonios' },
 ] as const
 
 export interface TenantActivity {
@@ -68,7 +69,7 @@ interface UseTenantActivityReturn {
   /** Crea la nota y devuelve el id de la entrada, para poder adjuntarle archivos. */
   addNote: (detail: string) => Promise<number>
   /** Deja constancia de un contacto con la empresa en su expediente. */
-  logContact: (channel: TenantContactChannel, detail?: string) => Promise<void>
+  logContact: (channel: TenantContactChannel, detail?: string) => Promise<number>
   updateNote: (eventId: number, detail: string) => Promise<void>
   addComment: (eventId: number, content: string) => Promise<number>
   updateComment: (commentId: number, content: string) => Promise<void>
@@ -209,7 +210,7 @@ export function useTenantActivity(
     // Devuelve el id de la entrada creada, por el mismo motivo que addComment:
     // los archivos adjuntos necesitan algo a lo que colgarse.
     addNote: async (detail) => (await addMut.mutateAsync(detail)).id,
-    logContact: async (channel, detail) => { await contactMut.mutateAsync({ channel, detail }) },
+    logContact: async (channel, detail) => (await contactMut.mutateAsync({ channel, detail })).id,
     updateNote: async (eventId, detail) => { await updateMut.mutateAsync({ eventId, detail }) },
     // Devuelve el id para poder colgarle los archivos que se pegaron mientras
     // se escribía: el comentario tiene que existir antes de que nada apunte a él.
