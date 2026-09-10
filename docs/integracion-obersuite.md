@@ -45,7 +45,13 @@ que no sea 2xx significa que algo salió mal".
 ## 2. `GET /version` — qué está desplegado
 
 ```json
-{ "service": "obertrack", "commit": "a1b2c3d", "payload_schema_version": 3 }
+{
+  "service": "obertrack",
+  "commit": "ea245b64",
+  "commit_source": "SOURCE_COMMIT",
+  "payload_schema_version": 3,
+  "started_at": "2026-09-10T18:15:45Z"
+}
 ```
 
 Existe porque el fallo más caro de esta integración no fue de código: fue que
@@ -53,16 +59,29 @@ ninguno de los dos lados podía saber si un cambio había llegado a producción.
 deducía mirando el JSON recibido o contando bytes de respuesta, y se llegó a dar
 por desplegado algo que seguía sin subir.
 
-- `commit` sale de `BUILD_COMMIT` (que la imagen recibe como `--build-arg`) o de
-  la información que Go incrusta al compilar desde git. Si no hay ninguna de las
-  dos, dice `"desconocido"` — nunca vacío, porque un campo vacío parece un fallo
-  y un campo ausente parece que no lo tenemos.
 - `payload_schema_version` sube cuando se añade, se quita o cambia de
   significado un campo del padrón. Historia: **1** ficha inicial · **2** se
   añaden `last_contact_at`, `updated_at` y ETag · **3** se retiran los campos
-  que nadie consumía.
+  que nadie consumía. **Este es el número que le importa a quien consume**: el
+  commit dice qué hay desplegado, la versión del esquema dice si le afecta.
+- `commit` se busca en `BUILD_COMMIT` (la nuestra, vía `--build-arg`) y después
+  en las que publica sola la plataforma: `SOURCE_COMMIT` (Coolify), `COMMIT_SHA`,
+  `GIT_COMMIT`, `GITHUB_SHA`. En desarrollo cae a lo que Go incrusta al compilar
+  desde git. Si no aparece por ningún lado dice `"desconocido"` en vez de
+  inventárselo: un commit falso es peor que ninguno, porque se le cree.
+- `commit_source` dice **de dónde** salió, y no es un adorno: un `"desconocido"`
+  y un commit real se leen igual de bien, así que sin el origen no se distingue
+  "no hay commit" de "el despliegue no publica la variable". Ese fue exactamente
+  nuestro caso en el primer despliegue con este endpoint. La idea es de
+  Obersuite, que lo resolvió antes en su lado.
+- `started_at` delata un reinicio que nadie pidió. Si sube solo, algo se está
+  cayendo y volviendo a levantar — y eso explica síntomas que, de otro modo, se
+  persiguen por el lado equivocado.
 
 Antes de abrir una incidencia por "esto no me llega", conviene mirar aquí.
+
+Obersuite expone lo simétrico en `GET /api/version`, con `contrato_obertrack`
+como su número de contrato hacia nosotros.
 
 ---
 
@@ -291,8 +310,121 @@ Que quede escrito evita volver a discutirlo cada trimestre.
 | Paginación en `/companies` | **Descartada** | ~90 empresas y ETag: la respuesta habitual es un 304 vacío |
 | Envoltorio `{data, meta}` | **Descartada** | Rompe a los dos consumidores actuales sin dar nada a cambio |
 | Rotación automática de tokens | **Descartada** | Dos servicios nuestros; el mecanismo sería más frágil que el riesgo |
-| `GET /companies/:id` (detalle) | **Aparcada** | Nadie la necesita hoy. Se retoma si aparece una pantalla de detalle |
+| `GET /companies/:id` (detalle) | **Reabierta** (10-sep-2026) | Se aparcó porque nadie la necesitaba. Apareció la pantalla que la necesita — ver abajo |
 | Devolver campos de operación | **Descartada** | Ver §3: rompían el ETag y exponen datos de los clientes |
+
+### El detalle de empresa, reabierto
+
+Obersuite tiene una ficha de empresa con ocho pestañas —Uso, Profesionales,
+Organigrama, Expediente, Actividad, Tickets, Archivados, Horarios— clonadas de
+nuestra pantalla de Empresas. Hoy las ocho dicen "Sin datos disponibles" porque
+retiraron los datos de ejemplo que llevaban; eso está bien resuelto, un hueco
+honesto vale más que un número inventado.
+
+Lo que hay que saber antes de construirlo:
+
+- **La objeción del ETag no aplica.** Los campos de operación se quitaron del
+  padrón porque rotaban el validador de una lista que se pide entera. Un detalle
+  es por empresa y bajo demanda: no toca esa caché.
+- **Los datos ya existen**, todos, como endpoints de administración. Es
+  reexportar lo que la pantalla de Empresas ya muestra, no calcular nada nuevo.
+- **Uso y Horarios son datos por persona** (cuánto entra cada profesional, qué
+  jornada tiene) y **Expediente y Actividad son las notas internas de Customer
+  Success sobre el cliente**. `CompanyEvent` no tiene campo de visibilidad, así
+  que ahí es todo o nada. Decidido el 10-sep-2026: Obersuite es interno de
+  Oberstaff, se tratan los ocho bloques igual.
+#### Las rutas
+
+Un bloque por ruta, bajo `/integrations/obersuite/companies/:id`. Sueltas y no
+en una respuesta con todo dentro porque las pestañas se abren de una en una: la
+que nadie abre no se pide, y entonces no cuesta nada.
+
+| Ruta | Pestaña | Devuelve |
+|---|---|---|
+| `GET .../:id` | cabecera | Ficha completa, **incluida la operación del mes** (horas, pendientes, rechazadas) que se retiró del padrón |
+| `GET .../:id/professionals` | Profesionales **y Horarios** | La plantilla. Los cuatro campos de horario viajan en cada fila: Horarios es una proyección de esta lista, no otro bloque |
+| `GET .../:id/org-chart` | Organigrama | El árbol completo, sin recorte por rol |
+| `GET .../:id/timeline` | **Expediente** | La cronología. `?category=`, `?person_id=`, `?page=` (50 por página) |
+| `GET .../:id/attention` | **Actividad** | Inactividad + ausencias. `?days=`, `?month=`, `?year=` |
+| `GET .../:id/tickets` | Tickets | Los de soporte, de cualquier origen |
+| `GET .../:id/archived` | Archivados | Empleos terminados y cuentas desactivadas |
+| `GET .../:id/usage` | Uso | Resumen, módulos y personas. `?days=` (30 por defecto), `?search=`, `?status=`, `?page=` |
+
+**Cuidado con los nombres de dos pestañas.** En nuestra pantalla "Actividad"
+**no** es la cronología: es el panel de inactividad y ausencias. La cronología
+es "Expediente". Están clonadas las etiquetas, así que es fácil cablear una en
+la otra y que parezca que funciona.
+
+Todos los bloques validan el `:id` aunque venga de un padrón que acabamos de
+servir: entre cachearlo y abrir una ficha pueden pasar horas. **404** si la
+empresa ya no está, **400** si el id no es un número. Consultar por un id
+inexistente devolvería listas vacías, que se leen como "esta empresa no tiene
+nada".
+
+**Los filtros del expediente viajan en la respuesta** (`categories`, con valor y
+etiqueta) en vez de dejar que el cliente los escriba. Es la defensa contra la
+deriva silenciosa: cuando aquí se renombra o se fusiona una categoría —pasó esta
+semana con `staff`, que se metió dentro de `lifecycle`— una lista repetida del
+otro lado sigue funcionando y enseñando un filtro que ya no devuelve nada. Lo
+protege `TestCategoriasDelExpediente_CoincidenConLasDelFrontend`, que lee el
+archivo del frontend y falla si las dos listas se separan.
+
+`counts` trae más claves que `categories`, a propósito: `staff` y `management`
+ya no se ofrecen como filtro pero sus movimientos siguen existiendo y se pueden
+pedir por `?category=`. **Los chips se pintan desde `categories`, nunca
+recorriendo las claves de `counts`.**
+
+#### Los campos de `professionals[]`
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | número | El usuario en Obertrack |
+| `name`, `email`, `avatar` | texto | `avatar` vacío si no tiene |
+| `user_type` | texto | Siempre `"profesional"`: la lista se filtra a ese tipo para cuadrar con `professionals_count` |
+| `is_active` | booleano | **Siempre presente.** Es la cuenta, no el empleo |
+| `is_manager`, `is_supervisor` | booleano | Siempre presentes |
+| `job_title` | texto | El del empleo **en esta empresa**; cae al del perfil si el empleo no lo tiene |
+| `obersuite_id` | texto, **se omite si no hay** | El candidato en Obersuite: esta *persona* vino de allí |
+| `hire_obersuite_id` | texto, **se omite si no hay** | **Esta contratación concreta** la hizo Obersuite |
+| `started_at` | ISO 8601 o `null` | Ingreso **en esta empresa**. Nulo si está vinculada sin empleo escrito |
+| `schedule_type`, `schedule_days`, `schedule_start_time`, `schedule_end_time` | texto | Del empleo **en esta empresa**. Vacíos si nadie le puso jornada |
+| `hours_this_month` | número | Del mes corriente |
+| `tasks_assigned`, `tasks_completed` | número | |
+| `last_active` | ISO 8601 o `null` | Última jornada registrada |
+| `is_primary_company` | booleano | Si esta es la empresa que el usuario tiene activa. `false` = trabaja aquí pero ve otra al entrar en la app |
+
+Los dos identificadores de Obersuite **no son lo mismo** y por eso van los dos:
+alguien puede venir de Obersuite (`obersuite_id`) y que este empleo concreto lo
+abriéramos nosotros a mano (`hire_obersuite_id` ausente). Van como texto y se
+omiten cuando no hay vínculo — no hay booleano `from_obersuite` ni `is_obersuite`.
+
+**`is_active` siempre viene**, así que no hace falta suponer nada cuando falta:
+no falta. Y es el estado de la *cuenta*; que alguien esté en esta lista ya
+significa que su empleo aquí está activo.
+
+##### La lista cuadra con el contador, y no cuadraba
+
+`len(professionals)` es igual a `professionals_count` del padrón por
+construcción: las dos consultas usan el mismo criterio —empresa principal **o**
+empleo activo aquí—.
+
+No era así. La consulta del panel de administración filtra solo por empresa
+principal, y eso deja fuera a los **recontratados**: quien ya trabajaba en otra
+empresa conserva su `empleador_id` y aquí solo gana un empleo. El padrón sí los
+cuenta. Medido antes de arreglarlo: una empresa con `professionals_count = 4`
+devolvía 3 personas.
+
+Es justo la población que produce este puente —los `rehired`—, así que habría
+salido a la primera. Y el segundo fallo era peor porque no se nota: al leer el
+horario y la fecha de ingreso anclados a la empresa principal, un recontratado
+salía con **los datos de su otra empresa**. Un dato equivocado que parece bueno.
+
+#### Y lo que esto NO es
+
+Es **de solo lectura**. Un espejo va en un sentido: si alguien escribe una nota
+desde Obersuite, no vuelve. Conviene decirlo antes de que se prometa lo
+contrario, porque la pregunta que se hizo fue si los cambios en uno se ven en el
+otro, y la respuesta hoy es "los de aquí allí sí; los de allí aquí no".
 
 ---
 
