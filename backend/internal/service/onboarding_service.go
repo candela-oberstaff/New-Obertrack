@@ -26,27 +26,60 @@ import (
 // webhook, doble clic) no crea profesionales ni empleos duplicados.
 type OnboardingService interface {
 	// ListCompanies devuelve las empresas con sus atributos completos para Obersuite.
-	ListCompanies() ([]ObersuiteCompany, error)
+	// updatedSince acota a lo que cambió después de ese instante (nulo = todas).
+	ListCompanies(updatedSince *time.Time) ([]ObersuiteCompany, error)
 	// Hire materializa la contratación. Ver HireRequest / HireResult.
 	Hire(req HireRequest) (*HireResult, error)
 }
 
 // ObersuiteCompany contiene los atributos completos de una empresa para Obersuite.
+// ObersuiteCompany es la ficha de una empresa tal y como sale hacia Obersuite.
+//
+// Los campos solo se AÑADEN, nunca se renombran ni se quitan: Obersuite ya
+// consume esta estructura y un cambio de nombre le rompe la integración en
+// silencio. Por eso conviven `last_contact` (texto para mostrar) y
+// `last_contact_at` (fecha real para calcular).
 type ObersuiteCompany struct {
-	ID                 uint   `json:"id"`
-	Name               string `json:"name"`
-	Status             string `json:"status"` // "active" o "suspended"
-	ResponsibleName    string `json:"responsible_name"`
-	ResponsibleEmail   string `json:"responsible_email"`
-	Industry           string `json:"industry"`
-	Country            string `json:"country"`
-	State              string `json:"state"`
-	City               string `json:"city"`
-	Address            string `json:"address"`
-	ProfessionalsCount int    `json:"professionals_count"`
-	BoardsCount        int    `json:"boards_count"`
-	TasksCount         int    `json:"tasks_count"`
-	LastContact        string `json:"last_contact"`
+	ID               uint   `json:"id"`
+	Name             string `json:"name"`
+	Status           string `json:"status"` // "active" o "suspended"
+	ResponsibleName  string `json:"responsible_name"`
+	ResponsibleEmail string `json:"responsible_email"`
+	Industry         string `json:"industry"`
+
+	Country     string `json:"country"`
+	State       string `json:"state"`
+	City        string `json:"city"`
+	Address     string `json:"address"`
+	Location    string `json:"location"`
+	PhoneNumber string `json:"phone_number"`
+
+	// CreatedAt es el alta de la cuenta en Obertrack; ClientSince, el alta REAL
+	// como cliente cuando alguien la corrigió. Ordenar por antigüedad con
+	// created_at da una respuesta equivocada justo en las cuentas más antiguas.
+	CreatedAt   time.Time  `json:"created_at"`
+	ClientSince *time.Time `json:"client_since"`
+
+	ProfessionalsCount int `json:"professionals_count"`
+	BoardsCount        int `json:"boards_count"`
+	TasksCount         int `json:"tasks_count"`
+
+	HoursThisMonth float64 `json:"hours_this_month"`
+	PendingHours   float64 `json:"pending_hours"`
+	PendingCount   int     `json:"pending_count"`
+	RejectedCount  int     `json:"rejected_count"`
+	OpenTickets    int     `json:"open_tickets"`
+
+	// LastContact es el texto en español ("hace 3 días") que ya consumía
+	// Obersuite; LastContactAt es la misma fecha en ISO, que es lo que sirve
+	// para ordenar o comparar del otro lado.
+	LastContact   string     `json:"last_contact"`
+	LastContactAt *time.Time `json:"last_contact_at"`
+	// LastActivityAt es la última señal de vida de ELLOS, no nuestra: no se
+	// mezcla con el contacto a propósito.
+	LastActivityAt *time.Time `json:"last_activity_at"`
+
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // HireCV es el CV del candidato tal como viaja en el webhook: binario en base64.
@@ -123,8 +156,8 @@ func NewOnboardingService(
 	}
 }
 
-func (s *onboardingService) ListCompanies() ([]ObersuiteCompany, error) {
-	records, err := s.userRepo.GetObersuiteCompanies()
+func (s *onboardingService) ListCompanies(updatedSince *time.Time) ([]ObersuiteCompany, error) {
+	records, err := s.userRepo.GetObersuiteCompanies(updatedSince)
 	if err != nil {
 		return nil, err
 	}
@@ -145,10 +178,22 @@ func (s *onboardingService) ListCompanies() ([]ObersuiteCompany, error) {
 			State:              r.State,
 			City:               r.City,
 			Address:            r.Address,
+			Location:           r.Location,
+			PhoneNumber:        r.PhoneNumber,
+			CreatedAt:          r.CreatedAt,
+			ClientSince:        r.ClientSince,
 			ProfessionalsCount: r.ProfessionalsCount,
 			BoardsCount:        r.BoardsCount,
 			TasksCount:         r.TasksCount,
+			HoursThisMonth:     r.HoursThisMonth,
+			PendingHours:       r.PendingHours,
+			PendingCount:       r.PendingCount,
+			RejectedCount:      r.RejectedCount,
+			OpenTickets:        r.OpenTickets,
 			LastContact:        FormatLastContact(r.LastContactAt),
+			LastContactAt:      r.LastContactAt,
+			LastActivityAt:     r.LastActivityAt,
+			UpdatedAt:          r.UpdatedAt,
 		})
 	}
 	return companies, nil
@@ -404,9 +449,23 @@ func (s *onboardingService) notifyHired(user *models.User, isNew bool, result *H
 	if isNew {
 		// Correo de bienvenida / establecer contraseña (best-effort). Solo al
 		// alta: quien ya existía tiene su contraseña y no necesita reponerla.
-		if err := s.authSvc.ForgotPassword(user.Email); err != nil {
-			log.Printf("[Onboarding] welcome email failed for %s: %v", user.Email, err)
-		}
+		//
+		// Sale del camino de la petición a propósito. Era la ÚLTIMA llamada
+		// síncrona a Brevo que quedaba en el webhook de contratación —la de la
+		// inducción ya se enviaba en segundo plano—, y del otro lado Obersuite
+		// espera con una transacción abierta y la fila de la candidatura
+		// bloqueada: cada segundo que tardáramos aquí era un segundo de bloqueo
+		// suyo por un correo del que no depende nada.
+		//
+		// Se envuelve la LLAMADA, no ForgotPassword: en el flujo de "olvidé mi
+		// contraseña" hay una persona esperando y ahí el fallo sí se le tiene
+		// que contar. Aquí ya solo se registraba.
+		correo := user.Email
+		go func() {
+			if err := s.authSvc.ForgotPassword(correo); err != nil {
+				log.Printf("[Onboarding] welcome email failed for %s: %v", correo, err)
+			}
+		}()
 	}
 }
 
@@ -478,7 +537,7 @@ func (s *onboardingService) attachCV(employmentID, companyID uint, cv *HireCV) s
 
 	fileURL := "/api/uploads/" + filename
 	if _, err := s.employmentSvc.AddDocument(
-		employmentID, companyID, "CV", filename, fileURL,
+		employmentID, companyID, nil, "CV", filename, fileURL,
 		int64(len(data)), mime, models.ExpedientePrivate, nil,
 	); err != nil {
 		return "CV no adjuntado: " + err.Error()

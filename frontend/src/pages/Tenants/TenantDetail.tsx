@@ -19,6 +19,7 @@ import { ticketOrigin, TICKET_STAGE, ticketPath } from './ticketStyle'
 import { EmployeePeekModal } from './EmployeePeekModal'
 import { useQuery } from '@tanstack/react-query'
 import { useTenantDetail, useTenantActivity, useFollowUps, ACTIVITY_CATEGORIES } from '../../hooks'
+import type { TenantActivity } from '../../hooks'
 import { TeamActivityPanel } from '../../components/Admin/TeamActivityPanel'
 import { AbsenceReportPanel } from '../../components/Admin/AbsenceReportPanel'
 import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
@@ -29,6 +30,7 @@ import { groupByDay } from './activityGrouping'
 import { healthSignal, HEALTH_COLOR } from './accountHealth'
 import { TenantUsage } from './TenantUsage'
 import { EventThread } from './EventThread'
+import { ActivityDetailModal } from './ActivityDetailModal'
 import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import type { EmployeeSummary } from '../../types'
@@ -95,6 +97,16 @@ export default function TenantDetail() {
   const notify = useNotification()
 
   // Expediente: filtros (categoría y persona) + paginación, todo de servidor.
+  // Movimiento abierto en el detalle. Null = cerrado.
+  const [detailOf, setDetailOf] = useState<TenantActivity | null>(null)
+
+  // Cuántas piezas tiene el hilo de una entrada (comentarios + archivos). La
+  // fila solo enseña el número; el contenido está en el detalle.
+  const threadSize = (eventId: number) => {
+    const t = threads[eventId]
+    return (t?.comments?.length ?? 0) + (t?.attachments?.length ?? 0)
+  }
+
   const [actCategory, setActCategory] = useState('lifecycle')
   const [actPerson, setActPerson] = useState(0)
   const [actPage, setActPage] = useState(1)
@@ -1182,7 +1194,19 @@ export default function TenantDetail() {
                                       <Icon size={15} />
                                     </div>
                                   )}
-                                  <div className={`${styles.timelineCard} ${isNote ? styles.isNote : ''} ${isNote && a.pinned ? styles.isPinnedCard : ''}`}>
+                                  <div
+                                    className={`${styles.timelineCard} ${styles.clickableCard} ${isNote ? styles.isNote : ''} ${isNote && a.pinned ? styles.isPinnedCard : ''}`}
+                                    role="button"
+                                    tabIndex={0}
+                                    title="Ver el detalle del movimiento"
+                                    onClick={() => setDetailOf(a)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault()
+                                        setDetailOf(a)
+                                      }
+                                    }}
+                                  >
                                     {isNote ? (
                                       <>
                                         <div className={styles.noteHeader}>
@@ -1204,7 +1228,7 @@ export default function TenantDetail() {
                                               <button
                                                 type="button"
                                                 className={styles.iconBtn}
-                                                onClick={() => handleTogglePin(a)}
+                                                onClick={e => { e.stopPropagation(); handleTogglePin(a) }}
                                                 title={a.pinned ? 'Dejar de fijar' : 'Fijar arriba del expediente'}
                                                 aria-label={a.pinned ? 'Dejar de fijar esta nota' : 'Fijar esta nota arriba del expediente'}
                                               >
@@ -1213,7 +1237,7 @@ export default function TenantDetail() {
                                               <button
                                                 type="button"
                                                 className={styles.iconBtn}
-                                                onClick={() => openEditNote(a)}
+                                                onClick={e => { e.stopPropagation(); openEditNote(a) }}
                                                 title="Editar nota"
                                                 aria-label="Editar esta nota"
                                               >
@@ -1222,7 +1246,7 @@ export default function TenantDetail() {
                                               <button
                                                 type="button"
                                                 className={`${styles.iconBtn} ${styles.danger}`}
-                                                onClick={() => handleDeleteNote(a.event_id)}
+                                                onClick={e => { e.stopPropagation(); handleDeleteNote(a.event_id) }}
                                                 title="Eliminar nota"
                                                 aria-label={`Eliminar la nota de ${a.user || 'Sistema'}`}
                                               >
@@ -1263,7 +1287,7 @@ export default function TenantDetail() {
                                             <button
                                               type="button"
                                               className={styles.timelineLink}
-                                              onClick={() => navigate(`/testimonios?open=${a.ref_id}`)}
+                                              onClick={e => { e.stopPropagation(); navigate(`/testimonios?open=${a.ref_id}`) }}
                                             >
                                               Ver testimonio <ArrowRight size={12} />
                                             </button>
@@ -1272,23 +1296,14 @@ export default function TenantDetail() {
                                       </div>
                                     )}
 
-                                    {/* Comentarios y archivos. Solo cuelgan de las
-                                    entradas que existen como registro: las
-                                    derivadas (jornadas, altas, gestiones de CS)
-                                    llegan con event_id 0 y no hay a qué atarlas. */}
-                                    {a.event_id > 0 && (
-                                      <EventThread
-                                        key={`thread-${a.event_id}`}
-                                        tenantId={tenantId}
-                                        eventId={a.event_id}
-                                        thread={threads[a.event_id]}
-                                        canEdit={canAnnotate}
-                                        addComment={addComment}
-                                        updateComment={updateComment}
-                                        deleteComment={deleteComment}
-                                        addAttachment={addAttachment}
-                                        deleteAttachment={deleteAttachment}
-                                      />
+                                    {/* El hilo de comentarios y archivos vive ahora en
+                                    el detalle: aquí solo se anuncia que existe, para
+                                    que la cronología siga siendo una lista que se
+                                    ojea. */}
+                                    {a.event_id > 0 && threadSize(a.event_id) > 0 && (
+                                      <span className={styles.threadHint}>
+                                        <MessageSquare size={12} /> {threadSize(a.event_id)}
+                                      </span>
                                     )}
                                   </div>
                                 </div>
@@ -1376,6 +1391,27 @@ export default function TenantDetail() {
               )}
             </>
           )}
+
+          <ActivityDetailModal
+            activity={detailOf}
+            onClose={() => setDetailOf(null)}
+            onOpenSource={refId => { setDetailOf(null); navigate(`/testimonios?open=${refId}`) }}
+          >
+            {detailOf && detailOf.event_id > 0 && (
+              <EventThread
+                key={`thread-${detailOf.event_id}`}
+                tenantId={tenantId}
+                eventId={detailOf.event_id}
+                thread={threads[detailOf.event_id]}
+                canEdit={canAnnotate}
+                addComment={addComment}
+                updateComment={updateComment}
+                deleteComment={deleteComment}
+                addAttachment={addAttachment}
+                deleteAttachment={deleteAttachment}
+              />
+            )}
+          </ActivityDetailModal>
 
           {tab === 'archivados' && (
             archivedLoading ? (

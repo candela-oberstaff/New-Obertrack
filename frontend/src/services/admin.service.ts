@@ -370,7 +370,7 @@ export const adminService = {
   addExpedienteDocument: async (
     userId: number,
     employmentId: number,
-    payload: { title?: string; file_name: string; file_url: string; file_size?: number; mime_type?: string; visibility: 'private' | 'shared'; expires_at?: string },
+    payload: { title?: string; file_name: string; file_url: string; file_size?: number; mime_type?: string; note_id?: number; visibility: 'private' | 'shared'; expires_at?: string },
   ) => {
     const { data } = await api.post(`/admin/users/${userId}/employments/${employmentId}/documents`, payload)
     return data

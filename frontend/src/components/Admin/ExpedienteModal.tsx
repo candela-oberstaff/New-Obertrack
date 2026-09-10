@@ -1,9 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FileText, Star, Trash2, Upload, Lock, Eye, Clock3, CheckSquare, CalendarDays, CalendarX, ClipboardList, Send, Snowflake, Download, Pencil, CalendarClock, StickyNote, X } from 'lucide-react'
+import { FileText, Star, Trash2, Upload, Lock, Eye, Clock3, CheckSquare, CalendarDays, CalendarX, ClipboardList, Send, Snowflake, Download, Pencil, CalendarClock, StickyNote, X, Paperclip, Play, Music } from 'lucide-react'
 import { adminService, authService, employerService, uploadService } from '../../services/api'
 import { useDirtySnapshot } from '../ui/useCloseGuard'
 import { Modal, Button, Select, DatePicker } from '../ui'
+import { FilePreviewModal, previewKind, type PreviewFile } from './FilePreviewModal'
 import styles from './Expediente.module.css'
 
 interface ExpedienteModalProps {
@@ -39,6 +40,14 @@ interface ExpedienteData {
   absences: { date: string; reason: string; hours: number; approved: boolean }[]
   gestiones: { kind: string; status: string; note: string; by_name: string; created_at: string }[]
   contactos: { channel: string; by_name: string; note?: string; created_at: string }[]
+}
+
+/** Tamaño legible. Un número de bytes crudo no le dice nada a quien revisa. */
+function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes <= 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const CONTACT_CHANNEL: Record<string, { label: string; icon: string }> = {
@@ -129,6 +138,11 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
   const [rating, setRating] = useState<number>(0)
   const [shared, setShared] = useState(false)
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null)
+  // Adjuntos de la nota que se está escribiendo. Se quedan aquí hasta guardar:
+  // no existe la nota todavía, así que no hay de qué colgarlos. Se suben al
+  // pulsar Guardar, ya con el id de la nota.
+  const noteFileRef = useRef<HTMLInputElement>(null)
+  const [noteFiles, setNoteFiles] = useState<File[]>([])
 
   // Subida de documento. pendingFile es el archivo elegido pero todavía NO
   // subido: existe para que haya un paso entre escogerlo y meterlo en el
@@ -140,10 +154,18 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
   const [docExpiry, setDocExpiry] = useState('')
 
   // Edición de un documento existente (metadatos)
+  // Archivo abierto en el visor. Null = cerrado.
+  const [preview, setPreview] = useState<PreviewFile | null>(null)
+
   const [editingDocId, setEditingDocId] = useState<number | null>(null)
   const [editDocTitle, setEditDocTitle] = useState('')
   const [editDocShared, setEditDocShared] = useState(false)
   const [editDocExpiry, setEditDocExpiry] = useState('')
+
+  // Los adjuntos de una nota se muestran BAJO esa nota, no en la lista general
+  // de Documentos: ahí perderían el texto que explica por qué existen.
+  const docsOfNote = (noteId: number) => (data?.documents ?? []).filter((d: any) => d.note_id === noteId)
+  const loosePapers = (data?.documents ?? []).filter((d: any) => !d.note_id)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -160,7 +182,25 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
 
   useEffect(() => { load() }, [load])
 
-  const resetNoteForm = () => { setEditingNoteId(null); setContent(''); setRating(0); setShared(false); setKind('note') }
+  const clearNoteFiles = () => {
+    setNoteFiles([])
+    if (noteFileRef.current) noteFileRef.current.value = ''
+  }
+
+  const resetNoteForm = () => {
+    setEditingNoteId(null); setContent(''); setRating(0); setShared(false); setKind('note')
+    clearNoteFiles()
+  }
+
+  const onPickNoteFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? [])
+    if (picked.length) { setNoteFiles(prev => [...prev, ...picked]); setError(null) }
+    // Se limpia el input para poder volver a elegir el MISMO archivo si se
+    // quitó de la lista por error: si no, el navegador no dispara el change.
+    if (noteFileRef.current) noteFileRef.current.value = ''
+  }
+
+  const dropNoteFile = (i: number) => setNoteFiles(prev => prev.filter((_, idx) => idx !== i))
 
   const startEditNote = (n: any) => {
     setEditingNoteId(n.id)
@@ -180,11 +220,40 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
         rating: kind === 'evaluation' && rating > 0 ? rating : null,
         visibility: (shared ? 'shared' : 'private') as 'shared' | 'private',
       }
+      let noteId = editingNoteId
       if (editingNoteId) {
         await apiSvc.updateNote(editingNoteId, payload)
       } else {
-        await apiSvc.addNote(payload)
+        const created = await apiSvc.addNote(payload)
+        noteId = created?.id ?? null
       }
+
+      // Los adjuntos van después: hasta aquí no hay id del que colgarlos. Si
+      // uno falla se avisa pero la nota YA está guardada, así que no se pierde
+      // lo escrito; se reintenta adjuntando de nuevo.
+      if (noteId && noteFiles.length > 0) {
+        const failed: string[] = []
+        for (const file of noteFiles) {
+          try {
+            const up = await uploadService.upload(file)
+            await apiSvc.addDoc({
+              file_name: up.filename,
+              file_url: up.url,
+              file_size: up.size,
+              mime_type: up.type,
+              note_id: noteId,
+              // La visibilidad la manda la nota; el backend la impone igual.
+              visibility: (shared ? 'shared' : 'private') as 'shared' | 'private',
+            })
+          } catch {
+            failed.push(file.name)
+          }
+        }
+        if (failed.length) {
+          setError(`La nota se guardó, pero no se pudo adjuntar: ${failed.join(', ')}`)
+        }
+      }
+
       resetNoteForm()
       await load()
     } catch (e: any) {
@@ -420,7 +489,7 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
       {/* Evaluaciones / notas */}
       <section className={styles.section}>
         <div className={styles.sectionHead}>
-          <h4 className={styles.sectionTitle}>Evaluaciones y notas</h4>
+          <h4 className={styles.sectionTitle}>Evaluaciones</h4>
         </div>
 
         <EvaluationTrend notes={data?.notes || []} />
@@ -463,6 +532,43 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
               rows={3}
               placeholder="Escribe una evaluación de desempeño o una anotación de seguimiento…"
             />
+            <div className={styles.noteAttach}>
+              <button
+                type="button"
+                className={styles.attachBtn}
+                onClick={() => noteFileRef.current?.click()}
+                disabled={busy}
+              >
+                <Paperclip size={14} /> Adjuntar archivo
+              </button>
+              <input
+                ref={noteFileRef}
+                type="file"
+                multiple
+                onChange={onPickNoteFiles}
+                style={{ display: 'none' }}
+              />
+              {noteFiles.length > 0 && (
+                <ul className={styles.attachList}>
+                  {noteFiles.map((f, i) => (
+                    <li key={`${f.name}-${i}`} className={styles.attachItem}>
+                      <Paperclip size={12} />
+                      <span className={styles.attachName}>{f.name}</span>
+                      <span className={styles.attachSize}>{formatFileSize(f.size)}</span>
+                      <button
+                        type="button"
+                        onClick={() => dropNoteFile(i)}
+                        className={styles.attachRemove}
+                        title="Quitar"
+                        disabled={busy}
+                      >
+                        <X size={12} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <div className={styles.formActions}>
               {editingNoteId && (
                 <Button onClick={resetNoteForm} disabled={busy} variant="secondary">Cancelar</Button>
@@ -532,6 +638,23 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
                   )}
                 </div>
                 <p className={styles.noteBody}>{n.content}</p>
+                {/* Los archivos que sostienen esta entrada. Se descargan por la
+                    misma ruta autorizada que el resto del expediente: el
+                    binario nunca se sirve crudo. */}
+                {docsOfNote(n.id).length > 0 && (
+                  <div className={styles.attachGrid}>
+                    {docsOfNote(n.id).map((d: any) => (
+                      <AttachmentCard
+                        key={d.id}
+                        doc={d}
+                        href={docHref(d.id)}
+                        onOpen={() => setPreview(d)}
+                        onRemove={manage ? () => removeDoc(d.id) : undefined}
+                        busy={busy}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -609,7 +732,7 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
           </div>
         )}
 
-        {data?.documents.length === 0 ? (
+        {loosePapers.length === 0 ? (
           <div className={styles.emptyBox}>
             <FileText size={26} />
             <span className={styles.emptyBoxTitle}>Sin documentos adjuntos</span>
@@ -621,7 +744,7 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
           </div>
         ) : (
           <div className={styles.rows}>
-            {data?.documents.map(d => {
+            {loosePapers.map((d: any) => {
               const exp = expiryInfo(d.expires_at)
               if (editingDocId === d.id) {
                 return (
@@ -656,9 +779,9 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
               return (
                 <div key={d.id} className={styles.row}>
                   <FileText size={18} className={styles.rowIcon} style={{ color: '#64748b' }} />
-                  <a className={styles.docLink} href={docHref(d.id)} target="_blank" rel="noopener noreferrer">
+                  <button type="button" className={styles.docLink} onClick={() => setPreview(d)} title="Ver el archivo">
                     {d.title || d.file_name}
-                  </a>
+                  </button>
                   <VisibilityBadge shared={d.visibility === 'shared'} />
                   {exp && (
                     <span className={`${styles.pill} ${exp.className}`}>
@@ -685,6 +808,12 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
         )}
         </div>
       </section>
+
+      <FilePreviewModal
+        file={preview}
+        href={preview ? docHref(preview.id) : ''}
+        onClose={() => setPreview(null)}
+      />
     </div>
   )
 
@@ -700,6 +829,65 @@ export function ExpedienteModal({ userId, employment, canManage, onClose, selfMo
       {body}
     </Modal>
   )
+}
+
+/**
+ * Adjunto de una nota, como tarjeta.
+ *
+ * La miniatura es el archivo mismo cuando es una imagen: en un expediente la
+ * mayoría de las pruebas son capturas, y una fila de texto obligaba a abrir
+ * cada una para saber cuál era. Se pide a la ruta autorizada, igual que la
+ * descarga, así que el backend sigue comprobando permisos en cada vista.
+ */
+function AttachmentCard({
+  doc, href, onOpen, onRemove, busy,
+}: {
+  doc: any
+  href: string
+  onOpen: () => void
+  onRemove?: () => void
+  busy: boolean
+}) {
+  const [thumbFailed, setThumbFailed] = useState(false)
+  const kind = previewKind(doc)
+  const showThumb = kind === 'image' && !thumbFailed
+
+  return (
+    <div className={styles.attachCard}>
+      <button type="button" className={styles.attachCardBtn} onClick={onOpen} title={`Ver ${doc.file_name}`}>
+        <span className={styles.attachThumb}>
+          {showThumb ? (
+            // lazy: una nota puede traer varias capturas y no tiene sentido
+            // descargarlas todas antes de que se vean.
+            <img src={href} alt="" loading="lazy" onError={() => setThumbFailed(true)} />
+          ) : (
+            <span className={styles.attachIcon}>{ATTACH_ICON[kind]}</span>
+          )}
+        </span>
+        <span className={styles.attachCardName}>{doc.title || doc.file_name}</span>
+        <span className={styles.attachCardMeta}>{formatFileSize(doc.file_size)}</span>
+      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className={styles.attachCardRemove}
+          title="Eliminar adjunto"
+          disabled={busy}
+        >
+          <Trash2 size={13} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+const ATTACH_ICON: Record<string, React.ReactNode> = {
+  image: <FileText size={22} />,
+  pdf: <FileText size={22} />,
+  video: <Play size={22} />,
+  audio: <Music size={22} />,
+  none: <Paperclip size={22} />,
 }
 
 function SummaryStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

@@ -73,6 +73,14 @@ type User struct {
 	Location         string     `gorm:"type:text" json:"location"`
 	IdentityDocument string     `gorm:"size:500" json:"identity_document"`
 	Address          string     `gorm:"type:text" json:"address"`
+	// ObersuiteID identifica al candidato en Obersuite. Es por donde el puente
+	// de contratación reconoce a la persona ANTES que por el email, porque el
+	// email cambia entre la postulación y el alta y resolver por él partía a la
+	// misma persona en dos profesionales.
+	//
+	// Su índice único PARCIAL vive en la migración 202609101200 y no en esta
+	// etiqueta: es único solo cuando el campo no está vacío y la fila no está
+	// borrada, y eso no se puede expresar con un tag de GORM.
 	ObersuiteID      string     `gorm:"size:64" json:"obersuite_id,omitempty"`
 	RememberToken    string     `gorm:"size:100" json:"-"`
 	EmailVerifiedAt  *time.Time `json:"email_verified_at,omitempty"`

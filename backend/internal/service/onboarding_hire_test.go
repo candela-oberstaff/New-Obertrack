@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -59,7 +60,7 @@ func (f *fakeHireUserRepo) Update(user *models.User, updates map[string]interfac
 	return nil
 }
 
-func (f *fakeHireUserRepo) GetObersuiteCompanies() ([]repository.ObersuiteCompanyRecord, error) {
+func (f *fakeHireUserRepo) GetObersuiteCompanies(_ *time.Time) ([]repository.ObersuiteCompanyRecord, error) {
 	var records []repository.ObersuiteCompanyRecord
 	for _, u := range f.byID {
 		if u.UserType == models.UserTypeEmployer {
@@ -113,14 +114,65 @@ func (f *fakeHireEmploymentSvc) AddEmployment(userID, companyID uint, jobTitle, 
 	return &models.Employment{ID: 77, UserID: userID, CompanyID: companyID}, nil
 }
 
+// fakeHireAuthSvc registra a quién se le mandó la bienvenida.
+//
+// Lleva mutex y canal porque el envío salió del camino de la petición: ahora
+// ocurre en otra goroutine, así que leer el slice a pelo desde el test es una
+// carrera de datos (la delataría `go test -race`) y comprobarlo justo después
+// de Hire falla según quién llegue antes.
 type fakeHireAuthSvc struct {
 	AuthService
+	mu        sync.Mutex
 	welcomeTo []string
+	sent      chan string
+}
+
+func newFakeHireAuthSvc() *fakeHireAuthSvc {
+	return &fakeHireAuthSvc{sent: make(chan string, 4)}
 }
 
 func (f *fakeHireAuthSvc) ForgotPassword(email string) error {
+	f.mu.Lock()
 	f.welcomeTo = append(f.welcomeTo, email)
+	f.mu.Unlock()
+	select {
+	case f.sent <- email:
+	default:
+	}
 	return nil
+}
+
+// enviados devuelve una copia bajo lock, para leerlo sin carrera.
+func (f *fakeHireAuthSvc) enviados() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.welcomeTo...)
+}
+
+// esperaBienvenida bloquea hasta que salga el correo, o falla al agotarse el
+// plazo. Se espera por una señal y no con un sleep: un sleep o alarga el test
+// sin necesidad o lo vuelve intermitente en una máquina cargada.
+func (f *fakeHireAuthSvc) esperaBienvenida(t *testing.T) string {
+	t.Helper()
+	select {
+	case email := <-f.sent:
+		return email
+	case <-time.After(2 * time.Second):
+		t.Fatal("no salió el correo de bienvenida")
+		return ""
+	}
+}
+
+// nadaEnviado confirma que NO sale ninguna bienvenida. Da un margen para que,
+// si el envío se disparara por error, dé tiempo a aparecer: sin él la prueba
+// pasaría por llegar antes que la goroutine, no por estar bien.
+func (f *fakeHireAuthSvc) nadaEnviado(t *testing.T) {
+	t.Helper()
+	select {
+	case email := <-f.sent:
+		t.Fatalf("no debía mandarse la bienvenida, salió a %s", email)
+	case <-time.After(150 * time.Millisecond):
+	}
 }
 
 // fakeHireInduction registra a quién se invitó. enabled=false imita la inducción
@@ -161,7 +213,7 @@ func newHireSvc(induccionEncendida bool, existentes ...*models.User) (*onboardin
 	}
 	empRepo := &fakeHireEmploymentRepo{}
 	induction := &fakeHireInduction{enabled: induccionEncendida}
-	auth := &fakeHireAuthSvc{}
+	auth := newFakeHireAuthSvc()
 	svc := &onboardingService{
 		userRepo:       userRepo,
 		employmentRepo: empRepo,
@@ -290,9 +342,7 @@ func TestHire_EmiteLaInduccionEnElAlta(t *testing.T) {
 	}
 	// Con inducción encendida NO se manda además la bienvenida: serían dos
 	// correos contradictorios (uno da acceso, el otro dice que aún no lo tiene).
-	if len(auth.welcomeTo) != 0 {
-		t.Fatalf("no debía mandarse la bienvenida: %v", auth.welcomeTo)
-	}
+	auth.nadaEnviado(t)
 }
 
 // El agujero que motivó el cambio: la inducción solo se emitía al CREAR el
@@ -367,8 +417,8 @@ func TestHire_ConInduccionApagadaMandaLaBienvenida(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hire: %v", err)
 	}
-	if len(auth.welcomeTo) != 1 || auth.welcomeTo[0] != "nuevo@x.com" {
-		t.Fatalf("se esperaba el correo de bienvenida, got %v", auth.welcomeTo)
+	if got := auth.esperaBienvenida(t); got != "nuevo@x.com" {
+		t.Fatalf("la bienvenida salió a %s", got)
 	}
 	if result.InductionPending {
 		t.Fatal("con la inducción apagada nada queda pendiente")
@@ -389,7 +439,8 @@ func TestHire_ElReintentoDelWebhookNoReenviaCorreos(t *testing.T) {
 	if result.Status != "already_active" {
 		t.Fatalf("status = %q, se esperaba already_active", result.Status)
 	}
-	if len(induction.invited) != 0 || len(auth.welcomeTo) != 0 {
+	auth.nadaEnviado(t)
+	if len(induction.invited) != 0 || len(auth.enviados()) != 0 {
 		t.Fatalf("un reintento no debe mandar correos: inducción=%v bienvenida=%v",
 			induction.invited, auth.welcomeTo)
 	}
@@ -406,7 +457,8 @@ func TestHire_NoAvisaSiLaEmpresaNoEsValida(t *testing.T) {
 	if _, err := svc.Hire(req); err == nil {
 		t.Fatal("se esperaba error con una empresa inválida")
 	}
-	if len(induction.invited) != 0 || len(auth.welcomeTo) != 0 {
+	auth.nadaEnviado(t)
+	if len(induction.invited) != 0 || len(auth.enviados()) != 0 {
 		t.Fatalf("no debía salir ningún correo: inducción=%v bienvenida=%v",
 			induction.invited, auth.welcomeTo)
 	}
@@ -505,7 +557,8 @@ func TestListCompanies_IncluyeAtributosCompletos(t *testing.T) {
 	company.City = "Sevilla"
 	company.Address = "Av. República Argentina 24"
 
-	companies, err := svc.ListCompanies()
+	// nil = todas, que es como llama Obersuite cuando no sincroniza en incremental.
+	companies, err := svc.ListCompanies(nil)
 	if err != nil {
 		t.Fatalf("ListCompanies error: %v", err)
 	}
