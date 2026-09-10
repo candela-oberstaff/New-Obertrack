@@ -8,7 +8,7 @@ import (
 )
 
 type UserRepository interface {
-	GetObersuiteCompanies() ([]ObersuiteCompanyRecord, error)
+	GetObersuiteCompanies(updatedSince *time.Time) ([]ObersuiteCompanyRecord, error)
 	GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	Count(role, isManager, isActive string, companyID uint) (int64, error)
 	CountCompanies() (int64, error)
@@ -383,27 +383,81 @@ func (r *userRepository) ListActiveByTypes(types []models.UserType) ([]models.Us
 	return users, nil
 }
 
-// ObersuiteCompanyRecord contiene los campos crudos de una empresa para Obersuite.
+// ObersuiteCompanyRecord es la ficha completa de una empresa tal y como la
+// consume Obersuite.
+//
+// Refleja los mismos campos que ve el equipo en el panel de Empresas
+// (repository.TenantSummary) y los CALCULA IGUAL: los subselects se copian de
+// tenantSelect a propósito. Si los dos sitios contaran distinto, el número que
+// mira Customer Success y el que ve Obersuite se contradirían sin que nadie
+// pudiera decir cuál está mal.
 type ObersuiteCompanyRecord struct {
-	ID                 uint       `json:"id"`
-	Name               string     `json:"name"`
-	IsActive           bool       `json:"is_active"`
-	ResponsibleName    string     `json:"responsible_name"`
-	ResponsibleEmail   string     `json:"responsible_email"`
-	Industry           string     `json:"industry"`
-	Country            string     `json:"country"`
-	State              string     `json:"state"`
-	City               string     `json:"city"`
-	Address            string     `json:"address"`
-	ProfessionalsCount int        `json:"professionals_count"`
-	BoardsCount        int        `json:"boards_count"`
-	TasksCount         int        `json:"tasks_count"`
-	LastContactAt      *time.Time `json:"last_contact_at"`
+	ID               uint   `json:"id"`
+	Name             string `json:"name"`
+	IsActive         bool   `json:"is_active"`
+	ResponsibleName  string `json:"responsible_name"`
+	ResponsibleEmail string `json:"responsible_email"`
+	Industry         string `json:"industry"`
+
+	// Ubicación. Location es texto libre ("Las Lomas"); no sustituye a
+	// country/state/city, los acompaña.
+	Country     string `json:"country"`
+	State       string `json:"state"`
+	City        string `json:"city"`
+	Address     string `json:"address"`
+	Location    string `json:"location"`
+	PhoneNumber string `json:"phone_number"`
+
+	// CreatedAt es cuándo se creó la cuenta en Obertrack. ClientSince es el alta
+	// REAL como cliente, corregida a mano cuando la empresa se carga meses
+	// después de empezar a trabajar con nosotros. Van los dos porque no son lo
+	// mismo: ordenar por antigüedad con created_at da una respuesta equivocada
+	// justo en las cuentas más antiguas. Nulo = nadie la ha corregido y vale
+	// created_at.
+	CreatedAt   time.Time  `json:"created_at"`
+	ClientSince *time.Time `json:"client_since"`
+
+	ProfessionalsCount int `json:"professionals_count"`
+	BoardsCount        int `json:"boards_count"`
+	TasksCount         int `json:"tasks_count"`
+
+	// Operación: horas del mes, lo que está por aprobar y lo rechazado.
+	HoursThisMonth float64 `json:"hours_this_month"`
+	PendingHours   float64 `json:"pending_hours"`
+	PendingCount   int     `json:"pending_count"`
+	RejectedCount  int     `json:"rejected_count"`
+	OpenTickets    int     `json:"open_tickets"`
+
+	// Dos señales que NO se mezclan: cuándo contactamos nosotros, y cuándo dio
+	// señales de vida la empresa. Una a la que llamamos ayer pero que no entra
+	// hace dos meses es justo el caso que hay que ver, y un solo campo lo
+	// escondería. Nulos cuando nunca ha pasado.
+	LastContactAt  *time.Time `json:"last_contact_at"`
+	LastActivityAt *time.Time `json:"last_activity_at"`
+
+	// UpdatedAt permite a Obersuite pedir solo lo que cambió en vez de
+	// recorrer el padrón entero en cada sincronización.
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// GetObersuiteCompanies consulta todas las empresas registradas (empleadores)
-// calculando profesionales activos, tableros, tareas y la fecha del último contacto.
-func (r *userRepository) GetObersuiteCompanies() ([]ObersuiteCompanyRecord, error) {
+// GetObersuiteCompanies devuelve el padrón completo de empresas con su ficha.
+//
+// updatedSince acota a lo que cambió después de ese instante, para que Obersuite
+// pueda sincronizar en incremental en vez de recorrer el padrón entero cada vez.
+// Nulo = todas.
+//
+// El corte va como marcador posicional REPETIDO y no como parámetro con nombre.
+// Con `@since::timestamptz`, GORM no sustituye el nombre y Postgres acaba
+// leyendo `@` como el operador de valor absoluto sobre una columna `since` que
+// no existe: la consulta entera revienta con 42703. Los sql.Named que sí
+// funcionan en este repo van siempre sueltos, sin un cast pegado detrás.
+//
+// Los cálculos (horas, pendientes, tickets, señales de vida) se copian de
+// tenantSelect en admin_repository.go, que es lo que ve el equipo en el panel de
+// Empresas. Es duplicación consciente: si los dos sitios contaran distinto, el
+// número del panel y el de Obersuite se contradirían sin forma de saber cuál
+// está mal. Al tocar uno hay que tocar el otro.
+func (r *userRepository) GetObersuiteCompanies(updatedSince *time.Time) ([]ObersuiteCompanyRecord, error) {
 	var records []ObersuiteCompanyRecord
 	err := r.db.Raw(`
 		SELECT
@@ -417,16 +471,51 @@ func (r *userRepository) GetObersuiteCompanies() ([]ObersuiteCompanyRecord, erro
 			COALESCE(u.state, '') as state,
 			COALESCE(u.city, '') as city,
 			COALESCE(u.address, '') as address,
-			(SELECT COUNT(DISTINCT p.id) FROM users p 
+			COALESCE(u.location, '') as location,
+			COALESCE(u.phone_number, '') as phone_number,
+			u.created_at,
+			u.client_since,
+			u.updated_at,
+			(SELECT COUNT(DISTINCT p.id) FROM users p
 			 WHERE (p.empleador_id = u.id OR EXISTS (SELECT 1 FROM employments e WHERE e.user_id = p.id AND e.company_id = u.id AND e.status = 'active' AND e.deleted_at IS NULL))
 			   AND p.user_type = 'profesional' AND p.deleted_at IS NULL) as professionals_count,
 			(SELECT COUNT(*) FROM boards b WHERE b.tenant_id = u.id AND b.deleted_at IS NULL) as boards_count,
 			(SELECT COUNT(*) FROM tasks t WHERE t.tenant_id = u.id AND t.deleted_at IS NULL) as tasks_count,
-			(SELECT MAX(ce.created_at) FROM company_events ce WHERE ce.company_id = u.id AND ce.type = 'contact') as last_contact_at
+			COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh
+				WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
+				AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
+			COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh
+				WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
+				AND wh.approved = false AND wh.rejected = false), 0) as pending_hours,
+			(SELECT COUNT(*) FROM work_hours wh
+				WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
+				AND wh.approved = false AND wh.rejected = false) as pending_count,
+			(SELECT COUNT(*) FROM work_hours wh
+				WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
+				AND wh.rejected = true) as rejected_count,
+			(SELECT COUNT(*) FROM tickets tk
+				WHERE tk.status = 'open' AND `+tenantTicketScope+`) as open_tickets,
+			-- Última vez que NOSOTROS contactamos con la empresa.
+			(SELECT MAX(ce.created_at) FROM company_events ce
+				WHERE ce.company_id = u.id AND ce.type = 'contact') as last_contact_at,
+			-- Última señal de vida de ELLOS: uso de la app, jornada o tarea. El
+			-- uso va primero porque es la señal más temprana; las otras dos
+			-- cubren el tramo anterior a que existiera el contador. GREATEST
+			-- ignora los NULL, así que una empresa sin ninguna devuelve NULL.
+			GREATEST(
+				(SELECT MAX(a.last_at) FROM user_activity_daily a
+					JOIN users au ON au.id = a.user_id
+					WHERE a.module = 'app' AND au.deleted_at IS NULL
+					  AND (CASE WHEN au.user_type = 'empleador' THEN au.id ELSE au.empleador_id END) = u.id),
+				(SELECT MAX(wh.created_at) FROM work_hours wh
+					WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL),
+				(SELECT MAX(t2.created_at) FROM tasks t2
+					WHERE t2.tenant_id = u.id AND t2.deleted_at IS NULL)
+			) as last_activity_at
 		FROM users u
 		WHERE u.user_type = 'empleador' AND u.deleted_at IS NULL
+		  AND (?::timestamptz IS NULL OR u.updated_at > ?::timestamptz)
 		ORDER BY LOWER(COALESCE(NULLIF(u.company_name, ''), u.name)) ASC
-	`).Scan(&records).Error
+	`, updatedSince, updatedSince).Scan(&records).Error
 	return records, err
 }
-

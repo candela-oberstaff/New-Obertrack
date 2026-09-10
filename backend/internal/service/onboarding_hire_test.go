@@ -59,7 +59,7 @@ func (f *fakeHireUserRepo) Update(user *models.User, updates map[string]interfac
 	return nil
 }
 
-func (f *fakeHireUserRepo) GetObersuiteCompanies() ([]repository.ObersuiteCompanyRecord, error) {
+func (f *fakeHireUserRepo) GetObersuiteCompanies(_ *time.Time) ([]repository.ObersuiteCompanyRecord, error) {
 	var records []repository.ObersuiteCompanyRecord
 	for _, u := range f.byID {
 		if u.UserType == models.UserTypeEmployer {
@@ -505,7 +505,8 @@ func TestListCompanies_IncluyeAtributosCompletos(t *testing.T) {
 	company.City = "Sevilla"
 	company.Address = "Av. República Argentina 24"
 
-	companies, err := svc.ListCompanies()
+	// nil = todas, que es como llama Obersuite cuando no sincroniza en incremental.
+	companies, err := svc.ListCompanies(nil)
 	if err != nil {
 		t.Fatalf("ListCompanies error: %v", err)
 	}

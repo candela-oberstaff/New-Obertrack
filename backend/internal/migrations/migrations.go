@@ -2534,6 +2534,67 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropColumn(&models.EmploymentDocument{}, "note_id")
 			},
 		},
+		{
+			// Unicidad e índice para el id de Obersuite.
+			//
+			// resolveProfessional identifica al candidato por este campo antes
+			// que por email, así que cada contratación hacía un escaneo completo
+			// de users y nada impedía que dos filas compartieran el mismo id.
+			// La idempotencia del puente era una garantía de código, no de base
+			// de datos: dos peticiones simultáneas con el mismo external_id
+			// podían crear dos profesionales.
+			//
+			// El índice es PARCIAL por dos motivos, y los dos importan:
+			//   - obersuite_id es un string no nulable: todo el que no vino por
+			//     el puente lo tiene en ''. Un índice único a secas chocaría
+			//     entre sí con todas esas filas.
+			//   - Se excluyen las borradas: si alguien se da de baja y más tarde
+			//     vuelve a contratarse con el mismo candidato, la fila vieja no
+			//     debe bloquear la nueva.
+			ID: "202609101200_obersuite_id_unique",
+			Migrate: func(tx *gorm.DB) error {
+				// Los duplicados preexistentes NO tumban el arranque: son un
+				// problema de datos que necesita a una persona, y dejar la app
+				// sin levantar por eso es peor que arrancar sin la restricción.
+				// Se avisa con nombre y apellidos y se crea el índice no único,
+				// que al menos da la velocidad.
+				var dups []struct {
+					ObersuiteID string
+					N           int64
+				}
+				if err := tx.Raw(`
+					SELECT obersuite_id, COUNT(*) AS n
+					FROM users
+					WHERE COALESCE(obersuite_id, '') <> '' AND deleted_at IS NULL
+					GROUP BY obersuite_id HAVING COUNT(*) > 1
+				`).Scan(&dups).Error; err != nil {
+					return err
+				}
+
+				if len(dups) > 0 {
+					for _, d := range dups {
+						log.Printf("[migración] obersuite_id duplicado %q en %d usuarios: hay que unificarlos a mano", d.ObersuiteID, d.N)
+					}
+					log.Printf("[migración] %d id(s) de Obersuite duplicados: se crea el índice SIN unicidad. "+
+						"Corrige los duplicados y vuelve a aplicar la restricción.", len(dups))
+					return tx.Exec(`
+						CREATE INDEX IF NOT EXISTS idx_users_obersuite_id
+						ON users (obersuite_id)
+						WHERE COALESCE(obersuite_id, '') <> '' AND deleted_at IS NULL
+					`).Error
+				}
+
+				log.Println("Creating unique partial index on users.obersuite_id...")
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_users_obersuite_id
+					ON users (obersuite_id)
+					WHERE COALESCE(obersuite_id, '') <> '' AND deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`DROP INDEX IF EXISTS idx_users_obersuite_id`).Error
+			},
+		},
 		// Future migrations go here
 	})
 

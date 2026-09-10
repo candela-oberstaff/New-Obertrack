@@ -2,13 +2,15 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/obertrack/backend/internal/service"
 )
 
-// OnboardingHandler expone el puente Obersuite → Obertrack. Sus rutas viven
+// OnboardingHandler expone el puente con Obersuite en los dos sentidos:
+// entrada (webhook de contratación) y salida (padrón de empresas). Sus rutas viven
 // bajo /api/integrations/obersuite y se protegen con un token de servicio
 // estático (middleware.SharedSecretAuth), no con sesión de usuario.
 type OnboardingHandler struct {
@@ -19,10 +21,33 @@ func NewOnboardingHandler(svc service.OnboardingService) *OnboardingHandler {
 	return &OnboardingHandler{svc: svc}
 }
 
-// ListCompanies devuelve las empresas con sus atributos completos (id, name,
-// status, responsible, ubicación, contadores y último contacto) para la integración con Obersuite.
+// ListCompanies devuelve el padrón completo de empresas con su ficha para la
+// integración con Obersuite: identidad, ubicación, alta, contadores, operación
+// (horas, pendientes, tickets) y las dos señales —último contacto nuestro y
+// última actividad suya—.
+//
+// ?updated_since=<RFC3339> acota a lo que cambió después de ese instante, para
+// sincronizar en incremental. Sin el parámetro devuelve todas, que es como
+// funcionaba antes: Obersuite ya llama a este endpoint y no se le puede cambiar
+// el comportamiento por defecto.
+//
+// Una fecha que no se entiende se rechaza en vez de ignorarse: tratarla como
+// "sin filtro" devolvería el padrón entero y el que llama creería estar
+// recibiendo solo lo nuevo.
 func (h *OnboardingHandler) ListCompanies(c *gin.Context) {
-	companies, err := h.svc.ListCompanies()
+	var updatedSince *time.Time
+	if raw := c.Query("updated_since"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "updated_since debe ser una fecha RFC3339, por ejemplo 2026-09-09T13:00:00Z",
+			})
+			return
+		}
+		updatedSince = &parsed
+	}
+
+	companies, err := h.svc.ListCompanies(updatedSince)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
