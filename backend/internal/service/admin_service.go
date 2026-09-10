@@ -1276,6 +1276,8 @@ func (s *adminService) GetTenantActivityCounts(id uint, userID uint) (map[string
 		counts[row.Category] = row.Count
 		total += row.Count
 	}
+	// "lifecycle" (Escala de tiempo) incluye también los movimientos de "staff" (altas / bajas)
+	counts[repository.TenantActivityLifecycle] = counts[repository.TenantActivityLifecycle] + counts[repository.TenantActivityStaff]
 	// "" es la clave del chip "Todo": así el frontend lee todos los
 	// contadores de la misma forma, sin sumar por su cuenta.
 	counts[""] = total

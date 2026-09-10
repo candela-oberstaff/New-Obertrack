@@ -1204,7 +1204,7 @@ func (r *adminRepository) GetTenantActivities(tenantID uint, category string, us
 			pinned, edited_at, channel,
 			COUNT(*) OVER() AS total
 		FROM events
-		WHERE (@cat = '' OR category = @cat)
+		WHERE (@cat = '' OR category = @cat OR (@cat = 'lifecycle' AND category = 'staff'))
 			AND (@uid = 0 OR actor_id = @uid)
 		ORDER BY timestamp DESC
 		LIMIT @limit OFFSET @offset

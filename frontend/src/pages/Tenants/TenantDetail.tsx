@@ -35,7 +35,7 @@ import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import type { EmployeeSummary } from '../../types'
 import Avatar from '../../components/Common/Avatar'
-import { Modal, Button, RecordPager, Skeleton, DatePicker, toISODate } from '../../components/ui'
+import { Modal, Button, RecordPager, Skeleton, DatePicker, toISODate, ScrollableTabs } from '../../components/ui'
 import { setRecordNav } from '../../lib/recordNav'
 import { Select } from '../../components/ui/Select'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../components/Auth/countries'
@@ -817,60 +817,60 @@ export default function TenantDetail() {
 
         {/* Columna Derecha: Tabs y Contenido de las pestañas */}
         <div className={styles.rightContentArea}>
-          {/* Navegación principal: desplegable de sección + desplegable de categoría (expediente) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 24 }}>
-            <div style={{ minWidth: 200 }}>
-              <Select
-                fullWidth
-                placeholder="Sección"
-                value={tab}
-                onChange={v => setTab(String(v) as 'resumen' | 'uso' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados' | 'horarios')}
-                options={[
-                  { value: 'resumen', label: 'Resumen' },
-                  { value: 'uso', label: 'Uso' },
-                  { value: 'usuarios', label: `Profesionales (${employees.length})` },
-                  { value: 'organigrama', label: 'Organigrama' },
-                  { value: 'expediente', label: 'Expediente' },
-                  { value: 'actividad', label: 'Actividad' },
-                  { value: 'tickets', label: `Tickets${(tenant.open_tickets ?? 0) > 0 ? ` (${tenant.open_tickets})` : ''}` },
-                  { value: 'archivados', label: 'Archivados' },
-                  ...(canAnnotate ? [{ value: 'horarios', label: 'Horarios' }] : []),
+          {/* Barra de navegación de secciones con scroll y flechas */}
+          <div style={{ marginBottom: tab === 'expediente' || tab === 'actividad' ? '12px' : '24px' }}>
+            <ScrollableTabs
+              activeTab={tab}
+              onChange={v => setTab(v as any)}
+              ariaLabel="Secciones de la empresa"
+              tabs={[
+                { id: 'resumen', label: 'Resumen' },
+                { id: 'uso', label: 'Uso' },
+                { id: 'usuarios', label: 'Profesionales', count: employees.length },
+                { id: 'organigrama', label: 'Organigrama' },
+                { id: 'expediente', label: 'Expediente' },
+                { id: 'actividad', label: 'Actividad' },
+                { id: 'tickets', label: 'Tickets', count: (tenant.open_tickets ?? 0) > 0 ? tenant.open_tickets : undefined },
+                { id: 'archivados', label: 'Archivados' },
+                ...(canAnnotate ? [{ id: 'horarios', label: 'Horarios' }] : []),
+              ]}
+            />
+          </div>
+
+          {/* Sub-barra de categorías para el Expediente */}
+          {tab === 'expediente' && (
+            <div style={{ marginBottom: '20px' }}>
+              <ScrollableTabs
+                variant="pills"
+                size="sm"
+                activeTab={actCategory ?? 'lifecycle'}
+                onChange={v => setActCategory(v)}
+                ariaLabel="Categorías del expediente"
+                tabs={ACTIVITY_CATEGORIES.map(cat => ({
+                  id: cat.value,
+                  label: cat.label,
+                  count: actCounts[cat.value],
+                }))}
+              />
+            </div>
+          )}
+
+          {/* Sub-barra de vistas para Actividad */}
+          {tab === 'actividad' && (
+            <div style={{ marginBottom: '20px' }}>
+              <ScrollableTabs
+                variant="pills"
+                size="sm"
+                activeTab={actSubTab}
+                onChange={v => setActSubTab(v as 'inactividad' | 'ausencias')}
+                ariaLabel="Vistas de actividad"
+                tabs={[
+                  { id: 'inactividad', label: 'Inactividad', count: teamInactive.length },
+                  { id: 'ausencias', label: 'Ausencias', count: tenantAbsence?.items?.length || 0 },
                 ]}
               />
             </div>
-            {/* Cuando la sección es "Expediente", aparece el desplegable de categoría */}
-            {tab === 'expediente' && (
-              <div style={{ minWidth: 200 }}>
-                <Select
-                  fullWidth
-                  placeholder="Categoría"
-                  value={actCategory ?? ''}
-                  onChange={v => setActCategory(String(v))}
-                  options={ACTIVITY_CATEGORIES.map(cat => ({
-                    value: cat.value,
-                    label: actCounts[cat.value] !== undefined
-                      ? `${cat.label} (${actCounts[cat.value]})`
-                      : cat.label,
-                  }))}
-                />
-              </div>
-            )}
-            {/* Cuando la sección es "Actividad", aparece el desplegable Inactividad / Ausencias */}
-            {tab === 'actividad' && (
-              <div style={{ minWidth: 180 }}>
-                <Select
-                  fullWidth
-                  placeholder="Vista"
-                  value={actSubTab}
-                  onChange={v => setActSubTab(String(v) as 'inactividad' | 'ausencias')}
-                  options={[
-                    { value: 'inactividad', label: `Inactividad (${teamInactive.length})` },
-                    { value: 'ausencias', label: `Ausencias (${tenantAbsence?.items?.length || 0})` },
-                  ]}
-                />
-              </div>
-            )}
-          </div>
+          )}
 
           {tab === 'resumen' && (
             <div className={styles.sidebarCard} style={{ margin: 0 }}>
