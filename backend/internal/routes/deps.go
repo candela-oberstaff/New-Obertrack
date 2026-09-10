@@ -52,6 +52,7 @@ type deps struct {
 	reportSched   *handlers.ReportScheduleHandler
 	emailSettings *handlers.EmailSettingsHandler
 	onboarding    *handlers.OnboardingHandler
+	version       *handlers.VersionHandler
 	induction     *handlers.InductionHandler
 	emailPreview  *handlers.EmailPreviewHandler
 	googleCal     *handlers.GoogleCalendarHandler
@@ -326,6 +327,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		reportSched:   handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
 		emailSettings: handlers.NewEmailSettingsHandler(emailSettingsSvc),
 		onboarding:    handlers.NewOnboardingHandler(onboardingSvc),
+		version:       handlers.NewVersionHandler(),
 		induction:     handlers.NewInductionHandler(inductionSvc),
 		emailPreview:  handlers.NewEmailPreviewHandler(),
 		googleCal:     handlers.NewGoogleCalendarHandler(googleCalSvc, cfg.FrontendURL),

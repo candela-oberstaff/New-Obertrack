@@ -4,12 +4,17 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
+
+	"github.com/obertrack/backend/internal/apperrors"
 
 	"github.com/obertrack/backend/internal/service"
 )
@@ -27,9 +32,14 @@ func NewOnboardingHandler(svc service.OnboardingService) *OnboardingHandler {
 }
 
 // ListCompanies devuelve el padrón completo de empresas con su ficha para la
-// integración con Obersuite: identidad, ubicación, alta, contadores, operación
-// (horas, pendientes, tickets) y las dos señales —último contacto nuestro y
-// última actividad suya—.
+// integración con Obersuite: identidad, responsable, ubicación normalizada
+// (país/provincia/ciudad/dirección), contadores de plantilla y de trabajo, y el
+// último contacto nuestro.
+//
+// Lo que NO va, y no por olvido: nada de la operación diaria (horas, jornadas
+// por aprobar, tickets, última actividad). Nadie del otro lado lo consumía, y
+// eran justo los campos que cambiaban solos cada pocos segundos, con lo que el
+// ETag de abajo no acertaba nunca. Ver PayloadSchemaVersion en version.go.
 //
 // ?updated_since=<RFC3339> acota a lo que cambió después de ese instante, para
 // sincronizar en incremental. Sin el parámetro devuelve todas, que es como
@@ -87,11 +97,11 @@ func (h *OnboardingHandler) ListCompanies(c *gin.Context) {
 // weakETag identifica una respuesta por su contenido.
 //
 // Va sobre el cuerpo y NO sobre un MAX(updated_at) de las empresas, aunque eso
-// último sería más barato: la ficha lleva contadores que cambian sin tocar la
-// fila de la empresa —horas del mes, jornadas por aprobar, tickets abiertos, y
-// el propio "hace 8 días" del último contacto, que se recalcula cada día—. Un
-// validador basado en updated_at contestaría "no ha cambiado nada" mientras esos
-// números ya son otros, que es peor que no cachear.
+// último sería más barato: la ficha sigue llevando cosas que cambian sin tocar
+// la fila de la empresa —los contadores de plantilla y de trabajo, y el propio
+// "hace 8 días" del último contacto, que se recalcula al pasar la medianoche—.
+// Un validador basado en updated_at contestaría "no ha cambiado nada" mientras
+// esos números ya son otros, que es peor que no cachear.
 //
 // Es débil (W/) a propósito: garantiza que el contenido es equivalente para el
 // que lo consume, no que los bytes sean idénticos.
@@ -144,7 +154,11 @@ type hirePayload struct {
 func (h *OnboardingHandler) Hire(c *gin.Context) {
 	var req hirePayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// El error del validador de Go es ilegible ("Key: 'hirePayload.Email'
+		// Error:Field validation for 'Email' failed on the 'email' tag") y
+		// Obersuite enseña nuestro mensaje TAL CUAL al reclutador. Se traduce a
+		// una frase que diga qué campo arreglar.
+		c.JSON(http.StatusBadRequest, gin.H{"error": hireBindMessage(err)})
 		return
 	}
 
@@ -172,8 +186,68 @@ func (h *OnboardingHandler) Hire(c *gin.Context) {
 
 	result, err := h.svc.Hire(in)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		status, msg := hireStatus(err)
+		if status >= 500 {
+			// El detalle técnico se queda en el log: Obersuite enseña nuestro
+			// mensaje TAL CUAL al reclutador, y un error de base de datos en la
+			// cara de quien contrata no le dice nada y encima filtra cómo
+			// estamos hechos por dentro.
+			log.Printf("[Onboarding] hire falló para %s (empresa %d): %v", in.Email, in.CompanyID, err)
+		}
+		c.JSON(status, gin.H{"error": msg})
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+// hireBindMessage convierte el fallo de validación del cuerpo en algo que una
+// persona pueda accionar. Nombra el campo en los términos del contrato
+// (email, name, company_id), no los del struct de Go.
+func hireBindMessage(err error) string {
+	var invalid validator.ValidationErrors
+	if errors.As(err, &invalid) && len(invalid) > 0 {
+		switch campo := invalid[0].Field(); campo {
+		case "Email":
+			if invalid[0].Tag() == "email" {
+				return "el email no tiene un formato válido"
+			}
+			return "falta el email"
+		case "Name":
+			return "falta el nombre del profesional"
+		case "CompanyID":
+			return "falta company_id (el id de la empresa que contrata)"
+		default:
+			return "falta el campo " + campo + " o su valor no es válido"
+		}
+	}
+	// Un JSON que ni siquiera se puede leer: no hay campo que nombrar.
+	return "el cuerpo de la petición no es un JSON válido"
+}
+
+// hireStatus traduce el fallo al código que Obersuite espera, y devuelve el
+// texto que le va a leer una persona.
+//
+// El contrato está acordado con ellos y su lógica de reintentos depende de él:
+// los 4xx NO se reintentan, el 500 SÍ. Antes salía todo como 400, así que
+// reintentaban tres veces cosas que no podían funcionar —un email mal escrito—
+// mientras mantenían abierta una transacción con la fila de la candidatura
+// bloqueada.
+//
+// Un error que no reconocemos cae a 500 a propósito: si es un fallo nuestro,
+// que lo reintenten es lo correcto; darlo por 400 les haría descartar en firme
+// una contratación que sí podía salir.
+func hireStatus(err error) (int, string) {
+	switch {
+	case errors.Is(err, apperrors.ErrInvalidInput):
+		return http.StatusBadRequest, err.Error()
+	case errors.Is(err, apperrors.ErrNotFound):
+		return http.StatusNotFound, err.Error()
+	case errors.Is(err, apperrors.ErrConflict), errors.Is(err, apperrors.ErrEmailTaken):
+		return http.StatusConflict, err.Error()
+	case errors.Is(err, apperrors.ErrCompanySuspended):
+		return http.StatusUnprocessableEntity, err.Error()
+	default:
+		return http.StatusInternalServerError,
+			"no se pudo completar la contratación por un problema en Obertrack. Vuelve a intentarlo en un momento."
+	}
 }

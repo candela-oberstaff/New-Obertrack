@@ -3,7 +3,6 @@ package service
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +12,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/obertrack/backend/internal/apperrors"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
 )
@@ -35,6 +35,24 @@ type OnboardingService interface {
 // ObersuiteCompany contiene los atributos completos de una empresa para Obersuite.
 // ObersuiteCompany es la ficha de una empresa tal y como sale hacia Obersuite.
 //
+// NO lleva datos de operación (horas del mes, jornadas por aprobar o
+// rechazadas) ni last_activity_at. Los dos motivos, por orden:
+//
+//  1. Nadie los consume. Las pantallas de Obersuite que los mostrarían son
+//     maquetas con valores fijos, así que sacar de aquí cuánto trabaja la gente
+//     de cada cliente y cuánto se le rechaza sería exponer información sensible
+//     sin un solo lector real.
+//  2. Lo mismo vale para created_at, client_since, phone_number y open_tickets,
+//     retirados después por el mismo motivo. open_tickets ADEMÁS es volátil
+//     —cambia al abrirse o cerrarse un ticket—, así que habría rotado el ETag
+//     para llenar una pestaña de Tickets que hoy enseña un número escrito a
+//     mano. Se piden de vuelta cuando exista la pantalla, y la petición vendrá
+//     con el commit que la construya.
+//  3. last_activity_at ADEMÁS rompía el ETag: lo alimenta el contador de uso,
+//     que escribe cada 30 segundos, así que el cuerpo cambiaba constantemente y
+//     el validador no llegaba a coincidir nunca. Funcionaba en reposo y se
+//     neutralizaba con tráfico.
+//
 // Los campos solo se AÑADEN, nunca se renombran ni se quitan: Obersuite ya
 // consume esta estructura y un cambio de nombre le rompe la integración en
 // silencio. Por eso conviven `last_contact` (texto para mostrar) y
@@ -47,37 +65,20 @@ type ObersuiteCompany struct {
 	ResponsibleEmail string `json:"responsible_email"`
 	Industry         string `json:"industry"`
 
-	Country     string `json:"country"`
-	State       string `json:"state"`
-	City        string `json:"city"`
-	Address     string `json:"address"`
-	Location    string `json:"location"`
-	PhoneNumber string `json:"phone_number"`
-
-	// CreatedAt es el alta de la cuenta en Obertrack; ClientSince, el alta REAL
-	// como cliente cuando alguien la corrigió. Ordenar por antigüedad con
-	// created_at da una respuesta equivocada justo en las cuentas más antiguas.
-	CreatedAt   time.Time  `json:"created_at"`
-	ClientSince *time.Time `json:"client_since"`
+	Country string `json:"country"`
+	State   string `json:"state"`
+	City    string `json:"city"`
+	Address string `json:"address"`
 
 	ProfessionalsCount int `json:"professionals_count"`
 	BoardsCount        int `json:"boards_count"`
 	TasksCount         int `json:"tasks_count"`
-
-	HoursThisMonth float64 `json:"hours_this_month"`
-	PendingHours   float64 `json:"pending_hours"`
-	PendingCount   int     `json:"pending_count"`
-	RejectedCount  int     `json:"rejected_count"`
-	OpenTickets    int     `json:"open_tickets"`
 
 	// LastContact es el texto en español ("hace 3 días") que ya consumía
 	// Obersuite; LastContactAt es la misma fecha en ISO, que es lo que sirve
 	// para ordenar o comparar del otro lado.
 	LastContact   string     `json:"last_contact"`
 	LastContactAt *time.Time `json:"last_contact_at"`
-	// LastActivityAt es la última señal de vida de ELLOS, no nuestra: no se
-	// mezcla con el contacto a propósito.
-	LastActivityAt *time.Time `json:"last_activity_at"`
 
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -178,21 +179,11 @@ func (s *onboardingService) ListCompanies(updatedSince *time.Time) ([]ObersuiteC
 			State:              r.State,
 			City:               r.City,
 			Address:            r.Address,
-			Location:           r.Location,
-			PhoneNumber:        r.PhoneNumber,
-			CreatedAt:          r.CreatedAt,
-			ClientSince:        r.ClientSince,
 			ProfessionalsCount: r.ProfessionalsCount,
 			BoardsCount:        r.BoardsCount,
 			TasksCount:         r.TasksCount,
-			HoursThisMonth:     r.HoursThisMonth,
-			PendingHours:       r.PendingHours,
-			PendingCount:       r.PendingCount,
-			RejectedCount:      r.RejectedCount,
-			OpenTickets:        r.OpenTickets,
 			LastContact:        FormatLastContact(r.LastContactAt),
 			LastContactAt:      r.LastContactAt,
-			LastActivityAt:     r.LastActivityAt,
 			UpdatedAt:          r.UpdatedAt,
 		})
 	}
@@ -237,28 +228,49 @@ func FormatLastContact(t *time.Time) string {
 	return fmt.Sprintf("hace %d años", years)
 }
 
+// hireError es un fallo de la contratación con DOS caras: el texto que ve el
+// reclutador en Obersuite y, envuelto, el centinela que el handler traduce a un
+// código HTTP.
+//
+// Existe porque Obersuite muestra nuestro mensaje tal cual a una persona y
+// decide si reintentar según el código. Con todo saliendo como un 400 genérico
+// —como hasta ahora— reintentaban tres veces un email mal escrito, dentro de una
+// transacción con la fila de la candidatura bloqueada.
+//
+// Unwrap devuelve el centinela y Error() solo la frase: envolver con
+// fmt.Errorf("%w: ...") habría pegado el texto técnico delante del mensaje.
+type hireError struct {
+	msg  string
+	kind error
+}
+
+func (e *hireError) Error() string { return e.msg }
+func (e *hireError) Unwrap() error { return e.kind }
+
+func hireFail(kind error, msg string) error { return &hireError{msg: msg, kind: kind} }
+
 func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 	// 1. Normaliza y valida lo obligatorio.
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	name := strings.TrimSpace(req.Name)
 	if email == "" || !strings.Contains(email, "@") {
-		return nil, errors.New("email inválido o ausente")
+		return nil, hireFail(apperrors.ErrInvalidInput, "email inválido o ausente")
 	}
 	if name == "" {
-		return nil, errors.New("el nombre es obligatorio")
+		return nil, hireFail(apperrors.ErrInvalidInput, "el nombre es obligatorio")
 	}
 	if req.CompanyID == 0 {
-		return nil, errors.New("company_id es obligatorio")
+		return nil, hireFail(apperrors.ErrInvalidInput, "company_id es obligatorio")
 	}
 
 	// 2. Valida la empresa ANTES de crear nada (evita profesionales huérfanos si
 	//    el company_id es inválido).
 	company, err := s.userRepo.GetByID(req.CompanyID)
 	if err != nil || company.UserType != models.UserTypeEmployer {
-		return nil, errors.New("la empresa (company_id) no es válida")
+		return nil, hireFail(apperrors.ErrNotFound, "la empresa (company_id) no existe o no es una empresa")
 	}
 	if !company.IsActive {
-		return nil, errors.New("la empresa está suspendida")
+		return nil, hireFail(apperrors.ErrCompanySuspended, "la empresa está suspendida: hay que reactivarla en Obertrack antes de contratar")
 	}
 
 	externalID := strings.TrimSpace(req.ExternalID)
@@ -277,7 +289,7 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		// la establece con el correo de bienvenida (flujo forgot-password).
 		hashed, herr := bcrypt.GenerateFromPassword([]byte(generateRandomPassword()), bcrypt.DefaultCost)
 		if herr != nil {
-			return nil, errors.New("no se pudo procesar el registro")
+			return nil, hireFail(apperrors.ErrInternal, "no se pudo procesar el registro")
 		}
 		user = &models.User{
 			Name:             name,
@@ -302,7 +314,7 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		// Ya existe. Solo un profesional puede recibir un empleo por esta vía;
 		// un email de empresa/superadmin/CS se rechaza para no corromper cuentas.
 		if user.UserType != models.UserTypeProfessional {
-			return nil, errors.New("ya existe una cuenta con ese email que no es un profesional")
+			return nil, hireFail(apperrors.ErrConflict, "ya existe una cuenta con ese email y no es un profesional: no se puede convertir")
 		}
 		// Completa datos que falten (no pisa lo que el profesional ya tenga).
 		updates := map[string]interface{}{}

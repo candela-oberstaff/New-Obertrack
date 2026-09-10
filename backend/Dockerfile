@@ -36,6 +36,18 @@ WORKDIR /app
 
 COPY --from=builder /app/main .
 COPY --from=builder /app/seed .
+
+# BUILD_COMMIT viaja hasta /integrations/obersuite/version, que es donde
+# Obersuite comprueba QUÉ está desplegado. La imagen se construye sin el .git,
+# así que Go no puede incrustar el commit por su cuenta: hay que pasárselo.
+#
+#   docker compose build --build-arg BUILD_COMMIT=$(git rev-parse --short HEAD)
+#
+# Va en ESTA etapa, no en la de compilación: un ENV del builder no llega a la
+# imagen final, y el endpoint contestaría "desconocido" en cada despliegue.
+# Se declara al final para no invalidar la caché de las capas de arriba.
+ARG BUILD_COMMIT=desconocido
+ENV BUILD_COMMIT=$BUILD_COMMIT
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
