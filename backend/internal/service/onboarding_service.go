@@ -449,9 +449,23 @@ func (s *onboardingService) notifyHired(user *models.User, isNew bool, result *H
 	if isNew {
 		// Correo de bienvenida / establecer contraseña (best-effort). Solo al
 		// alta: quien ya existía tiene su contraseña y no necesita reponerla.
-		if err := s.authSvc.ForgotPassword(user.Email); err != nil {
-			log.Printf("[Onboarding] welcome email failed for %s: %v", user.Email, err)
-		}
+		//
+		// Sale del camino de la petición a propósito. Era la ÚLTIMA llamada
+		// síncrona a Brevo que quedaba en el webhook de contratación —la de la
+		// inducción ya se enviaba en segundo plano—, y del otro lado Obersuite
+		// espera con una transacción abierta y la fila de la candidatura
+		// bloqueada: cada segundo que tardáramos aquí era un segundo de bloqueo
+		// suyo por un correo del que no depende nada.
+		//
+		// Se envuelve la LLAMADA, no ForgotPassword: en el flujo de "olvidé mi
+		// contraseña" hay una persona esperando y ahí el fallo sí se le tiene
+		// que contar. Aquí ya solo se registraba.
+		correo := user.Email
+		go func() {
+			if err := s.authSvc.ForgotPassword(correo); err != nil {
+				log.Printf("[Onboarding] welcome email failed for %s: %v", correo, err)
+			}
+		}()
 	}
 }
 

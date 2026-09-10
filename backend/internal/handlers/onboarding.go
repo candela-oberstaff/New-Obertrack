@@ -1,7 +1,12 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -52,7 +57,62 @@ func (h *OnboardingHandler) ListCompanies(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, companies)
+
+	// Se serializa a mano en vez de con c.JSON para poder calcular el ETag sobre
+	// el cuerpo EXACTO que se va a devolver. El orden de los campos lo fija el
+	// struct, así que el mismo contenido produce siempre el mismo hash.
+	body, err := json.Marshal(companies)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "no se pudo serializar el padrón"})
+		return
+	}
+
+	etag := weakETag(body)
+	c.Header("ETag", etag)
+	// Obersuite pide este padrón cada vez que alguien abre su pantalla de
+	// Empresas. Sin caché eso es traerse el listado entero para, casi siempre,
+	// pintar lo mismo.
+	c.Header("Cache-Control", "private, max-age=0, must-revalidate")
+
+	// El If-None-Match puede traer varios ETags separados por coma, y el cliente
+	// puede devolverlos con el prefijo W/. Se compara contra cada uno.
+	if matchesETag(c.GetHeader("If-None-Match"), etag) {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
+	c.Data(http.StatusOK, "application/json; charset=utf-8", body)
+}
+
+// weakETag identifica una respuesta por su contenido.
+//
+// Va sobre el cuerpo y NO sobre un MAX(updated_at) de las empresas, aunque eso
+// último sería más barato: la ficha lleva contadores que cambian sin tocar la
+// fila de la empresa —horas del mes, jornadas por aprobar, tickets abiertos, y
+// el propio "hace 8 días" del último contacto, que se recalcula cada día—. Un
+// validador basado en updated_at contestaría "no ha cambiado nada" mientras esos
+// números ya son otros, que es peor que no cachear.
+//
+// Es débil (W/) a propósito: garantiza que el contenido es equivalente para el
+// que lo consume, no que los bytes sean idénticos.
+func weakETag(body []byte) string {
+	sum := sha256.Sum256(body)
+	return fmt.Sprintf(`W/"%s"`, hex.EncodeToString(sum[:16]))
+}
+
+// matchesETag compara el If-None-Match entrante contra el ETag actual. Acepta
+// la lista separada por comas y el comodín "*" que manda la especificación.
+func matchesETag(ifNoneMatch, current string) bool {
+	if ifNoneMatch == "" {
+		return false
+	}
+	for _, candidate := range strings.Split(ifNoneMatch, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" || candidate == current {
+			return true
+		}
+	}
+	return false
 }
 
 // hireCVPayload es el CV embebido en base64 (ver HireCV en el servicio).
