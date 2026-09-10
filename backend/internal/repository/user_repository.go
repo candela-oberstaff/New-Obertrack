@@ -9,6 +9,7 @@ import (
 
 type UserRepository interface {
 	GetObersuiteCompanies(updatedSince *time.Time) ([]ObersuiteCompanyRecord, error)
+	GetObersuiteProfessionals(companyID uint) ([]ObersuiteProfessional, error)
 	GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	Count(role, isManager, isActive string, companyID uint) (int64, error)
 	CountCompanies() (int64, error)
@@ -459,6 +460,11 @@ func (r *userRepository) GetObersuiteCompanies(updatedSince *time.Time) ([]Obers
 			COALESCE(u.city, '') as city,
 			COALESCE(u.address, '') as address,
 			u.updated_at,
+			-- MISMO criterio que GetObersuiteProfessionals, y tiene que
+			-- seguir siéndolo: este número y aquella lista se pintan juntos
+			-- en la ficha de Obersuite. Ya se separaron una vez —la lista
+			-- filtraba solo por empresa principal— y devolvía menos gente que
+			-- el contador de al lado, sin que fallara nada.
 			(SELECT COUNT(DISTINCT p.id) FROM users p
 			 WHERE (p.empleador_id = u.id OR EXISTS (SELECT 1 FROM employments e WHERE e.user_id = p.id AND e.company_id = u.id AND e.status = 'active' AND e.deleted_at IS NULL))
 			   AND p.user_type = 'profesional' AND p.deleted_at IS NULL) as professionals_count,
@@ -473,4 +479,103 @@ func (r *userRepository) GetObersuiteCompanies(updatedSince *time.Time) ([]Obers
 		ORDER BY LOWER(COALESCE(NULLIF(u.company_name, ''), u.name)) ASC
 	`, updatedSince, updatedSince).Scan(&records).Error
 	return records, err
+}
+
+// ObersuiteProfessional es una persona de la plantilla de UNA empresa, con todo
+// referido a ESA empresa y no a la que el usuario tenga como principal.
+type ObersuiteProfessional struct {
+	ID           uint   `json:"id"`
+	Name         string `json:"name"`
+	Email        string `json:"email"`
+	Avatar       string `json:"avatar"`
+	UserType     string `json:"user_type"`
+	IsActive     bool   `json:"is_active"`
+	IsManager    bool   `json:"is_manager"`
+	IsSupervisor bool   `json:"is_supervisor"`
+	JobTitle     string `json:"job_title"`
+
+	// Los dos identificadores de Obersuite NO significan lo mismo: ObersuiteID
+	// es la persona (su candidato) y HireObersuiteID es ESTA contratación.
+	// Alguien puede venir de Obersuite y que este empleo concreto lo abriéramos
+	// nosotros a mano. Vacíos = no hay vínculo, y se omiten del JSON.
+	ObersuiteID     string `json:"obersuite_id,omitempty"`
+	HireObersuiteID string `json:"hire_obersuite_id,omitempty"`
+
+	// StartedAt y el horario salen del empleo EN ESTA EMPRESA. Nulos o vacíos
+	// cuando la persona la tiene como empresa principal pero sin empleo escrito.
+	StartedAt         *time.Time `json:"started_at"`
+	ScheduleType      string     `json:"schedule_type"`
+	ScheduleDays      string     `json:"schedule_days"`
+	ScheduleStartTime string     `json:"schedule_start_time"`
+	ScheduleEndTime   string     `json:"schedule_end_time"`
+
+	HoursThisMonth float64    `json:"hours_this_month"`
+	TasksAssigned  int        `json:"tasks_assigned"`
+	TasksCompleted int        `json:"tasks_completed"`
+	LastActive     *time.Time `json:"last_active"`
+
+	// IsPrimaryCompany dice si esta empresa es la que el usuario tiene activa.
+	// Quien tiene empleo aquí pero otra como principal ve la otra al entrar en
+	// la app: explica diferencias que si no parecen un fallo.
+	IsPrimaryCompany bool `json:"is_primary_company"`
+}
+
+// GetObersuiteProfessionals devuelve la plantilla de una empresa con el MISMO
+// criterio que professionals_count del padrón: quien la tiene como empresa
+// principal Y quien tiene un empleo activo en ella.
+//
+// Existe en vez de reutilizar GetTenantEmployees porque aquella filtra solo por
+// empleador_id, y eso deja fuera a los recontratados: alguien que ya trabajaba
+// en otra empresa conserva su empleador_id y aquí solo gana un empleo. El padrón
+// sí los cuenta, así que la lista devolvía menos gente que el número de al lado
+// —y son justo los que llegan por el puente, que es la vía que más los produce—.
+//
+// El empleo se busca lateralmente por la empresa PREGUNTADA. Con el criterio de
+// employeeMetrics, que ancla a u.empleador_id, un recontratado habría salido con
+// la fecha de ingreso y el horario de su OTRA empresa: un dato equivocado que
+// parece bueno, que es la peor clase.
+func (r *userRepository) GetObersuiteProfessionals(companyID uint) ([]ObersuiteProfessional, error) {
+	var rows []ObersuiteProfessional
+	err := r.db.Raw(`
+		SELECT
+			u.id, u.name, u.email,
+			COALESCE(u.avatar, '') as avatar,
+			u.user_type, u.is_active, u.is_manager, u.is_supervisor,
+			-- El cargo del empleo manda sobre el del perfil: es el que tiene en
+			-- ESTA empresa, y el del perfil puede haberse quedado del anterior.
+			COALESCE(NULLIF(e.job_title, ''), u.job_title, '') as job_title,
+			COALESCE(u.obersuite_id, '') as obersuite_id,
+			COALESCE(e.obersuite_id, '') as hire_obersuite_id,
+			e.started_at,
+			COALESCE(e.schedule_type, '')       as schedule_type,
+			COALESCE(e.schedule_days, '')       as schedule_days,
+			COALESCE(e.schedule_start_time, '') as schedule_start_time,
+			COALESCE(e.schedule_end_time, '')   as schedule_end_time,
+			COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh
+				WHERE wh.user_id = u.id AND wh.deleted_at IS NULL
+				  AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
+			(SELECT COUNT(*) FROM task_users tu WHERE tu.user_id = u.id) as tasks_assigned,
+			(SELECT COUNT(*) FROM task_users tu
+				JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL
+				WHERE tu.user_id = u.id AND t.completed = true) as tasks_completed,
+			(SELECT MAX(wh.work_date) FROM work_hours wh
+				WHERE wh.user_id = u.id AND wh.deleted_at IS NULL) as last_active,
+			(u.empleador_id = ?) as is_primary_company
+		FROM users u
+		LEFT JOIN LATERAL (
+			SELECT em.job_title, em.obersuite_id, em.started_at,
+			       em.schedule_type, em.schedule_days,
+			       em.schedule_start_time, em.schedule_end_time
+			FROM employments em
+			WHERE em.user_id = u.id AND em.company_id = ?
+			  AND em.status = 'active' AND em.deleted_at IS NULL
+			ORDER BY em.started_at DESC
+			LIMIT 1
+		) e ON TRUE
+		WHERE u.deleted_at IS NULL
+		  AND u.user_type = 'profesional'
+		  AND (u.empleador_id = ? OR e.started_at IS NOT NULL)
+		ORDER BY u.name
+	`, companyID, companyID, companyID).Scan(&rows).Error
+	return rows, err
 }

@@ -30,14 +30,21 @@ type ObersuiteCompanyHandler struct {
 	admin      service.AdminService
 	employment service.EmploymentService
 	usage      repository.UsageRepository
+	// users se usa solo para la plantilla, que necesita un criterio propio (ver
+	// GetObersuiteProfessionals). El resto de bloques reexporta el servicio de
+	// administración tal cual.
+	users repository.UserRepository
 }
 
 func NewObersuiteCompanyHandler(
 	admin service.AdminService,
 	employment service.EmploymentService,
 	usage repository.UsageRepository,
+	users repository.UserRepository,
 ) *ObersuiteCompanyHandler {
-	return &ObersuiteCompanyHandler{admin: admin, employment: employment, usage: usage}
+	return &ObersuiteCompanyHandler{
+		admin: admin, employment: employment, usage: usage, users: users,
+	}
 }
 
 // company resuelve el :id de la ruta y comprueba que exista y sea una empresa.
@@ -108,21 +115,25 @@ func (h *ObersuiteCompanyHandler) Detail(c *gin.Context) {
 }
 
 // Professionals alimenta DOS pestañas de Obersuite: "Profesionales" y
-// "Horarios". No son dos consultas: la jornada de cada persona
-// (schedule_type / schedule_days) viaja en su propia fila, así que Horarios es
-// una proyección de esta lista, no un bloque aparte.
+// "Horarios". No son dos consultas: la jornada de cada persona viaja en su
+// propia fila, así que Horarios es una proyección de esta lista.
+//
+// La lista cuadra con el professionals_count del padrón por construcción: usa el
+// mismo criterio. No lo hacía —devolvía menos gente— porque la consulta del
+// panel filtra solo por empresa principal y deja fuera a los recontratados, que
+// son justo los que llegan por este puente.
 func (h *ObersuiteCompanyHandler) Professionals(c *gin.Context) {
 	tenant, ok := h.company(c)
 	if !ok {
 		return
 	}
-	people, err := h.admin.GetTenantEmployees(tenant.ID)
+	people, err := h.users.GetObersuiteProfessionals(tenant.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "no se pudo cargar la plantilla"})
 		return
 	}
 	if people == nil {
-		people = []repository.EmployeeSummary{}
+		people = []repository.ObersuiteProfessional{}
 	}
 	c.JSON(http.StatusOK, gin.H{"company_id": tenant.ID, "professionals": people})
 }

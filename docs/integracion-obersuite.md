@@ -342,7 +342,7 @@ que nadie abre no se pide, y entonces no cuesta nada.
 | Ruta | Pestaña | Devuelve |
 |---|---|---|
 | `GET .../:id` | cabecera | Ficha completa, **incluida la operación del mes** (horas, pendientes, rechazadas) que se retiró del padrón |
-| `GET .../:id/professionals` | Profesionales **y Horarios** | La plantilla. `schedule_type` y `schedule_days` viajan en cada fila: Horarios es una proyección de esta lista, no otro bloque |
+| `GET .../:id/professionals` | Profesionales **y Horarios** | La plantilla. Los cuatro campos de horario viajan en cada fila: Horarios es una proyección de esta lista, no otro bloque |
 | `GET .../:id/org-chart` | Organigrama | El árbol completo, sin recorte por rol |
 | `GET .../:id/timeline` | **Expediente** | La cronología. `?category=`, `?person_id=`, `?page=` (50 por página) |
 | `GET .../:id/attention` | **Actividad** | Inactividad + ausencias. `?days=`, `?month=`, `?year=` |
@@ -373,6 +373,51 @@ archivo del frontend y falla si las dos listas se separan.
 ya no se ofrecen como filtro pero sus movimientos siguen existiendo y se pueden
 pedir por `?category=`. **Los chips se pintan desde `categories`, nunca
 recorriendo las claves de `counts`.**
+
+#### Los campos de `professionals[]`
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | número | El usuario en Obertrack |
+| `name`, `email`, `avatar` | texto | `avatar` vacío si no tiene |
+| `user_type` | texto | Siempre `"profesional"`: la lista se filtra a ese tipo para cuadrar con `professionals_count` |
+| `is_active` | booleano | **Siempre presente.** Es la cuenta, no el empleo |
+| `is_manager`, `is_supervisor` | booleano | Siempre presentes |
+| `job_title` | texto | El del empleo **en esta empresa**; cae al del perfil si el empleo no lo tiene |
+| `obersuite_id` | texto, **se omite si no hay** | El candidato en Obersuite: esta *persona* vino de allí |
+| `hire_obersuite_id` | texto, **se omite si no hay** | **Esta contratación concreta** la hizo Obersuite |
+| `started_at` | ISO 8601 o `null` | Ingreso **en esta empresa**. Nulo si está vinculada sin empleo escrito |
+| `schedule_type`, `schedule_days`, `schedule_start_time`, `schedule_end_time` | texto | Del empleo **en esta empresa**. Vacíos si nadie le puso jornada |
+| `hours_this_month` | número | Del mes corriente |
+| `tasks_assigned`, `tasks_completed` | número | |
+| `last_active` | ISO 8601 o `null` | Última jornada registrada |
+| `is_primary_company` | booleano | Si esta es la empresa que el usuario tiene activa. `false` = trabaja aquí pero ve otra al entrar en la app |
+
+Los dos identificadores de Obersuite **no son lo mismo** y por eso van los dos:
+alguien puede venir de Obersuite (`obersuite_id`) y que este empleo concreto lo
+abriéramos nosotros a mano (`hire_obersuite_id` ausente). Van como texto y se
+omiten cuando no hay vínculo — no hay booleano `from_obersuite` ni `is_obersuite`.
+
+**`is_active` siempre viene**, así que no hace falta suponer nada cuando falta:
+no falta. Y es el estado de la *cuenta*; que alguien esté en esta lista ya
+significa que su empleo aquí está activo.
+
+##### La lista cuadra con el contador, y no cuadraba
+
+`len(professionals)` es igual a `professionals_count` del padrón por
+construcción: las dos consultas usan el mismo criterio —empresa principal **o**
+empleo activo aquí—.
+
+No era así. La consulta del panel de administración filtra solo por empresa
+principal, y eso deja fuera a los **recontratados**: quien ya trabajaba en otra
+empresa conserva su `empleador_id` y aquí solo gana un empleo. El padrón sí los
+cuenta. Medido antes de arreglarlo: una empresa con `professionals_count = 4`
+devolvía 3 personas.
+
+Es justo la población que produce este puente —los `rehired`—, así que habría
+salido a la primera. Y el segundo fallo era peor porque no se nota: al leer el
+horario y la fecha de ingreso anclados a la empresa principal, un recontratado
+salía con **los datos de su otra empresa**. Un dato equivocado que parece bueno.
 
 #### Y lo que esto NO es
 

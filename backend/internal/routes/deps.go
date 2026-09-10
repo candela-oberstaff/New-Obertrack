@@ -332,7 +332,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		emailSettings: handlers.NewEmailSettingsHandler(emailSettingsSvc),
 		onboarding:    handlers.NewOnboardingHandler(onboardingSvc),
 		obersuiteCompany: handlers.NewObersuiteCompanyHandler(
-			adminSvc, employmentSvc, usageRepo,
+			adminSvc, employmentSvc, usageRepo, userRepo,
 		),
 		version:      handlers.NewVersionHandler(),
 		induction:    handlers.NewInductionHandler(inductionSvc),
