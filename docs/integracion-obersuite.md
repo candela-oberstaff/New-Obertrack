@@ -310,8 +310,32 @@ Que quede escrito evita volver a discutirlo cada trimestre.
 | Paginación en `/companies` | **Descartada** | ~90 empresas y ETag: la respuesta habitual es un 304 vacío |
 | Envoltorio `{data, meta}` | **Descartada** | Rompe a los dos consumidores actuales sin dar nada a cambio |
 | Rotación automática de tokens | **Descartada** | Dos servicios nuestros; el mecanismo sería más frágil que el riesgo |
-| `GET /companies/:id` (detalle) | **Aparcada** | Nadie la necesita hoy. Se retoma si aparece una pantalla de detalle |
+| `GET /companies/:id` (detalle) | **Reabierta** (10-sep-2026) | Se aparcó porque nadie la necesitaba. Apareció la pantalla que la necesita — ver abajo |
 | Devolver campos de operación | **Descartada** | Ver §3: rompían el ETag y exponen datos de los clientes |
+
+### El detalle de empresa, reabierto
+
+Obersuite tiene una ficha de empresa con ocho pestañas —Uso, Profesionales,
+Organigrama, Expediente, Actividad, Tickets, Archivados, Horarios— clonadas de
+nuestra pantalla de Empresas. Hoy las ocho dicen "Sin datos disponibles" porque
+retiraron los datos de ejemplo que llevaban; eso está bien resuelto, un hueco
+honesto vale más que un número inventado.
+
+Lo que hay que saber antes de construirlo:
+
+- **La objeción del ETag no aplica.** Los campos de operación se quitaron del
+  padrón porque rotaban el validador de una lista que se pide entera. Un detalle
+  es por empresa y bajo demanda: no toca esa caché.
+- **Los datos ya existen**, todos, como endpoints de administración. Es
+  reexportar lo que la pantalla de Empresas ya muestra, no calcular nada nuevo.
+- **Uso y Horarios son datos por persona** (cuánto entra cada profesional, qué
+  jornada tiene) y **Expediente y Actividad son las notas internas de Customer
+  Success sobre el cliente**. `CompanyEvent` no tiene campo de visibilidad, así
+  que ahí es todo o nada. Decidido el 10-sep-2026: Obersuite es interno de
+  Oberstaff, se tratan los ocho bloques igual.
+- **Se construyen solo los bloques que Obersuite vaya a pintar de verdad.** Es la
+  lección de los diez campos retirados: lo que no se consume igual hay que
+  mantenerlo, y encima nadie se entera de que sobra.
 
 ---
 
