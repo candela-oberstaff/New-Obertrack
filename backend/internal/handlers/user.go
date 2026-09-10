@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -29,8 +30,10 @@ type UpdateUserRequest struct {
 	Email            string `json:"email"`
 	Avatar           string `json:"avatar"`
 	JobTitle         string `json:"job_title"`
-	PhoneNumber      string `json:"phone_number"`
-	Country          string `json:"country"`
+	PhoneNumber      string  `json:"phone_number"`
+	BirthDate        *string `json:"birth_date"`
+	EmergencyPhones  *string `json:"emergency_phones"`
+	Country          string  `json:"country"`
 	State            string `json:"state"`
 	City             string `json:"city"`
 	Location         string `json:"location"`
@@ -159,6 +162,22 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 	if req.PhoneNumber != "" {
 		updates["phone_number"] = req.PhoneNumber
+	}
+	if req.BirthDate != nil {
+		if *req.BirthDate == "" {
+			updates["birth_date"] = nil
+		} else {
+			if t, err := time.Parse("2006-01-02", *req.BirthDate); err == nil {
+				updates["birth_date"] = t
+			} else if t, err := time.Parse(time.RFC3339, *req.BirthDate); err == nil {
+				updates["birth_date"] = t
+			} else {
+				updates["birth_date"] = *req.BirthDate
+			}
+		}
+	}
+	if req.EmergencyPhones != nil {
+		updates["emergency_phones"] = *req.EmergencyPhones
 	}
 	if req.Country != "" {
 		updates["country"] = req.Country

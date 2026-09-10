@@ -2595,6 +2595,36 @@ func Run(db *gorm.DB) error {
 				return tx.Exec(`DROP INDEX IF EXISTS idx_users_obersuite_id`).Error
 			},
 		},
+		{
+			ID: "202609111000",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					ALTER TABLE users
+					ADD COLUMN IF NOT EXISTS assigned_cs_id BIGINT NULL
+					REFERENCES users(id) ON DELETE SET NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS assigned_cs_id`).Error
+			},
+		},
+		{
+			ID: "202609111100",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					ALTER TABLE users
+					ADD COLUMN IF NOT EXISTS birth_date DATE NULL,
+					ADD COLUMN IF NOT EXISTS emergency_phones TEXT NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					ALTER TABLE users
+					DROP COLUMN IF EXISTS birth_date,
+					DROP COLUMN IF EXISTS emergency_phones
+				`).Error
+			},
+		},
 		// Future migrations go here
 	})
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, cloneElement, useMemo, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, User, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, Plus, Trash2, Pin, PinOff, Send, Paperclip, MoreVertical, ArrowRight, Eye, Briefcase, CalendarDays, Settings } from 'lucide-react'
+import { ArrowLeft, Building2, Users, User, UserCheck, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, Plus, Trash2, Pin, PinOff, Send, Paperclip, MoreVertical, ArrowRight, Eye, Briefcase, CalendarDays, Settings, FileDown } from 'lucide-react'
 import { useImagePaste } from '../../hooks/useImagePaste'
 import type { TenantContactChannel } from '../../services/admin.service'
 import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
@@ -18,7 +18,7 @@ const NOTE_MAX_LENGTH = 2000
 
 import { ticketOrigin, TICKET_STAGE, ticketPath } from './ticketStyle'
 import { EmployeePeekModal } from './EmployeePeekModal'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTenantDetail, useTenantActivity, useFollowUps, ACTIVITY_CATEGORIES } from '../../hooks'
 import type { TenantActivity } from '../../hooks'
 import { TeamActivityPanel } from '../../components/Admin/TeamActivityPanel'
@@ -94,9 +94,62 @@ export default function TenantDetail() {
   // puede alimentar el superadmin no sirve de material de seguimiento.
   const canAnnotate = canManage || viewer?.user_type === 'customer_success'
   const tenantId = Number(id)
+  const qc = useQueryClient()
   const { tenant, employees, isLoading, error, refresh, suspendTenant, activateTenant, toggleEmployeeStatus, resetEmployeePassword } = useTenantDetail(tenantId)
   const confirm = useConfirm()
   const notify = useNotification()
+
+  // Customer Success asignado
+  const [csUsers, setCsUsers] = useState<{ id: number; name: string; email: string; user_type?: string }[]>([])
+  const [savingCS, setSavingCS] = useState(false)
+
+  useEffect(() => {
+    adminService.getCSUsers().then(res => {
+      setCsUsers(res || [])
+    }).catch(err => {
+      console.error('Error cargando usuarios CS:', err)
+    })
+  }, [])
+
+  const handleAssignCS = async (newCsId: number) => {
+    if (!tenant) return
+    setSavingCS(true)
+    try {
+      await adminService.assignCSToTenant(tenant.id, newCsId)
+      notify.success(newCsId > 0 ? 'Customer Success asignado correctamente' : 'Asignación de Customer Success eliminada')
+      await refresh()
+      qc.invalidateQueries({ queryKey: ['tenants'] })
+    } catch (err: any) {
+      notify.error('No se pudo actualizar el Customer Success')
+    } finally {
+      setSavingCS(false)
+    }
+  }
+
+  // Descarga del reporte PDF consolidado de auditoría y salud
+  const [downloadingReport, setDownloadingReport] = useState(false)
+
+  const handleDownloadReport = async () => {
+    if (!tenant) return
+    setDownloadingReport(true)
+    try {
+      const cleanName = (tenant.company_name || 'empresa')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '')
+      const dateStr = new Date().toISOString().split('T')[0]
+      const filename = `${cleanName}_auditoria_salud_${dateStr}.pdf`
+      await adminService.downloadTenantReportPDF(tenant.id, filename)
+      notify.success('Reporte PDF descargado con éxito')
+      setMenuOpen(false)
+    } catch (err: any) {
+      console.error('Error al descargar reporte PDF:', err)
+      notify.error('No se pudo generar el reporte PDF')
+    } finally {
+      setDownloadingReport(false)
+    }
+  }
 
   // Expediente: filtros (categoría y persona) + paginación, todo de servidor.
   // Movimiento abierto en el detalle. Null = cerrado.
@@ -341,6 +394,13 @@ export default function TenantDetail() {
     queryKey: ['tenant-surveys', tenantId],
     queryFn: () => surveyService.getSurveys(),
     enabled: !!tenantId && tab === 'expediente',
+  })
+
+  // Carga el detalle completo de la encuesta seleccionada (preguntas y respuestas con tipos)
+  const { data: fullSurveyDetail, isLoading: surveyDetailLoading } = useQuery<any>({
+    queryKey: ['survey', selectedSurveyResponse?.surveyId],
+    queryFn: () => surveyService.getSurvey(selectedSurveyResponse!.surveyId),
+    enabled: !!selectedSurveyResponse?.surveyId,
   })
 
   const employeeIds = useMemo(() => new Set(employees.map(e => e.id)), [employees])
@@ -898,6 +958,14 @@ export default function TenantDetail() {
                 >
                   <MessageSquare size={16} /> {waLookup?.ticket_id ? 'Ver conversación' : 'Abrir WhatsApp'}
                 </button>
+                <button
+                  className={styles.dropdownItem}
+                  onClick={handleDownloadReport}
+                  disabled={downloadingReport}
+                  title="Descargar informe consolidado de auditoría y salud en formato PDF"
+                >
+                  <FileDown size={16} /> {downloadingReport ? 'Generando PDF...' : 'Descargar reporte (PDF)'}
+                </button>
                 {canManage && (
                   <>
                     {tenant.is_active ? (
@@ -942,6 +1010,36 @@ export default function TenantDetail() {
           <div className={styles.sidebarCard}>
             <h2 className={styles.sidebarCardTitle}>Información Básica</h2>
             <div className={styles.sidebarFieldsList}>
+              {/* Asignación de Customer Success */}
+              <div className={styles.sidebarField} style={{ paddingBottom: '12px', borderBottom: '1px solid var(--glass-border, #e2e8f0)', marginBottom: '8px' }}>
+                <span className={styles.sidebarLabel} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <UserCheck size={14} style={{ color: 'var(--primary, #cc33cc)' }} /> Customer Success
+                </span>
+                {canManage ? (
+                  <div style={{ marginTop: '6px' }}>
+                    <Select
+                      fullWidth
+                      disabled={savingCS}
+                      value={tenant.assigned_cs_id ? String(tenant.assigned_cs_id) : ''}
+                      onChange={val => handleAssignCS(val ? Number(val) : 0)}
+                      placeholder="Seleccionar Customer Success..."
+                      options={[
+                        { value: '', label: '— Sin asignar —' },
+                        ...csUsers.map(u => ({
+                          value: String(u.id),
+                          label: `${u.name} (${u.user_type === 'superadmin' ? 'Superadmin' : 'Customer Success'})`,
+                        }))
+                      ]}
+                    />
+                  </div>
+                ) : (
+                  <span className={styles.sidebarFieldIconRow} style={{ marginTop: '4px', fontWeight: 500, color: tenant.assigned_cs_name ? 'var(--text-primary)' : '#94a3b8' }}>
+                    <User size={14} style={{ color: tenant.assigned_cs_name ? 'var(--primary)' : '#94a3b8', flexShrink: 0 }} />
+                    {tenant.assigned_cs_name || 'Sin asignar'}
+                  </span>
+                )}
+              </div>
+
               <div className={styles.sidebarField}>
                 <span className={styles.sidebarLabel}>Propietario</span>
                 <span className={styles.sidebarFieldIconRow}>
@@ -2253,70 +2351,164 @@ export default function TenantDetail() {
           </Button>
         }
       >
-        {selectedSurveyResponse && (
-          <div>
-            <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>
-                    {selectedSurveyResponse.user?.name || `Profesional #${selectedSurveyResponse.userId}`}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>
-                    {selectedSurveyResponse.user?.email || ''}
-                  </div>
-                </div>
-                <div style={{ fontSize: 12, color: '#64748b' }}>
-                  Respondida el {new Date(selectedSurveyResponse.completedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })} a las {new Date(selectedSurveyResponse.completedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
-              {selectedSurveyResponse.surveyDescription && (
-                <p style={{ fontSize: 13, color: '#475569', marginTop: 8, marginBottom: 0 }}>
-                  {selectedSurveyResponse.surveyDescription}
-                </p>
-              )}
-            </div>
+        {selectedSurveyResponse && (() => {
+          const activeSurvey = fullSurveyDetail || allSurveys.find((s: any) => s.id === selectedSurveyResponse.surveyId)
+          const activeResponse = activeSurvey?.responses?.find((r: any) => r.id === selectedSurveyResponse.responseId || r.user_id === selectedSurveyResponse.userId) || selectedSurveyResponse
+          const questions: any[] = activeSurvey?.questions || selectedSurveyResponse.questions || []
+          const rawAnswers: any[] = activeResponse?.answers || selectedSurveyResponse.answers || []
+          const respondent = activeResponse?.user || selectedSurveyResponse.user || employees.find(e => e.id === selectedSurveyResponse.userId)
 
-            <h4 style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 12 }}>
-              Preguntas y respuestas ({selectedSurveyResponse.questions?.length || 0})
-            </h4>
+          const sortedQuestions = [...questions].sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0))
+          const sortedAnswers = [...rawAnswers].sort((a: any, b: any) => {
+            const qA = questions.find((sq: any) => (sq.id || sq.ID) === (a.question_id || a.QuestionID))
+            const qB = questions.find((sq: any) => (sq.id || sq.ID) === (b.question_id || b.QuestionID))
+            return (qA?.order_index || 0) - (qB?.order_index || 0)
+          })
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {selectedSurveyResponse.questions?.map((q: any, idx: number) => {
-                const ans = selectedSurveyResponse.answers?.find((a: any) => a.question_id === q.id)
-                let displayVal = 'Sin respuesta'
-                if (ans) {
-                  if (ans.number_value !== undefined && ans.number_value !== null && ans.number_value !== 0) {
-                    displayVal = `${ans.number_value} / 5`
-                  } else if (ans.text_value) {
-                    try {
-                      const parsed = JSON.parse(ans.text_value)
-                      if (Array.isArray(parsed)) {
-                        displayVal = parsed.join(', ')
-                      } else if (typeof parsed === 'object' && parsed !== null) {
-                        displayVal = Object.entries(parsed).map(([k, v]) => `${k}: ${v}`).join(' · ')
-                      } else {
-                        displayVal = String(parsed)
-                      }
-                    } catch {
-                      displayVal = ans.text_value
-                    }
-                  }
+          const displayItems = sortedQuestions.length > 0
+            ? sortedQuestions.map((q, idx) => {
+                const ans = rawAnswers.find((a: any) => Number(a.question_id || a.QuestionID) === Number(q.id || q.ID))
+                return { question: q, answer: ans, index: idx }
+              })
+            : sortedAnswers.map((ans, idx) => {
+                const q = questions.find((sq: any) => Number(sq.id || sq.ID) === Number(ans.question_id || ans.QuestionID))
+                return { question: q, answer: ans, index: idx }
+              })
+
+          const renderAnswerValue = (q: any, ans: any) => {
+            if (!ans) {
+              return <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin respuesta</span>
+            }
+            if (q?.type === 'rating' || (ans.number_value !== undefined && ans.number_value !== null && ans.number_value > 0 && !ans.text_value)) {
+              return (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#fef3c7', border: '1px solid #fde68a', color: '#b45309', padding: '3px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 600 }}>
+                  ⭐ {ans.number_value} / 5
+                </span>
+              )
+            }
+            if (q?.type === 'linear_scale') {
+              return (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#e0e7ff', border: '1px solid #c7d2fe', color: '#4338ca', padding: '3px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: 600 }}>
+                  📊 Escala: {ans.number_value}
+                </span>
+              )
+            }
+            if (q?.type === 'checkbox') {
+              try {
+                const arr = JSON.parse(ans.text_value || '[]')
+                if (Array.isArray(arr) && arr.length > 0) {
+                  return (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {arr.map((val: string, vi: number) => (
+                        <span key={vi} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#7c3aed', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500 }}>
+                          {val}
+                        </span>
+                      ))}
+                    </div>
+                  )
                 }
-
+              } catch {}
+            }
+            if (q?.type === 'grid' || q?.type === 'checkbox_grid') {
+              try {
+                const obj = JSON.parse(ans.text_value || '{}')
                 return (
-                  <div key={q.id || idx} style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid #f1f5f9', background: '#ffffff', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginBottom: 6 }}>
-                      {idx + 1}. {q.text}
-                    </div>
-                    <div style={{ fontSize: 13, color: ans ? '#0f172a' : '#94a3b8', background: '#f8fafc', padding: '8px 12px', borderRadius: 6, border: '1px solid #edf2f7' }}>
-                      {displayVal}
-                    </div>
+                  <div style={{ background: '#fafafa', border: '1px solid #f1f5f9', borderRadius: '8px', padding: '8px 12px' }}>
+                    {Object.entries(obj).map(([row, val]: [string, any], oi: number) => (
+                      <div key={oi} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', padding: '4px 0', borderBottom: oi < Object.keys(obj).length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                        <span style={{ fontWeight: 500, color: '#475569' }}>{row}</span>
+                        <span style={{ color: '#1e293b', fontWeight: 600 }}>{Array.isArray(val) ? val.join(', ') : String(val)}</span>
+                      </div>
+                    ))}
                   </div>
                 )
-              })}
+              } catch {}
+            }
+            if (ans.text_value) {
+              try {
+                const parsed = JSON.parse(ans.text_value)
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  return (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {parsed.map((val: string, vi: number) => (
+                        <span key={vi} style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#7c3aed', padding: '3px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500 }}>
+                          {val}
+                        </span>
+                      ))}
+                    </div>
+                  )
+                }
+              } catch {}
+            }
+            return <span style={{ color: '#1e293b' }}>{ans.text_value || (ans.number_value !== undefined && ans.number_value !== null ? String(ans.number_value) : '—')}</span>
+          }
+
+          return (
+            <div>
+              <div style={{ padding: '14px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Avatar name={respondent?.name || `Profesional #${selectedSurveyResponse.userId}`} size="md" />
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>
+                          {respondent?.name || `Profesional #${selectedSurveyResponse.userId}`}
+                        </span>
+                        {respondent?.user_type && (
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#7c3aed', background: '#f5f3ff', padding: '1px 7px', borderRadius: 4 }}>
+                            {respondent.user_type === 'profesional' ? 'Profesional' : respondent.user_type === 'empleador' ? 'Empresa' : respondent.user_type}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>
+                        {respondent?.email || ''}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <CheckCircle2 size={14} color="#10b981" />
+                    Respondida el {new Date(selectedSurveyResponse.completedAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })} a las {new Date(selectedSurveyResponse.completedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+                {(activeSurvey?.description || selectedSurveyResponse.surveyDescription) && (
+                  <p style={{ fontSize: 13, color: '#475569', marginTop: 10, marginBottom: 0, borderTop: '1px solid #edf2f7', paddingTop: 8 }}>
+                    {activeSurvey?.description || selectedSurveyResponse.surveyDescription}
+                  </p>
+                )}
+              </div>
+
+              <h4 style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 14 }}>
+                Preguntas y respuestas ({displayItems.length})
+              </h4>
+
+              {surveyDetailLoading && !fullSurveyDetail ? (
+                <div style={{ padding: '24px 0', textAlign: 'center', color: '#64748b' }}>
+                  Cargando respuestas...
+                </div>
+              ) : displayItems.length === 0 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center', color: '#94a3b8' }}>
+                  No se encontraron preguntas o respuestas registradas.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {displayItems.map(({ question: q, answer: ans, index: idx }) => {
+                    const qTitle = q?.text ? `${idx + 1}. ${q.text}` : `Pregunta ${idx + 1}`
+                    return (
+                      <div key={q?.id || ans?.id || idx} style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid #f1f5f9', background: '#ffffff', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginBottom: 6 }}>
+                          {qTitle}
+                        </div>
+                        <div style={{ fontSize: 13, color: '#0f172a', background: '#f8fafc', padding: '10px 14px', borderRadius: 6, border: '1px solid #edf2f7' }}>
+                          {renderAnswerValue(q, ans)}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )
+        })()}
       </Modal>
 
       <Modal

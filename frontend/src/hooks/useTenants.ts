@@ -40,6 +40,7 @@ export function useTenants(): UseTenantsReturn {
       const res = await adminService.getTenants()
       return Array.isArray(res) ? (res as Tenant[]) : []
     },
+    refetchOnMount: 'always',
   })
 
   const createMut = useMutation({

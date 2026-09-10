@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react'
-import { Upload, FileCheck2, Eye, Loader2 } from 'lucide-react'
+import React, { useRef, useState, useEffect } from 'react'
+import { Upload, FileCheck2, Eye, Loader2, Plus, Trash2, PhoneCall, Calendar } from 'lucide-react'
 import { userService, uploadService } from '../../services/api'
 import type { User } from '../../types'
 import Tooltip from '../Common/Tooltip'
@@ -14,6 +14,20 @@ interface ProfileFormProps {
   setIsEditing: (val: boolean) => void
 }
 
+const formatBirthDate = (dateStr?: string | null): string => {
+  if (!dateStr) return 'No registrada'
+  const clean = dateStr.split('T')[0]
+  const [y, m, d] = clean.split('-')
+  if (!y || !m || !d) return clean
+  return `${d}/${m}/${y}`
+}
+
+const parseEmergencyPhones = (raw?: string | null): string[] => {
+  if (!raw) return ['']
+  const list = raw.split(',').map(s => s.trim()).filter(Boolean)
+  return list.length > 0 ? list : ['']
+}
+
 export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isUploadingDoc, setIsUploadingDoc] = useState(false)
@@ -22,6 +36,8 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
   const [formData, setFormData] = useState({
     name: user.name || '',
     phone_number: user.phone_number || '',
+    birth_date: user.birth_date ? user.birth_date.split('T')[0] : '',
+    emergency_phones_list: parseEmergencyPhones(user.emergency_phones),
     country: user.country || '',
     state: user.state || '',
     city: user.city || '',
@@ -30,13 +46,64 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
     identity_document: user.identity_document || '',
   })
 
+  useEffect(() => {
+    setFormData({
+      name: user.name || '',
+      phone_number: user.phone_number || '',
+      birth_date: user.birth_date ? user.birth_date.split('T')[0] : '',
+      emergency_phones_list: parseEmergencyPhones(user.emergency_phones),
+      country: user.country || '',
+      state: user.state || '',
+      city: user.city || '',
+      location: user.location || '',
+      job_title: user.job_title || '',
+      identity_document: user.identity_document || '',
+    })
+  }, [user])
+
+  const handleAddEmergencyPhone = () => {
+    setFormData(prev => ({
+      ...prev,
+      emergency_phones_list: [...prev.emergency_phones_list, '']
+    }))
+  }
+
+  const handleRemoveEmergencyPhone = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      emergency_phones_list: prev.emergency_phones_list.filter((_, i) => i !== index)
+    }))
+  }
+
+  const handleEmergencyPhoneChange = (index: number, val: string) => {
+    setFormData(prev => {
+      const copy = [...prev.emergency_phones_list]
+      copy[index] = val
+      return { ...prev, emergency_phones_list: copy }
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setMessage({ type: '', text: '' })
 
+    const cleanPhones = formData.emergency_phones_list.map(p => p.trim()).filter(Boolean).join(', ')
+
     try {
-      const updatedUser = await userService.update(user.id, formData)
+      const payload: Partial<User> = {
+        name: formData.name,
+        phone_number: formData.phone_number,
+        birth_date: formData.birth_date || null,
+        emergency_phones: cleanPhones || null,
+        country: formData.country,
+        state: formData.state,
+        city: formData.city,
+        location: formData.location,
+        job_title: formData.job_title,
+        identity_document: formData.identity_document,
+      }
+      const updatedUser = await userService.update(user.id, payload)
       setUser(updatedUser)
       setMessage({ type: 'success', text: 'Perfil actualizado correctamente' })
       setIsEditing(false)
@@ -92,6 +159,8 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
     ? baseStateOptions
     : [{ value: formData.state, label: formData.state }, ...baseStateOptions]
 
+  const emergencyPhonesDisplay = (user.emergency_phones || '').split(',').map(s => s.trim()).filter(Boolean)
+
   return (
     <div className={styles['info-card']}>
       <div className={styles['card-header']}>
@@ -120,12 +189,94 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
               />
             </div>
             <div className={styles['form-group']}>
-              <label>Teléfono</label>
+              <label>Teléfono personal</label>
               <input
                 type="tel"
                 value={formData.phone_number}
                 onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                placeholder="Ej: +34 600 000 000"
               />
+            </div>
+          </div>
+
+          <div className={styles['form-row']}>
+            <div className={styles['form-group']}>
+              <label>Fecha de nacimiento</label>
+              <input
+                type="date"
+                value={formData.birth_date}
+                onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                max={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div className={styles['form-group']}>
+              <label>Puesto / Cargo</label>
+              <input
+                type="text"
+                value={formData.job_title}
+                onChange={(e) => setFormData({ ...formData, job_title: e.target.value })}
+                placeholder="Ej: Desarrollador Frontend"
+              />
+            </div>
+          </div>
+
+          {/* Números de emergencia */}
+          <div className={styles['form-group']}>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span>Número(s) de emergencia</span>
+              <button
+                type="button"
+                onClick={handleAddEmergencyPhone}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary, #cc33cc)',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: 0
+                }}
+              >
+                <Plus size={14} /> Añadir otro número
+              </button>
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {formData.emergency_phones_list.map((phone, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => handleEmergencyPhoneChange(idx, e.target.value)}
+                    placeholder={`Teléfono de emergencia ${idx + 1} (ej: +34 611 222 333 - Mamá)...`}
+                    style={{ flex: 1 }}
+                  />
+                  {formData.emergency_phones_list.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveEmergencyPhone(idx)}
+                      title="Eliminar número"
+                      style={{
+                        background: '#fee2e2',
+                        border: '1px solid #fca5a5',
+                        color: '#ef4444',
+                        borderRadius: '8px',
+                        width: '36px',
+                        height: '38px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        flexShrink: 0
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
@@ -162,16 +313,6 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
                 onChange={(e) => setFormData({ ...formData, city: e.target.value })}
               />
             </div>
-          </div>
-
-          <div className={styles['form-group']}>
-            <label>Puesto / Cargo</label>
-            <input
-              type="text"
-              value={formData.job_title}
-              onChange={(e) => setFormData({ ...formData, job_title: e.target.value })}
-              placeholder="Ej: Desarrollador Frontend"
-            />
           </div>
 
           <div className={styles['form-group']}>
@@ -255,6 +396,36 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
             <span className={styles['info-value']}>{user.phone_number || 'No registrado'}</span>
           </div>
           <div className={styles['info-item']}>
+            <span className={styles['info-label']}>Fecha de nacimiento</span>
+            <span className={styles['info-value']}>
+              {user.birth_date ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <Calendar size={13} style={{ color: 'var(--primary, #cc33cc)', flexShrink: 0 }} />
+                  {formatBirthDate(user.birth_date)}
+                </span>
+              ) : (
+                'No registrada'
+              )}
+            </span>
+          </div>
+          <div className={styles['info-item']}>
+            <span className={styles['info-label']}>Contacto(s) de emergencia</span>
+            <span className={styles['info-value']}>
+              {emergencyPhonesDisplay.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {emergencyPhonesDisplay.map((ph, idx) => (
+                    <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <PhoneCall size={13} style={{ color: '#ef4444', flexShrink: 0 }} />
+                      {ph}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                'No registrado'
+              )}
+            </span>
+          </div>
+          <div className={styles['info-item']}>
             <span className={styles['info-label']}>País</span>
             <span className={styles['info-value']}>{user.country || 'No registrado'}</span>
           </div>
@@ -299,3 +470,4 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
     </div>
   )
 }
+

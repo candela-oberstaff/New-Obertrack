@@ -209,6 +209,28 @@ export const adminService = {
     const { data } = await api.get('/admin/tenants')
     return data
   },
+  /** Asigna (csId > 0) o desasigna (csId = 0) un Customer Success a una empresa. */
+  assignCSToTenant: async (tenantId: number, csId: number) => {
+    const { data } = await api.put(`/admin/tenants/${tenantId}/assign-cs`, { cs_id: csId })
+    return data
+  },
+  /** Lista los usuarios con rol customer_success y superadmin (para el selector de Customer Success). */
+  getCSUsers: async (): Promise<{ id: number; name: string; email: string; user_type?: string; avatar?: string }[]> => {
+    const [csRes, saRes] = await Promise.allSettled([
+      api.get('/admin/users', { params: { user_type: 'customer_success', is_active: 'true', limit: 100 } }),
+      api.get('/admin/users', { params: { user_type: 'superadmin', is_active: 'true', limit: 100 } }),
+    ])
+    const csList = csRes.status === 'fulfilled' ? (csRes.value.data?.data ?? (Array.isArray(csRes.value.data) ? csRes.value.data : [])) : []
+    const saList = saRes.status === 'fulfilled' ? (saRes.value.data?.data ?? (Array.isArray(saRes.value.data) ? saRes.value.data : [])) : []
+
+    const map = new Map<number, any>()
+    for (const u of [...csList, ...saList]) {
+      if (u && u.id && !map.has(u.id)) {
+        map.set(u.id, u)
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+  },
   importPreview: async (file: File) => {
     const fd = new FormData()
     fd.append('file', file)
@@ -592,4 +614,18 @@ export const adminService = {
     const { data } = await api.post(`/admin/tenants/${id}/activate`)
     return data
   },
+  downloadTenantReportPDF: async (tenantId: number, filename?: string) => {
+    const { data } = await api.get<Blob>(`/admin/tenants/${tenantId}/report/pdf`, {
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || `empresa_${tenantId}_reporte_auditoria.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  },
 }
+

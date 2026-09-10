@@ -201,6 +201,8 @@ type TenantSummary struct {
 	// respuesta honesta en ambos casos.
 	LastContactAt  *time.Time `json:"last_contact_at,omitempty"`
 	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
+	AssignedCSID   *uint      `json:"assigned_cs_id,omitempty"`
+	AssignedCSName string     `json:"assigned_cs_name"`
 }
 
 // TenantTicket es un ticket visto desde la ficha de la empresa. Aplana lo justo
@@ -263,6 +265,26 @@ type EmployeeSummary struct {
 	ScheduleDays      string    `json:"schedule_days"`
 	ScheduleStartTime string    `json:"schedule_start_time"`
 	ScheduleEndTime   string    `json:"schedule_end_time"`
+}
+
+type TenantSurveyAnswerItem struct {
+	QuestionText string `json:"question_text"`
+	QuestionType string `json:"question_type"`
+	TextValue    string `json:"text_value"`
+	NumberValue  int    `json:"number_value"`
+}
+
+type TenantSurveyReportItem struct {
+	ResponseID   uint                     `json:"response_id"`
+	SurveyID     uint                     `json:"survey_id"`
+	SurveyTitle  string                   `json:"survey_title"`
+	SurveyKind   string                   `json:"survey_kind"`
+	PassingScore int                      `json:"passing_score"`
+	UserID       uint                     `json:"user_id"`
+	UserName     string                   `json:"user_name"`
+	UserEmail    string                   `json:"user_email"`
+	CompletedAt  time.Time                `json:"completed_at"`
+	Answers      []TenantSurveyAnswerItem `json:"answers"`
 }
 
 type EmployeeWorkHour struct {
@@ -356,6 +378,10 @@ type AdminRepository interface {
 
 	// Archivados: bajas de empleo + cuentas desactivadas. tenantID=0 = global.
 	GetArchived(tenantID uint) ([]ArchivedEntry, error)
+	// AssignCSToTenant asigna (o desasigna con csID=0) un Customer Success a una empresa.
+	AssignCSToTenant(tenantID, csID uint) error
+	// GetTenantSurveyReport obtiene las respuestas y encuestas de profesionales de la empresa.
+	GetTenantSurveyReport(tenantID uint) ([]TenantSurveyReportItem, error)
 }
 
 type adminRepository struct {
@@ -871,7 +897,9 @@ const tenantSelect = `
 				WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL),
 			(SELECT MAX(t2.created_at) FROM tasks t2
 				WHERE t2.tenant_id = u.id AND t2.deleted_at IS NULL)
-		) as last_activity_at
+		) as last_activity_at,
+		u.assigned_cs_id,
+		COALESCE((SELECT cs.name FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_name
 	FROM users u
 	LEFT JOIN users m ON m.empleador_id = u.id AND m.deleted_at IS NULL
 	LEFT JOIN boards b ON b.tenant_id = u.id AND b.deleted_at IS NULL
@@ -1367,3 +1395,85 @@ func (r *adminRepository) DeleteEmployeeSchedule(tenantID, userID uint) error {
 		WHERE company_id = ? AND user_id = ? AND status = 'active' AND deleted_at IS NULL
 	`, tenantID, userID).Error
 }
+
+// AssignCSToTenant asigna (o desasigna) un Customer Success a una empresa.
+// csID == 0 → se borra la asignación (assigned_cs_id = NULL).
+func (r *adminRepository) AssignCSToTenant(tenantID, csID uint) error {
+	if csID == 0 {
+		return r.db.Exec(
+			`UPDATE users SET assigned_cs_id = NULL WHERE id = ? AND deleted_at IS NULL`,
+			tenantID,
+		).Error
+	}
+	return r.db.Exec(
+		`UPDATE users SET assigned_cs_id = ? WHERE id = ? AND deleted_at IS NULL`,
+		csID, tenantID,
+	).Error
+}
+
+func (r *adminRepository) GetTenantSurveyReport(tenantID uint) ([]TenantSurveyReportItem, error) {
+	var responses []models.SurveyResponse
+	err := r.db.Preload("Answers.Question").Preload("User").
+		Joins("JOIN users ON users.id = survey_responses.user_id").
+		Where("users.empleador_id = ? AND users.deleted_at IS NULL", tenantID).
+		Order("survey_responses.created_at DESC").
+		Limit(100).
+		Find(&responses).Error
+	if err != nil {
+		return nil, err
+	}
+
+	if len(responses) == 0 {
+		return []TenantSurveyReportItem{}, nil
+	}
+
+	surveyIDs := make([]uint, 0, len(responses))
+	for _, res := range responses {
+		surveyIDs = append(surveyIDs, res.SurveyID)
+	}
+
+	var surveys []models.Survey
+	if err := r.db.Where("id IN ?", surveyIDs).Find(&surveys).Error; err != nil {
+		return nil, err
+	}
+
+	surveyMap := make(map[uint]models.Survey, len(surveys))
+	for _, s := range surveys {
+		surveyMap[s.ID] = s
+	}
+
+	result := make([]TenantSurveyReportItem, 0, len(responses))
+	for _, res := range responses {
+		surv := surveyMap[res.SurveyID]
+		completed := res.CreatedAt
+		if res.CompletedAt != nil && !res.CompletedAt.IsZero() {
+			completed = *res.CompletedAt
+		}
+
+		item := TenantSurveyReportItem{
+			ResponseID:   res.ID,
+			SurveyID:     res.SurveyID,
+			SurveyTitle:  surv.Title,
+			SurveyKind:   surv.Kind,
+			PassingScore: surv.PassingScore,
+			UserID:       res.UserID,
+			UserName:     res.User.Name,
+			UserEmail:    res.User.Email,
+			CompletedAt:  completed,
+			Answers:      make([]TenantSurveyAnswerItem, 0, len(res.Answers)),
+		}
+
+		for _, ans := range res.Answers {
+			item.Answers = append(item.Answers, TenantSurveyAnswerItem{
+				QuestionText: ans.Question.Text,
+				QuestionType: string(ans.Question.Type),
+				TextValue:    ans.TextValue,
+				NumberValue:  ans.NumberValue,
+			})
+		}
+		result = append(result, item)
+	}
+
+	return result, nil
+}
+
