@@ -1,5 +1,4 @@
-/// <reference types="vitest/config" />
-import { defineConfig } from 'vite'
+import { defineConfig, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
@@ -15,6 +14,21 @@ export default defineConfig({
     drop: ['debugger'],
     pure: ['console.log', 'console.debug', 'console.info'],
   },
+  build: {
+    target: 'esnext',
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-charts': ['recharts'],
+          'vendor-geo': ['country-state-city', 'leaflet', 'react-leaflet'],
+          'vendor-icons': ['lucide-react'],
+          'vendor-query': ['@tanstack/react-query', 'axios'],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
@@ -28,4 +42,4 @@ export default defineConfig({
       },
     },
   },
-})
+} as UserConfig & { test?: Record<string, any> })

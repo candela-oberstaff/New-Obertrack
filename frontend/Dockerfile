@@ -10,6 +10,7 @@ RUN npm ci || npm install
 
 # Copy source code and build
 COPY . .
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm run build
 
 # Run stage — unprivileged Nginx image (runs as uid 101, listens on 8080)
