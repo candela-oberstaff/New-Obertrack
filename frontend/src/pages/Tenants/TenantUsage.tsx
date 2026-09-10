@@ -20,6 +20,7 @@ import {
   moduleLabel,
   Pager,
   trackedDaysFrom,
+  USAGE_PAGE_SIZE,
   UsageNotice,
 } from '../../components/Admin/Metrics/usageShared';
 import { healthSignal, HEALTH_COLOR } from './accountHealth';
@@ -62,14 +63,14 @@ export function TenantUsage({ companyId, companyName }: TenantUsageProps) {
 
   const { data: people } = useQuery({
     queryKey: ['tenant-usage-people', companyId, days, page],
-    queryFn: () => usageService.getPeople({ days, companyId, page, limit: 25 }),
+    queryFn: () => usageService.getPeople({ days, companyId, page, limit: USAGE_PAGE_SIZE }),
     enabled: companyId > 0 && board === 'people',
     placeholderData: (prev) => prev,
   });
 
   const { data: activation } = useQuery({
     queryKey: ['tenant-usage-activation', companyId, page],
-    queryFn: () => usageService.getActivation('clients', page, 25, companyId),
+    queryFn: () => usageService.getActivation('clients', page, USAGE_PAGE_SIZE, companyId),
     enabled: companyId > 0,
     placeholderData: (prev) => prev,
   });

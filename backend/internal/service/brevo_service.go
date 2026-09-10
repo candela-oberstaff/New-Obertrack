@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrEmailKindDisabled lo devuelve un envío cuyo TIPO está apagado en
@@ -25,6 +26,24 @@ import (
 // Quien no le importe lo descarta con errors.Is; quien tenga a alguien delante
 // lo muestra.
 var ErrEmailKindDisabled = errors.New("el tipo de correo está desactivado en Configuración → Correos")
+
+// brevoTimeout acota CUÁNTO puede tardar una llamada a Brevo.
+//
+// Sin él, `&http.Client{}` espera indefinidamente: ese es el valor por defecto
+// de Go, no "sin límite razonable". Y estos envíos NO son todos en segundo
+// plano —el webhook de contratación de Obersuite manda la inducción dentro de
+// la petición—, así que un Brevo colgado dejaba colgada la petición entera. Del
+// otro lado eso mantiene abierta una transacción con la fila de la candidatura
+// bloqueada, así que el cuelgue se propaga a un sistema que no es nuestro.
+//
+// 15 segundos es holgado para una API transaccional que responde en menos de
+// uno. Se puede ajustar sin recompilar si algún entorno lo necesita.
+var brevoTimeout = time.Duration(envInt("BREVO_TIMEOUT_S", 15)) * time.Second
+
+// brevoClient se comparte entre envíos a propósito. Crear un http.Client por
+// llamada —como se hacía— estrena un pool de conexiones cada vez: ni reutiliza
+// la conexión TLS ni respeta ningún límite de conexiones abiertas.
+var brevoClient = &http.Client{Timeout: brevoTimeout}
 
 // BrevoService handles email dispatch via the Brevo (Sendinblue) Transactional API.
 type BrevoService struct {
@@ -321,8 +340,7 @@ func (s *BrevoService) post(payload any, que string) error {
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("api-key", s.apiKey)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := brevoClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request to Brevo: %w", err)
 	}
@@ -365,8 +383,7 @@ func (s *BrevoService) SendEmailWithAttachments(toEmail, toName, subject, htmlCo
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("api-key", s.apiKey)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := brevoClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request to Brevo: %w", err)
 	}

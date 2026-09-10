@@ -1776,11 +1776,15 @@ func parseDatePtr(s string) *time.Time {
 func (h *AdminHandler) AddEmploymentDocument(c *gin.Context) {
 	empID, _ := strconv.ParseUint(c.Param("empId"), 10, 32)
 	var req struct {
-		Title      string `json:"title"`
-		FileName   string `json:"file_name" binding:"required"`
-		FileURL    string `json:"file_url" binding:"required"`
-		FileSize   int64  `json:"file_size"`
-		MimeType   string `json:"mime_type"`
+		Title    string `json:"title"`
+		FileName string `json:"file_name" binding:"required"`
+		FileURL  string `json:"file_url" binding:"required"`
+		FileSize int64  `json:"file_size"`
+		MimeType string `json:"mime_type"`
+		// NoteID cuelga el archivo de una evaluación o anotación concreta. Sin
+		// él, el documento es del expediente en general (contrato, certificado).
+		// Cuando viene, la visibilidad la manda la nota y este campo se ignora.
+		NoteID     *uint  `json:"note_id"`
 		Visibility string `json:"visibility"`
 		ExpiresAt  string `json:"expires_at"`
 	}
@@ -1788,7 +1792,7 @@ func (h *AdminHandler) AddEmploymentDocument(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	doc, err := h.employmentSvc.AddDocument(uint(empID), middleware.GetUserID(c), req.Title, req.FileName, req.FileURL, req.FileSize, req.MimeType, req.Visibility, parseDatePtr(req.ExpiresAt))
+	doc, err := h.employmentSvc.AddDocument(uint(empID), middleware.GetUserID(c), req.NoteID, req.Title, req.FileName, req.FileURL, req.FileSize, req.MimeType, req.Visibility, parseDatePtr(req.ExpiresAt))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

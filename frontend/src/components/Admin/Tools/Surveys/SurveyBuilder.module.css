@@ -870,3 +870,64 @@
   font-weight: 500;
   background: #fafafa;
 }
+
+/* ── A quién le va a llegar ───────────────────────────────────────────────
+   El filtro oculta a los ya elegidos, así que la selección tiene que verse
+   entera aunque no quepa en la lista de abajo. */
+
+.selectionSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.selectionChip {
+  font-size: 11.5px;
+  color: #4c1d95;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: 99px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.selectionChip strong {
+  font-weight: 800;
+  margin-left: 2px;
+}
+
+.selectionWarning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.selectionWarning svg {
+  flex-shrink: 0;
+}
+
+.selectionWarning button {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 1px solid #fcd34d;
+  background: #fff;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.selectionWarning button:hover {
+  background: #fef3c7;
+}

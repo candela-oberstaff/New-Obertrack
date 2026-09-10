@@ -55,6 +55,16 @@ type EmploymentDocument struct {
 	ID           uint   `gorm:"primaryKey" json:"id"`
 	EmploymentID uint   `gorm:"not null;index" json:"employment_id"`
 	UploadedBy   uint   `gorm:"not null" json:"uploaded_by"`
+	// NoteID enlaza el archivo con UNA evaluación o anotación concreta: el
+	// informe firmado que sostiene una evaluación, la foto de un incidente que
+	// se está describiendo. Nulo = documento suelto del expediente (contrato,
+	// certificado), que es como funcionaba todo hasta ahora.
+	//
+	// Un adjunto de nota NO tiene visibilidad propia: hereda la de su nota (ver
+	// employment_service.AddDocument). Si pudiera divergir, una nota interna
+	// marcada como privada podría llevar colgada la prueba en la que se apoya
+	// visible para el profesional, que es la peor forma de filtrar algo.
+	NoteID *uint `gorm:"index" json:"note_id,omitempty"`
 	Title        string `gorm:"size:255" json:"title"`
 	FileName     string `gorm:"size:255;not null" json:"file_name"`
 	FileURL      string `gorm:"size:512;not null" json:"file_url"`

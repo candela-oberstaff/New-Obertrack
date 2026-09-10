@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"time"
 
@@ -175,7 +176,7 @@ type EmploymentService interface {
 	GetExpediente(employmentID uint, audience string) (*ExpedienteView, error)
 	AddNote(employmentID, authorID uint, kind string, rating *int, content, visibility string) (*models.EmploymentNote, error)
 	DeleteNote(noteID uint) error
-	AddDocument(employmentID, uploaderID uint, title, fileName, fileURL string, fileSize int64, mimeType, visibility string, expiresAt *time.Time) (*models.EmploymentDocument, error)
+	AddDocument(employmentID, uploaderID uint, noteID *uint, title, fileName, fileURL string, fileSize int64, mimeType, visibility string, expiresAt *time.Time) (*models.EmploymentDocument, error)
 	DeleteDocument(docID uint) error
 	// DocumentForDownload devuelve un documento si el solicitante puede verlo: la
 	// empresa (RR.HH.) ve todo; el profesional solo los compartidos de su empleo.
@@ -1038,6 +1039,13 @@ func (s *employmentService) UpdateNote(noteID uint, kind string, rating *int, co
 	}); err != nil {
 		return nil, err
 	}
+	// Los adjuntos siguen a su nota en el mismo movimiento: si se deja de
+	// compartir una evaluación, el informe que la sostiene deja de verse con ella.
+	if vis != note.Visibility {
+		if err := s.repo.UpdateDocumentsOfNote(noteID, map[string]interface{}{"visibility": vis}); err != nil {
+			log.Printf("[expediente] no se pudo propagar la visibilidad a los adjuntos de la nota %d: %v", noteID, err)
+		}
+	}
 	if vis == models.ExpedienteShared && !wasShared {
 		s.notifyShared(note.EmploymentID, noteWord(kind))
 	}
@@ -1049,25 +1057,53 @@ func (s *employmentService) DeleteNote(noteID uint) error {
 	if _, err := s.repo.GetNote(noteID); err != nil {
 		return errors.New("Nota no encontrada")
 	}
+	// Los adjuntos NO se borran con la nota: se sueltan y quedan como
+	// documentos del expediente. Un archivo que alguien subió a mano no debe
+	// desaparecer como efecto lateral de borrar el texto que lo acompañaba —y
+	// si de verdad sobra, se borra desde su propia fila, que ya existe.
+	if err := s.repo.DetachDocumentsOfNote(noteID); err != nil {
+		return err
+	}
 	return s.repo.DeleteNote(noteID)
 }
 
-func (s *employmentService) AddDocument(employmentID, uploaderID uint, title, fileName, fileURL string, fileSize int64, mimeType, visibility string, expiresAt *time.Time) (*models.EmploymentDocument, error) {
+func (s *employmentService) AddDocument(employmentID, uploaderID uint, noteID *uint, title, fileName, fileURL string, fileSize int64, mimeType, visibility string, expiresAt *time.Time) (*models.EmploymentDocument, error) {
 	if _, err := s.repo.GetByID(employmentID); err != nil {
 		return nil, errors.New("Empleo no encontrado")
 	}
 	if fileURL == "" || fileName == "" {
 		return nil, errors.New("Falta el archivo")
 	}
+
+	vis := normalizeVisibility(visibility)
+	if noteID != nil {
+		note, err := s.repo.GetNote(*noteID)
+		if err != nil {
+			return nil, errors.New("La nota a la que se adjunta no existe")
+		}
+		// La nota tiene que ser de ESTE empleo. Sin esta comprobación, un id de
+		// nota ajeno colgaría el archivo del expediente de otra persona: el
+		// documento se guardaría con este employment_id pero aparecería bajo
+		// una nota que no es suya.
+		if note.EmploymentID != employmentID {
+			return nil, errors.New("La nota pertenece a otro expediente")
+		}
+		// El adjunto NO decide quién lo ve: lo hereda de su nota. Una nota
+		// interna con la prueba en la que se apoya marcada como compartida
+		// sería filtrar justo lo que se quiso reservar.
+		vis = note.Visibility
+	}
+
 	doc := &models.EmploymentDocument{
 		EmploymentID: employmentID,
 		UploadedBy:   uploaderID,
+		NoteID:       noteID,
 		Title:        utils.SanitizeHTML(title),
 		FileName:     fileName,
 		FileURL:      fileURL,
 		FileSize:     fileSize,
 		MimeType:     mimeType,
-		Visibility:   normalizeVisibility(visibility),
+		Visibility:   vis,
 		ExpiresAt:    expiresAt,
 	}
 	if err := s.repo.CreateDocument(doc); err != nil {

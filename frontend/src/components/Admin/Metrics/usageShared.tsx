@@ -44,6 +44,20 @@ export const MODULE_LABELS: Record<string, string> = {
 export const moduleLabel = (key: string) => MODULE_LABELS[key] ?? key;
 
 /**
+ * Filas por página en las tablas de uso.
+ *
+ * Setenta y no veinticinco: estas tablas se recorren buscando un nombre o una
+ * empresa concreta, y con páginas cortas la búsqueda se convierte en pulsar
+ * "Siguiente" muchas veces. Setenta filas de texto se desplazan más rápido de
+ * lo que se pagina, y el backend acota igual la consulta.
+ *
+ * Vive aquí para que las cuatro tablas y sus paginadores no se desincronicen:
+ * si la lista pide 70 y el paginador cuenta de 25, el botón "Siguiente" se
+ * apaga con contenido todavía por ver.
+ */
+export const USAGE_PAGE_SIZE = 70;
+
+/**
  * Semáforo por porcentaje de uso. Los cortes son los que usa el equipo al
  * hablar: o la usa la mayoría, o la usa una parte, o no la usa nadie —y ese
  * último caso es el que hay que ver primero—.
@@ -172,7 +186,7 @@ export const Pager: React.FC<{
   noun: string;
   pageSize?: number;
   onPage: (fn: (p: number) => number) => void;
-}> = ({ total, page, shown, noun, pageSize = 25, onPage }) => (
+}> = ({ total, page, shown, noun, pageSize = USAGE_PAGE_SIZE, onPage }) => (
   <div className={styles.pager}>
     <span>
       {total} {noun}{total === 1 ? '' : 's'}

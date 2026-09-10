@@ -98,6 +98,14 @@ type EmploymentRepository interface {
 	GetDocument(id uint) (*models.EmploymentDocument, error)
 	UpdateDocument(doc *models.EmploymentDocument, updates map[string]interface{}) error
 	DeleteDocument(id uint) error
+	// UpdateDocumentsOfNote aplica un cambio a TODOS los adjuntos de una nota.
+	// Lo usa la herencia de visibilidad: al cambiar quién ve la nota, sus
+	// pruebas tienen que seguirla en el mismo movimiento.
+	UpdateDocumentsOfNote(noteID uint, updates map[string]interface{}) error
+	// DetachDocumentsOfNote suelta los adjuntos de una nota borrada dejándolos
+	// como documentos del expediente. Se prefiere a borrarlos: un archivo que
+	// alguien subió no debe desaparecer por un efecto lateral.
+	DetachDocumentsOfNote(noteID uint) error
 	// CountTasks devuelve (asignadas, completadas) para un usuario dentro de un
 	// tenant; alimenta el resumen congelado al terminar un empleo.
 	CountTasks(userID, tenantID uint) (assigned int64, completed int64, err error)
@@ -585,6 +593,18 @@ func (r *employmentRepository) UpdateDocument(doc *models.EmploymentDocument, up
 
 func (r *employmentRepository) DeleteDocument(id uint) error {
 	return r.db.Delete(&models.EmploymentDocument{}, id).Error
+}
+
+func (r *employmentRepository) UpdateDocumentsOfNote(noteID uint, updates map[string]interface{}) error {
+	return r.db.Model(&models.EmploymentDocument{}).
+		Where("note_id = ?", noteID).
+		Updates(updates).Error
+}
+
+func (r *employmentRepository) DetachDocumentsOfNote(noteID uint) error {
+	return r.db.Model(&models.EmploymentDocument{}).
+		Where("note_id = ?", noteID).
+		Update("note_id", nil).Error
 }
 
 // CountTasks cuenta las tareas asignadas y completadas de un usuario dentro de
