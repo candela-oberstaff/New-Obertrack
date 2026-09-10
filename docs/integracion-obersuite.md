@@ -45,7 +45,13 @@ que no sea 2xx significa que algo salió mal".
 ## 2. `GET /version` — qué está desplegado
 
 ```json
-{ "service": "obertrack", "commit": "a1b2c3d", "payload_schema_version": 3 }
+{
+  "service": "obertrack",
+  "commit": "ea245b64",
+  "commit_source": "SOURCE_COMMIT",
+  "payload_schema_version": 3,
+  "started_at": "2026-09-10T18:15:45Z"
+}
 ```
 
 Existe porque el fallo más caro de esta integración no fue de código: fue que
@@ -53,16 +59,29 @@ ninguno de los dos lados podía saber si un cambio había llegado a producción.
 deducía mirando el JSON recibido o contando bytes de respuesta, y se llegó a dar
 por desplegado algo que seguía sin subir.
 
-- `commit` sale de `BUILD_COMMIT` (que la imagen recibe como `--build-arg`) o de
-  la información que Go incrusta al compilar desde git. Si no hay ninguna de las
-  dos, dice `"desconocido"` — nunca vacío, porque un campo vacío parece un fallo
-  y un campo ausente parece que no lo tenemos.
 - `payload_schema_version` sube cuando se añade, se quita o cambia de
   significado un campo del padrón. Historia: **1** ficha inicial · **2** se
   añaden `last_contact_at`, `updated_at` y ETag · **3** se retiran los campos
-  que nadie consumía.
+  que nadie consumía. **Este es el número que le importa a quien consume**: el
+  commit dice qué hay desplegado, la versión del esquema dice si le afecta.
+- `commit` se busca en `BUILD_COMMIT` (la nuestra, vía `--build-arg`) y después
+  en las que publica sola la plataforma: `SOURCE_COMMIT` (Coolify), `COMMIT_SHA`,
+  `GIT_COMMIT`, `GITHUB_SHA`. En desarrollo cae a lo que Go incrusta al compilar
+  desde git. Si no aparece por ningún lado dice `"desconocido"` en vez de
+  inventárselo: un commit falso es peor que ninguno, porque se le cree.
+- `commit_source` dice **de dónde** salió, y no es un adorno: un `"desconocido"`
+  y un commit real se leen igual de bien, así que sin el origen no se distingue
+  "no hay commit" de "el despliegue no publica la variable". Ese fue exactamente
+  nuestro caso en el primer despliegue con este endpoint. La idea es de
+  Obersuite, que lo resolvió antes en su lado.
+- `started_at` delata un reinicio que nadie pidió. Si sube solo, algo se está
+  cayendo y volviendo a levantar — y eso explica síntomas que, de otro modo, se
+  persiguen por el lado equivocado.
 
 Antes de abrir una incidencia por "esto no me llega", conviene mirar aquí.
+
+Obersuite expone lo simétrico en `GET /api/version`, con `contrato_obertrack`
+como su número de contrato hacia nosotros.
 
 ---
 
