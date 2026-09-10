@@ -333,9 +333,53 @@ Lo que hay que saber antes de construirlo:
   Success sobre el cliente**. `CompanyEvent` no tiene campo de visibilidad, así
   que ahí es todo o nada. Decidido el 10-sep-2026: Obersuite es interno de
   Oberstaff, se tratan los ocho bloques igual.
-- **Se construyen solo los bloques que Obersuite vaya a pintar de verdad.** Es la
-  lección de los diez campos retirados: lo que no se consume igual hay que
-  mantenerlo, y encima nadie se entera de que sobra.
+#### Las rutas
+
+Un bloque por ruta, bajo `/integrations/obersuite/companies/:id`. Sueltas y no
+en una respuesta con todo dentro porque las pestañas se abren de una en una: la
+que nadie abre no se pide, y entonces no cuesta nada.
+
+| Ruta | Pestaña | Devuelve |
+|---|---|---|
+| `GET .../:id` | cabecera | Ficha completa, **incluida la operación del mes** (horas, pendientes, rechazadas) que se retiró del padrón |
+| `GET .../:id/professionals` | Profesionales **y Horarios** | La plantilla. `schedule_type` y `schedule_days` viajan en cada fila: Horarios es una proyección de esta lista, no otro bloque |
+| `GET .../:id/org-chart` | Organigrama | El árbol completo, sin recorte por rol |
+| `GET .../:id/timeline` | **Expediente** | La cronología. `?category=`, `?person_id=`, `?page=` (50 por página) |
+| `GET .../:id/attention` | **Actividad** | Inactividad + ausencias. `?days=`, `?month=`, `?year=` |
+| `GET .../:id/tickets` | Tickets | Los de soporte, de cualquier origen |
+| `GET .../:id/archived` | Archivados | Empleos terminados y cuentas desactivadas |
+| `GET .../:id/usage` | Uso | Resumen, módulos y personas. `?days=` (30 por defecto), `?search=`, `?status=`, `?page=` |
+
+**Cuidado con los nombres de dos pestañas.** En nuestra pantalla "Actividad"
+**no** es la cronología: es el panel de inactividad y ausencias. La cronología
+es "Expediente". Están clonadas las etiquetas, así que es fácil cablear una en
+la otra y que parezca que funciona.
+
+Todos los bloques validan el `:id` aunque venga de un padrón que acabamos de
+servir: entre cachearlo y abrir una ficha pueden pasar horas. **404** si la
+empresa ya no está, **400** si el id no es un número. Consultar por un id
+inexistente devolvería listas vacías, que se leen como "esta empresa no tiene
+nada".
+
+**Los filtros del expediente viajan en la respuesta** (`categories`, con valor y
+etiqueta) en vez de dejar que el cliente los escriba. Es la defensa contra la
+deriva silenciosa: cuando aquí se renombra o se fusiona una categoría —pasó esta
+semana con `staff`, que se metió dentro de `lifecycle`— una lista repetida del
+otro lado sigue funcionando y enseñando un filtro que ya no devuelve nada. Lo
+protege `TestCategoriasDelExpediente_CoincidenConLasDelFrontend`, que lee el
+archivo del frontend y falla si las dos listas se separan.
+
+`counts` trae más claves que `categories`, a propósito: `staff` y `management`
+ya no se ofrecen como filtro pero sus movimientos siguen existiendo y se pueden
+pedir por `?category=`. **Los chips se pintan desde `categories`, nunca
+recorriendo las claves de `counts`.**
+
+#### Y lo que esto NO es
+
+Es **de solo lectura**. Un espejo va en un sentido: si alguien escribe una nota
+desde Obersuite, no vuelve. Conviene decirlo antes de que se prometa lo
+contrario, porque la pregunta que se hizo fue si los cambios en uno se ven en el
+otro, y la respuesta hoy es "los de aquí allí sí; los de allí aquí no".
 
 ---
 
