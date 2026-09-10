@@ -28,6 +28,17 @@ var (
 	// account sitting in the trash, since users.email is a plain unique index and
 	// a soft-deleted row keeps its address reserved (maps to HTTP 409).
 	ErrEmailTaken = errors.New("email already registered")
+	// ErrInternal indicates a failure on our side —base de datos, cifrado, algo
+	// inesperado— y NO culpa de quien llama (maps to HTTP 500). Es el único que
+	// un cliente debe reintentar: es lo único que puede arreglarse solo.
+	ErrInternal = errors.New("internal failure")
+	// ErrCompanySuspended indicates the target company exists but is suspended,
+	// so the action cannot proceed until someone reactivates it (maps to HTTP
+	// 422). It is deliberately distinct from ErrNotFound and ErrInvalidInput:
+	// the request is well formed and the company is real, so a caller that
+	// retries on 4xx must NOT retry this one — nothing it can send will change
+	// the outcome until a human acts.
+	ErrCompanySuspended = errors.New("company is suspended")
 	// ErrConflict indicates the resource changed under the caller — e.g. another
 	// agent claimed the ticket first — so the action no longer applies (maps to
 	// HTTP 409).

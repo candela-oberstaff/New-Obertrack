@@ -44,7 +44,12 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 	// está configurado (mismo patrón que los webhooks de arriba).
 	obersuite := api.Group("/integrations/obersuite")
 	obersuite.Use(middleware.SharedSecretAuth("OBERSUITE_SERVICE_TOKEN", "X-Service-Token"))
+	obersuite.Use(middleware.IntegrationRateLimitMiddleware())
 	{
+		// Qué está desplegado. Sin sesión (va dentro del grupo con token) para
+		// que Obersuite pueda comprobar si un cambio nuestro ya llegó a
+		// producción en vez de deducirlo del JSON que recibe.
+		obersuite.GET("/version", d.version.Version)
 		// Lista de empresas para el dropdown de contratación en Obersuite.
 		obersuite.GET("/companies", d.onboarding.ListCompanies)
 		// Webhook de contratación: crea/actualiza el profesional y abre su empleo.

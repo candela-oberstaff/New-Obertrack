@@ -1,0 +1,215 @@
+.ui-scrollable-tabs-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ui-scrollable-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  min-width: 0;
+  flex: 1;
+  -webkit-overflow-scrolling: touch;
+  user-select: none;
+  /* Ocultar barra de scroll estándar para un aspecto ultra limpio */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 4px 2px;
+}
+
+.ui-scrollable-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Variante Primaria (barra principal de secciones) */
+.ui-scrollable-tabs--primary {
+  background: var(--glass-bg, #f8f7fc);
+  border: 1px solid var(--glass-border, #ddd9ef);
+  border-radius: 12px;
+  padding: 5px;
+}
+
+/* Variante Pills / Secundaria (filtros de categorías, sub-vistas) */
+.ui-scrollable-tabs--pills,
+.ui-scrollable-tabs--secondary {
+  background: transparent;
+  padding: 2px 0;
+}
+
+/* Botones individuales de cada pestaña */
+.ui-scrollable-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  padding: 8px 16px;
+  border-radius: 9px;
+  transition: all 0.16s ease;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+
+.ui-scrollable-tab:hover:not(:disabled) {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.ui-scrollable-tab--active {
+  background: #ffffff !important;
+  color: var(--primary, #cc33cc) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  font-weight: 700;
+}
+
+/* Estilos específicos para variante Pills */
+.ui-scrollable-tabs--pills .ui-scrollable-tab {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+}
+
+.ui-scrollable-tabs--pills .ui-scrollable-tab:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+.ui-scrollable-tabs--pills .ui-scrollable-tab--active {
+  background: var(--primary, #cc33cc) !important;
+  border-color: var(--primary, #cc33cc) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(204, 51, 204, 0.25);
+}
+
+/* Tamaño Pequeño (sm) */
+.ui-scrollable-tabs--sm .ui-scrollable-tab {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 7px;
+}
+
+/* Badge de contador numérico */
+.ui-scrollable-tab__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.12);
+  color: #64748b;
+  transition: all 0.16s ease;
+}
+
+.ui-scrollable-tab--active .ui-scrollable-tab__count {
+  background: rgba(204, 51, 204, 0.14);
+  color: var(--primary, #cc33cc);
+}
+
+.ui-scrollable-tabs--pills .ui-scrollable-tab--active .ui-scrollable-tab__count {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+/* Iconos dentro de las pestañas */
+.ui-scrollable-tab__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Estado deshabilitado */
+.ui-scrollable-tab--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Flechas de navegación izquierda y derecha */
+.ui-scrollable-tabs__arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border, #ddd9ef);
+  background: #ffffff;
+  color: #64748b;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85);
+  transition: opacity 0.18s ease, transform 0.18s ease, color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.ui-scrollable-tabs__arrow--visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.ui-scrollable-tabs__arrow:hover:not(:disabled) {
+  background: #fdf4ff;
+  border-color: var(--primary, #cc33cc);
+  color: var(--primary, #cc33cc);
+  box-shadow: 0 3px 10px rgba(204, 51, 204, 0.2);
+  transform: scale(1.08);
+}
+
+.ui-scrollable-tabs__arrow:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* Fades sutiles a los lados */
+.ui-scrollable-tabs__fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ui-scrollable-tabs__fade--left {
+  left: 36px;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.85), transparent);
+}
+
+.ui-scrollable-tabs__fade--right {
+  right: 36px;
+  background: linear-gradient(to left, rgba(255, 255, 255, 0.85), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-scrollable-tabs,
+  .ui-scrollable-tab,
+  .ui-scrollable-tabs__arrow {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

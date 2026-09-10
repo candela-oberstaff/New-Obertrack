@@ -1,6 +1,8 @@
 package service
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,20 +24,16 @@ func (f *fakeCompaniesRepo) GetObersuiteCompanies(updatedSince *time.Time) ([]re
 }
 
 func fichaCompleta() repository.ObersuiteCompanyRecord {
-	alta := time.Date(2026, 1, 15, 9, 0, 0, 0, time.UTC)
-	cliente := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
 	contacto := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
-	actividad := time.Date(2026, 9, 8, 18, 30, 0, 0, time.UTC)
+	cambio := time.Date(2026, 9, 8, 18, 30, 0, 0, time.UTC)
 	return repository.ObersuiteCompanyRecord{
 		ID: 10, Name: "Acme S.A", IsActive: true,
 		ResponsibleName: "Osvell Empresa", ResponsibleEmail: "osvell@oberstaff.com",
 		Industry: "Tecnología", Country: "España", State: "Aragón", City: "Zaragoza",
-		Address: "Calle Mayor 1", Location: "Las Lomas", PhoneNumber: "+34606904974",
-		CreatedAt: alta, ClientSince: &cliente,
+		Address:            "Calle Mayor 1",
 		ProfessionalsCount: 6, BoardsCount: 3, TasksCount: 32,
-		HoursThisMonth: 8, PendingHours: 32, PendingCount: 4, RejectedCount: 2, OpenTickets: 1,
-		LastContactAt: &contacto, LastActivityAt: &actividad,
-		UpdatedAt: actividad,
+		LastContactAt: &contacto,
+		UpdatedAt:     cambio,
 	}
 }
 
@@ -60,17 +58,14 @@ func TestListCompanies_LaFichaViajaCompleta(t *testing.T) {
 		got   interface{}
 		want  interface{}
 	}{
-		{"location", c.Location, "Las Lomas"},
-		{"phone_number", c.PhoneNumber, "+34606904974"},
-		{"created_at", c.CreatedAt, fichaCompleta().CreatedAt},
+		{"name", c.Name, "Acme S.A"},
+		{"responsible_email", c.ResponsibleEmail, "osvell@oberstaff.com"},
+		{"industry", c.Industry, "Tecnología"},
+		{"city", c.City, "Zaragoza"},
+		{"address", c.Address, "Calle Mayor 1"},
 		{"professionals_count", c.ProfessionalsCount, 6},
 		{"boards_count", c.BoardsCount, 3},
 		{"tasks_count", c.TasksCount, 32},
-		{"hours_this_month", c.HoursThisMonth, 8.0},
-		{"pending_hours", c.PendingHours, 32.0},
-		{"pending_count", c.PendingCount, 4},
-		{"rejected_count", c.RejectedCount, 2},
-		{"open_tickets", c.OpenTickets, 1},
 		{"updated_at", c.UpdatedAt, fichaCompleta().UpdatedAt},
 	}
 	for _, tc := range casos {
@@ -81,12 +76,6 @@ func TestListCompanies_LaFichaViajaCompleta(t *testing.T) {
 
 	// Las fechas opcionales viajan como puntero: nil significa "nunca pasó", y
 	// aplanarlas a la fecha cero le diría a Obersuite que ocurrió en el año 1.
-	if c.ClientSince == nil || !c.ClientSince.Equal(*fichaCompleta().ClientSince) {
-		t.Errorf("client_since = %v", c.ClientSince)
-	}
-	if c.LastActivityAt == nil || !c.LastActivityAt.Equal(*fichaCompleta().LastActivityAt) {
-		t.Errorf("last_activity_at = %v", c.LastActivityAt)
-	}
 	if c.LastContactAt == nil || !c.LastContactAt.Equal(*fichaCompleta().LastContactAt) {
 		t.Errorf("last_contact_at = %v", c.LastContactAt)
 	}
@@ -141,5 +130,46 @@ func TestListCompanies_PasaElCorteIncrementalAlRepositorio(t *testing.T) {
 	}
 	if repo.gotSince != nil {
 		t.Errorf("sin corte debía pasarse nil, se pasó %v", repo.gotSince)
+	}
+}
+
+// Los campos retirados, y por qué — que es lo que se pierde si solo queda la
+// lista:
+//
+//   - last_activity_at y los de operación (horas, pendientes, rechazadas):
+//     nadie los consume, y last_activity_at además rompía el ETag, porque lo
+//     alimenta el contador de uso, que escribe cada 30 segundos. Encima
+//     exponían lo que trabaja la gente de cada cliente.
+//   - location: texto libre que la gente rellena a mano; ya viajan
+//     country/state/city, que sí están normalizados.
+//   - created_at, client_since, phone_number y open_tickets: Obersuite
+//     confirmó que no los lee en ningún sitio. open_tickets era el peor de
+//     los cuatro: costaba una subconsulta con normalización de teléfonos y
+//     habría rotado el ETag para llenar una pestaña que hoy enseña un número
+//     escrito a mano.
+//
+// Esta prueba mira el JSON de salida y no la struct: es ahí donde se nota la
+// reaparición. Falla en cuanto vuelva cualquiera de ellos.
+func TestListCompanies_NoSalenLosCamposRetirados(t *testing.T) {
+	repo := &fakeCompaniesRepo{record: fichaCompleta()}
+	svc := &onboardingService{userRepo: repo}
+
+	companies, err := svc.ListCompanies(nil)
+	if err != nil {
+		t.Fatalf("ListCompanies: %v", err)
+	}
+	crudo, err := json.Marshal(companies[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	for _, campo := range []string{
+		"last_activity_at", "hours_this_month", "pending_hours",
+		"pending_count", "rejected_count", "location",
+		"created_at", "client_since", "phone_number", "open_tickets",
+	} {
+		if strings.Contains(string(crudo), campo) {
+			t.Errorf("%q volvió a salir en el JSON hacia Obersuite", campo)
+		}
 	}
 }

@@ -5,10 +5,10 @@ import type { TenantContactChannel, EventThread } from '../services/admin.servic
 /** Categorías del expediente, en el mismo orden en que se ofrecen como filtro. */
 export const ACTIVITY_CATEGORIES = [
   // { value: '', label: 'Todo' },
-  { value: 'lifecycle', label: 'Eventos' },
-  { value: 'staff', label: 'Altas / Bajas de personal' },
+  { value: 'lifecycle', label: 'Escala de tiempo' },
+  // { value: 'staff', label: 'Altas / Bajas de personal' },
   { value: 'work', label: 'Jornadas' },
-  { value: 'management', label: 'Customer Success' },
+  // { value: 'management', label: 'Customer Success' },
   // Contactos antes que notas: es lo primero que se mira al abrir una ficha
   // ("¿ya hablamos con ellos?"), y las notas son el detalle de eso.
   { value: 'contact', label: 'Comunicaciones' },
