@@ -95,19 +95,21 @@ type HireCV struct {
 // HireRequest son los datos que Obersuite envía al contratar. Email + CompanyID
 // son obligatorios; el resto enriquece el perfil / expediente.
 type HireRequest struct {
-	ExternalID       string // id del candidato en Obersuite (trazabilidad)
-	Email            string // llave de dedup (se normaliza a minúsculas)
-	Name             string
-	IdentityDocument string // cédula/documento (opcional)
-	PhoneNumber      string
-	Country          string
-	State            string
-	City             string
-	Address          string
-	JobTitle         string
-	CompanyID        uint       // empresa contratante (id de ListCompanies)
-	StartedAt        *time.Time // fecha de inicio (opcional; por defecto hoy)
-	CV               *HireCV    // opcional
+	ExternalID        string // id del candidato en Obersuite (trazabilidad)
+	Email             string // llave de dedup (se normaliza a minúsculas)
+	Name              string
+	IdentityDocument  string // cédula/documento (opcional)
+	PhoneNumber       string
+	BirthDate         *time.Time // fecha de nacimiento (opcional)
+	EmergencyContacts []string   // teléfonos/contactos de emergencia (opcional)
+	Country           string
+	State             string
+	City              string
+	Address           string
+	JobTitle          string
+	CompanyID         uint       // empresa contratante (id de ListCompanies)
+	StartedAt         *time.Time // fecha de inicio (opcional; por defecto hoy)
+	CV                *HireCV    // opcional
 }
 
 // HireResult resume qué pasó, para que Obersuite lo registre.
@@ -284,6 +286,15 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 	user := s.resolveProfessional(externalID, email)
 	isNew := user == nil
 
+	var cleanEmergencyContacts []string
+	for _, contact := range req.EmergencyContacts {
+		trimmed := strings.TrimSpace(contact)
+		if trimmed != "" {
+			cleanEmergencyContacts = append(cleanEmergencyContacts, trimmed)
+		}
+	}
+	emergencyPhones := strings.Join(cleanEmergencyContacts, ", ")
+
 	if isNew {
 		// No existe → alta de profesional. Contraseña aleatoria: el profesional
 		// la establece con el correo de bienvenida (flujo forgot-password).
@@ -298,6 +309,8 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 			UserType:         models.UserTypeProfessional,
 			IsActive:         true,
 			PhoneNumber:      strings.TrimSpace(req.PhoneNumber),
+			BirthDate:        req.BirthDate,
+			EmergencyPhones:  emergencyPhones,
 			Country:          strings.TrimSpace(req.Country),
 			State:            strings.TrimSpace(req.State),
 			City:             strings.TrimSpace(req.City),
@@ -323,6 +336,12 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		}
 		if user.PhoneNumber == "" && strings.TrimSpace(req.PhoneNumber) != "" {
 			updates["phone_number"] = strings.TrimSpace(req.PhoneNumber)
+		}
+		if user.BirthDate == nil && req.BirthDate != nil {
+			updates["birth_date"] = req.BirthDate
+		}
+		if user.EmergencyPhones == "" && emergencyPhones != "" {
+			updates["emergency_phones"] = emergencyPhones
 		}
 		// Vincula hacia atrás a quien ya estaba aquí antes de que existiera el
 		// id: la primera contratación que llega por el puente lo estampa y a

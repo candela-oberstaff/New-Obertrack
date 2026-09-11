@@ -642,3 +642,71 @@ func TestFormatLastContact(t *testing.T) {
 		t.Errorf("esperado 'hace 2 años', obtenido %q", got)
 	}
 }
+
+func TestHire_GuardaBirthDateYContactosDeEmergencia_UsuarioNuevo(t *testing.T) {
+	svc, users, _, _, _ := newHireSvc(false, hireCompany())
+	birth, _ := time.Parse("2006-01-02", "2001-09-05")
+
+	req := HireRequest{
+		Email:             "nuevo@ejemplo.com",
+		Name:              "Nuevo Profesional",
+		CompanyID:         10,
+		BirthDate:         &birth,
+		EmergencyContacts: []string{"00000", "  +58 412 1234567 mamá  ", ""},
+	}
+
+	res, err := svc.Hire(req)
+	if err != nil {
+		t.Fatalf("Hire falló: %v", err)
+	}
+	if res.Status != "created" {
+		t.Fatalf("esperado status created, obtenido %s", res.Status)
+	}
+	if users.created == nil {
+		t.Fatal("no se creó el usuario")
+	}
+	if users.created.BirthDate == nil || users.created.BirthDate.Format("2006-01-02") != "2001-09-05" {
+		t.Errorf("BirthDate incorrecto: %v", users.created.BirthDate)
+	}
+	if users.created.EmergencyPhones != "00000, +58 412 1234567 mamá" {
+		t.Errorf("EmergencyPhones incorrecto: %q", users.created.EmergencyPhones)
+	}
+}
+
+func TestHire_ActualizaBirthDateYContactosDeEmergencia_UsuarioExistente(t *testing.T) {
+	existente := &models.User{
+		ID:       55,
+		Email:    "existente@ejemplo.com",
+		Name:     "Existente",
+		UserType: models.UserTypeProfessional,
+		IsActive: true,
+	}
+	svc, users, _, _, _ := newHireSvc(false, hireCompany(), existente)
+	birth, _ := time.Parse("2006-01-02", "1995-12-20")
+
+	req := HireRequest{
+		Email:             "existente@ejemplo.com",
+		Name:              "Existente",
+		CompanyID:         10,
+		BirthDate:         &birth,
+		EmergencyContacts: []string{"+58 414 7654321 papá"},
+	}
+
+	res, err := svc.Hire(req)
+	if err != nil {
+		t.Fatalf("Hire falló: %v", err)
+	}
+	if res.Status != "rehired" {
+		t.Fatalf("esperado status rehired, obtenido %s", res.Status)
+	}
+	up := users.updates[55]
+	if up == nil {
+		t.Fatal("no se actualizaron los datos del usuario")
+	}
+	if b, ok := up["birth_date"].(*time.Time); !ok || b == nil || b.Format("2006-01-02") != "1995-12-20" {
+		t.Errorf("birth_date en updates incorrecto: %v", up["birth_date"])
+	}
+	if ep, ok := up["emergency_phones"].(string); !ok || ep != "+58 414 7654321 papá" {
+		t.Errorf("emergency_phones en updates incorrecto: %v", up["emergency_phones"])
+	}
+}

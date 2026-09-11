@@ -194,6 +194,8 @@ Crea o reutiliza al profesional y le abre el empleo en la empresa.
   "company_id": 42,                  // OBLIGATORIO (el id de /companies)
   "identity_document": "12345678A",
   "phone_number": "+34600000000",
+  "birth_date": "2001-09-05",        // YYYY-MM-DD (opcional)
+  "emergency_contacts": ["+34611111111 Mamá", "+34622222222 Papá"], // (opcional)
   "country": "España", "state": "Aragón", "city": "Zaragoza",
   "address": "Calle Mayor 1",
   "job_title": "Diseñadora",

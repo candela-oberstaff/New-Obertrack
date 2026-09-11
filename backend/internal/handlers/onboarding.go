@@ -134,19 +134,21 @@ type hireCVPayload struct {
 
 // hirePayload es el cuerpo del webhook de contratación de Obersuite.
 type hirePayload struct {
-	ExternalID       string         `json:"external_id"`
-	Email            string         `json:"email" binding:"required,email"`
-	Name             string         `json:"name" binding:"required"`
-	IdentityDocument string         `json:"identity_document"`
-	PhoneNumber      string         `json:"phone_number"`
-	Country          string         `json:"country"`
-	State            string         `json:"state"`
-	City             string         `json:"city"`
-	Address          string         `json:"address"`
-	JobTitle         string         `json:"job_title"`
-	CompanyID        uint           `json:"company_id" binding:"required"`
-	StartedAt        string         `json:"started_at"` // YYYY-MM-DD (opcional)
-	CV               *hireCVPayload `json:"cv"`
+	ExternalID        string         `json:"external_id"`
+	Email             string         `json:"email" binding:"required,email"`
+	Name              string         `json:"name" binding:"required"`
+	IdentityDocument  string         `json:"identity_document"`
+	PhoneNumber       string         `json:"phone_number"`
+	BirthDate         *string        `json:"birth_date"`
+	EmergencyContacts []string       `json:"emergency_contacts"`
+	Country           string         `json:"country"`
+	State             string         `json:"state"`
+	City              string         `json:"city"`
+	Address           string         `json:"address"`
+	JobTitle          string         `json:"job_title"`
+	CompanyID         uint           `json:"company_id" binding:"required"`
+	StartedAt         string         `json:"started_at"` // YYYY-MM-DD (opcional)
+	CV                *hireCVPayload `json:"cv"`
 }
 
 // Hire recibe la contratación desde Obersuite y materializa al profesional con
@@ -162,19 +164,26 @@ func (h *OnboardingHandler) Hire(c *gin.Context) {
 		return
 	}
 
+	var birthDate *time.Time
+	if req.BirthDate != nil && *req.BirthDate != "" {
+		birthDate = parseDatePtr(*req.BirthDate)
+	}
+
 	in := service.HireRequest{
-		ExternalID:       req.ExternalID,
-		Email:            req.Email,
-		Name:             req.Name,
-		IdentityDocument: req.IdentityDocument,
-		PhoneNumber:      req.PhoneNumber,
-		Country:          req.Country,
-		State:            req.State,
-		City:             req.City,
-		Address:          req.Address,
-		JobTitle:         req.JobTitle,
-		CompanyID:        req.CompanyID,
-		StartedAt:        parseDatePtr(req.StartedAt),
+		ExternalID:        req.ExternalID,
+		Email:             req.Email,
+		Name:              req.Name,
+		IdentityDocument:  req.IdentityDocument,
+		PhoneNumber:       req.PhoneNumber,
+		BirthDate:         birthDate,
+		EmergencyContacts: req.EmergencyContacts,
+		Country:           req.Country,
+		State:             req.State,
+		City:              req.City,
+		Address:           req.Address,
+		JobTitle:          req.JobTitle,
+		CompanyID:         req.CompanyID,
+		StartedAt:         parseDatePtr(req.StartedAt),
 	}
 	if req.CV != nil {
 		in.CV = &service.HireCV{
