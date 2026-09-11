@@ -114,6 +114,21 @@ func (h *ObersuiteProfessionalHandler) Detail(c *gin.Context) {
 		out["employment_id"] = emp.ID
 	}
 
+	// Fecha de nacimiento y contactos de emergencia. Van AQUÍ y no en la fila
+	// de /professionals a propósito: son dato personal sensible y la lista de
+	// una empresa entera no los necesita; se enseñan al abrir la ficha de UNA
+	// persona. Son los dos campos que /hire recibe de Obersuite: si entran por
+	// un lado y no salen por el otro, el reclutador los rellena obligado y
+	// ningún sistema los conserva a la vista.
+	out["birth_date"] = nil
+	out["emergency_contacts"] = []string{}
+	if u, err := h.users.GetByID(row.ID); err == nil && u != nil {
+		if u.BirthDate != nil {
+			out["birth_date"] = u.BirthDate.Format("2006-01-02")
+		}
+		out["emergency_contacts"] = splitEmergencyContacts(u.EmergencyPhones)
+	}
+
 	// Los números de las pestañas, para pintarlos al abrir la ficha sin pedir
 	// los bloques que nadie va a abrir. Con los MISMOS filtros que las listas:
 	// si no, el número de fuera y el total de dentro se contradicen, que es lo
@@ -476,13 +491,31 @@ func (h *ObersuiteProfessionalHandler) labelTaskStatuses(tasks []repository.Ober
 	}
 }
 
+// splitEmergencyContacts devuelve los contactos como lista.
+//
+// Se guardan en un solo texto separado por comas —es la convención de toda
+// nuestra pantalla de perfil, que los parte por coma al leer— y /hire los
+// junta con ", " al recibirlos. Aquí se deshace exactamente eso. Una coma
+// DENTRO de un contacto se lee como separador, igual que en nuestra pantalla;
+// está avisado en la documentación de /hire.
+func splitEmergencyContacts(raw string) []string {
+	out := []string{}
+	for _, part := range strings.Split(raw, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // publicAvatarURL convierte la ruta relativa de la foto en una URL absoluta que
 // se puede pedir sin sesión.
 //
 // Las fotos se guardan bajo /api/uploads/, que exige sesión; el mismo archivo
 // se sirve también por /api/public/uploads/, que es lo que ya usan los correos
 // para que el cliente de correo pueda cargar la imagen. Aquí se hace lo mismo.
-// El host sale de SERVICE_URL_BACKEND o, si no está, de la propia petición.
+// El host sale de BACKEND_URL (el dominio público), si no de SERVICE_URL_BACKEND
+// (la de Coolify, que es el host interno), y si no de la propia petición.
 func publicAvatarURL(c *gin.Context, avatar string) string {
 	avatar = strings.TrimSpace(avatar)
 	if avatar == "" {

@@ -159,3 +159,39 @@ func TestPublicAvatarURL(t *testing.T) {
 		}
 	}
 }
+
+// La base de las fotos la decide el dominio público, no Coolify.
+//
+// SERVICE_URL_BACKEND la inyecta Coolify sola con el host interno del contenedor
+// (http://…nip.io). Con esa base, avatar_url salía con un host http que desde la
+// página https de Obersuite el navegador bloquea como contenido mixto —y las
+// imágenes de los correos igual, solo que ahí nadie lo veía—. BACKEND_URL, puesta
+// a mano, tiene que ganar; y si no está, se sigue cayendo a la de Coolify para no
+// romper los entornos que nunca la definieron.
+func TestPublicAvatarURL_ElDominioPublicoGanaAlInternoDeCoolify(t *testing.T) {
+	t.Setenv("SERVICE_URL_BACKEND", "http://backend-abc.194.163.170.245.nip.io")
+	t.Setenv("BACKEND_URL", "https://obertrack.com/")
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/x", nil)
+
+	got := publicAvatarURL(c, "/api/uploads/18_abc.jpg")
+	if got != "https://obertrack.com/api/public/uploads/18_abc.jpg" {
+		t.Fatalf("la foto sale con el host interno: %q", got)
+	}
+}
+
+func TestPublicAvatarURL_SinDominioPublicoCaeAlDeCoolify(t *testing.T) {
+	t.Setenv("SERVICE_URL_BACKEND", "http://backend-abc.194.163.170.245.nip.io")
+	t.Setenv("BACKEND_URL", "")
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/x", nil)
+
+	got := publicAvatarURL(c, "/api/uploads/18_abc.jpg")
+	if got != "http://backend-abc.194.163.170.245.nip.io/api/public/uploads/18_abc.jpg" {
+		t.Fatalf("sin BACKEND_URL debe seguir funcionando como antes: %q", got)
+	}
+}

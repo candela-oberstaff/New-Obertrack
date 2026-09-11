@@ -696,9 +696,18 @@ func (h *EmailHandler) SendTemplate(c *gin.Context) {
 }
 
 // resolveBackendURL returns the backend's public URL for building absolute
-// links in sent emails. It first checks the SERVICE_URL_BACKEND env var; if
+// links in sent emails. It first checks BACKEND_URL, then SERVICE_URL_BACKEND; if
 // unset it derives the URL from the incoming request.
 func resolveBackendURL(c *gin.Context) string {
+	// BACKEND_URL es el dominio PÚBLICO, puesto a mano. Va primero porque
+	// SERVICE_URL_BACKEND la inyecta Coolify sola y apunta al host interno del
+	// contenedor (…nip.io): con esa base, las fotos que se mandan a Obersuite y
+	// las imágenes de los correos salían con un host que desde una página https
+	// el navegador bloquea como contenido mixto. Mismo orden que FRONTEND_URL /
+	// SERVICE_URL_FRONTEND.
+	if backendURL := strings.TrimRight(os.Getenv("BACKEND_URL"), "/"); backendURL != "" {
+		return backendURL
+	}
 	backendURL := os.Getenv("SERVICE_URL_BACKEND")
 	if backendURL != "" {
 		return backendURL

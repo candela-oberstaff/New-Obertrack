@@ -73,6 +73,7 @@ type Config struct {
 	// FrontendURL es la base a la que redirige el callback de OAuth al terminar
 	// (el flujo vuelve al navegador, no a una respuesta JSON).
 	FrontendURL string
+	BackendURL  string
 }
 
 func LoadConfig() *Config {
@@ -109,6 +110,7 @@ func LoadConfig() *Config {
 		GoogleTokenEncKey:     getEnv("GOOGLE_TOKEN_ENC_KEY", ""),
 
 		FrontendURL: strings.TrimRight(getEnv("FRONTEND_URL", ""), "/"),
+		BackendURL:  strings.TrimRight(getEnv("BACKEND_URL", ""), "/"),
 	}
 
 	// Fail fast on an insecure JWT secret. An empty, default, or short secret
@@ -161,6 +163,11 @@ func (c *Config) validateGoogleCalendar() {
 	if c.FrontendURL == "" {
 		log.Println("WARN: FRONTEND_URL vacío — los enlaces de correo y el callback de Google " +
 			"caen al dominio por defecto de FrontendBaseURL(). Defínelo si este entorno no es producción.")
+	}
+	if c.BackendURL == "" {
+		log.Println("WARN: BACKEND_URL vacío — las fotos que se sirven a Obersuite y las imágenes " +
+			"de los correos se construyen con SERVICE_URL_BACKEND o con el Host de la petición, que en " +
+			"Coolify es el host interno (…nip.io). En producción ponlo al dominio público.")
 	}
 }
 
