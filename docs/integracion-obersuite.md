@@ -194,8 +194,8 @@ Crea o reutiliza al profesional y le abre el empleo en la empresa.
   "company_id": 42,                  // OBLIGATORIO (el id de /companies)
   "identity_document": "12345678A",
   "phone_number": "+34600000000",
-  "birth_date": "2001-09-05",        // YYYY-MM-DD 
-  "emergency_contacts": ["+34611111111 Mamá", "+34622222222 Papá"], // 
+  "birth_date": "2001-09-05",        // YYYY-MM-DD, fecha de calendario
+  "emergency_contacts": ["+34611111111 Mamá", "+34622222222 Papá"], // textos libres
   "country": "España", "state": "Aragón", "city": "Zaragoza",
   "address": "Calle Mayor 1",
   "job_title": "Diseñadora",
@@ -207,6 +207,17 @@ Crea o reutiliza al profesional y le abre el empleo en la empresa.
   }
 }
 ```
+
+**Fecha de nacimiento y contactos de emergencia** se guardan en la persona y
+vuelven en la cabecera de su ficha (`GET .../professionals/:uid`, ver §5). Si
+la persona ya existía, solo se rellenan cuando estaban vacíos: la contratación
+no pisa lo que ya tuviera escrito.
+
+Los contactos se guardan en un solo texto separado por comas —es la convención
+de nuestra pantalla de perfil, que los edita como lista y los parte por coma— y
+se devuelven partidos igual. Una consecuencia: **una coma dentro de un contacto
+se lee como separador.** `"Juan, hermano 0414…"` vuelve como dos entradas. Si
+os hace falta la coma, mejor un guion o paréntesis.
 
 El CV va **embebido en base64**, no como URL temporal, para que la contratación
 sea atómica y aguante los reintentos sin depender de que un enlace siga vivo.
@@ -443,7 +454,7 @@ cuál, y se adivinaría mal justo con los recontratados.
 
 | Ruta | Pestaña | Devuelve |
 |---|---|---|
-| `GET .../:uid` | cabecera | `{company_id, company_name, professional, employment_id, counts}`. `professional` es **la misma fila** que en `/professionals`: la ficha dice lo que decía la lista. `counts` trae `workdays`, `tasks` y `activity` para pintar las pestañas sin pedir los bloques, **con los mismos filtros** que sus listas |
+| `GET .../:uid` | cabecera | `{company_id, company_name, professional, employment_id, counts, birth_date, emergency_contacts}`. `professional` es **la misma fila** que en `/professionals`: la ficha dice lo que decía la lista. `counts` trae `workdays`, `tasks` y `activity` para pintar las pestañas sin pedir los bloques, **con los mismos filtros** que sus listas. `birth_date` es `"YYYY-MM-DD"` o `null`; `emergency_contacts` es la lista de textos o `[]`. Van aquí y **no en la fila de la lista** a propósito: son dato sensible y se enseñan al abrir una persona, no al listar la empresa |
 | `GET .../:uid/record` | Expediente | `{summary, absences[], contacts[], notes[], documents[], labels, record_available}` |
 | `GET .../:uid/workdays` | Jornadas | `{entries[], page, page_size, total, labels}` — 30 por página |
 | `GET .../:uid/tasks` | Tareas | `{entries[], page, page_size, total, labels}` |

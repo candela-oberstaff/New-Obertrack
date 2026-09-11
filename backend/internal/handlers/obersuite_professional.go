@@ -114,6 +114,21 @@ func (h *ObersuiteProfessionalHandler) Detail(c *gin.Context) {
 		out["employment_id"] = emp.ID
 	}
 
+	// Fecha de nacimiento y contactos de emergencia. Van AQUÍ y no en la fila
+	// de /professionals a propósito: son dato personal sensible y la lista de
+	// una empresa entera no los necesita; se enseñan al abrir la ficha de UNA
+	// persona. Son los dos campos que /hire recibe de Obersuite: si entran por
+	// un lado y no salen por el otro, el reclutador los rellena obligado y
+	// ningún sistema los conserva a la vista.
+	out["birth_date"] = nil
+	out["emergency_contacts"] = []string{}
+	if u, err := h.users.GetByID(row.ID); err == nil && u != nil {
+		if u.BirthDate != nil {
+			out["birth_date"] = u.BirthDate.Format("2006-01-02")
+		}
+		out["emergency_contacts"] = splitEmergencyContacts(u.EmergencyPhones)
+	}
+
 	// Los números de las pestañas, para pintarlos al abrir la ficha sin pedir
 	// los bloques que nadie va a abrir. Con los MISMOS filtros que las listas:
 	// si no, el número de fuera y el total de dentro se contradicen, que es lo
@@ -474,6 +489,23 @@ func (h *ObersuiteProfessionalHandler) labelTaskStatuses(tasks []repository.Ober
 	for i := range tasks {
 		tasks[i].StatusLabel = byBoard[tasks[i].BoardID][tasks[i].Status]
 	}
+}
+
+// splitEmergencyContacts devuelve los contactos como lista.
+//
+// Se guardan en un solo texto separado por comas —es la convención de toda
+// nuestra pantalla de perfil, que los parte por coma al leer— y /hire los
+// junta con ", " al recibirlos. Aquí se deshace exactamente eso. Una coma
+// DENTRO de un contacto se lee como separador, igual que en nuestra pantalla;
+// está avisado en la documentación de /hire.
+func splitEmergencyContacts(raw string) []string {
+	out := []string{}
+	for _, part := range strings.Split(raw, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // publicAvatarURL convierte la ruta relativa de la foto en una URL absoluta que
