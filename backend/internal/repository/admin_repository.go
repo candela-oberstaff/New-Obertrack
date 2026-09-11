@@ -1003,7 +1003,10 @@ const employeeMetrics = `
 		  AND em.status = 'active' AND em.deleted_at IS NULL
 	), u.created_at) as started_at,
 	COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh WHERE wh.user_id = u.id AND wh.deleted_at IS NULL AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
-	(SELECT COUNT(*) FROM task_users tu WHERE tu.user_id = u.id) as tasks_assigned,
+	-- Con el JOIN a tasks: sin él se contaban las asignaciones a tareas BORRADAS
+	-- y la tarjeta decía 35 donde la pestaña de al lado decía 30. Las otras dos
+	-- fuentes (tasks_completed y la lista) ya filtraban deleted_at; esta no.
+	(SELECT COUNT(*) FROM task_users tu JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL WHERE tu.user_id = u.id) as tasks_assigned,
 	(SELECT COUNT(*) FROM task_users tu JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL WHERE tu.user_id = u.id AND t.completed = true) as tasks_completed,
 	(SELECT MAX(wh.work_date) FROM work_hours wh WHERE wh.user_id = u.id AND wh.deleted_at IS NULL) as last_active,
 	-- Campos de horario: se leen del empleo activo en la empresa actual

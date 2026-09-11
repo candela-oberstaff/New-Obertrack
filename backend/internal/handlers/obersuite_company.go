@@ -135,6 +135,9 @@ func (h *ObersuiteCompanyHandler) Professionals(c *gin.Context) {
 	if people == nil {
 		people = []repository.ObersuiteProfessional{}
 	}
+	for i := range people {
+		people[i].AvatarURL = publicAvatarURL(c, people[i].Avatar)
+	}
 	c.JSON(http.StatusOK, gin.H{"company_id": tenant.ID, "professionals": people})
 }
 
