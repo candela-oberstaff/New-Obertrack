@@ -2,7 +2,9 @@ package service
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,9 +49,7 @@ func generateTenantReportPDF(
 	pdf.SetFillColor(pdfPrussian[0], pdfPrussian[1], pdfPrussian[2])
 	pdf.Rect(0, 0, 210, 36, "F")
 
-	if logo := pdfLocateLogo(); logo != "" {
-		pdf.Image(logo, 15, 8, 45, 0, false, "", 0, "")
-	} else {
+	if !pdfRenderLogo(pdf, 15, 8, 45, 0) {
 		pdf.SetTextColor(255, 255, 255)
 		pdf.SetFont("Arial", "B", 17)
 		pdf.Text(15, 20, "OBERTRACK")
@@ -492,10 +492,40 @@ func generateTenantReportPDF(
 					pdf.SetX(22)
 					pdf.SetFont("Arial", "I", 7.5)
 					pdf.SetTextColor(pdfGray[0], pdfGray[1], pdfGray[2])
+
 					val := ans.TextValue
-					if val == "" && ans.NumberValue > 0 {
-						val = fmt.Sprintf("%d pts", ans.NumberValue)
+					numVal := ans.NumberValue
+					if numVal == 0 && val != "" {
+						if parsed, err := strconv.Atoi(strings.TrimSpace(val)); err == nil {
+							numVal = parsed
+						}
 					}
+
+					// Si es una pregunta de puntuación/escala numérica, mostramos el puntaje con su base (ej: 5/5, 8/10, 10/10)
+					if numVal > 0 && (ans.QuestionType == "rating" || ans.QuestionType == "linear_scale" || val == "" || val == fmt.Sprintf("%d", numVal)) {
+						maxScore := 5
+						if ans.QuestionType == "linear_scale" {
+							maxScore = 10
+							if ans.Options != "" {
+								var opt struct {
+									Max int `json:"max"`
+								}
+								if err := json.Unmarshal([]byte(ans.Options), &opt); err == nil && opt.Max > 0 {
+									maxScore = opt.Max
+								}
+							}
+						} else if ans.QuestionType == "rating" {
+							maxScore = 5
+						} else {
+							if numVal > 5 {
+								maxScore = 10
+							} else {
+								maxScore = 5
+							}
+						}
+						val = fmt.Sprintf("%d/%d", numVal, maxScore)
+					}
+
 					qText := ans.QuestionText
 					if len(qText) > 60 {
 						qText = qText[:58] + ".."

@@ -496,10 +496,31 @@ export default function TenantDetail() {
     setNoteOpen(true)
   }
 
-  const openEditNote = (note: { event_id: number; details: string }) => {
+  const openEditNote = (note: { event_id: number; details: string; type?: string }) => {
     setNoteEditingId(note.event_id)
     setNoteEmployeeIds([])
-    setNoteText(note.details)
+    let text = note.details || ''
+    if (note.type === 'company_contact') {
+      const prefixes = [
+        'Correo enviado a la empresa — ',
+        'WhatsApp enviado a la empresa — ',
+        'Llamada telefónica — ',
+        'Reunión con la empresa — ',
+        'Contacto con la empresa — ',
+        'Correo enviado a la empresa',
+        'WhatsApp enviado a la empresa',
+        'Llamada telefónica',
+        'Reunión con la empresa',
+        'Contacto con la empresa',
+      ]
+      for (const p of prefixes) {
+        if (text.startsWith(p)) {
+          text = text.slice(p.length)
+          break
+        }
+      }
+    }
+    setNoteText(text)
     setNoteError(null)
     setNoteOpen(true)
   }
@@ -645,11 +666,11 @@ export default function TenantDetail() {
     ].filter(Boolean).join(' y ')
 
     const ok = await confirm({
-      title: '¿Eliminar esta nota?',
+      title: '¿Eliminar del expediente?',
       message: extras
         ? `Se eliminarán también ${extras}. El resto de movimientos no se puede borrar.`
         : 'Desaparecerá del expediente. El resto de movimientos no se puede borrar.',
-      confirmLabel: 'Eliminar nota',
+      confirmLabel: 'Eliminar',
       variant: 'danger',
     })
     if (ok) await deleteNote(eventId)
@@ -1568,7 +1589,7 @@ export default function TenantDetail() {
                             const isCardStyle = isNote || isContact
                             return (
                               <Fragment key={a.event_id ? `${a.type}-${a.event_id}` : `act-${actPage}-${group.key}-${i}`}>
-                                <div className={`${styles.timelineItem} ${isCardStyle ? styles.noteTimelineItem : ''} ${isNote && a.pinned ? styles.isPinnedRow : ''}`}>
+                                <div className={`${styles.timelineItem} ${isCardStyle ? styles.noteTimelineItem : ''} ${isCardStyle && a.pinned ? styles.isPinnedRow : ''}`}>
                                   {isCardStyle ? (
                                     <div className={styles.noteAvatarNode}>
                                       <Avatar name={a.user || 'Sistema'} size="sm" />
@@ -1579,7 +1600,7 @@ export default function TenantDetail() {
                                     </div>
                                   )}
                                   <div
-                                    className={`${styles.timelineCard} ${styles.clickableCard} ${isCardStyle ? styles.isNote : ''} ${isNote && a.pinned ? styles.isPinnedCard : ''}`}
+                                    className={`${styles.timelineCard} ${styles.clickableCard} ${isCardStyle ? styles.isNote : ''} ${isCardStyle && a.pinned ? styles.isPinnedCard : ''}`}
                                     role="button"
                                     tabIndex={0}
                                     title="Ver el detalle del movimiento"
@@ -1618,20 +1639,20 @@ export default function TenantDetail() {
                                               {CONTACT_STYLE[a.channel].label}
                                             </span>
                                           )}
-                                          {isNote && a.pinned && (
+                                          {isCardStyle && a.pinned && (
                                             <span className={styles.notePinText}>
                                               <Pin size={11} /> fijada
                                             </span>
                                           )}
                                           {a.edited_at && <span className={styles.noteEdited}>· editada</span>}
-                                          {isNote && canAnnotate && (
+                                          {isCardStyle && canAnnotate && (
                                             <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                                               <button
                                                 type="button"
                                                 className={styles.iconBtn}
                                                 onClick={e => { e.stopPropagation(); handleTogglePin(a) }}
                                                 title={a.pinned ? 'Dejar de fijar' : 'Fijar arriba del expediente'}
-                                                aria-label={a.pinned ? 'Dejar de fijar esta nota' : 'Fijar esta nota arriba del expediente'}
+                                                aria-label={a.pinned ? 'Dejar de fijar' : 'Fijar arriba del expediente'}
                                               >
                                                 {a.pinned ? <PinOff size={15} /> : <Pin size={15} />}
                                               </button>
@@ -1639,8 +1660,8 @@ export default function TenantDetail() {
                                                 type="button"
                                                 className={styles.iconBtn}
                                                 onClick={e => { e.stopPropagation(); openEditNote(a) }}
-                                                title="Editar nota"
-                                                aria-label="Editar esta nota"
+                                                title={isContact ? 'Editar comunicación' : 'Editar nota'}
+                                                aria-label={isContact ? 'Editar esta comunicación' : 'Editar esta nota'}
                                               >
                                                 <Pencil size={14} />
                                               </button>
@@ -1648,8 +1669,8 @@ export default function TenantDetail() {
                                                 type="button"
                                                 className={`${styles.iconBtn} ${styles.danger}`}
                                                 onClick={e => { e.stopPropagation(); handleDeleteNote(a.event_id) }}
-                                                title="Eliminar nota"
-                                                aria-label={`Eliminar la nota de ${a.user || 'Sistema'}`}
+                                                title={isContact ? 'Eliminar comunicación' : 'Eliminar nota'}
+                                                aria-label={isContact ? `Eliminar la comunicación de ${a.user || 'Sistema'}` : `Eliminar la nota de ${a.user || 'Sistema'}`}
                                               >
                                                 <Trash2 size={15} />
                                               </button>
@@ -2119,7 +2140,7 @@ export default function TenantDetail() {
         isOpen={noteOpen}
         isDirty={noteText.trim() !== '' || noteFiles.length > 0}
         onClose={() => { setNoteOpen(false); setNoteFiles([]); setNoteEmployeeIds([]) }}
-        title={noteEditingId !== null ? 'Editar nota del expediente' : 'Añadir nota al expediente'}
+        title={noteEditingId !== null ? 'Editar entrada del expediente' : 'Añadir nota al expediente'}
         size="md"
         footer={
           <>
