@@ -44,11 +44,35 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 	// está configurado (mismo patrón que los webhooks de arriba).
 	obersuite := api.Group("/integrations/obersuite")
 	obersuite.Use(middleware.SharedSecretAuth("OBERSUITE_SERVICE_TOKEN", "X-Service-Token"))
+	obersuite.Use(middleware.IntegrationRateLimitMiddleware())
 	{
+		// Qué está desplegado. Sin sesión (va dentro del grupo con token) para
+		// que Obersuite pueda comprobar si un cambio nuestro ya llegó a
+		// producción en vez de deducirlo del JSON que recibe.
+		obersuite.GET("/version", d.version.Version)
 		// Lista de empresas para el dropdown de contratación en Obersuite.
 		obersuite.GET("/companies", d.onboarding.ListCompanies)
 		// Webhook de contratación: crea/actualiza el profesional y abre su empleo.
 		obersuite.POST("/hire", d.onboarding.Hire)
+
+		// Ficha de una empresa, un bloque por pestaña de la pantalla de
+		// Obersuite. Van sueltos y no en una respuesta con todo dentro porque
+		// las pestañas se abren de una en una: la que nadie abre no se pide.
+		empresa := obersuite.Group("/companies/:id")
+		{
+			empresa.GET("", d.obersuiteCompany.Detail)
+			// Alimenta "Profesionales" y "Horarios": la jornada de cada
+			// persona viaja en su propia fila, no hace falta otra consulta.
+			empresa.GET("/professionals", d.obersuiteCompany.Professionals)
+			empresa.GET("/org-chart", d.obersuiteCompany.OrgChart)
+			// OJO: el expediente es la cronología. La pestaña que ellos
+			// llaman "Actividad" es la de abajo, no esta.
+			empresa.GET("/timeline", d.obersuiteCompany.Timeline)
+			empresa.GET("/attention", d.obersuiteCompany.Attention)
+			empresa.GET("/tickets", d.obersuiteCompany.Tickets)
+			empresa.GET("/archived", d.obersuiteCompany.Archived)
+			empresa.GET("/usage", d.obersuiteCompany.Usage)
+		}
 	}
 
 	// Callback de OAuth de Google (integración con Calendar). Público a

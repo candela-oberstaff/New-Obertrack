@@ -52,12 +52,17 @@ type deps struct {
 	reportSched   *handlers.ReportScheduleHandler
 	emailSettings *handlers.EmailSettingsHandler
 	onboarding    *handlers.OnboardingHandler
-	induction     *handlers.InductionHandler
-	emailPreview  *handlers.EmailPreviewHandler
-	googleCal     *handlers.GoogleCalendarHandler
-	meeting       *handlers.MeetingHandler
-	workflow      *handlers.WorkflowHandler
-	testimonial   *handlers.TestimonialHandler
+	// obersuiteCompany sirve la ficha de empresa bloque a bloque. Va aparte de
+	// onboarding porque no comparten nada: aquel resuelve contrataciones, este
+	// solo lee y reexporta lo que ya muestra el panel de Empresas.
+	obersuiteCompany *handlers.ObersuiteCompanyHandler
+	version          *handlers.VersionHandler
+	induction        *handlers.InductionHandler
+	emailPreview     *handlers.EmailPreviewHandler
+	googleCal        *handlers.GoogleCalendarHandler
+	meeting          *handlers.MeetingHandler
+	workflow         *handlers.WorkflowHandler
+	testimonial      *handlers.TestimonialHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -326,12 +331,16 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		reportSched:   handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
 		emailSettings: handlers.NewEmailSettingsHandler(emailSettingsSvc),
 		onboarding:    handlers.NewOnboardingHandler(onboardingSvc),
-		induction:     handlers.NewInductionHandler(inductionSvc),
-		emailPreview:  handlers.NewEmailPreviewHandler(),
-		googleCal:     handlers.NewGoogleCalendarHandler(googleCalSvc, cfg.FrontendURL),
-		meeting:       handlers.NewMeetingHandler(meetingSvc),
-		workflow:      handlers.NewWorkflowHandler(workflowSvc),
-		testimonial:   handlers.NewTestimonialHandler(testimonialSvc),
+		obersuiteCompany: handlers.NewObersuiteCompanyHandler(
+			adminSvc, employmentSvc, usageRepo, userRepo,
+		),
+		version:      handlers.NewVersionHandler(),
+		induction:    handlers.NewInductionHandler(inductionSvc),
+		emailPreview: handlers.NewEmailPreviewHandler(),
+		googleCal:    handlers.NewGoogleCalendarHandler(googleCalSvc, cfg.FrontendURL),
+		meeting:      handlers.NewMeetingHandler(meetingSvc),
+		workflow:     handlers.NewWorkflowHandler(workflowSvc),
+		testimonial:  handlers.NewTestimonialHandler(testimonialSvc),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,

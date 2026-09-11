@@ -25,6 +25,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # Lo que devuelve /api/integrations/obersuite/version, para poder saber
+        # QUÉ está desplegado sin deducirlo del JSON que se recibe. Exportar
+        # antes de construir:  export BUILD_COMMIT=$(git rev-parse --short HEAD)
+        BUILD_COMMIT: ${BUILD_COMMIT:-desconocido}
     environment:
       GIN_MODE: release                       # audit finding C-01 (disables /seed gate)
       DB_HOST: ${DB_HOST:-db}
