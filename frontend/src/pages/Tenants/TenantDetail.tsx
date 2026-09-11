@@ -46,6 +46,7 @@ import { ArchivedList } from '../../components/Admin/ArchivedList'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
 import { OrgChartPanel } from '../../components/OrgChart/OrgChartPanel'
 import EmployeeScheduleModal from './EmployeeScheduleModal'
+import { formatDateOnly } from '../../utils/date'
 import styles from './Tenants.module.css'
 
 const EMP_PER_PAGE = 5
@@ -872,7 +873,9 @@ export default function TenantDetail() {
   // solo cuándo se creó la cuenta aquí, que en las empresas cargadas después de
   // empezar a trabajar con nosotros no es el alta que reconoce nadie.
   const clientSince = tenant.client_since || tenant.created_at
-  const createdLabel = clientSince ? new Date(clientSince).toLocaleDateString('es-ES') : '-'
+  // client_since es una columna DATE: se lee sin zona horaria, o al oeste de
+  // Greenwich el alta sale un día antes.
+  const createdLabel = clientSince ? formatDateOnly(clientSince, { day: 'numeric', month: 'numeric', year: 'numeric' }) : '-'
   const editStates = getStatesForCountry(editForm.country)
   const contactHealth = healthSignal(tenant.last_contact_at)
   const activityHealth = healthSignal(tenant.last_activity_at)
@@ -1264,7 +1267,7 @@ export default function TenantDetail() {
                               </td>
                               <td>{emp.hours_this_month?.toFixed(1) ?? '0.0'} h</td>
                               <td>{emp.tasks_completed}/{emp.tasks_assigned}</td>
-                              <td>{lastValid ? last!.toLocaleDateString('es-ES') : '—'}</td>
+                              <td>{lastValid ? formatDateOnly(emp.last_active, { day: 'numeric', month: 'numeric', year: 'numeric' }) : '—'}</td>
                               <td>
                                 <span className={`${styles.badge} ${emp.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
                                   {emp.is_active ? 'Activo' : 'Inactivo'}

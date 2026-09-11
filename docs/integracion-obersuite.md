@@ -400,6 +400,7 @@ recorriendo las claves de `counts`.**
 | `access_state` | `not_required` \| `pending` \| `passed` \| `blocked` | La clave del portero de inducción, para colorear sin comparar textos |
 | `access_label` | texto | Su etiqueta: "Acceso directo", "Inducción pendiente", "Inducción aprobada", "Bloqueado por intentos" |
 | `email_verified` | booleano | |
+| `avatar_url` | texto | La foto como **URL absoluta accesible sin sesión** (por `/api/public/uploads/`, la misma ruta que usan los correos). `avatar` sigue viniendo relativo; ese lo pide el navegador al dominio equivocado. Vacía si no hay foto |
 
 `hours_this_month`, `tasks_*` y `last_active` están acotados a **esta empresa**
 (11-sep). Antes sumaban las dos empresas de un recontratado.
@@ -441,7 +442,7 @@ cuál, y se adivinaría mal justo con los recontratados.
 
 | Ruta | Pestaña | Devuelve |
 |---|---|---|
-| `GET .../:uid` | cabecera | `{company_id, company_name, professional, employment_id}`. `professional` es **la misma fila** que en `/professionals`: la ficha dice lo que decía la lista |
+| `GET .../:uid` | cabecera | `{company_id, company_name, professional, employment_id, counts}`. `professional` es **la misma fila** que en `/professionals`: la ficha dice lo que decía la lista. `counts` trae `workdays`, `tasks` y `activity` para pintar las pestañas sin pedir los bloques, **con los mismos filtros** que sus listas |
 | `GET .../:uid/record` | Expediente | `{summary, absences[], contacts[], notes[], documents[], labels, record_available}` |
 | `GET .../:uid/workdays` | Jornadas | `{entries[], page, page_size, total, labels}` — 30 por página |
 | `GET .../:uid/tasks` | Tareas | `{entries[], page, page_size, total, labels}` |
@@ -470,8 +471,14 @@ que la persona existe en otro sitio.
 **Los diccionarios viajan en cada respuesta** (`labels`), con `value` y
 `label`: estado de jornada, tipo de jornada, estado de tarea, estado de
 inducción, tipo y estado de gestión, tipo de nota, visibilidad y canal de
-contacto. Un tablero puede definir columnas propias, y entonces `status` de una
-tarea trae un valor que no está en el diccionario: se pinta tal cual.
+contacto.
+
+**El estado de una tarea lleva además su propia etiqueta** (`status_label`),
+resuelta desde la definición de su tablero. Un tablero puede tener columnas
+propias —"En revisión" → `en_revision`— y entonces `status` trae un id que no
+está en ningún diccionario fijo; la etiqueta existe, pero en el tablero. Se
+pinta `status_label` y se cae a `labels.status` solo si viene vacía (la columna
+ya no existe).
 
 **Audiencia: plataforma.** El expediente se sirve con lo que ve nuestro
 superadmin — notas privadas y evaluaciones incluidas. Decidido el 10-sep-2026

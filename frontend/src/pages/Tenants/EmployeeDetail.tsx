@@ -252,7 +252,7 @@ export default function EmployeeDetail() {
                   const activities = htmlToText(wh.activities)
                   return (
                   <tr key={wh.id} className={styles.row} onClick={() => setDetailId(wh.id)} title="Ver el detalle de la jornada">
-                    <td>{wh.work_date ? new Date(wh.work_date).toLocaleDateString('es-ES') : '—'}</td>
+                    <td>{wh.work_date ? formatDateOnly(wh.work_date, { day: 'numeric', month: 'numeric', year: 'numeric' }) : '—'}</td>
                     <td><span className={styles.typeBadge}>{WORK_TYPE[wh.work_type] || wh.work_type}</span></td>
                     <td>{wh.hours_worked?.toFixed(1)} h</td>
                     <td>
@@ -270,7 +270,7 @@ export default function EmployeeDetail() {
                           className={styles.iconBtn}
                           onClick={(e) => { e.stopPropagation(); setDetailId(wh.id) }}
                           title="Ver el detalle de la jornada"
-                          aria-label={`Ver el detalle de la jornada del ${wh.work_date ? new Date(wh.work_date).toLocaleDateString('es-ES') : 'registro'}`}
+                          aria-label={`Ver el detalle de la jornada del ${wh.work_date ? formatDateOnly(wh.work_date, { day: 'numeric', month: 'numeric', year: 'numeric' }) : 'registro'}`}
                         >
                           <Eye size={16} />
                         </button>

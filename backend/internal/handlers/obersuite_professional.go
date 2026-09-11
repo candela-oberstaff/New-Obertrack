@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -77,6 +78,7 @@ func (h *ObersuiteProfessionalHandler) person(c *gin.Context) (*repository.Tenan
 		c.JSON(http.StatusNotFound, gin.H{"error": "la persona no existe o no trabaja en esta empresa"})
 		return nil, nil, nil, false
 	}
+	row.AvatarURL = publicAvatarURL(c, row.Avatar)
 
 	var emp *models.Employment
 	if views, err := h.employment.ListForUser(row.ID); err == nil {
@@ -111,6 +113,20 @@ func (h *ObersuiteProfessionalHandler) Detail(c *gin.Context) {
 	if emp != nil {
 		out["employment_id"] = emp.ID
 	}
+
+	// Los números de las pestañas, para pintarlos al abrir la ficha sin pedir
+	// los bloques que nadie va a abrir. Con los MISMOS filtros que las listas:
+	// si no, el número de fuera y el total de dentro se contradicen, que es lo
+	// que pasaba en nuestra propia ficha (35 en la tarjeta, 30 en la pestaña).
+	counts := gin.H{}
+	if cnt, err := h.users.GetObersuiteCounts(row.ID, tenant.ID); err == nil {
+		counts["workdays"] = cnt.Workdays
+		counts["tasks"] = cnt.Tasks
+	}
+	if _, total, err := h.admin.GetTenantActivities(tenant.ID, "", row.ID, 0, 1); err == nil {
+		counts["activity"] = total
+	}
+	out["counts"] = counts
 	c.JSON(http.StatusOK, out)
 }
 
@@ -200,6 +216,7 @@ func (h *ObersuiteProfessionalHandler) Tasks(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "no se pudieron cargar las tareas"})
 		return
 	}
+	h.labelTaskStatuses(entries)
 	c.JSON(http.StatusOK, gin.H{
 		"company_id":      tenant.ID,
 		"professional_id": row.ID,
@@ -424,4 +441,59 @@ func expedienteLabels() gin.H {
 			{"value": "chat", "label": "Chat"},
 		},
 	}
+}
+
+// labelTaskStatuses pone a cada tarea el nombre de la columna en la que está,
+// leído de la definición de SU tablero.
+//
+// Un status es el id de una columna, y un tablero puede tener columnas propias
+// ("En revisión" → en_revision). El diccionario fijo de labels.status solo
+// conoce las tres por defecto, así que para el resto la única etiqueta correcta
+// es la del tablero. Se resuelve por página con una consulta, no una por tarea.
+func (h *ObersuiteProfessionalHandler) labelTaskStatuses(tasks []repository.ObersuiteTask) {
+	seen := map[uint]bool{}
+	ids := make([]uint, 0, 4)
+	for _, t := range tasks {
+		if t.BoardID != 0 && !seen[t.BoardID] {
+			seen[t.BoardID] = true
+			ids = append(ids, t.BoardID)
+		}
+	}
+	phases, err := h.users.GetBoardPhases(ids)
+	if err != nil {
+		return // sin etiqueta antes que sin respuesta
+	}
+	byBoard := map[uint]map[string]string{}
+	for _, p := range phases {
+		if byBoard[p.BoardID] == nil {
+			byBoard[p.BoardID] = map[string]string{}
+		}
+		col := service.PhaseColumnID(models.Phase{Name: p.Name, Status: p.Status})
+		byBoard[p.BoardID][col] = p.Name
+	}
+	for i := range tasks {
+		tasks[i].StatusLabel = byBoard[tasks[i].BoardID][tasks[i].Status]
+	}
+}
+
+// publicAvatarURL convierte la ruta relativa de la foto en una URL absoluta que
+// se puede pedir sin sesión.
+//
+// Las fotos se guardan bajo /api/uploads/, que exige sesión; el mismo archivo
+// se sirve también por /api/public/uploads/, que es lo que ya usan los correos
+// para que el cliente de correo pueda cargar la imagen. Aquí se hace lo mismo.
+// El host sale de SERVICE_URL_BACKEND o, si no está, de la propia petición.
+func publicAvatarURL(c *gin.Context, avatar string) string {
+	avatar = strings.TrimSpace(avatar)
+	if avatar == "" {
+		return ""
+	}
+	if strings.HasPrefix(avatar, "http://") || strings.HasPrefix(avatar, "https://") {
+		return avatar
+	}
+	path := strings.Replace(avatar, "/api/uploads/", "/api/public/uploads/", 1)
+	if !strings.HasPrefix(path, "/") {
+		path = "/api/public/uploads/" + path
+	}
+	return strings.TrimRight(resolveBackendURL(c), "/") + path
 }

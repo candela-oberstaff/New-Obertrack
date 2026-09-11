@@ -121,7 +121,11 @@ export function EmployeeKpis({ summary, compact = false }: { summary?: EmployeeS
         </div>
         <div>
           <span className={styles.kpiValue}>
-            {summary?.last_active ? new Date(summary.last_active).toLocaleDateString('es-ES') : '—'}
+            {/* Fecha de CALENDARIO (el día de la última jornada), no un
+                instante: se lee con formatDateOnly, que ignora la zona
+                horaria. Con new Date(...).toLocaleDateString, al oeste de
+                Greenwich la medianoche UTC del día 10 se pintaba como día 9. */}
+            {summary?.last_active ? formatDateOnly(summary.last_active, { day: 'numeric', month: 'numeric', year: 'numeric' }) : '—'}
           </span>
           <span className={styles.kpiLabel}>Última actividad</span>
         </div>
