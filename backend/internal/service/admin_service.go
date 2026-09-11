@@ -1143,6 +1143,10 @@ var tenantActivityCategories = map[string]bool{
 	repository.TenantActivityManagement: true,
 	repository.TenantActivityNote:       true,
 	repository.TenantActivityContact:    true,
+	// Faltaba: el SQL del expediente SÍ emite esta categoría, pero al no estar
+	// aquí ?category=testimonial se trataba como desconocida y devolvía el
+	// expediente entero. El chip "Testimonios" de la pantalla nunca filtró.
+	repository.TenantActivityTestimonial: true,
 }
 
 func (s *adminService) GetTenantTickets(id uint) ([]repository.TenantTicket, error) {

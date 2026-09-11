@@ -8,7 +8,7 @@ Vive en Obertrack a propósito. Los códigos, los campos y las semánticas los f
 el servidor; tenerlos escritos en el repositorio del cliente garantiza que se
 queden desactualizados sin que nadie se entere.
 
-**Última revisión:** 10 de septiembre de 2026 · `payload_schema_version` 3
+**Última revisión:** 11 de septiembre de 2026 · `payload_schema_version` 3
 
 ---
 
@@ -392,6 +392,15 @@ recorriendo las claves de `counts`.**
 | `tasks_assigned`, `tasks_completed` | número | |
 | `last_active` | ISO 8601 o `null` | Última jornada registrada |
 | `is_primary_company` | booleano | Si esta es la empresa que el usuario tiene activa. `false` = trabaja aquí pero ve otra al entrar en la app |
+| `manager_name` | texto | Resuelto, no un id. El del **empleo en esta empresa**; cae al del perfil. Vacío si no tiene |
+| `location` | texto | Ya compuesta: ciudad, provincia, país — los que haya. Si no hay ninguno, el texto libre. Vacía si nada |
+| `phone_number` | texto | Tal como está guardado |
+| `access_state` | `not_required` \| `pending` \| `passed` \| `blocked` | La clave del portero de inducción, para colorear sin comparar textos |
+| `access_label` | texto | Su etiqueta: "Acceso directo", "Inducción pendiente", "Inducción aprobada", "Bloqueado por intentos" |
+| `email_verified` | booleano | |
+
+`hours_this_month`, `tasks_*` y `last_active` están acotados a **esta empresa**
+(11-sep). Antes sumaban las dos empresas de un recontratado.
 
 Los dos identificadores de Obersuite **no son lo mismo** y por eso van los dos:
 alguien puede venir de Obersuite (`obersuite_id`) y que este empleo concreto lo
@@ -418,6 +427,68 @@ Es justo la población que produce este puente —los `rehired`—, así que hab
 salido a la primera. Y el segundo fallo era peor porque no se nota: al leer el
 horario y la fecha de ingreso anclados a la empresa principal, un recontratado
 salía con **los datos de su otra empresa**. Un dato equivocado que parece bueno.
+
+#### La ficha de la persona
+
+Espejo de nuestra pantalla de empleado, una ruta por pestaña, bajo
+`/companies/:id/professionals/:uid`. **Cuelga de la empresa** porque el
+expediente, las jornadas y las tareas son **del empleo**, no de la persona:
+alguien que pasó por dos empresas tiene dos de cada, y desde la ficha de la
+empresa A solo interesa el suyo. Sin la empresa en la ruta habría que adivinar
+cuál, y se adivinaría mal justo con los recontratados.
+
+| Ruta | Pestaña | Devuelve |
+|---|---|---|
+| `GET .../:uid` | cabecera | `{company_id, company_name, professional, employment_id}`. `professional` es **la misma fila** que en `/professionals`: la ficha dice lo que decía la lista |
+| `GET .../:uid/record` | Expediente | `{summary, absences[], contacts[], notes[], documents[], labels, record_available}` |
+| `GET .../:uid/workdays` | Jornadas | `{entries[], page, page_size, total, labels}` — 30 por página |
+| `GET .../:uid/tasks` | Tareas | `{entries[], page, page_size, total, labels}` |
+| `GET .../:uid/onboarding` | Seguimiento | `{induction, attempts[], follow_ups[], labels, induction_available, record_available}` |
+| `GET .../:uid/support` | Soporte | `{tickets[], incidents[]}` |
+| `GET .../:uid/activity` | Actividad | `{entries[], page, page_size, total}` — los mismos movimientos de `/timeline`, filtrados a la persona |
+
+**Todo acotado a la empresa de la ruta.** Jornadas y tareas llevan `tenant_id`
+y se filtran por él. El manager y el cargo son los del **empleo en esa
+empresa**, con los del perfil como respaldo. Se descubrió construyéndolo: el
+manager de una recontratada salía el de su otra empresa.
+
+**Una persona que existe pero no trabaja en esa empresa da 404**, igual que una
+que no existe. Es deliberado: contestar con datos de otra empresa sería justo
+el enlace-a-la-ficha-equivocada, y distinguir los dos casos en el mensaje diría
+que la persona existe en otro sitio.
+
+**Las banderas cuando no se puede contestar**, como se acordó:
+
+- `record_available: false` — la persona está vinculada a la empresa sin un
+  empleo escrito. El expediente cuelga del empleo, así que no hay resumen que
+  dar; un resumen a cero afirmaría que no ha trabajado.
+- `induction_available: false` — nunca se le mandó inducción. Cero intentos y
+  "sin inducción" no son lo mismo.
+
+**Los diccionarios viajan en cada respuesta** (`labels`), con `value` y
+`label`: estado de jornada, tipo de jornada, estado de tarea, estado de
+inducción, tipo y estado de gestión, tipo de nota, visibilidad y canal de
+contacto. Un tablero puede definir columnas propias, y entonces `status` de una
+tarea trae un valor que no está en el diccionario: se pinta tal cual.
+
+**Audiencia: plataforma.** El expediente se sirve con lo que ve nuestro
+superadmin — notas privadas y evaluaciones incluidas. Decidido el 10-sep-2026
+(Obersuite es interno; su pantalla de Empresas la ven seis superadmins). Se deja
+escrito porque es el tipo de decisión que no se reconstruye leyendo el código.
+
+**El enlace a nuestra ficha** es
+`obertrack.com/admin/tenants/<company_id>/employees/<professionals[].id>`. El
+primer id es el `id` del padrón; el segundo, el de la fila. La página exige
+sesión de Customer Success o superadmin.
+
+#### Estado de consumo (11-sep-2026)
+
+Conectados y en uso por Obersuite: el padrón, `/professionals`, `/org-chart`,
+`/timeline`, `/attention`, `/archived`, y la ficha de persona entera.
+
+Construidos y **no consumidos**: `/companies/:id` (su Resumen se sirve del
+padrón), `/usage` y `/tickets`. Cuestan cero hasta que se llaman; si en seis
+meses nadie los ha pedido, se van.
 
 #### Y lo que esto NO es
 

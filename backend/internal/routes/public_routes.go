@@ -72,6 +72,21 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 			empresa.GET("/tickets", d.obersuiteCompany.Tickets)
 			empresa.GET("/archived", d.obersuiteCompany.Archived)
 			empresa.GET("/usage", d.obersuiteCompany.Usage)
+
+			// Ficha de UNA persona dentro de la empresa: el espejo de nuestra
+			// pantalla de empleado, una ruta por pestaña. Cuelga de la empresa
+			// porque el expediente, las jornadas y las tareas son del EMPLEO,
+			// y alguien con dos empresas tiene dos de cada.
+			persona := empresa.Group("/professionals/:uid")
+			{
+				persona.GET("", d.obersuiteProfessional.Detail)
+				persona.GET("/record", d.obersuiteProfessional.Record)
+				persona.GET("/workdays", d.obersuiteProfessional.Workdays)
+				persona.GET("/tasks", d.obersuiteProfessional.Tasks)
+				persona.GET("/onboarding", d.obersuiteProfessional.Onboarding)
+				persona.GET("/support", d.obersuiteProfessional.Support)
+				persona.GET("/activity", d.obersuiteProfessional.Activity)
+			}
 		}
 	}
 

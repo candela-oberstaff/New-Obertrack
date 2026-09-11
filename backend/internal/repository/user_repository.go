@@ -10,6 +10,9 @@ import (
 type UserRepository interface {
 	GetObersuiteCompanies(updatedSince *time.Time) ([]ObersuiteCompanyRecord, error)
 	GetObersuiteProfessionals(companyID uint) ([]ObersuiteProfessional, error)
+	GetObersuiteProfessional(companyID, userID uint) (*ObersuiteProfessional, error)
+	GetObersuiteWorkdays(userID, companyID uint, offset, limit int) ([]ObersuiteWorkday, int64, error)
+	GetObersuiteTasks(userID, companyID uint, offset, limit int) ([]ObersuiteTask, int64, error)
 	GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	Count(role, isManager, isActive string, companyID uint) (int64, error)
 	CountCompanies() (int64, error)
@@ -518,6 +521,48 @@ type ObersuiteProfessional struct {
 	// Quien tiene empleo aquí pero otra como principal ve la otra al entrar en
 	// la app: explica diferencias que si no parecen un fallo.
 	IsPrimaryCompany bool `json:"is_primary_company"`
+
+	// Lo que enseña nuestra ficha y Obersuite pinta en la suya.
+	//
+	// ManagerName va resuelto porque el nombre es lo único que se pinta;
+	// mandar manager_id obligaría a pedir el organigrama para un solo dato.
+	// Vacío si no tiene manager.
+	ManagerName string `json:"manager_name"`
+	// Location va ya compuesta ("Carabobo, Venezuela") con el mismo criterio de
+	// la ficha: ciudad, provincia y país, los que haya; y si no hay ninguno,
+	// el campo libre. Vacía si no se sabe nada.
+	Location    string `json:"location"`
+	PhoneNumber string `json:"phone_number"`
+	// AccessState es la clave del portero de inducción (not_required, pending,
+	// passed, blocked) y AccessLabel su texto en español, el mismo que pinta
+	// nuestra ficha. Van los dos: la clave para colorear sin comparar textos, la
+	// etiqueta para no repetir el diccionario del otro lado.
+	AccessState   string `json:"access_state"`
+	AccessLabel   string `json:"access_label"`
+	EmailVerified bool   `json:"email_verified"`
+}
+
+// accessLabels es el diccionario del portero de inducción, el MISMO que
+// ONBOARDING_STATE en frontend/src/pages/Tenants/EmployeeFicha.tsx. Al tocar
+// uno hay que tocar el otro.
+var accessLabels = map[string]string{
+	"not_required": "Acceso directo",
+	"pending":      "Inducción pendiente",
+	"passed":       "Inducción aprobada",
+	"blocked":      "Bloqueado por intentos",
+}
+
+// AccessLabelFor traduce la clave del portero a su etiqueta. Una clave que no
+// se conoce se devuelve tal cual antes que en blanco: un texto raro se ve, un
+// hueco no.
+func AccessLabelFor(state string) string {
+	if state == "" {
+		state = "not_required"
+	}
+	if l, ok := accessLabels[state]; ok {
+		return l
+	}
+	return state
 }
 
 // GetObersuiteProfessionals devuelve la plantilla de una empresa con el MISMO
@@ -535,6 +580,22 @@ type ObersuiteProfessional struct {
 // la fecha de ingreso y el horario de su OTRA empresa: un dato equivocado que
 // parece bueno, que es la peor clase.
 func (r *userRepository) GetObersuiteProfessionals(companyID uint) ([]ObersuiteProfessional, error) {
+	return r.obersuiteProfessionals(companyID, 0)
+}
+
+// GetObersuiteProfessional es UNA fila de la plantilla: la cabecera de la ficha
+// de la persona. Sale de la misma consulta que la lista a propósito, para que
+// lo que se ve al abrir la ficha sea exactamente lo que se veía en la fila.
+// Devuelve nil, nil si la persona no está vinculada a esa empresa.
+func (r *userRepository) GetObersuiteProfessional(companyID, userID uint) (*ObersuiteProfessional, error) {
+	rows, err := r.obersuiteProfessionals(companyID, userID)
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	return &rows[0], nil
+}
+
+func (r *userRepository) obersuiteProfessionals(companyID, onlyUserID uint) ([]ObersuiteProfessional, error) {
 	var rows []ObersuiteProfessional
 	err := r.db.Raw(`
 		SELECT
@@ -552,18 +613,32 @@ func (r *userRepository) GetObersuiteProfessionals(companyID uint) ([]ObersuiteP
 			COALESCE(e.schedule_start_time, '') as schedule_start_time,
 			COALESCE(e.schedule_end_time, '')   as schedule_end_time,
 			COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh
-				WHERE wh.user_id = u.id AND wh.deleted_at IS NULL
+				WHERE wh.user_id = u.id AND wh.tenant_id = ? AND wh.deleted_at IS NULL
 				  AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
-			(SELECT COUNT(*) FROM task_users tu WHERE tu.user_id = u.id) as tasks_assigned,
 			(SELECT COUNT(*) FROM task_users tu
 				JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL
-				WHERE tu.user_id = u.id AND t.completed = true) as tasks_completed,
+				WHERE tu.user_id = u.id AND t.tenant_id = ?) as tasks_assigned,
+			(SELECT COUNT(*) FROM task_users tu
+				JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL
+				WHERE tu.user_id = u.id AND t.tenant_id = ? AND t.completed = true) as tasks_completed,
 			(SELECT MAX(wh.work_date) FROM work_hours wh
-				WHERE wh.user_id = u.id AND wh.deleted_at IS NULL) as last_active,
-			(u.empleador_id = ?) as is_primary_company
+				WHERE wh.user_id = u.id AND wh.tenant_id = ? AND wh.deleted_at IS NULL) as last_active,
+			(u.empleador_id = ?) as is_primary_company,
+			-- El manager del EMPLEO en esta empresa, y solo si no lo hay el del
+			-- perfil. users.manager_id es de la persona: a un recontratado le
+			-- saldría el jefe de su otra empresa, como ya pasó con el cargo.
+			COALESCE(me.name, m.name, '') as manager_name,
+			-- Ubicación compuesta como en la ficha: de lo concreto a lo general,
+			-- y el texto libre solo cuando no hay nada estructurado.
+			COALESCE(NULLIF(
+				CONCAT_WS(', ', NULLIF(u.city, ''), NULLIF(u.state, ''), NULLIF(u.country, '')),
+			''), u.location, '') as location,
+			COALESCE(u.phone_number, '') as phone_number,
+			COALESCE(NULLIF(u.onboarding_status, ''), 'not_required') as access_state,
+			(u.email_verified_at IS NOT NULL) as email_verified
 		FROM users u
 		LEFT JOIN LATERAL (
-			SELECT em.job_title, em.obersuite_id, em.started_at,
+			SELECT em.job_title, em.obersuite_id, em.started_at, em.manager_id,
 			       em.schedule_type, em.schedule_days,
 			       em.schedule_start_time, em.schedule_end_time
 			FROM employments em
@@ -572,10 +647,105 @@ func (r *userRepository) GetObersuiteProfessionals(companyID uint) ([]ObersuiteP
 			ORDER BY em.started_at DESC
 			LIMIT 1
 		) e ON TRUE
+		LEFT JOIN users me ON me.id = e.manager_id AND me.deleted_at IS NULL
+		LEFT JOIN users m  ON m.id  = u.manager_id AND m.deleted_at  IS NULL
 		WHERE u.deleted_at IS NULL
 		  AND u.user_type = 'profesional'
 		  AND (u.empleador_id = ? OR e.started_at IS NOT NULL)
+		  AND (? = 0 OR u.id = ?)
 		ORDER BY u.name
-	`, companyID, companyID, companyID).Scan(&rows).Error
+	`, companyID, companyID, companyID, companyID, companyID,
+		companyID, companyID, onlyUserID, onlyUserID).Scan(&rows).Error
+	for i := range rows {
+		rows[i].AccessLabel = AccessLabelFor(rows[i].AccessState)
+	}
 	return rows, err
+}
+
+// ObersuiteWorkday es una jornada de la ficha de persona hacia Obersuite.
+//
+// El estado va resuelto en UNA clave (approved / rejected / pending) en vez de
+// los dos booleanos de la tabla: con approved=false y rejected=false la ficha
+// nuestra tuvo que aprender a distinguir "pendiente" de "rechazada", y ese
+// aprendizaje no tiene por qué repetirse del otro lado.
+type ObersuiteWorkday struct {
+	ID              uint      `json:"id"`
+	WorkDate        time.Time `json:"work_date"`
+	WorkType        string    `json:"work_type"`
+	HoursWorked     float64   `json:"hours_worked"`
+	State           string    `json:"state"`
+	Activities      string    `json:"activities"`
+	Comments        string    `json:"comments"`
+	RejectionReason string    `json:"rejection_reason"`
+	AbsenceReason   string    `json:"absence_reason"`
+	AbsenceHours    float64   `json:"absence_hours"`
+}
+
+// GetObersuiteWorkdays devuelve las jornadas de una persona EN UNA EMPRESA,
+// paginadas y de la más reciente hacia atrás.
+//
+// Acotar por tenant_id no es opcional: work_hours lleva la empresa, y alguien
+// con dos empleos tiene jornadas de las dos. Sin el filtro, la ficha de la
+// empresa A enseñaría lo que la persona trabajó para la B.
+func (r *userRepository) GetObersuiteWorkdays(userID, companyID uint, offset, limit int) ([]ObersuiteWorkday, int64, error) {
+	var total int64
+	if err := r.db.Raw(`
+		SELECT COUNT(*) FROM work_hours
+		WHERE user_id = ? AND tenant_id = ? AND deleted_at IS NULL
+	`, userID, companyID).Scan(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []ObersuiteWorkday
+	err := r.db.Raw(`
+		SELECT id, work_date, work_type, hours_worked,
+			CASE WHEN approved THEN 'approved'
+			     WHEN rejected THEN 'rejected'
+			     ELSE 'pending' END as state,
+			COALESCE(activities, '')       as activities,
+			COALESCE(comments, '')         as comments,
+			COALESCE(rejection_reason, '') as rejection_reason,
+			COALESCE(absence_reason, '')   as absence_reason,
+			COALESCE(absence_hours, 0)     as absence_hours
+		FROM work_hours
+		WHERE user_id = ? AND tenant_id = ? AND deleted_at IS NULL
+		ORDER BY work_date DESC, id DESC
+		LIMIT ? OFFSET ?
+	`, userID, companyID, limit, offset).Scan(&rows).Error
+	return rows, total, err
+}
+
+// ObersuiteTask es una tarea de la ficha de persona hacia Obersuite.
+type ObersuiteTask struct {
+	ID        uint       `json:"id"`
+	Title     string     `json:"title"`
+	BoardName string     `json:"board_name"`
+	Status    string     `json:"status"`
+	Completed bool       `json:"completed"`
+	EndDate   *time.Time `json:"end_date"`
+}
+
+// GetObersuiteTasks devuelve las tareas asignadas a una persona EN UNA EMPRESA,
+// paginadas. Mismo motivo que las jornadas para acotar por tenant_id.
+func (r *userRepository) GetObersuiteTasks(userID, companyID uint, offset, limit int) ([]ObersuiteTask, int64, error) {
+	var total int64
+	if err := r.db.Raw(`
+		SELECT COUNT(*) FROM task_users tu
+		JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL
+		WHERE tu.user_id = ? AND t.tenant_id = ?
+	`, userID, companyID).Scan(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []ObersuiteTask
+	err := r.db.Raw(`
+		SELECT t.id, t.title,
+			COALESCE(b.name, '') as board_name,
+			t.status, t.completed, t.end_date
+		FROM task_users tu
+		JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL
+		LEFT JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
+		WHERE tu.user_id = ? AND t.tenant_id = ?
+		ORDER BY t.completed ASC, t.end_date ASC NULLS LAST, t.id DESC
+		LIMIT ? OFFSET ?
+	`, userID, companyID, limit, offset).Scan(&rows).Error
+	return rows, total, err
 }

@@ -55,14 +55,15 @@ type deps struct {
 	// obersuiteCompany sirve la ficha de empresa bloque a bloque. Va aparte de
 	// onboarding porque no comparten nada: aquel resuelve contrataciones, este
 	// solo lee y reexporta lo que ya muestra el panel de Empresas.
-	obersuiteCompany *handlers.ObersuiteCompanyHandler
-	version          *handlers.VersionHandler
-	induction        *handlers.InductionHandler
-	emailPreview     *handlers.EmailPreviewHandler
-	googleCal        *handlers.GoogleCalendarHandler
-	meeting          *handlers.MeetingHandler
-	workflow         *handlers.WorkflowHandler
-	testimonial      *handlers.TestimonialHandler
+	obersuiteCompany      *handlers.ObersuiteCompanyHandler
+	obersuiteProfessional *handlers.ObersuiteProfessionalHandler
+	version               *handlers.VersionHandler
+	induction             *handlers.InductionHandler
+	emailPreview          *handlers.EmailPreviewHandler
+	googleCal             *handlers.GoogleCalendarHandler
+	meeting               *handlers.MeetingHandler
+	workflow              *handlers.WorkflowHandler
+	testimonial           *handlers.TestimonialHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -295,44 +296,49 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// conexión; la re-importación es idempotente por el índice de external_id).
 	service.NewChatImportWatcher(wahaSvc, ticketSvc).Start(60 * time.Second)
 
+	// El handler de persona reutiliza el de empresa para resolver el :id y
+	// validar la empresa: así los dos contestan el mismo 404 con el mismo texto.
+	obersuiteCompanyH := handlers.NewObersuiteCompanyHandler(adminSvc, employmentSvc, usageRepo, userRepo)
+
 	return &deps{
 		cfg: cfg,
 		// Session-revocation lookup used by the auth middleware (audit A-04).
 		tvGetter: func(userID uint) (int, error) { return authSvc.GetTokenVersion(userID) },
 
-		auth:          handlers.NewAuthHandler(authSvc, auditSvc, rbacSvc, employmentSvc),
-		user:          handlers.NewUserHandler(userSvc),
-		admin:         handlers.NewAdminHandler(adminSvc, rbacSvc, employmentSvc, companyThreadSvc),
-		board:         handlers.NewBoardHandler(boardSvc),
-		task:          handlers.NewTaskHandler(taskSvc),
-		workHour:      handlers.NewWorkHourHandler(workHourSvc),
-		chat:          handlers.NewChatHandler(chatSvc, chatHub),
-		channel:       handlers.NewChannelHandler(channelSvc, channelHub),
-		upload:        handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"), employmentSvc),
-		companyThread: handlers.NewCompanyThreadHandler(companyThreadSvc, os.Getenv("UPLOAD_PATH")),
-		notification:  handlers.NewNotificationHandler(notifSvc, webPushSvc),
-		email:         handlers.NewEmailHandler(emailRepo, brevoSvc),
-		survey:        handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
-		metrics:       handlers.NewMetricsHandler(metricsRepo),
-		usage:         handlers.NewUsageHandler(usageRepo),
-		tutorial:      handlers.NewTutorialHandler(tutorialSvc),
-		rbac:          handlers.NewRBACHandler(rbacSvc),
-		ticket:        handlers.NewTicketHandler(db, zohoSvc, ticketSvc, channelSvc),
-		whatsapp:      handlers.NewWhatsAppHandler(db, zohoSvc),
-		waha:          handlers.NewWahaHandler(ticketSvc, wahaSvc),
-		brevoInbound:  handlers.NewBrevoInboundHandler(ticketSvc),
-		audit:         handlers.NewAuditHandler(auditSvc),
-		audience:      handlers.NewAudienceHandler(audienceRepo),
-		incident:      handlers.NewIncidentHandler(incidentSvc),
-		wallet:        handlers.NewWalletHandler(walletSvc),
-		emergencyTpl:  handlers.NewEmergencyTemplateHandler(emergencyTplSvc),
-		profileChange: handlers.NewProfileChangeHandler(profileChangeSvc),
-		trash:         handlers.NewTrashHandler(service.NewTrashService(db)),
-		reportSched:   handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
-		emailSettings: handlers.NewEmailSettingsHandler(emailSettingsSvc),
-		onboarding:    handlers.NewOnboardingHandler(onboardingSvc),
-		obersuiteCompany: handlers.NewObersuiteCompanyHandler(
-			adminSvc, employmentSvc, usageRepo, userRepo,
+		auth:             handlers.NewAuthHandler(authSvc, auditSvc, rbacSvc, employmentSvc),
+		user:             handlers.NewUserHandler(userSvc),
+		admin:            handlers.NewAdminHandler(adminSvc, rbacSvc, employmentSvc, companyThreadSvc),
+		board:            handlers.NewBoardHandler(boardSvc),
+		task:             handlers.NewTaskHandler(taskSvc),
+		workHour:         handlers.NewWorkHourHandler(workHourSvc),
+		chat:             handlers.NewChatHandler(chatSvc, chatHub),
+		channel:          handlers.NewChannelHandler(channelSvc, channelHub),
+		upload:           handlers.NewUploadHandler(uploadSvc, os.Getenv("UPLOAD_PATH"), employmentSvc),
+		companyThread:    handlers.NewCompanyThreadHandler(companyThreadSvc, os.Getenv("UPLOAD_PATH")),
+		notification:     handlers.NewNotificationHandler(notifSvc, webPushSvc),
+		email:            handlers.NewEmailHandler(emailRepo, brevoSvc),
+		survey:           handlers.NewSurveyHandler(surveyRepo, userRepo, brevoSvc, notifSvc),
+		metrics:          handlers.NewMetricsHandler(metricsRepo),
+		usage:            handlers.NewUsageHandler(usageRepo),
+		tutorial:         handlers.NewTutorialHandler(tutorialSvc),
+		rbac:             handlers.NewRBACHandler(rbacSvc),
+		ticket:           handlers.NewTicketHandler(db, zohoSvc, ticketSvc, channelSvc),
+		whatsapp:         handlers.NewWhatsAppHandler(db, zohoSvc),
+		waha:             handlers.NewWahaHandler(ticketSvc, wahaSvc),
+		brevoInbound:     handlers.NewBrevoInboundHandler(ticketSvc),
+		audit:            handlers.NewAuditHandler(auditSvc),
+		audience:         handlers.NewAudienceHandler(audienceRepo),
+		incident:         handlers.NewIncidentHandler(incidentSvc),
+		wallet:           handlers.NewWalletHandler(walletSvc),
+		emergencyTpl:     handlers.NewEmergencyTemplateHandler(emergencyTplSvc),
+		profileChange:    handlers.NewProfileChangeHandler(profileChangeSvc),
+		trash:            handlers.NewTrashHandler(service.NewTrashService(db)),
+		reportSched:      handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
+		emailSettings:    handlers.NewEmailSettingsHandler(emailSettingsSvc),
+		onboarding:       handlers.NewOnboardingHandler(onboardingSvc),
+		obersuiteCompany: obersuiteCompanyH,
+		obersuiteProfessional: handlers.NewObersuiteProfessionalHandler(
+			obersuiteCompanyH, userRepo, adminSvc, employmentSvc, inductionSvc, incidentSvc,
 		),
 		version:      handlers.NewVersionHandler(),
 		induction:    handlers.NewInductionHandler(inductionSvc),

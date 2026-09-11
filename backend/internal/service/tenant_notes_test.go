@@ -451,6 +451,20 @@ func TestGetTenantActivities_RespetaCategoriaValida(t *testing.T) {
 	}
 }
 
+// Toda categoría que el SQL del expediente emite tiene que estar en la lista
+// blanca. "testimonial" no estaba: el chip existía, el SQL lo etiquetaba, y el
+// filtro devolvía el expediente entero sin que nada fallara.
+func TestGetTenantActivities_AceptaTestimonial(t *testing.T) {
+	svc, repo := newNotesSvc(company(7))
+	if _, _, err := svc.GetTenantActivities(7, "testimonial", 0, 0, 20); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if repo.gotCategory != repository.TenantActivityTestimonial {
+		t.Fatalf("category: want %q, got %q (la categoría se descartó como desconocida)",
+			repository.TenantActivityTestimonial, repo.gotCategory)
+	}
+}
+
 func TestGetTenantActivities_AcotaLaPaginacion(t *testing.T) {
 	svc, repo := newNotesSvc(company(7))
 
