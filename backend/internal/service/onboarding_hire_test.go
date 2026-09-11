@@ -2,10 +2,14 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
+	"github.com/obertrack/backend/internal/apperrors"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
 )
@@ -23,6 +27,21 @@ type fakeHireUserRepo struct {
 
 	created *models.User
 	updates map[uint]map[string]interface{}
+
+	// enPapelera es lo que ocupa el correo sin que GetByEmail lo vea: cuentas
+	// borradas. Create choca contra el índice único igual que Postgres.
+	enPapelera map[string]*models.User
+	createErr  error
+}
+
+func (f *fakeHireUserRepo) FindAnyByEmail(email string) (*models.User, error) {
+	if u, ok := f.byEmail[email]; ok {
+		return u, nil
+	}
+	if u, ok := f.enPapelera[email]; ok {
+		return u, nil
+	}
+	return nil, errors.New("not found")
 }
 
 func (f *fakeHireUserRepo) GetByID(id uint) (*models.User, error) {
@@ -47,6 +66,12 @@ func (f *fakeHireUserRepo) GetByObersuiteID(id string) (*models.User, error) {
 }
 
 func (f *fakeHireUserRepo) Create(user *models.User) error {
+	if f.createErr != nil {
+		return f.createErr
+	}
+	if _, ok := f.enPapelera[user.Email]; ok {
+		return errors.New(`ERROR: duplicate key value violates unique constraint "idx_users_email" (SQLSTATE 23505)`)
+	}
 	user.ID = 900
 	f.created = user
 	return nil
@@ -708,5 +733,48 @@ func TestHire_ActualizaBirthDateYContactosDeEmergencia_UsuarioExistente(t *testi
 	}
 	if ep, ok := up["emergency_phones"].(string); !ok || ep != "+58 414 7654321 papá" {
 		t.Errorf("emergency_phones en updates incorrecto: %v", up["emergency_phones"])
+	}
+}
+
+// El caso que Obersuite reportó como "500 fijo": el correo pertenece a una cuenta
+// en la Papelera. resolveProfessional no la ve —GORM oculta lo borrado—, así que
+// la contratación intenta crear otra y el índice único la rechaza. Eso salía
+// como 500 mudo, que el contrato manda reintentar tres veces, y las tres
+// chocaban igual. Tiene que ser 409, con dónde está la cuenta y qué hacer.
+func TestHire_UnCorreoEnLaPapeleraEs409ConInstrucciones(t *testing.T) {
+	svc, userRepo, _, _, _ := newHireSvc(false)
+	userRepo.enPapelera = map[string]*models.User{
+		"nuevo@x.com": {
+			ID: 77, Email: "nuevo@x.com", Name: "Osvell", UserType: models.UserTypeProfessional,
+			DeletedAt: gorm.DeletedAt{Valid: true, Time: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)},
+		},
+	}
+
+	_, err := svc.Hire(baseHire())
+
+	if !errors.Is(err, apperrors.ErrEmailTaken) {
+		t.Fatalf("debía ser el conflicto de correo (409), got %v", err)
+	}
+	msg := err.Error()
+	for _, frase := range []string{"Papelera", "01/09/2026", "Restáurala"} {
+		if !strings.Contains(msg, frase) {
+			t.Errorf("el mensaje debía decir %q para que el reclutador sepa qué hacer; dice: %s", frase, msg)
+		}
+	}
+	if strings.Contains(strings.ToLower(msg), "sqlstate") {
+		t.Errorf("el mensaje enseña el detalle técnico: %s", msg)
+	}
+}
+
+// Cualquier otro fallo de la base sigue siendo 500: reintentar es lo correcto
+// cuando el problema es nuestro y no del dato.
+func TestHire_OtroFalloDeLaBaseSigueSiendo500(t *testing.T) {
+	svc, userRepo, _, _, _ := newHireSvc(false)
+	userRepo.createErr = errors.New("pq: connection refused")
+
+	_, err := svc.Hire(baseHire())
+
+	if err == nil || errors.Is(err, apperrors.ErrEmailTaken) || errors.Is(err, apperrors.ErrConflict) {
+		t.Fatalf("un fallo de conexión no es un conflicto: %v", err)
 	}
 }
