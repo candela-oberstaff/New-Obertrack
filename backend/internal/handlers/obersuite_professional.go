@@ -514,7 +514,8 @@ func splitEmergencyContacts(raw string) []string {
 // Las fotos se guardan bajo /api/uploads/, que exige sesión; el mismo archivo
 // se sirve también por /api/public/uploads/, que es lo que ya usan los correos
 // para que el cliente de correo pueda cargar la imagen. Aquí se hace lo mismo.
-// El host sale de SERVICE_URL_BACKEND o, si no está, de la propia petición.
+// El host sale de BACKEND_URL (el dominio público), si no de SERVICE_URL_BACKEND
+// (la de Coolify, que es el host interno), y si no de la propia petición.
 func publicAvatarURL(c *gin.Context, avatar string) string {
 	avatar = strings.TrimSpace(avatar)
 	if avatar == "" {

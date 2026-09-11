@@ -107,6 +107,10 @@ services:
       # Base a la que vuelve el navegador tras el consentimiento de Google y a la
       # que apunta el enlace de la landing de inducción que se envía por correo.
       FRONTEND_URL: ${FRONTEND_URL:-}
+      # Dominio público del backend, con el que se construyen las URLs de las
+      # fotos (Obersuite) y de las imágenes de los correos. Sin él se usa
+      # SERVICE_URL_BACKEND, que Coolify rellena con el host INTERNO.
+      BACKEND_URL: ${BACKEND_URL:-}
       UPLOAD_PATH: "/app/uploads"
     # Backend not published directly; traffic flows through the frontend proxy.
     expose:

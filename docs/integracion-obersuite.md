@@ -412,7 +412,7 @@ recorriendo las claves de `counts`.**
 | `access_state` | `not_required` \| `pending` \| `passed` \| `blocked` | La clave del portero de inducción, para colorear sin comparar textos |
 | `access_label` | texto | Su etiqueta: "Acceso directo", "Inducción pendiente", "Inducción aprobada", "Bloqueado por intentos" |
 | `email_verified` | booleano | |
-| `avatar_url` | texto | La foto como **URL absoluta accesible sin sesión** (por `/api/public/uploads/`, la misma ruta que usan los correos). `avatar` sigue viniendo relativo; ese lo pide el navegador al dominio equivocado. Vacía si no hay foto |
+| `avatar_url` | texto | La foto como **URL absoluta accesible sin sesión** (por `/api/public/uploads/`, la misma ruta que usan los correos). `avatar` sigue viniendo relativo; ese lo pide el navegador al dominio equivocado. Vacía si no hay foto. El host sale de `BACKEND_URL` (el dominio público, puesto a mano en el despliegue); sin ella cae a `SERVICE_URL_BACKEND`, que Coolify rellena con el host interno `…nip.io` y que desde una página https se bloquea como contenido mixto |
 
 `hours_this_month`, `tasks_*` y `last_active` están acotados a **esta empresa**
 (11-sep). Antes sumaban las dos empresas de un recontratado.
