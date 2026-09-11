@@ -24,6 +24,8 @@ export interface User {
   company_name?: string
   job_title?: string
   phone_number?: string
+  birth_date?: string | null
+  emergency_phones?: string | null
   country?: string
   state?: string
   city?: string
@@ -91,6 +93,9 @@ export interface Tenant {
   last_contact_at?: string | null
   /** Última señal de vida de la empresa (jornada o tarea). Ausente si nunca. */
   last_activity_at?: string | null
+  /** Customer Success asignado a esta empresa. */
+  assigned_cs_id?: number | null
+  assigned_cs_name?: string
 }
 
 export interface EmployeeSummary {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Users, Search, Plus, Ban, CheckCircle2, ChevronLeft, ChevronRight, X, Mail, MessageSquare } from 'lucide-react'
+import { Building2, Users, Search, Plus, Ban, CheckCircle2, ChevronLeft, ChevronRight, X, Mail, MessageSquare, UserCheck } from 'lucide-react'
 import { useTenants } from '../../hooks'
 import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -22,18 +22,21 @@ import { roleLabel } from '../../lib/permissions'
 export default function TenantsList() {
   const navigate = useNavigate()
   const { user: viewer } = useAuth()
-  // CS entra en modo consulta: sin crear ni suspender empresas.
-  const canManage = !!viewer?.is_superadmin
+  const canManage = !!viewer?.is_superadmin || viewer?.user_type === 'customer_success'
   const { tenants, isLoading, error, createTenant, suspendTenant, activateTenant } = useTenants()
   const confirm = useConfirm()
   const notify = useNotification()
 
+  const isCS = viewer?.user_type === 'customer_success'
+  const [onlyAssignedToMe, setOnlyAssignedToMe] = useState(false)
   const [search, setSearch] = useState('')
   const [industryFilter, setIndustryFilter] = useState('')
   const [countryFilter, setCountryFilter] = useState('')
   // Filtro de seguimiento: es la forma en que soporte prioriza de verdad
   // ("¿a quién le toca?"), y hasta ahora no había manera de preguntarlo.
   const [contactFilter, setContactFilter] = useState('')
+  const [assignedFilter, setAssignedFilter] = useState('')
+  const [csUsers, setCsUsers] = useState<{ id: number; name: string; email: string; user_type?: string }[]>([])
   const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
   const [companyName, setCompanyName] = useState('')
@@ -67,10 +70,18 @@ export default function TenantsList() {
 
   const filtered = tenants
     .filter(t => {
+      if (onlyAssignedToMe && Number(t.assigned_cs_id) !== Number(viewer?.id)) return false
       const q = search.trim().toLowerCase()
       if (q && !(t.company_name?.toLowerCase().includes(q) || t.owner_email?.toLowerCase().includes(q))) return false
       if (industryFilter && t.industry?.trim() !== industryFilter) return false
       if (countryFilter && t.country?.trim() !== countryFilter) return false
+      if (assignedFilter) {
+        if (assignedFilter === 'unassigned') {
+          if (t.assigned_cs_id && t.assigned_cs_id > 0) return false
+        } else {
+          if (Number(t.assigned_cs_id) !== Number(assignedFilter)) return false
+        }
+      }
       if (contactFilter) {
         const days = daysSince(t.last_contact_at)
         // "Nunca" cuenta como pendiente en los dos umbrales: es el caso más
@@ -103,15 +114,23 @@ export default function TenantsList() {
   const paginated = filtered.slice((currentPage - 1) * TENANTS_PER_PAGE, currentPage * TENANTS_PER_PAGE)
 
   useEffect(() => {
-    setPage(1)
-  }, [search, industryFilter, countryFilter, contactFilter])
+    adminService.getCSUsers().then(res => {
+      setCsUsers(res || [])
+    }).catch(() => {})
+  }, [])
 
-  const hasFilters = !!(search.trim() || industryFilter || countryFilter || contactFilter)
+  useEffect(() => {
+    setPage(1)
+  }, [search, industryFilter, countryFilter, contactFilter, assignedFilter, onlyAssignedToMe])
+
+  const hasFilters = !!(search.trim() || industryFilter || countryFilter || contactFilter || assignedFilter || onlyAssignedToMe)
   const clearFilters = () => {
     setSearch('')
     setIndustryFilter('')
     setCountryFilter('')
     setContactFilter('')
+    setAssignedFilter('')
+    setOnlyAssignedToMe(false)
   }
 
   const activeCount = tenants.filter(t => t.is_active).length
@@ -340,11 +359,22 @@ export default function TenantsList() {
           <h1>Empresas</h1>
           <p>Gestiona los clientes de la plataforma Oberstaff</p>
         </div>
-        {canManage && (
-          <Button onClick={() => setShowCreate(true)} leftIcon={<Plus size={18} />} data-tour="tenants-create">
-            Nueva empresa
-          </Button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {(isCS || canManage) && (
+            <Button
+              variant={onlyAssignedToMe ? 'primary' : 'secondary'}
+              onClick={() => setOnlyAssignedToMe(prev => !prev)}
+              leftIcon={<UserCheck size={18} />}
+            >
+              {onlyAssignedToMe ? 'Mostrando: Mis empresas' : 'Mis empresas asignadas'}
+            </Button>
+          )}
+          {canManage && (
+            <Button onClick={() => setShowCreate(true)} leftIcon={<Plus size={18} />} data-tour="tenants-create">
+              Nueva empresa
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className={styles.kpis} data-tour="tenants-kpis">
@@ -431,6 +461,23 @@ export default function TenantsList() {
             ]}
           />
         </div>
+        <div style={{ minWidth: 220 }} data-tour="tenants-assigned-filter">
+          <Select
+            fullWidth
+            clearable
+            placeholder="Todos los asignados"
+            value={assignedFilter}
+            onChange={v => setAssignedFilter(v ? String(v) : '')}
+            ariaLabel="Filtrar por usuario asignado"
+            options={[
+              { value: 'unassigned', label: 'Sin asignar' },
+              ...csUsers.map(u => ({
+                value: String(u.id),
+                label: `${u.name} (${u.user_type === 'superadmin' ? 'Superadmin' : 'CS'})`,
+              }))
+            ]}
+          />
+        </div>
         {hasFilters && (
           <button
             type="button"
@@ -512,6 +559,11 @@ export default function TenantsList() {
                     <div className={styles.ownerCell}>
                       <span>{t.owner_name}</span>
                       <small>{t.owner_email}</small>
+                      {t.assigned_cs_name && (
+                        <small style={{ color: 'var(--primary, #cc33cc)', fontWeight: 500, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <UserCheck size={12} /> CS: {t.assigned_cs_name}
+                        </small>
+                      )}
                     </div>
                   </td>
                   <td>{t.user_count}</td>

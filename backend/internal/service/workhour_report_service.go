@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -481,25 +480,11 @@ func generatePDFReport(workHours []models.WorkHour, periodLabel string) ([]byte,
 	pdf.SetAutoPageBreak(false, 0)
 	pdf.AddPage()
 
-	// Try to locate the white logo on the filesystem
-	logoPath := "../frontend/public/logos/Horizontal_Blanco.png"
-	if _, err := os.Stat(logoPath); err != nil {
-		logoPath = "frontend/public/logos/Horizontal_Blanco.png"
-		if _, err := os.Stat(logoPath); err != nil {
-			logoPath = "public/logos/Horizontal_Blanco.png"
-			if _, err := os.Stat(logoPath); err != nil {
-				logoPath = ""
-			}
-		}
-	}
-
 	// Banner Superior con Degradado de Obertrack (Prussian Blue)
 	pdf.SetFillColor(6, 11, 35) // #060b23 (Prussian Blue)
 	pdf.Rect(0, 0, 297, 30, "F")
 
-	if logoPath != "" {
-		pdf.Image(logoPath, 15, 7, 45, 0, false, "", 0, "")
-	} else {
+	if !pdfRenderLogo(pdf, 15, 7, 45, 0) {
 		pdf.SetTextColor(255, 255, 255)
 		pdf.SetFont("Arial", "B", 18)
 		pdf.Text(15, 18, "OBERTRACK")

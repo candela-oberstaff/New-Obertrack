@@ -201,6 +201,8 @@ type TenantSummary struct {
 	// respuesta honesta en ambos casos.
 	LastContactAt  *time.Time `json:"last_contact_at,omitempty"`
 	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
+	AssignedCSID   *uint      `json:"assigned_cs_id,omitempty"`
+	AssignedCSName string     `json:"assigned_cs_name"`
 }
 
 // TenantTicket es un ticket visto desde la ficha de la empresa. Aplana lo justo
@@ -263,6 +265,27 @@ type EmployeeSummary struct {
 	ScheduleDays      string    `json:"schedule_days"`
 	ScheduleStartTime string    `json:"schedule_start_time"`
 	ScheduleEndTime   string    `json:"schedule_end_time"`
+}
+
+type TenantSurveyAnswerItem struct {
+	QuestionText string `json:"question_text"`
+	QuestionType string `json:"question_type"`
+	Options      string `json:"options"`
+	TextValue    string `json:"text_value"`
+	NumberValue  int    `json:"number_value"`
+}
+
+type TenantSurveyReportItem struct {
+	ResponseID   uint                     `json:"response_id"`
+	SurveyID     uint                     `json:"survey_id"`
+	SurveyTitle  string                   `json:"survey_title"`
+	SurveyKind   string                   `json:"survey_kind"`
+	PassingScore int                      `json:"passing_score"`
+	UserID       uint                     `json:"user_id"`
+	UserName     string                   `json:"user_name"`
+	UserEmail    string                   `json:"user_email"`
+	CompletedAt  time.Time                `json:"completed_at"`
+	Answers      []TenantSurveyAnswerItem `json:"answers"`
 }
 
 type EmployeeWorkHour struct {
@@ -356,6 +379,10 @@ type AdminRepository interface {
 
 	// Archivados: bajas de empleo + cuentas desactivadas. tenantID=0 = global.
 	GetArchived(tenantID uint) ([]ArchivedEntry, error)
+	// AssignCSToTenant asigna (o desasigna con csID=0) un Customer Success a una empresa.
+	AssignCSToTenant(tenantID, csID uint) error
+	// GetTenantSurveyReport obtiene las respuestas y encuestas de profesionales de la empresa.
+	GetTenantSurveyReport(tenantID uint) ([]TenantSurveyReportItem, error)
 }
 
 type adminRepository struct {
@@ -871,7 +898,9 @@ const tenantSelect = `
 				WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL),
 			(SELECT MAX(t2.created_at) FROM tasks t2
 				WHERE t2.tenant_id = u.id AND t2.deleted_at IS NULL)
-		) as last_activity_at
+		) as last_activity_at,
+		u.assigned_cs_id,
+		COALESCE((SELECT cs.name FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_name
 	FROM users u
 	LEFT JOIN users m ON m.empleador_id = u.id AND m.deleted_at IS NULL
 	LEFT JOIN boards b ON b.tenant_id = u.id AND b.deleted_at IS NULL
@@ -1297,25 +1326,42 @@ func (r *adminRepository) GetTenantPinnedNotes(tenantID uint) ([]TenantActivity,
 		Timestamp time.Time
 		EventID   uint
 		EditedAt  *time.Time
+		Type      string
+		Channel   string
 	}{}
 	err := r.db.Raw(`
 		SELECT COALESCE(actor.name, '') AS "user", COALESCE(actor.id, 0) AS user_id,
-			COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido') AS details,
-			ce.created_at AS timestamp, ce.id AS event_id, ce.edited_at
+			(CASE ce.type
+				WHEN 'note' THEN COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido')
+				WHEN 'contact' THEN
+					(CASE ce.channel
+						WHEN 'email' THEN 'Correo enviado a la empresa'
+						WHEN 'whatsapp' THEN 'WhatsApp enviado a la empresa'
+						WHEN 'call' THEN 'Llamada telefónica'
+						WHEN 'meeting' THEN 'Reunión con la empresa'
+						ELSE 'Contacto con la empresa' END)
+					|| (CASE WHEN COALESCE(ce.detail, '') <> '' THEN ' — ' || ce.detail ELSE '' END)
+				ELSE COALESCE(NULLIF(ce.detail, ''), 'Sin contenido') END) AS details,
+			ce.created_at AS timestamp, ce.id AS event_id, ce.edited_at,
+			ce.type, COALESCE(ce.channel, '') AS channel
 		FROM company_events ce
 		LEFT JOIN users actor ON actor.id = ce.by_user_id
-		WHERE ce.company_id = ? AND ce.type = ? AND ce.pinned = true
+		WHERE ce.company_id = ? AND ce.type IN (?, ?) AND ce.pinned = true
 		ORDER BY ce.created_at DESC
-	`, tenantID, models.CompanyEventNote).Scan(&rows).Error
+	`, tenantID, models.CompanyEventNote, models.CompanyEventContact).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
 	notes := make([]TenantActivity, 0, len(rows))
 	for _, row := range rows {
+		cat := TenantActivityNote
+		if row.Type == models.CompanyEventContact {
+			cat = TenantActivityContact
+		}
 		notes = append(notes, TenantActivity{
-			Type:      "company_" + models.CompanyEventNote,
-			Category:  TenantActivityNote,
+			Type:      "company_" + row.Type,
+			Category:  cat,
 			User:      row.User,
 			UserID:    row.UserID,
 			Details:   row.Details,
@@ -1323,31 +1369,32 @@ func (r *adminRepository) GetTenantPinnedNotes(tenantID uint) ([]TenantActivity,
 			EventID:   row.EventID,
 			Pinned:    true,
 			EditedAt:  row.EditedAt,
+			Channel:   row.Channel,
 		})
 	}
 	return notes, nil
 }
 
 func (r *adminRepository) DeleteCompanyNote(companyID, noteID uint) (int64, error) {
-	res := r.db.Where("id = ? AND company_id = ? AND type = ?", noteID, companyID, models.CompanyEventNote).
+	res := r.db.Where("id = ? AND company_id = ? AND type IN (?, ?)", noteID, companyID, models.CompanyEventNote, models.CompanyEventContact).
 		Delete(&models.CompanyEvent{})
 	return res.RowsAffected, res.Error
 }
 
-// UpdateCompanyNote corrige el texto de una nota y deja constancia de que se
-// editó. Acotado a la empresa y al tipo "note", igual que el borrado.
+// UpdateCompanyNote corrige el texto de una nota o contacto y deja constancia de que se
+// editó. Acotado a la empresa y a los tipos "note" y "contact".
 func (r *adminRepository) UpdateCompanyNote(companyID, noteID uint, detail string, editedAt time.Time) (int64, error) {
 	res := r.db.Model(&models.CompanyEvent{}).
-		Where("id = ? AND company_id = ? AND type = ?", noteID, companyID, models.CompanyEventNote).
+		Where("id = ? AND company_id = ? AND type IN (?, ?)", noteID, companyID, models.CompanyEventNote, models.CompanyEventContact).
 		Updates(map[string]interface{}{"detail": detail, "edited_at": editedAt})
 	return res.RowsAffected, res.Error
 }
 
-// SetCompanyNotePinned fija o desfija una nota. No toca edited_at: cambiar de
-// sitio una nota no es reescribirla.
+// SetCompanyNotePinned fija o desfija una nota o contacto. No toca edited_at: cambiar de
+// sitio una entrada no es reescribirla.
 func (r *adminRepository) SetCompanyNotePinned(companyID, noteID uint, pinned bool) (int64, error) {
 	res := r.db.Model(&models.CompanyEvent{}).
-		Where("id = ? AND company_id = ? AND type = ?", noteID, companyID, models.CompanyEventNote).
+		Where("id = ? AND company_id = ? AND type IN (?, ?)", noteID, companyID, models.CompanyEventNote, models.CompanyEventContact).
 		Update("pinned", pinned)
 	return res.RowsAffected, res.Error
 }
@@ -1367,3 +1414,86 @@ func (r *adminRepository) DeleteEmployeeSchedule(tenantID, userID uint) error {
 		WHERE company_id = ? AND user_id = ? AND status = 'active' AND deleted_at IS NULL
 	`, tenantID, userID).Error
 }
+
+// AssignCSToTenant asigna (o desasigna) un Customer Success a una empresa.
+// csID == 0 → se borra la asignación (assigned_cs_id = NULL).
+func (r *adminRepository) AssignCSToTenant(tenantID, csID uint) error {
+	if csID == 0 {
+		return r.db.Exec(
+			`UPDATE users SET assigned_cs_id = NULL WHERE id = ? AND deleted_at IS NULL`,
+			tenantID,
+		).Error
+	}
+	return r.db.Exec(
+		`UPDATE users SET assigned_cs_id = ? WHERE id = ? AND deleted_at IS NULL`,
+		csID, tenantID,
+	).Error
+}
+
+func (r *adminRepository) GetTenantSurveyReport(tenantID uint) ([]TenantSurveyReportItem, error) {
+	var responses []models.SurveyResponse
+	err := r.db.Preload("Answers.Question").Preload("User").
+		Joins("JOIN users ON users.id = survey_responses.user_id").
+		Where("users.empleador_id = ? AND users.deleted_at IS NULL", tenantID).
+		Order("survey_responses.created_at DESC").
+		Limit(100).
+		Find(&responses).Error
+	if err != nil {
+		return nil, err
+	}
+
+	if len(responses) == 0 {
+		return []TenantSurveyReportItem{}, nil
+	}
+
+	surveyIDs := make([]uint, 0, len(responses))
+	for _, res := range responses {
+		surveyIDs = append(surveyIDs, res.SurveyID)
+	}
+
+	var surveys []models.Survey
+	if err := r.db.Where("id IN ?", surveyIDs).Find(&surveys).Error; err != nil {
+		return nil, err
+	}
+
+	surveyMap := make(map[uint]models.Survey, len(surveys))
+	for _, s := range surveys {
+		surveyMap[s.ID] = s
+	}
+
+	result := make([]TenantSurveyReportItem, 0, len(responses))
+	for _, res := range responses {
+		surv := surveyMap[res.SurveyID]
+		completed := res.CreatedAt
+		if res.CompletedAt != nil && !res.CompletedAt.IsZero() {
+			completed = *res.CompletedAt
+		}
+
+		item := TenantSurveyReportItem{
+			ResponseID:   res.ID,
+			SurveyID:     res.SurveyID,
+			SurveyTitle:  surv.Title,
+			SurveyKind:   surv.Kind,
+			PassingScore: surv.PassingScore,
+			UserID:       res.UserID,
+			UserName:     res.User.Name,
+			UserEmail:    res.User.Email,
+			CompletedAt:  completed,
+			Answers:      make([]TenantSurveyAnswerItem, 0, len(res.Answers)),
+		}
+
+		for _, ans := range res.Answers {
+			item.Answers = append(item.Answers, TenantSurveyAnswerItem{
+				QuestionText: ans.Question.Text,
+				QuestionType: string(ans.Question.Type),
+				Options:      ans.Question.Options,
+				TextValue:    ans.TextValue,
+				NumberValue:  ans.NumberValue,
+			})
+		}
+		result = append(result, item)
+	}
+
+	return result, nil
+}
+

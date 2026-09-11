@@ -122,6 +122,10 @@ type AdminService interface {
 	CreateSuperAdmin(name, email, password string, force bool) (*models.User, error)
 	ResetSuperAdmin(name, email, password string) (*models.User, error)
 	MakeSuperAdmin(email string) (*models.User, error)
+	// AssignCSToTenant asigna (csID>0) o desasigna (csID=0) un CS a una empresa.
+	AssignCSToTenant(tenantID, csID uint) error
+	// GetTenantReportPDF genera el PDF completo de auditoría y salud de la empresa.
+	GetTenantReportPDF(tenantID uint) ([]byte, string, error)
 }
 
 type adminService struct {
@@ -1048,6 +1052,46 @@ func (s *adminService) GetTenant(id uint) (*repository.TenantSummary, error) {
 	return s.repo.GetTenantByID(id)
 }
 
+func (s *adminService) GetTenantReportPDF(tenantID uint) ([]byte, string, error) {
+	tenant, err := s.repo.GetTenantByID(tenantID)
+	if err != nil {
+		return nil, "", errors.New("Tenant not found")
+	}
+
+	employees, _ := s.repo.GetTenantEmployees(tenantID)
+	tickets, _ := s.repo.GetTenantTickets(tenantID)
+	activities, _, _ := s.repo.GetTenantActivities(tenantID, "", 0, 0, 100)
+	archived, _ := s.repo.GetArchived(tenantID)
+	absence, _ := s.repo.GetAbsenceReport(tenantID, time.Time{}, time.Time{})
+	inactives, _ := s.repo.GetInactiveUsersList(tenantID, 1)
+	surveys, _ := s.repo.GetTenantSurveyReport(tenantID)
+
+	pdfBytes, err := generateTenantReportPDF(tenant, employees, tickets, activities, archived, absence, inactives, surveys)
+	if err != nil {
+		return nil, "", err
+	}
+
+	rawSlug := strings.ToLower(strings.TrimSpace(tenant.CompanyName))
+	var slugParts []string
+	for _, char := range rawSlug {
+		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') {
+			slugParts = append(slugParts, string(char))
+		} else if char == ' ' || char == '-' || char == '_' {
+			if len(slugParts) > 0 && slugParts[len(slugParts)-1] != "_" {
+				slugParts = append(slugParts, "_")
+			}
+		}
+	}
+	slug := strings.Join(slugParts, "")
+	slug = strings.Trim(slug, "_")
+	if slug == "" {
+		slug = "empresa"
+	}
+	filename := fmt.Sprintf("%s_auditoria_salud_%s.pdf", slug, time.Now().Format("2006-01-02"))
+
+	return pdfBytes, filename, nil
+}
+
 func (s *adminService) GetTenantEmployees(id uint) ([]repository.EmployeeSummary, error) {
 	return s.repo.GetTenantEmployees(id)
 }
@@ -1438,4 +1482,8 @@ func (s *adminService) MakeSuperAdmin(email string) (*models.User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *adminService) AssignCSToTenant(tenantID, csID uint) error {
+	return s.repo.AssignCSToTenant(tenantID, csID)
 }

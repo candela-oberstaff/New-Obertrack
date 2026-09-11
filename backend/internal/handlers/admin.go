@@ -356,8 +356,10 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		Name         string `json:"name"`
 		Email        string `json:"email"`
 		JobTitle     string `json:"job_title"`
-		PhoneNumber  string `json:"phone_number"`
-		Country      string `json:"country"`
+		PhoneNumber     string  `json:"phone_number"`
+		BirthDate       *string `json:"birth_date"`
+		EmergencyPhones *string `json:"emergency_phones"`
+		Country         string  `json:"country"`
 		State        string `json:"state"`
 		City         string `json:"city"`
 		Location     string `json:"location"`
@@ -424,6 +426,22 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	}
 	if req.PhoneNumber != "" {
 		updates["phone_number"] = req.PhoneNumber
+	}
+	if req.BirthDate != nil {
+		if *req.BirthDate == "" {
+			updates["birth_date"] = nil
+		} else {
+			if t, err := time.Parse("2006-01-02", *req.BirthDate); err == nil {
+				updates["birth_date"] = t
+			} else if t, err := time.Parse(time.RFC3339, *req.BirthDate); err == nil {
+				updates["birth_date"] = t
+			} else {
+				updates["birth_date"] = *req.BirthDate
+			}
+		}
+	}
+	if req.EmergencyPhones != nil {
+		updates["emergency_phones"] = *req.EmergencyPhones
 	}
 	if req.Country != "" {
 		updates["country"] = req.Country
@@ -2049,3 +2067,47 @@ func (h *AdminHandler) CreateSuperAdminForced(c *gin.Context) {
 		},
 	})
 }
+
+// AssignCSToTenant asigna (o desasigna) un Customer Success a una empresa.
+// Body: { "cs_id": <uint> }  — cs_id=0 quita la asignación.
+// Solo superadmin puede cambiar la asignación.
+func (h *AdminHandler) AssignCSToTenant(c *gin.Context) {
+	tenantID, ok := parseTenantParam(c)
+	if !ok {
+		return
+	}
+
+	var body struct {
+		CSID uint `json:"cs_id"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cuerpo inválido"})
+		return
+	}
+
+	if err := h.service.AssignCSToTenant(tenantID, body.CSID); err != nil {
+		log.Printf("[admin] AssignCSToTenant tenant=%d cs=%d err=%v", tenantID, body.CSID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo actualizar la asignación"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Asignación actualizada"})
+}
+
+// DownloadTenantReportPDF genera y entrega el PDF de auditoría y salud de la empresa.
+func (h *AdminHandler) DownloadTenantReportPDF(c *gin.Context) {
+	tenantID, ok := parseTenantParam(c)
+	if !ok {
+		return
+	}
+
+	pdfBytes, filename, err := h.service.GetTenantReportPDF(tenantID)
+	if err != nil {
+		log.Printf("[admin] DownloadTenantReportPDF tenant=%d err=%v", tenantID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo generar el reporte PDF: " + err.Error()})
+		return
+	}
+
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	c.Data(http.StatusOK, "application/pdf", pdfBytes)
+}
+

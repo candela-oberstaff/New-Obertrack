@@ -314,6 +314,10 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/tenants/:id/absence-report", d.admin.GetTenantAbsenceReport)
 		admin.POST("/tenants/:id/suspend", d.admin.SuspendTenant)
 		admin.POST("/tenants/:id/activate", d.admin.ActivateTenant)
+		// Asignación de Customer Success a empresa (solo superadmin).
+		admin.PUT("/tenants/:id/assign-cs", d.admin.AssignCSToTenant)
+		// Reporte PDF de auditoría y salud de la empresa.
+		admin.GET("/tenants/:id/report/pdf", d.admin.DownloadTenantReportPDF)
 		admin.GET("/employees/:id/tracking", d.admin.GetEmployeeTracking)
 		// Soporte de UNA persona: lo que se le abrió y lo que le alcanzó. Van
 		// bajo /employees y no bajo /tenants porque son de la persona, no de su

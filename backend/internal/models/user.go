@@ -57,6 +57,8 @@ type User struct {
 	IsActive    bool   `gorm:"default:true" json:"is_active"`
 	EmpleadorID *uint  `gorm:"index" json:"empleador_id,omitempty"`
 	Empleador   *User  `gorm:"foreignKey:EmpleadorID" json:"-"`
+	AssignedCSID *uint `gorm:"index" json:"assigned_cs_id,omitempty"`
+	AssignedCS   *User `gorm:"foreignKey:AssignedCSID" json:"-"`
 	CompanyName string `gorm:"size:255" json:"company_name"`
 	Industry    string `gorm:"size:255" json:"industry"`
 	// ClientSince es la fecha de alta REAL de la empresa como cliente. Solo
@@ -67,6 +69,8 @@ type User struct {
 	ClientSince      *time.Time `gorm:"type:date" json:"client_since,omitempty"`
 	JobTitle         string     `gorm:"size:255" json:"job_title"`
 	PhoneNumber      string     `gorm:"size:50" json:"phone_number"`
+	BirthDate        *time.Time `gorm:"type:date" json:"birth_date,omitempty"`
+	EmergencyPhones  string     `gorm:"type:text" json:"emergency_phones"`
 	Country          string     `gorm:"size:100" json:"country"`
 	State            string     `gorm:"size:100" json:"state"`
 	City             string     `gorm:"size:100" json:"city"`

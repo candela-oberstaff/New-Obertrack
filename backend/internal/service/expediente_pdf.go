@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"os"
 	"time"
@@ -9,6 +10,9 @@ import (
 	"github.com/jung-kurt/gofpdf"
 	"github.com/obertrack/backend/internal/models"
 )
+
+//go:embed assets/logo_white.png
+var pdfLogoWhiteBytes []byte
 
 // Paleta Obertrack para los PDFs del expediente.
 var (
@@ -33,14 +37,28 @@ func pdfLocateLogo() string {
 	return ""
 }
 
+// pdfRenderLogo inserta el logo blanco institucional de Obertrack en el PDF.
+// Utiliza el binario incrustado para garantizar que funcione en cualquier entorno de producción.
+func pdfRenderLogo(pdf *gofpdf.Fpdf, x, y, w, h float64) bool {
+	if len(pdfLogoWhiteBytes) > 0 {
+		opt := gofpdf.ImageOptions{ImageType: "PNG", ReadDpi: true}
+		pdf.RegisterImageOptionsReader("obertrack_logo_white", opt, bytes.NewReader(pdfLogoWhiteBytes))
+		pdf.ImageOptions("obertrack_logo_white", x, y, w, h, false, opt, 0, "")
+		return true
+	}
+	if p := pdfLocateLogo(); p != "" {
+		pdf.Image(p, x, y, w, h, false, "", 0, "")
+		return true
+	}
+	return false
+}
+
 // pdfBanner dibuja el encabezado común (logo + título + subtítulo).
 func pdfBanner(pdf *gofpdf.Fpdf, tr func(string) string, title, subtitle string) {
 	pdf.SetFillColor(pdfPrussian[0], pdfPrussian[1], pdfPrussian[2])
 	pdf.Rect(0, 0, 210, 32, "F")
 
-	if logo := pdfLocateLogo(); logo != "" {
-		pdf.Image(logo, 15, 9, 42, 0, false, "", 0, "")
-	} else {
+	if !pdfRenderLogo(pdf, 15, 9, 42, 0) {
 		pdf.SetTextColor(255, 255, 255)
 		pdf.SetFont("Arial", "B", 16)
 		pdf.Text(15, 20, "OBERTRACK")
