@@ -13,6 +13,8 @@ type UserRepository interface {
 	GetObersuiteProfessional(companyID, userID uint) (*ObersuiteProfessional, error)
 	GetObersuiteWorkdays(userID, companyID uint, offset, limit int) ([]ObersuiteWorkday, int64, error)
 	GetObersuiteTasks(userID, companyID uint, offset, limit int) ([]ObersuiteTask, int64, error)
+	GetBoardPhases(boardIDs []uint) ([]BoardPhaseRow, error)
+	GetObersuiteCounts(userID, companyID uint) (ObersuiteCounts, error)
 	GetAll(role, isManager, search string, companyID uint, offset, limit int) ([]models.User, int64, error)
 	Count(role, isManager, isActive string, companyID uint) (int64, error)
 	CountCompanies() (int64, error)
@@ -487,11 +489,16 @@ func (r *userRepository) GetObersuiteCompanies(updatedSince *time.Time) ([]Obers
 // ObersuiteProfessional es una persona de la plantilla de UNA empresa, con todo
 // referido a ESA empresa y no a la que el usuario tenga como principal.
 type ObersuiteProfessional struct {
-	ID           uint   `json:"id"`
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Avatar       string `json:"avatar"`
-	UserType     string `json:"user_type"`
+	ID     uint   `json:"id"`
+	Name   string `json:"name"`
+	Email  string `json:"email"`
+	Avatar string `json:"avatar"`
+	// AvatarURL es la misma foto como URL absoluta y accesible sin sesión. La
+	// relativa de arriba la pide el navegador de Obersuite a SU dominio y sale
+	// rota; y /api/uploads exige sesión, así que tampoco se puede proxear.
+	// Vacía si no hay foto. La rellena el handler, que es quien sabe el host.
+	AvatarURL string `json:"avatar_url"`
+	UserType  string `json:"user_type"`
 	IsActive     bool   `json:"is_active"`
 	IsManager    bool   `json:"is_manager"`
 	IsSupervisor bool   `json:"is_supervisor"`
@@ -716,12 +723,43 @@ func (r *userRepository) GetObersuiteWorkdays(userID, companyID uint, offset, li
 
 // ObersuiteTask es una tarea de la ficha de persona hacia Obersuite.
 type ObersuiteTask struct {
-	ID        uint       `json:"id"`
-	Title     string     `json:"title"`
-	BoardName string     `json:"board_name"`
-	Status    string     `json:"status"`
-	Completed bool       `json:"completed"`
-	EndDate   *time.Time `json:"end_date"`
+	ID        uint   `json:"id"`
+	Title     string `json:"title"`
+	BoardID   uint   `json:"board_id"`
+	BoardName string `json:"board_name"`
+	Status    string `json:"status"`
+	// StatusLabel es el nombre de la columna del tablero en la que está la
+	// tarea. Un tablero puede tener columnas propias ("En revisión"), y
+	// entonces status trae un id que no está en ningún diccionario fijo: la
+	// etiqueta existe, pero en la definición del tablero. Se resuelve de ahí.
+	// Vacía si la columna ya no existe en el tablero.
+	StatusLabel string     `json:"status_label"`
+	Completed   bool       `json:"completed"`
+	EndDate     *time.Time `json:"end_date"`
+}
+
+// BoardPhaseRow es una fase (columna) de un tablero, lo justo para resolver la
+// etiqueta de un status.
+type BoardPhaseRow struct {
+	BoardID uint
+	Name    string
+	Status  string
+}
+
+// GetBoardPhases devuelve las fases de varios tableros de una vez, para poner
+// etiqueta a los status de una página de tareas sin una consulta por tarea.
+func (r *userRepository) GetBoardPhases(boardIDs []uint) ([]BoardPhaseRow, error) {
+	if len(boardIDs) == 0 {
+		return nil, nil
+	}
+	var rows []BoardPhaseRow
+	err := r.db.Raw(`
+		SELECT bp.board_id, p.name, COALESCE(p.status, '') as status
+		FROM board_phases bp
+		JOIN phases p ON p.id = bp.phase_id
+		WHERE bp.board_id IN ?
+	`, boardIDs).Scan(&rows).Error
+	return rows, err
 }
 
 // GetObersuiteTasks devuelve las tareas asignadas a una persona EN UNA EMPRESA,
@@ -737,7 +775,7 @@ func (r *userRepository) GetObersuiteTasks(userID, companyID uint, offset, limit
 	}
 	var rows []ObersuiteTask
 	err := r.db.Raw(`
-		SELECT t.id, t.title,
+		SELECT t.id, t.title, t.board_id,
 			COALESCE(b.name, '') as board_name,
 			t.status, t.completed, t.end_date
 		FROM task_users tu
@@ -748,4 +786,28 @@ func (r *userRepository) GetObersuiteTasks(userID, companyID uint, offset, limit
 		LIMIT ? OFFSET ?
 	`, userID, companyID, limit, offset).Scan(&rows).Error
 	return rows, total, err
+}
+
+// ObersuiteCounts son los tres números de las pestañas de la ficha de persona,
+// para pintarlos al abrirla sin pedir los bloques enteros.
+type ObersuiteCounts struct {
+	Workdays int64 `json:"workdays"`
+	Tasks    int64 `json:"tasks"`
+}
+
+// GetObersuiteCounts cuenta jornadas y tareas de la persona EN LA EMPRESA. Con
+// los mismos filtros que las listas, o el número de la pestaña y el total de
+// dentro no cuadrarían — que es exactamente lo que se acaba de arreglar en
+// nuestra propia ficha.
+func (r *userRepository) GetObersuiteCounts(userID, companyID uint) (ObersuiteCounts, error) {
+	var c ObersuiteCounts
+	err := r.db.Raw(`
+		SELECT
+			(SELECT COUNT(*) FROM work_hours
+			  WHERE user_id = ? AND tenant_id = ? AND deleted_at IS NULL) as workdays,
+			(SELECT COUNT(*) FROM task_users tu
+			  JOIN tasks t ON t.id = tu.task_id AND t.deleted_at IS NULL
+			  WHERE tu.user_id = ? AND t.tenant_id = ?) as tasks
+	`, userID, companyID, userID, companyID).Scan(&c).Error
+	return c, err
 }

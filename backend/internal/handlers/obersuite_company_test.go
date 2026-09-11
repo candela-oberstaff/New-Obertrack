@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -129,6 +131,30 @@ func TestCategoriasDelExpediente_TodoVaPrimeroYSinRepetidos(t *testing.T) {
 		vistos[v] = true
 		if etiqueta, _ := c["label"].(string); etiqueta == "" {
 			t.Errorf("la categoría %q no tiene etiqueta: Obersuite pintaría un filtro en blanco", v)
+		}
+	}
+}
+
+// La foto tiene que llegar como URL absoluta y por la ruta pública: la relativa
+// se la pedía el navegador de Obersuite a SU dominio y salía rota, y
+// /api/uploads exige sesión, así que tampoco se podía proxear con el token.
+func TestPublicAvatarURL(t *testing.T) {
+	t.Setenv("SERVICE_URL_BACKEND", "https://obertrack.com/")
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/x", nil)
+
+	casos := map[string]string{
+		"/api/uploads/18_abc.jpg": "https://obertrack.com/api/public/uploads/18_abc.jpg",
+		"18_abc.jpg":              "https://obertrack.com/api/public/uploads/18_abc.jpg",
+		"https://cdn.x.com/y.png": "https://cdn.x.com/y.png",
+		"":                        "",
+		"   ":                     "",
+	}
+	for in, want := range casos {
+		if got := publicAvatarURL(c, in); got != want {
+			t.Errorf("publicAvatarURL(%q) = %q, se esperaba %q", in, got, want)
 		}
 	}
 }
