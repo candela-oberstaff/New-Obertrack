@@ -277,12 +277,22 @@ literalmente de ella.
 | **400** | Falta un campo o su valor no vale (email mal escrito, sin `company_id`) | **No.** Hay que corregir el dato |
 | **401 / 503** | Token incorrecto / token no configurado en el servidor | No: es configuración |
 | **404** | El `company_id` no existe o no es una empresa | **No.** Hay que corregir el dato |
-| **409** | Ya hay una cuenta con ese email y **no** es un profesional (empresa, superadmin, CS): no se puede convertir | **No.** Intervención humana |
+| **409** | Ya hay una cuenta con ese email que no se puede usar: o **no es un profesional** (empresa, superadmin, CS), o **está en la Papelera** de Obertrack. El mensaje dice cuál y qué hacer (restaurarla o borrarla en firme) | **No.** Intervención humana |
 | **422** | La empresa está suspendida | **No.** Hay que reactivarla en Obertrack |
 | **429** | Límite de peticiones | Sí, **tras esperar `Retry-After`** |
-| **500** | Fallo nuestro | **Sí** |
+| **500** | Fallo nuestro. El cuerpo trae `request_id` (`"hire-3f9a1c2b"`): citadlo y lo encontramos en el log sin reconstruirlo por hora | **Sí** |
 
 Regla de una línea: **los 4xx no se reintentan; el 429 se espera; el 500 sí.**
+
+**Sobre el 409 por Papelera** (añadido el 11-sep-2026, tras seis 500 seguidos
+en producción): la contratación busca a la persona por `external_id` y por
+email entre las cuentas VIVAS. Una cuenta borrada no aparece, pero su correo
+sigue ocupado en la base, así que el alta choca. Antes ese choque salía como 500
+mudo —y el contrato manda reintentar el 500, así que se reintentaba tres veces
+contra la misma pared—. Ahora es 409 con el nombre de la cuenta, la fecha de
+baja y las dos salidas: restaurarla desde Papelera (conserva su expediente y sus
+horas) o borrarla en firme para liberar el correo. Las dos son de un superadmin
+en Obertrack; el reclutador no puede resolverlo desde Obersuite.
 
 Un error que no reconocemos cae a 500 a propósito. Si el fallo es nuestro, que
 lo reintenten es lo correcto; darlo por 400 les haría descartar en firme una

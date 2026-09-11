@@ -320,6 +320,14 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 			ObersuiteID:      externalID,
 		}
 		if err := s.userRepo.Create(user); err != nil {
+			// El correo puede estar ocupado por una cuenta que resolveProfessional
+			// NO ve: una borrada (en la Papelera). GORM la oculta, el índice único
+			// no, y el choque salía como 500 mudo que Obersuite reintentaba tres
+			// veces. Es el mismo caso que nuestra pantalla de Usuarios ya traduce:
+			// 409 con dónde está la cuenta y qué hacer con ella.
+			if isDuplicateEmailErr(err) {
+				return nil, describeEmailConflict(s.userRepo, email)
+			}
 			return nil, err
 		}
 		result.Status = "created"

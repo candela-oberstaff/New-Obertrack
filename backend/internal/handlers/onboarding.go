@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -201,7 +202,14 @@ func (h *OnboardingHandler) Hire(c *gin.Context) {
 			// mensaje TAL CUAL al reclutador, y un error de base de datos en la
 			// cara de quien contrata no le dice nada y encima filtra cómo
 			// estamos hechos por dentro.
-			log.Printf("[Onboarding] hire falló para %s (empresa %d): %v", in.Email, in.CompanyID, err)
+			//
+			// El request_id viaja en el cuerpo Y en la línea de log: con él,
+			// Obersuite cita un fallo concreto y aquí se encuentra en un grep,
+			// sin reconstruirlo por hora y empresa como hasta ahora.
+			rid := hireRequestID()
+			log.Printf("[Onboarding] hire falló para %s (empresa %d) request_id=%s: %v", in.Email, in.CompanyID, rid, err)
+			c.JSON(status, gin.H{"error": msg, "request_id": rid})
+			return
 		}
 		c.JSON(status, gin.H{"error": msg})
 		return
@@ -245,6 +253,17 @@ func hireBindMessage(err error) string {
 // Un error que no reconocemos cae a 500 a propósito: si es un fallo nuestro,
 // que lo reintenten es lo correcto; darlo por 400 les haría descartar en firme
 // una contratación que sí podía salir.
+// hireRequestID es un identificador corto y único por fallo, legible en un
+// mensaje ("hire-3f9a1c2b"). No es criptográfico ni lo necesita: solo tiene que
+// no repetirse en el log.
+func hireRequestID() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("hire-%d", time.Now().UnixNano())
+	}
+	return "hire-" + hex.EncodeToString(b[:])
+}
+
 func hireStatus(err error) (int, string) {
 	switch {
 	case errors.Is(err, apperrors.ErrInvalidInput):
