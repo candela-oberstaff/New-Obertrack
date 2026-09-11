@@ -20,6 +20,15 @@ const rutaCategoriasFrontend = "../../../frontend/src/hooks/useTenantActivity.ts
 // la pantalla ofrezca, y no debe contar.
 var reCategoria = regexp.MustCompile(`(?m)^\s*\{\s*value:\s*'([^']*)',\s*label:\s*'([^']*)'`)
 
+// pseudoFiltrosDePantalla son chips que la pantalla muestra junto a las
+// categorías pero que NO filtran la cronología: cambian de panel. No pueden
+// viajar a Obersuite como categoría, porque ?category=<eso> devolvería el
+// expediente entero (categoría desconocida = sin filtro) y parecería que
+// funciona. El valor es el motivo, para que quede escrito.
+var pseudoFiltrosDePantalla = map[string]string{
+	"surveys": "cambia el panel al informe de encuestas; no es una categoría del expediente",
+}
+
 // El bloque de categorías que se le manda a Obersuite tiene que decir lo mismo
 // que ofrece nuestra pantalla.
 //
@@ -46,6 +55,19 @@ func TestCategoriasDelExpediente_CoincidenConLasDelFrontend(t *testing.T) {
 	if len(quiere) == 0 {
 		t.Fatalf("no se reconoció ninguna categoría en %s: ¿cambió el formato del archivo?", ruta)
 	}
+	// Los pseudo-filtros de la pantalla se descartan de forma EXPLÍCITA. Uno
+	// nuevo que no esté aquí hace fallar la prueba, y eso es lo que se quiere:
+	// obliga a decidir si es una categoría (y entonces va al backend) o un
+	// cambio de panel (y entonces se declara aquí, con el motivo).
+	filtrado := quiere[:0]
+	for _, m := range quiere {
+		if motivo, esPseudo := pseudoFiltrosDePantalla[m[1]]; esPseudo {
+			t.Logf("se descarta %q: %s", m[1], motivo)
+			continue
+		}
+		filtrado = append(filtrado, m)
+	}
+	quiere = filtrado
 
 	// El "Todo" del backend no está en la lista del frontend (allí el chip vive
 	// aparte, comentado), así que se compara a partir del segundo.

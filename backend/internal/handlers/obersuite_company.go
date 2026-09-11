@@ -243,7 +243,15 @@ func obersuiteTimelineCategories() []gin.H {
 		// una ficha ("¿ya hablamos con ellos?"), y las notas son su detalle.
 		{"value": repository.TenantActivityContact, "label": "Comunicaciones"},
 		{"value": repository.TenantActivityNote, "label": "Notas"},
-		{"value": repository.TenantActivityTestimonial, "label": "Testimonios"},
+		// "testimonial" sigue existiendo como categoría (?category=testimonial
+		// funciona y su contador viaja en counts), pero la pantalla dejó de
+		// ofrecerla como chip, así que aquí tampoco se ofrece.
+		//
+		// "surveys" NO va aunque la pantalla lo muestre entre los chips: no es
+		// una categoría del expediente, es un cambio de panel al informe de
+		// encuestas. Mandarla haría que ?category=surveys devolviera la
+		// cronología ENTERA —categoría desconocida = sin filtro— y pareciera
+		// que funciona.
 	}
 }
 
