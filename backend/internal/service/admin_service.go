@@ -106,7 +106,7 @@ type AdminService interface {
 	GetTenantActivityPeople(id uint) ([]repository.TenantActivityPerson, error)
 	GetTenantActivityCounts(id uint, userID uint) (map[string]int64, error)
 	GetTenantPinnedNotes(id uint) ([]repository.TenantActivity, error)
-	AddTenantNote(companyID, byUserID uint, text string) (*models.CompanyEvent, error)
+	AddTenantNote(companyID, byUserID uint, text string, channel ...string) (*models.CompanyEvent, error)
 	AddTenantContact(companyID, byUserID uint, channel, detail string) (*models.CompanyEvent, error)
 	UpdateTenantNote(companyID, noteID uint, text string) error
 	SetTenantNotePinned(companyID, noteID uint, pinned bool) error
@@ -458,6 +458,18 @@ func (s *adminService) CreateUser(req map[string]interface{}) (*models.User, err
 	}
 	if v, ok := req["phone_number"].(string); ok {
 		user.PhoneNumber = v
+	}
+	if v, ok := req["birth_date"].(string); ok && strings.TrimSpace(v) != "" {
+		if t, err := time.Parse("2006-01-02", strings.TrimSpace(v)); err == nil {
+			user.BirthDate = &t
+		} else if t, err := time.Parse(time.RFC3339, strings.TrimSpace(v)); err == nil {
+			user.BirthDate = &t
+		}
+	} else if v, ok := req["birth_date"].(*time.Time); ok && v != nil {
+		user.BirthDate = v
+	}
+	if v, ok := req["emergency_phones"].(string); ok {
+		user.EmergencyPhones = strings.TrimSpace(v)
 	}
 	if v, ok := req["country"].(string); ok {
 		user.Country = v
@@ -1206,7 +1218,7 @@ func validateNoteText(text string) (string, error) {
 // AddTenantNote anota a mano un hito en el expediente de la empresa (una
 // llamada, un acuerdo, un aviso): lo que el sistema no puede deducir de
 // ninguna tabla y hasta ahora acababa fuera de la herramienta.
-func (s *adminService) AddTenantNote(companyID, byUserID uint, text string) (*models.CompanyEvent, error) {
+func (s *adminService) AddTenantNote(companyID, byUserID uint, text string, channelOpt ...string) (*models.CompanyEvent, error) {
 	if err := s.assertEmployer(companyID); err != nil {
 		return nil, err
 	}
@@ -1216,11 +1228,20 @@ func (s *adminService) AddTenantNote(companyID, byUserID uint, text string) (*mo
 		return nil, err
 	}
 
+	var ch string
+	if len(channelOpt) > 0 {
+		ch = strings.TrimSpace(strings.ToLower(channelOpt[0]))
+		if ch != "" && !models.IsValidCompanyContactChannel(ch) {
+			return nil, errors.New("Canal de contacto no válido")
+		}
+	}
+
 	event := &models.CompanyEvent{
 		CompanyID: companyID,
 		Type:      models.CompanyEventNote,
 		Detail:    text,
 		ByUserID:  byUserID,
+		Channel:   ch,
 	}
 	if err := s.repo.CreateCompanyEvent(event); err != nil {
 		return nil, err

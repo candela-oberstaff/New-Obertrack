@@ -28,6 +28,13 @@
   min-width: 0;
 }
 
+.identityRight {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
 .email {
   overflow: hidden;
   font-size: 14px;
@@ -43,6 +50,26 @@
   flex-wrap: wrap;
 }
 
+.replacementBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  letter-spacing: 0.01em;
+}
+
+:global(.dark) .replacementBadge {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
 .actions {
   display: flex;
   align-items: center;
@@ -56,3 +83,26 @@
    contenido cuando la fila va justa, y el resultado es un botón más alto que
    los demás con la mitad del texto en una segunda línea. */
 .actions > * { flex: 0 0 auto; }
+
+.btnReplacementActive {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+.btnReplacementActive:hover {
+  background: #fde68a !important;
+  color: #92400e !important;
+}
+
+:global(.dark) .btnReplacementActive {
+  background: rgba(245, 158, 11, 0.2) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+
+:global(.dark) .btnReplacementActive:hover {
+  background: rgba(245, 158, 11, 0.3) !important;
+  color: #fde68a !important;
+}
+

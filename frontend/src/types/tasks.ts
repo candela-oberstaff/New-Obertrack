@@ -19,6 +19,7 @@ export interface User {
   is_supervisor?: boolean
   is_superadmin: boolean
   is_active: boolean
+  is_replacement?: boolean
   empleador_id?: number
   manager_id?: number | null
   company_name?: string
@@ -105,6 +106,7 @@ export interface EmployeeSummary {
   avatar?: string
   user_type: string
   is_active: boolean
+  is_replacement?: boolean
   is_manager: boolean
   hours_this_month: number
   tasks_assigned: number

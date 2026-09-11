@@ -11,12 +11,12 @@ export const ACTIVITY_CATEGORIES = [
   // { value: 'management', label: 'Customer Success' },
   // Contactos antes que notas: es lo primero que se mira al abrir una ficha
   // ("¿ya hablamos con ellos?"), y las notas son el detalle de eso.
-  { value: 'contact', label: 'Comunicaciones' },
-  { value: 'note', label: 'Notas' },
+  { value: 'contact', label: 'Seguimiento cliente' },
+  { value: 'note', label: 'Seguimiento profesional' },
   { value: 'surveys', label: 'Encuestas' },
   // Los testimonios tienen filtro propio: al preparar material comercial se
   // busca qué dijo este cliente, no se rebusca entre las notas internas.
-  // { value: 'testimonial', label: 'Testimonios' },
+  { value: 'testimonial', label: 'Testimonios' },
 ] as const
 
 export interface TenantActivity {
@@ -67,7 +67,7 @@ interface UseTenantActivityReturn {
   isFetching: boolean
   error: string | null
   /** Crea la nota y devuelve el id de la entrada, para poder adjuntarle archivos. */
-  addNote: (detail: string) => Promise<number>
+  addNote: (detail: string, channel?: TenantContactChannel) => Promise<number>
   /** Deja constancia de un contacto con la empresa en su expediente. */
   logContact: (channel: TenantContactChannel, detail?: string) => Promise<number>
   updateNote: (eventId: number, detail: string) => Promise<void>
@@ -139,7 +139,8 @@ export function useTenantActivity(
     })
 
   const addMut = useMutation({
-    mutationFn: (detail: string) => adminService.addTenantNote(tenantId, detail),
+    mutationFn: ({ detail, channel }: { detail: string; channel?: TenantContactChannel }) =>
+      adminService.addTenantNote(tenantId, detail, channel),
     onSuccess: invalidate,
   })
 
@@ -209,7 +210,7 @@ export function useTenantActivity(
     error: error ? 'No se pudo cargar el expediente' : null,
     // Devuelve el id de la entrada creada, por el mismo motivo que addComment:
     // los archivos adjuntos necesitan algo a lo que colgarse.
-    addNote: async (detail) => (await addMut.mutateAsync(detail)).id,
+    addNote: async (detail, channel) => (await addMut.mutateAsync({ detail, channel })).id,
     logContact: async (channel, detail) => (await contactMut.mutateAsync({ channel, detail })).id,
     updateNote: async (eventId, detail) => { await updateMut.mutateAsync({ eventId, detail }) },
     // Devuelve el id para poder colgarle los archivos que se pegaron mientras

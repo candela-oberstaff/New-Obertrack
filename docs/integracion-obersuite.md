@@ -194,8 +194,8 @@ Crea o reutiliza al profesional y le abre el empleo en la empresa.
   "company_id": 42,                  // OBLIGATORIO (el id de /companies)
   "identity_document": "12345678A",
   "phone_number": "+34600000000",
-  "birth_date": "2001-09-05",        // YYYY-MM-DD (opcional)
-  "emergency_contacts": ["+34611111111 Mamá", "+34622222222 Papá"], // (opcional)
+  "birth_date": "2001-09-05",        // YYYY-MM-DD 
+  "emergency_contacts": ["+34611111111 Mamá", "+34622222222 Papá"], // 
   "country": "España", "state": "Aragón", "city": "Zaragoza",
   "address": "Calle Mayor 1",
   "job_title": "Diseñadora",
@@ -384,6 +384,7 @@ recorriendo las claves de `counts`.**
 | `name`, `email`, `avatar` | texto | `avatar` vacío si no tiene |
 | `user_type` | texto | Siempre `"profesional"`: la lista se filtra a ese tipo para cuadrar con `professionals_count` |
 | `is_active` | booleano | **Siempre presente.** Es la cuenta, no el empleo |
+| `is_replacement` | booleano | **Siempre presente.** `true` si el profesional está marcado como cambio de profesional en Obertrack |
 | `is_manager`, `is_supervisor` | booleano | Siempre presentes |
 | `job_title` | texto | El del empleo **en esta empresa**; cae al del perfil si el empleo no lo tiene |
 | `obersuite_id` | texto, **se omite si no hay** | El candidato en Obersuite: esta *persona* vino de allí |

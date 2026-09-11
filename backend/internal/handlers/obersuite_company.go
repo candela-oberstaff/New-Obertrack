@@ -244,8 +244,8 @@ func obersuiteTimelineCategories() []gin.H {
 		{"value": repository.TenantActivityWork, "label": "Jornadas"},
 		// Comunicaciones antes que notas: es lo primero que se mira al abrir
 		// una ficha ("¿ya hablamos con ellos?"), y las notas son su detalle.
-		{"value": repository.TenantActivityContact, "label": "Comunicaciones"},
-		{"value": repository.TenantActivityNote, "label": "Notas"},
+		{"value": repository.TenantActivityContact, "label": "Seguimiento cliente"},
+		{"value": repository.TenantActivityNote, "label": "Seguimiento profesional"},
 		// "testimonial" sigue existiendo como categoría (?category=testimonial
 		// funciona y su contador viaja en counts), pero la pantalla dejó de
 		// ofrecerla como chip, así que aquí tampoco se ofrece.

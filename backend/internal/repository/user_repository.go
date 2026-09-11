@@ -499,9 +499,10 @@ type ObersuiteProfessional struct {
 	// Vacía si no hay foto. La rellena el handler, que es quien sabe el host.
 	AvatarURL string `json:"avatar_url"`
 	UserType  string `json:"user_type"`
-	IsActive     bool   `json:"is_active"`
-	IsManager    bool   `json:"is_manager"`
-	IsSupervisor bool   `json:"is_supervisor"`
+	IsActive      bool   `json:"is_active"`
+	IsReplacement bool   `json:"is_replacement"`
+	IsManager     bool   `json:"is_manager"`
+	IsSupervisor  bool   `json:"is_supervisor"`
 	JobTitle     string `json:"job_title"`
 
 	// Los dos identificadores de Obersuite NO significan lo mismo: ObersuiteID
@@ -608,7 +609,7 @@ func (r *userRepository) obersuiteProfessionals(companyID, onlyUserID uint) ([]O
 		SELECT
 			u.id, u.name, u.email,
 			COALESCE(u.avatar, '') as avatar,
-			u.user_type, u.is_active, u.is_manager, u.is_supervisor,
+			u.user_type, u.is_active, COALESCE(u.is_replacement, false) as is_replacement, u.is_manager, u.is_supervisor,
 			-- El cargo del empleo manda sobre el del perfil: es el que tiene en
 			-- ESTA empresa, y el del perfil puede haberse quedado del anterior.
 			COALESCE(NULLIF(e.job_title, ''), u.job_title, '') as job_title,

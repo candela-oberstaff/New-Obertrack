@@ -57,6 +57,8 @@ const EMPTY_CREATE_FORM = {
   isManager: false,
   isSupervisor: false,
   phoneNumber: '',
+  birthDate: '',
+  emergencyPhones: [''],
   country: '',
   province: '',
   city: '',
@@ -180,7 +182,7 @@ export default function Admin() {
     e.preventDefault()
     setCreateError('')
 
-    const { name, email, password, userType, companyName, industry, selectedCompanyId, phoneNumber, country, province, city, location, address, jobTitle, isManager, isSupervisor } = createForm
+    const { name, email, password, userType, companyName, industry, selectedCompanyId, phoneNumber, birthDate, emergencyPhones, country, province, city, location, address, jobTitle, isManager, isSupervisor } = createForm
 
     if (userType === 'profesional') {
       if (!selectedCompanyId) { setCreateError('Debes seleccionar una empresa'); return }
@@ -195,6 +197,7 @@ export default function Admin() {
       if (!industry.trim()) { setCreateError('El rubro o industria es obligatorio'); return }
     } setCreateLoading(true)
     try {
+      const cleanEmergency = (emergencyPhones || []).map(p => p.trim()).filter(Boolean).join(', ')
       await createUser({
         name,
         email,
@@ -207,6 +210,8 @@ export default function Admin() {
             ? (selectedCompanyId as number) || undefined
             : undefined,
         phone_number: phoneNumber || undefined,
+        birth_date: birthDate || undefined,
+        emergency_phones: cleanEmergency || undefined,
         country: country || undefined,
         state: province || undefined,
         city: city || undefined,
@@ -252,6 +257,8 @@ export default function Admin() {
       user_type: u.user_type || '',
       job_title: u.job_title || '',
       phone_number: u.phone_number || '',
+      birth_date: u.birth_date ? u.birth_date.split('T')[0] : '',
+      emergency_phones_list: u.emergency_phones ? u.emergency_phones.split(',').map((s: string) => s.trim()).filter(Boolean) : [''],
       country: u.country || '',
       state: u.state || '',
       city: u.city || '',
@@ -273,10 +280,15 @@ export default function Admin() {
     e.preventDefault()
     if (editId == null) return
     setEditError(null)
+    const cleanPhones = Array.isArray(editForm.emergency_phones_list)
+      ? editForm.emergency_phones_list.map((p: string) => p.trim()).filter(Boolean).join(', ')
+      : (editForm.emergency_phones || '')
     // Sanitize FK ids: send a positive number or null — never "" (which the
     // backend's *uint binding rejects with 400, making the whole save fail).
     const payload = {
       ...editForm,
+      birth_date: editForm.birth_date || '',
+      emergency_phones: cleanPhones,
       empleador_id: editForm.empleador_id ? Number(editForm.empleador_id) : null,
       manager_id: editForm.manager_id ? Number(editForm.manager_id) : null,
     }

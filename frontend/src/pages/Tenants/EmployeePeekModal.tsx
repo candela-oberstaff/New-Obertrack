@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Ban, CheckCircle2, MessageSquare, RefreshCw, User as UserIcon } from 'lucide-react'
+import { AlertCircle, ArrowRight, Ban, CheckCircle2, MessageSquare, RefreshCw, User as UserIcon } from 'lucide-react'
 import { useEmployeeTracking, useTenantDetail } from '../../hooks'
 import { Modal, Button, Skeleton } from '../../components/ui'
 import { useConfirm } from '../../components/ui/ConfirmProvider'
@@ -33,7 +33,7 @@ export function EmployeePeekModal({ employeeId, tenantId, canManage, onClose, on
   const navigate = useNavigate()
   const notify = useNotification()
   const confirm = useConfirm()
-  const { tracking, isLoading, error, toggleStatus, resetPassword } = useEmployeeTracking(employeeId)
+  const { tracking, isLoading, error, toggleStatus, toggleReplacement, resetPassword } = useEmployeeTracking(employeeId)
   const { employees } = useTenantDetail(tenantId)
 
   const user = tracking?.user
@@ -54,6 +54,26 @@ export function EmployeePeekModal({ employeeId, tenantId, canManage, onClose, on
       variant: 'primary',
     })
     if (ok) await resetPassword('temporary123')
+  }
+
+  const handleToggleReplacement = async () => {
+    const isCurrently = user?.is_replacement
+    const ok = await confirm({
+      title: isCurrently ? 'Desmarcar cambio de profesional' : 'Marcar cambio de profesional',
+      message: isCurrently
+        ? '¿Deseas desmarcar a este profesional del estado "Cambio de profesional"?'
+        : '¿Deseas marcar a este profesional con el estado "Cambio de profesional"? Se mostrará en amarillo en Obertrack y Obersuite.',
+      confirmLabel: isCurrently ? 'Desmarcar' : 'Marcar cambio',
+      variant: 'primary',
+    })
+    if (ok) {
+      try {
+        await toggleReplacement()
+        notify.success(isCurrently ? 'Profesional desmarcado de cambio' : 'Profesional marcado como cambio de profesional')
+      } catch {
+        notify.error('No se pudo actualizar el estado del profesional')
+      }
+    }
   }
 
   return (
@@ -79,9 +99,28 @@ export function EmployeePeekModal({ employeeId, tenantId, canManage, onClose, on
                 <span className={`${styles.badge} ${user.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
                   {user.is_active ? 'Activo' : 'Inactivo'}
                 </span>
+                {user.is_replacement && (
+                  <span className={peek.replacementBadge} title="Marcado como cambio de profesional">
+                    Cambio de profesional
+                  </span>
+                )}
                 <span className={styles.typeBadge}>{roleLabel(user)}</span>
               </div>
             </div>
+            {canManage && (
+              <div className={peek.identityRight}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className={user.is_replacement ? peek.btnReplacementActive : ''}
+                  onClick={handleToggleReplacement}
+                  leftIcon={<AlertCircle size={15} />}
+                  title={user.is_replacement ? 'Desmarcar cambio de profesional' : 'Marcar como cambio de profesional'}
+                >
+                  {user.is_replacement ? 'Quitar cambio' : 'Cambio de profesional'}
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* El vistazo no carga los empleos (sería una petición más por cada

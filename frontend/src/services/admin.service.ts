@@ -498,8 +498,8 @@ export const adminService = {
     )
     return data.data || []
   },
-  addTenantNote: async (id: number, detail: string) => {
-    const { data } = await api.post(`/admin/tenants/${id}/notes`, { detail })
+  addTenantNote: async (id: number, detail: string, channel?: TenantContactChannel) => {
+    const { data } = await api.post(`/admin/tenants/${id}/notes`, { detail, channel })
     return data
   },
   updateTenantNote: async (id: number, noteId: number, detail: string) => {

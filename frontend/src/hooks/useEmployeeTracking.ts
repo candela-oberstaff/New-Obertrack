@@ -8,6 +8,7 @@ interface UseEmployeeTrackingReturn {
   error: string | null
   refresh: () => Promise<void>
   toggleStatus: () => Promise<void>
+  toggleReplacement: () => Promise<void>
   resetPassword: (newPassword: string) => Promise<void>
 }
 
@@ -30,7 +31,22 @@ export function useEmployeeTracking(id: number): UseEmployeeTrackingReturn {
 
   const toggleMut = useMutation({
     mutationFn: (nextActive: boolean) => adminService.updateUser(id, { is_active: nextActive }),
-    onSuccess: () => qc.invalidateQueries({ queryKey }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey })
+      qc.invalidateQueries({ queryKey: ['tenant-detail'] })
+      qc.invalidateQueries({ queryKey: ['tenant-employees'] })
+      qc.invalidateQueries({ queryKey: ['admin-tenants'] })
+    },
+  })
+
+  const toggleReplacementMut = useMutation({
+    mutationFn: (nextVal: boolean) => adminService.updateUser(id, { is_replacement: nextVal }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey })
+      qc.invalidateQueries({ queryKey: ['tenant-detail'] })
+      qc.invalidateQueries({ queryKey: ['tenant-employees'] })
+      qc.invalidateQueries({ queryKey: ['admin-tenants'] })
+    },
   })
 
   return {
@@ -39,8 +55,12 @@ export function useEmployeeTracking(id: number): UseEmployeeTrackingReturn {
     error: error ? 'No se pudo cargar el empleado' : null,
     refresh: async () => { await refetch() },
     toggleStatus: async () => {
-      if (!data) return
+      if (!data?.user) return
       await toggleMut.mutateAsync(!data.user.is_active)
+    },
+    toggleReplacement: async () => {
+      if (!data?.user) return
+      await toggleReplacementMut.mutateAsync(!data.user.is_replacement)
     },
     resetPassword: async (newPassword: string) => {
       await adminService.resetPassword(id, newPassword)

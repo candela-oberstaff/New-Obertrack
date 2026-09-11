@@ -483,6 +483,8 @@ export default function AdminUserDetail() {
       user_type: user.user_type || '',
       job_title: user.job_title || '',
       phone_number: user.phone_number || '',
+      birth_date: user.birth_date ? user.birth_date.split('T')[0] : '',
+      emergency_phones_list: user.emergency_phones ? user.emergency_phones.split(',').map((s: string) => s.trim()).filter(Boolean) : [''],
       country: user.country || '',
       state: user.state || '',
       city: user.city || '',
@@ -512,9 +514,14 @@ export default function AdminUserDetail() {
     e.preventDefault()
     if (!user) return
     setEditError(null)
+    const cleanPhones = Array.isArray(editForm.emergency_phones_list)
+      ? editForm.emergency_phones_list.map((p: string) => p.trim()).filter(Boolean).join(', ')
+      : (editForm.emergency_phones || '')
     // Sanitiza FKs: número positivo o null (nunca "" — el backend lo rechaza).
     const payload = {
       ...editForm,
+      birth_date: editForm.birth_date || '',
+      emergency_phones: cleanPhones,
       empleador_id: editForm.empleador_id ? Number(editForm.empleador_id) : null,
       manager_id: editForm.manager_id ? Number(editForm.manager_id) : null,
     }

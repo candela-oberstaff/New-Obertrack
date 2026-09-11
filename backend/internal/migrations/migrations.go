@@ -2625,6 +2625,21 @@ func Run(db *gorm.DB) error {
 				`).Error
 			},
 		},
+		{
+			ID: "202609111300",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					ALTER TABLE users
+					ADD COLUMN IF NOT EXISTS is_replacement BOOLEAN NOT NULL DEFAULT FALSE
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					ALTER TABLE users
+					DROP COLUMN IF EXISTS is_replacement
+				`).Error
+			},
+		},
 		// Future migrations go here
 	})
 

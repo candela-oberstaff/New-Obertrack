@@ -1,3 +1,4 @@
+import { Plus, Trash2 } from 'lucide-react'
 import { User } from '../../../types'
 import { Select } from '../../ui/Select'
 import { useDirtySnapshot } from '../../ui/useCloseGuard'
@@ -208,6 +209,71 @@ export function UserModal({
                 value={form.phone_number}
                 onChange={e => setForm({ ...form, phone_number: e.target.value })}
               />
+            </div>
+            <div className={styles['form-group']}>
+              <label>Fecha de nacimiento <span style={{ fontWeight: 400, color: '#94a3b8' }}>(opcional)</span></label>
+              <input
+                type="date"
+                value={form.birth_date ? form.birth_date.split('T')[0] : ''}
+                onChange={e => setForm({ ...form, birth_date: e.target.value })}
+                max={toISODate(new Date())}
+              />
+            </div>
+            <div className={styles['form-group']}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ margin: 0 }}>Número(s) de emergencia <span style={{ fontWeight: 400, color: '#94a3b8' }}>(opcional)</span></label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const list = Array.isArray(form.emergency_phones_list) ? [...form.emergency_phones_list] : ['']
+                    setForm({ ...form, emergency_phones_list: [...list, ''] })
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--primary, #2563eb)',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: 0,
+                  }}
+                >
+                  <Plus size={14} /> Añadir otro número
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {(Array.isArray(form.emergency_phones_list) && form.emergency_phones_list.length > 0 ? form.emergency_phones_list : ['']).map((phone: string, idx: number) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="text"
+                      value={phone}
+                      onChange={e => {
+                        const list = Array.isArray(form.emergency_phones_list) ? [...form.emergency_phones_list] : ['']
+                        list[idx] = e.target.value
+                        setForm({ ...form, emergency_phones_list: list })
+                      }}
+                      placeholder="Ej: +34 600 000 000 Mamá"
+                      style={{ flex: 1 }}
+                    />
+                    {(Array.isArray(form.emergency_phones_list) && form.emergency_phones_list.length > 1) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const list = (form.emergency_phones_list || []).filter((_: any, i: number) => i !== idx)
+                          setForm({ ...form, emergency_phones_list: list.length > 0 ? list : [''] })
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+                        title="Eliminar número"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
             <div className={styles['form-row']}>
               <div className={styles['form-group']}>

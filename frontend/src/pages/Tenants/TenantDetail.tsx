@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, cloneElement, useMemo, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Building2, Users, User, UserCheck, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, Plus, Trash2, Pin, PinOff, Send, Paperclip, MoreVertical, ArrowRight, Eye, Briefcase, CalendarDays, Settings, FileDown } from 'lucide-react'
+import { ArrowLeft, Building2, Users, User, UserCheck, LayoutGrid, CheckSquare, Activity, Ban, CheckCircle2, Mail, Calendar, RefreshCw, ChevronLeft, ChevronRight, Pencil, Search, Clock, Hourglass, Inbox, Wand2, X, MessageSquare, Plus, Trash2, Pin, PinOff, Send, Paperclip, MoreVertical, ArrowRight, Eye, Briefcase, CalendarDays, Settings, FileDown, MessageSquareQuote, Star, BadgeCheck, ExternalLink, FileSignature, Download, Undo2 } from 'lucide-react'
 import { useImagePaste } from '../../hooks/useImagePaste'
 import type { TenantContactChannel } from '../../services/admin.service'
 import { ACTIVITY_STYLE, ACTIVITY_LABEL, ACTIVITY_FALLBACK, CONTACT_STYLE } from './activityStyle'
@@ -12,6 +12,7 @@ const MANUAL_CONTACT_CHANNELS: { value: TenantContactChannel; label: string }[] 
   { value: 'call', label: 'Llamada telefónica' },
   { value: 'meeting', label: 'Reunión' },
   { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'email', label: 'Correo' },
 ]
 
 const NOTE_MAX_LENGTH = 2000
@@ -25,6 +26,7 @@ import { TeamActivityPanel } from '../../components/Admin/TeamActivityPanel'
 import { AbsenceReportPanel } from '../../components/Admin/AbsenceReportPanel'
 import { EmailComposerModal, type ComposerRecipient } from '../../components/Admin/EmailComposerModal'
 import { surveyService } from '../../services/surveyService'
+import { testimonialService, parseTestimonialAnswers, type Testimonial } from '../../services/testimonial.service'
 import { ticketService } from '../../services/ticket.service'
 import { openWaConversation } from '../../lib/whatsappInbox'
 import { useNotification } from '../../context/NotificationContext'
@@ -241,6 +243,7 @@ export default function TenantDetail() {
   const actTotalPages = Math.max(1, Math.ceil(actTotal / actPageSize))
   const [noteOpen, setNoteOpen] = useState(false)
   const [noteEmployeeIds, setNoteEmployeeIds] = useState<number[]>([])
+  const [noteChannel, setNoteChannel] = useState<TenantContactChannel>('call')
   const [noteText, setNoteText] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteError, setNoteError] = useState<string | null>(null)
@@ -274,6 +277,9 @@ export default function TenantDetail() {
     completedAt: string
     answers: any[]
   } | null>(null)
+
+  // Modal para ver detalles completos de un testimonio
+  const [selectedTestimonial, setSelectedTestimonial] = useState<Testimonial | null>(null)
 
   // Registro manual de un contacto que pasó fuera de la plataforma.
   const [contactOpen, setContactOpen] = useState(false)
@@ -457,6 +463,28 @@ export default function TenantDetail() {
     return count
   }, [allSurveys, employeeIds])
 
+  // Testimonios realizados por profesionales de esta empresa
+  const { data: allTestimonialsData, isLoading: testimonialsLoading } = useQuery({
+    queryKey: ['tenant-testimonials', tenantId],
+    queryFn: () => testimonialService.list(),
+    enabled: !!tenantId && tab === 'expediente',
+  })
+
+  const allTestimonialItems = useMemo(() => allTestimonialsData?.items || [], [allTestimonialsData])
+
+  const tenantTestimonials = useMemo(() => {
+    const list = allTestimonialItems.filter(t => {
+      if (!employeeIds.has(t.user_id)) return false
+      if (noteFilterEmployeeId && t.user_id !== noteFilterEmployeeId) return false
+      return true
+    })
+    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  }, [allTestimonialItems, employeeIds, noteFilterEmployeeId])
+
+  const totalTenantTestimonialsCount = useMemo(() => {
+    return allTestimonialItems.filter(t => employeeIds.has(t.user_id)).length
+  }, [allTestimonialItems, employeeIds])
+
   useEffect(() => {
     setEmpPage(1)
   }, [empSearch, empRole, empStatus])
@@ -492,6 +520,7 @@ export default function TenantDetail() {
   const openNewNote = () => {
     setNoteEditingId(null)
     setNoteEmployeeIds(actPerson > 0 ? [actPerson] : [])
+    setNoteChannel('call')
     setNoteText('')
     setNoteError(null)
     setNoteOpen(true)
@@ -553,7 +582,7 @@ export default function TenantDetail() {
           }
         }
 
-        const eventId = await addNote(finalDetail)
+        const eventId = await addNote(finalDetail, noteChannel)
         await uploadNoteFiles(eventId)
         // La nota nueva es lo más reciente: se ve en la primera página.
         setActPage(1)
@@ -563,6 +592,7 @@ export default function TenantDetail() {
       setNoteFiles([])
       setNoteEditingId(null)
       setNoteEmployeeIds([])
+      setNoteChannel('call')
     } catch (err: any) {
       setNoteError(err?.response?.data?.error || 'No se pudo guardar la nota')
     } finally {
@@ -1122,7 +1152,7 @@ export default function TenantDetail() {
                 tabs={ACTIVITY_CATEGORIES.map(cat => ({
                   id: cat.value,
                   label: cat.label,
-                  count: cat.value === 'surveys' ? totalTenantSurveyCount : actCounts[cat.value],
+                  count: cat.value === 'surveys' ? totalTenantSurveyCount : cat.value === 'testimonial' ? totalTenantTestimonialsCount : actCounts[cat.value],
                 }))}
               />
             </div>
@@ -1269,9 +1299,16 @@ export default function TenantDetail() {
                               <td>{emp.tasks_completed}/{emp.tasks_assigned}</td>
                               <td>{lastValid ? formatDateOnly(emp.last_active, { day: 'numeric', month: 'numeric', year: 'numeric' }) : '—'}</td>
                               <td>
-                                <span className={`${styles.badge} ${emp.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
-                                  {emp.is_active ? 'Activo' : 'Inactivo'}
-                                </span>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span className={`${styles.badge} ${emp.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
+                                    {emp.is_active ? 'Activo' : 'Inactivo'}
+                                  </span>
+                                  {emp.is_replacement && (
+                                    <span className={`${styles.badge} ${styles.badgeReplacement}`} title="Marcado como cambio de profesional">
+                                      Cambio de profesional
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td>
                                 <div className={styles.rowActions}>
@@ -1366,7 +1403,7 @@ export default function TenantDetail() {
 
               {/* Filtro por persona / autor / destinatario + botones de acción */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: 20 }}>
-                {actCategory !== 'surveys' && (
+                {actCategory !== 'surveys' && actCategory !== 'testimonial' && (
                   <div style={{ minWidth: 230 }}>
                     <Select
                       fullWidth
@@ -1381,17 +1418,17 @@ export default function TenantDetail() {
                   </div>
                 )}
 
-                {/* Filtro por profesional destinatario (en Notas) o profesional que respondió (en Encuestas) */}
-                {(actCategory === 'note' || actCategory === 'surveys') && (
+                {/* Filtro por profesional destinatario (en Notas), profesional que respondió (en Encuestas) o profesional (en Testimonios) */}
+                {(actCategory === 'note' || actCategory === 'surveys' || actCategory === 'testimonial') && (
                   <div style={{ minWidth: 250 }}>
                     <Select
                       fullWidth
                       clearable
                       searchable
-                      placeholder={actCategory === 'surveys' ? 'Filtrar por profesional' : 'Destinatario (profesional)'}
+                      placeholder={actCategory === 'surveys' || actCategory === 'testimonial' ? 'Filtrar por profesional' : 'Destinatario (profesional)'}
                       value={noteFilterEmployeeId ? String(noteFilterEmployeeId) : ''}
                       onChange={v => setNoteFilterEmployeeId(v ? Number(v) : null)}
-                      ariaLabel={actCategory === 'surveys' ? 'Filtrar por el profesional que respondió' : 'Filtrar notas por el profesional para quien se escribió'}
+                      ariaLabel={actCategory === 'surveys' ? 'Filtrar por el profesional que respondió' : actCategory === 'testimonial' ? 'Filtrar por el profesional del testimonio' : 'Filtrar notas por el profesional para quien se escribió'}
                       options={employees.map(emp => ({
                         value: emp.id,
                         label: `${emp.name} (${emp.email})`,
@@ -1536,6 +1573,144 @@ export default function TenantDetail() {
                     </div>
                   </div>
                 )
+              ) : actCategory === 'testimonial' ? (
+                testimonialsLoading ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={68} radius={12} />)}
+                  </div>
+                ) : tenantTestimonials.length === 0 ? (
+                  <div className={styles.empty}>
+                    <MessageSquareQuote size={40} />
+                    <p>
+                      {noteFilterEmployeeId !== null
+                        ? 'No hay testimonios registrados para este profesional'
+                        : 'No hay testimonios registrados para profesionales de esta empresa'}
+                    </p>
+                    {noteFilterEmployeeId !== null && (
+                      <button
+                        type="button"
+                        onClick={() => setNoteFilterEmployeeId(null)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: 10, padding: '8px 14px', border: '1px solid var(--glass-border)', borderRadius: '10px', background: 'transparent', color: '#64748b', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        <X size={14} /> Limpiar filtro
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className={styles.timelineScrollContainer}>
+                    <div className={`${styles.timeline} ${styles.isNotesOnly}`}>
+                      {tenantTestimonials.map((item, i) => {
+                        const dateStr = item.submitted_at || item.created_at
+                        const date = new Date(dateStr)
+                        const valid = !isNaN(date.getTime())
+                        const userName = item.recipient_name || item.user?.name || `Profesional #${item.user_id}`
+                        const role = item.recipient_role || ''
+                        const statusColors: Record<string, { bg: string; color: string; border: string }> = {
+                          approved: { bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
+                          submitted: { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
+                          pending: { bg: '#f8fafc', color: '#64748b', border: '#e2e8f0' },
+                          changes_requested: { bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
+                          rejected: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
+                        }
+                        const sc = statusColors[item.status] || statusColors.pending
+                        const statusText = {
+                          pending: 'Esperando respuesta',
+                          submitted: 'Por revisar',
+                          approved: 'Aprobado',
+                          rejected: 'Descartado',
+                          changes_requested: 'En corrección',
+                        }[item.status] || item.status
+
+                        return (
+                          <div key={`testimonial-${item.id}-${i}`} className={`${styles.timelineItem} ${styles.noteTimelineItem}`}>
+                            <div className={styles.noteAvatarNode}>
+                              <Avatar name={userName} size="sm" />
+                            </div>
+                            <div
+                              className={`${styles.timelineCard} ${styles.clickableCard} ${styles.isNote}`}
+                              role="button"
+                              tabIndex={0}
+                              title="Ver detalle del testimonio"
+                              onClick={() => setSelectedTestimonial(item)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  setSelectedTestimonial(item)
+                                }
+                              }}
+                            >
+                              <div className={styles.noteHeader}>
+                                <strong className={styles.noteUser}>{userName}</strong>
+                                {role && (
+                                  <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500, marginLeft: 4 }}>
+                                    ({role})
+                                  </span>
+                                )}
+                                <span className={styles.noteDateDivider}>•</span>
+                                <span className={styles.noteDateTime}>
+                                  {valid
+                                    ? `${date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+                                    : '—'}
+                                </span>
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
+                                  padding: '2px 8px',
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  background: sc.bg,
+                                  color: sc.color,
+                                  border: `1px solid ${sc.border}`,
+                                  marginLeft: 6
+                                }}>
+                                  {item.status === 'approved' && <CheckCircle2 size={12} />}
+                                  {item.status === 'submitted' && <Clock size={12} />}
+                                  {item.status === 'pending' && <Hourglass size={12} />}
+                                  {item.status === 'changes_requested' && <Undo2 size={12} />}
+                                  {item.status === 'rejected' && <Ban size={12} />}
+                                  {statusText}
+                                </span>
+                                {item.rating > 0 && (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 3,
+                                    padding: '2px 7px',
+                                    borderRadius: 999,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    background: '#fef3c7',
+                                    color: '#b45309',
+                                    border: '1px solid #fde68a',
+                                    marginLeft: 4,
+                                  }}>
+                                    <Star size={12} fill="#b45309" /> {item.rating}/5
+                                  </span>
+                                )}
+                                <div style={{ marginLeft: 'auto' }}>
+                                  <span style={{ fontSize: 13, color: 'var(--primary, #cc33cc)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    <Eye size={14} /> Ver testimonio
+                                  </span>
+                                </div>
+                              </div>
+                              {item.quote ? (
+                                <p className={styles.noteBody} style={{ fontWeight: 500, color: '#1e293b', marginTop: 4, marginBottom: 0, fontStyle: 'italic' }}>
+                                  "{item.published_quote || item.quote}"
+                                </p>
+                              ) : (
+                                <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0 0' }}>
+                                  {item.intro_message || 'Solicitud de testimonio enviada al profesional.'}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
               ) : (
                 <>
                   {actError && <p className={styles.errorMsg}>{actError}</p>}
@@ -1625,7 +1800,7 @@ export default function TenantDetail() {
                                               ? `${date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
                                               : '—'}
                                           </span>
-                                          {isContact && a.channel && CONTACT_STYLE[a.channel] && (
+                                          {a.channel && CONTACT_STYLE[a.channel] && (
                                             <span style={{
                                               display: 'inline-flex',
                                               alignItems: 'center',
@@ -2142,12 +2317,12 @@ export default function TenantDetail() {
       <Modal
         isOpen={noteOpen}
         isDirty={noteText.trim() !== '' || noteFiles.length > 0}
-        onClose={() => { setNoteOpen(false); setNoteFiles([]); setNoteEmployeeIds([]) }}
+        onClose={() => { setNoteOpen(false); setNoteFiles([]); setNoteEmployeeIds([]); setNoteChannel('call') }}
         title={noteEditingId !== null ? 'Editar entrada del expediente' : 'Añadir nota al expediente'}
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => { setNoteOpen(false); setNoteFiles([]); setNoteEmployeeIds([]) }} disabled={noteSaving}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => { setNoteOpen(false); setNoteFiles([]); setNoteEmployeeIds([]); setNoteChannel('call') }} disabled={noteSaving}>Cancelar</Button>
             <Button onClick={handleSaveNote} loading={noteSaving} disabled={!noteText.trim()}>
               {noteEditingId !== null ? 'Guardar cambios' : 'Guardar nota'}
             </Button>
@@ -2178,6 +2353,22 @@ export default function TenantDetail() {
                 value: emp.id,
                 label: `${emp.name} (${emp.email})`,
               }))}
+              disabled={noteSaving}
+            />
+          </div>
+        )}
+
+        {/* Desplegable de vía */}
+        {noteEditingId === null && (
+          <div className={styles.field} style={{ marginBottom: 14 }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+              Vía
+            </label>
+            <Select
+              fullWidth
+              value={noteChannel}
+              onChange={v => setNoteChannel(String(v) as TenantContactChannel)}
+              options={MANUAL_CONTACT_CHANNELS.map(c => ({ value: c.value, label: c.label }))}
               disabled={noteSaving}
             />
           </div>
@@ -2528,6 +2719,242 @@ export default function TenantDetail() {
                       </div>
                     )
                   })}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+      </Modal>
+
+      {/* Modal para ver detalles completos de un testimonio */}
+      <Modal
+        isOpen={selectedTestimonial !== null}
+        onClose={() => setSelectedTestimonial(null)}
+        title="Detalle del Testimonio"
+        size="lg"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+            {selectedTestimonial && (
+              <Button
+                variant="secondary"
+                leftIcon={<ExternalLink size={14} />}
+                onClick={() => {
+                  navigate(`/testimonios?open=${selectedTestimonial.id}`)
+                }}
+              >
+                Abrir en Testimonios
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => setSelectedTestimonial(null)}>
+              Cerrar
+            </Button>
+          </div>
+        }
+      >
+        {selectedTestimonial && (() => {
+          const t = selectedTestimonial
+          const answers = parseTestimonialAnswers(t.answers)
+          const userName = t.recipient_name || t.user?.name || `Profesional #${t.user_id}`
+          const statusColors: Record<string, { bg: string; color: string; border: string }> = {
+            approved: { bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
+            submitted: { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
+            pending: { bg: '#f8fafc', color: '#64748b', border: '#e2e8f0' },
+            changes_requested: { bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
+            rejected: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
+          }
+          const sc = statusColors[t.status] || statusColors.pending
+          const statusText = {
+            pending: 'Esperando respuesta',
+            submitted: 'Por revisar',
+            approved: 'Aprobado',
+            rejected: 'Descartado',
+            changes_requested: 'En corrección',
+          }[t.status] || t.status
+
+          return (
+            <div>
+              {/* Header card */}
+              <div style={{ padding: '14px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Avatar name={userName} size="md" />
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>
+                          {userName}
+                        </span>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          background: sc.bg,
+                          color: sc.color,
+                          border: `1px solid ${sc.border}`,
+                        }}>
+                          {statusText}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                        {t.recipient_email && <span>{t.recipient_email}</span>}
+                        {t.recipient_role && <span> • {t.recipient_role}</span>}
+                        {t.recipient_company && <span> ({t.recipient_company})</span>}
+                      </div>
+                    </div>
+                  </div>
+                  {t.rating > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: '#fef3c7', border: '1px solid #fde68a', color: '#b45309', padding: '4px 10px', borderRadius: 12, fontSize: 13, fontWeight: 700 }}>
+                      ⭐ {t.rating} / 5
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Fechas */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+                <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+                  <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Enviado</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginTop: 2 }}>
+                    {t.created_at ? new Date(t.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                  </div>
+                </div>
+                {t.submitted_at && (
+                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Respondido</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginTop: 2 }}>
+                      {new Date(t.submitted_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </div>
+                  </div>
+                )}
+                {t.signed_at && (
+                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Firmado</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginTop: 2 }}>
+                      {new Date(t.signed_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </div>
+                  </div>
+                )}
+                <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+                  <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Vence</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', marginTop: 2 }}>
+                    {t.expires_at ? new Date(t.expires_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Contenido / Testimonio recibido */}
+              {t.quote ? (
+                <div style={{ marginBottom: 20 }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <MessageSquareQuote size={16} /> Testimonio recibido
+                  </h4>
+                  <blockquote style={{ margin: 0, padding: '14px 16px', background: '#faf5ff', borderLeft: '4px solid var(--primary, #cc33cc)', borderRadius: 8, fontSize: 14, fontStyle: 'italic', color: '#1e293b', lineHeight: 1.6 }}>
+                    "{t.quote}"
+                  </blockquote>
+                </div>
+              ) : (
+                <div style={{ marginBottom: 20 }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
+                    Mensaje de solicitud
+                  </h4>
+                  <div style={{ padding: '12px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, color: '#475569' }}>
+                    {t.intro_message || 'Sin mensaje adicional'}
+                  </div>
+                </div>
+              )}
+
+              {/* Versión publicada si existe y es diferente */}
+              {t.published_quote && t.published_quote !== t.quote && (
+                <div style={{ marginBottom: 20 }}>
+                  <h4 style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                    Versión publicada
+                  </h4>
+                  <div style={{ padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 13, color: '#166534', fontStyle: 'italic' }}>
+                    "{t.published_quote}"
+                  </div>
+                </div>
+              )}
+
+              {/* Respuestas a preguntas guía */}
+              {answers.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 10 }}>
+                    Respuestas a preguntas guía ({answers.length})
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {answers.map((a, idx) => (
+                      <div key={idx} style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #f1f5f9', background: '#ffffff', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+                          {a.prompt}
+                        </div>
+                        <div style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.5 }}>
+                          {a.answer}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Permisos otorgados */}
+              {(t.allow_public_name || t.allow_role || t.allow_photo || t.allow_logo) && (
+                <div style={{ marginBottom: 20 }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
+                    Permisos otorgados
+                  </h4>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {[
+                      { label: 'Nombre', ok: t.allow_public_name },
+                      { label: 'Cargo y empresa', ok: t.allow_role },
+                      { label: 'Fotografía', ok: t.allow_photo },
+                      { label: 'Logo de la empresa', ok: t.allow_logo },
+                    ].map(perm => (
+                      <span
+                        key={perm.label}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          padding: '4px 10px',
+                          borderRadius: 8,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: perm.ok ? '#ecfdf5' : '#f8fafc',
+                          color: perm.ok ? '#059669' : '#94a3b8',
+                          border: `1px solid ${perm.ok ? '#a7f3d0' : '#e2e8f0'}`,
+                        }}
+                      >
+                        {perm.ok ? <BadgeCheck size={14} /> : <X size={14} />} {perm.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Firma y evidencia */}
+              {t.signed_at && (
+                <div style={{ padding: '14px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 10 }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, color: '#334155', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <FileSignature size={16} /> Firma y evidencia legal
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, fontSize: 12, color: '#475569', marginBottom: 12 }}>
+                    <div><strong>Firmado por:</strong> {t.signature_name || '—'}</div>
+                    <div><strong>Modalidad:</strong> {t.signature_mode === 'drawn' ? 'Trazada a mano' : t.signature_mode === 'uploaded' ? 'Imagen cargada' : t.signature_mode === 'typed' ? 'Nombre tipográfico' : t.signature_mode || '—'}</div>
+                    <div><strong>IP:</strong> {t.signer_ip || '—'}</div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<Download size={14} />}
+                    onClick={() => {
+                      testimonialService.downloadConsent(t.id, `constancia-testimonio-${t.id}.pdf`)
+                    }}
+                  >
+                    Descargar constancia firmada (PDF)
+                  </Button>
                 </div>
               )}
             </div>

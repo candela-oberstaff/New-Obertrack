@@ -54,8 +54,9 @@ type User struct {
 	// Con la bandera se filtra una vez y no hay lista de la que pueda volver a
 	// aparecer.
 	IsSystem    bool   `gorm:"not null;default:false;index" json:"is_system"`
-	IsActive    bool   `gorm:"default:true" json:"is_active"`
-	EmpleadorID *uint  `gorm:"index" json:"empleador_id,omitempty"`
+	IsActive      bool   `gorm:"default:true" json:"is_active"`
+	IsReplacement bool   `gorm:"not null;default:false;index" json:"is_replacement"`
+	EmpleadorID   *uint  `gorm:"index" json:"empleador_id,omitempty"`
 	Empleador   *User  `gorm:"foreignKey:EmpleadorID" json:"-"`
 	AssignedCSID *uint `gorm:"index" json:"assigned_cs_id,omitempty"`
 	AssignedCS   *User `gorm:"foreignKey:AssignedCSID" json:"-"`

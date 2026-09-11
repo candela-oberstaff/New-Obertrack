@@ -260,12 +260,14 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		ManagerID    *uint  `json:"manager_id"`
 		IsManager    bool   `json:"is_manager"`
 		IsSupervisor bool   `json:"is_supervisor"`
-		PhoneNumber  string `json:"phone_number"`
-		Country      string `json:"country"`
-		State        string `json:"state"`
-		City         string `json:"city"`
-		Location     string `json:"location"`
-		Industry     string `json:"industry"`
+		PhoneNumber     string  `json:"phone_number"`
+		BirthDate       *string `json:"birth_date"`
+		EmergencyPhones *string `json:"emergency_phones"`
+		Country         string  `json:"country"`
+		State           string  `json:"state"`
+		City            string  `json:"city"`
+		Location        string  `json:"location"`
+		Industry        string  `json:"industry"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -288,6 +290,12 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		"city":          req.City,
 		"location":      req.Location,
 		"industry":      req.Industry,
+	}
+	if req.BirthDate != nil {
+		payload["birth_date"] = *req.BirthDate
+	}
+	if req.EmergencyPhones != nil {
+		payload["emergency_phones"] = *req.EmergencyPhones
 	}
 	// Solo profesionales y customer success pueden quedar vinculados a una empresa.
 	if req.EmpleadorID != nil && (req.UserType == "profesional" || req.UserType == "customer_success") {
@@ -366,12 +374,13 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		Address      string `json:"address"`
 		Industry     string `json:"industry"`
 		CompanyName  string `json:"company_name"`
-		IsActive     *bool  `json:"is_active"`
-		IsManager    *bool  `json:"is_manager"`
-		IsSupervisor *bool  `json:"is_supervisor"`
-		UserType     string `json:"user_type"`
-		EmpleadorID  *uint  `json:"empleador_id"`
-		ManagerID    *uint  `json:"manager_id"`
+		IsActive      *bool  `json:"is_active"`
+		IsReplacement *bool  `json:"is_replacement"`
+		IsManager     *bool  `json:"is_manager"`
+		IsSupervisor  *bool  `json:"is_supervisor"`
+		UserType      string `json:"user_type"`
+		EmpleadorID   *uint  `json:"empleador_id"`
+		ManagerID     *uint  `json:"manager_id"`
 		// ClientSince es la fecha de alta real de la empresa (AAAA-MM-DD). Va
 		// como puntero y no como string porque aquí "" SÍ significa algo:
 		// borrar la corrección y volver a mostrar created_at. Ausente = no
@@ -466,6 +475,9 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	}
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive
+	}
+	if req.IsReplacement != nil {
+		updates["is_replacement"] = *req.IsReplacement
 	}
 	if req.IsManager != nil {
 		updates["is_manager"] = *req.IsManager
@@ -722,15 +734,17 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 // solicitante (no se acepta empresa por el body).
 func (h *AdminHandler) CreateEmployee(c *gin.Context) {
 	var req struct {
-		Name        string `json:"name" binding:"required"`
-		Email       string `json:"email" binding:"required,email"`
-		JobTitle    string `json:"job_title"`
-		PhoneNumber string `json:"phone_number"`
-		Country     string `json:"country"`
-		State       string `json:"state"`
-		City        string `json:"city"`
-		Location    string `json:"location"`
-		ManagerID   *uint  `json:"manager_id"`
+		Name            string  `json:"name" binding:"required"`
+		Email           string  `json:"email" binding:"required,email"`
+		JobTitle        string  `json:"job_title"`
+		PhoneNumber     string  `json:"phone_number"`
+		BirthDate       *string `json:"birth_date"`
+		EmergencyPhones *string `json:"emergency_phones"`
+		Country         string  `json:"country"`
+		State           string  `json:"state"`
+		City            string  `json:"city"`
+		Location        string  `json:"location"`
+		ManagerID       *uint   `json:"manager_id"`
 		// El nivel se decide en el alta y no en una edición posterior: darlo de
 		// alta y volver a entrar a su ficha para subirlo a manager eran dos pasos
 		// donde siempre debió haber uno. UpdateEmployee ya aceptaba estas dos.
@@ -770,6 +784,12 @@ func (h *AdminHandler) CreateEmployee(c *gin.Context) {
 		// manda coherente para que un cliente viejo no cree un supervisor suelto.
 		"is_manager":    req.IsManager || req.IsSupervisor,
 		"is_supervisor": req.IsSupervisor,
+	}
+	if req.BirthDate != nil {
+		payload["birth_date"] = *req.BirthDate
+	}
+	if req.EmergencyPhones != nil {
+		payload["emergency_phones"] = *req.EmergencyPhones
 	}
 	if req.ManagerID != nil && *req.ManagerID > 0 {
 		payload["manager_id"] = *req.ManagerID
@@ -812,18 +832,21 @@ func (h *AdminHandler) UpdateEmployee(c *gin.Context) {
 	}
 
 	var req struct {
-		Name         string `json:"name"`
-		Email        string `json:"email"`
-		JobTitle     string `json:"job_title"`
-		PhoneNumber  string `json:"phone_number"`
-		Country      string `json:"country"`
-		State        string `json:"state"`
-		City         string `json:"city"`
-		Location     string `json:"location"`
-		IsActive     *bool  `json:"is_active"`
-		IsManager    *bool  `json:"is_manager"`
-		IsSupervisor *bool  `json:"is_supervisor"`
-		ManagerID    *uint  `json:"manager_id"`
+		Name            string  `json:"name"`
+		Email           string  `json:"email"`
+		JobTitle        string  `json:"job_title"`
+		PhoneNumber     string  `json:"phone_number"`
+		BirthDate       *string `json:"birth_date"`
+		EmergencyPhones *string `json:"emergency_phones"`
+		Country         string  `json:"country"`
+		State           string  `json:"state"`
+		City            string  `json:"city"`
+		Location        string  `json:"location"`
+		IsActive        *bool   `json:"is_active"`
+		IsReplacement   *bool   `json:"is_replacement"`
+		IsManager       *bool   `json:"is_manager"`
+		IsSupervisor    *bool   `json:"is_supervisor"`
+		ManagerID       *uint   `json:"manager_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -849,6 +872,22 @@ func (h *AdminHandler) UpdateEmployee(c *gin.Context) {
 	if req.PhoneNumber != "" {
 		updates["phone_number"] = req.PhoneNumber
 	}
+	if req.BirthDate != nil {
+		if *req.BirthDate == "" {
+			updates["birth_date"] = nil
+		} else {
+			if t, err := time.Parse("2006-01-02", *req.BirthDate); err == nil {
+				updates["birth_date"] = t
+			} else if t, err := time.Parse(time.RFC3339, *req.BirthDate); err == nil {
+				updates["birth_date"] = t
+			} else {
+				updates["birth_date"] = *req.BirthDate
+			}
+		}
+	}
+	if req.EmergencyPhones != nil {
+		updates["emergency_phones"] = *req.EmergencyPhones
+	}
 	if req.Country != "" {
 		updates["country"] = req.Country
 	}
@@ -863,6 +902,9 @@ func (h *AdminHandler) UpdateEmployee(c *gin.Context) {
 	}
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive
+	}
+	if req.IsReplacement != nil {
+		updates["is_replacement"] = *req.IsReplacement
 	}
 	if req.IsManager != nil {
 		updates["is_manager"] = *req.IsManager
@@ -1342,14 +1384,15 @@ func (h *AdminHandler) AddTenantNote(c *gin.Context) {
 	}
 
 	var req struct {
-		Detail string `json:"detail"`
+		Detail  string `json:"detail"`
+		Channel string `json:"channel"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	event, err := h.service.AddTenantNote(uint(id), middleware.GetUserID(c), req.Detail)
+	event, err := h.service.AddTenantNote(uint(id), middleware.GetUserID(c), req.Detail, req.Channel)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err.Error() == "Tenant not found" {

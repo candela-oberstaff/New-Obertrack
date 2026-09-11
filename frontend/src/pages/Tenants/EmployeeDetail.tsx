@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Clock, CheckSquare, Ban, CheckCircle2, RefreshCw, User as UserIcon, Activity, ChevronLeft, ChevronRight, MessageSquare, FileText, Eye } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Clock, CheckSquare, Ban, CheckCircle2, RefreshCw, User as UserIcon, Activity, ChevronLeft, ChevronRight, MessageSquare, FileText, Eye } from 'lucide-react'
 import { useEmployeeTracking, usePersonActivity, useTenantDetail } from '../../hooks'
 import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -32,7 +32,7 @@ export default function EmployeeDetail() {
   const notify = useNotification()
   const tenantId = Number(id)
   const employeeId = Number(eid)
-  const { tracking, isLoading, error, toggleStatus, resetPassword } = useEmployeeTracking(employeeId)
+  const { tracking, isLoading, error, toggleStatus, toggleReplacement, resetPassword } = useEmployeeTracking(employeeId)
   // La plantilla de la empresa ya está en caché al llegar desde su ficha; se usa
   // para poner nombre al manager, que en el tracking solo viaja como id.
   const { employees } = useTenantDetail(tenantId)
@@ -68,6 +68,26 @@ export default function EmployeeDetail() {
       variant: 'primary',
     })
     if (ok) await resetPassword('temporary123')
+  }
+
+  const handleToggleReplacement = async () => {
+    const isCurrently = user?.is_replacement
+    const ok = await confirm({
+      title: isCurrently ? 'Desmarcar cambio de profesional' : 'Marcar cambio de profesional',
+      message: isCurrently
+        ? '¿Deseas desmarcar a este profesional del estado "Cambio de profesional"?'
+        : '¿Deseas marcar a este profesional con el estado "Cambio de profesional"? Se mostrará en amarillo en Obertrack y Obersuite.',
+      confirmLabel: isCurrently ? 'Desmarcar' : 'Marcar cambio',
+      variant: 'primary',
+    })
+    if (ok) {
+      try {
+        await toggleReplacement()
+        notify.success(isCurrently ? 'Profesional desmarcado de cambio' : 'Profesional marcado como cambio de profesional')
+      } catch {
+        notify.error('No se pudo actualizar el estado del profesional')
+      }
+    }
   }
 
   const getWorkHourStatus = (wh: any) => {
@@ -118,7 +138,7 @@ export default function EmployeeDetail() {
       work_type: wh.work_type as WorkHour['work_type'],
       created_at: wh.work_date,
       updated_at: wh.work_date,
-    }
+    } as unknown as WorkHour
   })()
   const phone = user.phone_number?.trim()
   const waNumber = phone?.replace(/\D/g, '')
@@ -156,6 +176,11 @@ export default function EmployeeDetail() {
               <span className={`${styles.badge} ${user.is_active ? styles.badgeActive : styles.badgeSuspended}`}>
                 {user.is_active ? 'Activo' : 'Inactivo'}
               </span>
+              {user.is_replacement && (
+                <span className={`${styles.badge} ${styles.badgeReplacement}`} title="Marcado como cambio de profesional">
+                  Cambio de profesional
+                </span>
+              )}
             </div>
             <div className={styles.detailMeta}>
               <span>{user.email}</span>
@@ -177,6 +202,17 @@ export default function EmployeeDetail() {
               title={`Abrir la conversación de WhatsApp con ${phone}`}
             >
               <MessageSquare size={16} /> WhatsApp
+            </button>
+          )}
+          {canManage && (
+            <button
+              type="button"
+              className={`${styles.secondaryBtn} ${user.is_replacement ? styles.badgeReplacement : ''}`}
+              style={user.is_replacement ? { background: '#fef3c7', color: '#b45309', borderColor: '#fde68a' } : undefined}
+              onClick={handleToggleReplacement}
+              title={user.is_replacement ? 'Desmarcar cambio de profesional' : 'Marcar como cambio de profesional'}
+            >
+              <AlertCircle size={16} /> {user.is_replacement ? 'Quitar cambio' : 'Cambio de profesional'}
             </button>
           )}
           <button className={styles.secondaryBtn} onClick={handleReset}>

@@ -292,6 +292,7 @@
 .badgeActive { background: rgba(16, 185, 129, 0.14); color: #059669; }
 .badgeSuspended { background: rgba(239, 68, 68, 0.14); color: #b91c1c; }
 .badgePending { background: rgba(245, 158, 11, 0.16); color: #b45309; }
+.badgeReplacement { background: rgba(245, 158, 11, 0.16); color: #b45309; border: 1px solid rgba(245, 158, 11, 0.35); }
 .badgeRejected { background: rgba(239, 68, 68, 0.14); color: #b91c1c; }
 
 .typeBadge {

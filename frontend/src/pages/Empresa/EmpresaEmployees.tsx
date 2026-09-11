@@ -18,7 +18,7 @@ import styles from '../../components/Admin/Admin.module.css'
 
 const EMPTY_CREATE_FORM: CreateUserForm = {
   name: '', email: '', password: '', userType: 'profesional',
-  jobTitle: '', phoneNumber: '', selectedCompanyId: '', managerId: '',
+  jobTitle: '', phoneNumber: '', birthDate: '', emergencyPhones: [''], selectedCompanyId: '', managerId: '',
   companyName: '', industry: '', country: '', province: '', city: '', location: '', address: '',
   isManager: false, isSupervisor: false,
 }
@@ -95,6 +95,9 @@ export default function EmpresaEmployees() {
       if (jt) payload.job_title = jt
       const phone = form.phoneNumber.trim()
       if (phone) payload.phone_number = phone
+      if (form.birthDate) payload.birth_date = form.birthDate
+      const cleanEmergency = (form.emergencyPhones || []).map(p => p.trim()).filter(Boolean).join(', ')
+      if (cleanEmergency) payload.emergency_phones = cleanEmergency
       if (form.country) payload.country = form.country
       if (form.province) payload.state = form.province
       const city = form.city.trim()

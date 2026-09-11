@@ -17,6 +17,8 @@ export const employerService = {
       state?: string
       city?: string
       location?: string
+      birth_date?: string
+      emergency_phones?: string
       manager_id?: number
       is_manager?: boolean
       is_supervisor?: boolean
@@ -32,6 +34,8 @@ export const employerService = {
       email?: string
       job_title?: string
       phone_number?: string
+      birth_date?: string
+      emergency_phones?: string
       country?: string
       state?: string
       city?: string

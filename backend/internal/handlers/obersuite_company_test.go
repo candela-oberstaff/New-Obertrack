@@ -28,7 +28,8 @@ var reCategoria = regexp.MustCompile(`(?m)^\s*\{\s*value:\s*'([^']*)',\s*label:\
 // expediente entero (categoría desconocida = sin filtro) y parecería que
 // funciona. El valor es el motivo, para que quede escrito.
 var pseudoFiltrosDePantalla = map[string]string{
-	"surveys": "cambia el panel al informe de encuestas; no es una categoría del expediente",
+	"surveys":     "cambia el panel al informe de encuestas; no es una categoría del expediente",
+	"testimonial": "cambia el panel a los testimonios de los profesionales de la empresa",
 }
 
 // El bloque de categorías que se le manda a Obersuite tiene que decir lo mismo

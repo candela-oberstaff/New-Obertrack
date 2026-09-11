@@ -83,6 +83,8 @@ export default function EmployeeDetail() {
       manager_id: user.manager_id ?? undefined,
       job_title: user.job_title || '',
       phone_number: user.phone_number || '',
+      birth_date: user.birth_date ? user.birth_date.split('T')[0] : '',
+      emergency_phones_list: user.emergency_phones ? user.emergency_phones.split(',').map((s: string) => s.trim()).filter(Boolean) : [''],
       country: user.country || '',
       state: user.state || '',
       city: user.city || '',
@@ -100,11 +102,17 @@ export default function EmployeeDetail() {
     if (!id) return
     setEditBusy(true); setEditErr(null)
     try {
+      const cleanPhones = Array.isArray(editForm.emergency_phones_list)
+        ? editForm.emergency_phones_list.map((p: string) => p.trim()).filter(Boolean).join(', ')
+        : (editForm.emergency_phones || '')
+
       const payload: Parameters<typeof employerService.updateEmployee>[1] = {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
         job_title: (editForm.job_title || '').trim(),
         phone_number: (editForm.phone_number || '').trim(),
+        birth_date: editForm.birth_date || '',
+        emergency_phones: cleanPhones,
         country: (editForm.country || '').trim(),
         state: (editForm.state || '').trim(),
         city: (editForm.city || '').trim(),

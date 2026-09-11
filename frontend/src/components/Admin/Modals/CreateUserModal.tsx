@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { UserPlus, X } from 'lucide-react'
+import { UserPlus, X, Plus, Trash2 } from 'lucide-react'
 import { Select } from '../../ui/Select'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../Auth/countries'
 import { useCloseGuard } from '../../ui/useCloseGuard'
@@ -13,6 +13,8 @@ export interface CreateUserForm {
   userType: string
   jobTitle: string
   phoneNumber: string
+  birthDate: string
+  emergencyPhones: string[]
   selectedCompanyId: number | ''
   managerId: number | ''
   // Nivel en la jerarquía. Se pide AL CREAR y no sólo al editar: darlo de alta como
@@ -195,6 +197,70 @@ export function CreateUserModal({
                   required={!employerMode}
                   style={inputStyle}
                 />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Fecha de nacimiento <span style={{ fontWeight: 400, color: '#94a3b8' }}>(opcional)</span></label>
+                <input
+                  type="date"
+                  value={form.birthDate}
+                  onChange={e => setForm(f => ({ ...f, birthDate: e.target.value }))}
+                  max={new Date().toISOString().split('T')[0]}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '7px' }}>
+                  <label style={{ ...labelStyle, margin: 0 }}>
+                    Número(s) de emergencia <span style={{ fontWeight: 400, color: '#94a3b8' }}>(opcional)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, emergencyPhones: [...(f.emergencyPhones || ['']), ''] }))}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--primary, #1d4ed8)',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: 0,
+                    }}
+                  >
+                    <Plus size={14} /> Añadir otro número
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {(form.emergencyPhones && form.emergencyPhones.length > 0 ? form.emergencyPhones : ['']).map((phone, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="text"
+                        value={phone}
+                        onChange={e => {
+                          const list = [...(form.emergencyPhones && form.emergencyPhones.length > 0 ? form.emergencyPhones : [''])]
+                          list[idx] = e.target.value
+                          setForm(f => ({ ...f, emergencyPhones: list }))
+                        }}
+                        placeholder="Ej: +34 600 000 000 Mamá"
+                        style={{ ...inputStyle, flex: 1 }}
+                      />
+                      {(form.emergencyPhones && form.emergencyPhones.length > 1) && (
+                        <button
+                          type="button"
+                          onClick={() => setForm(f => ({ ...f, emergencyPhones: f.emergencyPhones.filter((_, i) => i !== idx) }))}
+                          style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+                          title="Eliminar número"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {employerMode ? (
