@@ -18,6 +18,8 @@ import { ProfileChangeReviewPanel } from '../components/Admin/ProfileChangeRevie
 import { InductionStatusPanel } from '../components/Admin/InductionStatusPanel'
 import EmploymentManagersEditor from '../components/Admin/EmploymentManagersEditor'
 import { hierarchyLabel } from '../lib/permissions'
+import { ageAt, emergencyContacts } from '../lib/person'
+import { formatDateOnly } from '../utils/date'
 import styles from './AdminUserDetail.module.css'
 
 // Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de dictar.
@@ -685,6 +687,20 @@ export default function AdminUserDetail() {
     // asignarle manager desde la ficha aunque el backend ya lo admitía.
     specific = [
       { label: 'Empresa', value: empresaName || '—' },
+      // Los dos datos que llegan de Obersuite en cada contratación. Estaban en
+      // el formulario de edición y en ninguna pantalla: se guardaban a ciegas.
+      {
+        label: 'Fecha de nacimiento',
+        value: user.birth_date
+          ? <>{formatDateOnly(user.birth_date)}{ageAt(user.birth_date) !== null && <span style={{ color: '#64748b' }}> · {ageAt(user.birth_date)} años</span>}</>
+          : '—',
+      },
+      {
+        label: 'Contactos de emergencia',
+        value: emergencyContacts(user.emergency_phones).length > 0
+          ? <span style={{ display: 'grid', gap: 2 }}>{emergencyContacts(user.emergency_phones).map((c, i) => <span key={i}>{c}</span>)}</span>
+          : '—',
+      },
       {
         label: multiManager && activeEmployment ? 'Managers' : 'Manager',
         value: canManage ? (

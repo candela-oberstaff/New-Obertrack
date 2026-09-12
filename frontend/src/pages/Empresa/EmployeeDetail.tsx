@@ -13,6 +13,8 @@ import EmploymentManagersEditor from '../../components/Admin/EmploymentManagersE
 import { UserModal } from '../../components/Admin/Modals/UserModal'
 import type { User } from '../../types'
 import { hierarchyLabel } from '../../lib/permissions'
+import { ageAt, emergencyContacts } from '../../lib/person'
+import { formatDateOnly } from '../../utils/date'
 import styles from '../AdminUserDetail.module.css'
 
 // Empleo resuelto del profesional dentro de la empresa del empleador.
@@ -372,6 +374,20 @@ export default function EmployeeDetail() {
     { label: 'Empresa', value: empresaName },
     { label: 'Teléfono', value: user.phone_number || '—' },
     { label: 'País', value: user.country || '—' },
+    // La empresa también los necesita a la vista: es a quien llama cuando pasa
+    // algo, y es quien felicita el cumpleaños.
+    {
+      label: 'Fecha de nacimiento',
+      value: user.birth_date
+        ? <>{formatDateOnly(user.birth_date)}{ageAt(user.birth_date) !== null && <span style={{ color: '#64748b' }}> · {ageAt(user.birth_date)} años</span>}</>
+        : '—',
+    },
+    {
+      label: 'Contactos de emergencia',
+      value: emergencyContacts(user.emergency_phones).length > 0
+        ? <span style={{ display: 'grid', gap: 2 }}>{emergencyContacts(user.emergency_phones).map((c, i) => <span key={i}>{c}</span>)}</span>
+        : '—',
+    },
     { label: 'Managers', value: managersField, fullWidth: true },
   ]
 
