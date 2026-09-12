@@ -68,6 +68,13 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 			// OJO: el expediente es la cronología. La pestaña que ellos
 			// llaman "Actividad" es la de abajo, no esta.
 			empresa.GET("/timeline", d.obersuiteCompany.Timeline)
+			// La PRIMERA escritura de la integración: Reclutamiento deja sus
+			// notas en el Expediente y las lee de vuelta por el GET de arriba
+			// con ?category=recruitment. Solo esa categoría, solo esas dos
+			// operaciones; una nota de Customer Success no se alcanza desde
+			// aquí ni adivinando el id.
+			empresa.POST("/timeline", d.obersuiteCompany.CreateRecruitmentNote)
+			empresa.DELETE("/timeline/:external_id", d.obersuiteCompany.DeleteRecruitmentNote)
 			empresa.GET("/attention", d.obersuiteCompany.Attention)
 			empresa.GET("/tickets", d.obersuiteCompany.Tickets)
 			empresa.GET("/archived", d.obersuiteCompany.Archived)

@@ -246,6 +246,9 @@ func obersuiteTimelineCategories() []gin.H {
 		// una ficha ("¿ya hablamos con ellos?"), y las notas son su detalle.
 		{"value": repository.TenantActivityContact, "label": "Seguimiento cliente"},
 		{"value": repository.TenantActivityNote, "label": "Seguimiento profesional"},
+		// Lo que Reclutamiento escribe desde Obersuite. Va después del
+		// seguimiento porque es lo más nuevo y lo menos frecuente.
+		{"value": repository.TenantActivityRecruitment, "label": "Reclutamiento"},
 		// "testimonial" sigue existiendo como categoría (?category=testimonial
 		// funciona y su contador viaja en counts), pero la pantalla dejó de
 		// ofrecerla como chip, así que aquí tampoco se ofrece.

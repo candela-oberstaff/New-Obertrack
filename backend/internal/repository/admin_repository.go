@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
@@ -81,6 +82,12 @@ const (
 	// buscan por sí mismos: al preparar material comercial se quiere ver qué
 	// dijo este cliente, sin rebuscar entre las anotaciones internas.
 	TenantActivityTestimonial = "testimonial"
+	// TenantActivityRecruitment son las notas que Reclutamiento escribe DESDE
+	// Obersuite. Categoría propia y no "note" porque quien abre la ficha quiere
+	// saber qué se está buscando para este cliente sin mezclarlo con el
+	// seguimiento de Customer Success, y porque es lo único del expediente que
+	// aquí no se puede editar ni borrar: viene de otro sistema.
+	TenantActivityRecruitment = "recruitment"
 )
 
 // TenantActivityPerson es una persona que aparece en el expediente, para
@@ -113,6 +120,10 @@ type TenantActivity struct {
 	// RefID apunta al registro del módulo de origen (hoy el testimonio), para
 	// poder abrirlo desde el expediente. 0 = la entrada no lleva a ningún sitio.
 	RefID uint `json:"ref_id,omitempty"`
+	// ExternalID es el id con el que Obersuite conoce la entrada (solo en las
+	// que escribió ella). Viaja para que pueda borrarla y no duplicarla en su
+	// pantalla.
+	ExternalID string `json:"external_id,omitempty"`
 }
 
 // TenantActivityCount es cuántos movimientos hay de una categoría, con el
@@ -261,7 +272,7 @@ type EmployeeSummary struct {
 	// StartedAt es el ingreso a la empresa (employments.started_at), que es la
 	// fecha que la empresa reconoce como suya y la que se corrige desde la
 	// ficha del profesional.
-	StartedAt time.Time `json:"started_at"`
+	StartedAt         time.Time `json:"started_at"`
 	ScheduleType      string    `json:"schedule_type"`
 	ScheduleDays      string    `json:"schedule_days"`
 	ScheduleStartTime string    `json:"schedule_start_time"`
@@ -369,6 +380,14 @@ type AdminRepository interface {
 
 	// Eventos del ciclo de vida de una empresa (expediente).
 	CreateCompanyEvent(event *models.CompanyEvent) error
+	// FindCompanyEventByExternalID busca la entrada que Obersuite conoce por
+	// ese id, dentro de la empresa. Nula si no existe.
+	FindCompanyEventByExternalID(companyID uint, externalID string) (*models.CompanyEvent, error)
+	// DeleteCompanyEventByExternalID borra EN FIRME la entrada de Obersuite.
+	// Acotado a la empresa y al tipo recruitment: es lo único que Obersuite
+	// puede borrar, y no puede alcanzar una nota de Customer Success ni
+	// adivinando el id.
+	DeleteCompanyEventByExternalID(companyID uint, externalID string) (int64, error)
 	// DeleteCompanyNote borra una anotación manual. Acotado a la empresa y al
 	// tipo "note": el resto del expediente es historial y no se toca. Devuelve
 	// cuántas filas se borraron (0 = no existe o no era una nota).
@@ -512,6 +531,25 @@ func (r *adminRepository) GetLatestFollowUps(kind string) ([]FollowUpInfo, error
 
 func (r *adminRepository) CreateFollowUp(followUp *models.FollowUp) error {
 	return r.db.Create(followUp).Error
+}
+
+func (r *adminRepository) FindCompanyEventByExternalID(companyID uint, externalID string) (*models.CompanyEvent, error) {
+	var ev models.CompanyEvent
+	err := r.db.Where("company_id = ? AND external_id = ? AND external_id <> ''", companyID, externalID).First(&ev).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &ev, nil
+}
+
+func (r *adminRepository) DeleteCompanyEventByExternalID(companyID uint, externalID string) (int64, error) {
+	res := r.db.Where("company_id = ? AND external_id = ? AND external_id <> '' AND type = ?",
+		companyID, externalID, models.CompanyEventRecruitment).
+		Delete(&models.CompanyEvent{})
+	return res.RowsAffected, res.Error
 }
 
 func (r *adminRepository) CreateCompanyEvent(event *models.CompanyEvent) error {
@@ -1076,12 +1114,12 @@ func (r *adminRepository) GetEmployeeTasks(userID uint, limit int) ([]EmployeeTa
 
 // GetTenantActivities arma el EXPEDIENTE de la empresa: una línea de tiempo del
 // ciclo de vida completo, desde el alta hasta la baja. Une seis fuentes:
-//  1) Alta de la empresa (created_at del empleador).
-//  2) Altas de empleados (employments iniciados).
-//  3) Bajas de empleados (employments finalizados).
-//  4) Registros de horas (work_hours).
-//  5) Gestiones de CS (follow_ups, acotadas vía employments).
-//  6) Suspensiones, reactivaciones y notas del equipo (company_events).
+//  1. Alta de la empresa (created_at del empleador).
+//  2. Altas de empleados (employments iniciados).
+//  3. Bajas de empleados (employments finalizados).
+//  4. Registros de horas (work_hours).
+//  5. Gestiones de CS (follow_ups, acotadas vía employments).
+//  6. Suspensiones, reactivaciones y notas del equipo (company_events).
 //
 // Cada rama declara su categoría, para poder filtrar la línea de tiempo sin
 // que el frontend tenga que saberse la lista de tipos. El total sale con una
@@ -1105,7 +1143,7 @@ var tenantEventsCTE = `
 		COALESCE(owner.company_name, '-') as company,
 		'Empresa registrada en la plataforma' as details,
 		owner.created_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id, '' as external_id
 	FROM users owner WHERE owner.id = @tid
 
 	UNION ALL
@@ -1117,7 +1155,7 @@ var tenantEventsCTE = `
 			(CASE WHEN COALESCE(emp.job_title, '') <> '' THEN ' como ' || emp.job_title ELSE '' END) ||
 			(CASE WHEN COALESCE(emp.start_reason, '') <> '' THEN ' — ' || emp.start_reason ELSE '' END) as details,
 		emp.started_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id, '' as external_id
 	FROM employments emp
 	JOIN users u ON u.id = emp.user_id
 	JOIN users owner ON owner.id = @tid
@@ -1131,7 +1169,7 @@ var tenantEventsCTE = `
 		'Finalizó su empleo' ||
 			(CASE WHEN COALESCE(emp.end_reason, '') <> '' THEN ' — ' || emp.end_reason ELSE '' END) as details,
 		emp.ended_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id, '' as external_id
 	FROM employments emp
 	JOIN users u ON u.id = emp.user_id
 	JOIN users owner ON owner.id = @tid
@@ -1145,7 +1183,7 @@ var tenantEventsCTE = `
 		COALESCE(e.company_name, '-') as company,
 		CASE WHEN wh.work_type = 'complete' THEN 'Registró jornada completa' ELSE 'Registró ausencia' END as details,
 		wh.created_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id, '' as external_id
 	FROM work_hours wh
 	JOIN users u ON u.id = wh.user_id
 	LEFT JOIN users e ON e.id = u.empleador_id
@@ -1162,7 +1200,7 @@ var tenantEventsCTE = `
 			(CASE f.status WHEN 'contacted' THEN 'Contactado' WHEN 'justified' THEN 'Justificado' WHEN 'escalated' THEN 'Escalado' ELSE f.status END) ||
 			(CASE WHEN COALESCE(f.note, '') <> '' THEN ' — ' || f.note ELSE '' END) as details,
 		f.created_at as timestamp, 0 as event_id,
-		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id
+		false as pinned, NULL::timestamptz as edited_at, '' as channel, 0 as ref_id, '' as external_id
 	FROM follow_ups f
 	JOIN users u ON u.id = f.user_id
 	LEFT JOIN users c ON c.id = @tid
@@ -1178,13 +1216,18 @@ var tenantEventsCTE = `
 			WHEN 'note' THEN ` + quoted(TenantActivityNote) + `
 			WHEN 'contact' THEN ` + quoted(TenantActivityContact) + `
 			WHEN 'testimonial' THEN ` + quoted(TenantActivityTestimonial) + `
+			WHEN 'recruitment' THEN ` + quoted(TenantActivityRecruitment) + `
 			ELSE ` + quoted(TenantActivityLifecycle) + ` END) as category,
-		COALESCE(actor.name, '') as actor, COALESCE(actor.id, 0) as actor_id,
+		(CASE WHEN COALESCE(ce.author_name, '') <> ''
+			THEN ce.author_name || ' · Obersuite'
+			ELSE COALESCE(actor.name, '') END) as actor,
+		COALESCE(actor.id, 0) as actor_id,
 		COALESCE(owner.company_name, '-') as company,
 		(CASE ce.type
 			WHEN 'suspended' THEN 'Acceso suspendido'
 			WHEN 'reactivated' THEN 'Acceso reactivado'
 			WHEN 'note' THEN COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido')
+			WHEN 'recruitment' THEN COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido')
 			WHEN 'testimonial' THEN COALESCE(NULLIF(ce.detail, ''), 'Testimonio aprobado')
 			WHEN 'contact' THEN
 				(CASE ce.channel
@@ -1197,7 +1240,7 @@ var tenantEventsCTE = `
 			ELSE ce.type END) as details,
 		ce.created_at as timestamp, ce.id as event_id,
 		ce.pinned, ce.edited_at, COALESCE(ce.channel, '') as channel,
-		COALESCE(ce.ref_id, 0) as ref_id
+		COALESCE(ce.ref_id, 0) as ref_id, COALESCE(ce.external_id, '') as external_id
 	FROM company_events ce
 	JOIN users owner ON owner.id = ce.company_id
 	LEFT JOIN users actor ON actor.id = ce.by_user_id
@@ -1212,18 +1255,19 @@ var tenantEventsCTE = `
 // el valor llega SIEMPRE en cero y sin ningún error, porque escanear una columna
 // que nadie recoge no falla. Lo fija TestTenantActivityRow_EspejaTenantActivity.
 type tenantActivityRow struct {
-	Type      string
-	Category  string
-	User      string
-	UserID    uint
-	Company   string
-	Details   string
-	Timestamp time.Time
-	EventID   uint
-	RefID     uint
-	Pinned    bool
-	EditedAt  *time.Time
-	Channel   string
+	Type       string
+	Category   string
+	User       string
+	UserID     uint
+	Company    string
+	Details    string
+	Timestamp  time.Time
+	EventID    uint
+	RefID      uint
+	Pinned     bool
+	EditedAt   *time.Time
+	Channel    string
+	ExternalID string
 	// Total es el recuento de la ventana, no un campo del movimiento.
 	Total int64
 }
@@ -1234,7 +1278,7 @@ func (r *adminRepository) GetTenantActivities(tenantID uint, category string, us
 	err := r.db.Raw(`
 		WITH events AS (`+tenantEventsCTE+`)
 		SELECT type, category, actor AS "user", actor_id AS user_id, company, details, timestamp, event_id, ref_id,
-			pinned, edited_at, channel,
+			pinned, edited_at, channel, external_id,
 			COUNT(*) OVER() AS total
 		FROM events
 		WHERE (@cat = '' OR category = @cat OR (@cat = 'lifecycle' AND category = 'staff'))
@@ -1255,18 +1299,19 @@ func (r *adminRepository) GetTenantActivities(tenantID uint, category string, us
 	activities := make([]TenantActivity, 0, len(rows))
 	for _, row := range rows {
 		activities = append(activities, TenantActivity{
-			Type:      row.Type,
-			Category:  row.Category,
-			User:      row.User,
-			UserID:    row.UserID,
-			Company:   row.Company,
-			Details:   row.Details,
-			Timestamp: row.Timestamp,
-			EventID:   row.EventID,
-			RefID:     row.RefID,
-			Pinned:    row.Pinned,
-			EditedAt:  row.EditedAt,
-			Channel:   row.Channel,
+			Type:       row.Type,
+			Category:   row.Category,
+			User:       row.User,
+			UserID:     row.UserID,
+			Company:    row.Company,
+			Details:    row.Details,
+			Timestamp:  row.Timestamp,
+			EventID:    row.EventID,
+			RefID:      row.RefID,
+			Pinned:     row.Pinned,
+			EditedAt:   row.EditedAt,
+			Channel:    row.Channel,
+			ExternalID: row.ExternalID,
 		})
 	}
 	// Sin filas no hay ventana de la que leer el total; en la última página
@@ -1500,4 +1545,3 @@ func (r *adminRepository) GetTenantSurveyReport(tenantID uint) ([]TenantSurveyRe
 
 	return result, nil
 }
-

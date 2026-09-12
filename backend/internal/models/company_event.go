@@ -25,6 +25,12 @@ const (
 	// nosotros y cuándo: es material para el seguimiento comercial, no solo
 	// para marketing.
 	CompanyEventTestimonial = "testimonial"
+	// CompanyEventRecruitment es una nota que escribe Reclutamiento DESDE
+	// OBERSUITE: la primera entrada del expediente que no nace aquí. Es de solo
+	// lectura en Obertrack —ni editar, ni borrar, ni fijar— porque quien la
+	// escribió la borra desde donde la escribió; las consultas de
+	// edición/borrado/fijado están acotadas a note y contact y la dejan fuera.
+	CompanyEventRecruitment = "recruitment"
 )
 
 // Canales por los que el equipo puede contactar con una empresa. Email y
@@ -79,6 +85,15 @@ type CompanyEvent struct {
 	// —con su firma y su constancia— en lugar de dejar un texto sin salida.
 	// Nulo en las entradas que nacen aquí mismo, como las notas.
 	RefID *uint `gorm:"index" json:"ref_id,omitempty"`
+	// ExternalID es el id con el que Obersuite conoce esta entrada. Es lo que
+	// hace idempotente su POST (mismo id = misma nota, no otra) y lo que usa
+	// para borrarla. Vacío en todo lo que nace aquí. Único mientras no esté
+	// vacío (índice parcial).
+	ExternalID string `gorm:"size:120" json:"external_id,omitempty"`
+	// AuthorName es quien escribió la entrada cuando NO es un usuario de
+	// Obertrack: el nombre de la persona de Obersuite. ByUserID lleva entonces
+	// la cuenta de servicio, y en pantalla se pinta "AuthorName · Obersuite".
+	AuthorName string `gorm:"size:255" json:"author_name,omitempty"`
 }
 
 func (CompanyEvent) TableName() string {

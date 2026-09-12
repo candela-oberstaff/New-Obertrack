@@ -1764,7 +1764,13 @@ export default function TenantDetail() {
                             const Icon = st.icon
                             const isNote = a.type === 'company_note'
                             const isContact = a.type === 'company_contact'
-                            const isCardStyle = isNote || isContact
+                            // Escrita desde Obersuite por Reclutamiento. Se pinta como
+                            // tarjeta, igual que una nota, pero SIN acciones: aquí es
+                            // de solo lectura, quien la escribió la borra desde allí
+                            // (y el backend tampoco lo permitiría: sus consultas de
+                            // editar/borrar/fijar están acotadas a note y contact).
+                            const isRecruitment = a.type === 'company_recruitment'
+                            const isCardStyle = isNote || isContact || isRecruitment
                             return (
                               <Fragment key={a.event_id ? `${a.type}-${a.event_id}` : `act-${actPage}-${group.key}-${i}`}>
                                 <div className={`${styles.timelineItem} ${isCardStyle ? styles.noteTimelineItem : ''} ${isCardStyle && a.pinned ? styles.isPinnedRow : ''}`}>
@@ -1823,7 +1829,26 @@ export default function TenantDetail() {
                                             </span>
                                           )}
                                           {a.edited_at && <span className={styles.noteEdited}>· editada</span>}
-                                          {isCardStyle && canAnnotate && (
+                                          {isRecruitment && (
+                                            <span
+                                              title="Escrita por Reclutamiento desde Obersuite. Solo se puede borrar desde allí."
+                                              style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: 5,
+                                                padding: '2px 8px',
+                                                borderRadius: 999,
+                                                fontSize: 12,
+                                                fontWeight: 600,
+                                                background: '#fef3c7',
+                                                color: '#b45309',
+                                                marginLeft: 6
+                                              }}
+                                            >
+                                              <Briefcase size={12} /> Reclutamiento
+                                            </span>
+                                          )}
+                                          {isCardStyle && !isRecruitment && canAnnotate && (
                                             <div className={styles.timelineActions} style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                                               <button
                                                 type="button"

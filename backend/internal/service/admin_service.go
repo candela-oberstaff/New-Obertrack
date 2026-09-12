@@ -111,6 +111,9 @@ type AdminService interface {
 	UpdateTenantNote(companyID, noteID uint, text string) error
 	SetTenantNotePinned(companyID, noteID uint, pinned bool) error
 	DeleteTenantNote(companyID, noteID uint) error
+	// Notas de Reclutamiento escritas desde Obersuite (recruitment_notes.go).
+	AddRecruitmentNote(companyID uint, in RecruitmentNoteInput) (*RecruitmentNoteResult, error)
+	DeleteRecruitmentNote(companyID uint, externalID string) error
 	// GetArchived lista profesionales archivados (bajas + desactivados).
 	// tenantID=0 = global; si no, los de esa empresa.
 	GetArchived(tenantID uint) ([]repository.ArchivedEntry, error)
@@ -1159,7 +1162,16 @@ var tenantActivityCategories = map[string]bool{
 	// aquí ?category=testimonial se trataba como desconocida y devolvía el
 	// expediente entero. El chip "Testimonios" de la pantalla nunca filtró.
 	repository.TenantActivityTestimonial: true,
+	// Y volvió a faltar con la siguiente categoría. Ahora lo protege una
+	// prueba: toda categoría que se ofrezca a Obersuite tiene que estar aquí
+	// (TestCategoriasOfrecidas_TodasFiltranDeVerdad).
+	repository.TenantActivityRecruitment: true,
 }
+
+// IsTenantActivityCategory dice si ?category=<v> filtra de verdad o se ignora.
+// Exportada para que la prueba de las categorías ofrecidas a Obersuite pueda
+// comprobar que ninguna cae en "desconocida = sin filtro".
+func IsTenantActivityCategory(v string) bool { return tenantActivityCategories[v] }
 
 func (s *adminService) GetTenantTickets(id uint) ([]repository.TenantTicket, error) {
 	return s.repo.GetTenantTickets(id)

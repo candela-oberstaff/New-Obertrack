@@ -2640,6 +2640,74 @@ func Run(db *gorm.DB) error {
 				`).Error
 			},
 		},
+		{
+			// Reclutamiento escribe en el Expediente desde Obersuite: el primer
+			// endpoint de escritura de la integración. external_id hace
+			// idempotente su POST y sirve para borrar; author_name es la persona
+			// real (el autor técnico es la cuenta de servicio de abajo).
+			ID: "202609112000_company_events_from_obersuite",
+			Migrate: func(tx *gorm.DB) error {
+				if err := tx.Exec(`
+					ALTER TABLE company_events
+					ADD COLUMN IF NOT EXISTS external_id VARCHAR(120) NOT NULL DEFAULT '',
+					ADD COLUMN IF NOT EXISTS author_name VARCHAR(255) NOT NULL DEFAULT ''
+				`).Error; err != nil {
+					return err
+				}
+				// Único solo cuando hay id: lo que nace aquí lo deja vacío y no
+				// puede chocar entre sí.
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_company_events_external_id
+					ON company_events (company_id, external_id)
+					WHERE external_id <> ''
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					DROP INDEX IF EXISTS idx_company_events_external_id;
+					ALTER TABLE company_events
+					DROP COLUMN IF EXISTS external_id,
+					DROP COLUMN IF EXISTS author_name
+				`).Error
+			},
+		},
+		{
+			// La cuenta de servicio "Obersuite", autor técnico de lo que escribe
+			// Reclutamiento. Misma receta que el bot de Tareas: contraseña
+			// inutilizable, sistema, superadmin para quedar fuera de selectores.
+			// Idempotente.
+			ID: "202609112001_create_obersuite_service_user",
+			Migrate: func(tx *gorm.DB) error {
+				var count int64
+				if err := tx.Model(&models.User{}).Where("email = ?", models.ObersuiteServiceEmail).Count(&count).Error; err != nil {
+					return err
+				}
+				if count > 0 {
+					return nil
+				}
+				log.Println("Creating the Obersuite service user...")
+				raw := make([]byte, 32)
+				if _, err := rand.Read(raw); err != nil {
+					return err
+				}
+				hash, err := bcrypt.GenerateFromPassword([]byte(hex.EncodeToString(raw)), bcrypt.DefaultCost)
+				if err != nil {
+					return err
+				}
+				return tx.Create(&models.User{
+					Name:         models.ObersuiteServiceName,
+					Email:        models.ObersuiteServiceEmail,
+					IsSystem:     true,
+					Password:     string(hash),
+					UserType:     models.UserTypeSuperadmin,
+					IsSuperadmin: true,
+					IsActive:     true,
+				}).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Where("email = ?", models.ObersuiteServiceEmail).Delete(&models.User{}).Error
+			},
+		},
 		// Future migrations go here
 	})
 
