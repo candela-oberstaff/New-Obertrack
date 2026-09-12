@@ -1,6 +1,7 @@
 import { Clock, CheckSquare, CalendarClock, ShieldCheck } from 'lucide-react'
 import type { EmployeeSummary, User } from '../../types'
 import { formatDateOnly } from '../../utils/date'
+import { ageAt, emergencyContacts } from '../../lib/person'
 import styles from './Tenants.module.css'
 
 // Estado del portero de inducción, en el idioma de quien atiende: lo que
@@ -70,6 +71,19 @@ export function EmployeeFicha({ user, managerName, startedAt, compact = false }:
       </Field>
       <Field label="Ubicación">{place || null}</Field>
       <Field label="Teléfono">{user.phone_number?.trim() || null}</Field>
+      {/* Los dos datos que Obersuite manda en cada contratación y que hasta hoy
+          se guardaban sin verse en ninguna pantalla. La edad va al lado porque
+          es lo que Customer Success calcula de cabeza cada vez. */}
+      <Field label="Fecha de nacimiento">
+        {user.birth_date
+          ? <>{formatDateOnly(user.birth_date)}{ageAt(user.birth_date) !== null && <em className={styles.fieldNote}> · {ageAt(user.birth_date)} años</em>}</>
+          : null}
+      </Field>
+      <Field label="Contactos de emergencia">
+        {emergencyContacts(user.emergency_phones).length > 0
+          ? <span style={{ display: 'grid', gap: 2 }}>{emergencyContacts(user.emergency_phones).map((c, i) => <span key={i}>{c}</span>)}</span>
+          : null}
+      </Field>
       {/* Ingreso a ESTA empresa, no alta de la cuenta. Quien empezó a trabajar
           antes de que le abrieran el acceso tiene una antigüedad real que la
           fecha de la cuenta no cuenta, y era justo lo que rompía la continuidad
