@@ -13,6 +13,9 @@ export const ACTIVITY_CATEGORIES = [
   // ("¿ya hablamos con ellos?"), y las notas son el detalle de eso.
   { value: 'contact', label: 'Seguimiento cliente' },
   { value: 'note', label: 'Seguimiento profesional' },
+  // Lo que Reclutamiento escribe desde Obersuite. Es lo único del expediente
+  // que aquí es de solo lectura: quien la escribió la borra, desde allí.
+  { value: 'recruitment', label: 'Reclutamiento' },
   { value: 'surveys', label: 'Encuestas' },
   // Los testimonios tienen filtro propio: al preparar material comercial se
   // busca qué dijo este cliente, no se rebusca entre las notas internas.
@@ -39,6 +42,11 @@ export interface TenantActivity {
    * para volver al original desde el expediente. 0 = no lleva a ningún sitio.
    */
   ref_id?: number
+  /**
+   * Solo en las notas que escribió Obersuite (Reclutamiento): el id con el que
+   * ellas la conocen. Aquí no se usa para nada más que saber que vino de fuera.
+   */
+  external_id?: string
 }
 
 export interface TenantActivityPerson {

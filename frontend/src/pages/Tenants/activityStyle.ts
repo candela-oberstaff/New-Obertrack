@@ -1,4 +1,4 @@
-import { Activity, Sparkles, UserPlus, UserMinus, Clock, ClipboardList, Ban, CheckCircle2, StickyNote, Send, Mail, MessageSquare, Phone, Users, MessageSquareQuote } from 'lucide-react'
+import { Activity, Sparkles, UserPlus, UserMinus, Clock, ClipboardList, Ban, CheckCircle2, StickyNote, Send, Mail, MessageSquare, Phone, Users, MessageSquareQuote, Briefcase } from 'lucide-react'
 
 // Presentación de los movimientos del expediente. Vive fuera de la pantalla de
 // la empresa porque el MISMO expediente se lee desde dos sitios: entero en la
@@ -18,6 +18,9 @@ export const ACTIVITY_STYLE: Record<string, { icon: typeof Activity; color: stri
   company_note: { icon: StickyNote, color: '#0891b2' },
   company_contact: { icon: Send, color: '#4f46e5' },
   company_testimonial: { icon: MessageSquareQuote, color: '#c026d3' },
+  // Escrita desde Obersuite. Ámbar para que se distinga de un vistazo de las
+  // notas de Customer Success, que son azules.
+  company_recruitment: { icon: Briefcase, color: '#b45309' },
 }
 
 // Un tipo desconocido (uno nuevo del backend que aún no está en la tabla) se
@@ -37,6 +40,7 @@ export const ACTIVITY_LABEL: Record<string, string> = {
   company_note: 'Nota',
   company_contact: 'Contacto',
   company_testimonial: 'Testimonio',
+  company_recruitment: 'Reclutamiento',
 }
 
 // Icono y etiqueta por canal de contacto. El canal viaja aparte del texto para

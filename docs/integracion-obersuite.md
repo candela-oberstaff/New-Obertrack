@@ -521,12 +521,91 @@ Construidos y **no consumidos**: `/companies/:id` (su Resumen se sirve del
 padrón), `/usage` y `/tickets`. Cuestan cero hasta que se llaman; si en seis
 meses nadie los ha pedido, se van.
 
-#### Y lo que esto NO es
+#### Lo que se escribe desde Obersuite (y es lo único)
 
-Es **de solo lectura**. Un espejo va en un sentido: si alguien escribe una nota
-desde Obersuite, no vuelve. Conviene decirlo antes de que se prometa lo
-contrario, porque la pregunta que se hizo fue si los cambios en uno se ven en el
-otro, y la respuesta hoy es "los de aquí allí sí; los de allí aquí no".
+Hasta el 11-sep-2026 esto era **de solo lectura**: un espejo en un sentido.
+Desde entonces hay **una** escritura, acotada a una categoría: las notas de
+**Reclutamiento**. Todo lo demás sigue siendo "los de aquí allí sí; los de allí
+aquí no", y conviene seguir diciéndolo antes de que se prometa lo contrario.
+
+Por qué se abrió: Obersuite tenía una pestaña Reclutamiento con tabla propia
+que solo se veía allí. Guardarla aquí deja **una sola fuente de verdad**: ellos
+la escriben por POST, la leen de vuelta por `/timeline?category=recruitment`
+como cualquier otra categoría, y apagaron su tabla.
+
+Lo que su propuesta daba por hecho y nuestro modelo no tiene, y cómo se
+resolvió (acordado con ellos por escrito):
+
+- **No hay "destinatarios".** `?person_id=` filtra por quién *actuó*, no sobre
+  quién trata. Los `person_ids` se **validan** (400 con el id si no es de la
+  empresa) y sus **nombres van al texto** como prefijo `Para: Ana Pérez, Luis
+  Gómez — `. Si algún día hace falta filtrar por destinatario, es una tabla
+  propia, no un apaño.
+- **El autor no es una cuenta nuestra.** El autor técnico es la cuenta de
+  servicio `obersuite@obertrack.system` (sistema, como el bot de Tareas) y la
+  persona real va en `author_name`. En pantalla: «Lorena Moujalli · Obersuite».
+- **El borrado es en firme.** Nuestras notas de empresa no tienen borrado
+  lógico. Si Obersuite quiere rastro, lo guarda en su registro antes del DELETE.
+- **En Obertrack es de solo lectura.** Ni editar, ni borrar, ni fijar: la
+  pantalla no ofrece las acciones y, por debajo, las consultas de
+  editar/borrar/fijar están acotadas a `note` y `contact` en el SQL, así que
+  tampoco se alcanza por la API de administración.
+
+##### Crear
+
+```
+POST /api/integrations/obersuite/companies/:id/timeline
+{
+  "external_id":  "obersuite-note-<uuid>",   // OBLIGATORIO. Idempotente por él, dentro de la empresa
+  "category":     "recruitment",             // OBLIGATORIO. Único valor admitido
+  "via":          "llamada",                 // reunion | whatsapp | llamada | correo | general
+  "content":      "…",                       // OBLIGATORIO. ≤ 2000 caracteres (MaxCompanyNoteLength)
+  "person_ids":   [427, 431],                // [] = toda la empresa
+  "author_name":  "Lorena Moujalli",         // OBLIGATORIO
+  "created_at":   "2026-09-11T22:10:00Z"     // opcional, RFC 3339; por defecto ahora
+}
+→ 200 { "id": 9812, "status": "created" }
+→ 200 { "id": 9812, "status": "already_exists" }   // mismo external_id: no se duplica ni se modifica
+```
+
+`via` se traduce a nuestro `channel` (reunion→meeting, llamada→call,
+correo→email, whatsapp igual, general→vacío). La lista es **cerrada**:
+Obersuite se comprometió a avisar antes de añadir una, porque lo desconocido es
+400. Dos POST simultáneos con el mismo id: uno gana el índice único y el otro
+recibe `already_exists`, no un 500.
+
+##### Borrar
+
+```
+DELETE /api/integrations/obersuite/companies/:id/timeline/<external_id>
+→ 200 { "status": "deleted" }
+→ 404 si no existe, no es de esa empresa, o no es de Reclutamiento
+```
+
+El segundo DELETE del mismo id es 404 (4xx: no se reintenta). Solo alcanza el
+tipo `recruitment`: una nota de Customer Success no se borra desde fuera ni
+adivinando el id.
+
+##### Códigos
+
+Misma tabla que `/hire`: **400** dato malo (con el motivo, se enseña tal cual
+al reclutador), **404** empresa o nota, **429** con `Retry-After`, **500** con
+`request_id` en el cuerpo y en el log. Los 4xx no se reintentan; el 500 sí.
+
+##### Lo que devuelve `/timeline` para estas notas
+
+`type: "company_recruitment"`, `category: "recruitment"`, `user: "<author_name>
+· Obersuite"`, `channel` traducido, `details` con el prefijo «Para: …» si lo
+había, y **`external_id`** para que Obersuite la enlace, la borre y no la
+duplique en pantalla. `categories` incluye `{"value":"recruitment",
+"label":"Reclutamiento"}` y `counts.recruitment` trae el número.
+
+> **Dos veces el mismo agujero.** `?category=` se valida contra una lista
+> blanca en `admin_service.go`, y lo desconocido devuelve el expediente
+> **entero** sin avisar. Pasó con `testimonial` y volvió a pasar con
+> `recruitment` en la primera prueba: el chip aparecía, el SQL emitía la
+> categoría, y el filtro enseñaba todo. Ahora lo protege
+> `TestCategoriasOfrecidas_TodasFiltranDeVerdad`, que cruza las dos listas.
 
 ---
 
@@ -549,3 +628,4 @@ otro, y la respuesta hoy es "los de aquí allí sí; los de allí aquí no".
 | Lógica de hire y padrón | `backend/internal/service/onboarding_service.go` |
 | SQL del padrón | `backend/internal/repository/user_repository.go` |
 | Límite de peticiones | `backend/internal/middleware/ratelimit.go` |
+| Notas de Reclutamiento (escritura) | `backend/internal/handlers/obersuite_recruitment.go`, `backend/internal/service/recruitment_notes.go` |

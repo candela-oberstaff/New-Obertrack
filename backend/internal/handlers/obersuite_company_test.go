@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/obertrack/backend/internal/service"
 )
 
 // rutaCategoriasFrontend es el archivo que define los filtros del expediente en
@@ -193,5 +195,24 @@ func TestPublicAvatarURL_SinDominioPublicoCaeAlDeCoolify(t *testing.T) {
 	got := publicAvatarURL(c, "/api/uploads/18_abc.jpg")
 	if got != "http://backend-abc.194.163.170.245.nip.io/api/public/uploads/18_abc.jpg" {
 		t.Fatalf("sin BACKEND_URL debe seguir funcionando como antes: %q", got)
+	}
+}
+
+// Toda categoría que se ofrece a Obersuite tiene que FILTRAR de verdad.
+//
+// El servicio valida ?category= contra una lista blanca y trata lo desconocido
+// como "sin filtro": devuelve el expediente entero. Ya pasó dos veces —con
+// "testimonial" y con "recruitment"— que la categoría se emitía en el SQL, se
+// ofrecía como chip, y no estaba en la lista: el chip parecía funcionar y
+// enseñaba todo. Aquí se cruzan las dos listas para que no haya tercera.
+func TestCategoriasOfrecidas_TodasFiltranDeVerdad(t *testing.T) {
+	for _, cat := range obersuiteTimelineCategories() {
+		v, _ := cat["value"].(string)
+		if v == "" {
+			continue // "Todo" es, precisamente, sin filtro
+		}
+		if !service.IsTenantActivityCategory(v) {
+			t.Errorf("la categoría %q se ofrece a Obersuite pero ?category=%s se ignora y devuelve el expediente entero", v, v)
+		}
 	}
 }
