@@ -57,6 +57,7 @@ type deps struct {
 	// solo lee y reexporta lo que ya muestra el panel de Empresas.
 	obersuiteCompany      *handlers.ObersuiteCompanyHandler
 	obersuiteProfessional *handlers.ObersuiteProfessionalHandler
+	obersuiteTickets      *handlers.ObersuiteTicketHandler
 	version               *handlers.VersionHandler
 	induction             *handlers.InductionHandler
 	emailPreview          *handlers.EmailPreviewHandler
@@ -344,13 +345,14 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		obersuiteProfessional: handlers.NewObersuiteProfessionalHandler(
 			obersuiteCompanyH, userRepo, adminSvc, employmentSvc, inductionSvc, incidentSvc,
 		),
-		version:      handlers.NewVersionHandler(),
-		induction:    handlers.NewInductionHandler(inductionSvc),
-		emailPreview: handlers.NewEmailPreviewHandler(),
-		googleCal:    handlers.NewGoogleCalendarHandler(googleCalSvc, cfg.FrontendURL),
-		meeting:      handlers.NewMeetingHandler(meetingSvc),
-		workflow:     handlers.NewWorkflowHandler(workflowSvc),
-		testimonial:  handlers.NewTestimonialHandler(testimonialSvc),
+		obersuiteTickets: handlers.NewObersuiteTicketHandler(ticketSvc),
+		version:          handlers.NewVersionHandler(),
+		induction:        handlers.NewInductionHandler(inductionSvc),
+		emailPreview:     handlers.NewEmailPreviewHandler(),
+		googleCal:        handlers.NewGoogleCalendarHandler(googleCalSvc, cfg.FrontendURL),
+		meeting:          handlers.NewMeetingHandler(meetingSvc),
+		workflow:         handlers.NewWorkflowHandler(workflowSvc),
+		testimonial:      handlers.NewTestimonialHandler(testimonialSvc),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,

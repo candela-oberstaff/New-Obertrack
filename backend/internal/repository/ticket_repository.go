@@ -67,6 +67,9 @@ type TicketRepository interface {
 	// FindOpenByUserAndOrigin devuelve el ticket sin cerrar de un profesional en
 	// un origen, o (nil, nil) si no hay.
 	FindOpenByUserAndOrigin(userID uint, origin string) (*models.Ticket, error)
+	// FindByExternalID devuelve el ticket que otro sistema conoce por ese id,
+	// o nil. Solo filas vivas: un ticket borrado no bloquea un reenvío.
+	FindByExternalID(externalID string) (*models.Ticket, error)
 	ListInternalReport(start, end time.Time) ([]models.Ticket, error)
 
 	CreateMessage(m *models.TicketMessage) error
@@ -252,6 +255,18 @@ func (r *ticketRepository) SyncTicketActivity(ticketID uint) error {
 func (r *ticketRepository) GetByID(id uint) (*models.Ticket, error) {
 	var t models.Ticket
 	if err := r.db.Preload("Contact").Preload("Assignee").Preload("Messages", chronological).First(&t, id).Error; err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (r *ticketRepository) FindByExternalID(externalID string) (*models.Ticket, error) {
+	var t models.Ticket
+	err := r.db.Where("external_id = ? AND external_id <> ''", externalID).First(&t).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &t, nil

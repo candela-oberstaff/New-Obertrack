@@ -54,6 +54,10 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 		obersuite.GET("/companies", d.onboarding.ListCompanies)
 		// Webhook de contratación: crea/actualiza el profesional y abre su empleo.
 		obersuite.POST("/hire", d.onboarding.Hire)
+		// Un manager de Obersuite transfiere un chat de WhatsApp a Customer
+		// Success: aparece como ticket en la bandeja interna. Idempotente por
+		// external_id, como /hire.
+		obersuite.POST("/tickets", d.obersuiteTickets.Create)
 
 		// Ficha de una empresa, un bloque por pestaña de la pantalla de
 		// Obersuite. Van sueltos y no en una respuesta con todo dentro porque

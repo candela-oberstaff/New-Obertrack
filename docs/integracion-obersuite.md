@@ -344,6 +344,48 @@ escribe.
 
 ---
 
+## 4b. `POST /tickets` — un chat de WhatsApp transferido a Customer Success
+
+Desde el 14-sep-2026. Un manager de Obersuite pasa una conversación de
+WhatsApp a Customer Success y aquí aparece como **ticket en la bandeja
+interna**, con `origin = "obersuite"` como las altas: donde Customer Success
+ya mira. Avisa a soporte igual que ellas.
+
+```
+POST /api/integrations/obersuite/tickets
+X-Service-Token: …
+
+{
+  "external_id":         "obersuite-chat-5491112345678@c.us-42",   // OBLIGATORIO. Idempotente por él
+  "candidate_name":      "Juan Pérez",                              // OBLIGATORIO: es el título
+  "candidate_phone":     "5491112345678",                           // opcional
+  "transferred_by_name": "Lorena Moujalli",                         // OBLIGATORIO: a quién preguntar
+  "reason":              "Necesita acompañamiento post-contratación",
+  "context":             "[10/09 14:32] Juan Pérez: Hola…",         // el historial, texto plano
+  "source":              "whatsapp_chat"
+}
+→ 200 { "id": 147, "status": "created" }
+→ 200 { "id": 147, "status": "already_exists" }   // mismo external_id: no se duplica ni se modifica
+```
+
+Hace falta **al menos uno** de `reason` y `context`: un ticket sin motivo ni
+historial no dice qué hacer. Los demás 400: falta `external_id`,
+`candidate_name` o `transferred_by_name`, con el texto que verá el manager.
+**429** con `Retry-After`; **500** con `request_id`. Regla de siempre: 4xx no
+se reintenta, 500 sí.
+
+Lo que se guarda: `Title = "WA transferido: <candidate_name>"`,
+`ProfessionalPhone`, `Reason`, `Stage = new`, `Status = open`, y una
+descripción que se lee de arriba abajo —quién lo transfiere y por qué, luego el
+historial—. Un historial de más de 20 000 caracteres se recorta conservando
+el **final** (lo último que se dijo es lo que Customer Success necesita) y
+avisando del recorte.
+
+`external_id` vive en `tickets.external_id` con índice único parcial
+(`idx_tickets_external_id`), creado por migración y **sin etiqueta `index` en
+el modelo**, por la misma razón que en `ticket_messages`: AutoMigrate lo
+reemplazaría por uno normal y se perdería la unicidad.
+
 ## 5. Lo que se decidió NO hacer
 
 Que quede escrito evita volver a discutirlo cada trimestre.
@@ -729,3 +771,4 @@ duplique en pantalla. `categories` incluye `{"value":"recruitment",
 | Límite de peticiones | `backend/internal/middleware/ratelimit.go` |
 | Notas de Reclutamiento (escritura) | `backend/internal/handlers/obersuite_recruitment.go`, `backend/internal/service/recruitment_notes.go` |
 | Reclutador de la empresa (escritura) | `backend/internal/handlers/obersuite_recruiter.go`, `backend/internal/service/company_recruiter.go` |
+| Chats de WhatsApp transferidos (tickets) | `backend/internal/handlers/obersuite_tickets.go`, `CreateObersuiteTransfer` en `backend/internal/service/ticket_service.go` |
