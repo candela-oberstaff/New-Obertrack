@@ -404,6 +404,10 @@ type ObersuiteCompanyRecord struct {
 	ResponsibleName  string `json:"responsible_name"`
 	ResponsibleEmail string `json:"responsible_email"`
 	Industry         string `json:"industry"`
+	// Nuestro analista (Customer Success) asignado. Cero/vacíos si no hay.
+	AssignedCSID    uint   `json:"assigned_cs_id"`
+	AssignedCSName  string `json:"assigned_cs_name"`
+	AssignedCSEmail string `json:"assigned_cs_email"`
 
 	// Ubicación. Location es texto libre ("Las Lomas"); no sustituye a
 	// country/state/city, los acompaña.
@@ -460,6 +464,9 @@ func (r *userRepository) GetObersuiteCompanies(updatedSince *time.Time) ([]Obers
 			u.name as responsible_name,
 			u.email as responsible_email,
 			COALESCE(u.industry, '') as industry,
+			COALESCE(u.assigned_cs_id, 0) as assigned_cs_id,
+			COALESCE((SELECT cs.name FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_name,
+			COALESCE((SELECT cs.email FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_email,
 			COALESCE(u.country, '') as country,
 			COALESCE(u.state, '') as state,
 			COALESCE(u.city, '') as city,
@@ -497,13 +504,13 @@ type ObersuiteProfessional struct {
 	// relativa de arriba la pide el navegador de Obersuite a SU dominio y sale
 	// rota; y /api/uploads exige sesión, así que tampoco se puede proxear.
 	// Vacía si no hay foto. La rellena el handler, que es quien sabe el host.
-	AvatarURL string `json:"avatar_url"`
-	UserType  string `json:"user_type"`
+	AvatarURL     string `json:"avatar_url"`
+	UserType      string `json:"user_type"`
 	IsActive      bool   `json:"is_active"`
 	IsReplacement bool   `json:"is_replacement"`
 	IsManager     bool   `json:"is_manager"`
 	IsSupervisor  bool   `json:"is_supervisor"`
-	JobTitle     string `json:"job_title"`
+	JobTitle      string `json:"job_title"`
 
 	// Los dos identificadores de Obersuite NO significan lo mismo: ObersuiteID
 	// es la persona (su candidato) y HireObersuiteID es ESTA contratación.

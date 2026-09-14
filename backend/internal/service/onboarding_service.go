@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,7 +81,24 @@ type ObersuiteCompany struct {
 	LastContact   string     `json:"last_contact"`
 	LastContactAt *time.Time `json:"last_contact_at"`
 
+	// CustomerSuccess es NUESTRO analista asignado a la empresa; nulo si no
+	// hay. No confundir con responsible_*, que es el CLIENTE (quien contrató).
+	// Va en el padrón y no solo en el detalle porque Obersuite filtra su
+	// listado por él.
+	CustomerSuccess *ObersuiteContact `json:"customer_success"`
+
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ObersuiteContact es una persona referida desde la integración: nuestro
+// analista hacia Obersuite, o su reclutador hacia nosotros. Misma forma en los
+// dos sentidos para que no haya que aprender dos.
+type ObersuiteContact struct {
+	// ID es el id en el sistema de origen: el nuestro para el analista, el de
+	// Obersuite (external_id) para el reclutador.
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 // HireCV es el CV del candidato tal como viaja en el webhook: binario en base64.
@@ -186,6 +204,7 @@ func (s *onboardingService) ListCompanies(updatedSince *time.Time) ([]ObersuiteC
 			TasksCount:         r.TasksCount,
 			LastContact:        FormatLastContact(r.LastContactAt),
 			LastContactAt:      r.LastContactAt,
+			CustomerSuccess:    customerSuccessContact(r.AssignedCSID, r.AssignedCSName, r.AssignedCSEmail),
 			UpdatedAt:          r.UpdatedAt,
 		})
 	}
@@ -594,4 +613,14 @@ func generateRandomPassword() string {
 		return fmt.Sprintf("Ob!%d-fallback", time.Now().UnixNano())
 	}
 	return "Ob!" + base64.RawURLEncoding.EncodeToString(b)
+}
+
+// customerSuccessContact arma el contacto del analista, o nil si no hay. Nil y
+// no un objeto con campos vacíos: "no tiene analista" es una respuesta, no un
+// analista sin nombre.
+func customerSuccessContact(id uint, name, email string) *ObersuiteContact {
+	if id == 0 {
+		return nil
+	}
+	return &ObersuiteContact{ID: strconv.FormatUint(uint64(id), 10), Name: name, Email: email}
 }

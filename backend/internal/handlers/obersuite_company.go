@@ -99,12 +99,16 @@ func (h *ObersuiteCompanyHandler) Detail(c *gin.Context) {
 		"status":            status,
 		"responsible_name":  tenant.OwnerName,
 		"responsible_email": tenant.OwnerEmail,
-		"phone_number":      tenant.PhoneNumber,
-		"industry":          tenant.Industry,
-		"country":           tenant.Country,
-		"state":             tenant.State,
-		"city":              tenant.City,
-		"address":           tenant.Address,
+		// Las dos personas que llevan la cuenta, una de cada lado. No confundir
+		// con responsible_*, que es el CLIENTE (quien contrató).
+		"customer_success": customerSuccessOf(tenant),
+		"recruiter":        recruiterOf(tenant),
+		"phone_number":     tenant.PhoneNumber,
+		"industry":         tenant.Industry,
+		"country":          tenant.Country,
+		"state":            tenant.State,
+		"city":             tenant.City,
+		"address":          tenant.Address,
 
 		"professionals_count": tenant.UserCount,
 		"boards_count":        tenant.BoardCount,
@@ -466,4 +470,33 @@ func (h *ObersuiteCompanyHandler) decorateRecruitmentAttachments(c *gin.Context,
 		e.AttachmentMime = a.MimeType
 		e.AttachmentURL = recruitmentAttachmentURL(c, companyID, e.ExternalID)
 	}
+}
+
+// customerSuccessOf es NUESTRO analista asignado, en la forma común de la
+// integración, o nil si no hay.
+func customerSuccessOf(t *repository.TenantSummary) gin.H {
+	if t.AssignedCSID == nil || *t.AssignedCSID == 0 {
+		return nil
+	}
+	return gin.H{
+		"id":    strconv.FormatUint(uint64(*t.AssignedCSID), 10),
+		"name":  t.AssignedCSName,
+		"email": t.AssignedCSEmail,
+	}
+}
+
+// recruiterOf es SU reclutador, tal como nos lo mandaron, o nil si no hay.
+func recruiterOf(t *repository.TenantSummary) gin.H {
+	if t.RecruiterExternalID == "" {
+		return nil
+	}
+	out := gin.H{
+		"id":    t.RecruiterExternalID,
+		"name":  t.RecruiterName,
+		"email": t.RecruiterEmail,
+	}
+	if t.RecruiterAssignedAt != nil {
+		out["assigned_at"] = *t.RecruiterAssignedAt
+	}
+	return out
 }

@@ -2708,6 +2708,27 @@ func Run(db *gorm.DB) error {
 				return tx.Where("email = ?", models.ObersuiteServiceEmail).Delete(&models.User{}).Error
 			},
 		},
+		{
+			// El reclutador de Obersuite que lleva cada empresa: dato suyo que
+			// aquí solo se enseña. Tabla propia y no columnas en users porque lo
+			// escribe el bridge, no una pantalla nuestra.
+			ID: "202609141200_company_recruiters",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					CREATE TABLE IF NOT EXISTS company_recruiters (
+						company_id  BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+						external_id VARCHAR(120) NOT NULL,
+						name        VARCHAR(255) NOT NULL,
+						email       VARCHAR(255) NOT NULL DEFAULT '',
+						assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+						updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+					)
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`DROP TABLE IF EXISTS company_recruiters`).Error
+			},
+		},
 		// Future migrations go here
 	})
 

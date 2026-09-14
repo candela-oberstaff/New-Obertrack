@@ -1094,6 +1094,30 @@ export default function TenantDetail() {
                 )}
               </div>
 
+              {/* El reclutador de Obersuite. Solo lectura a propósito: lo asigna
+                  Reclutamiento desde su sistema y aquí se enseña, igual que
+                  nuestro analista se enseña allí. Cada sistema es dueño de su
+                  persona. */}
+              <div className={styles.sidebarField} style={{ paddingBottom: '12px', borderBottom: '1px solid var(--glass-border, #e2e8f0)', marginBottom: '8px' }}>
+                <span className={styles.sidebarLabel} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <Briefcase size={14} style={{ color: '#b45309' }} /> Reclutador
+                  <span style={{ fontWeight: 500, color: '#94a3b8', fontSize: '0.75rem' }}>· desde Obersuite</span>
+                </span>
+                <span
+                  className={styles.sidebarFieldIconRow}
+                  style={{ marginTop: '4px', fontWeight: 500, color: tenant.recruiter_name ? 'var(--text-primary)' : '#94a3b8' }}
+                  title={tenant.recruiter_name ? 'Se asigna desde Obersuite; aquí no se puede cambiar' : 'Obersuite no ha asignado reclutador a esta empresa'}
+                >
+                  <User size={14} style={{ color: tenant.recruiter_name ? '#b45309' : '#94a3b8', flexShrink: 0 }} />
+                  {tenant.recruiter_name || 'Sin asignar'}
+                </span>
+                {tenant.recruiter_email && (
+                  <span className={styles.sidebarFieldIconRow} style={{ marginTop: '2px', color: '#64748b', fontSize: '0.85rem' }}>
+                    <Mail size={13} style={{ color: '#94a3b8', flexShrink: 0 }} /> {tenant.recruiter_email}
+                  </span>
+                )}
+              </div>
+
               <div className={styles.sidebarField}>
                 <span className={styles.sidebarLabel}>Propietario</span>
                 <span className={styles.sidebarFieldIconRow}>
