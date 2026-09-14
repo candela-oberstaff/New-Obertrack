@@ -361,7 +361,13 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 			// veces. Es el mismo caso que nuestra pantalla de Usuarios ya traduce:
 			// 409 con dónde está la cuenta y qué hacer con ella.
 			if isDuplicateEmailErr(err) {
-				return nil, describeEmailConflict(s.userRepo, email)
+				// Con "No se puede contratar:" delante. El texto de nuestra
+				// pantalla de Usuarios empieza por "El correo X pertenece a…",
+				// y leído en el toast de Obersuite se entendió como "ya está
+				// contratado": era un rechazo y pareció un éxito. El primer
+				// verbo tiene que ser el veredicto.
+				return nil, hireFail(apperrors.ErrEmailTaken,
+					"No se puede contratar: "+describeEmailConflict(s.userRepo, email).Error())
 			}
 			return nil, err
 		}
@@ -370,7 +376,8 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		// Ya existe. Solo un profesional puede recibir un empleo por esta vía;
 		// un email de empresa/superadmin/CS se rechaza para no corromper cuentas.
 		if user.UserType != models.UserTypeProfessional {
-			return nil, hireFail(apperrors.ErrConflict, "ya existe una cuenta con ese email y no es un profesional: no se puede convertir")
+			return nil, hireFail(apperrors.ErrConflict,
+				fmt.Sprintf("No se puede contratar: el correo %s ya es de una cuenta que no es un profesional (empresa, superadmin o Customer Success) y no se puede convertir. Usa otro correo.", email))
 		}
 		// Completa datos que falten (no pisa lo que el profesional ya tenga).
 		updates := map[string]interface{}{}
