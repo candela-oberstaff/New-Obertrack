@@ -115,6 +115,10 @@ type AdminService interface {
 	AddRecruitmentNote(companyID uint, in RecruitmentNoteInput) (*RecruitmentNoteResult, error)
 	DeleteRecruitmentNote(companyID uint, externalID string) error
 	RecruitmentAttachmentForDownload(companyID uint, externalID string) (*models.CompanyEventAttachment, error)
+	// El reclutador de Obersuite que lleva la empresa (company_recruiter.go).
+	SetTenantRecruiter(companyID uint, in RecruiterInput) (*models.CompanyRecruiter, error)
+	ClearTenantRecruiter(companyID uint) error
+	GetTenantRecruiter(companyID uint) (*models.CompanyRecruiter, error)
 	SetRecruitmentAttachmentDeps(upload UploadService, threads CompanyThreadService)
 	// GetArchived lista profesionales archivados (bajas + desactivados).
 	// tenantID=0 = global; si no, los de esa empresa.

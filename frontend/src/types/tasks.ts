@@ -97,6 +97,15 @@ export interface Tenant {
   /** Customer Success asignado a esta empresa. */
   assigned_cs_id?: number | null
   assigned_cs_name?: string
+  assigned_cs_email?: string
+  /**
+   * El reclutador de Obersuite que lleva la empresa. Lo asignan ellos por la
+   * integración; aquí es de solo lectura. Vacíos si no hay.
+   */
+  recruiter_external_id?: string
+  recruiter_name?: string
+  recruiter_email?: string
+  recruiter_assigned_at?: string
 }
 
 export interface EmployeeSummary {

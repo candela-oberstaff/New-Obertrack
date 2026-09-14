@@ -78,6 +78,11 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 			// El adjunto de la nota, con el token: los archivos del expediente
 			// no son públicos (ver CompanyEventAttachment).
 			empresa.GET("/timeline/:external_id/attachment", d.obersuiteCompany.DownloadRecruitmentAttachment)
+			// El reclutador que lleva la empresa: dato de Obersuite que aquí
+			// solo se enseña. Espejo de nuestro analista, que viaja en el
+			// detalle y en el padrón y ellos solo leen.
+			empresa.PUT("/recruiter", d.obersuiteCompany.SetRecruiter)
+			empresa.DELETE("/recruiter", d.obersuiteCompany.ClearRecruiter)
 			empresa.GET("/attention", d.obersuiteCompany.Attention)
 			empresa.GET("/tickets", d.obersuiteCompany.Tickets)
 			empresa.GET("/archived", d.obersuiteCompany.Archived)

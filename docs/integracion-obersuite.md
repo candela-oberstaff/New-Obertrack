@@ -99,8 +99,9 @@ Volverlo a proponer sin que el volumen haya cambiado es rehacer la discusión.
 | `id` | número | El `company_id` que hay que mandar en el hire |
 | `name` | texto | |
 | `status` | `"active"` \| `"suspended"` | Una suspendida **rechaza contrataciones** (422) |
-| `responsible_name` | texto | |
+| `responsible_name` | texto | El **cliente**: quien contrató. No es nuestro analista |
 | `responsible_email` | texto | |
+| `customer_success` | objeto o `null` | **Nuestro analista** (Customer Success) asignado: `{id, name, email}`. `null` si no hay, nunca un objeto vacío. Va en el padrón y no solo en el detalle porque Obersuite filtra su listado por él. Desde `payload_schema_version: 4` (14-sep-2026) |
 | `industry` | texto | |
 | `country`, `state`, `city`, `address` | texto | Ubicación normalizada |
 | `professionals_count` | número | Profesionales con empleo activo en la empresa **o** adscritos a ella directamente, sin duplicar |
@@ -108,7 +109,7 @@ Volverlo a proponer sin que el volumen haya cambiado es rehacer la discusión.
 | `tasks_count` | número | Tareas del espacio de la empresa |
 | `last_contact` | texto | En español, para mostrar: `"hoy"`, `"hace 3 días"`, `"nunca"` |
 | `last_contact_at` | ISO 8601 o `null` | La misma fecha en crudo, para ordenar o comparar |
-| `updated_at` | ISO 8601 | Base del corte incremental |
+| `updated_at` | ISO 8601 | Base del corte incremental. **Se mueve también al reasignar el analista**: antes esa reasignación no la tocaba y una consulta incremental no se habría enterado nunca |
 
 Las fechas opcionales vienen como `null` cuando nunca ocurrieron. **No** se
 aplanan a la fecha cero: `"0001-01-01"` diría que pasó en el año 1.
@@ -551,6 +552,43 @@ resolvió (acordado con ellos por escrito):
   editar/borrar/fijar están acotadas a `note` y `contact` en el SQL, así que
   tampoco se alcanza por la API de administración.
 
+#### Las dos personas que llevan la cuenta (14-sep-2026)
+
+Cada empresa tiene una persona de cada lado: **nuestro analista** (Customer
+Success, `assigned_cs_id`) y **su reclutador**. Cada sistema es dueño de la
+suya: nosotros asignamos el analista y Obersuite lo lee; Obersuite asigna el
+reclutador y nosotros lo enseñamos. Ninguno escribe el del otro.
+
+Las dos viajan con la **misma forma**, `{id, name, email}`, para no tener que
+aprender dos. El `id` es el del sistema de origen: el nuestro para el analista,
+el `external_id` de Obersuite para el reclutador.
+
+**El analista, hacia Obersuite:** `customer_success` en el padrón (para
+filtrar) y en `GET /companies/:id` (para la ficha). `null` si no hay.
+
+**El reclutador, desde Obersuite:**
+
+```
+PUT /api/integrations/obersuite/companies/:id/recruiter
+{ "external_id": "obersuite-user-42", "name": "Lorena Moujalli", "email": "lorena@oberstaff.com" }
+→ 200 { "status": "assigned", "recruiter": { "id": "obersuite-user-42", "name": "…", "email": "…", "assigned_at": "…" } }
+
+DELETE /api/integrations/obersuite/companies/:id/recruiter
+→ 200 { "status": "cleared" }
+→ 404 si no había
+```
+
+- Es un PUT: el mismo cuerpo dos veces deja el mismo estado; otra persona la
+  **sustituye** (una empresa tiene un reclutador). Para quitarlo, el DELETE.
+- `external_id` y `name` obligatorios; `email` opcional (se normaliza a
+  minúsculas). 400 con el motivo.
+- **Corregir no es reasignar.** El mismo `external_id` con otro nombre conserva
+  `assigned_at`; otro `external_id` lo mueve.
+- Lo devuelve `GET /companies/:id` como `recruiter` (o `null`), y lo enseña
+  nuestra ficha de la empresa bajo el analista, de solo lectura.
+- Vive en su tabla (`company_recruiters`), no en columnas de `users`: es dato
+  de Obersuite que aquí solo se muestra.
+
 ##### Crear
 
 ```
@@ -667,3 +705,4 @@ duplique en pantalla. `categories` incluye `{"value":"recruitment",
 | SQL del padrón | `backend/internal/repository/user_repository.go` |
 | Límite de peticiones | `backend/internal/middleware/ratelimit.go` |
 | Notas de Reclutamiento (escritura) | `backend/internal/handlers/obersuite_recruitment.go`, `backend/internal/service/recruitment_notes.go` |
+| Reclutador de la empresa (escritura) | `backend/internal/handlers/obersuite_recruiter.go`, `backend/internal/service/company_recruiter.go` |

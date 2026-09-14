@@ -24,7 +24,7 @@ import (
 //	3 → se retiran los campos que nadie consumía: los de operación,
 //	    last_activity_at, location, created_at, client_since, phone_number y
 //	    open_tickets.
-const PayloadSchemaVersion = 3
+const PayloadSchemaVersion = 4
 
 // VersionHandler expone QUÉ está desplegado.
 //

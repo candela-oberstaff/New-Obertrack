@@ -218,10 +218,17 @@ type TenantSummary struct {
 	// Señales de salud de la cuenta. Nulos cuando nunca ha pasado: "todavía no
 	// la hemos contactado" y "nunca la hemos contactado" se ven igual, y es la
 	// respuesta honesta en ambos casos.
-	LastContactAt  *time.Time `json:"last_contact_at,omitempty"`
-	LastActivityAt *time.Time `json:"last_activity_at,omitempty"`
-	AssignedCSID   *uint      `json:"assigned_cs_id,omitempty"`
-	AssignedCSName string     `json:"assigned_cs_name"`
+	LastContactAt   *time.Time `json:"last_contact_at,omitempty"`
+	LastActivityAt  *time.Time `json:"last_activity_at,omitempty"`
+	AssignedCSID    *uint      `json:"assigned_cs_id,omitempty"`
+	AssignedCSName  string     `json:"assigned_cs_name"`
+	AssignedCSEmail string     `json:"assigned_cs_email"`
+	// El reclutador de Obersuite que lleva la empresa. Lo asignan ellos por el
+	// bridge; aquí es de solo lectura. Vacíos si no hay.
+	RecruiterExternalID string     `json:"recruiter_external_id"`
+	RecruiterName       string     `json:"recruiter_name"`
+	RecruiterEmail      string     `json:"recruiter_email"`
+	RecruiterAssignedAt *time.Time `json:"recruiter_assigned_at,omitempty"`
 }
 
 // TenantTicket es un ticket visto desde la ficha de la empresa. Aplana lo justo
@@ -388,6 +395,10 @@ type AdminRepository interface {
 
 	// Eventos del ciclo de vida de una empresa (expediente).
 	CreateCompanyEvent(event *models.CompanyEvent) error
+	// El reclutador de Obersuite que lleva la empresa (company_recruiters).
+	GetCompanyRecruiter(companyID uint) (*models.CompanyRecruiter, error)
+	SetCompanyRecruiter(cr *models.CompanyRecruiter) error
+	ClearCompanyRecruiter(companyID uint) (int64, error)
 	// FindCompanyEventByExternalID busca la entrada que Obersuite conoce por
 	// ese id, dentro de la empresa. Nula si no existe.
 	FindCompanyEventByExternalID(companyID uint, externalID string) (*models.CompanyEvent, error)
@@ -947,7 +958,12 @@ const tenantSelect = `
 				WHERE t2.tenant_id = u.id AND t2.deleted_at IS NULL)
 		) as last_activity_at,
 		u.assigned_cs_id,
-		COALESCE((SELECT cs.name FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_name
+		COALESCE((SELECT cs.name FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_name,
+		COALESCE((SELECT cs.email FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_email,
+		COALESCE((SELECT cr.external_id FROM company_recruiters cr WHERE cr.company_id = u.id), '') as recruiter_external_id,
+		COALESCE((SELECT cr.name FROM company_recruiters cr WHERE cr.company_id = u.id), '') as recruiter_name,
+		COALESCE((SELECT cr.email FROM company_recruiters cr WHERE cr.company_id = u.id), '') as recruiter_email,
+		(SELECT cr.assigned_at FROM company_recruiters cr WHERE cr.company_id = u.id) as recruiter_assigned_at
 	FROM users u
 	LEFT JOIN users m ON m.empleador_id = u.id AND m.deleted_at IS NULL
 	LEFT JOIN boards b ON b.tenant_id = u.id AND b.deleted_at IS NULL
@@ -1474,17 +1490,57 @@ func (r *adminRepository) DeleteEmployeeSchedule(tenantID, userID uint) error {
 
 // AssignCSToTenant asigna (o desasigna) un Customer Success a una empresa.
 // csID == 0 → se borra la asignación (assigned_cs_id = NULL).
+//
+// Toca updated_at a propósito: el padrón de Obersuite tiene un corte
+// incremental por esa columna (?updated_since) y desde que el analista viaja en
+// el padrón, una reasignación que no la moviera no les llegaría nunca en una
+// consulta incremental.
 func (r *adminRepository) AssignCSToTenant(tenantID, csID uint) error {
 	if csID == 0 {
 		return r.db.Exec(
-			`UPDATE users SET assigned_cs_id = NULL WHERE id = ? AND deleted_at IS NULL`,
+			`UPDATE users SET assigned_cs_id = NULL, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
 			tenantID,
 		).Error
 	}
 	return r.db.Exec(
-		`UPDATE users SET assigned_cs_id = ? WHERE id = ? AND deleted_at IS NULL`,
+		`UPDATE users SET assigned_cs_id = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
 		csID, tenantID,
 	).Error
+}
+
+// GetCompanyRecruiter devuelve el reclutador de Obersuite de la empresa, o nil.
+func (r *adminRepository) GetCompanyRecruiter(companyID uint) (*models.CompanyRecruiter, error) {
+	var cr models.CompanyRecruiter
+	err := r.db.Where("company_id = ?", companyID).First(&cr).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &cr, nil
+}
+
+// SetCompanyRecruiter asigna o reemplaza al reclutador. Si es la MISMA persona
+// (mismo external_id) solo se corrigen nombre y correo y assigned_at se
+// conserva: corregir una tilde no es reasignar.
+func (r *adminRepository) SetCompanyRecruiter(cr *models.CompanyRecruiter) error {
+	return r.db.Exec(`
+		INSERT INTO company_recruiters (company_id, external_id, name, email, assigned_at, updated_at)
+		VALUES (?, ?, ?, ?, NOW(), NOW())
+		ON CONFLICT (company_id) DO UPDATE SET
+			external_id = EXCLUDED.external_id,
+			name        = EXCLUDED.name,
+			email       = EXCLUDED.email,
+			assigned_at = CASE WHEN company_recruiters.external_id = EXCLUDED.external_id
+			                   THEN company_recruiters.assigned_at ELSE NOW() END,
+			updated_at  = NOW()
+	`, cr.CompanyID, cr.ExternalID, cr.Name, cr.Email).Error
+}
+
+func (r *adminRepository) ClearCompanyRecruiter(companyID uint) (int64, error) {
+	res := r.db.Where("company_id = ?", companyID).Delete(&models.CompanyRecruiter{})
+	return res.RowsAffected, res.Error
 }
 
 func (r *adminRepository) GetTenantSurveyReport(tenantID uint) ([]TenantSurveyReportItem, error) {
