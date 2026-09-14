@@ -3,6 +3,10 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +32,14 @@ type recruitmentNoteRequest struct {
 	PersonIDs  []uint  `json:"person_ids"`
 	AuthorName string  `json:"author_name"`
 	CreatedAt  *string `json:"created_at"`
+	// Attachment es opcional y va en la misma forma que el CV de /hire.
+	Attachment *recruitmentAttachmentRequest `json:"attachment"`
+}
+
+type recruitmentAttachmentRequest struct {
+	FileName      string `json:"file_name"`
+	MimeType      string `json:"mime_type"`
+	ContentBase64 string `json:"content_base64"`
 }
 
 // CreateRecruitmentNote es POST .../companies/:id/timeline.
@@ -56,6 +68,13 @@ func (h *ObersuiteCompanyHandler) CreateRecruitmentNote(c *gin.Context) {
 		Content:    req.Content,
 		PersonIDs:  req.PersonIDs,
 		AuthorName: req.AuthorName,
+	}
+	if req.Attachment != nil {
+		in.Attachment = &service.RecruitmentAttachment{
+			FileName:      req.Attachment.FileName,
+			MimeType:      req.Attachment.MimeType,
+			ContentBase64: req.Attachment.ContentBase64,
+		}
 	}
 	if req.CreatedAt != nil && strings.TrimSpace(*req.CreatedAt) != "" {
 		t, err := time.Parse(time.RFC3339, strings.TrimSpace(*req.CreatedAt))
@@ -91,6 +110,41 @@ func (h *ObersuiteCompanyHandler) DeleteRecruitmentNote(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+// DownloadRecruitmentAttachment es GET .../timeline/:external_id/attachment.
+//
+// Va con el token de servicio y no por /api/public/uploads/ como la foto: un
+// adjunto de una nota puede ser un documento sobre una persona, y los archivos
+// del expediente se decidieron NO públicos (ver CompanyEventAttachment).
+// Obersuite lo sirve a su pantalla a través de su backend, que tiene el token.
+func (h *ObersuiteCompanyHandler) DownloadRecruitmentAttachment(c *gin.Context) {
+	tenant, ok := h.company(c)
+	if !ok {
+		return
+	}
+	att, err := h.admin.RecruitmentAttachmentForDownload(tenant.ID, c.Param("external_id"))
+	if err != nil {
+		h.recruitmentError(c, "descargar el adjunto de", tenant.ID, c.Param("external_id"), err)
+		return
+	}
+	path := filepath.Join(h.uploadPath, filepath.Base(att.StoredName))
+	if _, err := os.Stat(path); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "el archivo ya no está disponible"})
+		return
+	}
+	if att.MimeType != "" {
+		c.Header("Content-Type", att.MimeType)
+	}
+	c.FileAttachment(path, att.FileName)
+}
+
+// recruitmentAttachmentURL es la URL absoluta de descarga del adjunto, con el
+// mismo host público que avatar_url.
+func recruitmentAttachmentURL(c *gin.Context, companyID uint, externalID string) string {
+	return strings.TrimRight(resolveBackendURL(c), "/") +
+		"/api/integrations/obersuite/companies/" + strconv.FormatUint(uint64(companyID), 10) +
+		"/timeline/" + url.PathEscape(externalID) + "/attachment"
 }
 
 // recruitmentError traduce el error a la MISMA tabla de códigos que /hire: los

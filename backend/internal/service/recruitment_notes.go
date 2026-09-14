@@ -1,7 +1,11 @@
 package service
 
 import (
+	"encoding/base64"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -33,6 +37,102 @@ type RecruitmentNoteInput struct {
 	PersonIDs  []uint
 	AuthorName string
 	CreatedAt  *time.Time
+	Attachment *RecruitmentAttachment
+}
+
+// RecruitmentAttachment es el archivo tal como viaja en el POST: binario en
+// base64, misma forma que el CV de /hire.
+type RecruitmentAttachment struct {
+	FileName      string
+	MimeType      string
+	ContentBase64 string
+}
+
+// maxRecruitmentAttachmentBytes es el tope del adjunto de una nota. 10 MB y no
+// los 8 del CV porque el formulario de Obersuite ya dejaba pasar hasta 10 y
+// cortar más abajo rebotaría archivos que su pantalla acepta.
+const maxRecruitmentAttachmentBytes = 10 << 20
+
+// recruitmentAttachmentPrefix es cómo empiezan en disco los adjuntos que
+// llegan por aquí. Se elige el nombre en el servidor: el file_name entrante es
+// para enseñar, nunca para la ruta.
+const recruitmentAttachmentPrefix = "recruit_"
+
+// SetRecruitmentAttachmentDeps inyecta lo que hace falta para guardar el archivo
+// de una nota: dónde escribirlo y con qué servicio colgarlo de la entrada. Van
+// por setter y no por el constructor porque el servicio de administración tiene
+// ya trece dependencias y solo esta función usa estas dos.
+func (s *adminService) SetRecruitmentAttachmentDeps(upload UploadService, threads CompanyThreadService) {
+	s.uploadSvc = upload
+	s.threadSvc = threads
+}
+
+// decodedRecruitmentAttachment es el adjunto ya validado y decodificado, listo
+// para escribir. Se valida ANTES de crear la nota: un 400 no puede dejar una
+// nota a medias, sin el archivo que el reclutador cree que mandó.
+type decodedRecruitmentAttachment struct {
+	fileName string
+	mime     string
+	ext      string
+	data     []byte
+}
+
+func (s *adminService) decodeRecruitmentAttachment(a *RecruitmentAttachment) (*decodedRecruitmentAttachment, error) {
+	if a == nil {
+		return nil, nil
+	}
+	if s.uploadSvc == nil || s.threadSvc == nil {
+		return nil, fmt.Errorf("el guardado de adjuntos no está configurado en este servidor")
+	}
+	raw := strings.TrimSpace(a.ContentBase64)
+	if raw == "" {
+		return nil, hireFail(apperrors.ErrInvalidInput, "attachment.content_base64 está vacío")
+	}
+	data, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, hireFail(apperrors.ErrInvalidInput, "attachment.content_base64 no es base64 válido")
+	}
+	if len(data) == 0 {
+		return nil, hireFail(apperrors.ErrInvalidInput, "attachment: el archivo está vacío")
+	}
+	if len(data) > maxRecruitmentAttachmentBytes {
+		// "supera", no "pesa X MB": con 10 MB y un byte, redondeado decía "pesa
+		// 10.0 MB y el máximo es 10 MB", que parece una contradicción.
+		return nil, hireFail(apperrors.ErrInvalidInput,
+			fmt.Sprintf("attachment: el archivo supera el máximo de 10 MB (%d bytes de %d)", len(data), maxRecruitmentAttachmentBytes))
+	}
+	mime := normalizeContentType(a.MimeType)
+	ext, ok := s.uploadSvc.GetAllowedMimeTypes()[mime]
+	if !ok {
+		return nil, hireFail(apperrors.ErrInvalidInput,
+			fmt.Sprintf("attachment.mime_type %q no está permitido: admite PDF, Word, Excel, JPEG, PNG, GIF y WEBP", a.MimeType))
+	}
+	name := strings.TrimSpace(a.FileName)
+	if name == "" {
+		name = "adjunto" + ext
+	}
+	return &decodedRecruitmentAttachment{fileName: name, mime: mime, ext: ext, data: data}, nil
+}
+
+// storeRecruitmentAttachment escribe el archivo y lo cuelga de la nota. Va
+// DESPUÉS de crear la nota porque necesita su id, y por eso un fallo aquí no
+// puede ser 400 —la nota ya existe— sino error: Obersuite lo reintenta con el
+// mismo external_id, la nota responde already_exists y el adjunto se vuelve a
+// intentar (ver AddRecruitmentNote).
+func (s *adminService) storeRecruitmentAttachment(companyID, eventID, byUserID uint, d *decodedRecruitmentAttachment) error {
+	storedName := fmt.Sprintf("%s%d_%d%s", recruitmentAttachmentPrefix, eventID, time.Now().UnixNano(), d.ext)
+	path := filepath.Join(s.uploadSvc.GetUploadPath(), storedName)
+	if err := os.WriteFile(path, d.data, 0o644); err != nil {
+		return fmt.Errorf("no se pudo escribir el adjunto: %w", err)
+	}
+	if _, err := s.threadSvc.AddAttachment(companyID, eventID, byUserID, nil, d.fileName, storedName, int64(len(d.data)), d.mime); err != nil {
+		// El archivo sin fila es basura en disco: se recoge aquí mismo.
+		if rerr := os.Remove(path); rerr != nil {
+			log.Printf("[Obersuite] adjunto huérfano %q: %v", path, rerr)
+		}
+		return fmt.Errorf("no se pudo registrar el adjunto: %w", err)
+	}
+	return nil
 }
 
 // RecruitmentNoteResult distingue el alta del reintento: con el mismo
@@ -97,13 +197,29 @@ func (s *adminService) AddRecruitmentNote(companyID uint, in RecruitmentNoteInpu
 		author = string(r[:255])
 	}
 
+	// El adjunto se valida ANTES de escribir nada: si el tipo o el tamaño no
+	// valen es 400, y un 400 no deja una nota sin su archivo.
+	adjunto, err := s.decodeRecruitmentAttachment(in.Attachment)
+	if err != nil {
+		return nil, err
+	}
+
 	// El reintento ANTES de escribir nada: el segundo POST con el mismo id
-	// devuelve lo que ya hay, sin tocarlo.
+	// devuelve lo que ya hay, sin tocarlo. Con una excepción: si la nota quedó
+	// sin su adjunto (se creó y el archivo falló), el reintento lo completa. Es
+	// lo que hace que "500 → reintentar" deje la nota entera y no a medias.
 	existing, err := s.repo.FindCompanyEventByExternalID(companyID, externalID)
 	if err != nil {
 		return nil, err
 	}
 	if existing != nil {
+		if adjunto != nil {
+			if _, nAdj, cerr := s.threadSvc.ThreadSize(companyID, existing.ID); cerr == nil && nAdj == 0 {
+				if aerr := s.storeRecruitmentAttachment(companyID, existing.ID, existing.ByUserID, adjunto); aerr != nil {
+					return nil, aerr
+				}
+			}
+		}
 		return &RecruitmentNoteResult{ID: existing.ID, Status: "already_exists"}, nil
 	}
 
@@ -146,7 +262,37 @@ func (s *adminService) AddRecruitmentNote(companyID uint, in RecruitmentNoteInpu
 		}
 		return nil, err
 	}
+	if adjunto != nil {
+		if err := s.storeRecruitmentAttachment(companyID, event.ID, account.ID, adjunto); err != nil {
+			return nil, err
+		}
+	}
 	return &RecruitmentNoteResult{ID: event.ID, Status: "created"}, nil
+}
+
+// RecruitmentAttachmentForDownload devuelve el adjunto de la nota que Obersuite
+// conoce por ese id, validado contra la empresa. 404 si la nota no existe o no
+// tiene adjunto.
+func (s *adminService) RecruitmentAttachmentForDownload(companyID uint, externalID string) (*models.CompanyEventAttachment, error) {
+	ev, err := s.repo.FindCompanyEventByExternalID(companyID, strings.TrimSpace(externalID))
+	if err != nil {
+		return nil, err
+	}
+	if ev == nil || ev.Type != models.CompanyEventRecruitment {
+		return nil, hireFail(apperrors.ErrNotFound, "la nota no existe o no es de esta empresa")
+	}
+	if s.threadSvc == nil {
+		return nil, hireFail(apperrors.ErrNotFound, "la nota no tiene adjunto")
+	}
+	threads, err := s.threadSvc.LoadThreads(companyID, []uint{ev.ID})
+	if err != nil {
+		return nil, err
+	}
+	t := threads[ev.ID]
+	if len(t.Attachments) == 0 {
+		return nil, hireFail(apperrors.ErrNotFound, "la nota no tiene adjunto")
+	}
+	return &t.Attachments[0], nil
 }
 
 // recipientsPrefix valida que cada destinatario sea de la empresa y arma el
@@ -189,7 +335,18 @@ func (s *adminService) DeleteRecruitmentNote(companyID uint, externalID string) 
 	if err := s.assertEmployer(companyID); err != nil {
 		return hireFail(apperrors.ErrNotFound, "la empresa no existe o no es una empresa")
 	}
-	rows, err := s.repo.DeleteCompanyEventByExternalID(companyID, strings.TrimSpace(externalID))
+	ext := strings.TrimSpace(externalID)
+	// El hilo (el adjunto) se retira ANTES que la nota: si se borrara la nota y
+	// fallara el hilo, quedaría un archivo colgado de una entrada que ya no
+	// existe.
+	if s.threadSvc != nil {
+		if ev, ferr := s.repo.FindCompanyEventByExternalID(companyID, ext); ferr == nil && ev != nil && ev.Type == models.CompanyEventRecruitment {
+			if terr := s.threadSvc.DeleteThreadForEvent(companyID, ev.ID); terr != nil {
+				return terr
+			}
+		}
+	}
+	rows, err := s.repo.DeleteCompanyEventByExternalID(companyID, ext)
 	if err != nil {
 		return err
 	}

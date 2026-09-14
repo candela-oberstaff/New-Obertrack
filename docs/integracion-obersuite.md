@@ -562,7 +562,12 @@ POST /api/integrations/obersuite/companies/:id/timeline
   "content":      "…",                       // OBLIGATORIO. ≤ 2000 caracteres (MaxCompanyNoteLength)
   "person_ids":   [427, 431],                // [] = toda la empresa
   "author_name":  "Lorena Moujalli",         // OBLIGATORIO
-  "created_at":   "2026-09-11T22:10:00Z"     // opcional, RFC 3339; por defecto ahora
+  "created_at":   "2026-09-11T22:10:00Z",    // opcional, RFC 3339; por defecto ahora
+  "attachment": {                            // opcional, misma forma que el CV de /hire
+    "file_name": "oferta.pdf",
+    "mime_type": "application/pdf",
+    "content_base64": "JVBERi0…"
+  }
 }
 → 200 { "id": 9812, "status": "created" }
 → 200 { "id": 9812, "status": "already_exists" }   // mismo external_id: no se duplica ni se modifica
@@ -573,6 +578,39 @@ correo→email, whatsapp igual, general→vacío). La lista es **cerrada**:
 Obersuite se comprometió a avisar antes de añadir una, porque lo desconocido es
 400. Dos POST simultáneos con el mismo id: uno gana el índice único y el otro
 recibe `already_exists`, no un 500.
+
+##### El adjunto (desde el 14-sep-2026)
+
+Un archivo por nota, embebido en base64 como el CV. **Hasta 10 MB** decodificado
+(no los 8 del CV: el formulario de Obersuite ya dejaba pasar 10 y cortar más
+abajo rebotaría archivos que su pantalla acepta). Mismos tipos: PDF, Word,
+Excel, JPEG, PNG, GIF, WEBP.
+
+- **Se valida antes de crear la nota.** Tipo o tamaño malos son 400 con el
+  motivo, y un 400 no escribe nada: ni la nota ni el archivo.
+- **Se guarda como cualquier archivo del expediente** (`company_event_attachments`),
+  colgado de la entrada: nuestra pantalla lo enseña en el hilo de la nota sin
+  código nuevo, y se borra con ella.
+- **El reintento completa una nota que quedó sin archivo.** Si la nota se creó
+  y el archivo falló, Obersuite recibe 500 y reintenta con el mismo
+  `external_id`; ese POST responde `already_exists` Y guarda el adjunto que
+  faltaba. Un reintento sobre una nota que ya lo tiene no lo duplica.
+- **Se descarga con el token, no por URL pública.** A diferencia de la foto, un
+  adjunto puede ser un documento sobre una persona y los archivos del expediente
+  se decidieron no públicos (ver `CompanyEventAttachment`). Obersuite lo sirve a
+  su pantalla a través de su backend, que tiene el token.
+
+```
+GET /api/integrations/obersuite/companies/:id/timeline/<external_id>/attachment
+X-Service-Token: …
+→ 200, el archivo, con Content-Disposition: attachment y su nombre original
+→ 404 si la nota no existe o no tiene adjunto
+→ 401 sin token
+```
+
+En `/timeline`, la entrada trae `attachment_name`, `attachment_url` (la ruta de
+arriba, absoluta, con el host de `BACKEND_URL`), `attachment_size` y
+`attachment_mime`. Ausentes si la nota no tiene archivo.
 
 ##### Borrar
 

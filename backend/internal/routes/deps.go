@@ -299,6 +299,10 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// El handler de persona reutiliza el de empresa para resolver el :id y
 	// validar la empresa: así los dos contestan el mismo 404 con el mismo texto.
 	obersuiteCompanyH := handlers.NewObersuiteCompanyHandler(adminSvc, employmentSvc, usageRepo, userRepo)
+	// Adjuntos de las notas de Reclutamiento: el binario se escribe con el
+	// servicio de subidas y se cuelga de la entrada con el de hilos.
+	adminSvc.SetRecruitmentAttachmentDeps(uploadSvc, companyThreadSvc)
+	obersuiteCompanyH.SetRecruitmentDeps(companyThreadSvc, os.Getenv("UPLOAD_PATH"))
 
 	return &deps{
 		cfg: cfg,

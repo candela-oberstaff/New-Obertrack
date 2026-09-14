@@ -75,6 +75,9 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 			// aquí ni adivinando el id.
 			empresa.POST("/timeline", d.obersuiteCompany.CreateRecruitmentNote)
 			empresa.DELETE("/timeline/:external_id", d.obersuiteCompany.DeleteRecruitmentNote)
+			// El adjunto de la nota, con el token: los archivos del expediente
+			// no son públicos (ver CompanyEventAttachment).
+			empresa.GET("/timeline/:external_id/attachment", d.obersuiteCompany.DownloadRecruitmentAttachment)
 			empresa.GET("/attention", d.obersuiteCompany.Attention)
 			empresa.GET("/tickets", d.obersuiteCompany.Tickets)
 			empresa.GET("/archived", d.obersuiteCompany.Archived)

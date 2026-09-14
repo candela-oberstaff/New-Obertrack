@@ -124,6 +124,14 @@ type TenantActivity struct {
 	// que escribió ella). Viaja para que pueda borrarla y no duplicarla en su
 	// pantalla.
 	ExternalID string `json:"external_id,omitempty"`
+	// Adjunto de una nota de Reclutamiento. Se rellenan al leer (no son
+	// columnas de la unión): nombre para pintar el enlace, URL absoluta para
+	// descargarlo con el token de servicio, tamaño y tipo por si quieren
+	// enseñarlos. Vacíos si no hay archivo.
+	AttachmentName string `gorm:"-" json:"attachment_name,omitempty"`
+	AttachmentURL  string `gorm:"-" json:"attachment_url,omitempty"`
+	AttachmentSize int64  `gorm:"-" json:"attachment_size,omitempty"`
+	AttachmentMime string `gorm:"-" json:"attachment_mime,omitempty"`
 }
 
 // TenantActivityCount es cuántos movimientos hay de una categoría, con el

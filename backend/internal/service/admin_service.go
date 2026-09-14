@@ -114,6 +114,8 @@ type AdminService interface {
 	// Notas de Reclutamiento escritas desde Obersuite (recruitment_notes.go).
 	AddRecruitmentNote(companyID uint, in RecruitmentNoteInput) (*RecruitmentNoteResult, error)
 	DeleteRecruitmentNote(companyID uint, externalID string) error
+	RecruitmentAttachmentForDownload(companyID uint, externalID string) (*models.CompanyEventAttachment, error)
+	SetRecruitmentAttachmentDeps(upload UploadService, threads CompanyThreadService)
 	// GetArchived lista profesionales archivados (bajas + desactivados).
 	// tenantID=0 = global; si no, los de esa empresa.
 	GetArchived(tenantID uint) ([]repository.ArchivedEntry, error)
@@ -139,6 +141,10 @@ type adminService struct {
 	employmentRepo repository.EmploymentRepository
 	brevoSvc       *BrevoService
 	authSvc        AuthService
+	// Solo para el adjunto de las notas de Reclutamiento (recruitment_notes.go);
+	// se inyectan con SetRecruitmentAttachmentDeps.
+	uploadSvc UploadService
+	threadSvc CompanyThreadService
 }
 
 func NewAdminService(

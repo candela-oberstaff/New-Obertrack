@@ -34,6 +34,17 @@ type ObersuiteCompanyHandler struct {
 	// GetObersuiteProfessionals). El resto de bloques reexporta el servicio de
 	// administración tal cual.
 	users repository.UserRepository
+	// threads y uploadPath sirven solo a las notas de Reclutamiento: el adjunto
+	// que Obersuite manda con la nota se cuelga de la entrada como cualquier
+	// otro archivo del expediente, y se sirve desde la carpeta de subidas.
+	threads    service.CompanyThreadService
+	uploadPath string
+}
+
+// SetRecruitmentDeps inyecta lo que necesitan los adjuntos de Reclutamiento.
+func (h *ObersuiteCompanyHandler) SetRecruitmentDeps(threads service.CompanyThreadService, uploadPath string) {
+	h.threads = threads
+	h.uploadPath = uploadPath
 }
 
 func NewObersuiteCompanyHandler(
@@ -199,6 +210,7 @@ func (h *ObersuiteCompanyHandler) Timeline(c *gin.Context) {
 	if entries == nil {
 		entries = []repository.TenantActivity{}
 	}
+	h.decorateRecruitmentAttachments(c, tenant.ID, entries)
 
 	// counts trae MÁS claves que categories, y es a propósito: "staff" y
 	// "management" ya no se ofrecen como filtro —el primero se fusionó dentro de
@@ -416,4 +428,42 @@ func (h *ObersuiteCompanyHandler) Usage(c *gin.Context) {
 		// nadie conectado" en lugar de "esto no se contesta por aquí".
 		"online_available": false,
 	})
+}
+
+// decorateRecruitmentAttachments rellena attachment_name / attachment_url en las
+// entradas de Reclutamiento que tienen archivo. Una consulta para toda la
+// página, no una por entrada; y solo para las que vinieron de Obersuite, que
+// son las únicas con external_id.
+func (h *ObersuiteCompanyHandler) decorateRecruitmentAttachments(c *gin.Context, companyID uint, entries []repository.TenantActivity) {
+	if h.threads == nil {
+		return
+	}
+	ids := make([]uint, 0)
+	for _, e := range entries {
+		if e.ExternalID != "" && e.EventID > 0 {
+			ids = append(ids, e.EventID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	threads, err := h.threads.LoadThreads(companyID, ids)
+	if err != nil {
+		return // la cronología sigue siendo útil sin el enlace del archivo
+	}
+	for i := range entries {
+		e := &entries[i]
+		if e.ExternalID == "" {
+			continue
+		}
+		t, ok := threads[e.EventID]
+		if !ok || len(t.Attachments) == 0 {
+			continue
+		}
+		a := t.Attachments[0]
+		e.AttachmentName = a.FileName
+		e.AttachmentSize = a.FileSize
+		e.AttachmentMime = a.MimeType
+		e.AttachmentURL = recruitmentAttachmentURL(c, companyID, e.ExternalID)
+	}
 }
