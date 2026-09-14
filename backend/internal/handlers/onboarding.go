@@ -211,6 +211,10 @@ func (h *OnboardingHandler) Hire(c *gin.Context) {
 			c.JSON(status, gin.H{"error": msg, "request_id": rid})
 			return
 		}
+		// Los 4xx también dejan rastro. Un 409 no se registraba, y cuando
+		// Obersuite preguntó qué se le contestó a una contratación que su
+		// pantalla dio por hecha, no había línea que mirar.
+		log.Printf("[Onboarding] hire rechazado %d para %s (empresa %d, obersuite_id=%s): %s", status, in.Email, in.CompanyID, in.ExternalID, msg)
 		c.JSON(status, gin.H{"error": msg})
 		return
 	}

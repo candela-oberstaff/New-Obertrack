@@ -778,3 +778,75 @@ func TestHire_OtroFalloDeLaBaseSigueSiendo500(t *testing.T) {
 		t.Fatalf("un fallo de conexión no es un conflicto: %v", err)
 	}
 }
+
+// Obersuite preguntó si una persona nueva con el DOCUMENTO de otra podía
+// resolverse como "ya existe". No: /hire reconoce SOLO por external_id y por
+// correo. Un documento, un teléfono o un nombre repetidos no cruzan con nadie,
+// y esto lo fija para que nunca se añada una búsqueda por esos campos sin
+// escribirla en el contrato.
+func TestHire_NoReconocePorDocumentoTelefonoNiNombre(t *testing.T) {
+	inti := &models.User{
+		ID: 767, Email: "simonromou@gmail.com", Name: "INTI ROMERO", UserType: models.UserTypeProfessional,
+		IsActive: true, ObersuiteID: "obersuite-candidate-7d56", IdentityDocument: "30262268", PhoneNumber: "+54 123588484",
+	}
+	svc, userRepo, _, _, _ := newHireSvc(false, inti)
+
+	in := baseHire()
+	in.ExternalID = "obersuite-candidate-2448" // distinto
+	in.Email = "hola@sitioincreible.com"       // distinto
+	in.Name = "INTI ROMEROhhhh"                // casi igual
+	in.IdentityDocument = "30262268"           // EL MISMO documento
+	in.PhoneNumber = "+54 123588484"           // EL MISMO teléfono
+
+	res, err := svc.Hire(in)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != "created" || res.UserID == 767 {
+		t.Fatalf("con external_id y correo distintos es una persona NUEVA, got status=%s user=%d", res.Status, res.UserID)
+	}
+	if userRepo.created == nil || userRepo.created.Email != "hola@sitioincreible.com" {
+		t.Fatal("debía crearse la persona nueva")
+	}
+	if res.MatchedBy != "" {
+		t.Errorf("created no lleva matched_by, got %q", res.MatchedBy)
+	}
+}
+
+// Cuando SÍ se reconoce a alguien, la respuesta dice por qué campo y a quién:
+// sin eso, desde Obersuite un rehired era indistinguible de "chocó con otra
+// persona".
+func TestHire_DiceAQuienResolvioYPorQueCampo(t *testing.T) {
+	existente := &models.User{
+		ID: 55, Email: "ana@x.com", Name: "Ana", UserType: models.UserTypeProfessional, IsActive: true, ObersuiteID: "cand-ana",
+	}
+
+	t.Run("por external_id", func(t *testing.T) {
+		svc, _, _, _, _ := newHireSvc(false, existente)
+		in := baseHire()
+		in.ExternalID = "cand-ana"
+		in.Email = "otro-correo@x.com"
+		res, err := svc.Hire(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.MatchedBy != "external_id" || res.Professional == nil || res.Professional.ID != 55 || res.Professional.Email != "ana@x.com" {
+			t.Fatalf("matched_by=%q professional=%+v", res.MatchedBy, res.Professional)
+		}
+	})
+
+	t.Run("por correo", func(t *testing.T) {
+		svc, _, _, _, _ := newHireSvc(false, existente)
+		in := baseHire()
+		in.ExternalID = "cand-nuevo"
+		in.Email = "ana@x.com"
+		res, err := svc.Hire(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.MatchedBy != "email" || res.Professional == nil || res.Professional.ID != 55 {
+			t.Fatalf("matched_by=%q professional=%+v", res.MatchedBy, res.Professional)
+		}
+	})
+}

@@ -235,9 +235,18 @@ sea atómica y aguante los reintentos sin depender de que un enlace siga vivo.
 ```json
 {
   "user_id": 1201, "employment_id": 3345, "obersuite_id": "cand_8891",
-  "status": "created", "cv_attached": true, "induction_pending": true
+  "status": "rehired", "cv_attached": true, "induction_pending": true,
+  "matched_by": "email",                                       // solo en rehired / already_active
+  "professional": { "id": 1201, "name": "Ana Pérez", "email": "ana@ejemplo.com" }
 }
 ```
+
+`professional` es la persona a la que quedó ligada la contratación (la nueva en
+`created`, la encontrada en los otros dos). `matched_by` dice **por qué campo**
+se reconoció a alguien que ya existía: `"external_id"` o `"email"`. Existen
+desde el 14-sep-2026 porque, sin ellos, un `rehired` era indistinguible de
+"chocó con otra persona": comparad `professional` con lo que mandasteis y, si
+no es quien creíais, no marquéis contratado.
 
 `status` distingue tres cosas que **todas son éxito**:
 
@@ -258,10 +267,20 @@ credenciales.
 
 ### Identidad: cómo se decide si la persona ya existe
 
-**Primero por `external_id`, después por email.** El orden importa: el email
-solo identifica mientras nadie lo cambie, y en cuanto un candidato se registra
-con uno y llega el alta con otro, resolver por email crea una segunda cuenta de
-la misma persona.
+**Primero por `external_id`, después por email. Y por nada más.** Ni
+documento, ni teléfono, ni nombre: no hay ninguna búsqueda por esos campos, ni
+restricción única sobre el documento en la base. Una persona con el documento
+o el teléfono de otra y un correo y un `external_id` distintos es una persona
+**nueva** (`created`); lo fija una prueba. Se preguntó el 14-sep-2026 tras un
+"ya existe" inesperado, y la respuesta es que ese "ya existe" **no pudo venir
+de aquí como 200**: o fue un 409 (correo de una cuenta que no es profesional,
+o en la Papelera) enseñado como éxito, o el `external_id`/correo sí coincidía.
+Todo `/hire`, incluidos los 4xx, deja línea en nuestro log con el correo, el
+`external_id`, el estado y `matched_by`.
+
+El orden importa: el email solo identifica mientras nadie lo cambie, y en
+cuanto un candidato se registra con uno y llega el alta con otro, resolver por
+email crea una segunda cuenta de la misma persona.
 
 Mandar `external_id` siempre que se tenga. La primera contratación que llega con
 él lo estampa también sobre las personas que ya estaban aquí de antes, y a

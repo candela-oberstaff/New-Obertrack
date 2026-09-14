@@ -143,6 +143,21 @@ type HireResult struct {
 	// InductionPending indica que el profesional quedó sin acceso hasta aprobar
 	// la inducción (se le envió el enlace a la landing en vez de las credenciales).
 	InductionPending bool `json:"induction_pending"`
+	// MatchedBy dice POR QUÉ CAMPO se reconoció a una persona que ya existía:
+	// "external_id" o "email". Vacío en created. Existe porque desde Obersuite
+	// un rehired/already_active era indistinguible de "chocó con otra persona":
+	// con esto, y con Professional, pueden ver a quién se resolvió y decidir.
+	MatchedBy string `json:"matched_by,omitempty"`
+	// Professional es la persona a la que quedó ligada la contratación: la
+	// nueva en created, la encontrada en rehired/already_active.
+	Professional *HireProfessional `json:"professional,omitempty"`
+}
+
+// HireProfessional identifica a la persona de la contratación.
+type HireProfessional struct {
+	ID    uint   `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 type onboardingService struct {
@@ -302,8 +317,9 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 	//    en cuanto el candidato se registra con uno y el alta llega con otro,
 	//    resolver por email crea una segunda cuenta de la misma persona. El id
 	//    de Obersuite no tiene ese problema, así que manda cuando viene.
-	user := s.resolveProfessional(externalID, email)
+	user, matchedBy := s.resolveProfessional(externalID, email)
 	isNew := user == nil
+	result.MatchedBy = matchedBy
 
 	var cleanEmergencyContacts []string
 	for _, contact := range req.EmergencyContacts {
@@ -381,6 +397,7 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 		}
 	}
 	result.UserID = user.ID
+	result.Professional = &HireProfessional{ID: user.ID, Name: user.Name, Email: user.Email}
 
 	// 4. Empleo (idempotente): si ya tiene uno activo en esta empresa, no-op.
 	//    Aquí se corta el reintento del webhook, y por eso NO se manda ningún
@@ -444,16 +461,21 @@ func (s *onboardingService) Hire(req HireRequest) (*HireResult, error) {
 //
 // Que el id mande sobre el email es justo lo que evita duplicar a una persona
 // que cambió de correo entre la postulación y la contratación.
-func (s *onboardingService) resolveProfessional(externalID, email string) *models.User {
+// Devuelve además por qué campo se reconoció. Son los DOS únicos criterios:
+// ni documento, ni teléfono, ni nombre. Está escrito aquí y en el contrato
+// porque ya se preguntó si un documento repetido podía "chocar" con otra
+// persona, y la respuesta es que no hay ninguna búsqueda por documento (ni
+// restricción única sobre él en la base).
+func (s *onboardingService) resolveProfessional(externalID, email string) (*models.User, string) {
 	if externalID != "" {
 		if user, err := s.userRepo.GetByObersuiteID(externalID); err == nil && user != nil {
-			return user
+			return user, "external_id"
 		}
 	}
 	if user, err := s.userRepo.GetByEmail(email); err == nil && user != nil {
-		return user
+		return user, "email"
 	}
-	return nil
+	return nil, ""
 }
 
 // notifyHired decide qué correo recibe quien acaba de ser contratado desde
@@ -559,8 +581,12 @@ func (s *onboardingService) logHire(result *HireResult, email string, companyID 
 	if obersuiteID == "" {
 		obersuiteID = "(sin id)"
 	}
-	log.Printf("[Onboarding] hire obersuite_id=%s email=%s empresa=%d → %s (user=%d empleo=%d inducción_pendiente=%t)",
-		obersuiteID, email, companyID, result.Status, result.UserID, result.EmploymentID, result.InductionPending)
+	matched := result.MatchedBy
+	if matched == "" {
+		matched = "-"
+	}
+	log.Printf("[Onboarding] hire obersuite_id=%s email=%s empresa=%d → %s (user=%d empleo=%d matched_by=%s inducción_pendiente=%t)",
+		obersuiteID, email, companyID, result.Status, result.UserID, result.EmploymentID, matched, result.InductionPending)
 }
 
 // attachCV decodifica el CV en base64, lo guarda en disco y lo adjunta al
