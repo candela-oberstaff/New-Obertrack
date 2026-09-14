@@ -584,6 +584,10 @@ DELETE /api/integrations/obersuite/companies/:id/recruiter
   minúsculas). 400 con el motivo.
 - **Corregir no es reasignar.** El mismo `external_id` con otro nombre conserva
   `assigned_at`; otro `external_id` lo mueve.
+- **Cada empresa es independiente.** Un mismo `external_id` puede llevar
+  cuantas empresas haga falta; asignarlo a una no toca a las demás, y quitarlo
+  de una tampoco. Lo garantiza la tabla —una fila por empresa, `company_id` es
+  la clave y el PUT solo toca esa fila—, no una convención.
 - Lo devuelve `GET /companies/:id` como `recruiter` (o `null`), y lo enseña
   nuestra ficha de la empresa bajo el analista, de solo lectura.
 - Vive en su tabla (`company_recruiters`), no en columnas de `users`: es dato
