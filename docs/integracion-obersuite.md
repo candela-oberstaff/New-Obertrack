@@ -297,7 +297,7 @@ literalmente de ella.
 | **400** | Falta un campo o su valor no vale (email mal escrito, sin `company_id`) | **No.** Hay que corregir el dato |
 | **401 / 503** | Token incorrecto / token no configurado en el servidor | No: es configuración |
 | **404** | El `company_id` no existe o no es una empresa | **No.** Hay que corregir el dato |
-| **409** | Ya hay una cuenta con ese email que no se puede usar: o **no es un profesional** (empresa, superadmin, CS), o **está en la Papelera** de Obertrack. El mensaje dice cuál y qué hacer (restaurarla o borrarla en firme) | **No.** Intervención humana |
+| **409** | Ya hay una cuenta con ese email que no se puede usar: o **no es un profesional** (empresa, superadmin, CS), o **está en la Papelera** de Obertrack. El mensaje **empieza por «No se puede contratar:»** y dice cuál y qué hacer (restaurarla, borrarla en firme, o usar otro correo). Antes empezaba por «El correo X pertenece a…» y, leído en un toast, se entendió como «ya está contratado» | **No.** Intervención humana |
 | **422** | La empresa está suspendida | **No.** Hay que reactivarla en Obertrack |
 | **429** | Límite de peticiones | Sí, **tras esperar `Retry-After`** |
 | **500** | Fallo nuestro. El cuerpo trae `request_id` (`"hire-3f9a1c2b"`): citadlo y lo encontramos en el log sin reconstruirlo por hora | **Sí** |

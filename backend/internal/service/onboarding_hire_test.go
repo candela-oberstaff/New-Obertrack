@@ -756,6 +756,11 @@ func TestHire_UnCorreoEnLaPapeleraEs409ConInstrucciones(t *testing.T) {
 		t.Fatalf("debía ser el conflicto de correo (409), got %v", err)
 	}
 	msg := err.Error()
+	// Y empieza por el veredicto: leido en un toast, "El correo X pertenece
+	// a..." se entendio como "ya esta contratado" cuando era un rechazo.
+	if !strings.HasPrefix(err.Error(), "No se puede contratar:") {
+		t.Errorf("el 409 tiene que empezar por el veredicto, dice: %s", err.Error())
+	}
 	for _, frase := range []string{"Papelera", "01/09/2026", "Restáurala"} {
 		if !strings.Contains(msg, frase) {
 			t.Errorf("el mensaje debía decir %q para que el reclutador sepa qué hacer; dice: %s", frase, msg)
