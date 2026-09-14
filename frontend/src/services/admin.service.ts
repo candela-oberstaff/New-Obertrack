@@ -361,7 +361,7 @@ export const adminService = {
     return data
   },
   purgeTrash: async (items: { type: string; id: number }[]) => {
-    const { data } = await api.post<{ purged: number; failed: TrashFailure[] }>('/admin/trash/purge', { items })
+    const { data } = await api.post<{ purged: number; anonymized: number; failed: TrashFailure[] }>('/admin/trash/purge', { items })
     return data
   },
   // ── Expediente laboral (resumen + evaluaciones/notas + documentos) ──────────

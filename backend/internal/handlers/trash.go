@@ -42,14 +42,19 @@ type trashFailure struct {
 }
 
 func (h *TrashHandler) Restore(c *gin.Context) {
-	h.apply(c, "restored", h.svc.Restore)
+	h.apply(c, "restored", func(t string, id uint) (service.PurgeOutcome, error) {
+		return "", h.svc.Restore(t, id)
+	})
 }
 
+// Purge responde, además del total, cuántos se ANONIMIZARON: una persona con
+// historial no desaparece, se queda sin datos personales. Quien pulsa el botón
+// tiene que saberlo, porque no es lo que el botón dice.
 func (h *TrashHandler) Purge(c *gin.Context) {
 	h.apply(c, "purged", h.svc.Purge)
 }
 
-func (h *TrashHandler) apply(c *gin.Context, okKey string, op func(typeKey string, id uint) error) {
+func (h *TrashHandler) apply(c *gin.Context, okKey string, op func(typeKey string, id uint) (service.PurgeOutcome, error)) {
 	var req struct {
 		Items []trashRef `json:"items"`
 	}
@@ -61,14 +66,18 @@ func (h *TrashHandler) apply(c *gin.Context, okKey string, op func(typeKey strin
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No hay elementos seleccionados"})
 		return
 	}
-	done := 0
+	done, anonymized := 0, 0
 	failed := []trashFailure{}
 	for _, it := range req.Items {
-		if err := op(it.Type, it.ID); err != nil {
+		outcome, err := op(it.Type, it.ID)
+		if err != nil {
 			failed = append(failed, trashFailure{Type: it.Type, ID: it.ID, Error: err.Error()})
 			continue
 		}
 		done++
+		if outcome == service.PurgeAnonymized {
+			anonymized++
+		}
 	}
-	c.JSON(http.StatusOK, gin.H{okKey: done, "failed": failed})
+	c.JSON(http.StatusOK, gin.H{okKey: done, "anonymized": anonymized, "failed": failed})
 }

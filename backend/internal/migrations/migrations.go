@@ -2729,6 +2729,17 @@ func Run(db *gorm.DB) error {
 				return tx.Exec(`DROP TABLE IF EXISTS company_recruiters`).Error
 			},
 		},
+		{
+			// Purgar un usuario con historial desde la Papelera lo anonimiza en
+			// vez de fallar; esta marca lo saca de la lista sin borrar la fila.
+			ID: "202609141400_users_purged_at",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS purged_at TIMESTAMPTZ NULL`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS purged_at`).Error
+			},
+		},
 		// Future migrations go here
 	})
 

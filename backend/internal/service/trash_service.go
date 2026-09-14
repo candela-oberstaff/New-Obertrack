@@ -33,7 +33,10 @@ type TrashService interface {
 	Types() []TrashTypeInfo
 	List(types []string) ([]TrashItem, error)
 	Restore(typeKey string, id uint) error
-	Purge(typeKey string, id uint) error
+	// Purge borra en firme. Devuelve qué pasó de verdad: "deleted" si la fila
+	// se fue, "anonymized" si era una persona con historial y se conservó la
+	// fila sin datos personales (ver trash_purge.go).
+	Purge(typeKey string, id uint) (PurgeOutcome, error)
 }
 
 type trashService struct {
@@ -69,7 +72,10 @@ func NewTrashService(db *gorm.DB) TrashService {
 
 	reg("users", "Usuarios", &models.User{}, func(db *gorm.DB) ([]TrashItem, error) {
 		var rows []models.User
-		if err := db.Unscoped().Where("deleted_at IS NOT NULL").Order("deleted_at DESC").Find(&rows).Error; err != nil {
+		// Los anonimizados siguen con deleted_at (la fila existe para que el
+		// historial tenga a quién apuntar), pero ya no hay nada que restaurar
+		// ni que purgar: no vuelven a la lista.
+		if err := db.Unscoped().Where("deleted_at IS NOT NULL AND purged_at IS NULL").Order("deleted_at DESC").Find(&rows).Error; err != nil {
 			return nil, err
 		}
 		out := make([]TrashItem, 0, len(rows))
@@ -215,10 +221,47 @@ func (s *trashService) Restore(typeKey string, id uint) error {
 	return s.db.Unscoped().Model(t.model).Where("id = ?", id).Update("deleted_at", nil).Error
 }
 
-func (s *trashService) Purge(typeKey string, id uint) error {
+func (s *trashService) Purge(typeKey string, id uint) (PurgeOutcome, error) {
 	t, ok := s.registry[typeKey]
 	if !ok {
-		return errors.New("tipo de papelera inválido: " + typeKey)
+		return "", errors.New("tipo de papelera inválido: " + typeKey)
 	}
-	return s.db.Unscoped().Delete(t.model, id).Error
+	// Solo se purga lo que está en la Papelera: el id de algo vivo no vale
+	// aunque exista. Es la diferencia entre "vaciar la papelera" y "borrar".
+	// Y lo que ya no existe cuenta como hecho: al vaciar en lote, purgar un
+	// tablero arrastra sus tareas, y cuando el lote llega a esas tareas ya no
+	// están. Decir "falló" ahí sería mentir sobre algo que salió bien.
+	var vivas, borradas int64
+	if err := s.db.Unscoped().Model(t.model).Where("id = ? AND deleted_at IS NULL", id).Count(&vivas).Error; err != nil {
+		return "", err
+	}
+	if vivas > 0 {
+		return "", errors.New("no está en la papelera")
+	}
+	if err := s.db.Unscoped().Model(t.model).Where("id = ? AND deleted_at IS NOT NULL", id).Count(&borradas).Error; err != nil {
+		return "", err
+	}
+	if borradas == 0 {
+		return PurgeDeleted, nil // ya se fue (por la cascada de otro elemento del lote)
+	}
+
+	outcome := PurgeDeleted
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		switch typeKey {
+		case "tasks":
+			return purgeTask(tx, id)
+		case "boards":
+			return purgeBoard(tx, id)
+		case "users":
+			o, err := purgeUser(tx, id)
+			outcome = o
+			return err
+		default:
+			return tx.Unscoped().Delete(t.model, id).Error
+		}
+	})
+	if err != nil {
+		return "", err
+	}
+	return outcome, nil
 }
