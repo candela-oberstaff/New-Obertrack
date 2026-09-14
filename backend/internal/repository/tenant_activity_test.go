@@ -28,6 +28,13 @@ func TestTenantActivityRow_EspejaTenantActivity(t *testing.T) {
 	activity := reflect.TypeOf(TenantActivity{})
 	for i := 0; i < activity.NumField(); i++ {
 		f := activity.Field(i)
+		// gorm:"-" es la marca de "no es columna": se rellena DESPUÉS de leer
+		// (los adjuntos de Reclutamiento salen de otra tabla, no de la unión).
+		// Esos no tienen que estar en la fila, y exigirlo obligaría a meter en
+		// el SQL columnas que la unión no produce.
+		if f.Tag.Get("gorm") == "-" {
+			continue
+		}
 		got, ok := campos[f.Name]
 		if !ok {
 			t.Errorf("TenantActivity.%s no existe en tenantActivityRow: "+
