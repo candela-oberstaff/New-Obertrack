@@ -66,20 +66,26 @@ type Ticket struct {
 	Description string `gorm:"type:text" json:"description,omitempty"` // Internal alert body (reason/dates)
 
 	// Denormalized fields for internal work-hour-rejection alerts (follow-up + report).
-	ProfessionalEmail string         `gorm:"size:255" json:"professional_email,omitempty"`
-	ProfessionalPhone string         `gorm:"size:50" json:"professional_phone,omitempty"`
-	CompanyName       string         `gorm:"size:255" json:"company_name,omitempty"` // Professional's employer company
-	RejectedByName    string         `gorm:"size:255" json:"rejected_by_name,omitempty"`
-	Reason            string         `gorm:"type:text" json:"reason,omitempty"`
-	WorkDates         string         `gorm:"size:255" json:"work_dates,omitempty"`
-	Channel           string         `gorm:"-" json:"channel,omitempty"` // Zoho channel: WhatsApp, Email, etc.
-	Stage             TicketStage    `gorm:"type:varchar(50);default:'new';index" json:"stage"`
-	Status            string         `gorm:"size:50;default:'open'" json:"status"` // open/closed
-	AssignedTo        *uint          `gorm:"index" json:"assigned_to,omitempty"`
-	Assignee          *User          `gorm:"foreignKey:AssignedTo" json:"assignee,omitempty"`
-	CreatedAt         time.Time      `json:"created_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
-	DeletedAt         gorm.DeletedAt `gorm:"index" json:"-"`
+	ProfessionalEmail string      `gorm:"size:255" json:"professional_email,omitempty"`
+	ProfessionalPhone string      `gorm:"size:50" json:"professional_phone,omitempty"`
+	CompanyName       string      `gorm:"size:255" json:"company_name,omitempty"` // Professional's employer company
+	RejectedByName    string      `gorm:"size:255" json:"rejected_by_name,omitempty"`
+	Reason            string      `gorm:"type:text" json:"reason,omitempty"`
+	WorkDates         string      `gorm:"size:255" json:"work_dates,omitempty"`
+	Channel           string      `gorm:"-" json:"channel,omitempty"` // Zoho channel: WhatsApp, Email, etc.
+	Stage             TicketStage `gorm:"type:varchar(50);default:'new';index" json:"stage"`
+	Status            string      `gorm:"size:50;default:'open'" json:"status"` // open/closed
+	// ExternalID es el id con el que otro sistema conoce este ticket (hoy, el
+	// chat de WhatsApp que Obersuite transfiere). Es lo que hace idempotente su
+	// POST. Misma advertencia que en TicketMessage: SIN etiqueta `index`, porque
+	// el índice es un ÚNICO PARCIAL creado por migración
+	// (idx_tickets_external_id) y AutoMigrate lo reemplazaría por uno normal.
+	ExternalID string         `gorm:"size:255" json:"external_id,omitempty"`
+	AssignedTo *uint          `gorm:"index" json:"assigned_to,omitempty"`
+	Assignee   *User          `gorm:"foreignKey:AssignedTo" json:"assignee,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Messages  []TicketMessage `json:"messages,omitempty"`
 	ZohoID    string          `gorm:"-" json:"zoho_id"`

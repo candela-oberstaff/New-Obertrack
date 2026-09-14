@@ -2740,6 +2740,24 @@ func Run(db *gorm.DB) error {
 				return tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS purged_at`).Error
 			},
 		},
+		{
+			// Obersuite transfiere chats de WhatsApp como tickets. external_id es
+			// lo que hace idempotente su POST; único parcial, como en mensajes.
+			ID: "202609141600_tickets_external_id",
+			Migrate: func(tx *gorm.DB) error {
+				if err := tx.Exec(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS external_id VARCHAR(255) NOT NULL DEFAULT ''`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_external_id
+					ON tickets (external_id)
+					WHERE external_id <> '' AND deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`DROP INDEX IF EXISTS idx_tickets_external_id; ALTER TABLE tickets DROP COLUMN IF EXISTS external_id`).Error
+			},
+		},
 		// Future migrations go here
 	})
 
