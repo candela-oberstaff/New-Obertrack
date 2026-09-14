@@ -456,7 +456,41 @@ type ObersuiteCompanyRecord struct {
 // normalización de teléfonos. Ver docs/integracion-obersuite.md.
 func (r *userRepository) GetObersuiteCompanies(updatedSince *time.Time) ([]ObersuiteCompanyRecord, error) {
 	var records []ObersuiteCompanyRecord
+	// Una pasada por tabla, agrupada por empresa, y después el JOIN. Antes cada
+	// contador era una subconsulta POR FILA, y la de profesionales recorría
+	// todos los usuarios y barría los empleos una vez por empresa: con 143
+	// empresas, cuadrático, 2,4 s de servidor medidos desde Obersuite. Los
+	// números son los mismos que antes: se cotejaron empresa
+	// por empresa contra la base al cambiarlo. Solo cambia cuántas veces se calculan.
 	err := r.db.Raw(`
+		WITH profesionales AS (
+			-- MISMO criterio que GetObersuiteProfessionals, y tiene que
+			-- seguir siéndolo: este número y aquella lista se pintan juntos
+			-- en la ficha de Obersuite. Ya se separaron una vez —la lista
+			-- filtraba solo por empresa principal— y devolvía menos gente que
+			-- el contador de al lado, sin que fallara nada.
+			-- El UNION quita duplicados (empresa, persona): es el DISTINCT.
+			SELECT company_id, COUNT(*) AS n FROM (
+				SELECT p.empleador_id AS company_id, p.id AS user_id
+				  FROM users p
+				 WHERE p.user_type = 'profesional' AND p.deleted_at IS NULL AND p.empleador_id IS NOT NULL
+				UNION
+				SELECT e.company_id, e.user_id
+				  FROM employments e
+				  JOIN users p ON p.id = e.user_id AND p.user_type = 'profesional' AND p.deleted_at IS NULL
+				 WHERE e.status = 'active' AND e.deleted_at IS NULL
+			) x GROUP BY company_id
+		),
+		tableros AS (
+			SELECT tenant_id, COUNT(*) AS n FROM boards WHERE deleted_at IS NULL GROUP BY tenant_id
+		),
+		tareas AS (
+			SELECT tenant_id, COUNT(*) AS n FROM tasks WHERE deleted_at IS NULL GROUP BY tenant_id
+		),
+		contacto AS (
+			-- Última vez que NOSOTROS contactamos con la empresa.
+			SELECT company_id, MAX(created_at) AS at FROM company_events WHERE type = 'contact' GROUP BY company_id
+		)
 		SELECT
 			u.id,
 			COALESCE(NULLIF(u.company_name, ''), u.name) as name,
@@ -465,27 +499,23 @@ func (r *userRepository) GetObersuiteCompanies(updatedSince *time.Time) ([]Obers
 			u.email as responsible_email,
 			COALESCE(u.industry, '') as industry,
 			COALESCE(u.assigned_cs_id, 0) as assigned_cs_id,
-			COALESCE((SELECT cs.name FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_name,
-			COALESCE((SELECT cs.email FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_email,
+			COALESCE(cs.name, '') as assigned_cs_name,
+			COALESCE(cs.email, '') as assigned_cs_email,
 			COALESCE(u.country, '') as country,
 			COALESCE(u.state, '') as state,
 			COALESCE(u.city, '') as city,
 			COALESCE(u.address, '') as address,
 			u.updated_at,
-			-- MISMO criterio que GetObersuiteProfessionals, y tiene que
-			-- seguir siéndolo: este número y aquella lista se pintan juntos
-			-- en la ficha de Obersuite. Ya se separaron una vez —la lista
-			-- filtraba solo por empresa principal— y devolvía menos gente que
-			-- el contador de al lado, sin que fallara nada.
-			(SELECT COUNT(DISTINCT p.id) FROM users p
-			 WHERE (p.empleador_id = u.id OR EXISTS (SELECT 1 FROM employments e WHERE e.user_id = p.id AND e.company_id = u.id AND e.status = 'active' AND e.deleted_at IS NULL))
-			   AND p.user_type = 'profesional' AND p.deleted_at IS NULL) as professionals_count,
-			(SELECT COUNT(*) FROM boards b WHERE b.tenant_id = u.id AND b.deleted_at IS NULL) as boards_count,
-			(SELECT COUNT(*) FROM tasks t WHERE t.tenant_id = u.id AND t.deleted_at IS NULL) as tasks_count,
-			-- Última vez que NOSOTROS contactamos con la empresa.
-			(SELECT MAX(ce.created_at) FROM company_events ce
-				WHERE ce.company_id = u.id AND ce.type = 'contact') as last_contact_at
+			COALESCE(profesionales.n, 0) as professionals_count,
+			COALESCE(tableros.n, 0) as boards_count,
+			COALESCE(tareas.n, 0) as tasks_count,
+			contacto.at as last_contact_at
 		FROM users u
+		LEFT JOIN users cs ON cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL
+		LEFT JOIN profesionales ON profesionales.company_id = u.id
+		LEFT JOIN tableros ON tableros.tenant_id = u.id
+		LEFT JOIN tareas ON tareas.tenant_id = u.id
+		LEFT JOIN contacto ON contacto.company_id = u.id
 		WHERE u.user_type = 'empleador' AND u.deleted_at IS NULL
 		  AND (?::timestamptz IS NULL OR u.updated_at > ?::timestamptz)
 		ORDER BY LOWER(COALESCE(NULLIF(u.company_name, ''), u.name)) ASC
