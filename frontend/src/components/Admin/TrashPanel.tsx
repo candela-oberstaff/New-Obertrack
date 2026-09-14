@@ -103,11 +103,22 @@ export function TrashPanel() {
     try {
       const res = await adminService.purgeTrash(purgeTargets)
       const n = res?.purged ?? 0
-      const f = res?.failed?.length ?? 0
-      setMsg({
-        tone: f ? 'info' : 'success',
-        text: `Eliminaste ${n} ${n === 1 ? 'elemento' : 'elementos'} para siempre${f ? ` (${f} no se pudieron, quizás tienen datos vinculados)` : ''}.`,
-      })
+      const anon = res?.anonymized ?? 0
+      const failed: { type: string; id: number; error: string }[] = res?.failed ?? []
+      // Se dice lo que pasó de verdad. Antes esto decía "quizás tienen datos
+      // vinculados" y escondía el motivo real, que el servidor sí mandaba: 44
+      // de 47 fallaban por claves foráneas y nadie podía saber por qué.
+      const partes: string[] = []
+      const borrados = n - anon
+      if (borrados > 0) partes.push(`${borrados} ${borrados === 1 ? 'elemento eliminado' : 'elementos eliminados'} para siempre`)
+      if (anon > 0) {
+        partes.push(`${anon} ${anon === 1 ? 'usuario anonimizado' : 'usuarios anonimizados'}: tenían historial (horas, tareas o mensajes) que es de la empresa y se conserva a nombre de "Usuario eliminado"; sus datos personales se borraron y su correo queda libre`)
+      }
+      if (failed.length > 0) {
+        const motivos = failed.slice(0, 3).map(f => `${f.type} #${f.id}: ${f.error}`).join(' · ')
+        partes.push(`${failed.length} no se ${failed.length === 1 ? 'pudo' : 'pudieron'} (${motivos}${failed.length > 3 ? ' · …' : ''})`)
+      }
+      setMsg({ tone: failed.length ? 'info' : 'success', text: partes.join('. ') + '.' })
       setPurgeTargets(null)
       qc.invalidateQueries()
       await load()

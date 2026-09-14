@@ -53,15 +53,20 @@ type User struct {
 	// destinatarios de campañas, y cada punto había que recordarlo por separado.
 	// Con la bandera se filtra una vez y no hay lista de la que pueda volver a
 	// aparecer.
-	IsSystem    bool   `gorm:"not null;default:false;index" json:"is_system"`
-	IsActive      bool   `gorm:"default:true" json:"is_active"`
-	IsReplacement bool   `gorm:"not null;default:false;index" json:"is_replacement"`
-	EmpleadorID   *uint  `gorm:"index" json:"empleador_id,omitempty"`
-	Empleador   *User  `gorm:"foreignKey:EmpleadorID" json:"-"`
-	AssignedCSID *uint `gorm:"index" json:"assigned_cs_id,omitempty"`
-	AssignedCS   *User `gorm:"foreignKey:AssignedCSID" json:"-"`
-	CompanyName string `gorm:"size:255" json:"company_name"`
-	Industry    string `gorm:"size:255" json:"industry"`
+	IsSystem      bool  `gorm:"not null;default:false;index" json:"is_system"`
+	IsActive      bool  `gorm:"default:true" json:"is_active"`
+	IsReplacement bool  `gorm:"not null;default:false;index" json:"is_replacement"`
+	EmpleadorID   *uint `gorm:"index" json:"empleador_id,omitempty"`
+	Empleador     *User `gorm:"foreignKey:EmpleadorID" json:"-"`
+	AssignedCSID  *uint `gorm:"index" json:"assigned_cs_id,omitempty"`
+	// PurgedAt marca que la cuenta se "eliminó para siempre" desde la Papelera
+	// pero la fila se conservó anonimizada, porque tenía historial (horas,
+	// tareas, mensajes) que no es suyo sino de la empresa. Sin datos
+	// personales, con el correo liberado, y fuera de la Papelera.
+	PurgedAt    *time.Time `json:"-"`
+	AssignedCS  *User      `gorm:"foreignKey:AssignedCSID" json:"-"`
+	CompanyName string     `gorm:"size:255" json:"company_name"`
+	Industry    string     `gorm:"size:255" json:"industry"`
 	// ClientSince es la fecha de alta REAL de la empresa como cliente. Solo
 	// aplica a las cuentas empleador. Existe aparte de created_at porque ese es
 	// cuándo se creó el registro en Obertrack, que no coincide con el alta
