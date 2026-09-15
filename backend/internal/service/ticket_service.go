@@ -506,33 +506,13 @@ func (s *ticketService) IngestEmail(fromEmail, fromName, subject, textBody, mess
 		if title == "" {
 			title = "Email from " + fromEmail
 		}
-		contact, err := s.repo.GetContactByPhone(phone)
-if err != nil {
-    contact = &models.Contact{Phone: phone, Name: name}
-    if cerr := s.repo.CreateContact(contact); cerr != nil {
-        return nil, cerr
-    }
-} else if contact.Name == "" || strings.HasPrefix(contact.Name, "WA User ") {
-    contact.Name = name
-    _ = s.repo.SaveContact(contact)
-}
-
-var contactID *uint
-if contact != nil {
-    contactID = &contact.ID
-}
-
-ticket := &models.Ticket{
-    Origin:            models.OriginObersuite,
-    ExternalID:        externalID,
-    ContactID:         contactID,       // ← esto es lo que faltaba
-    Title:             "WA transferido: " + name,
-    Description:       b.String(),
-    Reason:            reason,
-    ProfessionalPhone: phone,
-    Stage:             models.StageNew,
-    Status:            "open",
-}
+		ticket = &models.Ticket{
+			Origin:    string(models.ChannelEmail),
+			ContactID: &contact.ID,
+			Title:     title,
+			Stage:     models.StageNew,
+			Status:    "open",
+		}
 		if err := s.repo.CreateTicket(ticket); err != nil {
 			return err
 		}

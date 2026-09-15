@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, Mail, Phone, Building2, User as UserIcon, UserX, Calendar, FileText, Send, CheckCircle2, ArrowRightLeft, History, GraduationCap, ExternalLink } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Mail, Phone, Building2, User as UserIcon, UserX, Calendar, FileText, Send, CheckCircle2, ArrowRightLeft, History, GraduationCap, ExternalLink, MessageSquare } from 'lucide-react'
 import { inductionService } from '../../services/induction.service'
 import { Ticket, TicketTransfer, SupportAgent, ticketService } from '../../services/ticket.service'
 import TransferTicketModal from './components/TransferTicketModal'
@@ -18,6 +18,159 @@ const STAGE_LABEL: Record<string, string> = { new: 'Nuevo', in_progress: 'En seg
 // El título lleva el tipo de aviso delante; para el nombre sobra.
 function professionalName(t: Ticket): string {
   return t.title?.replace(/^(Rechazo de horas|Alta desde Obersuite|Inducción no aprobada):\s*/i, '') || 'Profesional'
+}
+
+// ─── WaChatTranscript ────────────────────────────────────────────────────────
+// Renderiza el historial de chat embebido en description de un ticket de
+// transferencia WA. El texto tiene la forma:
+//
+//   "Chat de WhatsApp transferido…\n\nMotivo: …\n\nHistorial del chat:\n<líneas>"
+//
+// Se intenta extraer solo la parte del historial; si no se encuentra la
+// separación conocida se muestra la descripción completa.
+function WaChatTranscript({ description }: { description: string }) {
+  const HISTORIAL_MARKER = 'Historial del chat:'
+  const MOTIVO_MARKER = 'Motivo:'
+
+  const historialIdx = description.indexOf(HISTORIAL_MARKER)
+  const motivoIdx = description.indexOf(MOTIVO_MARKER)
+
+  const preamble = description.slice(0, motivoIdx > 0 ? motivoIdx : (historialIdx > 0 ? historialIdx : description.length)).trim()
+  const motivo = motivoIdx > 0
+    ? description.slice(motivoIdx + MOTIVO_MARKER.length, historialIdx > 0 ? historialIdx : undefined).trim()
+    : ''
+  const historial = historialIdx > 0
+    ? description.slice(historialIdx + HISTORIAL_MARKER.length).trim()
+    : ''
+
+  // Cada línea del historial tiene formato "[HH:MM] Nombre: mensaje" o similar.
+  // Se intenta colorear por sentido: líneas del candidato vs. del manager.
+  // Si no se puede parsear, se muestra como texto plano.
+  const lines = historial ? historial.split('\n').filter(l => l.trim()) : []
+
+  // Heurística simple: la primera palabra que aparece como "Nombre:" distinta
+  // al manager se asume contacto. No es perfecta pero mejora la lectura.
+  const agentNames = new Set<string>()
+  const contactNames = new Set<string>()
+  // El preamble dice "transferido por X": ese es el manager/agente.
+  const byMatch = preamble.match(/transferido (?:desde Obersuite )?por ([^.]+)\./i)
+  if (byMatch) {
+    byMatch[1].trim().split(/\s+/).slice(0, 2).forEach(w => agentNames.add(w.toLowerCase()))
+  }
+
+  function classifyLine(line: string): 'agent' | 'contact' | 'system' {
+    const colonIdx = line.indexOf(':')
+    if (colonIdx < 0 || colonIdx > 40) return 'system'
+    const speaker = line.slice(0, colonIdx).replace(/^\[\d{1,2}:\d{2}(?::\d{2})?\]\s*/, '').trim().toLowerCase()
+    if (!speaker) return 'system'
+    for (const n of agentNames) { if (speaker.includes(n)) return 'agent' }
+    for (const n of contactNames) { if (speaker.includes(n)) return 'contact' }
+    // Primer hablante desconocido → contacto; segundo → agente (heurística).
+    if (contactNames.size === 0) { contactNames.add(speaker); return 'contact' }
+    agentNames.add(speaker)
+    return 'agent'
+  }
+
+  return (
+    <div style={{ borderBottom: '1px solid var(--glass-border, #e2e8f0)', padding: '1.25rem' }}>
+      <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        <MessageSquare size={15} style={{ color: '#25d366' }} />
+        Historial del chat transferido
+      </h3>
+
+      {/* Preamble: quién transfirió y candidato */}
+      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem', lineHeight: 1.4 }}>{preamble}</p>
+
+      {/* Motivo */}
+      {motivo && (
+        <div style={{
+          background: 'rgba(245,158,11,0.08)',
+          border: '1px solid rgba(245,158,11,0.2)',
+          borderRadius: '8px',
+          padding: '0.5rem 0.75rem',
+          fontSize: '0.85rem',
+          color: '#92400e',
+          marginBottom: '0.75rem',
+        }}>
+          <strong>Motivo:</strong> {motivo}
+        </div>
+      )}
+
+      {/* Transcripción */}
+      {lines.length > 0 ? (
+        <div style={{
+          background: 'var(--bg-secondary, #f8fafc)',
+          border: '1px solid var(--glass-border, #e2e8f0)',
+          borderRadius: '10px',
+          padding: '0.75rem',
+          maxHeight: '420px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.3rem',
+        }}>
+          {lines.map((line, i) => {
+            const type = classifyLine(line)
+            const colonIdx = line.indexOf(':')
+            const hasPrefix = colonIdx > 0 && colonIdx < 40
+            const prefix = hasPrefix ? line.slice(0, colonIdx + 1) : ''
+            const body = hasPrefix ? line.slice(colonIdx + 1).trim() : line
+
+            const isAgent = type === 'agent'
+            const isSystem = type === 'system'
+
+            return (
+              <div key={i} style={{
+                display: 'flex',
+                justifyContent: isSystem ? 'center' : isAgent ? 'flex-end' : 'flex-start',
+              }}>
+                <div style={{
+                  maxWidth: '80%',
+                  background: isSystem
+                    ? 'transparent'
+                    : isAgent
+                      ? 'rgba(204,51,204,0.08)'
+                      : '#fff',
+                  border: isSystem ? 'none' : '1px solid var(--glass-border, #e2e8f0)',
+                  borderRadius: '10px',
+                  padding: isSystem ? '0.1rem 0.4rem' : '0.4rem 0.65rem',
+                  fontSize: '0.83rem',
+                  color: isSystem ? 'var(--gray-400)' : 'var(--text-primary)',
+                  fontStyle: isSystem ? 'italic' : 'normal',
+                  lineHeight: 1.45,
+                  wordBreak: 'break-word',
+                }}>
+                  {prefix && !isSystem && (
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: isAgent ? 'var(--primary)' : '#059669', marginBottom: '1px' }}>
+                      {prefix}
+                    </div>
+                  )}
+                  {body}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        // Sin marcador de historial: mostrar la descripción como texto plano
+        <pre style={{
+          background: 'var(--bg-secondary, #f8fafc)',
+          border: '1px solid var(--glass-border, #e2e8f0)',
+          borderRadius: '10px',
+          padding: '0.75rem',
+          fontSize: '0.83rem',
+          color: 'var(--text-primary)',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          maxHeight: '360px',
+          overflowY: 'auto',
+          margin: 0,
+        }}>
+          {description}
+        </pre>
+      )}
+    </div>
+  )
 }
 
 export default function InternalTicketDetail() {
@@ -39,6 +192,9 @@ export default function InternalTicketDetail() {
   // Un alta de Obersuite se acompaña, no se responde: por eso tiene su propio
   // atajo para reenviar la capacitación.
   const isObersuite = ticket?.origin === 'obersuite'
+  // Las transferencias de WA desde Obersuite traen el historial del chat en
+  // description. Se identifican por el título; las altas no tienen transcripción.
+  const isWaTransfer = isObersuite && (ticket?.title ?? '').startsWith('WA transferido:')
 
   // Mismo comportamiento que el botón de la ficha del profesional: el enlace
   // viejo se invalida siempre, porque reenviar el mismo token no resuelve nada
@@ -222,8 +378,13 @@ export default function InternalTicketDetail() {
           </div>
         </div>
 
-        {/* Main: notes */}
+        {/* Main: chat transcript + notes */}
         <div className={styles.detailMain}>
+          {/* Historial del chat transferido: solo en transferencias WA desde Obersuite */}
+          {isWaTransfer && ticket.description && (
+            <WaChatTranscript description={ticket.description} />
+          )}
+
           <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0 }}>Notas de seguimiento</h3>
             {notes.length === 0 ? (
