@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Briefcase, Paperclip, Users, ChevronDown, ChevronUp, AlertCircle, Search } from 'lucide-react'
+import {
+  Briefcase,
+  Paperclip,
+  AlertCircle,
+  Search,
+  Check,
+  FileText,
+  Clock,
+  X,
+  History,
+  Calendar,
+} from 'lucide-react'
 import api from '../../services/api'
-import { ScrollableTabs } from '../../components/ui'
-import styles from './Tenants.module.css'
+import styles from './TenantSubscriptions.module.css'
 
 // Pestaña «Suscripciones»: los procesos de reclutamiento de la empresa, leídos
-// de Obersuite. Es el espejo de SU pestaña del mismo nombre —cabecera con
-// contador, Activas/Archivadas, buscador, tarjetas con pipeline— de solo
-// lectura aquí, a propósito: vincular una vacante o mover una fase se hace
-// allí. Si algún día Customer Success necesita hacerlo desde este lado, es un
-// endpoint de escritura de ellos por definir; no se asume.
-//
-// El bloque nunca rompe la ficha: si Obersuite no está configurado o no
-// responde, dice por qué y la pantalla sigue.
+// de Obersuite. Reflejo visual del pipeline de Obersuite adaptado a la estética
+// de la plataforma. Solo lectura: sin botones de acción ni mutaciones.
 
 type Stage = { name: string; index: number; color?: string }
 type Attachment = { id: string; name: string; size?: number; mime?: string }
@@ -35,19 +39,28 @@ type Payload = {
   available: boolean
   reason?: 'not_configured' | 'unreachable'
   data?: { subscriptions: Subscription[]; stages: Stage[]; counts?: { active?: number; archived?: number } }
-  // Forma del 404 (empresa desconocida para Obersuite): lista vacía en la raíz.
   subscriptions?: Subscription[]
   stages?: Stage[]
-}
-
-const STAGE_COLORS: Record<string, string> = {
-  blue: '#2563eb', purple: '#7c3aed', amber: '#b45309', orange: '#c2410c', green: '#059669', red: '#dc2626', gray: '#64748b',
 }
 
 function fmtDate(s?: string) {
   if (!s) return ''
   const d = new Date(s)
-  return isNaN(d.getTime()) ? s : d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+  return isNaN(d.getTime()) ? s : d.toLocaleDateString('es-ES', { day: '2-digit', month: 'numeric', year: 'numeric' })
+}
+
+function fmtDateTime(s?: string) {
+  if (!s) return ''
+  const d = new Date(s)
+  return isNaN(d.getTime())
+    ? s
+    : d.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
 }
 
 function fmtSize(n?: number) {
@@ -62,23 +75,33 @@ export function TenantSubscriptions({ tenantId, companyName }: { tenantId: numbe
   const [error, setError] = useState(false)
   const [view, setView] = useState<'activas' | 'archivadas'>('activas')
   const [query, setQuery] = useState('')
-  const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [modalSub, setModalSub] = useState<Subscription | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    setPayload(null); setError(false)
+    setPayload(null)
+    setError(false)
     api.get<Payload>(`/admin/tenants/${tenantId}/subscriptions`)
       .then((res: { data: Payload }) => { if (!cancelled) setPayload(res.data) })
       .catch(() => { if (!cancelled) setError(true) })
     return () => { cancelled = true }
   }, [tenantId])
 
+  // Cerrar modal con tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setModalSub(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   const all: Subscription[] = payload?.data?.subscriptions ?? payload?.subscriptions ?? []
   const stages: Stage[] = payload?.data?.stages ?? payload?.stages ?? []
   const activas = all.filter(s => s.status === 'active')
   const archivadas = all.filter(s => s.status !== 'active')
 
-  // Buscar por vacante o por fase, como en la pantalla de Obersuite.
+  // Buscar por vacante o por fase
   const visibles = useMemo(() => {
     const base = view === 'activas' ? activas : archivadas
     const q = query.trim().toLowerCase()
@@ -94,34 +117,45 @@ export function TenantSubscriptions({ tenantId, companyName }: { tenantId: numbe
     `/api/admin/tenants/${tenantId}/subscriptions/${encodeURIComponent(sid)}/attachments/${encodeURIComponent(aid)}`
 
   return (
-    <div>
-      {/* Cabecera: qué es esto y de dónde viene. Sin botón de vincular: eso
-          se hace en Obersuite. */}
-      <div className={styles.sidebarCard} style={{ margin: '0 0 16px', display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap' }}>
-        <div style={{ width: 40, height: 40, borderRadius: 10, background: '#fef3c7', color: '#b45309', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-          <Briefcase size={20} />
+    <div className={styles.container}>
+      {/* Banner de cabecera informativo */}
+      <div className={styles.bannerCard}>
+        <div className={styles.bannerIcon}>
+          <Briefcase size={22} />
         </div>
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <h2 className={styles.sidebarCardTitle} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            Suscripciones y procesos de reclutamiento
+        <div className={styles.bannerInfo}>
+          <h2 className={styles.bannerTitle}>
+            SUSCRIPCIONES Y PROCESOS DE RECLUTAMIENTO
+            <span className={styles.badgeOrigin}>· DESDE OBERSUITE</span>
             {payload?.available && (
-              <span className={styles.pill} style={{ background: '#fef3c7', color: '#b45309' }}>
+              <span className={styles.activeCountBadge}>
                 {activas.length} {activas.length === 1 ? 'activa' : 'activas'}
               </span>
             )}
-            <span style={{ fontWeight: 500, color: '#94a3b8', fontSize: '0.78rem' }}>· desde Obersuite</span>
           </h2>
-          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.88rem' }}>
+          <p className={styles.bannerSubtitle}>
             Vacantes vinculadas a {companyName || 'esta empresa'} con su seguimiento de fases en Obersuite. Se leen aquí; se gestionan allí.
           </p>
         </div>
       </div>
 
-      {error && <div className={styles.empty}><AlertCircle size={36} /><p>No se pudieron cargar los procesos.</p></div>}
-      {!error && payload === null && <div className={styles.empty}><p>Cargando…</p></div>}
+      {error && (
+        <div className={styles.emptyState}>
+          <AlertCircle size={40} color="#ef4444" />
+          <p>No se pudieron cargar los procesos de reclutamiento.</p>
+        </div>
+      )}
+
+      {!error && payload === null && (
+        <div className={styles.emptyState}>
+          <Clock size={36} color="#94a3b8" />
+          <p>Cargando información desde Obersuite…</p>
+        </div>
+      )}
+
       {payload && !payload.available && (
-        <div className={styles.empty}>
-          <AlertCircle size={36} />
+        <div className={styles.emptyState}>
+          <AlertCircle size={40} color="#f59e0b" />
           <p>
             {payload.reason === 'not_configured'
               ? 'La conexión con Obersuite no está configurada en este entorno.'
@@ -132,20 +166,30 @@ export function TenantSubscriptions({ tenantId, companyName }: { tenantId: numbe
 
       {payload?.available && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-            <ScrollableTabs
-              activeTab={view}
-              onChange={v => setView(v as 'activas' | 'archivadas')}
-              ariaLabel="Estado de los procesos"
-              tabs={[
-                { id: 'activas', label: 'Activas', count: activas.length },
-                { id: 'archivadas', label: 'Archivadas', count: archivadas.length },
-              ]}
-            />
-            <div className={styles.searchBox} style={{ margin: 0, marginLeft: 'auto' }}>
-              <Search size={18} />
+          {/* Barra de Filtros: Pestañas de estado y Buscador */}
+          <div className={styles.controlsBar}>
+            <div className={styles.tabPillGroup} role="tablist" aria-label="Estado de las suscripciones">
+              <button
+                type="button"
+                className={`${styles.tabPill} ${view === 'activas' ? styles.tabPillActive : ''}`}
+                onClick={() => setView('activas')}
+              >
+                Activas <span className={styles.tabCount}>({activas.length})</span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.tabPill} ${view === 'archivadas' ? styles.tabPillActive : ''}`}
+                onClick={() => setView('archivadas')}
+              >
+                Archivadas <span className={styles.tabCount}>({archivadas.length})</span>
+              </button>
+            </div>
+
+            <div className={styles.searchWrapper}>
+              <Search size={16} className={styles.searchIcon} />
               <input
                 type="search"
+                className={styles.searchInput}
                 placeholder="Buscar vacante o fase…"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
@@ -154,9 +198,10 @@ export function TenantSubscriptions({ tenantId, companyName }: { tenantId: numbe
             </div>
           </div>
 
+          {/* Estado sin resultados */}
           {visibles.length === 0 && (
-            <div className={styles.empty}>
-              <Briefcase size={40} />
+            <div className={styles.emptyState}>
+              <Briefcase size={42} color="#cbd5e1" />
               <p>
                 {query.trim()
                   ? 'Ningún proceso coincide con la búsqueda.'
@@ -165,125 +210,326 @@ export function TenantSubscriptions({ tenantId, companyName }: { tenantId: numbe
                     : 'No hay procesos archivados.'}
               </p>
               {!query.trim() && view === 'activas' && (
-                <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Las vacantes se vinculan desde Obersuite; aquí aparecen en cuanto existan.</span>
+                <span>Las vacantes se vinculan desde Obersuite; aquí aparecen en cuanto existan.</span>
               )}
             </div>
           )}
 
+          {/* Listado de Tarjetas de Vacantes */}
           {visibles.map(s => {
-            const isOpen = !!open[s.external_id]
-            const stageColor = STAGE_COLORS[s.stage?.color || ''] || '#7c3aed'
+            const currentStageIndex = s.stage?.index ?? 0
+            const totalStages = stages.length || 5
+            const currentStepNum = currentStageIndex + 1
+
+            // KPIs
+            const totalCands = s.candidates?.total ?? 0
+            const interviewingCands = s.candidates?.interviewing ?? s.candidates?.in_progress ?? 0
+            const hiredCands = s.candidates?.hired ?? 0
+
+            // Documentos
+            const attachCount = s.attachments?.length ?? 0
+
+            // Metadata autor / fecha
+            const author = s.recruiter?.name || s.created_by
+            const dateStr = s.created_at || s.updated_at
+
             return (
-              <div key={s.external_id} className={styles.timelineCard} style={{ marginBottom: 12, cursor: 'default' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <strong style={{ fontSize: '0.98rem' }}>{s.position?.title || 'Vacante sin título'}</strong>
-                  <span
-                    className={styles.pill}
-                    style={s.status === 'active' ? { background: '#dcfce7', color: '#166534' } : { background: '#f1f5f9', color: '#475569' }}
-                  >
-                    {s.status === 'active' ? 'Activa' : s.status === 'archived' ? 'Archivada' : s.status}
-                  </span>
-                  {s.position?.type && (
-                    <span style={{ color: '#64748b', fontSize: '0.8rem' }}>
-                      {s.position.type}{s.position.location ? ` · ${s.position.location}` : ''}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    className={styles.iconBtn}
-                    style={{ marginLeft: 'auto' }}
-                    onClick={() => setOpen(o => ({ ...o, [s.external_id]: !isOpen }))}
-                    title={isOpen ? 'Ocultar detalle' : 'Ver historial y adjuntos'}
-                    aria-label={isOpen ? 'Ocultar detalle' : 'Ver historial y adjuntos'}
-                  >
-                    {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </button>
+              <div key={s.external_id} className={styles.vacancyCard}>
+                {/* 1. Fila Superior: Título, Badges y Métricas */}
+                <div className={styles.topRow}>
+                  <div className={styles.titleSection}>
+                    <div className={styles.titleWithBadges}>
+                      <h3 className={styles.vacancyTitle}>
+                        {s.position?.title || 'Vacante sin título'}
+                      </h3>
+
+                      <span
+                        className={`${styles.statusBadge} ${s.status === 'active' ? styles.statusBadgeActive : styles.statusBadgeArchived
+                          }`}
+                      >
+                        {s.status === 'active' ? 'OPEN' : 'ARCHIVED'}
+                      </span>
+
+                      {s.position?.type && (
+                        <span className={styles.typeBadge}>
+                          {s.position.type}
+                          {s.position.location ? ` · ${s.position.location}` : ''}
+                        </span>
+                      )}
+
+                      {attachCount > 0 && (
+                        <span className={styles.docBadge} title={`${attachCount} documento(s) adjunto(s)`}>
+                          <Paperclip size={12} /> {attachCount} {attachCount === 1 ? 'doc' : 'docs'}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className={styles.metaSubtitle}>
+                      {dateStr && <span>Vinculada el {fmtDate(dateStr)}</span>}
+                      {author && (
+                        <>
+                          <span>·</span>
+                          <span>Por <strong>{author}</strong></span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* KPIs a la derecha */}
+                  <div className={styles.kpisGroup}>
+                    <div className={`${styles.kpiBox} ${styles.kpiBoxNeutral}`}>
+                      <span className={styles.kpiNum}>{totalCands}</span>
+                      <span className={styles.kpiText}>Postulados</span>
+                    </div>
+
+                    <div className={`${styles.kpiBox} ${styles.kpiBoxPurple}`}>
+                      <span className={styles.kpiNum}>{interviewingCands}</span>
+                      <span className={styles.kpiText}>Entrevistas</span>
+                    </div>
+
+                    <div className={`${styles.kpiBox} ${styles.kpiBoxGreen}`}>
+                      <span className={styles.kpiNum}>{hiredCands}</span>
+                      <span className={styles.kpiText}>Contratados</span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* El pipeline entero con la fase actual marcada. stage.index es la
-                    posición en el catálogo que manda Obersuite, no un número nuestro. */}
+                {/* 2. Cabecera del Pipeline: Fase actual y Paso X de Y */}
+                <div className={styles.stageHeaderRow}>
+                  <div>
+                    <span className={styles.currentStageLabel}>Fase actual: </span>
+                    <span className={styles.currentStageName}>
+                      {s.stage?.name || 'En proceso'}
+                    </span>
+                  </div>
+                  <div className={styles.stepCounter}>
+                    Paso {currentStepNum} de {totalStages}
+                  </div>
+                </div>
+
+                {/* 3. Pipeline de 5 Fases */}
                 {stages.length > 0 && (
-                  <ol style={{ display: 'flex', gap: 4, listStyle: 'none', padding: 0, margin: '10px 0 6px', flexWrap: 'wrap' }}>
+                  <div className={styles.pipelineGrid}>
                     {stages.map(st => {
-                      const done = st.index < (s.stage?.index ?? -1)
-                      const current = st.index === s.stage?.index
+                      const isDone = st.index < currentStageIndex
+                      const isCurrent = st.index === currentStageIndex
+                      const isUpcoming = st.index > currentStageIndex
+                      const stepNum = st.index + 1
+
                       return (
-                        <li
+                        <div
                           key={st.index}
-                          title={st.name}
-                          style={{
-                            flex: '1 1 0', minWidth: 90, padding: '4px 8px', borderRadius: 6, fontSize: '0.74rem', textAlign: 'center',
-                            background: current ? stageColor : done ? '#e2e8f0' : '#f8fafc',
-                            color: current ? '#fff' : done ? '#334155' : '#94a3b8',
-                            fontWeight: current ? 700 : 500,
-                            border: current ? 'none' : '1px solid #e2e8f0',
-                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                          }}
+                          className={`${styles.phaseCard} ${isDone
+                            ? styles.phaseCardDone
+                            : isCurrent
+                              ? styles.phaseCardCurrent
+                              : styles.phaseCardUpcoming
+                            }`}
+                          title={`Fase ${stepNum}: ${st.name}`}
                         >
-                          {st.name}
-                        </li>
+                          <div className={styles.phaseTop}>
+                            {isDone && (
+                              <div className={styles.checkCircle}>
+                                <Check size={13} strokeWidth={3} />
+                              </div>
+                            )}
+
+                            {isCurrent && (
+                              <>
+                                <div className={styles.currentCircle}>
+                                  {stepNum}
+                                </div>
+                                <div className={styles.pulsingDot} />
+                              </>
+                            )}
+
+                            {isUpcoming && (
+                              <div className={styles.upcomingCircle}>
+                                {stepNum}
+                              </div>
+                            )}
+                          </div>
+
+                          <p className={styles.phaseName}>
+                            {st.name}
+                          </p>
+                        </div>
                       )
                     })}
-                  </ol>
-                )}
-
-                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', color: '#64748b', fontSize: '0.82rem', marginTop: 4 }}>
-                  {s.candidates && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <Users size={13} /> {s.candidates.total ?? 0} candidatos
-                      {typeof s.candidates.hired === 'number' && s.candidates.hired > 0 && ` · ${s.candidates.hired} contratados`}
-                    </span>
-                  )}
-                  {s.recruiter?.name && <span>Reclutador: <strong style={{ color: '#334155' }}>{s.recruiter.name}</strong></span>}
-                  {s.updated_at && <span>Actualizado {fmtDate(s.updated_at)}</span>}
-                </div>
-
-                {isOpen && (
-                  <div style={{ marginTop: 10, borderTop: '1px solid #e2e8f0', paddingTop: 10 }}>
-                    {s.notes && <p className={styles.noteBody} style={{ marginBottom: 10 }}>{s.notes}</p>}
-
-                    {(s.attachments?.length ?? 0) > 0 && (
-                      <div style={{ marginBottom: 10 }}>
-                        {s.attachments!.map(a => (
-                          <a
-                            key={a.id}
-                            href={attachmentUrl(s.external_id, a.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.84rem', marginRight: 12, color: 'var(--primary, #cc33cc)' }}
-                            title="Se descarga a través de Obertrack; el archivo vive en Obersuite"
-                          >
-                            <Paperclip size={13} /> {a.name}{a.size ? <span style={{ color: '#94a3b8' }}> ({fmtSize(a.size)})</span> : null}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-
-                    {(s.history?.length ?? 0) > 0 && (
-                      <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '0.82rem', color: '#475569' }}>
-                        {s.history!.map((h, i) => (
-                          <li key={i} style={{ padding: '4px 0', borderBottom: i < s.history!.length - 1 ? '1px dashed #e2e8f0' : 'none' }}>
-                            <span style={{ color: '#94a3b8' }}>{fmtDate(h.at)}</span>
-                            {' · '}
-                            {h.from
-                              ? <>{h.from} → <strong style={{ color: '#334155' }}>{h.to}</strong></>
-                              : <>Inicio: <strong style={{ color: '#334155' }}>{h.to}</strong></>}
-                            {h.by && <span style={{ color: '#94a3b8' }}> · {h.by}</span>}
-                            {h.notes && <div style={{ color: '#64748b', marginTop: 2 }}>{h.notes}</div>}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {s.created_by && (
-                      <p style={{ color: '#94a3b8', fontSize: '0.78rem', marginTop: 8, marginBottom: 0 }}>
-                        Creado por {s.created_by}{s.created_at ? ` el ${fmtDate(s.created_at)}` : ''}
-                      </p>
-                    )}
                   </div>
                 )}
+
+                {/* 4. Footer con botón para abrir Modal de Historial y Notas */}
+                <div className={styles.cardFooter}>
+                  <div className={styles.recruiterNote}>
+                    {s.recruiter?.name && (
+                      <span>Reclutador asignado: <strong>{s.recruiter.name}</strong></span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className={styles.openModalBtn}
+                    onClick={() => setModalSub(s)}
+                    title="Ver historial, notas y adjuntos en un modal"
+                  >
+                    <History size={14} />
+                    Ver historial y notas
+                  </button>
+                </div>
               </div>
             )
           })}
         </>
+      )}
+
+      {/* Modal de Historial y Notas con Scroll */}
+      {modalSub && (
+        <div
+          className={styles.modalOverlay}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setModalSub(null)
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-title"
+        >
+          <div className={styles.modalContainer}>
+            {/* Header del Modal */}
+            <div className={styles.modalHeader}>
+              <div className={styles.modalHeaderLeft}>
+                <h3 id="modal-title" className={styles.modalTitle}>
+                  <Briefcase size={18} color="#7c3aed" />
+                  {modalSub.position?.title || 'Vacante'}
+                </h3>
+                <p className={styles.modalSubtitle}>
+                  Fase actual: <strong>{modalSub.stage?.name || 'En proceso'}</strong>
+                  {modalSub.status === 'active' ? ' · Estado: Activa' : ' · Estado: Archivada'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.modalCloseBtn}
+                onClick={() => setModalSub(null)}
+                aria-label="Cerrar ventana"
+                title="Cerrar ventana"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Cuerpo del Modal con Scroll */}
+            <div className={styles.modalBody}>
+              {/* Sección Notas */}
+              {modalSub.notes && (
+                <div>
+                  <div className={styles.modalSectionTitle}>
+                    <FileText size={16} color="#7c3aed" />
+                    Notas del Proceso
+                  </div>
+                  <div className={styles.notesBlock}>
+                    {modalSub.notes}
+                  </div>
+                </div>
+              )}
+
+              {/* Sección Adjuntos */}
+              {(modalSub.attachments?.length ?? 0) > 0 && (
+                <div>
+                  <div className={styles.modalSectionTitle}>
+                    <Paperclip size={16} color="#7c3aed" />
+                    Documentos y Adjuntos ({modalSub.attachments!.length})
+                  </div>
+                  <div className={styles.attachmentsGroup}>
+                    {modalSub.attachments!.map((a) => (
+                      <a
+                        key={a.id}
+                        href={attachmentUrl(modalSub.external_id, a.id)}
+                        className={styles.attachmentPill}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Descargar archivo desde Obersuite"
+                      >
+                        <Paperclip size={14} />
+                        <span>{a.name}</span>
+                        {a.size && (
+                          <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
+                            ({fmtSize(a.size)})
+                          </span>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sección Historial de Movimientos */}
+              <div>
+                <div className={styles.modalSectionTitle}>
+                  <History size={16} color="#7c3aed" />
+                  Historial de Movimientos y Fases
+                </div>
+
+                {(modalSub.history?.length ?? 0) > 0 ? (
+                  <ul className={styles.historyList}>
+                    {modalSub.history!.map((h, i) => (
+                      <li key={i} className={styles.historyItem}>
+                        <div className={styles.historyItemIcon}>
+                          <Calendar size={14} />
+                        </div>
+                        <div className={styles.historyItemContent}>
+                          <div className={styles.historyItemHeader}>
+                            <div className={styles.historyItemPhase}>
+                              {h.from ? (
+                                <>
+                                  <span style={{ color: '#64748b' }}>{h.from}</span>
+                                  {' → '}
+                                  <strong style={{ color: '#0f172a' }}>{h.to}</strong>
+                                </>
+                              ) : (
+                                <>
+                                  Inicio en <strong style={{ color: '#0f172a' }}>{h.to}</strong>
+                                </>
+                              )}
+                            </div>
+                            <span className={styles.historyItemDate}>{fmtDateTime(h.at)}</span>
+                          </div>
+
+                          {h.by && (
+                            <div className={styles.historyItemAuthor}>
+                              Registrado por: <strong>{h.by}</strong>
+                            </div>
+                          )}
+
+                          {h.notes && (
+                            <div className={styles.historyItemNotes}>
+                              "{h.notes}"
+                            </div>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className={styles.emptyBlock}>
+                    No hay registros de cambios de fase previos en Obersuite.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer del Modal */}
+            <div className={styles.modalFooter}>
+              <button
+                type="button"
+                className={styles.closeButtonAction}
+                onClick={() => setModalSub(null)}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
