@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/obertrack/backend/internal/models"
@@ -44,6 +45,19 @@ func (f *fakeTicketRepo) CreateTicket(t *models.Ticket) error {
 
 func (f *fakeTicketRepo) SaveTicket(t *models.Ticket) error {
 	f.guardado = t
+	return nil
+}
+
+func (f *fakeTicketRepo) GetContactByPhone(phone string) (*models.Contact, error) {
+	return nil, errors.New("not found")
+}
+
+func (f *fakeTicketRepo) CreateContact(c *models.Contact) error {
+	c.ID = 10
+	return nil
+}
+
+func (f *fakeTicketRepo) SaveContact(c *models.Contact) error {
 	return nil
 }
 
