@@ -8,6 +8,12 @@ interface TicketCardProps {
 }
 
 export default function TicketCard({ ticket, onClick }: TicketCardProps) {
+  // Para tickets de Obersuite el nombre está en el título; no hay contact.
+  // "WA transferido: Héctor" → "Héctor"
+  // "Alta desde Obersuite: María García" → "María García"
+  const obersuiteDisplayName = ticket.origin === 'obersuite'
+    ? (ticket.title ?? '').replace(/^(WA transferido|Alta desde Obersuite|Rechazo de horas|Inducción no aprobada):\s*/i, '').trim() || null
+    : null
   const getLatestMessageChannel = () => {
     if (!ticket.messages || ticket.messages.length === 0) return null;
     const latest = ticket.messages[ticket.messages.length - 1];
@@ -26,14 +32,16 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
           {ticket.stage === 'closed' && 'Cerrado'}
         </span>
         <span
-          className={`${styles.badge} ${ticket.origin === 'internal' ? styles['badge-internal'] : styles['badge-zoho']}`}
+          className={`${styles.badge} ${ticket.origin === 'internal' || ticket.origin === 'obersuite' ? styles['badge-internal'] : styles['badge-zoho']}`}
           style={
             ticket.origin === 'support' ? { background: 'rgba(124,58,237,0.12)', color: '#6d28d9' }
             : ticket.origin === 'whatsapp' ? { background: 'rgba(37,211,102,0.12)', color: '#15803d' }
+            : ticket.origin === 'obersuite' ? { background: 'rgba(217,119,6,0.12)', color: '#b45309' }
             : undefined
           }
         >
           {ticket.origin === 'internal' ? 'Interno'
+            : ticket.origin === 'obersuite' ? 'Obersuite'
             : ticket.origin === 'support' ? 'Soporte'
             : ticket.origin === 'whatsapp' ? 'WhatsApp'
             : 'Zoho'}
@@ -43,14 +51,14 @@ export default function TicketCard({ ticket, onClick }: TicketCardProps) {
       </div>
       
       {/* Contact Info (prominent, left-aligned) */}
-      {(ticket.contact?.name || ticket.contact?.phone || ticket.professional_email || ticket.professional_phone) && (
+      {(obersuiteDisplayName || ticket.contact?.name || ticket.contact?.phone || ticket.professional_email || ticket.professional_phone) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', textAlign: 'left' }}>
           <span style={{
             fontSize: '0.92rem',
             fontWeight: 600,
             color: 'var(--text-primary, #1e293b)',
           }}>
-            {ticket.contact?.name || ticket.professional_email || 'Desconocido'}
+            {obersuiteDisplayName || ticket.contact?.name || ticket.professional_email || 'Desconocido'}
           </span>
           {(ticket.contact?.phone || ticket.professional_phone) && (
             <span style={{
