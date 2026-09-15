@@ -49,6 +49,9 @@ type deps struct {
 	emergencyTpl  *handlers.EmergencyTemplateHandler
 	profileChange *handlers.ProfileChangeHandler
 	trash         *handlers.TrashHandler
+	// tenantSubs lee los procesos de reclutamiento de Obersuite para la ficha
+	// de empresa: es el único sitio donde Obertrack llama a Obersuite.
+	tenantSubs    *handlers.TenantSubscriptionsHandler
 	reportSched   *handlers.ReportScheduleHandler
 	emailSettings *handlers.EmailSettingsHandler
 	onboarding    *handlers.OnboardingHandler
@@ -338,6 +341,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		emergencyTpl:     handlers.NewEmergencyTemplateHandler(emergencyTplSvc),
 		profileChange:    handlers.NewProfileChangeHandler(profileChangeSvc),
 		trash:            handlers.NewTrashHandler(service.NewTrashService(db)),
+		tenantSubs:       handlers.NewTenantSubscriptionsHandler(service.NewObersuiteClient()),
 		reportSched:      handlers.NewReportScheduleHandler(reportScheduleRepo, reportWatcher),
 		emailSettings:    handlers.NewEmailSettingsHandler(emailSettingsSvc),
 		onboarding:       handlers.NewOnboardingHandler(onboardingSvc),

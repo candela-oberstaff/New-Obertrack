@@ -490,6 +490,44 @@ deja dos hitos. El motivo se lee en el Expediente: «Acceso suspendido —
 Misma tabla que `/hire`: 400 con motivo, 404, 429 con `Retry-After`, 500 con
 `request_id`. Los 4xx antes de tocar nada.
 
+## 4d. Procesos de reclutamiento de Obersuite en nuestra ficha (15-sep-2026)
+
+**La primera vez que Obertrack llama a Obersuite** y no al revés. Cada
+empresa tiene en Obersuite una pestaña «Suscripciones» —sus vacantes con un
+pipeline de cinco fases, estado, notas, adjuntos e historial— y nuestra ficha
+de empresa la pinta entera, de solo lectura, bajo el resumen: «Procesos de
+reclutamiento · desde Obersuite».
+
+Lo que ellos exponen (contrato suyo, se consume tal cual):
+
+```
+GET https://obersuite.oberstaff.com/api/integrations/obertrack/companies/:id/subscriptions
+GET https://obersuite.oberstaff.com/api/integrations/obertrack/subscriptions/:id/attachments/:att_id
+X-Service-Token: <el token que ellos nos entregan>
+```
+
+Lo nuestro:
+
+- **Configuración:** `OBERSUITE_API_URL` y `OBERSUITE_API_TOKEN` en el
+  backend (Coolify). Sin ellas la ficha abre igual y el bloque dice «no
+  configurada».
+- **Proxy para la pantalla:** `GET /api/admin/tenants/:id/subscriptions` y
+  `GET /api/admin/tenants/:id/subscriptions/:sid/attachments/:aid`, con la
+  sesión de administrador. El token hacia Obersuite vive en el servidor; el
+  navegador nunca lo ve. El JSON de Obersuite se reexporta **tal cual** bajo
+  `data`, sin reinterpretar: la forma es suya.
+- **Nunca tumba la ficha.** Tiempo de espera de 8 s; caído, mal configurado o
+  contestando algo que no es JSON, el proxy responde **200 con
+  `available: false`** y un motivo (`not_configured` | `unreachable`), y la
+  pantalla lo dice en el bloque. Un 404 suyo (empresa que no conocen) es lista
+  vacía, no error.
+- **Solo lectura**, en pantalla y en código: no hay ninguna ruta de escritura
+  hacia sus procesos. Si Customer Success necesita mover una fase desde aquí,
+  es un endpoint de escritura de Obersuite por definir; no se asume.
+
+`stage.index` es la posición en el catálogo `stages` que mandan ellos: el
+pipeline se dibuja con las cinco fases y la actual marcada.
+
 ## 5. Lo que se decidió NO hacer
 
 Que quede escrito evita volver a discutirlo cada trimestre.
@@ -879,3 +917,4 @@ duplique en pantalla. `categories` incluye `{"value":"recruitment",
 | Reclutador de la empresa (escritura) | `backend/internal/handlers/obersuite_recruiter.go`, `backend/internal/service/company_recruiter.go` |
 | Chats de WhatsApp transferidos (tickets) | `backend/internal/handlers/obersuite_tickets.go`, `CreateObersuiteTransfer` en `backend/internal/service/ticket_service.go` |
 | Empresas (crear, editar, analista, suspender) | `backend/internal/handlers/obersuite_companies_write.go`, `backend/internal/service/obersuite_companies.go`, rubros en `backend/internal/models/industries.go` |
+| Procesos de reclutamiento (hacia Obersuite) | `backend/internal/service/obersuite_client.go`, `backend/internal/handlers/tenant_subscriptions.go`, `frontend/src/pages/Tenants/TenantSubscriptions.tsx` |

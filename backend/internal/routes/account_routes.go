@@ -300,6 +300,10 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.GET("/tenants", d.admin.GetTenants)
 		admin.POST("/tenants", d.admin.CreateTenant)
 		admin.GET("/tenants/:id", d.admin.GetTenant)
+		// Procesos de reclutamiento de la empresa, leídos de Obersuite. Solo
+		// lectura; el token hacia Obersuite vive en el servidor.
+		admin.GET("/tenants/:id/subscriptions", d.tenantSubs.List)
+		admin.GET("/tenants/:id/subscriptions/:sid/attachments/:aid", d.tenantSubs.Attachment)
 		admin.GET("/tenants/:id/employees", d.admin.GetTenantEmployees)
 		admin.PUT("/tenants/:id/employees/:userId/schedule", d.admin.UpdateEmployeeSchedule)
 		admin.DELETE("/tenants/:id/employees/:userId/schedule", d.admin.DeleteEmployeeSchedule)

@@ -111,6 +111,10 @@ services:
       # fotos (Obersuite) y de las imágenes de los correos. Sin él se usa
       # SERVICE_URL_BACKEND, que Coolify rellena con el host INTERNO.
       BACKEND_URL: ${BACKEND_URL:-}
+      # Hacia Obersuite (la ficha de empresa lee sus procesos de reclutamiento).
+      # Sin estas dos, la ficha abre igual y el bloque dice "no configurado".
+      OBERSUITE_API_URL: ${OBERSUITE_API_URL:-}
+      OBERSUITE_API_TOKEN: ${OBERSUITE_API_TOKEN:-}
       UPLOAD_PATH: "/app/uploads"
     # Backend not published directly; traffic flows through the frontend proxy.
     expose:
