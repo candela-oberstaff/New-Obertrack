@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/obertrack/backend/internal/apperrors"
@@ -70,6 +71,16 @@ type TicketRepository interface {
 	// FindByExternalID devuelve el ticket que otro sistema conoce por ese id,
 	// o nil. Solo filas vivas: un ticket borrado no bloquea un reenvío.
 	FindByExternalID(externalID string) (*models.Ticket, error)
+	// GetContactByWaID busca el contacto por su identidad de WhatsApp (JID).
+	GetContactByWaID(waID string) (*models.Contact, error)
+	// TicketIDByMessageExternalID devuelve el ticket que contiene el mensaje
+	// con ese external_id. Es la idempotencia de una transferencia anexada a
+	// un ticket que ya existía.
+	TicketIDByMessageExternalID(externalID string) (uint, bool, error)
+	// MessageExistsInTicket dice si ya hay un mensaje igual (remitente, texto y
+	// hora) en el ticket: una segunda transferencia trae el chat entero otra
+	// vez con otro id, y sin esto se duplicaría cada burbuja.
+	MessageExistsInTicket(ticketID uint, sender models.SenderType, content string, at time.Time) (bool, error)
 	ListInternalReport(start, end time.Time) ([]models.Ticket, error)
 
 	CreateMessage(m *models.TicketMessage) error
@@ -145,6 +156,40 @@ func (r *ticketRepository) GetContactByPhone(phone string) (*models.Contact, err
 		return nil, err
 	}
 	return &c, nil
+}
+
+func (r *ticketRepository) GetContactByWaID(waID string) (*models.Contact, error) {
+	if strings.TrimSpace(waID) == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var c models.Contact
+	if err := r.db.Where("wa_id = ?", waID).First(&c).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (r *ticketRepository) TicketIDByMessageExternalID(externalID string) (uint, bool, error) {
+	var m models.TicketMessage
+	err := r.db.Select("ticket_id").Where("external_id = ? AND external_id <> ''", externalID).First(&m).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return m.TicketID, true, nil
+}
+
+func (r *ticketRepository) MessageExistsInTicket(ticketID uint, sender models.SenderType, content string, at time.Time) (bool, error) {
+	var n int64
+	// La hora se compara al segundo: la de Obersuite viene sin fracción y la
+	// nuestra se guarda con ella.
+	err := r.db.Model(&models.TicketMessage{}).
+		Where("ticket_id = ? AND sender_type = ? AND content = ? AND date_trunc('second', created_at) = date_trunc('second', ?::timestamptz)",
+			ticketID, sender, content, at).
+		Count(&n).Error
+	return n > 0, err
 }
 
 func (r *ticketRepository) GetContactByEmail(email string) (*models.Contact, error) {
