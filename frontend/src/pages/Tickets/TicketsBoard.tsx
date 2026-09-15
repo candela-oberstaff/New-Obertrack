@@ -8,7 +8,7 @@ import { RefreshCw, Ticket as TicketIcon, Filter, User as UserIcon, FileText } f
 import { useAuth } from '../../context/AuthContext';
 import { isSupportManager } from '../../lib/permissions';
 
-type OriginFilter = 'all' | 'zoho' | 'internal' | 'support' | 'whatsapp';
+type OriginFilter = 'all' | 'zoho' | 'internal' | 'obersuite' | 'support' | 'whatsapp';
 
 const STAGES = [
   { id: 'new', title: 'Nuevo' },
@@ -99,7 +99,7 @@ export default function TicketsBoard({ forcedOrigin }: { forcedOrigin?: OriginFi
       navigate(`/chat?channel=${ticket.channel_id}`);
       return;
     }
-    if (ticket.origin === 'internal') {
+    if (ticket.origin === 'internal' || ticket.origin === 'obersuite') {
       navigate(`/tickets/internal/${ticket.id}`);
       return;
     }
@@ -209,6 +209,7 @@ export default function TicketsBoard({ forcedOrigin }: { forcedOrigin?: OriginFi
               { id: 'zoho', label: 'Zoho' },
               { id: 'whatsapp', label: 'WhatsApp' },
               { id: 'internal', label: 'Internos' },
+              { id: 'obersuite', label: 'Obersuite' },
               { id: 'support', label: 'Soporte' },
             ] as { id: OriginFilter; label: string }[]).map(opt => (
               <button
