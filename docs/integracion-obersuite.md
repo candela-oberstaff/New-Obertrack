@@ -495,8 +495,10 @@ Misma tabla que `/hire`: 400 con motivo, 404, 429 con `Retry-After`, 500 con
 **La primera vez que Obertrack llama a Obersuite** y no al revés. Cada
 empresa tiene en Obersuite una pestaña «Suscripciones» —sus vacantes con un
 pipeline de cinco fases, estado, notas, adjuntos e historial— y nuestra ficha
-de empresa la pinta entera, de solo lectura, bajo el resumen: «Procesos de
-reclutamiento · desde Obersuite».
+de empresa la pinta entera, de solo lectura, en una pestaña «Suscripciones»
+en la misma posición que la suya: cabecera con contador, Activas/Archivadas,
+buscador por vacante o fase, y tarjetas con el pipeline. Sin el botón de
+vincular, que es acción de ellos.
 
 Lo que ellos exponen (contrato suyo, se consume tal cual):
 
