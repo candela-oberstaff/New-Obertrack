@@ -117,6 +117,12 @@ type AdminService interface {
 	RecruitmentAttachmentForDownload(companyID uint, externalID string) (*models.CompanyEventAttachment, error)
 	// El reclutador de Obersuite que lleva la empresa (company_recruiter.go).
 	SetTenantRecruiter(companyID uint, in RecruiterInput) (*models.CompanyRecruiter, error)
+	// Empresas escritas desde Obersuite (obersuite_companies.go).
+	CreateCompanyFromObersuite(in ObersuiteCompanyCreate) (*ObersuiteCompanyCreateResult, error)
+	UpdateCompanyFromObersuite(companyID uint, p ObersuiteCompanyPatch) ([]string, error)
+	ListAssignableAnalysts() ([]ObersuiteAnalyst, error)
+	SetCompanyAnalystFromObersuite(companyID uint, analystID *uint) error
+	SetCompanyStatusFromObersuite(companyID uint, active bool, reason string) error
 	ClearTenantRecruiter(companyID uint) error
 	GetTenantRecruiter(companyID uint) (*models.CompanyRecruiter, error)
 	SetRecruitmentAttachmentDeps(upload UploadService, threads CompanyThreadService)
@@ -1376,6 +1382,13 @@ func (s *adminService) GetTenantActivityCounts(id uint, userID uint) (map[string
 }
 
 func (s *adminService) SetTenantStatus(id uint, active bool, byUserID uint) (*models.User, error) {
+	return s.setTenantStatus(id, active, byUserID, "")
+}
+
+// setTenantStatus es SetTenantStatus con motivo: el hito del Expediente lo
+// lleva como detalle ("Acceso suspendido — <motivo>"). Nuestra pantalla no
+// pide motivo; Obersuite sí lo manda.
+func (s *adminService) setTenantStatus(id uint, active bool, byUserID uint, detail string) (*models.User, error) {
 	user, err := s.userRepo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("Tenant not found")
@@ -1410,6 +1423,7 @@ func (s *adminService) SetTenantStatus(id uint, active bool, byUserID uint) (*mo
 		CompanyID: id,
 		Type:      eventType,
 		ByUserID:  byUserID,
+		Detail:    detail,
 	})
 	return user, nil
 }

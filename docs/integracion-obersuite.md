@@ -386,6 +386,110 @@ avisando del recorte.
 el modelo**, por la misma razón que en `ticket_messages`: AutoMigrate lo
 reemplazaría por uno normal y se perdería la unicidad.
 
+## 4c. Empresas escritas desde Obersuite (15-sep-2026)
+
+Lo que nuestra ficha hace con una empresa —crear, editar lo básico, asignar el
+analista, suspender y reactivar—, expuesto por el bridge. Enviar correo,
+conversación y reporte PDF se quedan en Obertrack: son acciones, no datos.
+Borrar **no se expone**: suspender cubre el caso y borrar en firme se queda en
+la Papelera de Obertrack.
+
+Lo que hay que saber antes de pulsar, y que Obersuite enseña en su
+confirmación:
+
+- **Crear no envía nada.** Ni correo de bienvenida ni credenciales. La cuenta
+  nace `active` con una contraseña que nadie conoce, y el acceso se entrega
+  después, a mano, desde «Enviar acceso por correo» en Obertrack. Es la misma
+  regla que el equipo fijó para el import: las credenciales no salen solas.
+- **`responsible_email` es el correo con el que ENTRA el cliente.** Se fija al
+  crear y **no se edita por aquí** (400 si viaja en el PUT): cambiar el login de
+  un cliente desde otro sistema lo hace una persona mirando la ficha, en
+  Obertrack.
+- **Suspender expulsa en el acto** a la empresa y a todos sus profesionales
+  (revoca sesiones: quien estaba dentro sale en el siguiente clic). No avisa a
+  nadie por correo. Deja hito en el Expediente firmado «Obersuite» con el
+  motivo. Reactivar devuelve el acceso y deja su hito.
+- **Solo se edita lo que hay en el contrato.** Contraseña, correo de acceso,
+  cambio de profesional, calendario y todo lo que no esté abajo, en Obertrack.
+
+##### Crear
+
+```
+POST /api/integrations/obersuite/companies
+{
+  "external_id":       "obersuite-company-<uuid>",   // OBLIGATORIO. Idempotente por él
+  "name":              "Acme S.A.",                   // OBLIGATORIO
+  "responsible_name":  "Laura Méndez",                // OBLIGATORIO: quien contrata
+  "responsible_email": "laura@acme.com",              // OBLIGATORIO: su correo de acceso
+  "phone_number":      "…",                           // opcional
+  "industry":          "Tecnología / Software",       // opcional; de GET /industries, tal cual
+  "country": "…", "state": "…", "city": "…", "address": "…",   // opcionales
+  "customer_success_id": 225                          // opcional; de GET /analysts
+}
+→ 200 { "id": 512, "status": "created" | "already_exists" }   // mismo external_id: ni duplica ni modifica
+→ 400 con motivo (falta obligatorio, correo sin forma, industry fuera de lista, analista no asignable)
+→ 409 "No se puede crear: El correo … pertenece a …" (el correo ya es de una cuenta: activa, desactivada o en la Papelera; el texto dice cuál)
+```
+
+`external_id` vive en `users.obersuite_id`, la misma columna que usa `/hire`
+para las personas: la empresa ES un usuario. Vuelve en `GET /companies/:id`
+como `external_id` (vacío para las que nacieron aquí).
+
+##### Editar
+
+```
+PUT /api/integrations/obersuite/companies/:id
+{ cualquier subconjunto de: name, responsible_name, phone_number, industry, country, state, city, address }
+→ 200 { "id": 512, "updated_fields": ["city"] }   // solo lo que CAMBIÓ de verdad; un valor igual no cuenta
+→ 400 (name o responsible_name vacíos, industry fuera de lista, responsible_email o external_id en el cuerpo)
+→ 404
+```
+
+Parcial: lo que no viaja no se toca. Los dos campos que no se editan
+(`responsible_email`, `external_id`) se **rechazan**, no se ignoran: ignorarlos
+haría creer que el cambio se aplicó.
+
+##### Rubros y analistas
+
+```
+GET /api/integrations/obersuite/industries   → { "industries": ["Tecnología / Software", …, "Otro"] }
+GET /api/integrations/obersuite/analysts     → { "analysts": [{ "id", "name", "email" }] }
+```
+
+La lista de rubros es **cerrada** y es la misma que ofrece nuestro formulario
+(lo fija una prueba contra el archivo del frontend). Hasta hoy el backend no
+la validaba; con un segundo cliente escribiendo empresas, sí. Los analistas
+son los Customer Success y superadmins activos, sin cuentas de sistema: los
+mismos que ofrece nuestro desplegable.
+
+##### Analista
+
+```
+PUT /api/integrations/obersuite/companies/:id/customer-success
+{ "analyst_id": 225 }        // null o 0 para quitar
+→ 200 { "status": "assigned" | "cleared" }
+→ 400 si el id no es un analista asignable
+```
+
+Es el sentido contrario de `customer_success` en el padrón. Cambiarlo mueve
+`updated_at` de la empresa: el padrón incremental y el ETag se enteran.
+
+##### Suspender / reactivar
+
+```
+POST /api/integrations/obersuite/companies/:id/suspend     { "reason": "…" }   → 200 { "status": "suspended" }
+POST /api/integrations/obersuite/companies/:id/reactivate                    → 200 { "status": "active" }
+```
+
+Idempotentes: suspender lo suspendido responde 200 y no expulsa dos veces ni
+deja dos hitos. El motivo se lee en el Expediente: «Acceso suspendido —
+<motivo>», con autor «Obersuite».
+
+##### Códigos
+
+Misma tabla que `/hire`: 400 con motivo, 404, 429 con `Retry-After`, 500 con
+`request_id`. Los 4xx antes de tocar nada.
+
 ## 5. Lo que se decidió NO hacer
 
 Que quede escrito evita volver a discutirlo cada trimestre.
@@ -396,6 +500,8 @@ Que quede escrito evita volver a discutirlo cada trimestre.
 | Envoltorio `{data, meta}` | **Descartada** | Rompe a los dos consumidores actuales sin dar nada a cambio |
 | Rotación automática de tokens | **Descartada** | Dos servicios nuestros; el mecanismo sería más frágil que el riesgo |
 | `GET /companies/:id` (detalle) | **Reabierta** (10-sep-2026) | Se aparcó porque nadie la necesitaba. Apareció la pantalla que la necesita — ver abajo |
+| Borrar una empresa desde Obersuite | **Descartada** (15-sep-2026) | Suspender cubre el caso. Borrar en firme se queda en la Papelera de Obertrack, que además anonimiza lo que tiene historial |
+| Editar `responsible_email` desde Obersuite | **Descartada** (15-sep-2026) | Es el correo de acceso del cliente: lo cambia una persona mirando la ficha |
 | Devolver campos de operación | **Descartada** | Ver §3: rompían el ETag y exponen datos de los clientes |
 
 ### El detalle de empresa, reabierto
@@ -772,3 +878,4 @@ duplique en pantalla. `categories` incluye `{"value":"recruitment",
 | Notas de Reclutamiento (escritura) | `backend/internal/handlers/obersuite_recruitment.go`, `backend/internal/service/recruitment_notes.go` |
 | Reclutador de la empresa (escritura) | `backend/internal/handlers/obersuite_recruiter.go`, `backend/internal/service/company_recruiter.go` |
 | Chats de WhatsApp transferidos (tickets) | `backend/internal/handlers/obersuite_tickets.go`, `CreateObersuiteTransfer` en `backend/internal/service/ticket_service.go` |
+| Empresas (crear, editar, analista, suspender) | `backend/internal/handlers/obersuite_companies_write.go`, `backend/internal/service/obersuite_companies.go`, rubros en `backend/internal/models/industries.go` |
