@@ -35,6 +35,7 @@ import { healthSignal, HEALTH_COLOR } from './accountHealth'
 import { TenantUsage } from './TenantUsage'
 import { EventThread } from './EventThread'
 import { ActivityDetailModal } from './ActivityDetailModal'
+import { TenantSubscriptions } from './TenantSubscriptions'
 import { adminService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import type { EmployeeSummary } from '../../types'
@@ -1200,6 +1201,7 @@ export default function TenantDetail() {
           )}
 
           {tab === 'resumen' && (
+            <>
             <div className={styles.sidebarCard} style={{ margin: 0 }}>
               <h2 className={styles.sidebarCardTitle}>Otra Información</h2>
               <div className={styles.kpiGrid3x2}>
@@ -1227,9 +1229,13 @@ export default function TenantDetail() {
                 })}
               </div>
             </div>
+            {/* Los procesos de reclutamiento de Obersuite: espejo de solo
+                lectura bajo el resumen. Va aquí y no en una pestaña porque es
+                lo primero que Customer Success quiere saber al abrir la
+                empresa: qué se está buscando para este cliente. */}
+            <TenantSubscriptions tenantId={tenantId} />
+            </>
           )}
-
-
 
           {tab === 'uso' && (
             <TenantUsage companyId={tenantId} companyName={tenant.company_name} />
