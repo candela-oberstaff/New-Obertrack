@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/service"
 )
 
@@ -213,6 +214,33 @@ func TestCategoriasOfrecidas_TodasFiltranDeVerdad(t *testing.T) {
 		}
 		if !service.IsTenantActivityCategory(v) {
 			t.Errorf("la categoría %q se ofrece a Obersuite pero ?category=%s se ignora y devuelve el expediente entero", v, v)
+		}
+	}
+}
+
+// La lista de rubros que se manda a Obersuite tiene que decir lo MISMO que
+// ofrece nuestro formulario. Misma razón que las categorías: dos listas a mano
+// se separan sin que falle nada, y con un segundo cliente escribiendo empresas
+// el filtro por rubro se llenaría de variantes.
+func TestRubros_CoincidenConElFrontend(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "..", "frontend", "src", "components", "Auth", "industries.ts"))
+	if err != nil {
+		t.Skipf("no se pudo leer industries.ts (backend suelto, sin el frontend al lado): %v", err)
+	}
+	re := regexp.MustCompile(`(?m)^\s*'([^']+)',\s*$`)
+	var enFrontend []string
+	for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+		enFrontend = append(enFrontend, m[1])
+	}
+	if len(enFrontend) == 0 {
+		t.Fatal("no se encontró ningún rubro en industries.ts: ¿cambió el formato?")
+	}
+	if len(enFrontend) != len(models.Industries) {
+		t.Fatalf("frontend tiene %d rubros y el backend %d", len(enFrontend), len(models.Industries))
+	}
+	for i := range enFrontend {
+		if enFrontend[i] != models.Industries[i] {
+			t.Errorf("rubro %d: frontend %q, backend %q", i, enFrontend[i], models.Industries[i])
 		}
 	}
 }

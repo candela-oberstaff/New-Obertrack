@@ -103,12 +103,15 @@ func (h *ObersuiteCompanyHandler) Detail(c *gin.Context) {
 		// con responsible_*, que es el CLIENTE (quien contrató).
 		"customer_success": customerSuccessOf(tenant),
 		"recruiter":        recruiterOf(tenant),
-		"phone_number":     tenant.PhoneNumber,
-		"industry":         tenant.Industry,
-		"country":          tenant.Country,
-		"state":            tenant.State,
-		"city":             tenant.City,
-		"address":          tenant.Address,
+		// El id con el que Obersuite creó la empresa, si la creó ella. Vacío
+		// para las que nacieron aquí.
+		"external_id":  tenant.ObersuiteID,
+		"phone_number": tenant.PhoneNumber,
+		"industry":     tenant.Industry,
+		"country":      tenant.Country,
+		"state":        tenant.State,
+		"city":         tenant.City,
+		"address":      tenant.Address,
 
 		"professionals_count": tenant.UserCount,
 		"boards_count":        tenant.BoardCount,

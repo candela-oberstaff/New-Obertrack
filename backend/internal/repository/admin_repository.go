@@ -229,6 +229,9 @@ type TenantSummary struct {
 	RecruiterName       string     `json:"recruiter_name"`
 	RecruiterEmail      string     `json:"recruiter_email"`
 	RecruiterAssignedAt *time.Time `json:"recruiter_assigned_at,omitempty"`
+	// ObersuiteID es el id con el que Obersuite creo la empresa, si la creo
+	// ella. Vacio para las que nacieron aqui.
+	ObersuiteID string `json:"obersuite_id,omitempty"`
 }
 
 // TenantTicket es un ticket visto desde la ficha de la empresa. Aplana lo justo
@@ -963,7 +966,8 @@ const tenantSelect = `
 		COALESCE((SELECT cr.external_id FROM company_recruiters cr WHERE cr.company_id = u.id), '') as recruiter_external_id,
 		COALESCE((SELECT cr.name FROM company_recruiters cr WHERE cr.company_id = u.id), '') as recruiter_name,
 		COALESCE((SELECT cr.email FROM company_recruiters cr WHERE cr.company_id = u.id), '') as recruiter_email,
-		(SELECT cr.assigned_at FROM company_recruiters cr WHERE cr.company_id = u.id) as recruiter_assigned_at
+		(SELECT cr.assigned_at FROM company_recruiters cr WHERE cr.company_id = u.id) as recruiter_assigned_at,
+		COALESCE(u.obersuite_id, '') as obersuite_id
 	FROM users u
 	LEFT JOIN users m ON m.empleador_id = u.id AND m.deleted_at IS NULL
 	LEFT JOIN boards b ON b.tenant_id = u.id AND b.deleted_at IS NULL
@@ -1248,8 +1252,8 @@ var tenantEventsCTE = `
 		COALESCE(actor.id, 0) as actor_id,
 		COALESCE(owner.company_name, '-') as company,
 		(CASE ce.type
-			WHEN 'suspended' THEN 'Acceso suspendido'
-			WHEN 'reactivated' THEN 'Acceso reactivado'
+			WHEN 'suspended' THEN 'Acceso suspendido' || (CASE WHEN COALESCE(ce.detail, '') <> '' THEN ' — ' || ce.detail ELSE '' END)
+			WHEN 'reactivated' THEN 'Acceso reactivado' || (CASE WHEN COALESCE(ce.detail, '') <> '' THEN ' — ' || ce.detail ELSE '' END)
 			WHEN 'note' THEN COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido')
 			WHEN 'recruitment' THEN COALESCE(NULLIF(ce.detail, ''), 'Nota sin contenido')
 			WHEN 'testimonial' THEN COALESCE(NULLIF(ce.detail, ''), 'Testimonio aprobado')

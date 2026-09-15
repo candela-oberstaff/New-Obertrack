@@ -52,6 +52,12 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 		obersuite.GET("/version", d.version.Version)
 		// Lista de empresas para el dropdown de contratación en Obersuite.
 		obersuite.GET("/companies", d.onboarding.ListCompanies)
+		// Empresas escritas DESDE Obersuite: crear, editar lo básico, asignar
+		// analista y suspender/reactivar. Lo mismo que hace nuestra ficha; solo
+		// cambia quién lo pulsa. Borrar no se expone a propósito.
+		obersuite.POST("/companies", d.obersuiteCompany.Create)
+		obersuite.GET("/industries", d.obersuiteCompany.Industries)
+		obersuite.GET("/analysts", d.obersuiteCompany.Analysts)
 		// Webhook de contratación: crea/actualiza el profesional y abre su empleo.
 		obersuite.POST("/hire", d.onboarding.Hire)
 		// Un manager de Obersuite transfiere un chat de WhatsApp a Customer
@@ -87,6 +93,10 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 			// detalle y en el padrón y ellos solo leen.
 			empresa.PUT("/recruiter", d.obersuiteCompany.SetRecruiter)
 			empresa.DELETE("/recruiter", d.obersuiteCompany.ClearRecruiter)
+			empresa.PUT("", d.obersuiteCompany.Update)
+			empresa.PUT("/customer-success", d.obersuiteCompany.SetAnalyst)
+			empresa.POST("/suspend", d.obersuiteCompany.Suspend)
+			empresa.POST("/reactivate", d.obersuiteCompany.Reactivate)
 			empresa.GET("/attention", d.obersuiteCompany.Attention)
 			empresa.GET("/tickets", d.obersuiteCompany.Tickets)
 			empresa.GET("/archived", d.obersuiteCompany.Archived)
