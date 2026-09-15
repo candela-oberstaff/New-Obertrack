@@ -1080,9 +1080,19 @@ func (s *ticketService) ensureCanColdOutreach(ticketID uint) error {
 		return nil
 	}
 	if !hasInbound {
-		if ticket, terr := s.repo.GetWithContact(ticketID); terr == nil && ticket.Contact != nil &&
-			s.contactIsPlatformUser(ticket.Contact.Phone) {
-			return nil
+		if ticket, terr := s.repo.GetWithContact(ticketID); terr == nil {
+			if ticket.Contact != nil && s.contactIsPlatformUser(ticket.Contact.Phone) {
+				return nil
+			}
+			// Un chat transferido desde Obersuite ya existía: el reclutador le
+			// había escrito por WhatsApp. Aunque el candidato nunca contestara,
+			// responder desde aquí continúa esa conversación, no aborda a un
+			// desconocido. Se comprueba explícitamente y no por los mensajes
+			// importados, porque un chat sin respuesta no trae ninguno del
+			// candidato y Customer Success quedaría bloqueado.
+			if isTransferredFromObersuite(ticket) {
+				return nil
+			}
 		}
 		return apperrors.ErrColdOutreach
 	}
@@ -1631,130 +1641,4 @@ func broadcastTicketMessage(ticketID uint, msg *models.TicketMessage) {
 		"ticket_id": ticketID,
 		"message":   msg,
 	})
-}
-
-// ObersuiteTransferInput es un chat de WhatsApp que un manager de Obersuite
-// pasa a Customer Success: quién es el candidato, quién lo transfiere, por
-// qué, y el historial del chat tal como lo tienen ellos.
-type ObersuiteTransferInput struct {
-	ExternalID        string
-	CandidateName     string
-	CandidatePhone    string
-	TransferredByName string
-	Reason            string
-	Context           string
-	Source            string
-}
-
-type ObersuiteTransferResult struct {
-	ID     uint   `json:"id"`
-	Status string `json:"status"` // "created" | "already_exists"
-}
-
-// maxTransferContextRunes acota el historial que se pega en la descripción.
-// Un chat de meses no cabe en un ticket legible; si es más largo, se conserva
-// el FINAL —lo último que se dijo es lo que Customer Success necesita— y se
-// avisa de que se recortó.
-const maxTransferContextRunes = 20000
-
-// CreateObersuiteTransfer abre el ticket. Va a la misma bandeja y con el mismo
-// origen que las altas desde Obersuite, para que Customer Success lo vea donde
-// ya mira, y avisa a soporte igual que ellas.
-func (s *ticketService) CreateObersuiteTransfer(in ObersuiteTransferInput) (*ObersuiteTransferResult, error) {
-	externalID := strings.TrimSpace(in.ExternalID)
-	if externalID == "" {
-		return nil, hireFail(apperrors.ErrInvalidInput, "external_id es obligatorio: es lo que evita duplicar el ticket al reintentar")
-	}
-	if len(externalID) > 255 {
-		return nil, hireFail(apperrors.ErrInvalidInput, "external_id no puede superar los 255 caracteres")
-	}
-	name := strings.TrimSpace(in.CandidateName)
-	if name == "" {
-		return nil, hireFail(apperrors.ErrInvalidInput, "candidate_name es obligatorio: es el título del ticket")
-	}
-	phone := strings.TrimSpace(in.CandidatePhone)
-	by := strings.TrimSpace(in.TransferredByName)
-	if by == "" {
-		return nil, hireFail(apperrors.ErrInvalidInput, "transferred_by_name es obligatorio: Customer Success tiene que saber a quién preguntar")
-	}
-	reason := strings.TrimSpace(in.Reason)
-	context := strings.TrimSpace(in.Context)
-	if reason == "" && context == "" {
-		return nil, hireFail(apperrors.ErrInvalidInput, "hacen falta reason o context: un ticket sin motivo ni historial no dice qué hacer")
-	}
-
-	// El reintento ANTES de escribir nada.
-	if existing, err := s.repo.FindByExternalID(externalID); err != nil {
-		return nil, err
-	} else if existing != nil {
-		return &ObersuiteTransferResult{ID: existing.ID, Status: "already_exists"}, nil
-	}
-
-	// La descripción se lee de arriba abajo: quién lo pasa y por qué primero,
-	// el historial después. Es el orden en que se necesita al abrir el ticket.
-	var b strings.Builder
-	fmt.Fprintf(&b, "Chat de WhatsApp transferido desde Obersuite por %s.", by)
-	if phone != "" {
-		fmt.Fprintf(&b, " Candidato: %s (%s).", name, phone)
-	} else {
-		fmt.Fprintf(&b, " Candidato: %s.", name)
-	}
-	if reason != "" {
-		fmt.Fprintf(&b, "\n\nMotivo: %s", reason)
-	}
-	if context != "" {
-		if r := []rune(context); len(r) > maxTransferContextRunes {
-			context = "[… historial recortado: se conserva el final …]\n" + string(r[len(r)-maxTransferContextRunes:])
-		}
-		fmt.Fprintf(&b, "\n\nHistorial del chat:\n%s", context)
-	}
-
-	var contactID *uint
-	if phone != "" {
-		contact, err := s.repo.GetContactByPhone(phone)
-		if err != nil {
-			contact = &models.Contact{Phone: phone, Name: name}
-			if cerr := s.repo.CreateContact(contact); cerr != nil {
-				return nil, cerr
-			}
-		} else if contact.Name == "" || strings.HasPrefix(contact.Name, "WA User ") {
-			contact.Name = name
-			_ = s.repo.SaveContact(contact)
-		}
-		if contact != nil {
-			contactID = &contact.ID
-		}
-	}
-
-	ticket := &models.Ticket{
-		Origin:            models.OriginObersuite,
-		ExternalID:        externalID,
-		ContactID:         contactID,
-		Title:             "WA transferido: " + name,
-		Description:       b.String(),
-		Reason:            reason,
-		ProfessionalPhone: phone,
-		Stage:             models.StageNew,
-		Status:            "open",
-	}
-	if err := s.repo.CreateTicket(ticket); err != nil {
-		// Dos POST a la vez con el mismo id: uno gana el índice y el otro
-		// recibe el mismo "ya existe".
-		if isUniqueViolation(err) {
-			if again, ferr := s.repo.FindByExternalID(externalID); ferr == nil && again != nil {
-				return &ObersuiteTransferResult{ID: again.ID, Status: "already_exists"}, nil
-			}
-		}
-		return nil, err
-	}
-	if s.supportNtfy != nil {
-		s.supportNtfy.Notify(SupportTicketInfo{
-			Type:        "Chat de WhatsApp transferido desde Obersuite",
-			Requester:   name,
-			Subject:     ticket.Title,
-			Description: reason,
-			Link:        fmt.Sprintf("/tickets/internal/%d", ticket.ID),
-		})
-	}
-	return &ObersuiteTransferResult{ID: ticket.ID, Status: "created"}, nil
 }

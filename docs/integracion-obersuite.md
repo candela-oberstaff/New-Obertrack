@@ -346,45 +346,71 @@ escribe.
 
 ## 4b. `POST /tickets` — un chat de WhatsApp transferido a Customer Success
 
-Desde el 14-sep-2026. Un manager de Obersuite pasa una conversación de
-WhatsApp a Customer Success y aquí aparece como **ticket en la bandeja
-interna**, con `origin = "obersuite"` como las altas: donde Customer Success
-ya mira. Avisa a soporte igual que ellas.
+Desde el 15-sep-2026 (v2). Un manager de Obersuite pasa una conversación de
+WhatsApp y aquí aparece como **ticket de WhatsApp de verdad**: contacto,
+mensajes en burbujas con su hora original, y respuesta desde
+`/tickets/wa/:id` por el número de Obertrack. (La v1 lo dejaba como ticket
+interno con el historial pegado en la descripción; Customer Success no podía
+contestar. Un envío con la forma de la v1 se sigue aceptando.)
 
 ```
 POST /api/integrations/obersuite/tickets
 X-Service-Token: …
-
 {
   "external_id":         "obersuite-chat-5491112345678@c.us-42",   // OBLIGATORIO. Idempotente por él
-  "candidate_name":      "Juan Pérez",                              // OBLIGATORIO: es el título
-  "candidate_phone":     "5491112345678",                           // opcional
-  "transferred_by_name": "Lorena Moujalli",                         // OBLIGATORIO: a quién preguntar
-  "reason":              "Necesita acompañamiento post-contratación",
-  "context":             "[10/09 14:32] Juan Pérez: Hola…",         // el historial, texto plano
-  "source":              "whatsapp_chat"
+  "candidate_name":      "Juan Pérez",                              // OBLIGATORIO
+  "candidate_phone":     "5491112345678",                           // solo dígitos, con país
+  "waha_chat_id":        "5491112345678@c.us",                      // el JID; si falta se deriva del teléfono
+  "waha_session":        "default",                                 // la sesión de Obersuite (informativa, ver abajo)
+  "transferred_by_name": "Lorena Moujalli",                         // OBLIGATORIO
+  "transferred_at":      "2026-09-15T15:40:00Z",
+  "reason":              "…",
+  "messages": [                                                     // LA fuente: hasta 30, en orden
+    { "at": "2026-09-15T15:30:12Z", "from": "contact", "text": "…" },
+    { "at": "2026-09-15T15:31:40Z", "from": "agent",   "text": "…" }
+  ],
+  "context": "…",                                                   // respaldo legible; NO se interpreta
+  "source":  "whatsapp_chat"
 }
-→ 200 { "id": 147, "status": "created" }
-→ 200 { "id": 147, "status": "already_exists" }   // mismo external_id: no se duplica ni se modifica
+→ 200 { "id": 512, "status": "created" | "already_exists", "url": "/tickets/wa/512" }
 ```
 
-Hace falta **al menos uno** de `reason` y `context`: un ticket sin motivo ni
-historial no dice qué hacer. Los demás 400: falta `external_id`,
-`candidate_name` o `transferred_by_name`, con el texto que verá el manager.
-**429** con `Retry-After`; **500** con `request_id`. Regla de siempre: 4xx no
-se reintenta, 500 sí.
+`from` solo admite `contact` (el candidato) o `agent` (el reclutador); otra
+cosa es 400 con el índice. `at` nulo toma la hora de la transferencia.
 
-Lo que se guarda: `Title = "WA transferido: <candidate_name>"`,
-`ProfessionalPhone`, `Reason`, `Stage = new`, `Status = open`, y una
-descripción que se lee de arriba abajo —quién lo transfiere y por qué, luego el
-historial—. Un historial de más de 20 000 caracteres se recorta conservando
-el **final** (lo último que se dijo es lo que Customer Success necesita) y
-avisando del recorte.
+Lo que se guarda: el **contacto** por JID (si ya existía por JID o teléfono
+se reutiliza, nunca dos por el mismo JID; un nombre «WA User …» se sustituye
+por el real); el **ticket** con `origin = whatsapp`, `Title = "WA: <nombre>"`,
+`external_id`; **un mensaje por elemento** de `messages[]` con su hora
+original, `delivery_status = sent` en los del reclutador (la bandeja de salida
+no los reenvía) y `external_id = <external_id>-<índice>`; y un **mensaje de
+sistema** al final con quién lo pasó, cuándo, el motivo y la sesión de origen.
 
-`external_id` vive en `tickets.external_id` con índice único parcial
-(`idx_tickets_external_id`), creado por migración y **sin etiqueta `index` en
-el modelo**, por la misma razón que en `ticket_messages`: AutoMigrate lo
-reemplazaría por uno normal y se perdería la unicidad.
+**Dos decisiones que difieren de lo propuesto, tomadas mirando cómo envía
+WhatsApp Obertrack:**
+
+1. **La sesión del ticket es la NUESTRA (`WAHA_SESSION`), no `waha_session`.**
+   Obertrack envía siempre por un único número, y la bandeja de WhatsApp
+   filtra los tickets por esa sesión: uno etiquetado con la de Obersuite no se
+   vería. `waha_session` se conserva en el mensaje de sistema y, si difiere de
+   la nuestra, el mensaje avisa de que las respuestas saldrán por el número de
+   Obertrack. No se rechaza con 400: bloquearía la función si los dos sistemas
+   usan números distintos a propósito.
+2. **Transferir dos veces el mismo chat NO abre un segundo ticket.** Un chat de
+   WhatsApp es una conversación continua (así lo trata el webhook: reutiliza el
+   ticket abierto del contacto). La segunda transferencia se **anexa** al
+   abierto —su mensaje de sistema y los mensajes que aún no estuvieran (se
+   comparan por remitente, texto y hora al segundo)— y responde
+   `already_exists` con el id del ticket. Si el ticket anterior se había
+   resuelto, la siguiente transferencia sí abre uno nuevo.
+
+**Guarda de contacto en frío:** un ticket nacido de una transferencia
+(`external_id` con prefijo `obersuite-`) se puede contestar aunque el
+candidato nunca haya escrito. El reclutador ya le había hablado por
+WhatsApp; responder continúa esa conversación, no aborda a un desconocido.
+
+Códigos: misma tabla que `/hire`. `IsLocalOrigin` no cambia: estas
+transferencias son `origin = whatsapp`; las altas siguen siendo `obersuite`.
 
 ## 4c. Empresas escritas desde Obersuite (15-sep-2026)
 

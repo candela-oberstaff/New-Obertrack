@@ -3,6 +3,7 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -22,13 +23,25 @@ func NewObersuiteTicketHandler(tickets service.TicketService) *ObersuiteTicketHa
 }
 
 type obersuiteTransferRequest struct {
-	ExternalID        string `json:"external_id"`
-	CandidateName     string `json:"candidate_name"`
-	CandidatePhone    string `json:"candidate_phone"`
-	TransferredByName string `json:"transferred_by_name"`
-	Reason            string `json:"reason"`
-	Context           string `json:"context"`
-	Source            string `json:"source"`
+	ExternalID        string     `json:"external_id"`
+	CandidateName     string     `json:"candidate_name"`
+	CandidatePhone    string     `json:"candidate_phone"`
+	WahaChatID        string     `json:"waha_chat_id"`
+	WahaSession       string     `json:"waha_session"`
+	TransferredByName string     `json:"transferred_by_name"`
+	TransferredAt     *time.Time `json:"transferred_at"`
+	Reason            string     `json:"reason"`
+	Context           string     `json:"context"`
+	Source            string     `json:"source"`
+	// Messages es LA fuente del chat: hasta 30, en orden cronológico. context
+	// es solo respaldo legible y no se interpreta.
+	Messages []obersuiteTransferMessage `json:"messages"`
+}
+
+type obersuiteTransferMessage struct {
+	At   *time.Time `json:"at"`
+	From string     `json:"from"`
+	Text string     `json:"text"`
 }
 
 // Create es POST /api/integrations/obersuite/tickets.
@@ -38,14 +51,22 @@ func (h *ObersuiteTicketHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "el cuerpo no es JSON válido: " + err.Error()})
 		return
 	}
+	msgs := make([]service.ObersuiteTransferMessage, 0, len(req.Messages))
+	for _, m := range req.Messages {
+		msgs = append(msgs, service.ObersuiteTransferMessage{At: m.At, From: m.From, Text: m.Text})
+	}
 	res, err := h.tickets.CreateObersuiteTransfer(service.ObersuiteTransferInput{
 		ExternalID:        req.ExternalID,
 		CandidateName:     req.CandidateName,
 		CandidatePhone:    req.CandidatePhone,
+		WahaChatID:        req.WahaChatID,
+		WahaSession:       req.WahaSession,
 		TransferredByName: req.TransferredByName,
+		TransferredAt:     req.TransferredAt,
 		Reason:            req.Reason,
 		Context:           req.Context,
 		Source:            req.Source,
+		Messages:          msgs,
 	})
 	if err != nil {
 		status, msg := hireStatus(err)
