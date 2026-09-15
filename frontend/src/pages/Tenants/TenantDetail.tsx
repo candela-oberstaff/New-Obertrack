@@ -292,7 +292,7 @@ export default function TenantDetail() {
   const [scheduleModalEmployee, setScheduleModalEmployee] = useState<EmployeeSummary | null>(null)
   const [scheduleViewEmployee, setScheduleViewEmployee] = useState<EmployeeSummary | null>(null)
 
-  const [tab, setTab] = useState<'resumen' | 'uso' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados' | 'horarios'>('resumen')
+  const [tab, setTab] = useState<'resumen' | 'suscripciones' | 'uso' | 'usuarios' | 'organigrama' | 'expediente' | 'actividad' | 'tickets' | 'archivados' | 'horarios'>('resumen')
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -1153,6 +1153,9 @@ export default function TenantDetail() {
               ariaLabel="Secciones de la empresa"
               tabs={[
                 { id: 'resumen', label: 'Resumen' },
+                // Espejo de la pestaña del mismo nombre en Obersuite, en la
+                // misma posición para que las dos fichas se lean igual.
+                { id: 'suscripciones', label: 'Suscripciones' },
                 { id: 'uso', label: 'Uso' },
                 { id: 'usuarios', label: 'Profesionales', count: employees.length },
                 { id: 'organigrama', label: 'Organigrama' },
@@ -1201,7 +1204,6 @@ export default function TenantDetail() {
           )}
 
           {tab === 'resumen' && (
-            <>
             <div className={styles.sidebarCard} style={{ margin: 0 }}>
               <h2 className={styles.sidebarCardTitle}>Otra Información</h2>
               <div className={styles.kpiGrid3x2}>
@@ -1229,12 +1231,10 @@ export default function TenantDetail() {
                 })}
               </div>
             </div>
-            {/* Los procesos de reclutamiento de Obersuite: espejo de solo
-                lectura bajo el resumen. Va aquí y no en una pestaña porque es
-                lo primero que Customer Success quiere saber al abrir la
-                empresa: qué se está buscando para este cliente. */}
-            <TenantSubscriptions tenantId={tenantId} />
-            </>
+          )}
+
+          {tab === 'suscripciones' && (
+            <TenantSubscriptions tenantId={tenantId} companyName={tenant.company_name} />
           )}
 
           {tab === 'uso' && (
