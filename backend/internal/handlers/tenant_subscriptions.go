@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -66,10 +68,29 @@ func (h *TenantSubscriptionsHandler) Attachment(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "La conexión con Obersuite no está configurada"})
 		return
 	}
-	body, ctype, disposition, err := h.obersuite.SubscriptionAttachment(c.Param("sid"), c.Param("aid"))
+	// Preferimos la URL que Obersuite publica en el adjunto (?url=): sus ids de
+	// ruta no son el external_id de la suscripción, y construirla nosotros era
+	// adivinar. Si no viene, se cae al camino por partes.
+	var (
+		body        io.ReadCloser
+		ctype       string
+		disposition string
+		err         error
+	)
+	if raw := strings.TrimSpace(c.Query("url")); raw != "" {
+		body, ctype, disposition, err = h.obersuite.AttachmentByURL(raw)
+	} else {
+		body, ctype, disposition, err = h.obersuite.SubscriptionAttachment(c.Param("sid"), c.Param("aid"))
+	}
 	if err != nil {
 		if service.IsObersuiteNotFound(err) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "El archivo ya no está en Obersuite"})
+			return
+		}
+		// Una URL que no es de Obersuite es un dato malo de quien llama, no un
+		// fallo del otro sistema: 400, no 502.
+		if errors.Is(err, service.ErrNotAnObersuiteURL) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Ese enlace no es un adjunto de Obersuite"})
 			return
 		}
 		log.Printf("[Obersuite] adjunto %s/%s no disponible: %v", c.Param("sid"), c.Param("aid"), err)

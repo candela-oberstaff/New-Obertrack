@@ -19,7 +19,7 @@ import styles from './TenantSubscriptions.module.css'
 // de la plataforma. Solo lectura: sin botones de acción ni mutaciones.
 
 type Stage = { name: string; index: number; color?: string }
-type Attachment = { id: string; name: string; size?: number; mime?: string }
+type Attachment = { id: string; name: string; size?: number; mime?: string; url?: string }
 type HistoryEntry = { from: string | null; to: string; notes: string | null; by: string; at: string; attachments?: Attachment[] }
 type Subscription = {
   external_id: string
@@ -113,8 +113,15 @@ export function TenantSubscriptions({ tenantId, companyName }: { tenantId: numbe
     )
   }, [view, query, activas, archivadas])
 
-  const attachmentUrl = (sid: string, aid: string) =>
-    `/api/admin/tenants/${tenantId}/subscriptions/${encodeURIComponent(sid)}/attachments/${encodeURIComponent(aid)}`
+  // El enlace se pide SIEMPRE por nuestro backend, que es quien tiene el token.
+  // Se le pasa la URL que Obersuite publica en el adjunto: sus ids de ruta no
+  // son el external_id de la suscripción, así que construirla aquí era
+  // adivinar su formato (y su servidor contestaba 400). Si un adjunto viejo no
+  // trae `url`, se cae al camino por partes.
+  const attachmentUrl = (sid: string, a: Attachment) =>
+    a.url
+      ? `/api/admin/tenants/${tenantId}/subscription-attachment?url=${encodeURIComponent(a.url)}`
+      : `/api/admin/tenants/${tenantId}/subscriptions/${encodeURIComponent(sid)}/attachments/${encodeURIComponent(a.id)}`
 
   return (
     <div className={styles.container}>
@@ -444,7 +451,7 @@ export function TenantSubscriptions({ tenantId, companyName }: { tenantId: numbe
                     {modalSub.attachments!.map((a) => (
                       <a
                         key={a.id}
-                        href={attachmentUrl(modalSub.external_id, a.id)}
+                        href={attachmentUrl(modalSub.external_id, a)}
                         className={styles.attachmentPill}
                         target="_blank"
                         rel="noreferrer"
