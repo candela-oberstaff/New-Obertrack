@@ -82,3 +82,58 @@ func TestClienteObersuite_SinConfigurarNoSaleNiUnaPeticion(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// El proxy del adjunto usa la URL que publica Obersuite, pero es un proxy
+// AUTENTICADO con nuestro token: solo puede pedir su dominio y su ruta de
+// integración. Sin esto sería un proxy abierto a cualquier cosa.
+func TestClienteObersuite_ElAdjuntoPorURLSoloAceptaSuRutaDeIntegracion(t *testing.T) {
+	var pedida string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pedida = r.URL.Path
+		_, _ = w.Write([]byte("%PDF"))
+	}))
+	t.Cleanup(srv.Close)
+	c := &obersuiteClient{baseURL: srv.URL, token: "tok", http: &http.Client{Timeout: 2 * time.Second}}
+
+	bueno := srv.URL + "/api/integrations/obertrack/subscriptions/b26/attachments/72a"
+	body, _, _, err := c.AttachmentByURL(bueno)
+	if err != nil {
+		t.Fatalf("la URL buena: %v", err)
+	}
+	body.Close()
+	if pedida != "/api/integrations/obertrack/subscriptions/b26/attachments/72a" {
+		t.Errorf("ruta pedida %q", pedida)
+	}
+
+	for _, malo := range []string{
+		"https://otro-dominio.com/api/integrations/obertrack/x",   // otro host
+		srv.URL + "/api/admin/users",                              // su servidor, otra ruta
+		srv.URL + "/api/integrations/obertrack/../../admin/users", // travesía
+		"",
+	} {
+		if _, _, _, err := c.AttachmentByURL(malo); err == nil {
+			t.Errorf("debía rechazar %q", malo)
+		}
+	}
+}
+
+// El camino por partes recorta el prefijo del external_id: la ruta de Obersuite
+// usa el uuid a secas y con el prefijo contestaba 400.
+func TestClienteObersuite_ElCaminoPorPartesRecortaElPrefijo(t *testing.T) {
+	var pedida string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pedida = r.URL.Path
+		_, _ = w.Write([]byte("%PDF"))
+	}))
+	t.Cleanup(srv.Close)
+	c := &obersuiteClient{baseURL: srv.URL, token: "tok", http: &http.Client{Timeout: 2 * time.Second}}
+
+	body, _, _, err := c.SubscriptionAttachment("obersuite-subscription-b26334e6", "72a82e3e")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body.Close()
+	if pedida != "/api/integrations/obertrack/subscriptions/b26334e6/attachments/72a82e3e" {
+		t.Fatalf("ruta pedida %q: el prefijo tenía que recortarse", pedida)
+	}
+}

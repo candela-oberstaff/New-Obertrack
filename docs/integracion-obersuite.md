@@ -550,7 +550,17 @@ Lo nuestro:
   pantalla lo dice en el bloque. Un 404 suyo (empresa que no conocen) es lista
   vacía, no error.
 - **Solo lectura**, en pantalla y en código: no hay ninguna ruta de escritura
-  hacia sus procesos. Si Customer Success necesita mover una fase desde aquí,
+  hacia sus procesos.
+- **Los adjuntos se piden por la URL que Obersuite publica** en cada archivo
+  (`attachment.url`), no construyéndola nosotros:
+  `GET /api/admin/tenants/:id/subscription-attachment?url=…`. El id que lleva
+  esa URL **no es** el `external_id` de la suscripción —`external_id` es
+  `obersuite-subscription-<uuid>` y la ruta usa el `<uuid>` a secas—, así que
+  construirla era adivinar su formato y su servidor contestaba 400. El proxy
+  solo acepta URLs de su dominio y de su ruta de integración: es un proxy
+  autenticado con nuestro token, no puede volverse uno abierto (un enlace
+  ajeno es 400). La ruta por partes sigue existiendo como respaldo y recorta
+  el prefijo. Si Customer Success necesita mover una fase desde aquí,
   es un endpoint de escritura de Obersuite por definir; no se asume.
 
 `stage.index` es la posición en el catálogo `stages` que mandan ellos: el

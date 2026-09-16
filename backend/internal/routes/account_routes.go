@@ -304,6 +304,9 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		// lectura; el token hacia Obersuite vive en el servidor.
 		admin.GET("/tenants/:id/subscriptions", d.tenantSubs.List)
 		admin.GET("/tenants/:id/subscriptions/:sid/attachments/:aid", d.tenantSubs.Attachment)
+		// Con ?url=<la que publica Obersuite en el adjunto>: es la forma buena,
+		// porque sus ids de ruta no son el external_id de la suscripción.
+		admin.GET("/tenants/:id/subscription-attachment", d.tenantSubs.Attachment)
 		admin.GET("/tenants/:id/employees", d.admin.GetTenantEmployees)
 		admin.PUT("/tenants/:id/employees/:userId/schedule", d.admin.UpdateEmployeeSchedule)
 		admin.DELETE("/tenants/:id/employees/:userId/schedule", d.admin.DeleteEmployeeSchedule)

@@ -39,6 +39,14 @@ type ObersuiteClient interface {
 	// (que el llamador tiene que cerrar), el Content-Type y el
 	// Content-Disposition de Obersuite.
 	SubscriptionAttachment(subscriptionID, attachmentID string) (io.ReadCloser, string, string, error)
+	// AttachmentByURL abre el archivo por la URL que Obersuite publica en cada
+	// adjunto. Es el camino bueno: el id que lleva esa URL NO es el
+	// external_id de la suscripción (external_id es
+	// "obersuite-subscription-<uuid>" y la URL usa el "<uuid>" a secas), así
+	// que construirla nosotros era adivinar su formato, y su servidor
+	// contestaba 400. Se valida que la URL sea de SU dominio y de la ruta de
+	// integración: es un proxy autenticado, no puede convertirse en uno abierto.
+	AttachmentByURL(rawURL string) (io.ReadCloser, string, string, error)
 	// Configured dice si hay URL y token: sin ellos la pantalla no ofrece el
 	// bloque en vez de ofrecerlo vacío con un error.
 	Configured() bool
@@ -94,6 +102,10 @@ func (c *obersuiteClient) get(path string) (*http.Response, error) {
 
 var errObersuiteNotFound = errors.New("no encontrado en obersuite")
 
+// ErrNotAnObersuiteURL es un dato malo de quien llama, no un fallo de
+// Obersuite: el handler lo contesta como 400 y no como 502.
+var ErrNotAnObersuiteURL = errors.New("esa URL no es un adjunto de Obersuite")
+
 // IsObersuiteNotFound dice si el error es un 404 de Obersuite.
 func IsObersuiteNotFound(err error) bool { return errors.Is(err, errObersuiteNotFound) }
 
@@ -116,7 +128,31 @@ func (c *obersuiteClient) CompanySubscriptions(companyID uint) (json.RawMessage,
 }
 
 func (c *obersuiteClient) SubscriptionAttachment(subscriptionID, attachmentID string) (io.ReadCloser, string, string, error) {
+	// Respaldo para cuando el adjunto no trae `url`: el prefijo del external_id
+	// se recorta porque su ruta usa el uuid a secas.
+	subscriptionID = strings.TrimPrefix(subscriptionID, "obersuite-subscription-")
 	resp, err := c.get("/api/integrations/obertrack/subscriptions/" + url.PathEscape(subscriptionID) + "/attachments/" + url.PathEscape(attachmentID))
+	if err != nil {
+		return nil, "", "", err
+	}
+	return resp.Body, resp.Header.Get("Content-Type"), resp.Header.Get("Content-Disposition"), nil
+}
+
+// obersuiteIntegrationPath es lo único que AttachmentByURL deja pedir. Acotar a
+// esta ruta —y no solo al host— evita que el proxy sirva cualquier cosa del
+// servidor de Obersuite con nuestro token.
+const obersuiteIntegrationPath = "/api/integrations/obertrack/"
+
+func (c *obersuiteClient) AttachmentByURL(rawURL string) (io.ReadCloser, string, string, error) {
+	if !c.Configured() {
+		return nil, "", "", ErrObersuiteNotConfigured
+	}
+	rawURL = strings.TrimSpace(rawURL)
+	base := strings.TrimRight(c.baseURL, "/")
+	if !strings.HasPrefix(rawURL, base+obersuiteIntegrationPath) || strings.Contains(rawURL, "..") {
+		return nil, "", "", ErrNotAnObersuiteURL
+	}
+	resp, err := c.get(strings.TrimPrefix(rawURL, base))
 	if err != nil {
 		return nil, "", "", err
 	}
