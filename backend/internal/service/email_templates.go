@@ -1,6 +1,10 @@
 package service
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"strings"
+)
 
 // Plantillas de los correos transaccionales, separadas del envío para que se
 // puedan previsualizar sin mandar nada (ver handlers/email_preview.go) y para
@@ -176,9 +180,101 @@ func BuildSupportAlertHTML(rows, link string) string {
 	return brandedEmailShell("🎫 Nuevo ticket de soporte", body)
 }
 
-// emailTableRow arma una fila etiqueta/valor para BuildSupportAlertHTML.
-func emailTableRow(label, value string) string {
+// EmailTableRow arma una fila etiqueta/valor para plantillas de correo.
+func EmailTableRow(label, value string) string {
 	return fmt.Sprintf(
 		`<tr><td style="padding:6px 12px 6px 0;color:%s;font-weight:600;white-space:nowrap;vertical-align:top;">%s</td><td style="padding:6px 0;color:%s;">%s</td></tr>`,
 		emailMutedColor, label, emailInkColor, value)
+}
+
+// BuildObervoiceCredentialsHTML: envío de datos de telefonía SIP al usuario.
+func BuildObervoiceCredentialsHTML(name, username, extension, prefix, phone, password, qr, loginLink string) string {
+	if name == "" {
+		name = "Usuario"
+	}
+	userDisplay := username
+	if userDisplay == "" {
+		userDisplay = extension
+	}
+	if loginLink == "" {
+		loginLink = "https://voice.oberstaff.com/webrtc/"
+	}
+	appLink := "https://vitalpbx.com/vitalpbx-connect-pbx-app-ios-android/?srsltid=AfmBOooQTUnh9HHE9JXlYwOLsA9yHAInHlm4JwNbEar-YFJa47rHALPj"
+	tutorialLink := "https://drive.google.com/drive/folders/1EWLN4YZCL7Fk6BarJ6h9pkqbpLPneCDF?usp=sharing"
+
+	passStr := password
+	if passStr == "" {
+		passStr = "(Clave provista por el administrador)"
+	}
+
+	phonePrefixStr := ""
+	if phone != "" || prefix != "" {
+		pVal := phone
+		if pVal == "" {
+			pVal = "—"
+		}
+		prefVal := prefix
+		if prefVal == "" {
+			prefVal = "—"
+		}
+		phonePrefixStr = fmt.Sprintf(`<p style="margin:0 0 10px 0;font-size:14px;color:#0f172a;"><strong>Teléfono:</strong> %s &nbsp;|&nbsp; <strong>Prefijo:</strong> %s</p>`, pVal, prefVal)
+	}
+
+	qrBlock := ""
+	if qr != "" {
+		qrSrc := qr
+		if strings.HasPrefix(qr, "/uploads/") || strings.HasPrefix(qr, "/api/uploads/") {
+			base := os.Getenv("BACKEND_URL")
+			if base == "" {
+				base = os.Getenv("SERVICE_URL_BACKEND")
+			}
+			if base == "" {
+				base = os.Getenv("FRONTEND_URL")
+			}
+			if base != "" {
+				cleanPath := qr
+				if strings.HasPrefix(qr, "/api/uploads/") {
+					cleanPath = strings.Replace(qr, "/api/uploads/", "/api/public/uploads/", 1)
+				} else if strings.HasPrefix(qr, "/uploads/") {
+					cleanPath = "/api/public/uploads/" + strings.TrimPrefix(qr, "/uploads/")
+				}
+				qrSrc = strings.TrimRight(base, "/") + cleanPath
+			}
+		}
+		qrBlock = fmt.Sprintf(`
+			<div style="margin:24px 0;text-align:center;background:#f8fafc;padding:20px;border-radius:14px;border:1px dashed #cbd5e1;">
+				<p style="margin:0 0 12px 0;font-size:14px;font-weight:700;color:#0f172a;">📱 Escaneá tu Código QR de Acceso:</p>
+				<img src="%s" alt="Código QR Obervoice" style="max-width:210px;height:auto;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.08);border:1px solid #e2e8f0;background:#ffffff;padding:8px;" />
+			</div>
+		`, qrSrc)
+	}
+
+	body := fmt.Sprintf(`
+		<div style="font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;max-width:600px;margin:0 auto;padding:28px;background:#ffffff;border-radius:16px;border:1px solid #e2e8f0;color:#0f172a;">
+
+			<p style="font-size:16px;color:#0f172a;margin:0 0 10px 0;">Hola <strong>%s</strong>, buen día.</p>
+			<p style="font-size:14.5px;color:#334155;margin:0 0 16px 0;line-height:1.6;">
+				Es un placer darte la bienvenida a obervoice, nuestra centralita telefónica.
+			</p>
+			<p style="font-size:14px;color:#475569;margin:0 0 20px 0;line-height:1.6;">
+				Te comparto tus credenciales de acceso, adjunto te dejo un video tutorial de cómo dar tus primeros pasos.
+			</p>
+
+			<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:20px;margin:0 0 22px 0;">
+				<p style="margin:0 0 10px 0;font-size:14px;color:#0f172a;"><strong>User:</strong> <span style="font-family:monospace;font-size:14px;color:#cc33cc;font-weight:700;">%s</span></p>
+				<p style="margin:0 0 10px 0;font-size:14px;color:#0f172a;"><strong>Password:</strong> <span style="font-family:monospace;font-size:14px;color:#0f172a;">%s</span></p>
+				%s
+			</div>
+
+			%s
+
+			<div style="background:#ffffff;border-top:1px solid #e2e8f0;padding-top:18px;margin-top:20px;font-size:13.5px;line-height:1.8;color:#334155;">
+				<p style="margin:0 0 8px 0;"><strong>Link:</strong> <a href="%s" style="color:#cc33cc;text-decoration:none;font-weight:600;" target="_blank">%s</a></p>
+				<p style="margin:0 0 8px 0;"><strong>Descarga aplicación movil:</strong> <a href="%s" style="color:#cc33cc;text-decoration:none;font-weight:600;" target="_blank">%s</a></p>
+				<p style="margin:0;"><strong>Tutorial:</strong> <a href="%s" style="color:#cc33cc;text-decoration:none;font-weight:600;" target="_blank">%s</a></p>
+			</div>
+		</div>
+	`, name, userDisplay, passStr, phonePrefixStr, qrBlock, loginLink, loginLink, appLink, appLink, tutorialLink, tutorialLink)
+
+	return brandedEmailShell("📞 Tus datos de Obervoice", body)
 }

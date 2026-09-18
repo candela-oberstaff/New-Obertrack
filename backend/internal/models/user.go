@@ -83,6 +83,17 @@ type User struct {
 	Location         string     `gorm:"type:text" json:"location"`
 	IdentityDocument string     `gorm:"size:500" json:"identity_document"`
 	Address          string     `gorm:"type:text" json:"address"`
+	// ObervoiceUsername / ObervoicePassword / ObervoiceExtension / ObervoicePrefix /
+	// ObervoicePhone son las credenciales y datos de telefonía SIP del softphone
+	// Obervoice. Solo los fija el superadmin desde el panel; el usuario los ve en
+	// su página Obervoice (la contraseña nunca viaja al cliente: json:"-").
+	ObervoiceUsername  string `gorm:"size:255" json:"obervoice_username,omitempty"`
+	ObervoicePassword  string `gorm:"size:255" json:"-"`
+	ObervoiceExtension string `gorm:"size:20" json:"obervoice_extension,omitempty"`
+	ObervoicePrefix    string `gorm:"size:20" json:"obervoice_prefix,omitempty"`
+	ObervoicePhone     string `gorm:"size:50" json:"obervoice_phone,omitempty"`
+	ObervoiceQR        string `gorm:"type:text" json:"obervoice_qr,omitempty"`
+
 	// ObersuiteID identifica al candidato en Obersuite. Es por donde el puente
 	// de contratación reconoce a la persona ANTES que por el email, porque el
 	// email cambia entre la postulación y el alta y resolver por él partía a la

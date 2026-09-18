@@ -25,6 +25,7 @@ import {
   Download,
   ChevronDown,
   FileSpreadsheet,
+  Phone,
 } from 'lucide-react'
 import Avatar from '../components/Common/Avatar'
 import { UserModal } from '../components/Admin/Modals/UserModal'
@@ -39,6 +40,7 @@ import { ActivityFeed } from '../components/Admin/ActivityFeed'
 import { TeamActivityPanel } from '../components/Admin/TeamActivityPanel'
 import { AbsenceReportPanel, groupAbsences, absenceStatus } from '../components/Admin/AbsenceReportPanel'
 import { ArchivedList } from '../components/Admin/ArchivedList'
+import ObervoicePanel from '../components/Admin/ObervoicePanel'
 import { authService, adminService } from '../services/api'
 import { setRecordNav } from '../lib/recordNav'
 import { useAuth } from '../context/AuthContext'
@@ -501,6 +503,7 @@ export default function Admin() {
     { id: 'users', label: 'Usuarios', icon: Users },
     { id: 'activity', label: 'Actividad', icon: Activity },
     { id: 'archived', label: 'Archivados', icon: Archive },
+    { id: 'obervoice', label: 'Obervoice', icon: Phone },
   ]
 
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -1329,6 +1332,23 @@ export default function Admin() {
               </p>
             </div>
             <ArchivedList entries={archived} showCompany />
+          </div>
+        )}
+
+        {activeTab === 'obervoice' && (
+          <div style={{ padding: '4px 0' }}>
+            <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Phone size={18} style={{ color: 'var(--primary)' }} /> Obervoice — Datos de telefonía
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#64748b' }}>
+                  Asigna y envía las credenciales SIP a cada usuario. Selecciona un usuario para editar sus datos.
+                </p>
+              </div>
+              
+            </div>
+            <ObervoicePanel />
           </div>
         )}
       </div>

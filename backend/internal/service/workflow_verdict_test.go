@@ -409,7 +409,9 @@ func TestCupo_CortaLaAvalanchaYNoTocaALasDemasEmpresas(t *testing.T) {
 	q := newRunQuota(2)
 	ahora := time.Date(2026, 8, 25, 10, 30, 0, 0, time.UTC)
 
-	if !q.allow(ahora, 42) || !q.allow(ahora, 42) {
+	ok1 := q.allow(ahora, 42)
+	ok2 := q.allow(ahora, 42)
+	if !ok1 || !ok2 {
 		t.Fatal("las dos primeras entran en el cupo")
 	}
 	if q.allow(ahora, 42) {

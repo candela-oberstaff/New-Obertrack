@@ -1313,3 +1313,48 @@ func stripHTML(s string) string {
 	}
 	return b.String()
 }
+
+// CreateObervoiceRequest crea un ticket interno notificando que una empresa
+// quiere contratar Obervoice.
+//
+// POST /tickets/internal/obervoice-request
+func (h *TicketHandler) CreateObervoiceRequest(c *gin.Context) {
+	var req struct {
+		CompanyName    string `json:"company_name"`
+		RequesterEmail string `json:"requester_email"`
+		EmployerID     uint   `json:"employer_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+	if req.EmployerID == 0 {
+		req.EmployerID = userID
+	}
+	if h.db != nil && userID > 0 {
+		var u models.User
+		if err := h.db.First(&u, userID).Error; err == nil {
+			if req.RequesterEmail == "" {
+				req.RequesterEmail = u.Email
+			}
+			if req.CompanyName == "" || req.CompanyName == "Empresa" || req.CompanyName == req.RequesterEmail {
+				if u.CompanyName != "" {
+					req.CompanyName = u.CompanyName
+				} else if u.Name != "" && u.Name != u.Email {
+					req.CompanyName = u.Name
+				}
+			}
+		}
+	}
+	if req.CompanyName == "" {
+		req.CompanyName = req.RequesterEmail
+	}
+
+	if err := h.ticketSvc.CreateObervoiceRequest(req.CompanyName, req.RequesterEmail, req.EmployerID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo crear la solicitud"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}

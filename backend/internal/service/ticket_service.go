@@ -104,6 +104,11 @@ type TicketService interface {
 	ListTransfers(origin, ref string) ([]models.TicketTransfer, error)
 	// GetUserName returns a user's display name by id (for audit labels).
 	GetUserName(id uint) (string, error)
+
+	// CreateObervoiceRequest abre un ticket interno para notificar a soporte
+	// que una empresa está solicitando el servicio Obervoice.
+	CreateObervoiceRequest(companyName, requesterEmail string, employerID uint) error
+	SetChannelService(cs ChannelService)
 }
 
 // RejectionAlertInput carries the data denormalized onto a work-hour rejection
@@ -156,14 +161,23 @@ type ticketService struct {
 	outbox      *WhatsAppOutbox
 	brevoSvc    *BrevoService
 	supportNtfy *SupportNotifier
+	channelSvc  ChannelService
+	// obervoiceEmail es el destinatario de las notificaciones de solicitud
+	// Obervoice. Se configura vía OBERVOICE_CONTACT_EMAIL; si está vacío
+	// el correo se omite y solo se crea el ticket interno.
+	obervoiceEmail string
 	// importMu deja pasar un solo import de historial a la vez. Ahora hay dos
 	// disparadores —el watcher periódico y el botón de la bandeja— y dos pasadas
 	// simultáneas competirían creando el mismo contacto y el mismo ticket.
 	importMu sync.Mutex
 }
 
-func NewTicketService(repo repository.TicketRepository, userRepo repository.UserRepository, notifSvc NotificationService, wahaSvc *WahaService, brevoSvc *BrevoService, supportNtfy *SupportNotifier, outbox *WhatsAppOutbox) TicketService {
-	return &ticketService{repo: repo, userRepo: userRepo, notifSvc: notifSvc, wahaSvc: wahaSvc, brevoSvc: brevoSvc, supportNtfy: supportNtfy, outbox: outbox}
+func (s *ticketService) SetChannelService(cs ChannelService) {
+	s.channelSvc = cs
+}
+
+func NewTicketService(repo repository.TicketRepository, userRepo repository.UserRepository, notifSvc NotificationService, wahaSvc *WahaService, brevoSvc *BrevoService, supportNtfy *SupportNotifier, outbox *WhatsAppOutbox, obervoiceEmail string) TicketService {
+	return &ticketService{repo: repo, userRepo: userRepo, notifSvc: notifSvc, wahaSvc: wahaSvc, brevoSvc: brevoSvc, supportNtfy: supportNtfy, outbox: outbox, obervoiceEmail: obervoiceEmail}
 }
 
 // TransferInput describes a ticket reassignment to be audited.
@@ -1641,4 +1655,98 @@ func broadcastTicketMessage(ticketID uint, msg *models.TicketMessage) {
 		"ticket_id": ticketID,
 		"message":   msg,
 	})
+}
+
+// CreateObervoiceRequest abre un ticket interno para que soporte sepa que una
+// empresa está interesada en el servicio Obervoice. Idempotente: si ya hay uno
+// abierto para esa empresa no crea otro.
+func (s *ticketService) CreateObervoiceRequest(companyName, requesterEmail string, employerID uint) error {
+	log.Printf("[Obervoice] Solicitud de activación recibida: empresa=%q email=%q employerID=%d", companyName, requesterEmail, employerID)
+
+	var userIDPtr *uint
+	if employerID > 0 {
+		userIDPtr = &employerID
+	}
+
+	var ticket *models.Ticket
+	if employerID > 0 {
+		if existing, err := s.repo.FindOpenByUserAndOrigin(employerID, models.OriginInternal); err == nil && existing != nil &&
+			strings.HasPrefix(existing.Title, "Solicitud Obervoice:") {
+			ticket = existing
+			log.Printf("[Obervoice] Reutilizando ticket abierto existente #%d para la empresa %s", ticket.ID, companyName)
+		}
+	}
+
+	if ticket == nil {
+		ticket = &models.Ticket{
+			Origin:            models.OriginInternal,
+			UserID:            userIDPtr,
+			Title:             "Solicitud Obervoice: " + companyName,
+			Description:       "La empresa " + companyName + " (" + requesterEmail + ") ha solicitado información sobre el servicio Obervoice desde la plataforma.",
+			ProfessionalEmail: requesterEmail,
+			CompanyName:       companyName,
+			Stage:             models.StageNew,
+			Status:            "open",
+		}
+		if err := s.repo.CreateTicket(ticket); err != nil {
+			log.Printf("[Obervoice] ERROR al crear ticket en la base de datos: %v", err)
+			return err
+		}
+		log.Printf("[Obervoice] Ticket #%d creado exitosamente en la BD", ticket.ID)
+	}
+
+	if s.supportNtfy != nil {
+		s.supportNtfy.Notify(SupportTicketInfo{
+			Type:        "Solicitud Obervoice",
+			Requester:   companyName,
+			Company:     companyName,
+			Subject:     ticket.Title,
+			Description: ticket.Description,
+			Link:        fmt.Sprintf("/tickets/internal/%d", ticket.ID),
+		})
+	}
+
+	if s.channelSvc != nil && employerID > 0 {
+		msg := fmt.Sprintf("La empresa %s (%s) solicitó la activación del servicio de telefonía Obervoice.", companyName, requesterEmail)
+		_, err := s.channelSvc.ContactSupport(employerID, "Solicitud Obervoice: "+companyName, msg, "Media", "Obervoice", false)
+		if err != nil {
+			log.Printf("[Obervoice] ERROR al crear ticket en Soporte por Chat: %v", err)
+		} else {
+			log.Printf("[Obervoice] Ticket de chat creado exitosamente en Soporte por Chat")
+		}
+	}
+
+	// Enviar correo al contacto configurado (OBERVOICE_CONTACT_EMAIL) para que gestione la solicitud.
+	if s.brevoSvc != nil && s.obervoiceEmail != "" {
+		subject := fmt.Sprintf("📞 SOLICITUD DE OBERVOICE: %s", companyName)
+		body := fmt.Sprintf(`
+			<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; color: #0f172a;">
+				<div style="background: linear-gradient(135deg, #cc33cc 0%%, #8a2be2 100%%); padding: 20px; border-radius: 12px; color: #ffffff; text-align: center; margin-bottom: 24px;">
+					<h2 style="margin: 0; font-size: 20px;">📞 Nueva Solicitud de Contratación Obervoice</h2>
+				</div>
+				<p style="font-size: 15px; color: #334155;">Hola,</p>
+				<p style="font-size: 14px; color: #475569; line-height: 1.6;">
+					La empresa <strong>%s</strong> ha solicitado la activación del servicio de telefonía corporativa <strong>Obervoice</strong> directamente desde la plataforma.
+				</p>
+				<div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin: 20px 0;">
+					<p style="margin: 0 0 10px; font-size: 13.5px;"><strong>Empresa solicitante:</strong> %s</p>
+					<p style="margin: 0 0 10px; font-size: 13.5px;"><strong>Email de contacto:</strong> <a href="mailto:%s" style="color: #cc33cc;">%s</a></p>
+					<p style="margin: 0; font-size: 13.5px;"><strong>ID de Ticket generado:</strong> #%d</p>
+				</div>
+				<p style="font-size: 13.5px; color: #64748b; line-height: 1.5;">
+					Puedes acceder al ticket generado desde la sección de Tickets Internos del panel para gestionar su activación y contactar a la empresa.
+				</p>
+			</div>
+		`, companyName, companyName, requesterEmail, requesterEmail, ticket.ID)
+		err := s.brevoSvc.SendEmailKind(EmailKindSupportTicket, s.obervoiceEmail, "Soporte Obervoice", subject, body)
+		if err != nil {
+			log.Printf("[Obervoice] ERROR al enviar correo a %s: %v", s.obervoiceEmail, err)
+		} else {
+			log.Printf("[Obervoice] Correo de notificación enviado exitosamente a %s", s.obervoiceEmail)
+		}
+	} else {
+		log.Printf("[Obervoice] Correo no enviado: brevoSvc=%v, obervoiceEmail=%q", s.brevoSvc != nil, s.obervoiceEmail)
+	}
+
+	return nil
 }

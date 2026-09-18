@@ -71,6 +71,7 @@ func humanizeReason(s string) string {
 }
 
 func (s *workHourService) getReportWorkHours(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) ([]models.WorkHour, string, error) {
+	_ = role
 	monthsEs := []string{
 		"Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
 		"Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",

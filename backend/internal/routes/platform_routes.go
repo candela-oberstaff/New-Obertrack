@@ -173,8 +173,10 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		rbac.DELETE("/groups/:id/members", d.rbac.RemoveGroupMember)
 	}
 
-	// Módulo de tickets (Zoho + WhatsApp): solo superadmin. Customer success y
-	// profesionales no tienen acceso.
+	// Solicitud de servicio Obervoice desde la página del usuario (abierto a empleadores/usuarios autenticados).
+	api.POST("/tickets/internal/obervoice-request", d.ticket.CreateObervoiceRequest)
+
+	// Módulo de tickets (Zoho + WhatsApp): solo superadmin y Customer Success.
 	tickets := api.Group("/tickets")
 	tickets.Use(requireSupportInboxAccess())
 	{

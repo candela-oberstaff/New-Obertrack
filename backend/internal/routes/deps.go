@@ -142,7 +142,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	whatsappOutbox := service.NewWhatsAppOutbox(ticketRepo, wahaSvc)
 	whatsappOutbox.Start()
 
-	ticketSvc := service.NewTicketService(ticketRepo, userRepo, notifSvc, wahaSvc, brevoSvc, supportNtfy, whatsappOutbox)
+	ticketSvc := service.NewTicketService(ticketRepo, userRepo, notifSvc, wahaSvc, brevoSvc, supportNtfy, whatsappOutbox, cfg.ObervoiceContactEmail)
+	ticketSvc.SetChannelService(channelSvc)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, brevoSvc)
 	workHourSvc := service.NewWorkHourService(workHourRepo, userRepo, notifSvc, brevoSvc, ticketSvc, employmentRepo)
 	uploadSvc := service.NewUploadService(os.Getenv("UPLOAD_PATH"))

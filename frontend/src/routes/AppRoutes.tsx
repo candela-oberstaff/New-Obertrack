@@ -47,6 +47,7 @@ const AppSettings = lazy(() => import('../pages/AppSettings'))
 const Induction = lazy(() => import('../pages/Induction'))
 const Testimonial = lazy(() => import('../pages/Testimonial'))
 const Testimonials = lazy(() => import('../pages/Testimonials'))
+const Obervoice = lazy(() => import('../pages/Obervoice'))
 
 export function AppRoutes() {
   return (
@@ -128,6 +129,7 @@ export function AppRoutes() {
           <Route path="tickets/internal/:id" element={<AdminRoute><InternalTicketDetail /></AdminRoute>} />
           <Route path="tickets/wa/:id" element={<SupportInboxRoute><WhatsAppTicketDetail /></SupportInboxRoute>} />
           <Route path="tickets/:id" element={<AdminRoute><TicketDetail /></AdminRoute>} />
+          <Route path="obervoice" element={<ProtectedRoute><Obervoice /></ProtectedRoute>} />
         </Route>
       </Routes>
     </Suspense>

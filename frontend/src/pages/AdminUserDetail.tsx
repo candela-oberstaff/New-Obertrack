@@ -498,6 +498,13 @@ export default function AdminUserDetail() {
       is_active: user.is_active,
       is_manager: user.is_manager,
       is_supervisor: !!user.is_supervisor,
+      // Obervoice — la contraseña nunca viene del backend, se deja en blanco
+      // para que el campo vacío signifique "no cambiar".
+      obervoice_username: user.obervoice_username || '',
+      obervoice_password: '',
+      obervoice_extension: user.obervoice_extension || '',
+      obervoice_prefix: user.obervoice_prefix || '',
+      obervoice_phone: user.obervoice_phone || '',
     })
     setEditError(null)
     setShowEdit(true)

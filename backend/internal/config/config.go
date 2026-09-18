@@ -27,6 +27,10 @@ type Config struct {
 	ServerPort   string
 	DBSSLMode    string
 	SupportEmail string
+	// ObervoiceContactEmail es el destinatario del correo que se envía cuando
+	// una empresa solicita el servicio Obervoice desde la plataforma.
+	// Configurable vía OBERVOICE_CONTACT_EMAIL (por defecto lucia@oberstaff.com).
+	ObervoiceContactEmail string
 	// MultiManagerReads activa las lecturas de manager via tabla N-a-N
 	// (employment_managers) con semántica "cualquier manager" (Fase 2).
 	// Default false: comportamiento actual (puntero employments.manager_id).
@@ -86,7 +90,8 @@ func LoadConfig() *Config {
 		JWTSecret:    getEnv("JWT_SECRET", ""),
 		ServerPort:   getEnv("SERVER_PORT", "8080"),
 		DBSSLMode:    getEnv("DB_SSL_MODE", "disable"),
-		SupportEmail: getEnv("SUPPORT_EMAIL", ""),
+		SupportEmail:          getEnv("SUPPORT_EMAIL", ""),
+		ObervoiceContactEmail: getEnv("OBERVOICE_CONTACT_EMAIL", "lucia@oberstaff.com"),
 		// Feature flag Fase 2: OFF por defecto; "true"/"1" lo activan.
 		MultiManagerReads: getBoolEnv("MULTI_MANAGER_READS", false),
 		// Feature flag Fase 2 del supervisor: OFF por defecto.

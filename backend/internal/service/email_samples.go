@@ -103,6 +103,18 @@ func sampleEmail(kind, toName string) (subject, body string) {
 			"Así se ve una campaña del constructor de correos. El contenido real lo define la plantilla elegida en Email Marketing.",
 			nil, "Ver más", "/",
 			"")
+
+	case EmailKindObervoiceCredentials:
+		return "📞 Tus datos de Obervoice", BuildObervoiceCredentialsHTML(
+			"María García",
+			"maria.garcia@empresa.com",
+			"1001",
+			"9",
+			"+34 900 123 456",
+			"", // la contraseña real nunca se usa en muestras
+			"", // qr
+			"https://voice.oberstaff.com/webrtc/",
+		)
 	}
 
 	return "Correo de Obertrack", sampleBody("Muestra", "Correo de ejemplo del sistema.", nil, "", "", "")

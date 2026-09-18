@@ -248,6 +248,12 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		admin.DELETE("/users/:id", middleware.RequireSuperadmin(), d.admin.DeleteUser)
 		admin.POST("/users/:id/reset-password", d.admin.ResetPassword)
 
+		// Obervoice: envío de credenciales SIP por correo al usuario.
+		admin.POST("/obervoice/send-credentials/:id", d.admin.SendObervoiceCredentials)
+		// Obervoice: vista previa HTML del correo de credenciales.
+		admin.POST("/obervoice/preview-credentials/:id", d.admin.PreviewObervoiceCredentials)
+		admin.GET("/obervoice/preview-credentials/:id", d.admin.PreviewObervoiceCredentials)
+
 		// Configuración de la app: SOLO superadmin, ni siquiera lectura para CS
 		// (requireAdminPanel dejaría pasar sus GET, RequireSuperadmin los corta).
 		settings := admin.Group("/settings")

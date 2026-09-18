@@ -2759,6 +2759,41 @@ func Run(db *gorm.DB) error {
 			},
 		},
 		// Future migrations go here
+		{
+			ID: "202609171200_add_obervoice_fields",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("[migration] adding obervoice fields to users...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				_ = tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS obervoice_username`).Error
+				_ = tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS obervoice_password`).Error
+				_ = tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS obervoice_extension`).Error
+				return nil
+			},
+		},
+		{
+			ID: "202609171800_add_obervoice_prefix_phone",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("[migration] adding obervoice prefix/phone to users...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				_ = tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS obervoice_prefix`).Error
+				_ = tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS obervoice_phone`).Error
+				return nil
+			},
+		},
+		{
+			ID: "202609181200_add_obervoice_qr",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("[migration] adding obervoice_qr to users...")
+				return tx.AutoMigrate(&models.User{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS obervoice_qr`).Error
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

@@ -39,6 +39,7 @@ import {
   Video,
   MessageSquareQuote,
   Gauge,
+  Phone,
 } from 'lucide-react'
 
 // Módulo de permisos (roles) que gobierna cada entrada del sidebar.
@@ -189,6 +190,7 @@ export default function Layout() {
     { path: '/papelera', label: 'Papelera', icon: <Trash2 size={20} />, show: isSuper },
     { path: '/novedades', label: 'Novedades', icon: <GraduationCap size={20} />, show: !isIT && !isCS },
     { path: '/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isEndUser },
+    { path: '/obervoice', label: 'Obervoice', icon: <Phone size={20} />, show: true },
     { path: '/profile', label: 'Perfil', icon: <User size={20} />, show: true },
   ].filter(item => {
     if (!item.show) return false

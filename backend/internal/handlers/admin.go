@@ -386,6 +386,16 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		// borrar la corrección y volver a mostrar created_at. Ausente = no
 		// tocar (es el caso de todo usuario que no sea una empresa).
 		ClientSince *string `json:"client_since"`
+		// Obervoice: credenciales SIP del softphone. Vacío = no tocar.
+		// La contraseña se guarda en claro porque el servidor SIP la necesita
+		// para autenticar el registro; el campo nunca sale en las respuestas
+		// (json:"-" en el modelo).
+		ObervoiceUsername  string  `json:"obervoice_username"`
+		ObervoicePassword  string  `json:"obervoice_password"`
+		ObervoiceExtension string  `json:"obervoice_extension"`
+		ObervoicePrefix    string  `json:"obervoice_prefix"`
+		ObervoicePhone     string  `json:"obervoice_phone"`
+		ObervoiceQR        *string `json:"obervoice_qr"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -509,6 +519,24 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 			}
 			updates["client_since"] = *since
 		}
+	}
+	if req.ObervoiceUsername != "" {
+		updates["obervoice_username"] = req.ObervoiceUsername
+	}
+	if req.ObervoicePassword != "" {
+		updates["obervoice_password"] = req.ObervoicePassword
+	}
+	if req.ObervoiceExtension != "" {
+		updates["obervoice_extension"] = req.ObervoiceExtension
+	}
+	if req.ObervoicePrefix != "" {
+		updates["obervoice_prefix"] = req.ObervoicePrefix
+	}
+	if req.ObervoicePhone != "" {
+		updates["obervoice_phone"] = req.ObervoicePhone
+	}
+	if req.ObervoiceQR != nil {
+		updates["obervoice_qr"] = *req.ObervoiceQR
 	}
 
 	user, err := h.service.UpdateUser(uint(id), updates)
@@ -2154,3 +2182,85 @@ func (h *AdminHandler) DownloadTenantReportPDF(c *gin.Context) {
 	c.Data(http.StatusOK, "application/pdf", pdfBytes)
 }
 
+
+// SendObervoiceCredentials envía al usuario sus datos de telefonía SIP por
+// correo. Sólo superadmin o customer success pueden dispararlo.
+//
+// POST /admin/obervoice/send-credentials/:id
+func (h *AdminHandler) SendObervoiceCredentials(c *gin.Context) {
+	if !isAdminPanelUser(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin o customer success"})
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID de usuario inválido"})
+		return
+	}
+	if err := h.service.SendObervoiceCredentials(uint(id)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// PreviewObervoiceCredentials genera la vista previa en HTML del correo de credenciales.
+//
+// POST /admin/obervoice/preview-credentials/:id
+func (h *AdminHandler) PreviewObervoiceCredentials(c *gin.Context) {
+	if !isAdminPanelUser(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Requiere superadmin o customer success"})
+		return
+	}
+	idStr := c.Param("id")
+	var req struct {
+		Name      string `json:"name"`
+		Username  string `json:"obervoice_username"`
+		Password  string `json:"obervoice_password"`
+		Extension string `json:"obervoice_extension"`
+		Prefix    string `json:"obervoice_prefix"`
+		Phone     string `json:"obervoice_phone"`
+		QR        string `json:"obervoice_qr"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	userName := req.Name
+	if idStr != "" && idStr != "0" {
+		if uid, err := strconv.ParseUint(idStr, 10, 32); err == nil {
+			if u, err := h.service.GetUserByID(uint(uid)); err == nil && u != nil {
+				if userName == "" {
+					userName = u.Name
+				}
+				if req.Username == "" {
+					req.Username = u.ObervoiceUsername
+				}
+				if req.Extension == "" {
+					req.Extension = u.ObervoiceExtension
+				}
+				if req.Prefix == "" {
+					req.Prefix = u.ObervoicePrefix
+				}
+				if req.Phone == "" {
+					req.Phone = u.ObervoicePhone
+				}
+				if req.QR == "" {
+					req.QR = u.ObervoiceQR
+				}
+			}
+		}
+	}
+
+	loginLink := "https://voice.oberstaff.com/webrtc/"
+	html := service.BuildObervoiceCredentialsHTML(
+		userName,
+		req.Username,
+		req.Extension,
+		req.Prefix,
+		req.Phone,
+		req.Password,
+		req.QR,
+		loginLink,
+	)
+
+	c.JSON(http.StatusOK, gin.H{"html": html})
+}

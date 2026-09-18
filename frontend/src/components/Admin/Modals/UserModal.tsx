@@ -326,6 +326,58 @@ export function UserModal({
               />
             </div>
 
+            <div className={styles['section-label']}>Obervoice</div>
+            <div className={styles['form-group']}>
+              <label>Usuario SIP</label>
+              <input
+                type="text"
+                value={form.obervoice_username ?? ''}
+                onChange={e => setForm({ ...form, obervoice_username: e.target.value })}
+                placeholder={form.email || 'usuario@dominio.com'}
+              />
+            </div>
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>Contraseña SIP <span style={{ fontWeight: 400, color: '#94a3b8' }}>(dejar vacío para no cambiar)</span></label>
+                <input
+                  type="password"
+                  value={form.obervoice_password ?? ''}
+                  onChange={e => setForm({ ...form, obervoice_password: e.target.value })}
+                  autoComplete="new-password"
+                  placeholder="••••••••"
+                />
+              </div>
+              <div className={styles['form-group']}>
+                <label>Extensión</label>
+                <input
+                  type="text"
+                  value={form.obervoice_extension ?? ''}
+                  onChange={e => setForm({ ...form, obervoice_extension: e.target.value })}
+                  placeholder="Ej: 1001"
+                />
+              </div>
+            </div>
+            <div className={styles['form-row']}>
+              <div className={styles['form-group']}>
+                <label>Prefijo de marcación</label>
+                <input
+                  type="text"
+                  value={form.obervoice_prefix ?? ''}
+                  onChange={e => setForm({ ...form, obervoice_prefix: e.target.value })}
+                  placeholder="Ej: 9"
+                />
+              </div>
+              <div className={styles['form-group']}>
+                <label>Número telefónico</label>
+                <input
+                  type="text"
+                  value={form.obervoice_phone ?? ''}
+                  onChange={e => setForm({ ...form, obervoice_phone: e.target.value })}
+                  placeholder="Ej: +34 900 123 456"
+                />
+              </div>
+            </div>
+
             <div className={styles['section-label']}>Permisos</div>
             <div className={styles['permissions-group']}>
               {/* Para los profesionales el nivel se elige arriba, en el selector

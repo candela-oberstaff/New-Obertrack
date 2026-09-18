@@ -47,6 +47,12 @@ export interface User {
   onboarding_status?: string
   /** Ausente mientras la cuenta no haya confirmado su correo. */
   email_verified_at?: string | null
+  /** Credenciales SIP del softphone Obervoice. Las fija el superadmin;
+   * la contraseña nunca llega del backend (json:"-" en el modelo). */
+  obervoice_username?: string
+  obervoice_extension?: string
+  obervoice_prefix?: string
+  obervoice_phone?: string
   /** Permisos efectivos por módulo derivados de los roles asignados.
    * Ausente = sin roles = comportamiento histórico del tipo de cuenta. */
   permissions?: Record<string, 'none' | 'view' | 'edit'>

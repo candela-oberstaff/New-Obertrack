@@ -39,6 +39,8 @@ const (
 	// fila se considera ENCENDIDA: era el único correo del sistema imposible de
 	// apagar, y encima automático.
 	EmailKindWorkflow = "workflow"
+	// EmailKindObervoiceCredentials envía al usuario sus datos de telefonía SIP.
+	EmailKindObervoiceCredentials = "obervoice_credentials"
 )
 
 // EmailCategory agrupa los correos en el panel.
@@ -177,6 +179,14 @@ var emailCatalog = []EmailType{
 		Description: "Campañas del constructor de correos (incluye las programadas).",
 		Trigger:     "Al enviar o programar una campaña.",
 		Recipient:   "La lista de la campaña",
+	},
+	{
+		Key:         EmailKindObervoiceCredentials,
+		Category:    EmailCategoryEvent,
+		Name:        "Credenciales Obervoice",
+		Description: "Datos de telefonía SIP enviados al usuario desde el panel de Obervoice.",
+		Trigger:     "Al hacer clic en \"Enviar credenciales\" desde el panel de Obervoice.",
+		Recipient:   "El usuario cuyos datos se configuraron.",
 	},
 }
 

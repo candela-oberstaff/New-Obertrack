@@ -1,8 +1,11 @@
 package service
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -87,12 +90,17 @@ type AdminService interface {
 	ResetPassword(id uint, newPassword string) error
 	ResetPasswordScoped(id uint, newPassword string, tenantID uint) error
 	FindUserByEmail(email string) (*models.User, error)
+	GetUserByID(id uint) (*models.User, error)
 
 	GetSeniorityRanking() ([]repository.SeniorityItem, error)
 	BulkEmailProfessionals(userIDs []uint, subject, body string) BulkEmailResult
 	// SendAccessEmails entrega el acceso a la plataforma: enlace para crear la
 	// contraseña (AccessModeInvite) o una clave temporal nueva (AccessModePassword).
 	SendAccessEmails(userIDs []uint, mode string) BulkEmailResult
+	// SendObervoiceCredentials envía al usuario sus datos de telefonía Obervoice
+	// por correo. El campo password se lee directamente de la BD (nunca viaja
+	// al frontend) y si está vacío el correo omite esa fila.
+	SendObervoiceCredentials(userID uint) error
 	GetLatestFollowUps(kind string) ([]repository.FollowUpInfo, error)
 	CreateFollowUp(userID, createdBy uint, kind, status, note string) (*models.FollowUp, error)
 	GetTenants() ([]repository.TenantSummary, error)
@@ -1547,4 +1555,115 @@ func (s *adminService) MakeSuperAdmin(email string) (*models.User, error) {
 
 func (s *adminService) AssignCSToTenant(tenantID, csID uint) error {
 	return s.repo.AssignCSToTenant(tenantID, csID)
+}
+
+// SendObervoiceCredentials envía al usuario sus datos de telefonía Obervoice
+// por correo electrónico. Lee la contraseña directamente de la BD (el campo
+// tiene json:"-" y nunca llega al frontend). Si el usuario no tiene datos
+// configurados devuelve un error descriptivo para mostrárselo al admin.
+func (s *adminService) SendObervoiceCredentials(userID uint) error {
+	user, err := s.userRepo.GetByID(userID)
+	if err != nil || user == nil {
+		return fmt.Errorf("usuario no encontrado")
+	}
+	if user.Email == "" {
+		return fmt.Errorf("el usuario no tiene dirección de correo")
+	}
+	if user.ObervoiceUsername == "" && user.ObervoiceExtension == "" && user.ObervoicePhone == "" {
+		return fmt.Errorf("el usuario no tiene credenciales de Obervoice configuradas")
+	}
+
+	// Si el QR está guardado en base64 data-URL, lo guardamos en disco como archivo en /uploads
+	// para que tenga una URL ligera y no infle el HTML del mail (evitando que Gmail lo acorte).
+	if user.ObervoiceQR != "" && strings.HasPrefix(user.ObervoiceQR, "data:image/") {
+		parts := strings.SplitN(user.ObervoiceQR, ",", 2)
+		if len(parts) == 2 {
+			if fileData, decErr := base64.StdEncoding.DecodeString(parts[1]); decErr == nil {
+				uploadDir := os.Getenv("UPLOAD_PATH")
+				if uploadDir == "" {
+					uploadDir = "./uploads"
+				}
+				_ = os.MkdirAll(uploadDir, 0755)
+				ext := ".png"
+				if strings.Contains(parts[0], "jpeg") || strings.Contains(parts[0], "jpg") {
+					ext = ".jpg"
+				}
+				filename := fmt.Sprintf("qr_user_%d%s", user.ID, ext)
+				fullPath := filepath.Join(uploadDir, filename)
+				if writeErr := os.WriteFile(fullPath, fileData, 0644); writeErr == nil {
+					newQRPath := fmt.Sprintf("/api/uploads/%s", filename)
+					user.ObervoiceQR = newQRPath
+					_ = s.userRepo.Update(user, map[string]interface{}{"obervoice_qr": newQRPath})
+				}
+			}
+		}
+	}
+
+	loginLink := "https://voice.oberstaff.com/webrtc/"
+	html := BuildObervoiceCredentialsHTML(
+		user.Name,
+		user.ObervoiceUsername,
+		user.ObervoiceExtension,
+		user.ObervoicePrefix,
+		user.ObervoicePhone,
+		user.ObervoicePassword, // nunca viaja al frontend pero sí al correo
+		user.ObervoiceQR,
+		loginLink,
+	)
+
+	var attachments []BrevoAttachment
+	if user.ObervoiceQR != "" {
+		if strings.HasPrefix(user.ObervoiceQR, "data:image/") {
+			parts := strings.SplitN(user.ObervoiceQR, ",", 2)
+			if len(parts) == 2 {
+				attachments = append(attachments, BrevoAttachment{
+					Name:    "codigo_qr_obervoice.png",
+					Content: parts[1],
+				})
+			}
+		} else if strings.HasPrefix(user.ObervoiceQR, "/uploads/") || strings.HasPrefix(user.ObervoiceQR, "/api/uploads/") {
+			uploadDir := os.Getenv("UPLOAD_PATH")
+			if uploadDir == "" {
+				uploadDir = "./uploads"
+			}
+			filename := filepath.Base(user.ObervoiceQR)
+			fullPath := filepath.Join(uploadDir, filename)
+			if fileData, readErr := os.ReadFile(fullPath); readErr == nil {
+				attachments = append(attachments, BrevoAttachment{
+					Name:    "codigo_qr_obervoice.png",
+					Content: base64.StdEncoding.EncodeToString(fileData),
+				})
+			}
+		}
+	}
+
+	subject := "Tus datos de Obervoice"
+	if len(attachments) > 0 {
+		if err := s.brevoSvc.SendEmailKindWithAttachments(
+			EmailKindObervoiceCredentials,
+			user.Email,
+			user.Name,
+			subject,
+			html,
+			attachments,
+		); err != nil {
+			return fmt.Errorf("no se pudo enviar el correo: %w", err)
+		}
+		return nil
+	}
+
+	if err := s.brevoSvc.SendEmailKind(
+		EmailKindObervoiceCredentials,
+		user.Email,
+		user.Name,
+		subject,
+		html,
+	); err != nil {
+		return fmt.Errorf("no se pudo enviar el correo: %w", err)
+	}
+	return nil
+}
+
+func (s *adminService) GetUserByID(id uint) (*models.User, error) {
+	return s.userRepo.GetByID(id)
 }
