@@ -115,29 +115,71 @@ func (h *SurveyHandler) SubmitResponse(c *gin.Context) {
 	}
 
 	userID := middleware.GetUserID(c)
+	survey, err := h.repo.GetSurveyByID(uint(id))
+	if err != nil || survey == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Survey not found"})
+		return
+	}
 	if !middleware.IsSuperadmin(c) {
-		survey, err := h.repo.GetSurveyByID(uint(id))
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Survey not found"})
-			return
-		}
 		if !surveyHasRecipient(survey.RecipientList, userID) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
 	}
 
-	response.SurveyID = uint(id)
-	response.UserID = userID
-	now := time.Now()
-	response.CompletedAt = &now
+	// Cada respuesta tiene que apuntar a una pregunta DE ESTA encuesta, y se
+	// reconstruye en vez de guardarse tal como vino: el cuerpo trae ids propios
+	// que no deben decidir a qué participación se pega nada.
+	answers := make([]models.SurveyAnswer, 0, len(response.Answers))
+	for _, a := range response.Answers {
+		if !surveyHasQuestion(survey, a.QuestionID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Alguna respuesta no corresponde a esta encuesta."})
+			return
+		}
+		answers = append(answers, models.SurveyAnswer{
+			QuestionID:  a.QuestionID,
+			TextValue:   a.TextValue,
+			NumberValue: a.NumberValue,
+		})
+	}
 
-	if err := h.repo.CreateResponse(&response); err != nil {
+	if err := h.saveOneResponsePerUser(uint(id), userID, answers); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit response"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, response)
+	c.JSON(http.StatusCreated, gin.H{"message": "Respuestas registradas"})
+}
+
+// saveOneResponsePerUser deja UNA sola participación por persona y encuesta:
+// responder de nuevo reemplaza lo anterior en vez de sumar otra fila. Lo usan
+// los dos caminos —el de dentro de la aplicación y el enlace sin sesión de las
+// empresas— porque si cada uno contara a su manera, el mismo número diría dos
+// cosas distintas según por dónde hubiera entrado la gente.
+func (h *SurveyHandler) saveOneResponsePerUser(surveyID, userID uint, answers []models.SurveyAnswer) error {
+	now := time.Now()
+	if existing, err := h.repo.GetResponseByUser(surveyID, userID); err == nil && existing != nil {
+		return h.repo.ReplaceResponseAnswers(existing.ID, answers, now)
+	}
+
+	err := h.repo.CreateResponse(&models.SurveyResponse{
+		SurveyID:    surveyID,
+		UserID:      userID,
+		CompletedAt: &now,
+		Answers:     answers,
+	})
+	if err == nil {
+		return nil
+	}
+
+	// Dos pestañas enviando a la vez: la otra creó la participación entre
+	// nuestra consulta y este insert, y el índice único paró a esta. Eso no es
+	// un error que deba ver quien responde —envió bien—, así que se reintenta
+	// como actualización, que es lo que habría pasado un segundo más tarde.
+	if existing, e := h.repo.GetResponseByUser(surveyID, userID); e == nil && existing != nil {
+		return h.repo.ReplaceResponseAnswers(existing.ID, answers, now)
+	}
+	return err
 }
 
 // SendSurvey dispatches the survey to the specified recipients via Email and/or In-App Notification

@@ -215,3 +215,91 @@ func TestBotonesDelCorreo_EscalaFueraDeRango(t *testing.T) {
 		t.Fatalf("se esperaban 0 botones para una escala 0-10, hay %d", len(opciones))
 	}
 }
+
+// --- Una persona, una participación ---
+
+// repoDeParticipacion recuerda qué se le pidió: crear una participación nueva o
+// reemplazar la que ya había.
+type repoDeParticipacion struct {
+	repository.SurveyRepository
+	existente  *models.SurveyResponse
+	errAlCrear error
+	// apareceTrasFallar simula la carrera: la participación no existía al
+	// consultar, pero sí cuando el insert choca con el índice único.
+	apareceTrasFallar *models.SurveyResponse
+	consultas         int
+	creadas           int
+	reemplazadas      uint
+}
+
+func (r *repoDeParticipacion) GetResponseByUser(_, _ uint) (*models.SurveyResponse, error) {
+	r.consultas++
+	if r.existente != nil {
+		return r.existente, nil
+	}
+	if r.consultas > 1 {
+		return r.apareceTrasFallar, nil
+	}
+	return nil, nil
+}
+
+func (r *repoDeParticipacion) CreateResponse(_ *models.SurveyResponse) error {
+	r.creadas++
+	return r.errAlCrear
+}
+
+func (r *repoDeParticipacion) ReplaceResponseAnswers(responseID uint, _ []models.SurveyAnswer, _ time.Time) error {
+	r.reemplazadas = responseID
+	return nil
+}
+
+// Responder por segunda vez tiene que ACTUALIZAR. Antes creaba otra fila: quien
+// abría la encuesta en dos pestañas contaba como dos personas y el panel decía
+// "Respuestas: 2" con un solo participante.
+func TestUnaSolaParticipacion_ElSegundoEnvioReemplaza(t *testing.T) {
+	repo := &repoDeParticipacion{existente: &models.SurveyResponse{ID: 8}}
+	h := &SurveyHandler{repo: repo}
+
+	if err := h.saveOneResponsePerUser(3, 7, []models.SurveyAnswer{{QuestionID: 11, NumberValue: 4}}); err != nil {
+		t.Fatalf("no debería fallar: %v", err)
+	}
+	if repo.creadas != 0 {
+		t.Errorf("creó %d participaciones nuevas, no debía crear ninguna", repo.creadas)
+	}
+	if repo.reemplazadas != 8 {
+		t.Errorf("reemplazó la participación %d, se esperaba la 8", repo.reemplazadas)
+	}
+}
+
+func TestUnaSolaParticipacion_LaPrimeraVezSeCrea(t *testing.T) {
+	repo := &repoDeParticipacion{}
+	h := &SurveyHandler{repo: repo}
+
+	if err := h.saveOneResponsePerUser(3, 7, []models.SurveyAnswer{{QuestionID: 11, NumberValue: 4}}); err != nil {
+		t.Fatalf("no debería fallar: %v", err)
+	}
+	if repo.creadas != 1 {
+		t.Errorf("creó %d participaciones, se esperaba 1", repo.creadas)
+	}
+	if repo.reemplazadas != 0 {
+		t.Errorf("no había nada que reemplazar y reemplazó la %d", repo.reemplazadas)
+	}
+}
+
+// Dos pestañas enviando a la vez: el índice único frena al segundo insert. Quien
+// respondió no tiene la culpa ni forma de saberlo, así que su envío se guarda
+// encima en lugar de devolverle un error.
+func TestUnaSolaParticipacion_DosPestanasALaVez(t *testing.T) {
+	repo := &repoDeParticipacion{
+		errAlCrear:        fmt.Errorf("duplicate key value violates unique constraint"),
+		apareceTrasFallar: &models.SurveyResponse{ID: 9},
+	}
+	h := &SurveyHandler{repo: repo}
+
+	if err := h.saveOneResponsePerUser(3, 7, []models.SurveyAnswer{{QuestionID: 11, NumberValue: 4}}); err != nil {
+		t.Fatalf("la carrera no debería llegar a quien responde: %v", err)
+	}
+	if repo.reemplazadas != 9 {
+		t.Errorf("reemplazó la participación %d, se esperaba la 9 (la que ganó la carrera)", repo.reemplazadas)
+	}
+}

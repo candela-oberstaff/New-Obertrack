@@ -54,6 +54,14 @@ const Surveys: React.FC<SurveysProps> = ({ setHeaderAction }) => {
   const { data: surveys = [], isLoading: loading } = useQuery<Survey[]>({
     queryKey: ['surveys'],
     queryFn: async () => (await surveyService.getSurveys()) || [],
+    // El contador de respuestas lo mueve quien RESPONDE, no quien administra:
+    // cambia por fuera de esta pantalla y sin avisar. Con el staleTime global de
+    // cinco minutos la tarjeta seguía diciendo "Respuestas: 0" un buen rato
+    // después de que llegaran, que es justo cuando uno viene a mirarlas. Aquí se
+    // relee al entrar y al volver a la pestaña.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
   const fetchSurveys = () => qc.invalidateQueries({ queryKey: ['surveys'] });
 

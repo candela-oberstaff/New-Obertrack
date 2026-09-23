@@ -239,30 +239,12 @@ func (h *SurveyHandler) PublicSubmit(c *gin.Context) {
 		})
 	}
 
-	if err := h.saveLinkedResponse(survey.ID, user.ID, answers); err != nil {
+	if err := h.saveOneResponsePerUser(survey.ID, user.ID, answers); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudieron guardar tus respuestas. Vuelve a intentarlo."})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Respuestas registradas"})
-}
-
-// saveLinkedResponse deja UNA sola respuesta por empresa y encuesta. Quien
-// primero puntúa desde el correo y luego completa el formulario tiene que
-// contar como un participante y no como dos: si no, los resultados y las
-// métricas de participación contarían de más.
-func (h *SurveyHandler) saveLinkedResponse(surveyID, userID uint, answers []models.SurveyAnswer) error {
-	now := time.Now()
-	existing, err := h.repo.GetResponseByUser(surveyID, userID)
-	if err == nil && existing != nil {
-		return h.repo.ReplaceResponseAnswers(existing.ID, answers, now)
-	}
-	return h.repo.CreateResponse(&models.SurveyResponse{
-		SurveyID:    surveyID,
-		UserID:      userID,
-		CompletedAt: &now,
-		Answers:     answers,
-	})
 }
 
 func surveyHasQuestion(survey *models.Survey, questionID uint) bool {
@@ -305,13 +287,18 @@ func (h *SurveyHandler) QuickResponse(c *gin.Context) {
 	now := time.Now()
 	if existing, err := h.repo.GetResponseByUser(survey.ID, user.ID); err == nil && existing != nil {
 		_ = h.repo.SaveAnswer(existing.ID, answer, now)
-	} else {
-		_ = h.repo.CreateResponse(&models.SurveyResponse{
-			SurveyID:    survey.ID,
-			UserID:      user.ID,
-			CompletedAt: &now,
-			Answers:     []models.SurveyAnswer{answer},
-		})
+	} else if err := h.repo.CreateResponse(&models.SurveyResponse{
+		SurveyID:    survey.ID,
+		UserID:      user.ID,
+		CompletedAt: &now,
+		Answers:     []models.SurveyAnswer{answer},
+	}); err != nil {
+		// Pulsó dos puntuaciones casi a la vez (pasa: el correo tiene cinco
+		// botones juntos). La participación ya existe, así que esta se guarda
+		// encima en lugar de perderse.
+		if existing, e := h.repo.GetResponseByUser(survey.ID, user.ID); e == nil && existing != nil {
+			_ = h.repo.SaveAnswer(existing.ID, answer, now)
+		}
 	}
 
 	body := fmt.Sprintf(`

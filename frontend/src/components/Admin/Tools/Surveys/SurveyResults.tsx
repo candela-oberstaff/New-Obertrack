@@ -29,6 +29,11 @@ const SurveyResults: React.FC<SurveyResultsProps> = ({ surveyId, onBack }) => {
   const { data: survey = null, isLoading: loading } = useQuery<any>({
     queryKey: ['survey', surveyId],
     queryFn: () => surveyService.getSurvey(surveyId),
+    // Mismo motivo que en el listado: las respuestas entran por fuera y abrir
+    // los resultados sirve de poco si muestran una foto de hace cinco minutos.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     enabled: !!surveyId,
   });
 

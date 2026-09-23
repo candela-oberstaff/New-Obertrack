@@ -2794,6 +2794,40 @@ func Run(db *gorm.DB) error {
 				return tx.Exec(`ALTER TABLE users DROP COLUMN IF EXISTS obervoice_qr`).Error
 			},
 		},
+		{
+			// Una persona, una respuesta por encuesta. Nada lo impedía: abrir la
+			// encuesta en dos pestañas y enviar dos veces dejaba dos
+			// participaciones, y el contador de la tarjeta pasaba a contar envíos
+			// en vez de personas. Se limpia lo ya guardado y se cierra la puerta
+			// con un índice único, que es lo único que también frena dos envíos
+			// simultáneos.
+			ID: "202609231200_dedupe_survey_responses_unique",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("[migration] deduping survey_responses and creating unique index...")
+				// 1) Se conserva la participación MÁS RECIENTE de cada persona,
+				// no la primera: si respondió dos veces, lo que vale es lo último
+				// que dijo. Las respuestas de las que se borran se van solas
+				// (survey_answers.response_id es ON DELETE CASCADE).
+				if err := tx.Exec(`
+                    DELETE FROM survey_responses a
+                    USING survey_responses b
+                    WHERE a.survey_id = b.survey_id
+                      AND a.user_id = b.user_id
+                      AND a.id < b.id
+                `).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_survey_response_unique
+                    ON survey_responses (survey_id, user_id)
+                `).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// Solo se puede deshacer el índice: las participaciones
+				// duplicadas que se borraron no vuelven.
+				return tx.Exec(`DROP INDEX IF EXISTS idx_survey_response_unique`).Error
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

@@ -80,11 +80,16 @@ func (q *SurveyQuestion) IsScorable() bool {
 	return q != nil && q.Weight > 0 && q.CorrectAnswer != ""
 }
 
+// SurveyResponse es la participación de UNA persona en una encuesta: una sola,
+// por diseño. Responder otra vez reemplaza lo contestado en lugar de sumar una
+// participación nueva. El índice único es lo que lo garantiza de verdad: sin él
+// dos pestañas enviando a la vez se colaban las dos, y el contador de la
+// tarjeta ("Respuestas: 275") dejaba de significar personas.
 type SurveyResponse struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
 	CreatedAt   time.Time  `json:"created_at"`
-	SurveyID    uint       `json:"survey_id"`
-	UserID      uint       `json:"user_id"`
+	SurveyID    uint       `gorm:"uniqueIndex:idx_survey_response_unique" json:"survey_id"`
+	UserID      uint       `gorm:"uniqueIndex:idx_survey_response_unique" json:"user_id"`
 	User        User       `gorm:"foreignKey:UserID" json:"user"`
 	CompletedAt *time.Time `json:"completed_at"`
 
