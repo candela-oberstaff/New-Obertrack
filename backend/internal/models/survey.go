@@ -17,6 +17,11 @@ const (
 	QuestionTypeText   QuestionType = "text"
 	QuestionTypeRating QuestionType = "rating"
 	QuestionTypeChoice QuestionType = "choice"
+	// El editor guarda además otros tipos (checkbox, dropdown, grid...) que
+	// viajan como texto y el servidor no necesita distinguir. Este sí: junto
+	// con rating es la pregunta que se contesta con un número, que es lo
+	// único que se puede pulsar de un clic desde el correo.
+	QuestionTypeLinearScale QuestionType = "linear_scale"
 
 	// Tipo de encuesta. Una encuesta normal solo recolecta opiniones; una de
 	// inducción se CALIFICA (respuesta correcta + ponderación) y decide el

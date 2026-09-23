@@ -10,7 +10,7 @@ import (
 
 // registerPublicRoutes wires every endpoint that must be reachable without an
 // access token: auth entry points, provider webhooks, the seed bootstrap and the
-// public survey quick-response.
+// session-less survey surface (landing + quick response).
 func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 	auth := api.Group("/auth")
 	{
@@ -176,7 +176,20 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 		}
 	}
 
-	// Public survey quick response.
+	// Encuesta sin sesión — SOLO para cuentas empresa (el handler lo verifica;
+	// ver handlers/survey_link.go). El prefijo es "/survey-link" y no
+	// "/surveys/..." porque el panel ya registra /surveys/:id: dos comodines
+	// distintos en el mismo tramo hacen que gin entre en pánico al arrancar.
+	// Misma convención que inductions (panel) / induction (landing pública).
+	surveyLink := api.Group("/survey-link")
+	surveyLink.Use(middleware.AuthRateLimitMiddleware())
+	{
+		surveyLink.GET("/:token", d.survey.PublicLanding)
+		surveyLink.POST("/:token/responses", d.survey.PublicSubmit)
+	}
+
+	// El clic de valoración que se pulsa dentro del propio correo. Cuelga de
+	// /surveys/:id porque "quick-response" es un hijo estático y ahí no choca.
 	api.GET("/surveys/:id/quick-response", d.survey.QuickResponse)
 
 	// Public file serving (no auth required) — used for email client image loading.

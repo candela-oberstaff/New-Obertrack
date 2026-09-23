@@ -15,10 +15,18 @@ REM     run-mobile.bat            -> arranque normal
 REM     run-mobile.bat build      -> reconstruye el backend (--build)
 REM ============================================================
 
-REM ---- Config (edita si cambia tu telefono o quieres fijar la IP) ----
-set "DEVICE_ID=922bd9f2"
+REM ---- Config (solo hace falta tocarlo para FIJAR algo a mano) ----
+REM DEVICE_ID vacio = se detecta el telefono conectado. Estaba fijo al serie
+REM de un telefono anterior, y al cambiar de movil el script se quedaba
+REM esperando para siempre a un aparato que ya no existe.
+set "DEVICE_ID="
+set "WANTED=%DEVICE_ID%"
 set "BACKEND_PORT=8080"
 set "API_IP=192.168.100.88"
+
+REM ---- Localizar adb: puede no estar en el PATH aunque Flutter si lo este ----
+set "ADB=adb"
+where adb >nul 2>&1 || set "ADB=%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe"
 
 REM ---- Rebuild opcional del backend ----
 set "BUILD_FLAG="
@@ -75,26 +83,41 @@ echo       Backend OK.
 REM ---- 3) Esperar el telefono ----
 echo.
 echo [3/3] Conecta el telefono por USB (con depuracion USB activada)...
-echo       Esperando el dispositivo %DEVICE_ID% ...
+if defined DEVICE_ID (
+    echo       Esperando el dispositivo %DEVICE_ID% ...
+) else (
+    echo       Buscando un telefono conectado ...
+)
 set /a _phone=0
 :waitphone
-call flutter devices 2>nul | findstr /c:"%DEVICE_ID%" >nul
-if errorlevel 1 (
+REM Deteccion LINEAL, sin errorlevel dentro de bloques anidados: ahi es donde
+REM el flujo se quedaba trabado. Se pregunta a adb (instantaneo) y no a
+REM "flutter devices", que tarda unos quince segundos por vuelta.
+set "FOUND="
+for /f "tokens=1,2" %%a in ('"%ADB%" devices 2^>nul') do (
+    if "%%b"=="device" if not defined FOUND set "FOUND=%%a"
+)
+REM Con un DEVICE_ID fijado a mano solo vale ESE aparato.
+if defined WANTED if defined FOUND (
+    echo !FOUND! | findstr /c:"!WANTED!" >nul || set "FOUND="
+)
+if not defined FOUND (
     set /a _phone+=1
     if !_phone! geq 40 (
         echo.
-        echo No aparecio el dispositivo %DEVICE_ID% tras 2 minutos.
+        echo No aparecio ningun telefono tras 2 minutos.
         echo   - Revisa que la depuracion USB este activada y que aceptaste
         echo     el aviso de "Permitir depuracion USB" en el telefono.
-        echo   - Comprueba con: flutter devices
-        echo   - Si cambiaste de telefono, edita DEVICE_ID arriba en este .bat
+        echo   - En Xiaomi/MIUI hace falta ademas "Instalar via USB".
+        echo   - Comprueba con: adb devices
         pause
         exit /b 1
     )
     timeout /t 3 >nul
     goto waitphone
 )
-echo       Telefono detectado.
+set "DEVICE_ID=!FOUND!"
+echo       Telefono detectado: !DEVICE_ID!
 
 REM ---- 4) Lanzar la app ----
 echo.
@@ -115,7 +138,7 @@ cd /d "%MOBILE_DIR%"
 REM OJO: "flutter" en Windows es flutter.bat. Sin CALL, cmd transfiere el
 REM control a ese .bat y NO vuelve nunca: al terminar flutter se cierra la
 REM ventana entera y no se llega al pause de abajo.
-call flutter run -d %DEVICE_ID% --dart-define=API_BASE_URL=http://!API_IP!:%BACKEND_PORT%
+call flutter run -d !DEVICE_ID! --dart-define=API_BASE_URL=http://!API_IP!:%BACKEND_PORT%
 
 echo.
 echo La app se cerro. Presiona una tecla para salir.

@@ -144,6 +144,74 @@ func BuildInductionInviteHTML(name, landingLink string) string {
 	return brandedEmailShell("Completa tu inducción", body)
 }
 
+// SurveyQuickOption es una opción de valoración que se pulsa DENTRO del correo:
+// cada una es un enlace que ya deja registrada esa respuesta.
+type SurveyQuickOption struct {
+	Label string
+	Href  string
+}
+
+// surveyQuickOptions dibuja la fila de botones de valoración. Van como enlaces
+// y no como un formulario: un <form> dentro de un correo lo bloquean casi todos
+// los clientes, y un enlace lo abre cualquiera.
+func surveyQuickOptions(question string, options []SurveyQuickOption) string {
+	if len(options) == 0 {
+		return ""
+	}
+	buttons := ""
+	for _, opt := range options {
+		buttons += `<a href="` + opt.Href + `" style="display:inline-block;min-width:44px;margin:4px;padding:12px 0;background:#ffffff;border:2px solid ` + emailBorderColor + `;border-radius:12px;color:` + emailInkColor + `;text-decoration:none;font-size:17px;font-weight:700;font-family:sans-serif;text-align:center;">` + opt.Label + `</a>`
+	}
+	return `<div style="background:` + emailBgColor + `;border:1px solid ` + emailBorderColor + `;border-radius:16px;padding:20px;margin-bottom:24px;text-align:center;">
+		<p style="font-size:15px;line-height:1.5;margin:0 0 14px 0;color:` + emailInkColor + `;font-weight:600;font-family:sans-serif;">` + question + `</p>
+		<div>` + buttons + `</div>
+		<p style="font-size:12px;color:` + emailMutedColor + `;margin:14px 0 0 0;font-family:sans-serif;">Un solo clic y queda registrada.</p>
+	</div>`
+}
+
+// BuildSurveyInviteHTML: invitación a una encuesta para quien entra con su
+// cuenta (profesionales y equipo interno). El botón lleva a la encuesta dentro
+// de la aplicación.
+func BuildSurveyInviteHTML(name, title, description, link string) string {
+	body := emailGreeting(name) +
+		emailParagraph("Tienes una nueva encuesta para responder en Obertrack: <strong>"+title+"</strong>")
+	if description != "" {
+		body += emailParagraph(description)
+	}
+	body += emailButton("Responder encuesta", link) +
+		emailFallbackLink(link)
+	return brandedEmailShell("Nueva encuesta: "+title, body)
+}
+
+// BuildSurveyCompanyInviteHTML: la misma invitación para una cuenta EMPRESA.
+// Cambian dos cosas, las dos a propósito:
+//   - el enlace entra sin pedir sesión (el token del enlace es la credencial),
+//   - si la encuesta tiene una pregunta de valoración, sus opciones van como
+//     botones en el propio correo y un clic ya la deja contestada.
+//
+// Es lo que separa una encuesta que el cliente contesta de una que abandona en
+// la pantalla de inicio de sesión.
+func BuildSurveyCompanyInviteHTML(name, title, description, link, quickQuestion string, options []SurveyQuickOption, ttlDays int) string {
+	body := emailGreeting(name) +
+		emailParagraph("Nos gustaría conocer tu opinión: <strong>"+title+"</strong>")
+	if description != "" {
+		body += emailParagraph(description)
+	}
+	body += surveyQuickOptions(quickQuestion, options)
+
+	label := "Responder la encuesta"
+	if len(options) > 0 {
+		// Ya pudo contestar la primera pregunta ahí mismo, así que el botón
+		// ofrece lo que falta en vez de repetir "responder".
+		label = "Responder el resto"
+	}
+	body += emailButton(label, link) +
+		emailNote("No necesitas iniciar sesión: el enlace te abre la encuesta directamente.") +
+		emailNote(fmt.Sprintf("Es un enlace personal, no lo compartas. Vence en <strong>%d días</strong>.", ttlDays)) +
+		emailFallbackLink(link)
+	return brandedEmailShell("Nueva encuesta: "+title, body)
+}
+
 // BuildTestimonialRequestHTML: solicitud de testimonio. `intro` es la nota
 // personal que el equipo escribió al pedirlo; se muestra tal cual para que el
 // correo no suene a plantilla.

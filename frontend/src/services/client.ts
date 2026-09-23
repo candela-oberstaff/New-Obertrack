@@ -14,12 +14,26 @@ let refreshing: Promise<void> | null = null
 let isRedirecting = false
 
 // Rutas que se navegan SIN sesión: si una petición falla con 401 estando aquí,
-// no se debe expulsar al usuario a /login. La inducción entra en este grupo
-// porque el profesional aún no tiene cuenta activa.
-const publicAuthPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/induccion']
+// no se debe expulsar al usuario a /login. La inducción y la encuesta de las
+// empresas entran en este grupo porque quien las abre no tiene por qué tener
+// sesión: su credencial es el token del enlace que recibió por correo.
+const publicAuthPaths = [
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/induccion',
+  '/testimonio',
+  '/encuesta',
+]
 
 function isPublicAuthPath(pathname: string) {
-  return publicAuthPaths.some((path) => pathname === path || pathname.startsWith(`${path}?`))
+  // El `${path}/` es lo que cubre las que llevan token (/encuesta/3.7.…): sin
+  // él, la lista nombraba rutas que en la práctica nunca coincidían y un 401
+  // mandaba a /login a alguien que no tiene cuenta con la que volver.
+  return publicAuthPaths.some(
+    (path) => pathname === path || pathname.startsWith(`${path}?`) || pathname.startsWith(`${path}/`),
+  )
 }
 
 api.interceptors.response.use(

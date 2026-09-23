@@ -5,7 +5,9 @@ package repository
 // middleware. The QuickResponse endpoint (public) is validated separately in the handler.
 
 import (
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
@@ -20,6 +22,18 @@ type SurveyRepository interface {
 
 	CreateResponse(response *models.SurveyResponse) error
 	GetSurveyResponses(surveyID uint) ([]models.SurveyResponse, error)
+
+	// GetResponseByUser devuelve lo que esa persona ya respondió, o nil si
+	// todavía no respondió nada. Lo necesita la encuesta sin sesión: una
+	// empresa puede puntuar desde el correo y completar el resto después, y las
+	// dos cosas tienen que caer en la MISMA participación.
+	GetResponseByUser(surveyID, userID uint) (*models.SurveyResponse, error)
+	// ReplaceResponseAnswers deja la participación con exactamente estas
+	// respuestas (envío del formulario completo).
+	ReplaceResponseAnswers(responseID uint, answers []models.SurveyAnswer, completedAt time.Time) error
+	// SaveAnswer guarda UNA respuesta sin tocar las demás (clic desde el
+	// correo).
+	SaveAnswer(responseID uint, answer models.SurveyAnswer, completedAt time.Time) error
 }
 
 type surveyRepository struct {
@@ -221,4 +235,59 @@ func (r *surveyRepository) GetSurveyResponses(surveyID uint) ([]models.SurveyRes
 	var responses []models.SurveyResponse
 	err := r.db.Preload("Answers").Preload("User").Where("survey_id = ?", surveyID).Find(&responses).Error
 	return responses, err
+}
+
+func (r *surveyRepository) GetResponseByUser(surveyID, userID uint) (*models.SurveyResponse, error) {
+	var response models.SurveyResponse
+	err := r.db.Preload("Answers").
+		Where("survey_id = ? AND user_id = ?", surveyID, userID).
+		First(&response).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Todavía no respondió. No es un fallo: quien llama distingue por el
+		// nil y crea la participación.
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+func (r *surveyRepository) ReplaceResponseAnswers(responseID uint, answers []models.SurveyAnswer, completedAt time.Time) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("response_id = ?", responseID).Delete(&models.SurveyAnswer{}).Error; err != nil {
+			return err
+		}
+		for i := range answers {
+			answers[i].ID = 0
+			answers[i].ResponseID = responseID
+		}
+		if len(answers) > 0 {
+			if err := tx.Create(&answers).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Model(&models.SurveyResponse{}).
+			Where("id = ?", responseID).
+			Update("completed_at", completedAt).Error
+	})
+}
+
+func (r *surveyRepository) SaveAnswer(responseID uint, answer models.SurveyAnswer, completedAt time.Time) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Volver a pulsar otra puntuación en el correo corrige la anterior en
+		// lugar de acumular dos respuestas a la misma pregunta.
+		if err := tx.Where("response_id = ? AND question_id = ?", responseID, answer.QuestionID).
+			Delete(&models.SurveyAnswer{}).Error; err != nil {
+			return err
+		}
+		answer.ID = 0
+		answer.ResponseID = responseID
+		if err := tx.Create(&answer).Error; err != nil {
+			return err
+		}
+		return tx.Model(&models.SurveyResponse{}).
+			Where("id = ?", responseID).
+			Update("completed_at", completedAt).Error
+	})
 }

@@ -28,6 +28,7 @@ const AuditLogs = lazy(() => import('../pages/AuditLogs'))
 const Tutoriales = lazy(() => import('../pages/Tutoriales'))
 const RolesGroups = lazy(() => import('../pages/RolesGroups'))
 const SurveyViewer = lazy(() => import('../pages/SurveyViewer'))
+const SurveyPublic = lazy(() => import('../pages/SurveyPublic'))
 const TicketsBoard = lazy(() => import('../pages/Tickets/TicketsBoard'))
 const SupportBoard = lazy(() => import('../pages/Tickets/SupportBoard'))
 const TicketDetail = lazy(() => import('../pages/Tickets/TicketDetail'))
@@ -64,6 +65,11 @@ export function AppRoutes() {
             firma puede no tener sesión y su credencial es el token del enlace
             que recibió por correo. */}
         <Route path="/testimonio/:token" element={<Testimonial />} />
+        {/* Encuesta respondida sin iniciar sesión. Va SIN guard a propósito y
+            SOLO la usan las cuentas empresa: el servidor comprueba el rol contra
+            el token del enlace, así que un enlace de otro rol no abre nada.
+            Para los demás sigue valiendo /survey/:id, que sí pide sesión. */}
+        <Route path="/encuesta/:token" element={<SurveyPublic />} />
         <Route
           path="/"
           element={

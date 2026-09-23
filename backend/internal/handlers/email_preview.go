@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,30 @@ var previews = []struct {
 		Title: "Invitación a la inducción",
 		Build: func() string {
 			return service.BuildInductionInviteHTML("Juan Pérez", sampleLink)
+		},
+	},
+	{
+		Slug:  "survey-invite",
+		Title: "Invitación a una encuesta (con sesión)",
+		Build: func() string {
+			return service.BuildSurveyInviteHTML("Juan Pérez", "Encuesta de Satisfacción",
+				"Nos ayuda a mejorar el servicio. Son dos minutos.", sampleLink)
+		},
+	},
+	{
+		Slug:  "survey-invite-empresa",
+		Title: "Invitación a una encuesta (empresa, sin sesión)",
+		Build: func() string {
+			options := make([]service.SurveyQuickOption, 0, 5)
+			for i := 1; i <= 5; i++ {
+				options = append(options, service.SurveyQuickOption{
+					Label: fmt.Sprintf("%d", i),
+					Href:  fmt.Sprintf("%s&score=%d", sampleLink, i),
+				})
+			}
+			return service.BuildSurveyCompanyInviteHTML("Comercializadora del Caribe", "Encuesta de Satisfacción",
+				"Nos ayuda a mejorar el servicio. Son dos minutos.", sampleLink,
+				"¿Qué tan satisfecho estás con el servicio este mes?", options, 30)
 		},
 	},
 	{
