@@ -461,10 +461,7 @@ export default function Tasks() {
                   placeholder="Seleccione un tablero..."
                   options={sortedBoards.map(b => ({ value: b.id, label: b.name, color: b.color || 'var(--primary)' }))}
                 />
-                {/* Pegado al selector: suelto entre los botones de la cabecera
-                    se leía como "ordenar tareas", que es lo que se ve en
-                    pantalla, y no los tableros del desplegable de al lado. */}
-                <BoardSortMenu value={boardSort} onChange={setBoardSort} attached />
+                <BoardSortMenu value={boardSort} onChange={setBoardSort} />
                 {canEditTasks && (
                   <>
                     <button className={styles['btn-icon']} onClick={openBoardModal} title="Crear tablero" data-tour="tasks-create-board">
