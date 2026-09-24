@@ -8,7 +8,13 @@ export { RichTextEditor } from './RichTextEditor'
 // Modals
 export { NewTaskModal } from './Modals/NewTaskModal'
 export { BoardModal } from './Modals/BoardModal'
+export { BoardEditModal } from './Modals/BoardEditModal'
 export { BoardMembersModal } from './Modals/BoardMembersModal'
+export { BoardColorPicker } from './components/BoardColorPicker'
+export { BOARD_COLORS } from './components/colorUtils'
+export { BoardSortMenu } from './components/BoardSortMenu'
+export { sortBoards, BOARD_SORT_OPTIONS } from './components/boardSort'
+export type { BoardSortKey } from './components/boardSort'
 export { PhasesModal } from './Modals/PhasesModal'
 export { JoinBoardModal } from './Modals/JoinBoardModal'
 

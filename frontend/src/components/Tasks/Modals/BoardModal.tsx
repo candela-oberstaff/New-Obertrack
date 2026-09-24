@@ -2,6 +2,7 @@ import { Plus, X } from 'lucide-react'
 import type { User } from '../../../types'
 import styles from '../../../pages/Tasks.module.css'
 import { Modal, Button } from '../../ui'
+import { BoardColorPicker } from '../components/BoardColorPicker'
 
 const DEFAULT_PHASE_COLOR = '#6b7280'
 
@@ -113,10 +114,9 @@ export function BoardModal(props: BoardModalProps) {
         </div>
         <div className={styles['form-group']}>
           <label>Color</label>
-          <input
-            type="color"
+          <BoardColorPicker
             value={newBoardData.color}
-            onChange={(e) => setNewBoardData({ ...newBoardData, color: e.target.value })}
+            onChange={(color) => setNewBoardData({ ...newBoardData, color })}
           />
         </div>
         <div className={styles['form-group']}>

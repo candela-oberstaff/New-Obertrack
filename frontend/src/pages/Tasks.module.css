@@ -2704,6 +2704,12 @@
 
 .board-picker-header {
   margin-bottom: 20px;
+  /* El título a la izquierda y el orden a la derecha, en la misma línea. */
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .board-picker-header h2 {
@@ -2967,7 +2973,12 @@
   top: calc(100% + 6px);
   right: 0;
   z-index: 100;
-  min-width: 260px;
+  /* Ancho FIJO y atado al de la columna (340px). Antes era `min-width: 260px`
+     y los campos de fecha lo estiraban hasta ~360: abierto en la primera
+     columna se salía del tablero por la izquierda y, como .kanban-board tiene
+     overflow-x, quedaba cortado a media palabra. */
+  width: 296px;
+  max-width: calc(100vw - 32px);
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
@@ -3051,6 +3062,9 @@
 
 .task-filters-date-field {
   flex: 1;
+  /* Sin esto un hijo flex no baja de su contenido y los dos campos volvían a
+     estirar el panel. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;

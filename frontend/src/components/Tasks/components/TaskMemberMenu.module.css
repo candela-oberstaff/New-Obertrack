@@ -1,0 +1,154 @@
+/* Menú para ver el tablero desde la perspectiva de UNA persona.
+
+   Vive dentro del selector de "quién" (Todas / Mis tareas / integrante) porque
+   es la misma pregunta: de quién son las tareas que estoy mirando. Antes había
+   que recorrer las columnas a ojo buscando el avatar de alguien. */
+
+.wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Se dibuja como un segmento más del grupo: mismas medidas que
+   .scope-toggle-btn de Tasks.module.css. */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  max-width: 190px;
+}
+
+.trigger:hover {
+  color: #334155;
+}
+
+.active {
+  background: #ffffff;
+  color: #6d28d9;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.active .count {
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  width: 268px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px -12px rgba(6, 11, 35, 0.35);
+}
+
+.menuTitle {
+  margin: 2px 4px 6px;
+  padding: 0 6px 6px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1e293b;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option:hover {
+  background: #f1f5f9;
+}
+
+.optionActive {
+  color: #6d28d9;
+  font-weight: 700;
+}
+
+.avatar {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary, #cc33cc);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.optionName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cuántas le quedan por terminar. Es el número por el que se pregunta cuando
+   se pide "las tareas pendientes de fulano". */
+.optionCount {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Sin nada pendiente el número deja de gritar. */
+.optionCountEmpty {
+  background: transparent;
+  color: #cbd5e1;
+}
+
+.empty {
+  padding: 10px 8px;
+  color: #94a3b8;
+  font-size: 13px;
+}

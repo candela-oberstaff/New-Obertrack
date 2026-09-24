@@ -1,0 +1,121 @@
+/* Control para ordenar la lista de tableros. Mismo lenguaje visual que el
+   embudo de filtros de las columnas: botón de icono discreto y un desplegable
+   propio, para que no parezca una pieza traída de otra pantalla. */
+
+.wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Mismas medidas y colores que .btn-icon de la cabecera de Tareas: al lado de
+   crear tablero, invitar y demás, tiene que leerse como uno más de la fila y no
+   como una pieza traída de otra pantalla. */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+/* Con el nombre del criterio al lado (la cuadrícula de tableros) deja de ser
+   cuadrado y crece con el texto. */
+.withLabel {
+  width: auto;
+  padding: 0 12px;
+}
+
+/* Pegado al selector de tableros: sin hueco entre ambos y con las esquinas
+   izquierdas rectas, para que se lea como una pieza de ESE control y no como
+   otro botón más de la fila de tareas. */
+.attached {
+  width: auto;
+  padding: 0 9px;
+  gap: 3px;
+  margin-left: -8px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.toggle:hover {
+  background: #f1f5f9;
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Cuando el orden no es el de siempre se marca, para que nadie se pregunte por
+   qué su lista no está como la dejó el resto del equipo. */
+.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.label {
+  white-space: nowrap;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  min-width: 190px;
+  padding: 6px;
+  background: #ffffff;
+  border: 1px solid var(--gray-200, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 12px 28px -12px rgba(6, 11, 35, 0.35);
+}
+
+/* Abierto desde el borde derecho de la pantalla, el menú se salía. */
+.dropdownRight {
+  left: auto;
+  right: 0;
+}
+
+/* El menú dice en voz alta qué ordena: abierto sobre un tablero lleno de
+   tareas, "Más recientes" a secas se puede entender de las dos cosas. */
+.menuTitle {
+  margin: 2px 4px 6px;
+  padding: 0 6px 6px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--black, #1e293b);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option:hover {
+  background: var(--gray-100, #f1f5f9);
+}
+
+.optionActive {
+  color: var(--primary);
+  font-weight: 700;
+}

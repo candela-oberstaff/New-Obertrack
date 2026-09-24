@@ -1,8 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import { useNotification } from '../../../context/NotificationContext'
 import { useConfirm } from '../../ui/ConfirmProvider'
-import { usePrompt } from '../../ui/PromptProvider'
 import { userService, taskService, adminService } from '../../../services/api'
 import type { User, Board, Task, CreateTaskInput, Phase } from '../../../types'
 import { ColumnType } from '../types'
@@ -10,6 +9,7 @@ import { useBoards } from './useBoards'
 import { useBoardInvitations } from './useBoardInvitations'
 import { useTasks } from './useTasks'
 import { phaseStatusId } from '../phaseStatus'
+import { loadBoardSort, saveBoardSort, sortBoards, type BoardSortKey } from '../components/boardSort'
 
 export interface CompanyOption {
   id: number
@@ -39,7 +39,6 @@ export function useTasksPageState() {
   const { user } = useAuth()
   const { error: showError, success: showSuccess } = useNotification()
   const confirm = useConfirm()
-  const prompt = usePrompt()
 
   const isSuperadmin = user?.user_type === 'superadmin'
 
@@ -67,6 +66,9 @@ export function useTasksPageState() {
   const [showNewTaskModal, setShowNewTaskModal] = useState(false)
   const [showBoardModal, setShowBoardModal] = useState(false)
   const [showBoardMembersModal, setShowBoardMembersModal] = useState(false)
+  // Qué tablero se está editando (nombre y color). null = modal cerrado.
+  const [editingBoard, setEditingBoard] = useState<Board | null>(null)
+  const [isSavingBoard, setIsSavingBoard] = useState(false)
   const [showPhasesModal, setShowPhasesModal] = useState(false)
   const [showJoinBoardModal, setShowJoinBoardModal] = useState(false)
   const [showInvitationsModal, setShowInvitationsModal] = useState(false)
@@ -204,9 +206,24 @@ export function useTasksPageState() {
   // board picker cards (Por hacer / En proceso / Finalizado + custom phases).
   const [boardTaskCounts, setBoardTaskCounts] = useState<Record<number, Record<string, number>>>({})
 
+  // Orden de la lista de tableros. Se recuerda por navegador, igual que la
+  // empresa elegida: es una preferencia de quien mira, no del tablero.
+  const [boardSort, setBoardSortState] = useState<BoardSortKey>(() => loadBoardSort())
+  const setBoardSort = useCallback((key: BoardSortKey) => {
+    setBoardSortState(key)
+    saveBoardSort(key)
+  }, [])
+  const sortedBoards = useMemo(
+    () => sortBoards(boards, boardSort, boardTaskCounts),
+    [boards, boardSort, boardTaskCounts],
+  )
+
   useEffect(() => {
-    // Only needed for the board picker (no board selected yet).
-    if (selectedBoard || boards.length === 0) return
+    // Antes solo se pedían para las tarjetas del picker. Ahora también ordenan
+    // la lista por "más/menos tareas", que se puede elegir con un tablero ya
+    // abierto, así que se piden siempre: es una agregación, no la lista de
+    // tareas.
+    if (boards.length === 0) return
     if (isSuperadmin && !selectedCompanyId) return
     let active = true
     // Server-side aggregation: counts come grouped by board+status (no full
@@ -218,7 +235,7 @@ export function useTasksPageState() {
       })
       .catch((e) => console.error('Error fetching task counts:', e))
     return () => { active = false }
-  }, [selectedBoard, boards, isSuperadmin, selectedCompanyId])
+  }, [boards, isSuperadmin, selectedCompanyId])
 
   // Fetch the company list for the superadmin company selector
   useEffect(() => {
@@ -303,28 +320,39 @@ export function useTasksPageState() {
   })
 
   // Board actions
-  const handleRenameBoard = useCallback(async (board?: Board) => {
+
+  // Editar un tablero abre un modal en vez de un prompt de texto: con el prompt
+  // solo se podía tocar el nombre, y el color —que el servidor siempre aceptó
+  // cambiar— quedaba fijo en el que se eligió al crearlo.
+  const handleEditBoard = useCallback((board?: Board) => {
     const target = board ?? selectedBoard
     if (!target) return
-    const current = target.name ?? ''
-    const input = await prompt({
-      title: 'Renombrar tablero',
-      message: 'Escribe el nuevo nombre del tablero.',
-      placeholder: 'Nombre del tablero',
-      initialValue: current,
-      confirmLabel: 'Guardar',
-    })
-    if (input === null) return
-    const name = input.trim()
-    if (!name || name === current) return
-    try {
-      await updateBoard(target.id, { name })
-      showSuccess('Tablero renombrado.')
-    } catch (error: any) {
-      console.error('Error renaming board:', error)
-      showError(error?.response?.data?.error ?? 'No se pudo renombrar el tablero.')
+    setEditingBoard(target)
+  }, [selectedBoard])
+
+  const handleSaveBoardEdits = useCallback(async (values: { name: string; color: string }) => {
+    if (!editingBoard) return
+    // Solo se manda lo que de verdad cambió: el backend ignora los campos
+    // vacíos, y así un guardado sin tocar el nombre no lo reescribe igual.
+    const changes: { name?: string; color?: string } = {}
+    if (values.name !== (editingBoard.name ?? '')) changes.name = values.name
+    if (values.color !== (editingBoard.color || '')) changes.color = values.color
+    if (Object.keys(changes).length === 0) {
+      setEditingBoard(null)
+      return
     }
-  }, [selectedBoard, updateBoard, prompt, showSuccess, showError])
+    setIsSavingBoard(true)
+    try {
+      await updateBoard(editingBoard.id, changes)
+      setEditingBoard(null)
+      showSuccess('Tablero actualizado.')
+    } catch (error: any) {
+      console.error('Error updating board:', error)
+      showError(error?.response?.data?.error ?? 'No se pudo actualizar el tablero.')
+    } finally {
+      setIsSavingBoard(false)
+    }
+  }, [editingBoard, updateBoard, showSuccess, showError])
 
   const handleDeleteBoard = useCallback(async (boardId: number) => {
     const ok = await confirm({
@@ -700,6 +728,9 @@ export function useTasksPageState() {
     newBoardPhaseSearch,
     setNewBoardPhaseSearch,
     boards,
+    sortedBoards,
+    boardSort,
+    setBoardSort,
     boardTaskCounts,
     selectedBoard,
     setSelectedBoard,
@@ -712,7 +743,11 @@ export function useTasksPageState() {
     potentialMemberUsers,
     assignableUsers,
     handleDeleteBoard,
-    handleRenameBoard,
+    handleEditBoard,
+    handleSaveBoardEdits,
+    editingBoard,
+    setEditingBoard,
+    isSavingBoard,
     handleBoardSubmit,
     handlePhaseDragStart,
     handlePhaseDragEnter,

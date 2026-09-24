@@ -10,12 +10,15 @@ import { TasksBoard } from '../components/Tasks/components/TasksBoard'
 import { TasksTimelineView } from '../components/Tasks/components/TasksTimelineView'
 import { TasksCalendarView } from '../components/Tasks/components/TasksCalendarView'
 import { TaskScopeToggle, type TaskScope } from '../components/Tasks/components/TaskScopeToggle'
+import { filterTasksByScope, memberPendingOptions, scopeCount } from '../components/Tasks/components/taskScopeFilter'
 import { Select } from '../components/ui/Select'
 import { ViewToggle } from '../components/ui/ViewToggle'
 import { Skeleton } from '../components/ui'
 import { TaskDetailPanel } from '../components/Tasks/TaskDetailPanel'
 import { NewTaskModal } from '../components/Tasks/Modals/NewTaskModal'
 import { BoardModal } from '../components/Tasks/Modals/BoardModal'
+import { BoardSortMenu } from '../components/Tasks/components/BoardSortMenu'
+import { BoardEditModal } from '../components/Tasks/Modals/BoardEditModal'
 import { BoardMembersModal } from '../components/Tasks/Modals/BoardMembersModal'
 import { JoinBoardModal } from '../components/Tasks/Modals/JoinBoardModal'
 import { BoardInvitationsModal } from '../components/Tasks/Modals/BoardInvitationsModal'
@@ -70,6 +73,9 @@ export default function Tasks() {
     newBoardPhaseSearch,
     setNewBoardPhaseSearch,
     boards,
+    sortedBoards,
+    boardSort,
+    setBoardSort,
     boardTaskCounts,
     selectedBoard,
     setSelectedBoard,
@@ -82,7 +88,11 @@ export default function Tasks() {
     potentialMemberUsers,
     assignableUsers,
     handleDeleteBoard,
-    handleRenameBoard,
+    handleEditBoard,
+    handleSaveBoardEdits,
+    editingBoard,
+    setEditingBoard,
+    isSavingBoard,
     canEditBoard,
     canEditBoardItem,
     handleBoardSubmit,
@@ -175,6 +185,24 @@ export default function Tasks() {
     localStorage.setItem('tasks_scope', taskScope)
   }, [taskScope])
 
+  // A quién se está mirando. No se recuerda entre sesiones a propósito: abrir
+  // el tablero y encontrarlo filtrado por alguien que ni recuerdas haber
+  // elegido es la forma más fácil de creer que faltan tareas.
+  const [scopeMemberId, setScopeMemberId] = useState<number | null>(null)
+
+  const [onlyPending, setOnlyPending] = useState(
+    () => localStorage.getItem('tasks_only_pending') === '1'
+  )
+
+  useEffect(() => {
+    localStorage.setItem('tasks_only_pending', onlyPending ? '1' : '0')
+  }, [onlyPending])
+
+  // Cambiar de tablero suelta el filtro: sus integrantes son otros.
+  useEffect(() => {
+    setScopeMemberId(null)
+  }, [selectedBoard?.id])
+
   // Vista de las tareas: kanban (tablero), timeline (Gantt) o calendario.
   type TasksView = 'kanban' | 'timeline' | 'calendario'
   const [tasksView, setTasksView] = useState<TasksView>(() => {
@@ -198,7 +226,27 @@ export default function Tasks() {
     [boardTasks, user]
   )
 
-  const visibleTasks = taskScope === 'mine' ? myTasks : boardTasks
+  // Integrantes del tablero con lo que les queda sin terminar. Sale de las
+  // tareas ya cargadas, así que no cuesta una petición más.
+  const memberOptions = useMemo(
+    () => memberPendingOptions(selectedBoard?.members, boardTasks),
+    [selectedBoard, boardTasks]
+  )
+
+  // El integrante elegido manda sobre el ámbito: si se fue del tablero, se cae
+  // de vuelta a lo que diga el selector en vez de filtrar por un fantasma.
+  const scopeMember = memberOptions.find((m) => m.id === scopeMemberId) ?? null
+  const effectiveScope: TaskScope = scopeMember ? 'member' : taskScope
+
+  const visibleTasks = useMemo(
+    () => filterTasksByScope(boardTasks, {
+      scope: effectiveScope,
+      currentUserId: user?.id,
+      memberId: scopeMember?.id ?? null,
+      onlyPending,
+    }),
+    [boardTasks, effectiveScope, user?.id, scopeMember, onlyPending]
+  )
 
   // Deep-link from other pages (e.g. Dashboard "Próximas tareas"):
   // /tasks?company=X&board=Y&task=Z → pick the company (superadmin), open the
@@ -411,8 +459,12 @@ export default function Tasks() {
                   clearable
                   searchable
                   placeholder="Seleccione un tablero..."
-                  options={boards.map(b => ({ value: b.id, label: b.name, color: b.color || 'var(--primary)' }))}
+                  options={sortedBoards.map(b => ({ value: b.id, label: b.name, color: b.color || 'var(--primary)' }))}
                 />
+                {/* Pegado al selector: suelto entre los botones de la cabecera
+                    se leía como "ordenar tareas", que es lo que se ve en
+                    pantalla, y no los tableros del desplegable de al lado. */}
+                <BoardSortMenu value={boardSort} onChange={setBoardSort} attached />
                 {canEditTasks && (
                   <>
                     <button className={styles['btn-icon']} onClick={openBoardModal} title="Crear tablero" data-tour="tasks-create-board">
@@ -493,8 +545,8 @@ export default function Tasks() {
                       <>
                         <button
                           className={styles['btn-icon']}
-                          onClick={() => handleRenameBoard()}
-                          title="Renombrar tablero"
+                          onClick={() => handleEditBoard()}
+                          title="Editar tablero (nombre y color)"
                           style={{ marginLeft: '4px' }}
                         >
                           <Pencil size={18} />
@@ -552,10 +604,15 @@ export default function Tasks() {
           )}
           {selectedBoard && (
             <TaskScopeToggle
-              scope={taskScope}
+              scope={effectiveScope}
               onChange={setTaskScope}
-              allCount={boardTasks.length}
-              mineCount={myTasks.length}
+              allCount={scopeCount(boardTasks, onlyPending)}
+              mineCount={scopeCount(myTasks, onlyPending)}
+              memberOptions={memberOptions}
+              selectedMemberId={scopeMember?.id ?? null}
+              onSelectMember={setScopeMemberId}
+              onlyPending={onlyPending}
+              onOnlyPendingChange={setOnlyPending}
             />
           )}
           {canEditTasks ? (
@@ -574,11 +631,14 @@ export default function Tasks() {
         boards.length > 0 ? (
           <div className={styles['board-picker']} data-tour="tasks-board-picker">
             <div className={styles['board-picker-header']}>
-              <h2>Selecciona un tablero</h2>
-              <p>Elige un tablero para gestionar sus tareas.</p>
+              <div>
+                <h2>Selecciona un tablero</h2>
+                <p>Elige un tablero para gestionar sus tareas.</p>
+              </div>
+              <BoardSortMenu value={boardSort} onChange={setBoardSort} showLabel align="right" />
             </div>
             <div className={styles['board-picker-grid']}>
-              {boards.map((b) => {
+              {sortedBoards.map((b) => {
                 const counts = boardTaskCounts[b.id] || {}
                 const phases = b.phases && b.phases.length ? b.phases : []
                 const phaseData = phases.map((p) => ({
@@ -595,8 +655,8 @@ export default function Tasks() {
                       <button
                         type="button"
                         className={styles['board-picker-action']}
-                        onClick={(e) => { e.stopPropagation(); handleRenameBoard(b) }}
-                        title="Renombrar tablero"
+                        onClick={(e) => { e.stopPropagation(); handleEditBoard(b) }}
+                        title="Editar tablero (nombre y color)"
                       >
                         <Pencil size={15} />
                       </button>
@@ -775,6 +835,14 @@ export default function Tasks() {
         setNewBoardPhaseSearch={setNewBoardPhaseSearch}
         onSubmit={handleBoardSubmit}
         isCreatingBoard={isCreatingBoard}
+      />
+
+      <BoardEditModal
+        isOpen={!!editingBoard}
+        board={editingBoard}
+        onClose={() => setEditingBoard(null)}
+        onSubmit={handleSaveBoardEdits}
+        isSaving={isSavingBoard}
       />
 
       <BoardMembersModal

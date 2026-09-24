@@ -1,0 +1,230 @@
+/* Selector de color de un tablero.
+
+   Antes era un <input type="color"> pelado: un recuadro gris de 40px que no
+   parecía un control y que la gente no encontraba. Aquí el color se elige de
+   una paleta visible —se ve lo que se va a obtener sin abrir nada— y la rueda
+   del sistema queda como último recurso para quien quiera un tono exacto. */
+
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.swatch {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  position: relative;
+  background-clip: padding-box;
+  box-shadow: 0 1px 2px rgba(6, 11, 35, 0.12);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.swatch:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(6, 11, 35, 0.18);
+}
+
+.swatch:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* El elegido se marca con un anillo por fuera y un tic dentro: el anillo solo
+   no se distingue en los tonos claros. */
+.selected {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--primary), 0 2px 6px rgba(6, 11, 35, 0.2);
+}
+
+.check {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+
+/* Color a medida: el cuadrito muestra el tono actual y abre la rueda del
+   sistema. El input nativo va encima, invisible, para no heredar su aspecto. */
+.custom {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 2px dashed var(--gray-400, #94a3b8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-400, #94a3b8);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.custom:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.customActive {
+  border-style: solid;
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--primary), 0 2px 6px rgba(6, 11, 35, 0.2);
+  color: #ffffff;
+}
+
+/* ===================== Panel del selector a medida =====================
+   Va en línea, empujando el formulario hacia abajo. Flotando se recortaba: el
+   cuerpo del modal tiene overflow-y: auto. */
+
+.panel {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--gray-200, #e2e8f0);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 6px 16px -8px rgba(6, 11, 35, 0.25);
+}
+
+/* Cuadro de saturación (X) y brillo (Y). El color de fondo lo pone el tono
+   elegido y los dos degradados lo cubren: a blanco hacia la izquierda y a
+   negro hacia abajo. */
+.area {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  border-radius: 10px;
+  cursor: crosshair;
+  touch-action: none;
+  background-image:
+    linear-gradient(to top, #000000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #ffffff, rgba(255, 255, 255, 0));
+}
+
+.area:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.areaThumb {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(6, 11, 35, 0.35), 0 1px 3px rgba(6, 11, 35, 0.3);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.preview {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(6, 11, 35, 0.12);
+}
+
+.sliders {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Barra de tono: un range nativo con la pista pintada de arcoíris. Se usa un
+   range y no otro div arrastrable para no perder el teclado ni el lector de
+   pantalla, que salen gratis con él. */
+.hue {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  background: linear-gradient(
+    to right,
+    #ff0000 0%, #ffff00 17%, #00ff00 33%,
+    #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%
+  );
+}
+
+.hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(6, 11, 35, 0.35), 0 1px 3px rgba(6, 11, 35, 0.3);
+  cursor: pointer;
+}
+
+.hue::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(6, 11, 35, 0.35);
+  cursor: pointer;
+}
+
+.hue:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hexRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hexLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-400, #64748b);
+}
+
+.hexInput {
+  width: 100px;
+  padding: 6px 10px;
+  border: 1px solid var(--gray-200, #e2e8f0);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: lowercase;
+}
+
+.hexInput:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.15);
+}
+
+/* El valor en texto, para poder copiarlo o dictarlo. */
+.value {
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--gray-400, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
