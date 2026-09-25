@@ -1,5 +1,6 @@
 import api from './client'
 import type { UserBadge } from './badge.service'
+import type { CertificateSummary } from './certificate.service'
 
 /**
  * Estado de la inducción de un profesional recién contratado. Los mismos
@@ -64,6 +65,8 @@ export interface InductionLanding {
   current?: InductionCurrentBlock
   /** Insignias que ya ganó, para el panel lateral. */
   badges: UserBadge[]
+  /** Certificado de esta capacitación, si ya se emitió. */
+  certificate?: CertificateSummary
 }
 
 export interface InductionAnswer {
@@ -92,6 +95,8 @@ export interface InductionResult {
   message: string
   /** Insignias ganadas con este envío, para celebrarlas. */
   badges_earned: UserBadge[]
+  /** Se emite al completar el programa, si tiene plantilla. */
+  certificate?: CertificateSummary
 }
 
 /** Interruptor global de la inducción (fila única). */
@@ -155,6 +160,8 @@ export interface InductionProgram {
   badge_title: string
   badge_icon: string
   badge_color: string
+  /** Plantilla del certificado; ausente = el programa no certifica. */
+  certificate_template_id?: number | null
   created_by: number
   created_at: string
   updated_at: string
@@ -174,6 +181,8 @@ export interface InductionProgramInput {
   badge_title?: string
   badge_icon?: string
   badge_color?: string
+  /** 0 = sin certificado. */
+  certificate_template_id?: number
 }
 
 export interface InductionAttemptLog {
@@ -232,6 +241,8 @@ export interface InductionHistoryItem {
   created_at: string
   completed_at?: string
   current: boolean
+  /** Certificado emitido para esta capacitación, si lo hay. */
+  certificate?: CertificateSummary
 }
 
 /** Capacitación pendiente del usuario de la sesión, con su enlace. */

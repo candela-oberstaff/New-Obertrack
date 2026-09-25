@@ -174,6 +174,9 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	api.GET("/me/badges", d.badge.Mine)
 	// Mi capacitación pendiente (con su enlace), para ofrecerla desde dentro.
 	api.GET("/me/induction", d.induction.MyInduction)
+	// Mis certificados y su descarga.
+	api.GET("/me/certificates", d.certificate.Mine)
+	api.GET("/certificates/:id/download", d.certificate.Download)
 	// Google Calendar: vínculo PERSONAL con la cuenta de Google del usuario
 	// (self-service, como Wallet). Todas operan sobre la sesión y no reciben un
 	// user_id, así que nadie puede tocar el vínculo de otro. El callback del
@@ -196,6 +199,7 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		users.GET("/:id", d.user.GetByID)
 		// Insignias de otra persona: misma visibilidad que el detalle.
 		users.GET("/:id/badges", d.badge.ForUser)
+		users.GET("/:id/certificates", d.certificate.ForUser)
 		users.PUT("/:id", d.user.Update)
 		users.POST("/:id/toggle-status", requireManageUsers(), d.user.ToggleStatus)
 		users.POST("/:id/promote-manager", requireManageTeam(), d.user.PromoteToManager)

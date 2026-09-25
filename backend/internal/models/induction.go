@@ -125,7 +125,10 @@ type InductionProgram struct {
 	BadgeTitle string         `gorm:"size:160" json:"badge_title"`
 	BadgeIcon  string         `gorm:"size:40;not null;default:'Trophy'" json:"badge_icon"`
 	BadgeColor string         `gorm:"size:20;not null;default:'gold'" json:"badge_color"`
-	CreatedBy  uint           `gorm:"not null;index" json:"created_by"`
+	// CertificateTemplateID es el diseño del certificado que se emite al
+	// completar el programa. Nil = el programa no certifica.
+	CertificateTemplateID *uint          `gorm:"index" json:"certificate_template_id,omitempty"`
+	CreatedBy             uint           `gorm:"not null;index" json:"created_by"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

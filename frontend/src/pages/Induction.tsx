@@ -18,6 +18,7 @@ import {
 } from '../services/induction.service'
 import { buildEmbedUrl } from '../components/Tutorials/utils'
 import { BadgeMedallion } from '../components/Badges/BadgeMedallion'
+import { FileCheck } from 'lucide-react'
 import badgeStyles from '../components/Badges/Badges.module.css'
 import styles from './Induction.module.css'
 
@@ -219,6 +220,11 @@ export default function Induction() {
             ? 'Tu acceso está habilitado. Revisa tu correo para crear tu contraseña.'
             : 'Tus insignias ya están en tu perfil.'}
         </p>
+        {landing.certificate && (
+          <a className={styles.secondaryBtn} href={landing.certificate.download_url}>
+            <FileCheck size={18} /> Descargar certificado
+          </a>
+        )}
         <a className={styles.primaryBtn} href={landing.gates_access ? '/login' : '/profile'}>
           {landing.gates_access ? 'Ir a Obertrack' : 'Volver a Obertrack'} <ArrowRight size={18} />
         </a>
@@ -450,6 +456,12 @@ export default function Induction() {
               </div>
             ))}
           </div>
+        )}
+
+        {result.completed && result.certificate && (
+          <a className={styles.secondaryBtn} href={result.certificate.download_url}>
+            <FileCheck size={18} /> Descargar certificado
+          </a>
         )}
 
         {result.completed && (

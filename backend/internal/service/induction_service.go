@@ -110,6 +110,33 @@ type ProgramInput struct {
 	BadgeTitle          string `json:"badge_title"`
 	BadgeIcon           string `json:"badge_icon"`
 	BadgeColor          string `json:"badge_color"`
+	// CertificateTemplateID 0 = sin certificado.
+	CertificateTemplateID uint `json:"certificate_template_id"`
+}
+
+// CertificateIssuer es lo que la inducción necesita de los certificados:
+// emitir al completar y saber si una capacitación ya tiene el suyo. Es una
+// interfaz pequeña para que las pruebas no arrastren el renderizador.
+type CertificateIssuer interface {
+	IssueForCompletion(user *models.User, invite *models.InductionInvite) (*models.Certificate, error)
+	GetForInvite(inviteID uint) (*models.Certificate, error)
+}
+
+// CertificateSummary es lo que viaja a la landing y al panel sobre un
+// certificado emitido.
+type CertificateSummary struct {
+	ID          uint      `json:"id"`
+	Code        string    `json:"code"`
+	ProgramName string    `json:"program_name"`
+	IssuedAt    time.Time `json:"issued_at"`
+	DownloadURL string    `json:"download_url"`
+}
+
+func summarizeCertificate(c *models.Certificate) *CertificateSummary {
+	if c == nil {
+		return nil
+	}
+	return &CertificateSummary{ID: c.ID, Code: c.Code, ProgramName: c.ProgramName, IssuedAt: c.IssuedAt, DownloadURL: c.DownloadURL()}
 }
 
 // LandingQuestion es una pregunta tal como la ve el navegador: sin la respuesta
@@ -179,6 +206,8 @@ type LandingView struct {
 	Current *LandingCurrentBlock `json:"current,omitempty"`
 	// Badges son las insignias que ya ganó, para mostrarlas en el panel.
 	Badges []models.UserBadge `json:"badges"`
+	// Certificate es el certificado de esta capacitación, si ya se emitió.
+	Certificate *CertificateSummary `json:"certificate,omitempty"`
 }
 
 // SubmittedAnswer es una respuesta enviada desde la landing.
@@ -208,6 +237,8 @@ type SubmitResult struct {
 	// BadgesEarned son las insignias que se ganaron con este envío, para que
 	// la landing las celebre.
 	BadgesEarned []models.UserBadge `json:"badges_earned"`
+	// Certificate se emite al completar el programa, si tiene plantilla.
+	Certificate *CertificateSummary `json:"certificate,omitempty"`
 }
 
 // InductionBlockStatus resume un bloque de la invitación para Soporte.
@@ -256,6 +287,8 @@ type InductionHistoryItem struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	CompletedAt     *time.Time `json:"completed_at,omitempty"`
 	Current         bool       `json:"current"`
+	// Certificate es el emitido para esta capacitación, si lo hay.
+	Certificate *CertificateSummary `json:"certificate,omitempty"`
 }
 
 type inductionService struct {
@@ -266,6 +299,7 @@ type inductionService struct {
 	authSvc     AuthService
 	ticketSvc   TicketService
 	notifSvc    NotificationService
+	certSvc     CertificateIssuer
 	frontendURL string
 }
 
@@ -277,6 +311,7 @@ func NewInductionService(
 	authSvc AuthService,
 	ticketSvc TicketService,
 	notifSvc NotificationService,
+	certSvc CertificateIssuer,
 	frontendURL string,
 ) InductionService {
 	return &inductionService{
@@ -287,8 +322,22 @@ func NewInductionService(
 		authSvc:     authSvc,
 		ticketSvc:   ticketSvc,
 		notifSvc:    notifSvc,
+		certSvc:     certSvc,
 		frontendURL: strings.TrimRight(frontendURL, "/"),
 	}
+}
+
+// certificateFor devuelve el resumen del certificado de una invitación, si
+// hay servicio y si existe.
+func (s *inductionService) certificateFor(inviteID uint) *CertificateSummary {
+	if s.certSvc == nil {
+		return nil
+	}
+	cert, err := s.certSvc.GetForInvite(inviteID)
+	if err != nil || cert == nil {
+		return nil
+	}
+	return summarizeCertificate(cert)
 }
 
 // baseURL es el dominio para los enlaces del correo. Sin el respaldo, un
@@ -509,7 +558,8 @@ func (s *inductionService) CreateProgram(actorID uint, in ProgramInput) (*models
 		BadgeTitle:          in.BadgeTitle,
 		BadgeIcon:           in.BadgeIcon,
 		BadgeColor:          in.BadgeColor,
-		CreatedBy:           actorID,
+		CertificateTemplateID: optionalID(in.CertificateTemplateID),
+		CreatedBy:             actorID,
 	}
 	if err := s.repo.CreateProgram(program); err != nil {
 		return nil, err
@@ -556,6 +606,7 @@ func (s *inductionService) UpdateProgram(id uint, in ProgramInput) (*models.Indu
 		"badge_title":           in.BadgeTitle,
 		"badge_icon":            in.BadgeIcon,
 		"badge_color":           in.BadgeColor,
+		"certificate_template_id": optionalIDValue(in.CertificateTemplateID),
 	}
 	if err := s.repo.UpdateProgram(id, updates); err != nil {
 		return nil, err
@@ -569,6 +620,22 @@ func (s *inductionService) UpdateProgram(id uint, in ProgramInput) (*models.Indu
 		}
 	}
 	return s.repo.GetProgram(id)
+}
+
+func optionalID(v uint) *uint {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
+
+// optionalIDValue es el mismo opcional para un UPDATE por mapa: nil explícito
+// escribe NULL sin depender del driver.
+func optionalIDValue(v uint) interface{} {
+	if v == 0 {
+		return nil
+	}
+	return v
 }
 
 func (s *inductionService) DeleteProgram(id uint) error {
@@ -904,8 +971,12 @@ func (s *inductionService) Landing(token string) (*LandingView, error) {
 		})
 	}
 
-	// Ya resuelta: no se devuelve bloque actual ni preguntas.
+	// Ya resuelta: no se devuelve bloque actual ni preguntas, pero sí el
+	// certificado si se emitió.
 	if invite.Status != models.InductionPending {
+		if invite.Status == models.InductionPassed {
+			view.Certificate = s.certificateFor(invite.ID)
+		}
 		return view, nil
 	}
 	current := currentBlock(blocks)
@@ -1051,6 +1122,16 @@ func (s *inductionService) Submit(token string, blockID uint, answers []Submitte
 				result.Message = "¡Completaste la capacitación! Tus insignias ya están en tu perfil."
 			}
 			result.BadgesEarned = append(result.BadgesEarned, s.awardProgramBadges(user, invite, blocks, now)...)
+			// Certificado, si el programa tiene plantilla. Best-effort: no
+			// frena la aprobación.
+			if s.certSvc != nil {
+				invite.CompletedAt = &now
+				if cert, err := s.certSvc.IssueForCompletion(user, invite); err != nil {
+					log.Printf("[Induction] no se pudo emitir el certificado de %s: %v", user.Email, err)
+				} else if cert != nil {
+					result.Certificate = summarizeCertificate(cert)
+				}
+			}
 			result.Status = models.InductionPassed
 			result.Completed = true
 		} else {
@@ -1236,6 +1317,9 @@ func (s *inductionService) Status(userID uint) (*InductionStatusView, error) {
 				CreatedAt:   inv.CreatedAt,
 				CompletedAt: inv.CompletedAt,
 				Current:     inv.ID == invite.ID,
+			}
+			if inv.Status == models.InductionPassed {
+				item.Certificate = s.certificateFor(inv.ID)
 			}
 			if inv.ID == invite.ID {
 				item.TotalBlocks, item.CompletedBlocks = len(blocks), countCompleted(blocks)

@@ -3109,6 +3109,26 @@ func Run(db *gorm.DB) error {
 				return tx.Exec(`DROP INDEX IF EXISTS idx_induction_invites_one_pending`).Error
 			},
 		},
+		{
+			// Certificados: plantillas (diseño subido + posición de campos) por
+			// programa, y certificados emitidos como PDF inmutable con código
+			// de verificación. No se envían por correo: se descargan desde la
+			// plataforma y se verifican por código.
+			ID: "202609251900_induction_certificates",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(
+					&models.CertificateTemplate{},
+					&models.Certificate{},
+					&models.InductionProgram{},
+				)
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&models.InductionProgram{}, "certificate_template_id"); err != nil {
+					return err
+				}
+				return tx.Migrator().DropTable(&models.Certificate{}, &models.CertificateTemplate{})
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

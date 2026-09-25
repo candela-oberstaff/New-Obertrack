@@ -194,4 +194,14 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 
 	// Public file serving (no auth required) — used for email client image loading.
 	api.GET("/public/uploads/:filename", d.upload.GetPublicFile)
+
+	// Verificación pública de certificados por su código (impreso en el PDF)
+	// y descarga por ese mismo código. Con límite de tasa: el código no debe
+	// ser adivinable por fuerza bruta.
+	certificates := api.Group("/public/certificates")
+	certificates.Use(middleware.AuthRateLimitMiddleware())
+	{
+		certificates.GET("/:code", d.certificate.Verify)
+		certificates.GET("/:code/pdf", d.certificate.PublicPDF)
+	}
 }

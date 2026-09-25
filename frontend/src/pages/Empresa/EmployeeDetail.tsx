@@ -16,6 +16,7 @@ import { hierarchyLabel } from '../../lib/permissions'
 import { ageAt, emergencyContacts } from '../../lib/person'
 import { formatDateOnly } from '../../utils/date'
 import { UserBadges } from '../../components/Badges/UserBadges'
+import { UserCertificates } from '../../components/Certificates/UserCertificates'
 import styles from '../AdminUserDetail.module.css'
 
 // Empleo resuelto del profesional dentro de la empresa del empleador.
@@ -490,6 +491,9 @@ export default function EmployeeDetail() {
           ))}
         </div>
       </div>
+
+      {/* Certificados emitidos: se oculta sola si no tiene ninguno. */}
+      <UserCertificates userId={user.id} className={styles.card} style={{ marginTop: '1rem' }} titleStyle={{ margin: '0 0 14px' }} />
 
       {/* Insignias de la inducción: se oculta sola si no tiene ninguna. */}
       <UserBadges

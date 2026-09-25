@@ -106,6 +106,19 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		inductions.DELETE("/programs/:id", middleware.RequireSuperadmin(), d.induction.DeleteProgram)
 		inductions.PUT("/programs/:id/blocks", middleware.RequireSuperadmin(), d.induction.SetProgramBlocks)
 		inductions.PUT("/programs/:id/companies", middleware.RequireSuperadmin(), d.induction.SetProgramCompanies)
+		inductions.GET("/programs/:id/certificates", d.certificate.ForProgram)
+
+		// Plantillas de certificado (diseños + posición de campos). Leer lo
+		// puede Soporte; armar y previsualizar es de superadmin.
+		inductions.GET("/certificate-templates", d.certificate.ListTemplates)
+		inductions.POST("/certificate-templates", middleware.RequireSuperadmin(), d.certificate.CreateTemplate)
+		inductions.POST("/certificate-templates/preview", middleware.RequireSuperadmin(), d.certificate.PreviewTemplate)
+		inductions.PUT("/certificate-templates/:id", middleware.RequireSuperadmin(), d.certificate.UpdateTemplate)
+		inductions.DELETE("/certificate-templates/:id", middleware.RequireSuperadmin(), d.certificate.DeleteTemplate)
+		// Emitir el certificado de una capacitación aprobada que no lo tiene,
+		// y reemitir uno con la plantilla corregida.
+		inductions.POST("/invites/:id/certificate", d.certificate.IssueForInvite)
+		inductions.POST("/certificates/:id/reissue", d.certificate.Reissue)
 
 		inductions.GET("/users/:userId", d.induction.Status)
 		inductions.POST("/users/:userId/reset", d.induction.Reset)

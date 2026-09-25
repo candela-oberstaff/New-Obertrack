@@ -30,7 +30,8 @@ import {
   Sparkles,
   MessageSquareQuote,
   Award,
-  GraduationCap
+  GraduationCap,
+  FileCheck
 } from 'lucide-react'
 import styles from './Notifications.module.css'
 
@@ -53,6 +54,7 @@ const LIVE_NOTIFICATION_TYPES = new Set([
   'novedad',
   'insignia',
   'capacitacion',
+  'certificado',
 ])
 
 const ALERT_NOTIFICATION_TYPES = new Set([
@@ -64,6 +66,7 @@ const ALERT_NOTIFICATION_TYPES = new Set([
   'novedad',
   'insignia',
   'capacitacion',
+  'certificado',
 ])
 
 const RECONNECT_BASE_DELAY = 1000
@@ -349,6 +352,7 @@ export default function Notifications() {
       case 'novedad': return <Sparkles size={18} className="text-violet-500" />
       case 'insignia': return <Award size={18} className="text-amber-500" />
       case 'capacitacion': return <GraduationCap size={18} className="text-fuchsia-500" />
+      case 'certificado': return <FileCheck size={18} className="text-emerald-500" />
       // Testimonios: la solicitud (a quien escribe) y el aviso de recepción
       // (a quien lo pidió). Comparten icono porque son el mismo asunto.
       case 'testimonial_request':

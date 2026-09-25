@@ -354,3 +354,40 @@ capacitaciones que le manden), con **una sola en curso a la vez**:
 - El panel de Soporte muestra la actual en detalle, "Todas las capacitaciones"
   como historial y, cuando no hay ninguna en curso, "Enviar otra capacitación".
 
+---
+
+## 13. Certificados (25-sep-2026)
+
+Al completar un programa se emite un **PDF inmutable**: el diseño que sube el
+equipo (imagen PNG/JPG en A4) y, encima, el nombre, el programa, la fecha y un
+código de verificación. **No se envía por correo**: se descarga desde la
+plataforma y se verifica por código.
+
+| Pieza | Qué es |
+|---|---|
+| `certificate_templates` | nombre, `image_filename` (en uploads), orientación (deducida de la imagen) y campos (JSON: clave, x/y en %, tamaño, color, alineación, negrita, fuente) |
+| `induction_programs.certificate_template_id` | plantilla del programa; nil = no certifica |
+| `certificates` | usuario, invitación (única), programa y plantilla (nombres copiados), `code` único `OBT-XXXX-XXXX`, archivo en `uploads/certificates/<code>.pdf`, fechas de emisión y reemisión |
+
+- **Campos**: `name`, `program`, `date`, `code` y `text` (libre, puede
+  repetirse). Fuentes core de gofpdf (Helvetica, Times, Courier) con
+  traducción a CP1252 para los acentos. Las posiciones en porcentaje hacen
+  que el editor (imagen a escala) y el PDF coincidan.
+- **Emisión** en `Submit` al completar el programa (best-effort, no frena la
+  aprobación), idempotente por invitación. Notificación tipo `certificado`.
+  Desde Soporte: "Emitir certificado" para aprobadas sin él (programa que
+  recibió plantilla después) y "Reemitir" (mismo código, PDF nuevo con la
+  plantilla actual).
+- **Entrega**: landing ("Descargar certificado" al completar y al volver),
+  perfil ("Certificados"), expediente en Admin, ficha del empleado para la
+  empresa (misma visibilidad que el detalle de usuario), historial del panel
+  de Soporte.
+- **Verificación pública**: `/certificado/<código>` → `GET
+  /api/public/certificates/:code` y descarga `.../:code/pdf`, con límite de
+  tasa. Quien tiene el código (impreso) puede comprobar y bajar el documento.
+- **Panel**: pestaña Inducción → Certificados: subida del diseño (por
+  `/api/uploads`), editor visual con arrastre de campos, vista previa PDF
+  con datos de ejemplo. Una plantilla en uso no se borra.
+- Migración `202609251900_induction_certificates`. Sin QR por ahora: los
+  campos admiten sumarlo después sin cambiar el modelo.
+

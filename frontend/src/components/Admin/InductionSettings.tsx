@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { GraduationCap, Save, AlertTriangle, Route, Layers } from 'lucide-react'
+import { GraduationCap, Save, AlertTriangle, Route, Layers, FileCheck } from 'lucide-react'
 
 import { useNotification } from '../../context/NotificationContext'
 import {
@@ -12,9 +12,10 @@ import { tutorialService } from '../../services/tutorial.service'
 import type { Tutorial, TutorialAudienceOption } from '../../types/tutorials'
 import InductionProgramList from './InductionProgramList'
 import InductionBlockLibrary from './InductionBlockLibrary'
+import CertificateTemplateList from '../Certificates/CertificateTemplateList'
 import styles from './InductionSettings.module.css'
 
-type Section = 'programs' | 'blocks'
+type Section = 'programs' | 'blocks' | 'certificates'
 
 /**
  * Configuración de la inducción del profesional recién contratado.
@@ -203,9 +204,18 @@ export default function InductionSettings() {
           >
             <Layers size={15} /> Bloques <span className={styles.count}>{blocks.length}</span>
           </button>
+          <button
+            type="button"
+            className={section === 'certificates' ? styles.subTabActive : styles.subTab}
+            onClick={() => setSection('certificates')}
+          >
+            <FileCheck size={15} /> Certificados
+          </button>
         </div>
 
-        {section === 'programs' ? (
+        {section === 'certificates' ? (
+          <CertificateTemplateList onChanged={refresh} />
+        ) : section === 'programs' ? (
           <InductionProgramList
             programs={programs}
             library={blocks}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { GraduationCap, RotateCcw, Send, CheckCircle2, Circle, XCircle, History } from 'lucide-react'
+import { GraduationCap, RotateCcw, Send, CheckCircle2, Circle, XCircle, History, FileCheck, RefreshCw } from 'lucide-react'
 
 import { Button, Select } from '../ui'
 import { useConfirm } from '../ui/ConfirmProvider'
@@ -9,6 +9,7 @@ import {
   type InductionProgram,
   type InductionUserStatus,
 } from '../../services/induction.service'
+import { certificateService } from '../../services/certificate.service'
 
 interface Props {
   userId: number
@@ -88,6 +89,7 @@ export function InductionStatusPanel({ userId, canReset = false, isProfessional 
   const [loading, setLoading] = useState(true)
   const [resetting, setResetting] = useState(false)
   const [inviting, setInviting] = useState(false)
+  const [certBusy, setCertBusy] = useState<number | null>(null)
   // Si la inducción está apagada (o sin programa usable) no hay nada que
   // enviar: sin esto, el panel ofrecería una acción que el backend rechazaría.
   const [enabled, setEnabled] = useState(false)
@@ -172,6 +174,38 @@ export function InductionStatusPanel({ userId, canReset = false, isProfessional 
       showError(err?.response?.data?.error ?? 'No se pudo enviar la capacitación.')
     } finally {
       setInviting(false)
+    }
+  }
+
+  const handleIssue = async (inviteId: number) => {
+    setCertBusy(inviteId)
+    try {
+      await certificateService.issueForInvite(inviteId)
+      success('Certificado emitido. Ya aparece en el perfil del profesional.')
+      await load()
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo emitir el certificado.')
+    } finally {
+      setCertBusy(null)
+    }
+  }
+
+  const handleReissue = async (certificateId: number, inviteId: number) => {
+    const ok = await confirm({
+      title: 'Reemitir certificado',
+      message: 'Se vuelve a generar el PDF con la plantilla actual del programa. El código de verificación no cambia.',
+      confirmLabel: 'Reemitir',
+    })
+    if (!ok) return
+    setCertBusy(inviteId)
+    try {
+      await certificateService.reissue(certificateId)
+      success('Certificado reemitido.')
+      await load()
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo reemitir el certificado.')
+    } finally {
+      setCertBusy(null)
     }
   }
 
@@ -348,6 +382,41 @@ export function InductionStatusPanel({ userId, canReset = false, isProfessional 
         </div>
       )}
 
+      {history.length === 1 && history[0].status === 'passed' && (
+        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13 }}>
+          {history[0].certificate ? (
+            <>
+              <a
+                href={history[0].certificate.download_url}
+                download
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#15803d', fontWeight: 700, textDecoration: 'none' }}
+              >
+                <FileCheck size={15} /> Certificado {history[0].certificate.code}
+              </a>
+              {canReset && (
+                <button
+                  type="button"
+                  disabled={certBusy === history[0].id}
+                  onClick={() => handleReissue(history[0].certificate!.id, history[0].id)}
+                  style={{ background: 'none', border: 0, cursor: 'pointer', color: '#94a3b8', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}
+                >
+                  <RefreshCw size={13} /> Reemitir
+                </button>
+              )}
+            </>
+          ) : canReset ? (
+            <Button
+              variant="secondary"
+              leftIcon={<FileCheck size={16} />}
+              loading={certBusy === history[0].id}
+              onClick={() => handleIssue(history[0].id)}
+            >
+              Emitir certificado
+            </Button>
+          ) : null}
+        </div>
+      )}
+
       {history.length > 1 && (
         <div style={{ marginTop: 22 }}>
           <div style={{ ...subTitle, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -368,6 +437,52 @@ export function InductionStatusPanel({ userId, canReset = false, isProfessional 
                   </span>
                   <span style={{ color: '#64748b' }}>{h.gates_access ? 'Ingreso' : 'Capacitación'}</span>
                   <span style={{ color: '#94a3b8' }}>{shortDate(h.completed_at || h.created_at)}</span>
+                  {h.status === 'passed' && h.certificate && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <a
+                        href={h.certificate.download_url}
+                        download
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#15803d', fontWeight: 700, textDecoration: 'none' }}
+                        title={`Certificado ${h.certificate.code}`}
+                      >
+                        <FileCheck size={14} /> Certificado
+                      </a>
+                      {canReset && (
+                        <button
+                          type="button"
+                          title="Reemitir con la plantilla actual"
+                          aria-label="Reemitir certificado"
+                          disabled={certBusy === h.id}
+                          onClick={() => handleReissue(h.certificate!.id, h.id)}
+                          style={{ background: 'none', border: 0, cursor: 'pointer', color: '#94a3b8', padding: 2 }}
+                        >
+                          <RefreshCw size={13} />
+                        </button>
+                      )}
+                    </span>
+                  )}
+                  {h.status === 'passed' && !h.certificate && canReset && (
+                    <button
+                      type="button"
+                      disabled={certBusy === h.id}
+                      onClick={() => handleIssue(h.id)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'white',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 8,
+                        padding: '4px 8px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: '#334155',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <FileCheck size={13} /> {certBusy === h.id ? 'Emitiendo...' : 'Emitir certificado'}
+                    </button>
+                  )}
                 </div>
               )
             })}

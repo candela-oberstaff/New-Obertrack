@@ -47,6 +47,7 @@ const Papelera = lazy(() => import('../pages/Papelera'))
 const AppSettings = lazy(() => import('../pages/AppSettings'))
 const Induction = lazy(() => import('../pages/Induction'))
 const Testimonial = lazy(() => import('../pages/Testimonial'))
+const CertificateVerify = lazy(() => import('../pages/CertificateVerify'))
 const Testimonials = lazy(() => import('../pages/Testimonials'))
 const Obervoice = lazy(() => import('../pages/Obervoice'))
 
@@ -61,6 +62,10 @@ export function AppRoutes() {
             aquí todavía no tiene cuenta activa y su credencial es el token del
             enlace que recibió por correo. */}
         <Route path="/induccion/:token" element={<Induction />} />
+        {/* Verificación pública de certificados por su código. SIN guard a
+            propósito: cualquiera con el código (impreso en el PDF) puede
+            comprobar que es auténtico. */}
+        <Route path="/certificado/:code" element={<CertificateVerify />} />
         {/* Testimonio. Va SIN guard por el mismo motivo que la inducción: quien
             firma puede no tener sesión y su credencial es el token del enlace
             que recibió por correo. */}

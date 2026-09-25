@@ -4,6 +4,14 @@ import { ArrowLeft, Save, ArrowUp, ArrowDown, Trash2, Plus } from 'lucide-react'
 import { Select } from '../ui'
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
+import {
+  certificateService,
+  certificateDownloadUrl,
+  templateImageUrl,
+  type CertificateTemplate,
+  type ProgramCertificates,
+} from '../../services/certificate.service'
+import { FileCheck, Download } from 'lucide-react'
 import type { TutorialAudienceOption } from '../../types/tutorials'
 import { BadgePicker, buildBadgePresets, type BadgeDraft } from '../Badges/BadgePicker'
 import { DEFAULT_PROGRAM_BADGE } from '../Badges/badgeCatalog'
@@ -43,6 +51,24 @@ export default function InductionProgramEditor({ programId, library, companies, 
   const [addBlockId, setAddBlockId] = useState<number>(0)
   const [companySearch, setCompanySearch] = useState('')
   const [badge, setBadge] = useState<BadgeDraft>({ title: '', ...DEFAULT_PROGRAM_BADGE })
+  const [templateId, setTemplateId] = useState<number>(0)
+  const [templates, setTemplates] = useState<CertificateTemplate[]>([])
+  const [issued, setIssued] = useState<ProgramCertificates | null>(null)
+
+  useEffect(() => {
+    if (programId === null) return
+    certificateService
+      .forProgram(programId)
+      .then(setIssued)
+      .catch(() => setIssued(null))
+  }, [programId])
+
+  useEffect(() => {
+    certificateService
+      .listTemplates()
+      .then(setTemplates)
+      .catch(() => setTemplates([]))
+  }, [])
   const presets = buildBadgePresets(library, allPrograms, programId !== null ? { kind: 'program', id: programId } : undefined)
   const [saving, setSaving] = useState(false)
 
@@ -67,6 +93,7 @@ export default function InductionProgramEditor({ programId, library, companies, 
           icon: p.badge_icon || DEFAULT_PROGRAM_BADGE.icon,
           color: p.badge_color || DEFAULT_PROGRAM_BADGE.color,
         })
+        setTemplateId(p.certificate_template_id ?? 0)
       })
       .catch(() => showError('No se pudo cargar el programa.'))
       .finally(() => {
@@ -120,6 +147,7 @@ export default function InductionProgramEditor({ programId, library, companies, 
         badge_title: badge.title.trim(),
         badge_icon: badge.icon,
         badge_color: badge.color,
+        certificate_template_id: templateId,
       }
       const base =
         programId === null
@@ -389,6 +417,105 @@ export default function InductionProgramEditor({ programId, library, companies, 
           fallar ningún intento gana "A la primera", y quien saque 100% en todo gana "Impecable".
         </p>
         <BadgePicker value={badge} fallbackTitle={name} presets={presets} onChange={setBadge} />
+      </div>
+
+      {/* --- 5. Certificado --- */}
+      <div className={styles.section}>
+        <div className={styles.sectionHead}>
+          <span className={styles.sectionNum}>5</span>
+          <h3 className={styles.keyTitle}>Certificado</h3>
+          {templateId > 0 && <span className={styles.tagOk}>Certifica</span>}
+        </div>
+        <p className={styles.sectionIntro}>
+          Al completar el programa se emite un PDF con el diseño elegido, el nombre, la fecha y un
+          código de verificación. Se descarga desde la plataforma; no se envía por correo.
+          {templates.length === 0 && ' Todavía no hay plantillas: créalas en la pestaña Certificados.'}
+        </p>
+        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div className={styles.field} style={{ width: 420, maxWidth: '100%' }}>
+            <label>Plantilla de certificado</label>
+            <Select
+              fullWidth
+              value={templateId}
+              onChange={(v) => setTemplateId(Number(v) || 0)}
+              options={[
+                { value: 0, label: 'Sin certificado' },
+                ...templates.map((t) => ({
+                  value: t.id,
+                  label: `${t.name} · ${t.orientation === 'L' ? 'horizontal' : 'vertical'}`,
+                })),
+              ]}
+            />
+          </div>
+          {(() => {
+            const chosen = templates.find((t) => t.id === templateId)
+            if (!chosen) return null
+            const landscape = chosen.orientation === 'L'
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+                <div
+                  style={{
+                    width: landscape ? 180 : 128,
+                    height: landscape ? 128 : 180,
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    border: '1px solid #e2e8f0',
+                    background: '#f8fafc',
+                    boxShadow: '0 4px 10px rgba(6, 11, 35, 0.08)',
+                  }}
+                >
+                  <img
+                    src={templateImageUrl(chosen.image_filename)}
+                    alt={`Diseño ${chosen.name}`}
+                    style={{ width: '100%', height: '100%', objectFit: 'fill' }}
+                  />
+                </div>
+                <span className={styles.hint} style={{ margin: 0 }}>Así se ve el diseño</span>
+              </div>
+            )
+          })()}
+        </div>
+
+        {issued && programId !== null && (
+          <div style={{ marginTop: 20 }}>
+            <div className={styles.sectionHead} style={{ marginBottom: 8 }}>
+              <h3 className={styles.keyTitle} style={{ fontSize: 14 }}>
+                Certificados emitidos en este programa
+              </h3>
+              <span className={issued.total > 0 ? styles.tagOk : styles.tag}>{issued.total}</span>
+            </div>
+            {issued.total === 0 ? (
+              <p className={styles.muted}>Todavía no se ha emitido ninguno. Se emiten al completar el programa.</p>
+            ) : (
+              <div className={styles.list} style={{ maxWidth: 720 }}>
+                {issued.recent.map((c) => (
+                  <div key={c.id} className={styles.seqItem}>
+                    <FileCheck size={16} color="#15803d" />
+                    <div className={styles.seqMain}>
+                      <span className={styles.seqTitle}>{c.user_name || `Usuario ${c.user_id}`}</span>
+                      <span className={styles.seqMeta}>
+                        {c.code} · {new Date(c.issued_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {c.reissued_at ? ' · reemitido' : ''}
+                      </span>
+                    </div>
+                    <a
+                      href={certificateDownloadUrl(c.code)}
+                      download
+                      className={`${styles.iconBtn} ${styles.iconBtnNeutral}`}
+                      title="Descargar"
+                      aria-label={`Descargar certificado de ${c.user_name}`}
+                    >
+                      <Download size={15} />
+                    </a>
+                  </div>
+                ))}
+                {issued.total > issued.recent.length && (
+                  <p className={styles.hint}>Se muestran los {issued.recent.length} más recientes de {issued.total}.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className={styles.stickyBar}>
