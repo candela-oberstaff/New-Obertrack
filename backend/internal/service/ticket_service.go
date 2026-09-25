@@ -136,6 +136,16 @@ type InductionAlertInput struct {
 	Score             float64
 	PassingScore      int
 	Attempts          int
+	// Bloque en el que se quedó. La inducción es una secuencia y a Soporte le
+	// sirve saber en cuál tropezó: no es lo mismo fallar la bienvenida que el
+	// último módulo. BlockCount 0 = invitación sin bloques (no debería pasar).
+	BlockName  string
+	BlockIndex int // posición 1-based
+	BlockCount int
+	// GatesAccess: si la invitación bloqueaba el acceso (ingreso) o era una
+	// capacitación a alguien que ya trabaja. Cambia el tono del ticket.
+	GatesAccess bool
+	ProgramName string
 }
 
 // ObersuiteHireInput son los datos de quien acaba de ser contratado en
@@ -1260,11 +1270,28 @@ func (s *ticketService) CreateInductionFailureAlert(in InductionAlertInput) erro
 	pid := in.ProfessionalID
 	reason := fmt.Sprintf("Obtuvo %.0f%% y el mínimo aprobatorio es %d%%. Agotó sus %d intentos.",
 		in.Score, in.PassingScore, in.Attempts)
+	if in.BlockName != "" {
+		if in.BlockCount > 0 {
+			reason = fmt.Sprintf("Bloque %d de %d (%s): ", in.BlockIndex, in.BlockCount, in.BlockName) + reason
+		} else {
+			reason = fmt.Sprintf("Bloque %s: ", in.BlockName) + reason
+		}
+	}
+	title := "Inducción no aprobada: " + in.ProfessionalName
+	description := "El profesional no alcanzó el mínimo aprobatorio de la inducción y su acceso quedó bloqueado. " + reason + " Contactar para acompañarlo y, si corresponde, reiniciar sus intentos."
+	if !in.GatesAccess {
+		program := in.ProgramName
+		if program == "" {
+			program = "capacitación"
+		}
+		title = "Capacitación no aprobada: " + in.ProfessionalName
+		description = fmt.Sprintf("El profesional no alcanzó el mínimo aprobatorio de «%s». Su acceso a Obertrack NO cambió. ", program) + reason + " Contactar para acompañarlo y, si corresponde, reiniciar sus intentos."
+	}
 	ticket := &models.Ticket{
 		Origin:            models.OriginInternal,
 		UserID:            &pid,
-		Title:             "Inducción no aprobada: " + in.ProfessionalName,
-		Description:       "El profesional no alcanzó el mínimo aprobatorio de la inducción y su acceso quedó bloqueado. " + reason + " Contactar para acompañarlo y, si corresponde, reiniciar sus intentos.",
+		Title:             title,
+		Description:       description,
 		ProfessionalEmail: in.ProfessionalEmail,
 		ProfessionalPhone: in.ProfessionalPhone,
 		CompanyName:       in.CompanyName,
@@ -1276,8 +1303,12 @@ func (s *ticketService) CreateInductionFailureAlert(in InductionAlertInput) erro
 		return err
 	}
 	if s.supportNtfy != nil {
+		kind := "Inducción no aprobada"
+		if !in.GatesAccess {
+			kind = "Capacitación no aprobada"
+		}
 		s.supportNtfy.Notify(SupportTicketInfo{
-			Type:        "Inducción no aprobada",
+			Type:        kind,
 			Requester:   in.ProfessionalName,
 			Company:     in.CompanyName,
 			Subject:     ticket.Title,

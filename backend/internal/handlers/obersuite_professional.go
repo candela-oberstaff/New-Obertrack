@@ -265,12 +265,25 @@ func (h *ObersuiteProfessionalHandler) Onboarding(c *gin.Context) {
 	}
 
 	if st, err := h.induction.Status(row.ID); err == nil && st != nil {
+		// La inducción es una secuencia de bloques: attempts suma los de
+		// todos; max_attempts es el tope por bloque. best_score y
+		// passing_score se conservan por compatibilidad con lo que Obersuite
+		// ya pinta y son los del bloque en curso (o el último si terminó).
+		best, passing := 0.0, 0
+		if cur := currentStatusBlock(st.Blocks); cur != nil {
+			best, passing = cur.BestScore, cur.PassingScore
+		}
 		out["induction"] = gin.H{
-			"status":        st.Status,
-			"attempts":      st.Attempts,
-			"max_attempts":  st.MaxAttempts,
-			"best_score":    st.BestScore,
-			"passing_score": st.PassingScore,
+			"status":           st.Status,
+			"program_name":     st.ProgramName,
+			"gates_access":     st.GatesAccess,
+			"attempts":         st.Attempts,
+			"max_attempts":     st.MaxAttempts,
+			"best_score":       best,
+			"passing_score":    passing,
+			"total_blocks":     st.TotalBlocks,
+			"completed_blocks": st.CompletedBlocks,
+			"blocks":           inductionBlocks(st.Blocks),
 		}
 		out["attempts"] = inductionAttempts(st.AttemptLog)
 	} else {
@@ -374,12 +387,45 @@ func inductionAttempts(log []models.InductionAttempt) []gin.H {
 	for i, a := range log {
 		out = append(out, gin.H{
 			"number":     i + 1,
+			"block_id":   a.BlockID,
+			"block_name": a.BlockName,
 			"score":      a.Score,
 			"passed":     a.Passed,
 			"created_at": a.CreatedAt,
 		})
 	}
 	return out
+}
+
+func inductionBlocks(blocks []service.InductionBlockStatus) []gin.H {
+	out := make([]gin.H, 0, len(blocks))
+	for _, b := range blocks {
+		out = append(out, gin.H{
+			"block_id":      b.BlockID,
+			"number":        b.OrderIndex + 1,
+			"name":          b.Name,
+			"status":        b.Status,
+			"attempts":      b.Attempts,
+			"best_score":    b.BestScore,
+			"passing_score": b.PassingScore,
+			"completed_at":  b.CompletedAt,
+		})
+	}
+	return out
+}
+
+// currentStatusBlock es el bloque en curso (el primero pendiente o bloqueado)
+// o, si todos se aprobaron, el último.
+func currentStatusBlock(blocks []service.InductionBlockStatus) *service.InductionBlockStatus {
+	for i := range blocks {
+		if blocks[i].Status != models.InductionPassed {
+			return &blocks[i]
+		}
+	}
+	if len(blocks) == 0 {
+		return nil
+	}
+	return &blocks[len(blocks)-1]
 }
 
 // Los diccionarios de etiquetas. Viajan en cada respuesta con value y label,

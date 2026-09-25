@@ -28,7 +28,9 @@ import {
   VolumeX,
   Hourglass,
   Sparkles,
-  MessageSquareQuote
+  MessageSquareQuote,
+  Award,
+  GraduationCap
 } from 'lucide-react'
 import styles from './Notifications.module.css'
 
@@ -49,6 +51,8 @@ const LIVE_NOTIFICATION_TYPES = new Set([
   'board_request_rejected',
   'board_member_left',
   'novedad',
+  'insignia',
+  'capacitacion',
 ])
 
 const ALERT_NOTIFICATION_TYPES = new Set([
@@ -58,6 +62,8 @@ const ALERT_NOTIFICATION_TYPES = new Set([
   'support',
   'board_invitation',
   'novedad',
+  'insignia',
+  'capacitacion',
 ])
 
 const RECONNECT_BASE_DELAY = 1000
@@ -341,6 +347,8 @@ export default function Notifications() {
       case 'board_request_rejected': return <XCircle size={18} className="text-red-500" />
       case 'board_member_left': return <LogOut size={18} className="text-gray-500" />
       case 'novedad': return <Sparkles size={18} className="text-violet-500" />
+      case 'insignia': return <Award size={18} className="text-amber-500" />
+      case 'capacitacion': return <GraduationCap size={18} className="text-fuchsia-500" />
       // Testimonios: la solicitud (a quien escribe) y el aviso de recepción
       // (a quien lo pidió). Comparten icono porque son el mismo asunto.
       case 'testimonial_request':

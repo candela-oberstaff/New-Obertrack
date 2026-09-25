@@ -20,7 +20,6 @@
      de borde a borde y los campos quedan desproporcionados frente al resto de
      la página. Sin margin-top: .tutorials-page ya separa con gap: 32px. */
   width: 100%;
-  max-width: 1040px;
   min-width: 0;
 }
 
@@ -297,10 +296,9 @@
   gap: 10px;
 }
 
-/* Cabecera plegable: ocupa todo el ancho disponible y actúa como botón. */
+/* Cabecera: el chevron pliega, el enunciado se escribe ahí mismo. */
 .disclosure {
-  flex: 1;
-  min-width: 0;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -332,6 +330,39 @@
   color: #94a3b8;
   font-style: italic;
   font-weight: 500;
+}
+
+/* Enunciado editable en la cabecera: parece texto hasta que se toca. */
+.inlineQuestion {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--black, #0f172a);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.inlineQuestion::placeholder {
+  color: #94a3b8;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.inlineQuestion:hover {
+  border-color: #e2e8f0;
+  background: white;
+}
+
+.inlineQuestion:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: white;
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.12);
 }
 
 .tag,
@@ -464,6 +495,21 @@
   cursor: not-allowed;
 }
 
+/* Variante para acciones que no destruyen nada (editar, reordenar): el rojo
+   queda reservado para borrar. */
+.iconBtnNeutral:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: #fdf4ff;
+  color: var(--black, #0f172a);
+}
+
+/* Marcar como programa por defecto. */
+.iconBtnStar:hover:not(:disabled) {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #b45309;
+}
+
 .ghostBtn,
 .ghostBtnSm {
   display: inline-flex;
@@ -543,3 +589,600 @@
     align-items: flex-start;
   }
 }
+
+/* ===================== Bloques y programas ===================== */
+
+/* Pestañas internas de la sección (Programas / Bloques). */
+.subTabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.subTab,
+.subTabActive {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #475569;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.subTab:hover {
+  border-color: var(--primary);
+  color: var(--black, #0f172a);
+}
+
+.subTabActive {
+  background: var(--black, #0f172a);
+  border-color: var(--black, #0f172a);
+  color: white;
+}
+
+.subTab .count,
+.subTabActive .count {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.subTabActive .count {
+  background: rgba(255, 255, 255, 0.18);
+  color: white;
+}
+
+/* Barra superior de una lista: descripción a la izquierda, acción a la derecha. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.toolbar .intro {
+  margin: 0;
+  flex: 1;
+  min-width: 240px;
+}
+
+/* Lista de filas (bloques o programas). */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: white;
+  transition: border-color 0.2s ease;
+}
+
+.row:hover {
+  border-color: var(--primary);
+}
+
+.rowIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(204, 51, 204, 0.14), rgba(81, 40, 104, 0.14));
+  color: var(--primary);
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rowTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--black, #0f172a);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rowMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tagPrimary {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: rgba(204, 51, 204, 0.12);
+  color: #a21caf;
+}
+
+/* Cabecera de un editor: volver + título. */
+.editorHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: white;
+  color: #475569;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.backBtn:hover {
+  border-color: var(--primary);
+  color: var(--black, #0f172a);
+}
+
+.field textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 11px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--black, #0f172a);
+  background: white;
+  resize: vertical;
+}
+
+.field textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.12);
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+  max-width: 640px;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+}
+
+.checkRow input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.checkRow input[type='checkbox']:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Secuencia de bloques del programa. */
+.seqList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 720px;
+}
+
+.seqItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.seqNum {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--black, #0f172a);
+  color: white;
+  flex-shrink: 0;
+}
+
+.seqMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.seqTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--black, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seqMeta {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.seqAdd {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  max-width: 720px;
+}
+
+/* Lista de empresas con casillas. */
+.searchInput {
+  width: 100%;
+  max-width: 360px;
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.12);
+}
+
+.checkList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.checkItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #334155;
+  cursor: pointer;
+}
+
+.checkItem:hover {
+  background: #f8fafc;
+}
+
+.checkItem input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
+.checkItem .count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 14px;
+  border: 1px dashed #e2e8f0;
+  border-radius: 14px;
+}
+
+/* ===================== Configuración compacta ===================== */
+
+.configCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  margin-bottom: 12px;
+}
+
+.configMain {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 260px;
+  flex: 1;
+}
+
+.configText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.configTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--black, #0f172a);
+  flex-wrap: wrap;
+}
+
+.configRight {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inlineField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inlineField label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inlineField input {
+  width: 130px;
+  padding: 9px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--black, #0f172a);
+  background: white;
+}
+
+.inlineField input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.12);
+}
+
+.saveBtnSm {
+  padding: 10px 16px;
+}
+
+/* Interruptor. */
+.switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  background: #cbd5e1;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.slider::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.switch input:checked + .slider {
+  background: var(--primary);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(20px);
+}
+
+.switch input:focus-visible + .slider {
+  box-shadow: 0 0 0 3px rgba(204, 51, 204, 0.25);
+}
+
+.switch input:disabled + .slider {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pillOn,
+.pillOff {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.pillOn {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.pillOff {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.summaryLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #64748b;
+  margin: 0 0 4px;
+}
+
+.linkBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.linkBtn:hover {
+  text-decoration: underline;
+}
+
+/* ===================== Secciones numeradas de los editores ===================== */
+
+.section {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 20px;
+  margin-top: 16px;
+  background: white;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.sectionNum {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--black, #0f172a);
+  color: white;
+  flex-shrink: 0;
+}
+
+.sectionHead .keyTitle {
+  font-size: 16px;
+}
+
+.sectionIntro {
+  margin: 0 0 16px 36px;
+  color: #64748b;
+  font-size: 13.5px;
+  line-height: 1.55;
+  max-width: 78ch;
+}
+
+/* Barra de acciones pegada al fondo del editor: el botón de guardar siempre a
+   la vista aunque el formulario sea largo. */
+.stickyBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 24px -28px 0;
+  padding: 14px 28px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid #e2e8f0;
+}
+
+.stickyBar .muted {
+  margin-right: auto;
+}
+

@@ -15,6 +15,7 @@ import type { User } from '../../types'
 import { hierarchyLabel } from '../../lib/permissions'
 import { ageAt, emergencyContacts } from '../../lib/person'
 import { formatDateOnly } from '../../utils/date'
+import { UserBadges } from '../../components/Badges/UserBadges'
 import styles from '../AdminUserDetail.module.css'
 
 // Empleo resuelto del profesional dentro de la empresa del empleador.
@@ -489,6 +490,14 @@ export default function EmployeeDetail() {
           ))}
         </div>
       </div>
+
+      {/* Insignias de la inducción: se oculta sola si no tiene ninguna. */}
+      <UserBadges
+        userId={user.id}
+        className={styles.card}
+        style={{ marginTop: '1rem' }}
+        titleStyle={{ margin: '0 0 14px' }}
+      />
 
       {user.is_manager && (
         <div className={styles.card} style={{ marginTop: '1rem' }}>

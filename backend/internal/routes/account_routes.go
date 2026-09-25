@@ -170,6 +170,10 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 	// lectura). El filtrado por email vive en el servicio; la empresa no ve las
 	// ganancias individuales.
 	api.GET("/me/wallet", d.wallet.MyWallet)
+	// Mis insignias (inducción): ganadas y por ganar. Self-service.
+	api.GET("/me/badges", d.badge.Mine)
+	// Mi capacitación pendiente (con su enlace), para ofrecerla desde dentro.
+	api.GET("/me/induction", d.induction.MyInduction)
 	// Google Calendar: vínculo PERSONAL con la cuenta de Google del usuario
 	// (self-service, como Wallet). Todas operan sobre la sesión y no reciben un
 	// user_id, así que nadie puede tocar el vínculo de otro. El callback del
@@ -190,6 +194,8 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 		users.GET("/employees", d.user.GetEmployees)
 		users.GET("/my-team", d.user.GetMyTeam)
 		users.GET("/:id", d.user.GetByID)
+		// Insignias de otra persona: misma visibilidad que el detalle.
+		users.GET("/:id/badges", d.badge.ForUser)
 		users.PUT("/:id", d.user.Update)
 		users.POST("/:id/toggle-status", requireManageUsers(), d.user.ToggleStatus)
 		users.POST("/:id/promote-manager", requireManageTeam(), d.user.PromoteToManager)

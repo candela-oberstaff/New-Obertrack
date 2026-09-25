@@ -1346,9 +1346,14 @@ func Run(db *gorm.DB) error {
 					return err
 				}
 				// Fila única de configuración (apagada hasta que se configure).
+				//
+				// Solo las columnas que el modelo tiene HOY: AutoMigrate crea la
+				// tabla con la struct actual, y desde la inducción por bloques
+				// (202609251200) el mínimo y los intentos viven en el programa.
+				// En una base ya migrada esta fila existe y el ON CONFLICT la deja.
 				return tx.Exec(`
-					INSERT INTO induction_configs (id, passing_score, max_attempts, invite_ttl_days, is_active, updated_at)
-					VALUES (1, 70, 3, 30, false, NOW())
+					INSERT INTO induction_configs (id, invite_ttl_days, is_active, updated_at)
+					VALUES (1, 30, false, NOW())
 					ON CONFLICT (id) DO NOTHING
 				`).Error
 			},
@@ -2826,6 +2831,282 @@ func Run(db *gorm.DB) error {
 				// Solo se puede deshacer el índice: las participaciones
 				// duplicadas que se borraron no vuelven.
 				return tx.Exec(`DROP INDEX IF EXISTS idx_survey_response_unique`).Error
+			},
+		},
+		{
+			// Inducción por bloques. La configuración única (un video + un
+			// cuestionario) pasa a ser una biblioteca de bloques reutilizables
+			// (video + cuestionario propio) y programas (secuencias de bloques)
+			// asignables por empresa. Lo que había se convierte en un bloque
+			// dentro de un programa por defecto, y las invitaciones en curso
+			// reciben su progreso de un solo bloque: quien iba a mitad sigue
+			// con el mismo enlace.
+			ID: "202609251200_induction_blocks",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("[migration] induction blocks and programs...")
+				if err := tx.AutoMigrate(
+					&models.InductionConfig{},
+					&models.InductionBlock{},
+					&models.InductionProgram{},
+					&models.InductionProgramBlock{},
+					&models.InductionProgramCompany{},
+					&models.InductionInvite{},
+					&models.InductionInviteBlock{},
+					&models.InductionAttempt{},
+				); err != nil {
+					return err
+				}
+				// Un solo programa por defecto entre los vivos.
+				if err := tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_induction_programs_default
+					ON induction_programs (is_default)
+					WHERE is_default = true AND deleted_at IS NULL
+				`).Error; err != nil {
+					return err
+				}
+
+				// Conversión de la configuración anterior. Si nunca se eligió
+				// un cuestionario no hay nada que convertir (y tampoco pudo
+				// haber invitaciones).
+				var legacy struct {
+					TutorialID   *uint
+					SurveyID     *uint
+					PassingScore int
+					MaxAttempts  int
+				}
+				hasLegacy := tx.Migrator().HasColumn(&models.InductionConfig{}, "survey_id")
+				if hasLegacy {
+					if err := tx.Raw(`
+						SELECT tutorial_id, survey_id, passing_score, max_attempts
+						FROM induction_configs WHERE id = 1
+					`).Scan(&legacy).Error; err != nil {
+						return err
+					}
+				}
+				if hasLegacy && legacy.SurveyID != nil && *legacy.SurveyID > 0 {
+					if legacy.PassingScore <= 0 {
+						legacy.PassingScore = 70
+					}
+					if legacy.MaxAttempts <= 0 {
+						legacy.MaxAttempts = 3
+					}
+					var blockID uint
+					if err := tx.Raw(`
+						INSERT INTO induction_blocks
+							(name, description, tutorial_id, survey_id, passing_score, created_by, created_at, updated_at)
+						VALUES
+							('Inducción general', '', ?, ?, ?,
+							 COALESCE((SELECT MIN(id) FROM users WHERE user_type = 'superadmin'), 0),
+							 NOW(), NOW())
+						RETURNING id
+					`, legacy.TutorialID, *legacy.SurveyID, legacy.PassingScore).Scan(&blockID).Error; err != nil {
+						return err
+					}
+					var programID uint
+					if err := tx.Raw(`
+						INSERT INTO induction_programs
+							(name, description, default_passing_score, max_attempts, is_default, is_active, created_by, created_at, updated_at)
+						VALUES
+							('Programa por defecto', 'Convertido desde la configuración anterior de la inducción.',
+							 ?, ?, true, true,
+							 COALESCE((SELECT MIN(id) FROM users WHERE user_type = 'superadmin'), 0),
+							 NOW(), NOW())
+						RETURNING id
+					`, legacy.PassingScore, legacy.MaxAttempts).Scan(&programID).Error; err != nil {
+						return err
+					}
+					if err := tx.Exec(`
+						INSERT INTO induction_program_blocks (program_id, block_id, order_index)
+						VALUES (?, ?, 0)
+					`, programID, blockID).Error; err != nil {
+						return err
+					}
+					// Todas las invitaciones (no solo las pendientes): el
+					// historial de Soporte se lee desde los bloques.
+					if err := tx.Exec(`
+						UPDATE induction_invites
+						SET program_id = ?, program_name = 'Programa por defecto'
+						WHERE program_id IS NULL
+					`, programID).Error; err != nil {
+						return err
+					}
+					if err := tx.Exec(`
+						INSERT INTO induction_invite_blocks
+							(invite_id, block_id, order_index, name, tutorial_id, survey_id, passing_score,
+							 status, attempts, best_score, completed_at, updated_at)
+						SELECT i.id, ?, 0, 'Inducción general', i.tutorial_id,
+						       COALESCE(i.survey_id, ?), COALESCE(NULLIF(i.passing_score, 0), ?),
+						       i.status, i.attempts, i.best_score, i.completed_at, NOW()
+						FROM induction_invites i
+						WHERE NOT EXISTS (
+							SELECT 1 FROM induction_invite_blocks b WHERE b.invite_id = i.id
+						)
+					`, blockID, *legacy.SurveyID, legacy.PassingScore).Error; err != nil {
+						return err
+					}
+					if err := tx.Exec(`
+						UPDATE induction_attempts SET block_id = ? WHERE block_id = 0
+					`, blockID).Error; err != nil {
+						return err
+					}
+				}
+
+				// Lo que pasó al programa se retira de la configuración y de la
+				// invitación: dejarlo sería tener dos verdades.
+				for _, col := range []string{"tutorial_id", "survey_id", "passing_score", "max_attempts"} {
+					if err := tx.Exec(`ALTER TABLE induction_configs DROP COLUMN IF EXISTS ` + col).Error; err != nil {
+						return err
+					}
+				}
+				for _, col := range []string{"tutorial_id", "survey_id", "passing_score", "attempts", "best_score"} {
+					if err := tx.Exec(`ALTER TABLE induction_invites DROP COLUMN IF EXISTS ` + col).Error; err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// Solo se pueden retirar las tablas nuevas: las columnas
+				// eliminadas de la configuración y las invitaciones no vuelven.
+				return tx.Migrator().DropTable(
+					&models.InductionInviteBlock{},
+					&models.InductionProgramCompany{},
+					&models.InductionProgramBlock{},
+					&models.InductionProgram{},
+					&models.InductionBlock{},
+				)
+			},
+		},
+		{
+			// Insignias de la inducción: reconocimientos permanentes por aprobar
+			// un bloque, completar un programa o hacerlo con mérito. Viven en
+			// su propia tabla porque la invitación se reemplaza y se reinicia,
+			// y lo ganado no se pierde por eso. Se otorgan hacia atrás a quien
+			// ya había aprobado, para que nadie quede sin las suyas.
+			ID: "202609251500_induction_badges",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("[migration] induction badges...")
+				if err := tx.AutoMigrate(
+					&models.InductionBlock{},
+					&models.InductionProgram{},
+					&models.UserBadge{},
+				); err != nil {
+					return err
+				}
+				if err := tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_user_badges_source
+					ON user_badges (user_id, source_key)
+				`).Error; err != nil {
+					return err
+				}
+				// Bloques ya aprobados.
+				if err := tx.Exec(`
+					INSERT INTO user_badges (user_id, kind, source_key, title, description, icon, color, score, program_name, earned_at, created_at)
+					SELECT i.user_id, 'block', 'block:' || ib.block_id, ib.name,
+					       'Aprobaste el bloque «' || ib.name || '» de tu inducción.',
+					       COALESCE(b.badge_icon, 'Award'), COALESCE(b.badge_color, 'orchid'),
+					       ib.best_score, COALESCE(i.program_name, ''),
+					       COALESCE(ib.completed_at, i.completed_at, NOW()), NOW()
+					FROM induction_invite_blocks ib
+					JOIN induction_invites i ON i.id = ib.invite_id
+					LEFT JOIN induction_blocks b ON b.id = ib.block_id
+					WHERE ib.status = 'passed'
+					ON CONFLICT (user_id, source_key) DO NOTHING
+				`).Error; err != nil {
+					return err
+				}
+				// Programas ya completados.
+				if err := tx.Exec(`
+					INSERT INTO user_badges (user_id, kind, source_key, title, description, icon, color, score, program_name, earned_at, created_at)
+					SELECT i.user_id, 'program', 'program:' || i.program_id, COALESCE(i.program_name, 'Inducción'),
+					       'Completaste el programa de inducción «' || COALESCE(i.program_name, 'Inducción') || '».',
+					       COALESCE(p.badge_icon, 'Trophy'), COALESCE(p.badge_color, 'gold'),
+					       COALESCE((SELECT AVG(best_score) FROM induction_invite_blocks WHERE invite_id = i.id), 0),
+					       COALESCE(i.program_name, ''), COALESCE(i.completed_at, NOW()), NOW()
+					FROM induction_invites i
+					LEFT JOIN induction_programs p ON p.id = i.program_id
+					WHERE i.status = 'passed' AND i.program_id IS NOT NULL
+					ON CONFLICT (user_id, source_key) DO NOTHING
+				`).Error; err != nil {
+					return err
+				}
+				// Méritos: sin intentos fallidos / 100% en todo.
+				if err := tx.Exec(`
+					INSERT INTO user_badges (user_id, kind, source_key, title, description, icon, color, score, program_name, earned_at, created_at)
+					SELECT i.user_id, 'merit', 'merit:first_try:' || i.program_id, 'A la primera',
+					       'Completaste «' || COALESCE(i.program_name, 'Inducción') || '» sin fallar ningún intento.',
+					       'Zap', 'amber', 100, COALESCE(i.program_name, ''), COALESCE(i.completed_at, NOW()), NOW()
+					FROM induction_invites i
+					WHERE i.status = 'passed' AND i.program_id IS NOT NULL
+					  AND EXISTS (SELECT 1 FROM induction_invite_blocks ib WHERE ib.invite_id = i.id)
+					  AND NOT EXISTS (SELECT 1 FROM induction_invite_blocks ib WHERE ib.invite_id = i.id AND (ib.attempts <> 1 OR ib.status <> 'passed'))
+					ON CONFLICT (user_id, source_key) DO NOTHING
+				`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					INSERT INTO user_badges (user_id, kind, source_key, title, description, icon, color, score, program_name, earned_at, created_at)
+					SELECT i.user_id, 'merit', 'merit:perfect:' || i.program_id, 'Impecable',
+					       'Obtuviste 100% en todos los bloques de «' || COALESCE(i.program_name, 'Inducción') || '».',
+					       'Crown', 'gold', 100, COALESCE(i.program_name, ''), COALESCE(i.completed_at, NOW()), NOW()
+					FROM induction_invites i
+					WHERE i.status = 'passed' AND i.program_id IS NOT NULL
+					  AND EXISTS (SELECT 1 FROM induction_invite_blocks ib WHERE ib.invite_id = i.id)
+					  AND NOT EXISTS (SELECT 1 FROM induction_invite_blocks ib WHERE ib.invite_id = i.id AND (ib.best_score < 100 OR ib.status <> 'passed'))
+					ON CONFLICT (user_id, source_key) DO NOTHING
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.UserBadge{})
+			},
+		},
+		{
+			// La insignia tiene nombre propio (vacío = el del bloque o programa).
+			// Sin esto, el nombre se tomaba implícito y en un programa nuevo la
+			// vista previa quedaba sin nada.
+			ID: "202609251600_induction_badge_title",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.InductionBlock{}, &models.InductionProgram{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if err := tx.Migrator().DropColumn(&models.InductionBlock{}, "badge_title"); err != nil {
+					return err
+				}
+				return tx.Migrator().DropColumn(&models.InductionProgram{}, "badge_title")
+			},
+		},
+		{
+			// La invitación decide si bloquea el acceso (ingreso desde
+			// Obersuite) o no (capacitación a quien ya trabaja). Todo lo
+			// anterior era ingreso: queda en true por el default de la columna.
+			ID: "202609251700_induction_gates_access",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.InductionInvite{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropColumn(&models.InductionInvite{}, "gates_access")
+			},
+		},
+		{
+			// Varias capacitaciones por persona a lo largo del tiempo, una
+			// sola en curso. El índice único por usuario pasa a ser parcial
+			// (solo pendientes); las terminadas se conservan como historial.
+			ID: "202609251800_induction_multiple_invites",
+			Migrate: func(tx *gorm.DB) error {
+				if err := tx.Exec(`DROP INDEX IF EXISTS idx_induction_invites_user_id`).Error; err != nil {
+					return err
+				}
+				if err := tx.AutoMigrate(&models.InductionInvite{}); err != nil {
+					return err
+				}
+				return tx.Exec(`
+					CREATE UNIQUE INDEX IF NOT EXISTS idx_induction_invites_one_pending
+					ON induction_invites (user_id)
+					WHERE status = 'pending' AND deleted_at IS NULL
+				`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`DROP INDEX IF EXISTS idx_induction_invites_one_pending`).Error
 			},
 		},
 	})

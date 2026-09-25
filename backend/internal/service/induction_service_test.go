@@ -80,35 +80,66 @@ func TestScoreAnswers(t *testing.T) {
 	}
 }
 
-func TestInviteAttemptsLeft(t *testing.T) {
-	inv := &models.InductionInvite{MaxAttempts: 3, Attempts: 1}
-	if got := inv.AttemptsLeft(); got != 2 {
+func TestInviteBlockAttemptsLeft(t *testing.T) {
+	block := &models.InductionInviteBlock{Attempts: 1}
+	if got := block.AttemptsLeft(3); got != 2 {
 		t.Errorf("AttemptsLeft() = %d, esperaba 2", got)
 	}
 	// Nunca negativo, aunque los intentos superen el tope.
-	inv.Attempts = 5
-	if got := inv.AttemptsLeft(); got != 0 {
+	block.Attempts = 5
+	if got := block.AttemptsLeft(3); got != 0 {
 		t.Errorf("AttemptsLeft() = %d, esperaba 0", got)
 	}
 }
 
-func TestConfigReady(t *testing.T) {
-	surveyID := uint(7)
+// El mínimo del bloque manda sobre el del programa, y solo si lo tiene.
+func TestBlockEffectivePassingScore(t *testing.T) {
+	own := 85
+	if got := (&models.InductionBlock{PassingScore: &own}).EffectivePassingScore(70); got != 85 {
+		t.Errorf("con mínimo propio: %d, esperaba 85", got)
+	}
+	if got := (&models.InductionBlock{}).EffectivePassingScore(70); got != 70 {
+		t.Errorf("sin mínimo propio: %d, esperaba 70", got)
+	}
+}
+
+func TestProgramUsable(t *testing.T) {
+	block := models.InductionBlock{ID: 1, SurveyID: 7}
 	cases := []struct {
-		name string
-		cfg  *models.InductionConfig
-		want bool
+		name    string
+		program *models.InductionProgram
+		want    bool
 	}{
-		{"apagada", &models.InductionConfig{IsActive: false, SurveyID: &surveyID}, false},
-		{"encendida sin cuestionario", &models.InductionConfig{IsActive: true}, false},
-		{"encendida con cuestionario", &models.InductionConfig{IsActive: true, SurveyID: &surveyID}, true},
+		{"apagado", &models.InductionProgram{IsActive: false, Blocks: []models.InductionBlock{block}}, false},
+		{"encendido sin bloques", &models.InductionProgram{IsActive: true}, false},
+		{"encendido con bloques", &models.InductionProgram{IsActive: true, Blocks: []models.InductionBlock{block}}, true},
 		{"nil", nil, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.cfg.Ready(); got != tc.want {
-				t.Errorf("Ready() = %v, esperaba %v", got, tc.want)
+			if got := tc.program.Usable(); got != tc.want {
+				t.Errorf("Usable() = %v, esperaba %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// El bloque actual es el primer pendiente en orden; si no queda ninguno, nil.
+func TestCurrentBlock(t *testing.T) {
+	blocks := []models.InductionInviteBlock{
+		{BlockID: 1, OrderIndex: 0, Status: models.InductionPassed},
+		{BlockID: 2, OrderIndex: 1, Status: models.InductionPending},
+		{BlockID: 3, OrderIndex: 2, Status: models.InductionPending},
+	}
+	if cur := currentBlock(blocks); cur == nil || cur.BlockID != 2 {
+		t.Fatalf("esperaba el bloque 2, got %+v", cur)
+	}
+	blocks[1].Status = models.InductionPassed
+	blocks[2].Status = models.InductionPassed
+	if cur := currentBlock(blocks); cur != nil {
+		t.Fatalf("sin pendientes debe ser nil, got %+v", cur)
+	}
+	if got := countCompleted(blocks); got != 3 {
+		t.Fatalf("countCompleted = %d, esperaba 3", got)
 	}
 }
