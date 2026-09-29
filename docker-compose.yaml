@@ -104,6 +104,9 @@ services:
       # compartido con el backend de Obersuite; viaja en el header
       # X-Service-Token. Sin él, /api/integrations/obersuite/* responde 503.
       OBERSUITE_SERVICE_TOKEN: ${OBERSUITE_SERVICE_TOKEN:-}
+      # Claves públicas del CRM para el acceso embebido a Tareas:
+      # {"<kid>": "<PEM>"}. Sin ellas, /api/auth/crm responde 503.
+      CRM_SSO_PUBLIC_KEYS: ${CRM_SSO_PUBLIC_KEYS:-}
       # Base a la que vuelve el navegador tras el consentimiento de Google y a la
       # que apunta el enlace de la landing de inducción que se envía por correo.
       FRONTEND_URL: ${FRONTEND_URL:-}
@@ -140,6 +143,10 @@ services:
     # Host:Container — container Nginx listens on 8080 (unprivileged).
     ports:
       - "8081:8080"
+    environment:
+      # Origen del CRM que puede enmarcar Tareas (contrato CRM, §1 y §5). Se lee
+      # al arrancar; vacío o mal formado = vista embebida cerrada.
+      CRM_ORIGIN: ${CRM_ORIGIN:-}
     restart: unless-stopped
     depends_on:
       - backend

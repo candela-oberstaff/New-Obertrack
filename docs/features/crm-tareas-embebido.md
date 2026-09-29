@@ -15,6 +15,9 @@ decisiones que el contrato no fija.
 | Sesión acotada (solo access, tenant forzado) | `IssueScopedAccess` en `backend/internal/service/auth_token_service.go` |
 | Claim `scope` y su middleware | `backend/internal/middleware/auth.go`, `backend/internal/middleware/scope.go` |
 | Lista de rutas del alcance `tasks` | `backend/internal/routes/scope_routes.go` |
+| Encuadre, cabeceras y log enmascarado | `frontend/nginx.conf.template` |
+| Validación de `CRM_ORIGIN` | `frontend/docker-entrypoint.d/18-crm-origin.envsh` |
+| `/embed/config.js` en `npm run dev` | plugin `embedConfigDev` en `frontend/vite.config.ts` |
 
 ## Decisiones de nuestro lado
 
@@ -37,11 +40,33 @@ decisiones que el contrato no fija.
   todas las rutas protegidas. Una ruta nueva queda cerrada a las sesiones
   acotadas sin que nadie tenga que acordarse.
 
+## Encuadre (nginx)
+
+- `nginx.conf.template` es una plantilla: el entrypoint de la imagen la pasa por
+  envsubst al arrancar, con `NGINX_ENVSUBST_FILTER=^CRM_` para no tocar las
+  `$variables` de nginx.
+- **Una sola variable, en tiempo de ejecución: `CRM_ORIGIN`.** No hay
+  `VITE_CRM_ORIGIN` en el build. `18-crm-origin.envsh` la valida y deriva:
+  - `CRM_FRAME_ANCESTORS`: el `frame-ancestors` de `/api/auth/crm` y `/embed/`;
+  - `CRM_EMBED_ORIGIN`: el `targetOrigin` que nginx escribe en `/embed/config.js`.
+- Se acepta `https://host[:puerto]`, y `http://` solo para `localhost` o
+  `127.0.0.1`. Una variable vacía o mal formada deja la vista cerrada:
+  `frame-ancestors 'none'` y `crmOrigin: ""`, así que no se envía ningún
+  `postMessage`. La validación también impide inyectar texto en la CSP o en el JS.
+- Cada `location` del embebido repite las cabeceras de seguridad, porque un
+  `add_header` propio anula las del `server`, y omite `X-Frame-Options`.
+- `/embed/` sirve `index.html` con `rewrite ... break` y no con `try_files`: el
+  fallback de `try_files` salta a `location /`, que responde con `DENY`.
+- `/api/auth/crm` escribe en el access log con `$uri`, sin el query. El
+  `error_log` de nginx sí incluiría la petición completa si el proxy fallara
+  (backend caído). El token es de un solo uso y dura 60 s, así que se acepta.
+
 ## Variables
 
 | Variable | Dónde | Qué es |
 |---|---|---|
 | `CRM_SSO_PUBLIC_KEYS` | backend | `{"<kid>": "<PEM>"}`. Sin ella, el canje responde 503 |
+| `CRM_ORIGIN` | frontend (nginx) | Origen del CRM, sin ruta ni barra final. Tiene que ser idéntico al `FRONTEND_URL` del CRM |
 
 ## Probar en local
 
