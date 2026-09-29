@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Send, CheckCheck, Clock, AlertCircle, UserRoundPlus, Download, Loader2 } from 'lucide-react'
 import { ticketService, WhatsAppMessageDTO } from '../../services/ticket.service'
+import { isWaMediaMessage, downloadWaMedia } from '../../lib/waMedia'
 import styles from '../WhatsApp.module.css'
 
 // Estado de entrega de un mensaje propio. Los mensajes previos al outbox llegan
@@ -79,52 +80,15 @@ export default function ChatWindow({
   const contactName = activeTicket.contact_name || activeTicket.subject || 'Sin nombre'
   const canWriteInput = isAssignedToMe || !isUnassignedChat
 
-  const MEDIA_PLACEHOLDERS = [
-    '📷 Imagen recibida',
-    '🎥 Video recibido',
-    '🎤 Nota de voz recibida',
-    '📄 Documento recibido',
-    '🏷️ Sticker recibido',
-    '📍 Ubicación recibida',
-    '👤 Contacto recibido',
-    '📎 Archivo adjunto recibido'
-  ]
-
-  const isMediaMessage = (msg: WhatsAppMessageDTO) => {
-    if (!msg.external_id) return false
-    const content = msg.content.trim()
-    if (MEDIA_PLACEHOLDERS.includes(content)) return true
-
-    // Detectar extensiones comunes de archivos adjuntos (documentos, audios, imágenes, videos)
-    const commonExtensions = [
-      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.rtf',
-      '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ogg', '.mp3', '.wav', '.mp4', '.avi', '.zip', '.rar'
-    ]
-    const lowerContent = content.toLowerCase()
-    return commonExtensions.some(ext => lowerContent.endsWith(ext))
-  }
+  // Detección y descarga compartidas con el detalle del ticket de Soporte
+  // (lib/waMedia): los dos sitios se comportan igual.
+  const isMediaMessage = (msg: WhatsAppMessageDTO) => isWaMediaMessage(msg)
 
   const handleDownloadMedia = async (msg: WhatsAppMessageDTO) => {
     if (!activeTicket || downloadingMsgId) return
     setDownloadingMsgId(msg.id)
     try {
-      const { blob, contentType } = await ticketService.downloadWaMedia(activeTicket.zoho_id, msg.external_id)
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-
-      let ext = ''
-      if (contentType.includes('image/jpeg')) ext = '.jpg'
-      else if (contentType.includes('image/png')) ext = '.png'
-      else if (contentType.includes('video/mp4')) ext = '.mp4'
-      else if (contentType.includes('audio/ogg')) ext = '.ogg'
-      else if (contentType.includes('application/pdf')) ext = '.pdf'
-
-      a.download = `adjunto_${msg.id}${ext}`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      await downloadWaMedia(activeTicket.zoho_id, msg)
     } catch (err) {
       console.error('Error downloading media:', err)
       alert('No se pudo descargar el archivo. Puede que ya no esté disponible.')
