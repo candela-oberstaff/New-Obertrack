@@ -14,13 +14,15 @@ func (s *authService) IssueTokens(user *models.User) (string, string, error) {
 	return s.generateTokenPair(user)
 }
 
-func (s *authService) generateTokenPair(user *models.User) (string, string, error) {
+// baseClaims son los claims comunes a toda sesión del usuario, con el tenant
+// que le corresponde por su cuenta.
+func baseClaims(user *models.User) middleware.Claims {
 	tenantID := user.EmpleadorID
 	if tenantID == nil && user.UserType == models.UserTypeEmployer {
 		tenantID = &user.ID
 	}
 
-	base := middleware.Claims{
+	return middleware.Claims{
 		UserID:       user.ID,
 		TenantID:     tenantID,
 		Email:        user.Email,
@@ -31,28 +33,47 @@ func (s *authService) generateTokenPair(user *models.User) (string, string, erro
 		EmpleadorID:  user.EmpleadorID,
 		TokenVersion: user.TokenVersion,
 	}
+}
 
-	accessClaims := base
-	accessClaims.TokenType = "access"
-	accessClaims.RegisteredClaims = jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(accessTokenTTL)),
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
+func (s *authService) sign(claims middleware.Claims, tokenType string, ttl time.Duration) (string, error) {
+	now := time.Now()
+	claims.TokenType = tokenType
+	claims.RegisteredClaims = jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+		IssuedAt:  jwt.NewNumericDate(now),
 	}
-	access, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(s.jwtSecret))
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(s.jwtSecret))
+}
+
+func (s *authService) generateTokenPair(user *models.User) (string, string, error) {
+	base := baseClaims(user)
+
+	access, err := s.sign(base, "access", accessTokenTTL)
 	if err != nil {
 		return "", "", err
 	}
-
-	refreshClaims := base
-	refreshClaims.TokenType = "refresh"
-	refreshClaims.RegisteredClaims = jwt.RegisteredClaims{
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(refreshTokenTTL)),
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
-	}
-	refresh, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(s.jwtSecret))
+	refresh, err := s.sign(base, "refresh", refreshTokenTTL)
 	if err != nil {
 		return "", "", err
 	}
-
 	return access, refresh, nil
+}
+
+// IssueScopedAccess emite SOLO un access token acotado a un alcance (p. ej.
+// "tasks" para el acceso embebido desde el CRM). No hay refresh: al caducar,
+// quien lo pidió vuelve a canjear. Refresh rechaza además cualquier token con
+// alcance, para que una sesión acotada nunca se convierta en una completa.
+//
+// El tenant se fuerza al indicado sin tocar users.empleador_id (a diferencia
+// de SwitchActive): la empresa activa del usuario en su Obertrack normal no
+// cambia por abrir Tareas desde el CRM.
+func (s *authService) IssueScopedAccess(user *models.User, tenantID uint, scope string, ttl time.Duration) (string, error) {
+	claims := baseClaims(user)
+	tid := tenantID
+	claims.TenantID = &tid
+	if user.UserType != models.UserTypeEmployer {
+		claims.EmpleadorID = &tid
+	}
+	claims.Scope = scope
+	return s.sign(claims, "access", ttl)
 }

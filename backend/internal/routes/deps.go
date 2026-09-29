@@ -70,6 +70,7 @@ type deps struct {
 	meeting               *handlers.MeetingHandler
 	workflow              *handlers.WorkflowHandler
 	testimonial           *handlers.TestimonialHandler
+	crmSSO                *handlers.CrmSSOHandler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -204,6 +205,9 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// Puente Obersuite (captación) → Obertrack (gestión): materializa la
 	// contratación de un candidato como profesional + empleo activo.
 	onboardingSvc := service.NewOnboardingService(userRepo, employmentRepo, employmentSvc, uploadSvc, authSvc, inductionSvc, ticketSvc)
+	// Acceso embebido a Tareas desde el CRM: canjea su token de un solo uso
+	// por una sesión acotada. Sin CRM_SSO_PUBLIC_KEYS queda deshabilitado.
+	crmSSOSvc := service.NewCrmSSOService(os.Getenv("CRM_SSO_PUBLIC_KEYS"), userRepo, employmentRepo, repository.NewCrmNonceRepository(db), authSvc)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})
@@ -365,6 +369,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		meeting:          handlers.NewMeetingHandler(meetingSvc),
 		workflow:         handlers.NewWorkflowHandler(workflowSvc),
 		testimonial:      handlers.NewTestimonialHandler(testimonialSvc),
+		crmSSO:           handlers.NewCrmSSOHandler(crmSSOSvc, auditSvc),
 
 		wahaSvc:       wahaSvc,
 		rbacSvc:       rbacSvc,
