@@ -1,13 +1,13 @@
 # Contrato: acceso embebido a Tareas de Obertrack desde el CRM (Obersuite)
 
-Versión 1.1. Cualquier cambio se acuerda aquí primero y sube la versión.
+Versión 1.2 — cambios sobre 1.1: §1 actualizado (origen del CRM en tiempo de ejecución).
 
-Cambios sobre 1.0: decisiones del §10 cerradas, §8 precisada.
+Cualquier cambio se acuerda aquí primero y sube la versión.
 
 ## 1. Partes y orígenes
 - CRM (Obersuite): emite el token y enmarca el iframe. Origen: https://obersuite.oberstaff.com (+ staging, si existe).
 - Obertrack: canjea el token y sirve la vista embebida. Origen: OBERTRACK_WEB_URL.
-- Obertrack usa CRM_ORIGIN (nginx frame-ancestors y VITE_CRM_ORIGIN para postMessage).
+- Obertrack usa CRM_ORIGIN en tiempo de ejecución (nginx frame-ancestors y /embed/config.js para postMessage).
 - El CRM usa OBERTRACK_WEB_URL (URL de canje y validación de event.origin).
 
 ## 2. Token
