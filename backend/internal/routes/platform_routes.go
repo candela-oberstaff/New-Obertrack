@@ -91,10 +91,41 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 	{
 		inductions.GET("/config", d.induction.GetConfig)
 		inductions.PUT("/config", middleware.RequireSuperadmin(), d.induction.SaveConfig)
+
+		// Biblioteca de bloques (video + cuestionario propio) y programas
+		// (secuencias de bloques asignables por empresa). Leer lo puede
+		// Soporte, para elegir programa al invitar; armar es de superadmin.
+		inductions.GET("/blocks", d.induction.ListBlocks)
+		inductions.POST("/blocks", middleware.RequireSuperadmin(), d.induction.CreateBlock)
+		inductions.PUT("/blocks/:id", middleware.RequireSuperadmin(), d.induction.UpdateBlock)
+		inductions.DELETE("/blocks/:id", middleware.RequireSuperadmin(), d.induction.DeleteBlock)
+		inductions.GET("/programs", d.induction.ListPrograms)
+		inductions.POST("/programs", middleware.RequireSuperadmin(), d.induction.CreateProgram)
+		inductions.GET("/programs/:id", d.induction.GetProgram)
+		inductions.PUT("/programs/:id", middleware.RequireSuperadmin(), d.induction.UpdateProgram)
+		inductions.DELETE("/programs/:id", middleware.RequireSuperadmin(), d.induction.DeleteProgram)
+		inductions.PUT("/programs/:id/blocks", middleware.RequireSuperadmin(), d.induction.SetProgramBlocks)
+		inductions.PUT("/programs/:id/companies", middleware.RequireSuperadmin(), d.induction.SetProgramCompanies)
+		inductions.GET("/programs/:id/certificates", d.certificate.ForProgram)
+
+		// Plantillas de certificado (diseños + posición de campos). Leer lo
+		// puede Soporte; armar y previsualizar es de superadmin.
+		inductions.GET("/certificate-templates", d.certificate.ListTemplates)
+		inductions.POST("/certificate-templates", middleware.RequireSuperadmin(), d.certificate.CreateTemplate)
+		inductions.POST("/certificate-templates/preview", middleware.RequireSuperadmin(), d.certificate.PreviewTemplate)
+		inductions.PUT("/certificate-templates/:id", middleware.RequireSuperadmin(), d.certificate.UpdateTemplate)
+		inductions.DELETE("/certificate-templates/:id", middleware.RequireSuperadmin(), d.certificate.DeleteTemplate)
+		// Emitir el certificado de una capacitación aprobada que no lo tiene,
+		// y reemitir uno con la plantilla corregida.
+		inductions.POST("/invites/:id/certificate", d.certificate.IssueForInvite)
+		inductions.POST("/certificates/:id/reissue", d.certificate.Reissue)
+
 		inductions.GET("/users/:userId", d.induction.Status)
 		inductions.POST("/users/:userId/reset", d.induction.Reset)
+		// Reiniciar una capacitación concreta del historial.
+		inductions.POST("/invites/:id/reset", d.induction.ResetInvite)
 		// Enviar la inducción a un profesional que ya existe (alta manual,
-		// alta desde la empresa o importación).
+		// alta desde la empresa o importación). Acepta program_id opcional.
 		inductions.POST("/users/:userId/invite", d.induction.Invite)
 	}
 

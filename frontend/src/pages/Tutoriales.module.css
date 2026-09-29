@@ -1,6 +1,10 @@
 .tutorials-page {
   background: white;
   min-height: calc(100vh - 73px);
+  /* El contenedor del layout es una columna flex con scroll: sin esto la
+     página se encoge a la altura visible y el contenido que sigue se sale del
+     fondo blanco (se veía en la pestaña Inducción, que es más alta). */
+  flex-shrink: 0;
   padding: 32px 40px;
   display: flex;
   flex-direction: column;

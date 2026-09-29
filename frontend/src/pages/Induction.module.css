@@ -69,6 +69,29 @@
 
 .brandTop,
 .brandBody,
+/* Insignias ya ganadas, en el panel de marca. */
+.brandBadges {
+  position: relative;
+  z-index: 1;
+  margin-top: 28px;
+}
+
+.brandBadgesLabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 10px;
+}
+
+.brandBadgesRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .brandFoot {
   position: relative;
   z-index: 1;
@@ -171,6 +194,28 @@
 
 .stepLabel {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Bajo el bloque en curso: si va por el video o por el cuestionario. */
+.stepSub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.stepSubActive {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.stepSubSep {
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .brandFoot {
@@ -197,6 +242,16 @@
   display: flex;
   flex-direction: column;
   min-height: 100%;
+}
+
+/* "Bloque 2 de 4 · Seguridad": ubica a la persona dentro del programa. */
+.blockKicker {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #cc33cc;
 }
 
 .paneHead {

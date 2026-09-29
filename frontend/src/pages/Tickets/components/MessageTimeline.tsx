@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
-import { Ticket, Contact } from '../../../services/ticket.service';
+import { useEffect, useRef, useState } from 'react';
+import { Ticket, Contact, TicketMessage } from '../../../services/ticket.service';
+import { isWaMediaMessage, downloadWaMedia } from '../../../lib/waMedia';
+import { useNotification } from '../../../context/NotificationContext';
 import styles from '../Tickets.module.css';
-import { MessageSquare, Mail, User } from 'lucide-react';
+import { MessageSquare, Mail, User, Download, Loader2 } from 'lucide-react';
 
 interface MessageTimelineProps {
   ticket: Ticket;
@@ -10,6 +12,9 @@ interface MessageTimelineProps {
 
 export default function MessageTimeline({ ticket, contact }: MessageTimelineProps) {
   const boxRef = useRef<HTMLDivElement>(null);
+  const { error: showError } = useNotification();
+  // Un adjunto a la vez: WAHA tarda y dos descargas seguidas confunden.
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
   // La primera colocación es instantánea: animar un salto que el usuario no pidió
   // solo distrae. A partir de ahí, los mensajes nuevos entran con desplazamiento.
   const firstScroll = useRef(true);
@@ -25,6 +30,21 @@ export default function MessageTimeline({ ticket, contact }: MessageTimelineProp
     firstScroll.current = false;
   }, [ticket.messages]);
 
+  // Mismo criterio y misma descarga que la bandeja de WhatsApp: el archivo se
+  // pide a WAHA por el id externo del mensaje.
+  const handleDownload = async (msg: TicketMessage) => {
+    if (downloadingId !== null) return;
+    setDownloadingId(msg.id);
+    try {
+      await downloadWaMedia(ticket.id, msg);
+    } catch (err) {
+      console.error('Error downloading media:', err);
+      showError('No se pudo descargar el archivo. Puede que WhatsApp ya no lo tenga disponible.');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   return (
     <div className={styles.chatMessages} ref={boxRef}>
       {(!ticket.messages || ticket.messages.length === 0) ? (
@@ -35,12 +55,14 @@ export default function MessageTimeline({ ticket, contact }: MessageTimelineProp
       ) : (
         ticket.messages.map(msg => {
           const isAgent = msg.sender_type === 'agent';
+          const hasMedia = msg.channel === 'whatsapp' && isWaMediaMessage(msg);
+          const downloading = downloadingId === msg.id;
           return (
-            <div 
-              key={msg.id} 
+            <div
+              key={msg.id}
               className={`${styles.messageWrapper} ${isAgent ? styles.messageWrapperAgent : styles.messageWrapperContact}`}
             >
-              <div 
+              <div
                 className={`${styles.message} ${isAgent ? styles.messageAgent : styles.messageContact}`}
               >
                 <div className={styles.messageMeta}>
@@ -52,6 +74,20 @@ export default function MessageTimeline({ ticket, contact }: MessageTimelineProp
                   </span>
                 </div>
                 <div className={styles.messageContent}>{msg.content}</div>
+
+                {hasMedia && (
+                  <button
+                    type="button"
+                    className={styles.mediaDownloadBtn}
+                    onClick={() => handleDownload(msg)}
+                    disabled={downloading}
+                    title="Descargar archivo adjunto"
+                  >
+                    {downloading ? <Loader2 size={14} className={styles.spin} /> : <Download size={14} />}
+                    <span>{downloading ? 'Descargando...' : 'Descargar'}</span>
+                  </button>
+                )}
+
                 <div className={styles.messageChannelFooter}>
                   {msg.channel === 'whatsapp' ? (
                     <>

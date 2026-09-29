@@ -13,6 +13,9 @@ import { GOOGLE_INTEGRATIONS_ENABLED } from '../config/features'
 import Avatar from '../components/Common/Avatar'
 import Tooltip from '../components/Common/Tooltip'
 import { hierarchyLabel } from '../lib/permissions'
+import { UserBadges } from '../components/Badges/UserBadges'
+import { PendingTrainingCard } from '../components/Badges/PendingTrainingCard'
+import { UserCertificates } from '../components/Certificates/UserCertificates'
 import styles from './Profile.module.css'
 
 export default function Profile() {
@@ -208,6 +211,33 @@ export default function Profile() {
               )}
             </div>
           </div>
+
+          {/* Capacitación pendiente (sin bloqueo de acceso): se ofrece desde dentro. */}
+          {isProfessional && (
+            <PendingTrainingCard className={styles['sidebar-card']} style={{ marginBottom: '16px' }} />
+          )}
+
+          {/* Certificados emitidos, con descarga y código de verificación. */}
+          {isProfessional && (
+            <UserCertificates
+              className={styles['sidebar-card']}
+              style={{ marginBottom: '16px' }}
+              titleStyle={{ marginBottom: 12 }}
+              alwaysShow
+              emptyText="Todavía no tienes certificados. Se emiten al completar un programa que los tenga configurados."
+            />
+          )}
+
+          {/* Insignias de la inducción: lo ganado y lo que falta por ganar. */}
+          {isProfessional && (
+            <UserBadges
+              className={styles['sidebar-card']}
+              style={{ marginBottom: '16px' }}
+              titleStyle={{ marginBottom: 12 }}
+              showPending
+              emptyText="Todavía no tienes insignias. Se ganan aprobando los bloques de tu inducción."
+            />
+          )}
 
           {/* Notificaciones del navegador (Web Push): el interruptor SIEMPRE
               visible — la tarjeta flotante solo aparece una vez, así que quien

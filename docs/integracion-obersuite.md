@@ -265,6 +265,14 @@ enlace.
 aprobar la capacitación; se le mandó el enlace a la landing en vez de las
 credenciales.
 
+Desde el 25-sep-2026 la inducción es **por bloques**: el profesional recorre
+en orden los bloques de un **programa** (cada uno con su video y su
+cuestionario), aprobando bloque por bloque, con intentos contados por bloque.
+El programa lo decide **la empresa contratante** (`company_id`): si tiene uno
+asignado se usa ese; si no, el programa por defecto. Nada de esto cambia el
+contrato de `/hire`: `induction_pending` sigue siendo el mismo booleano, y si
+no hay programa usable la contratación sigue el flujo directo de siempre.
+
 ### Identidad: cómo se decide si la persona ya existe
 
 **Primero por `external_id`, después por email. Y por nada más.** Ni
@@ -734,6 +742,17 @@ que la persona existe en otro sitio.
 - `induction_available: false` — nunca se le mandó inducción. Cero intentos y
   "sin inducción" no son lo mismo.
 
+**`induction` es por bloques (25-sep-2026).** Trae `status` (de la inducción
+completa), `program_name`, `attempts` (la suma de todos los bloques),
+`max_attempts` (el tope **por bloque**), `total_blocks`, `completed_blocks` y
+`blocks[]` con `{block_id, number, name, status, attempts, best_score,
+passing_score, completed_at}`. `best_score` y `passing_score` al nivel de
+`induction` se conservan por compatibilidad y son los del **bloque en curso**
+(o del último si terminó). Cada intento de `attempts[]` lleva además
+`block_id` y `block_name`. `gates_access` dice si esa invitación bloquea el
+acceso hasta aprobar (`true` en todo lo que llega por `/hire`) o es una
+capacitación enviada desde Soporte a alguien que ya trabaja (`false`).
+
 **Los diccionarios viajan en cada respuesta** (`labels`), con `value` y
 `label`: estado de jornada, tipo de jornada, estado de tarea, estado de
 inducción, tipo y estado de gestión, tipo de nota, visibilidad y canal de
@@ -949,6 +968,7 @@ duplique en pantalla. `categories` incluye `{"value":"recruitment",
 | Handlers, ETag, códigos | `backend/internal/handlers/onboarding.go` |
 | Versión y esquema | `backend/internal/handlers/version.go` |
 | Lógica de hire y padrón | `backend/internal/service/onboarding_service.go` |
+| Inducción por bloques (programas, invitación, calificación) | `backend/internal/service/induction_service.go`, modelos en `backend/internal/models/induction.go`; diseño en `docs/features/induccion-por-bloques.md` |
 | SQL del padrón | `backend/internal/repository/user_repository.go` |
 | Límite de peticiones | `backend/internal/middleware/ratelimit.go` |
 | Notas de Reclutamiento (escritura) | `backend/internal/handlers/obersuite_recruitment.go`, `backend/internal/service/recruitment_notes.go` |

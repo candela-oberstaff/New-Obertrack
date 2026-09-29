@@ -20,6 +20,8 @@ import EmploymentManagersEditor from '../components/Admin/EmploymentManagersEdit
 import { hierarchyLabel } from '../lib/permissions'
 import { ageAt, emergencyContacts } from '../lib/person'
 import { formatDateOnly } from '../utils/date'
+import { UserBadges } from '../components/Badges/UserBadges'
+import { UserCertificates } from '../components/Certificates/UserCertificates'
 import styles from './AdminUserDetail.module.css'
 
 // Sin caracteres ambiguos (0/O, 1/l/I) para que sea fácil de dictar.
@@ -852,7 +854,31 @@ export default function AdminUserDetail() {
           key={inductionKey}
           userId={user.id}
           isProfessional
+          onboardingStatus={user.onboarding_status}
           canReset={!!viewer?.is_superadmin || viewer?.user_type === 'customer_success'}
+        />
+      )}
+
+      {/* Certificados emitidos. */}
+      {user.user_type === 'profesional' && (
+        <UserCertificates
+          userId={user.id}
+          refreshKey={inductionKey}
+          className={styles.card}
+          style={{ marginTop: '1rem' }}
+          titleStyle={{ margin: '0 0 14px' }}
+        />
+      )}
+
+      {/* Insignias ganadas en la inducción, con las que faltan. */}
+      {user.user_type === 'profesional' && (
+        <UserBadges
+          userId={user.id}
+          refreshKey={inductionKey}
+          className={styles.card}
+          style={{ marginTop: '1rem' }}
+          titleStyle={{ margin: '0 0 14px' }}
+          showPending
         />
       )}
 

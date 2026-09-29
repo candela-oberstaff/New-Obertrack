@@ -63,6 +63,8 @@ type deps struct {
 	obersuiteTickets      *handlers.ObersuiteTicketHandler
 	version               *handlers.VersionHandler
 	induction             *handlers.InductionHandler
+	badge                 *handlers.BadgeHandler
+	certificate           *handlers.CertificateHandler
 	emailPreview          *handlers.EmailPreviewHandler
 	googleCal             *handlers.GoogleCalendarHandler
 	meeting               *handlers.MeetingHandler
@@ -112,6 +114,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	emergencyTplRepo := repository.NewEmergencyTemplateRepository(db)
 	profileChangeRepo := repository.NewProfileChangeRequestRepository(db)
 	inductionRepo := repository.NewInductionRepository(db)
+	badgeRepo := repository.NewBadgeRepository(db)
+	certRepo := repository.NewCertificateRepository(db)
 	googleCalRepo := repository.NewGoogleCalendarRepository(db)
 	testimonialRepo := repository.NewTestimonialRepository(db)
 
@@ -188,7 +192,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// Inducción del profesional recién contratado: video (Novedades) +
 	// cuestionario calificado (Encuestas) en una landing pública que decide su
 	// acceso. Si no está configurada, no interfiere con el alta.
-	inductionSvc := service.NewInductionService(inductionRepo, userRepo, brevoSvc, authSvc, ticketSvc, cfg.FrontendURL)
+	certSvc := service.NewCertificateService(certRepo, inductionRepo, userRepo, notifSvc, uploadSvc.GetUploadPath())
+	inductionSvc := service.NewInductionService(inductionRepo, userRepo, badgeRepo, brevoSvc, authSvc, ticketSvc, notifSvc, certSvc, cfg.FrontendURL)
 	// Testimonios: se piden por correo y se firman en una página pública, sin
 	// sesión. Necesita el directorio de subidas porque ahí se guarda el trazo de
 	// la firma, que es parte de la evidencia del consentimiento.
@@ -353,6 +358,8 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 		obersuiteTickets: handlers.NewObersuiteTicketHandler(ticketSvc),
 		version:          handlers.NewVersionHandler(),
 		induction:        handlers.NewInductionHandler(inductionSvc),
+		badge:            handlers.NewBadgeHandler(inductionSvc, userSvc),
+		certificate:      handlers.NewCertificateHandler(certSvc, userSvc),
 		emailPreview:     handlers.NewEmailPreviewHandler(),
 		googleCal:        handlers.NewGoogleCalendarHandler(googleCalSvc, cfg.FrontendURL),
 		meeting:          handlers.NewMeetingHandler(meetingSvc),
