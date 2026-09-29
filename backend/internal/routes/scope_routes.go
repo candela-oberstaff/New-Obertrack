@@ -60,10 +60,9 @@ var scopeAllowlist = middleware.ScopeAllowlist{
 		// Selector de responsables y miembros.
 		"GET /api/users",
 
-		// Automatizaciones, solo lectura: el indicador del tablero y las
-		// puertas que exige mover una tarjeta. El constructor queda fuera.
-		"GET /api/workflows/recipes",
-		"GET /api/workflows/gates",
+		// Automatizaciones: nada. La vista embebida no enseña el constructor ni
+		// su indicador; las puertas que exige mover una tarjeta llegan en la
+		// respuesta 422 del propio PUT /api/tasks/:id.
 	),
 }
 

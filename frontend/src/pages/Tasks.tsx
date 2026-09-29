@@ -5,6 +5,7 @@ import { GateModal } from '../components/Tasks/GateModal'
 import { BoardAutomationsModal } from '../components/Tasks/Modals/BoardAutomationsModal'
 import { workflowService } from '../services/workflow.service'
 import { canEditModule } from '../lib/permissions'
+import { isEmbedMode, notifyEmbedReady } from '../embed/session'
 
 import { TasksBoard } from '../components/Tasks/components/TasksBoard'
 import { TasksTimelineView } from '../components/Tasks/components/TasksTimelineView'
@@ -149,11 +150,22 @@ export default function Tasks() {
   // que disparan correos a media empresa. El alcance tablero a tablero lo comprueba
   // el servidor, así que esto sólo evita ofrecer una puerta que iba a rebotar.
   const [showAutomationsModal, setShowAutomationsModal] = useState(false)
+  //
+  // En la vista embebida del CRM no: el constructor queda fuera del alcance de
+  // esa sesión (backend/internal/routes/scope_routes.go) y se configura desde
+  // Obertrack.
   const canConfigureAutomations =
+    !isEmbedMode() && (
     !!isSuperadmin ||
     user?.user_type === 'empleador' ||
     !!user?.is_manager ||
-    !!user?.is_supervisor
+    !!user?.is_supervisor)
+
+  // Vista embebida: en cuanto hay tableros (o se sabe que no hay), el CRM deja
+  // de esperar (contrato CRM, §6). Fuera del modo embebido no hace nada.
+  useEffect(() => {
+    if (!isLoadingBoards) notifyEmbedReady()
+  }, [isLoadingBoards])
 
   // Cuántas reglas están encendidas EN ESTE tablero. El botón lo dice sin abrirlo:
   // apagado es un rayo hueco y gris; con algo activo se enciende en ámbar y lleva el

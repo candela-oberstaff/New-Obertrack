@@ -18,6 +18,10 @@ decisiones que el contrato no fija.
 | Encuadre, cabeceras y log enmascarado | `frontend/nginx.conf.template` |
 | Validación de `CRM_ORIGIN` | `frontend/docker-entrypoint.d/18-crm-origin.envsh` |
 | `/embed/config.js` en `npm run dev` | plugin `embedConfigDev` en `frontend/vite.config.ts` |
+| Token en memoria, `ready`, `session_expired` | `frontend/src/embed/session.ts` |
+| `postMessage` al CRM | `frontend/src/embed/crmBridge.ts` |
+| Pantallas `/embed/tareas` y `/embed/error` | `frontend/src/embed/EmbedTasks.tsx`, `EmbedError.tsx`, `EmbedMessage.tsx` |
+| Adjuntos e imágenes con la cabecera | `frontend/src/embed/authedFiles.ts` |
 
 ## Decisiones de nuestro lado
 
@@ -33,9 +37,10 @@ decisiones que el contrato no fija.
 - **Pertenencia:** se rechazan superadmin (tipo o bandera `is_superadmin`) y
   Customer Success. Los analistas de IT con empleo activo pasan (v1.1, §8).
 - **Lista del alcance:** todo lo que usa la vista de Tareas normal, incluida la
-  gestión de tableros, fases y miembros (v1.1, §10). Fuera: el constructor de
-  automatizaciones (solo se leen recetas y puertas), el selector de empresa de
-  superadmin, las notificaciones, el chat y los sockets.
+  gestión de tableros, fases y miembros (v1.1, §10). Fuera: las
+  automatizaciones (la vista embebida no enseña ni el constructor ni su
+  indicador; las puertas llegan en el 422 del propio PUT), el selector de
+  empresa de superadmin, las notificaciones, el chat y los sockets.
 - **Test de la lista:** `scope_routes_test.go` monta el router real y recorre
   todas las rutas protegidas. Una ruta nueva queda cerrada a las sesiones
   acotadas sin que nadie tenga que acordarse.
@@ -60,6 +65,37 @@ decisiones que el contrato no fija.
 - `/api/auth/crm` escribe en el access log con `$uri`, sin el query. El
   `error_log` de nginx sí incluiría la petición completa si el proxy fallara
   (backend caído). El token es de un solo uso y dura 60 s, así que se acepta.
+
+## Frontend embebido
+
+- **Arranque:** `bootEmbedSession()` corre en `main.tsx` antes de montar React.
+  Si la ruta es `/embed/...`, activa el modo, lee `#s=`, limpia el hash y carga
+  `/embed/config.js`. Tiene que ir antes porque, si no, `AuthProvider`
+  preguntaría `/auth/me` sin cabecera: 401, refresh y redirección a `/login`.
+- **Cliente HTTP:** en modo embebido va siempre con `Authorization: Bearer` y
+  `withCredentials: false`. Un 401 no refresca ni manda a `/login`: emite
+  `session_expired` (una sola vez) y la vista muestra la pantalla de sesión
+  terminada. No navega a `/embed/error`, para no mandar además un `error`.
+- **Mensajes:** objetos planos, como los lee el CRM (`{type, company_id}`,
+  `{type, code}`). Se encolan hasta que llega `config.js`. `company_id` se lee
+  del `tenant_id` del token, sin verificarlo: solo sirve para anunciarlo, y el
+  CRM comprueba que coincida con la empresa que pidió.
+- **`ready`** se envía cuando terminan de cargar los tableros, haya o no.
+- **Sin Layout:** ni menú, ni campana, ni sockets, ni novedades. Tareas refresca
+  cada 30 s con `refetchInterval`, que React Query pausa con la pestaña oculta.
+- **Automatizaciones:** el botón no aparece en la vista embebida. Las rutas de
+  `/workflows` salieron de la lista del alcance.
+- **Archivos:** `/api/uploads/...` exige sesión, y un `<img>` o un `<a>` no
+  llevan la cabecera. `authedFiles.ts` reescribe las imágenes a `blob:` y abre
+  los enlaces como `blob:` en otra pestaña. El editor de texto enriquecido
+  devuelve esas URLs a `/api/uploads/...` antes de guardar
+  (`restoreUploadUrls`). Queda un 401 en consola por imagen, la primera vez que
+  intenta cargar sin cabecera, antes de reescribirse.
+- **`localStorage`:** Chrome con las cookies de terceros bloqueadas hace que
+  tocarlo dentro del iframe lance una excepción, y Tareas lo usa para sus
+  preferencias. En ese caso se sustituye por uno en memoria.
+- **`access_suspended`:** el código no dice cuál de los rechazos del login fue,
+  así que la pantalla usa un texto que cubre los tres.
 
 ## Variables
 

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import axios from 'axios'
 import type { User } from '../types'
 import { authService } from '../services/api'
+import { getEmbedToken, isEmbedMode } from '../embed/session'
 
 interface AuthContextType {
   user: User | null
@@ -40,6 +41,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // logged out (audit findings A-03/A-04).
   useEffect(() => {
     const initAuth = async () => {
+      // Vista embebida sin token (p. ej. un F5 dentro del iframe): no hay a quién
+      // preguntar. La propia vista se lo dice al CRM.
+      if (isEmbedMode() && !getEmbedToken()) {
+        setIsLoading(false)
+        return
+      }
       try {
         const userData = await authService.me()
         setUser(userData)

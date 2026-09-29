@@ -9,6 +9,11 @@ import Toast from './components/Toast'
 import App from './App'
 import { queryClient } from './config/queryClient'
 import './index.css'
+import { bootEmbedSession } from './embed/session'
+
+// Antes de montar nada: si es la vista embebida en el CRM, toma el token del
+// hash y lo borra de la URL, para que AuthProvider arranque ya con él.
+bootEmbedSession()
 
 createRoot(document.getElementById('root')!).render(
   <BrowserRouter>

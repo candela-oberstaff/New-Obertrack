@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import { Bold, Italic, Underline, List, ListOrdered, Link as LinkIcon, Heading2, Type } from 'lucide-react'
 import { sanitizeRichHtml } from '../../utils/sanitize'
 import { uploadService } from '../../services/api'
+import { restoreUploadUrls } from '../../embed/authedFiles'
 import styles from './RichTextEditor.module.css'
 
 interface RichTextEditorProps {
@@ -28,7 +29,9 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
 
   const handleInput = useCallback(() => {
     if (editorRef.current) {
-      const html = editorRef.current.innerHTML
+      // En la vista embebida las imágenes se muestran como blob: (ver
+      // embed/authedFiles.ts); lo que se guarda es su URL de /api/uploads.
+      const html = restoreUploadUrls(editorRef.current.innerHTML)
       isInternalChange.current = true
       onChange(html === '<br>' ? '' : html)
     }
