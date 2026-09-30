@@ -456,3 +456,49 @@ func TestParseCrmPublicKeysFailClosed(t *testing.T) {
 		})
 	}
 }
+
+// Claim scope (contrato v1.3): elige la vista. Sin él, "tasks", como los
+// tokens anteriores; cualquier valor fuera de la lista es invalid_token.
+func TestCrmExchangeScope(t *testing.T) {
+	cases := []struct {
+		name  string
+		scope any // nil = sin claim
+		want  string
+	}{
+		{"sin claim → tasks", nil, middleware.ScopeTasks},
+		{"tasks", "tasks", middleware.ScopeTasks},
+		{"hours", "hours", middleware.ScopeHours},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newCrmFixture(t)
+			c := f.claims("vendedora@oberstaff.com", oberstaffID)
+			if tc.scope != nil {
+				c["scope"] = tc.scope
+			}
+			res, err := f.svc.Exchange(f.sign(t, "crm-prod-2026-09", c))
+			if err != nil {
+				t.Fatalf("canje rechazado: %v", err)
+			}
+			if res.Scope != tc.want || f.sessions.scope != tc.want {
+				t.Fatalf("scope = %q (sesión %q), esperaba %q", res.Scope, f.sessions.scope, tc.want)
+			}
+		})
+	}
+
+	for name, bad := range map[string]any{
+		"desconocido": "admin",
+		"vacío":       "",
+		"mayúsculas":  "HOURS",
+		"no es texto": 7,
+		"lista":       []string{"tasks", "hours"},
+	} {
+		t.Run("inválido: "+name, func(t *testing.T) {
+			f := newCrmFixture(t)
+			c := f.claims("vendedora@oberstaff.com", oberstaffID)
+			c["scope"] = bad
+			_, err := f.svc.Exchange(f.sign(t, "crm-prod-2026-09", c))
+			wantCode(t, err, CrmCodeInvalidToken)
+		})
+	}
+}

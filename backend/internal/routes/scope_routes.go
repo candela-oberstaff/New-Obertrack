@@ -64,6 +64,40 @@ var scopeAllowlist = middleware.ScopeAllowlist{
 		// su indicador; las puertas que exige mover una tarjeta llegan en la
 		// respuesta 422 del propio PUT /api/tasks/:id.
 	),
+
+	// Vista de Horas (pages/WorkHours.tsx). A quién puede ver, editar o
+	// aprobar cada uno lo sigue decidiendo el servicio, igual que en la vista
+	// normal; aquí solo se cierra lo que la vista embebida no usa.
+	middleware.ScopeHours: routeSet(
+		// Quién es el usuario y qué permisos tiene.
+		"GET /api/auth/me",
+
+		// Registros, resumen del mes y pendientes de aprobar.
+		"GET /api/work-hours",
+		"GET /api/work-hours/summary",
+		"GET /api/work-hours/pending",
+
+		// Registrar, recuperar y editar una jornada.
+		"POST /api/work-hours",
+		"PUT /api/work-hours/:id",
+
+		// Aprobar y rechazar (managers, supervisores y la cuenta de empresa).
+		// El lote omite las jornadas propias: lo decide el servicio.
+		"POST /api/work-hours/approve",
+		"POST /api/work-hours/reject",
+
+		// Filtro por profesional de la cuenta de empresa.
+		"GET /api/users/employees",
+
+		// Imágenes pegadas en el editor de actividades.
+		"POST /api/uploads",
+		"GET /api/uploads/:filename",
+
+		// Fuera a propósito: POST /api/work-hours/send-report (manda correos;
+		// decisión del contrato), GET /api/work-hours/report/pdf|excel (la
+		// vista genera PDF y Excel en el navegador) y todo /api/admin (solo
+		// superadmin y CS, que el canje rechaza siempre).
+	),
 }
 
 func routeSet(routes ...string) map[string]bool {

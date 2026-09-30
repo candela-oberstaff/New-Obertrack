@@ -96,35 +96,59 @@ func TestScopeAllowlistRoutesExist(t *testing.T) {
 	}
 }
 
-// Recorre TODAS las rutas protegidas: con un token "tasks", las de la lista
-// pasan el alcance y todas las demás (websockets incluidos) dan 403. Una ruta
-// nueva queda cerrada a las sesiones acotadas sin que nadie tenga que acordarse.
-func TestScopeTasksOnlyReachesAllowlist(t *testing.T) {
+// Recorre TODAS las rutas protegidas para cada alcance: las de su lista pasan
+// y todas las demás (websockets incluidos) dan 403. Una ruta nueva queda
+// cerrada a las sesiones acotadas sin que nadie tenga que acordarse, y una
+// vista no alcanza las rutas de otra.
+func TestScopesOnlyReachTheirAllowlist(t *testing.T) {
 	r := scopeTestRouter(t)
-	token := scopedToken(t, middleware.ScopeTasks)
-	allowed := scopeAllowlist[middleware.ScopeTasks]
+	for _, scope := range []string{middleware.ScopeTasks, middleware.ScopeHours} {
+		t.Run(scope, func(t *testing.T) {
+			token := scopedToken(t, scope)
+			allowed := scopeAllowlist[scope]
+			if len(allowed) == 0 {
+				t.Fatalf("el alcance %q no tiene lista", scope)
+			}
 
-	protected := 0
-	for _, ri := range r.Routes() {
-		// Las rutas públicas no pasan por la autenticación y el alcance no se
-		// les aplica. Se reconocen por el mensaje de AuthMiddleware, no solo
-		// por el 401: /auth/refresh es pública y también da 401 sin cookie.
-		if w := call(r, ri.Method, ri.Path, ""); w.Code != http.StatusUnauthorized ||
-			!strings.Contains(w.Body.String(), "Authorization token required") {
-			continue
-		}
-		protected++
-		key := ri.Method + " " + ri.Path
-		w := call(r, ri.Method, ri.Path, token)
-		if allowed[key] && rejectedByScope(w) {
-			t.Errorf("%s está en la lista y el alcance la rechazó", key)
-		}
-		if !allowed[key] && !rejectedByScope(w) {
-			t.Errorf("%s NO está en la lista y el alcance la dejó pasar (status %d)", key, w.Code)
+			protected := 0
+			for _, ri := range r.Routes() {
+				// Las rutas públicas no pasan por la autenticación y el alcance
+				// no se les aplica. Se reconocen por el mensaje de
+				// AuthMiddleware, no solo por el 401: /auth/refresh es pública
+				// y también da 401 sin cookie.
+				if w := call(r, ri.Method, ri.Path, ""); w.Code != http.StatusUnauthorized ||
+					!strings.Contains(w.Body.String(), "Authorization token required") {
+					continue
+				}
+				protected++
+				key := ri.Method + " " + ri.Path
+				w := call(r, ri.Method, ri.Path, token)
+				if allowed[key] && rejectedByScope(w) {
+					t.Errorf("%s está en la lista y el alcance la rechazó", key)
+				}
+				if !allowed[key] && !rejectedByScope(w) {
+					t.Errorf("%s NO está en la lista y el alcance la dejó pasar (status %d)", key, w.Code)
+				}
+			}
+			if protected < 100 {
+				t.Fatalf("solo se recorrieron %d rutas protegidas: el montaje del router de prueba no es el real", protected)
+			}
+		})
+	}
+}
+
+// Cada vista queda fuera de la otra: Horas no toca tareas ni tableros y
+// Tareas no toca horas. Es lo que garantiza "una sesión por pestaña".
+func TestScopesAreDisjointOnTheirOwnModules(t *testing.T) {
+	for key := range scopeAllowlist[middleware.ScopeHours] {
+		if strings.Contains(key, "/api/tasks") || strings.Contains(key, "/api/boards") || strings.Contains(key, "/api/board-invitations") {
+			t.Errorf("el alcance hours incluye una ruta de Tareas: %s", key)
 		}
 	}
-	if protected < 100 {
-		t.Fatalf("solo se recorrieron %d rutas protegidas: el montaje del router de prueba no es el real", protected)
+	for key := range scopeAllowlist[middleware.ScopeTasks] {
+		if strings.Contains(key, "/api/work-hours") {
+			t.Errorf("el alcance tasks incluye una ruta de Horas: %s", key)
+		}
 	}
 }
 

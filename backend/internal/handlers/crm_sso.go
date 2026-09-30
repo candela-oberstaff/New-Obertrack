@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/service"
 )
@@ -54,9 +55,17 @@ func (h *CrmSSOHandler) Exchange(c *gin.Context) {
 	}
 
 	h.record(c, true, &res.User.ID, string(res.User.UserType), res.User.Email, res.JTI, map[string]interface{}{
-		"kid": res.Kid, "company_id": res.CompanyID,
+		"kid": res.Kid, "company_id": res.CompanyID, "scope": res.Scope,
 	})
-	redirect303(c, "/embed/tareas#s="+res.AccessToken)
+	redirect303(c, embedPathFor(res.Scope)+"#s="+res.AccessToken)
+}
+
+// embedPathFor es la vista embebida de cada alcance (contrato CRM, §4).
+func embedPathFor(scope string) string {
+	if scope == middleware.ScopeHours {
+		return "/embed/horas"
+	}
+	return "/embed/tareas"
 }
 
 // redirect303 escribe la redirección a mano: http.Redirect pasa la ruta por

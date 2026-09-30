@@ -6,9 +6,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ScopeTasks es el alcance de la sesión embebida que emite el canje del CRM:
-// solo la vista de Tareas (contrato CRM v1.0, §9).
-const ScopeTasks = "tasks"
+// Alcances de las sesiones embebidas que emite el canje del CRM (contrato CRM,
+// §9): cada una abre una sola vista.
+const (
+	ScopeTasks = "tasks" // vista de Tareas
+	ScopeHours = "hours" // vista de Horas
+)
 
 // ScopeAllowlist dice, por alcance, qué rutas puede usar una sesión acotada.
 // La clave interior es "MÉTODO patrón", con el patrón tal como lo devuelve

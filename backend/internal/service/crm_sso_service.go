@@ -65,8 +65,10 @@ type CrmSSOResult struct {
 	AccessToken string
 	User        *models.User
 	CompanyID   uint
-	Kid         string
-	JTI         string
+	// Scope es el alcance de la sesión emitida, que decide la vista a abrir.
+	Scope string
+	Kid   string
+	JTI   string
 }
 
 type crmUserLookup interface {
@@ -92,7 +94,16 @@ type crmClaims struct {
 	// Puntero para distinguir "ausente" de 0. Un valor no entero (12.5, "12")
 	// hace fallar el parseo y cae en invalid_token.
 	ObertrackCompanyID *int64 `json:"obertrack_company_id"`
+	// Scope es la vista que pide el CRM. Opcional: sin él, "tasks", que es lo
+	// que pedían los tokens anteriores a este claim.
+	Scope *string `json:"scope"`
 	jwt.RegisteredClaims
+}
+
+// crmScopes son las vistas que el CRM puede pedir en el claim scope.
+var crmScopes = map[string]bool{
+	middleware.ScopeTasks: true,
+	middleware.ScopeHours: true,
 }
 
 // CrmSSOService canjea el token de un solo uso del CRM por una sesión de
@@ -215,6 +226,13 @@ func (s *CrmSSOService) Exchange(raw string) (*CrmSSOResult, error) {
 	case claims.ObertrackCompanyID == nil || *claims.ObertrackCompanyID <= 0 || *claims.ObertrackCompanyID > int64(^uint32(0)):
 		return nil, fail(CrmCodeInvalidToken, "obertrack_company_id ausente o fuera de rango")
 	}
+	scope := middleware.ScopeTasks
+	if claims.Scope != nil {
+		if !crmScopes[*claims.Scope] {
+			return nil, fail(CrmCodeInvalidToken, fmt.Sprintf("scope desconocido %q", *claims.Scope))
+		}
+		scope = *claims.Scope
+	}
 	companyID := uint(*claims.ObertrackCompanyID)
 	email := strings.TrimSpace(claims.Subject)
 
@@ -274,11 +292,11 @@ func (s *CrmSSOService) Exchange(raw string) (*CrmSSOResult, error) {
 		return nil, fail(CrmCodeAccessSuspended, err.Error())
 	}
 
-	access, err := s.sessions.IssueScopedAccess(user, companyID, middleware.ScopeTasks, CrmSessionTTL)
+	access, err := s.sessions.IssueScopedAccess(user, companyID, scope, CrmSessionTTL)
 	if err != nil {
 		return nil, fmt.Errorf("no se pudo emitir la sesión: %w", err)
 	}
-	return &CrmSSOResult{AccessToken: access, User: user, CompanyID: companyID, Kid: kid, JTI: claims.ID}, nil
+	return &CrmSSOResult{AccessToken: access, User: user, CompanyID: companyID, Scope: scope, Kid: kid, JTI: claims.ID}, nil
 }
 
 // findUser busca por el correo tal cual llega y, si no aparece, en minúsculas:

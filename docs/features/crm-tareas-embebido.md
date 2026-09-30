@@ -45,6 +45,27 @@ decisiones que el contrato no fija.
   todas las rutas protegidas. Una ruta nueva queda cerrada a las sesiones
   acotadas sin que nadie tenga que acordarse.
 
+## Vista de Horas (en curso, contrato v1.3 pendiente de acordar)
+
+- **Claim `scope`:** opcional en el token del CRM, con valores `"tasks"` o
+  `"hours"`. Sin él se usa `"tasks"`, así que los tokens v1.2 siguen igual.
+  Cualquier otro valor, incluidos el texto vacío, las mayúsculas o una lista,
+  da `invalid_token`. El canje redirige a `/embed/tareas` o a `/embed/horas`, y
+  la auditoría registra el alcance.
+- **Lista de `hours`** (`scope_routes.go`):
+  - `/auth/me`;
+  - lectura, alta, edición, aprobación y rechazo de `/work-hours`;
+  - `GET /users/employees`, el filtro de la cuenta de empresa;
+  - las subidas de archivos del editor.
+- **Fuera de `hours`:**
+  - `send-report`, porque manda correos;
+  - `report/pdf|excel`, porque la vista los genera en el navegador;
+  - todo `/admin`, que es solo para superadmin y CS, y el canje los rechaza.
+- **Test:** `scope_routes_test.go` recorre el router para cada alcance y
+  comprueba que ninguno alcance las rutas del módulo del otro.
+- **Log del backend:** `RedactedLogFormatter` (en `middleware/logformat.go`)
+  sustituye el query de `/api/auth/crm` por `[redacted]` en el log de Gin.
+
 ## Encuadre (nginx)
 
 - `nginx.conf.template` es una plantilla: el entrypoint de la imagen la pasa por
