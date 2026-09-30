@@ -207,7 +207,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	onboardingSvc := service.NewOnboardingService(userRepo, employmentRepo, employmentSvc, uploadSvc, authSvc, inductionSvc, ticketSvc)
 	// Acceso embebido a Tareas desde el CRM: canjea su token de un solo uso
 	// por una sesión acotada. Sin CRM_SSO_PUBLIC_KEYS queda deshabilitado.
-	crmSSOSvc := service.NewCrmSSOService(os.Getenv("CRM_SSO_PUBLIC_KEYS"), userRepo, employmentRepo, repository.NewCrmNonceRepository(db), authSvc)
+	crmSSOSvc := service.NewCrmSSOService(os.Getenv("CRM_SSO_PUBLIC_KEYS"), userRepo, employmentRepo, repository.NewCrmNonceRepository(db), authSvc, rbacSvc)
 
 	// WebSocket hubs
 	chatHub := websocket.NewChatHub(func(msg websocket.ChatWSMessage) {})

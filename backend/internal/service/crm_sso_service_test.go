@@ -78,6 +78,21 @@ func (f *fakeCrmSessions) IssueScopedAccess(u *models.User, tenantID uint, scope
 	return "access-token", nil
 }
 
+// fakeCrmPerms: sin entrada en roles, el usuario no tiene roles asignados
+// (hasRoles=false), que es el caso de la mayoría de cuentas hoy.
+type fakeCrmPerms struct {
+	roles   map[uint]map[string]string
+	failFor map[uint]bool
+}
+
+func (f *fakeCrmPerms) EffectivePermissions(userID, _ uint) (map[string]string, bool, error) {
+	if f.failFor[userID] {
+		return nil, false, errors.New("db caída")
+	}
+	perms, ok := f.roles[userID]
+	return perms, ok, nil
+}
+
 // ---- escenario ----
 
 const (
@@ -90,12 +105,15 @@ const (
 	blockedID    uint = 15 // inducción pendiente
 	personalID   uint = 16 // profesional en profesional (no empresa)
 	itAnalystID  uint = 17 // analista de IT con empleo activo en Oberstaff
+	tasksOnlyID  uint = 18 // rol con Tareas y sin Horas
+	permsErrID   uint = 19 // leer sus permisos falla
 	suspendedCo  uint = 30
 )
 
 type crmFixture struct {
 	svc      *CrmSSOService
 	sessions *fakeCrmSessions
+	perms    *fakeCrmPerms
 	keys     map[string]*rsa.PrivateKey
 	now      time.Time
 }
@@ -147,6 +165,8 @@ func newCrmFixture(t *testing.T) *crmFixture {
 		blockedID:    {ID: blockedID, Email: "nueva@oberstaff.com", UserType: models.UserTypeProfessional, IsActive: true},
 		personalID:   {ID: personalID, Email: "persona@x.com", UserType: models.UserTypeProfessional, IsActive: true},
 		itAnalystID:  {ID: itAnalystID, Email: "it@oberstaff.com", UserType: models.UserTypeITAnalyst, IsActive: true},
+		tasksOnlyID:  {ID: tasksOnlyID, Email: "solo.tareas@oberstaff.com", UserType: models.UserTypeProfessional, IsActive: true},
+		permsErrID:   {ID: permsErrID, Email: "roto@oberstaff.com", UserType: models.UserTypeProfessional, IsActive: true},
 	}}
 	emps := &fakeCrmEmployments{active: map[[2]uint]bool{
 		{sellerID, oberstaffID}:    true,
@@ -154,13 +174,22 @@ func newCrmFixture(t *testing.T) *crmFixture {
 		{csID, oberstaffID}:        true,
 		{blockedID, oberstaffID}:   true,
 		{itAnalystID, oberstaffID}: true,
+		{tasksOnlyID, oberstaffID}: true,
+		{permsErrID, oberstaffID}:  true,
 	}}
 	sessions := &fakeCrmSessions{blocked: map[uint]string{blockedID: "Aún no completas tu inducción."}}
 
-	svc := NewCrmSSOService(string(raw), users, emps, &fakeCrmNonces{used: map[string]bool{}}, sessions)
+	perms := &fakeCrmPerms{
+		roles: map[uint]map[string]string{
+			// Tareas en "edit", Horas explícitamente en "none".
+			tasksOnlyID: {"tasks": models.PermissionEdit, "hours": models.PermissionNone},
+		},
+		failFor: map[uint]bool{permsErrID: true},
+	}
+	svc := NewCrmSSOService(string(raw), users, emps, &fakeCrmNonces{used: map[string]bool{}}, sessions, perms)
 	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return now }
-	return &crmFixture{svc: svc, sessions: sessions, keys: keys, now: now}
+	return &crmFixture{svc: svc, sessions: sessions, perms: perms, keys: keys, now: now}
 }
 
 var jtiSeq int
@@ -449,7 +478,7 @@ func TestParseCrmPublicKeysFailClosed(t *testing.T) {
 			if _, err := ParseCrmPublicKeys(raw); err == nil {
 				t.Fatal("debió fallar")
 			}
-			svc := NewCrmSSOService(raw, nil, nil, nil, nil)
+			svc := NewCrmSSOService(raw, nil, nil, nil, nil, nil)
 			if svc.Enabled() {
 				t.Fatal("con claves inválidas el canje debe quedar deshabilitado")
 			}
@@ -500,5 +529,44 @@ func TestCrmExchangeScope(t *testing.T) {
 			_, err := f.svc.Exchange(f.sign(t, "crm-prod-2026-09", c))
 			wantCode(t, err, CrmCodeInvalidToken)
 		})
+	}
+}
+
+// v1.3, §7 scope_not_allowed: el rol tiene que dar acceso al módulo de la
+// vista, con las reglas de RequirePermission.
+func TestCrmExchangeScopeNotAllowed(t *testing.T) {
+	sign := func(f *crmFixture, email string, scope string) string {
+		c := f.claims(email, oberstaffID)
+		c["scope"] = scope
+		return f.sign(t, "crm-prod-2026-09", c)
+	}
+
+	f := newCrmFixture(t)
+	_, err := f.svc.Exchange(sign(f, "solo.tareas@oberstaff.com", "hours"))
+	wantCode(t, err, CrmCodeScopeNotAllowed)
+
+	if _, err := f.svc.Exchange(sign(f, "solo.tareas@oberstaff.com", "tasks")); err != nil {
+		t.Fatalf("con Tareas en edit, la vista de Tareas debe abrir: %v", err)
+	}
+	if _, err := f.svc.Exchange(sign(f, "vendedora@oberstaff.com", "hours")); err != nil {
+		t.Fatalf("sin roles asignados no se restringe, como en la app: %v", err)
+	}
+
+	// Un rol sin la clave del módulo tampoco da acceso.
+	f.perms.roles[sellerID] = map[string]string{"tasks": models.PermissionView}
+	_, err = f.svc.Exchange(sign(f, "vendedora@oberstaff.com", "hours"))
+	wantCode(t, err, CrmCodeScopeNotAllowed)
+
+	// La cuenta de empresa no pasa por el RBAC, igual que en RequirePermission.
+	f.perms.roles[oberstaffID] = map[string]string{"hours": models.PermissionNone}
+	if _, err := f.svc.Exchange(sign(f, "admin@oberstaff.com", "hours")); err != nil {
+		t.Fatalf("la cuenta de empresa debe abrir Horas: %v", err)
+	}
+
+	// Si no se pueden leer los permisos, no se abre (fallo interno, no un código).
+	_, err = f.svc.Exchange(sign(f, "roto@oberstaff.com", "hours"))
+	var ssoErr *CrmSSOError
+	if err == nil || errors.As(err, &ssoErr) {
+		t.Fatalf("un fallo al leer permisos debe ser un error interno, got %v", err)
 	}
 }

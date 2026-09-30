@@ -1,11 +1,11 @@
 import { AlertTriangle, Lock } from 'lucide-react'
 
-// Textos de los códigos del contrato CRM (§7). El CRM también los muestra a
-// su manera; estos son los que se ven si alguien llega a mirar dentro del
-// iframe antes de que el CRM lo sustituya.
+// Textos de los códigos del contrato CRM (§7). Los del contrato llevan {vista}
+// y los pone el CRM, que sabe qué pestaña abrió; esta pantalla no lo sabe
+// (el canje puede fallar antes de leer el scope), así que usa textos neutros.
 const INVALID_LINK = {
   title: 'El enlace no es válido',
-  text: 'El enlace no es válido. Vuelve a abrir Tareas desde el CRM.',
+  text: 'El enlace no es válido. Vuelve a abrir la pestaña desde el CRM.',
 }
 
 const EMBED_MESSAGES: Record<string, { title: string; text: string; locked?: boolean }> = {
@@ -17,7 +17,12 @@ const EMBED_MESSAGES: Record<string, { title: string; text: string; locked?: boo
   },
   user_not_found: {
     title: 'Sin acceso',
-    text: 'Tu usuario no tiene acceso a Tareas de esta empresa.',
+    text: 'Tu usuario no tiene acceso a esta vista de la empresa.',
+    locked: true,
+  },
+  scope_not_allowed: {
+    title: 'Sin acceso a esta vista',
+    text: 'Tu rol no tiene acceso a esta vista en Obertrack. Pide acceso a tu administrador.',
     locked: true,
   },
   // El código no dice cuál de los rechazos del login fue (cuenta suspendida,
@@ -29,7 +34,7 @@ const EMBED_MESSAGES: Record<string, { title: string; text: string; locked?: boo
   },
   session_expired: {
     title: 'Tu sesión terminó',
-    text: 'Tu sesión terminó. Vuelve a abrir Tareas desde el CRM.',
+    text: 'Tu sesión terminó. Vuelve a abrir la pestaña desde el CRM.',
   },
 }
 

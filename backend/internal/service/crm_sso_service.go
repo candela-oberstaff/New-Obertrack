@@ -29,7 +29,16 @@ const (
 	CrmCodeCompanyNotFound = "company_not_found"
 	CrmCodeUserNotFound    = "user_not_found"
 	CrmCodeAccessSuspended = "access_suspended"
+	// CrmCodeScopeNotAllowed: pertenece a la empresa, pero su rol no tiene
+	// acceso al módulo de la vista pedida (v1.3).
+	CrmCodeScopeNotAllowed = "scope_not_allowed"
 )
+
+// crmScopeModule es el módulo RBAC que abre cada alcance.
+var crmScopeModule = map[string]string{
+	middleware.ScopeTasks: "tasks",
+	middleware.ScopeHours: "hours",
+}
 
 const (
 	crmIssuer   = "oberstaff-crm"
@@ -85,6 +94,10 @@ type crmNonceStore interface {
 	DeleteExpired(before time.Time) error
 }
 
+type crmPermissions interface {
+	EffectivePermissions(userID, tenantID uint) (map[string]string, bool, error)
+}
+
 type crmSessionIssuer interface {
 	AssertCanSignIn(user *models.User) error
 	IssueScopedAccess(user *models.User, tenantID uint, scope string, ttl time.Duration) (string, error)
@@ -114,14 +127,15 @@ type CrmSSOService struct {
 	employments crmEmploymentLookup
 	nonces      crmNonceStore
 	sessions    crmSessionIssuer
+	perms       crmPermissions
 	now         func() time.Time
 }
 
 // NewCrmSSOService lee las claves públicas de CRM_SSO_PUBLIC_KEYS (§3). Si
 // faltan o alguna no sirve, el servicio queda deshabilitado (fail-closed) y el
 // canje responde 503; el resto de Obertrack arranca igual.
-func NewCrmSSOService(rawKeys string, users crmUserLookup, employments crmEmploymentLookup, nonces crmNonceStore, sessions crmSessionIssuer) *CrmSSOService {
-	s := &CrmSSOService{users: users, employments: employments, nonces: nonces, sessions: sessions, now: time.Now}
+func NewCrmSSOService(rawKeys string, users crmUserLookup, employments crmEmploymentLookup, nonces crmNonceStore, sessions crmSessionIssuer, perms crmPermissions) *CrmSSOService {
+	s := &CrmSSOService{users: users, employments: employments, nonces: nonces, sessions: sessions, perms: perms, now: time.Now}
 	keys, err := ParseCrmPublicKeys(rawKeys)
 	if err != nil {
 		log.Printf("[CRM SSO] deshabilitado: %v", err)
@@ -290,6 +304,23 @@ func (s *CrmSSOService) Exchange(raw string) (*CrmSSOResult, error) {
 
 	if err := s.sessions.AssertCanSignIn(user); err != nil {
 		return nil, fail(CrmCodeAccessSuspended, err.Error())
+	}
+
+	// El rol tiene que dar acceso al módulo de la vista, con las mismas reglas
+	// que RequirePermission en la app: la cuenta de empresa y quien no tiene
+	// roles asignados pasan; con roles, hace falta "view" o "edit". Sin esto,
+	// la vista se abriría y se llenaría de 403 (v1.3, §7).
+	if user.UserType != models.UserTypeEmployer {
+		levels, hasRoles, err := s.perms.EffectivePermissions(user.ID, companyID)
+		if err != nil {
+			return nil, fmt.Errorf("no se pudieron verificar los permisos: %w", err)
+		}
+		if hasRoles {
+			module := crmScopeModule[scope]
+			if lvl := levels[module]; lvl != models.PermissionView && lvl != models.PermissionEdit {
+				return nil, fail(CrmCodeScopeNotAllowed, fmt.Sprintf("el rol tiene %q en el módulo %s", lvl, module))
+			}
+		}
 	}
 
 	access, err := s.sessions.IssueScopedAccess(user, companyID, scope, CrmSessionTTL)

@@ -63,6 +63,15 @@ decisiones que el contrato no fija.
   - todo `/admin`, que es solo para superadmin y CS, y el canje los rechaza.
 - **Test:** `scope_routes_test.go` recorre el router para cada alcance y
   comprueba que ninguno alcance las rutas del módulo del otro.
+- **`scope_not_allowed`:** después de la pertenencia y de `AssertCanSignIn`,
+  el canje comprueba que el rol del usuario dé acceso al módulo de la vista
+  (`tasks` u `hours`), con las reglas de `RequirePermission`: la cuenta de
+  empresa y quien no tiene roles asignados pasan, y con roles hace falta
+  `view` o `edit`. Si no se pueden leer los permisos, responde 503. Obertrack
+  no tiene un interruptor de módulos por empresa: el único control es el RBAC.
+- **Textos de la pantalla de error:** son neutros («la pestaña», «esta
+  vista»). Los del contrato llevan `{vista}` y los pone el CRM, que sabe qué
+  pestaña abrió.
 - **Frontend:** `EmbedView` sirve `/embed/tareas` y `/embed/horas` con la misma
   sesión en memoria, los mismos mensajes y el mismo manejo de archivos.
   `ready` lleva `{ company_id, scope }`, y el `scope` se lee del token.
