@@ -112,6 +112,30 @@ export function installAuthedFiles(): () => void {
   }
 }
 
+/**
+ * Para HTML que se escribe fuera del DOM vigilado (la ventana de impresión de
+ * Horas): cambia cada src de /api/uploads por su blob:. Fuera del modo
+ * embebido no hace nada, porque allí las imágenes van con la cookie.
+ */
+export async function resolveUploadImages(html: string): Promise<string> {
+  if (!isEmbedMode()) return html
+  const srcs = new Set<string>()
+  html.replace(/<img\s[^>]*?\bsrc="([^"]+)"/gi, (_m, src: string) => {
+    if (uploadPath(src)) srcs.add(src)
+    return _m
+  })
+  let out = html
+  for (const src of srcs) {
+    try {
+      const blob = await blobFor(uploadPath(src)!)
+      out = out.split(`src="${src}"`).join(`src="${blob}"`)
+    } catch {
+      /* se queda rota, como sin sesión */
+    }
+  }
+  return out
+}
+
 /** Devuelve a su URL original los blob: que salieron de aquí. Fuera del modo embebido no hace nada. */
 export function restoreUploadUrls(html: string): string {
   if (!isEmbedMode() || pathByBlob.size === 0) return html

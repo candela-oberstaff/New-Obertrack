@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { isEmbedMode } from '../embed/session'
 import { workHourService } from '../services/api'
 import { canEditModule } from '../lib/permissions'
 import type { WorkHour } from '../types'
@@ -95,6 +96,9 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
     queryKey,
     // Superadmin must pick a company first; otherwise nothing is fetched.
     enabled: !!user && !(isSuperadmin && !companyId),
+    // La vista embebida en el CRM no tiene sockets: refresca por intervalo
+    // (contrato CRM, §9). React Query lo pausa con la pestaña oculta.
+    refetchInterval: isEmbedMode() ? 30_000 : false,
     queryFn: async () => {
       const scope = {
         ...(companyId ? { company_id: companyId } : {}),

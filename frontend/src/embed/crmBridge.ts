@@ -6,7 +6,7 @@
 // ejecución). Sin origen válido no se envía nada: nunca se usa "*".
 
 export type CrmMessage =
-  | { type: 'obertrack:ready'; company_id: number }
+  | { type: 'obertrack:ready'; company_id: number; scope: string }
   | { type: 'obertrack:error'; code: string }
   | { type: 'obertrack:session_expired' }
 

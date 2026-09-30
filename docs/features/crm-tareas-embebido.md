@@ -20,7 +20,7 @@ decisiones que el contrato no fija.
 | `/embed/config.js` en `npm run dev` | plugin `embedConfigDev` en `frontend/vite.config.ts` |
 | Token en memoria, `ready`, `session_expired` | `frontend/src/embed/session.ts` |
 | `postMessage` al CRM | `frontend/src/embed/crmBridge.ts` |
-| Pantallas `/embed/tareas` y `/embed/error` | `frontend/src/embed/EmbedTasks.tsx`, `EmbedError.tsx`, `EmbedMessage.tsx` |
+| Pantallas `/embed/tareas`, `/embed/horas` y `/embed/error` | `frontend/src/embed/EmbedView.tsx`, `EmbedError.tsx`, `EmbedMessage.tsx` |
 | Adjuntos e imágenes con la cabecera | `frontend/src/embed/authedFiles.ts` |
 
 ## Decisiones de nuestro lado
@@ -63,6 +63,19 @@ decisiones que el contrato no fija.
   - todo `/admin`, que es solo para superadmin y CS, y el canje los rechaza.
 - **Test:** `scope_routes_test.go` recorre el router para cada alcance y
   comprueba que ninguno alcance las rutas del módulo del otro.
+- **Frontend:** `EmbedView` sirve `/embed/tareas` y `/embed/horas` con la misma
+  sesión en memoria, los mismos mensajes y el mismo manejo de archivos.
+  `ready` lleva `{ company_id, scope }`, y el `scope` se lee del token.
+- **En la vista de Horas embebida:**
+  - no aparece «Enviar por Correo»;
+  - refresca cada 30 s;
+  - `ready` se envía al terminar de cargar los registros.
+- **Impresión (también en Obertrack normal):** la ventana de impresión escribía
+  las actividades y los nombres sin sanear. Ahora las actividades pasan por
+  `sanitizeRichHtml` y el resto del texto se escapa. En el embebido, las
+  imágenes de `/api/uploads` se pasan a `blob:` antes de escribir la ventana
+  (`resolveUploadImages`). Para que `window.print()` funcione dentro del
+  iframe, el CRM tiene que añadir `allow-modals` (v1.3, §5).
 - **Log del backend:** `RedactedLogFormatter` (en `middleware/logformat.go`)
   sustituye el query de `/api/auth/crm` por `[redacted]` en el log de Gin.
 

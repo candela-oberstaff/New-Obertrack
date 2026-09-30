@@ -10,14 +10,22 @@ import {
   onEmbedSessionExpired,
 } from './session'
 
-const Tasks = lazy(() => import('../pages/Tasks'))
+// Las páginas que se pueden embeber, por alcance de la sesión (contrato, §4).
+const PAGES = {
+  tasks: lazy(() => import('../pages/Tasks')),
+  hours: lazy(() => import('../pages/WorkHours')),
+}
 
-// /embed/tareas: la vista de Tareas sin el Layout de Obertrack (ni menú, ni
-// campana, ni sockets), para el iframe del CRM. La sesión la trae el hash que
-// leyó bootEmbedSession; aquí solo se decide qué pintar.
-export default function EmbedTasks() {
+export type EmbedScope = keyof typeof PAGES
+
+// /embed/tareas y /embed/horas: la página sin el Layout de Obertrack (ni menú,
+// ni campana, ni sockets), para el iframe del CRM. La sesión la trae el hash
+// que leyó bootEmbedSession; aquí solo se decide qué pintar. Qué rutas puede
+// usar cada vista lo decide el backend según el alcance del token.
+export default function EmbedView({ scope }: { scope: EmbedScope }) {
   const { user, isLoading } = useAuth()
   const [expired, setExpired] = useState(isEmbedSessionExpired)
+  const Page = PAGES[scope]
 
   useEffect(() => onEmbedSessionExpired(() => setExpired(true)), [])
 
@@ -36,7 +44,7 @@ export default function EmbedTasks() {
   return (
     <div style={{ minHeight: '100vh', boxSizing: 'border-box', padding: 16, background: 'var(--bg-secondary, #f8fafc)' }}>
       <Suspense fallback={<LoadingScreen />}>
-        <Tasks />
+        <Page />
       </Suspense>
     </div>
   )

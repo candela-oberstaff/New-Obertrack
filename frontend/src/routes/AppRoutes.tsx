@@ -11,7 +11,7 @@ const ForgotPassword = lazy(() => import('../pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('../pages/ResetPassword'))
 const Dashboard = lazy(() => import('../pages/Dashboard'))
 const Tasks = lazy(() => import('../pages/Tasks'))
-const EmbedTasks = lazy(() => import('../embed/EmbedTasks'))
+const EmbedView = lazy(() => import('../embed/EmbedView'))
 const EmbedError = lazy(() => import('../embed/EmbedError'))
 const WorkHours = lazy(() => import('../pages/WorkHours'))
 const Reports = lazy(() => import('../pages/Reports'))
@@ -63,10 +63,11 @@ export function AppRoutes() {
         {/* Inducción del profesional recién contratado. Va SIN guard: quien llega
             aquí todavía no tiene cuenta activa y su credencial es el token del
             enlace que recibió por correo. */}
-        {/* Tareas embebida en el CRM (docs/integracion-crm-tareas.md). Fuera de
-            ProtectedRoute y del Layout: la sesión es el token del canje, en
+        {/* Vistas embebidas en el CRM (docs/integracion-crm-tareas.md). Fuera
+            de ProtectedRoute y del Layout: la sesión es el token del canje, en
             memoria, y la vista no lleva menú ni nada del resto de Obertrack. */}
-        <Route path="/embed/tareas" element={<EmbedTasks />} />
+        <Route path="/embed/tareas" element={<EmbedView scope="tasks" />} />
+        <Route path="/embed/horas" element={<EmbedView scope="hours" />} />
         <Route path="/embed/error" element={<EmbedError />} />
         <Route path="/induccion/:token" element={<Induction />} />
         {/* Verificación pública de certificados por su código. SIN guard a

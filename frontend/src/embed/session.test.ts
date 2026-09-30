@@ -47,6 +47,15 @@ describe('bootEmbedSession', () => {
     expect(window.location.pathname).toBe('/embed/tareas')
   })
 
+  it('la vista de Horas también toma el token y su alcance', async () => {
+    const hours = `${b64url({ alg: 'HS256' })}.${b64url({ tenant_id: 276, scope: 'hours' })}.firma`
+    const { session } = await boot(`/embed/horas#s=${hours}`)
+    expect(session.getEmbedToken()).toBe(hours)
+    expect(session.getEmbedScope()).toBe('hours')
+    expect(session.getEmbedCompanyId()).toBe(276)
+    expect(window.location.hash).toBe('')
+  })
+
   it('fuera de /embed/ no hace nada', async () => {
     const { session } = await boot(`/tasks#s=${TOKEN}`)
     expect(session.isEmbedMode()).toBe(false)
@@ -71,7 +80,7 @@ describe('mensajes al CRM', () => {
     session.notifyEmbedReady()
     expect(postMessage).toHaveBeenCalledTimes(1)
     expect(postMessage).toHaveBeenCalledWith(
-      { type: 'obertrack:ready', company_id: 42 },
+      { type: 'obertrack:ready', company_id: 42, scope: 'tasks' },
       'https://obersuite.oberstaff.com',
     )
   })

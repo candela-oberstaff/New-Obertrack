@@ -12,6 +12,7 @@ const EMBED_PREFIX = '/embed/'
 let embedMode = false
 let token: string | null = null
 let companyId: number | null = null
+let scope: string | null = null
 let expired = false
 let readySent = false
 const expiredListeners = new Set<() => void>()
@@ -29,6 +30,11 @@ export function getEmbedCompanyId(): number | null {
   return companyId
 }
 
+/** Alcance de la sesión (la vista que pidió el CRM): "tasks" o "hours". */
+export function getEmbedScope(): string | null {
+  return scope
+}
+
 /**
  * Se llama en main.tsx antes de montar React: si la URL es de la vista
  * embebida, activa el modo, toma el token del hash y lo borra de la URL.
@@ -40,11 +46,13 @@ export function bootEmbedSession(): void {
   installMemoryStorageIfBlocked()
   loadEmbedConfig()
 
-  if (pathname === '/embed/tareas' && hash) {
+  if (hash) {
     const s = new URLSearchParams(hash.slice(1)).get('s')
     if (s) {
       token = s
-      companyId = tenantFromToken(s)
+      const claims = readClaims(s)
+      companyId = typeof claims.tenant_id === 'number' ? claims.tenant_id : null
+      scope = typeof claims.scope === 'string' ? claims.scope : null
     }
     // El hash se limpia siempre: el token no debe quedar en el historial.
     history.replaceState(history.state, '', pathname + search)
@@ -69,23 +77,22 @@ export function onEmbedSessionExpired(fn: () => void): () => void {
   return () => { expiredListeners.delete(fn) }
 }
 
-/** El tablero se pintó: se avisa al CRM una sola vez. */
+/** La vista se pintó: se avisa al CRM una sola vez (contrato, §6). */
 export function notifyEmbedReady(): void {
-  if (!embedMode || readySent || expired || companyId === null) return
+  if (!embedMode || readySent || expired || companyId === null || scope === null) return
   readySent = true
-  postToCrm({ type: 'obertrack:ready', company_id: companyId })
+  postToCrm({ type: 'obertrack:ready', company_id: companyId, scope })
 }
 
-// El payload se lee sin verificar: solo para saber la empresa que hay que
-// anunciar en "ready". Quien decide el acceso es el backend, que sí lo verifica.
-function tenantFromToken(jwt: string): number | null {
+// El payload se lee sin verificar: solo para anunciar en "ready" la empresa y
+// la vista, que el CRM compara con lo que pidió. Quien decide el acceso es el
+// backend, que sí verifica la firma.
+function readClaims(jwt: string): { tenant_id?: unknown; scope?: unknown } {
   try {
     const part = jwt.split('.')[1] ?? ''
-    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'))
-    const payload = JSON.parse(json) as { tenant_id?: unknown }
-    return typeof payload.tenant_id === 'number' ? payload.tenant_id : null
+    return JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')))
   } catch {
-    return null
+    return {}
   }
 }
 
