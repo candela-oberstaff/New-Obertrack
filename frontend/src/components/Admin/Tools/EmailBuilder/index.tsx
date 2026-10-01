@@ -284,7 +284,7 @@ function SendModal({ onClose, onConfirm, onSchedule, initialRecipientIds, initia
   });
 
   const overlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 };
-  const modalStyle: React.CSSProperties = { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' };
+  const modalStyle: React.CSSProperties = { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 900, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' };
 
   return (
     <div style={overlayStyle} onClick={requestClose}>

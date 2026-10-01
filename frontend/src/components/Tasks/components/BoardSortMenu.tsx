@@ -19,8 +19,6 @@ interface BoardSortMenuProps {
   showLabel?: boolean
   /** Alinea el menú a la derecha cuando el botón queda pegado al borde. */
   align?: 'left' | 'right'
-  /** Se pega al selector de tableros, como una pieza más de ese control. */
-  attached?: boolean
 }
 
 export function BoardSortMenu({
@@ -28,7 +26,6 @@ export function BoardSortMenu({
   onChange,
   showLabel = false,
   align = 'left',
-  attached = false,
 }: BoardSortMenuProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -59,7 +56,6 @@ export function BoardSortMenu({
         className={[
           styles.toggle,
           showLabel ? styles.withLabel : '',
-          attached ? styles.attached : '',
           isDefault ? '' : styles.active,
         ].filter(Boolean).join(' ')}
         onClick={() => setOpen((v) => !v)}

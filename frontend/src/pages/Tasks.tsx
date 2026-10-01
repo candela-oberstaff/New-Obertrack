@@ -473,10 +473,9 @@ export default function Tasks() {
                   placeholder="Seleccione un tablero..."
                   options={sortedBoards.map(b => ({ value: b.id, label: b.name, color: b.color || 'var(--primary)' }))}
                 />
-                {/* Pegado al selector: suelto entre los botones de la cabecera
-                    se leía como "ordenar tareas", que es lo que se ve en
-                    pantalla, y no los tableros del desplegable de al lado. */}
-                <BoardSortMenu value={boardSort} onChange={setBoardSort} attached />
+                {!selectedBoard && (
+                  <BoardSortMenu value={boardSort} onChange={setBoardSort} />
+                )}
                 {canEditTasks && (
                   <>
                     <button className={styles['btn-icon']} onClick={openBoardModal} title="Crear tablero" data-tour="tasks-create-board">
@@ -647,7 +646,6 @@ export default function Tasks() {
                 <h2>Selecciona un tablero</h2>
                 <p>Elige un tablero para gestionar sus tareas.</p>
               </div>
-              <BoardSortMenu value={boardSort} onChange={setBoardSort} showLabel align="right" />
             </div>
             <div className={styles['board-picker-grid']}>
               {sortedBoards.map((b) => {
@@ -662,71 +660,71 @@ export default function Tasks() {
                 const total = Object.values(counts).reduce((sum, n) => sum + n, 0)
                 return (
                   <div key={b.id} className={styles['board-picker-card-wrap']}>
-                  {canEditBoardItem(b) && (
-                    <div className={styles['board-picker-actions']}>
-                      <button
-                        type="button"
-                        className={styles['board-picker-action']}
-                        onClick={(e) => { e.stopPropagation(); handleEditBoard(b) }}
-                        title="Editar tablero (nombre y color)"
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles['board-picker-action']} ${styles['board-picker-action--danger']}`}
-                        onClick={(e) => { e.stopPropagation(); handleDeleteBoard(b.id) }}
-                        title="Eliminar tablero"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    className={styles['board-picker-card']}
-                    style={{ ['--board-color' as any]: b.color || 'var(--primary)' }}
-                    onClick={() => setSelectedBoard(b)}
-                  >
-                    <div className={styles['board-picker-card-head']}>
-                      <h3>{b.name}</h3>
-                      <span className={styles['board-picker-total']}>
-                        {total} {total === 1 ? 'tarea' : 'tareas'}
-                      </span>
-                    </div>
-                    {b.description && <p>{b.description}</p>}
-                    {phases.length > 0 && (
-                      <>
-                        <div className={styles['board-picker-bar']}>
-                          {total > 0 ? (
-                            phaseData
-                              .filter((p) => p.count > 0)
-                              .map((p) => (
-                                <span
-                                  key={p.id}
-                                  className={styles['board-picker-bar-seg']}
-                                  style={{ flexGrow: p.count, background: p.color }}
-                                />
-                              ))
-                          ) : (
-                            <span className={styles['board-picker-bar-empty']} />
-                          )}
-                        </div>
-                        <div className={styles['board-picker-phases']}>
-                          {phaseData.map((p) => (
-                            <span key={p.id} className={styles['board-picker-phase']}>
-                              <span className={styles['board-picker-phase-dot']} style={{ background: p.color }} />
-                              {p.name}
-                              <strong>{p.count}</strong>
-                            </span>
-                          ))}
-                        </div>
-                      </>
+                    {canEditBoardItem(b) && (
+                      <div className={styles['board-picker-actions']}>
+                        <button
+                          type="button"
+                          className={styles['board-picker-action']}
+                          onClick={(e) => { e.stopPropagation(); handleEditBoard(b) }}
+                          title="Editar tablero (nombre y color)"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles['board-picker-action']} ${styles['board-picker-action--danger']}`}
+                          onClick={(e) => { e.stopPropagation(); handleDeleteBoard(b.id) }}
+                          title="Eliminar tablero"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     )}
-                    <span className={styles['board-picker-meta']}>
-                      {(b.members?.length || 0)} miembro{(b.members?.length || 0) === 1 ? '' : 's'}
-                    </span>
-                  </button>
+                    <button
+                      type="button"
+                      className={styles['board-picker-card']}
+                      style={{ ['--board-color' as any]: b.color || 'var(--primary)' }}
+                      onClick={() => setSelectedBoard(b)}
+                    >
+                      <div className={styles['board-picker-card-head']}>
+                        <h3>{b.name}</h3>
+                        <span className={styles['board-picker-total']}>
+                          {total} {total === 1 ? 'tarea' : 'tareas'}
+                        </span>
+                      </div>
+                      {b.description && <p>{b.description}</p>}
+                      {phases.length > 0 && (
+                        <>
+                          <div className={styles['board-picker-bar']}>
+                            {total > 0 ? (
+                              phaseData
+                                .filter((p) => p.count > 0)
+                                .map((p) => (
+                                  <span
+                                    key={p.id}
+                                    className={styles['board-picker-bar-seg']}
+                                    style={{ flexGrow: p.count, background: p.color }}
+                                  />
+                                ))
+                            ) : (
+                              <span className={styles['board-picker-bar-empty']} />
+                            )}
+                          </div>
+                          <div className={styles['board-picker-phases']}>
+                            {phaseData.map((p) => (
+                              <span key={p.id} className={styles['board-picker-phase']}>
+                                <span className={styles['board-picker-phase-dot']} style={{ background: p.color }} />
+                                {p.name}
+                                <strong>{p.count}</strong>
+                              </span>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      <span className={styles['board-picker-meta']}>
+                        {(b.members?.length || 0)} miembro{(b.members?.length || 0) === 1 ? '' : 's'}
+                      </span>
+                    </button>
                   </div>
                 )
               })}

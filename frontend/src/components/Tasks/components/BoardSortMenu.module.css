@@ -14,9 +14,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  width: 36px;
+  gap: 4px;
+  min-width: 36px;
   height: 36px;
+  padding: 0 8px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #ffffff;
@@ -25,6 +26,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 
 /* Con el nombre del criterio al lado (la cuadrícula de tableros) deja de ser
@@ -32,18 +34,6 @@
 .withLabel {
   width: auto;
   padding: 0 12px;
-}
-
-/* Pegado al selector de tableros: sin hueco entre ambos y con las esquinas
-   izquierdas rectas, para que se lea como una pieza de ESE control y no como
-   otro botón más de la fila de tareas. */
-.attached {
-  width: auto;
-  padding: 0 9px;
-  gap: 3px;
-  margin-left: -8px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
 }
 
 .toggle:hover {

@@ -1,18 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Save, Send, Plus, Trash2, GripVertical, Settings, Star, X, Search, Check, Building2, UserCog } from 'lucide-react';
-import {
-  buildCompanyIndex,
-  companyNameOf,
-  companyOptions,
-  matchesCompany,
-} from '../../../../lib/recipientCompany';
-import { AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Save, Send, Plus, Trash2, GripVertical, Settings, Star, X } from 'lucide-react';
 import styles from './SurveyBuilder.module.css';
 import commonStyles from '../Tools.module.css';
 import { Select } from '../../../ui/Select';
 import { SurveyQuestion } from '../../../../services/surveyService';
-import { userService } from '../../../../services/user.service';
+import RecipientSelector, { RecipientValue } from '../../../../pages/Email/RecipientSelector';
 
 interface SurveyBuilderProps {
   onBack: () => void;
@@ -36,17 +28,9 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
   const [showSettings, setShowSettings] = useState(false);
   const [sendByEmail, setSendByEmail] = useState(initialData?.send_by_email ?? true);
   const [sendByInApp, setSendByInApp] = useState(initialData?.send_by_inapp ?? true);
-  
-  const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
-  const [userSearch, setUserSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [companyFilter, setCompanyFilter] = useState('all');
-  const [isSending, setIsSending] = useState(false);
 
-  const { data: availableUsers = [] } = useQuery({
-    queryKey: ['survey-recipients'],
-    queryFn: async () => (await userService.getAll({ limit: 1000 })).data || [],
-  });
+  const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]);
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     if (initialData?.recipient_list) {
@@ -59,82 +43,11 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
     }
   }, [initialData]);
 
-  const companyIndex = useMemo(() => buildCompanyIndex(availableUsers), [availableUsers]);
-
-  const filteredUsers = useMemo(() => availableUsers.filter(u => {
-    const q = userSearch.toLowerCase();
-    // La búsqueda mira también la empresa: escribir el nombre del cliente era
-    // lo primero que intentaba quien quería acotar el envío, y hasta ahora
-    // devolvía cero resultados sin explicar por qué.
-    const matchesSearch =
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
-      companyNameOf(u, companyIndex).toLowerCase().includes(q);
-    if (!matchesSearch) return false;
-
-    if (!matchesCompany(u, companyIndex, companyFilter)) return false;
-
-    if (roleFilter !== 'all') {
-      if (roleFilter === 'superadmin') return u.is_superadmin || u.user_type === 'superadmin';
-      if (roleFilter === 'manager') return u.is_manager;
-      return u.user_type === roleFilter;
-    }
-
-    return true;
-  }), [availableUsers, companyIndex, userSearch, companyFilter, roleFilter]);
-
-  const toggleRecipient = (userId: number) => {
-    if (selectedRecipients.includes(userId)) {
-      setSelectedRecipients(selectedRecipients.filter(id => id !== userId));
-    } else {
-      setSelectedRecipients([...selectedRecipients, userId]);
-    }
-  };
-
-  // Solo lo que se está viendo, y SUMANDO a lo ya elegido.
-  //
-  // Antes marcaba availableUsers —la plataforma entera— con lo que un envío
-  // acotado a una empresa terminaba saliendo para todo el mundo: el botón está
-  // justo encima de los filtros, así que "Todos" se lee como "todos estos".
-  // Suma en vez de reemplazar para poder componer varios filtros seguidos sin
-  // perder lo marcado en el anterior.
-  const selectAllFiltered = () => {
-    setSelectedRecipients(prev =>
-      Array.from(new Set([...prev, ...filteredUsers.map(u => u.id)])));
-  };
-
-  const selectNone = () => {
-    setSelectedRecipients([]);
-  };
-
-  // Quién está elegido, agrupado por empresa.
-  //
-  // Es la respuesta a "¿a quién le va a llegar esto?", y hasta ahora no estaba
-  // en ninguna parte: al cambiar el filtro, lo marcado antes desaparecía de la
-  // lista pero seguía en el envío. Se acotaba a un cliente, se marcaba, se
-  // cambiaba de cliente, y salía para los dos sin que nada lo dijera.
-  const selectionByCompany = useMemo(() => {
-    const chosen = new Set(selectedRecipients);
-    const counts = new Map<string, number>();
-    for (const u of availableUsers) {
-      if (!chosen.has(u.id)) continue;
-      const name = companyNameOf(u, companyIndex) || 'Sin empresa';
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
-    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
-  }, [selectedRecipients, availableUsers, companyIndex]);
-
-  // Elegidos que el filtro actual NO está mostrando. Son los que se cuelan en
-  // un envío sin que nadie los vea.
-  const hiddenSelected = useMemo(() => {
-    const visible = new Set(filteredUsers.map(u => u.id));
-    return selectedRecipients.filter(id => !visible.has(id));
-  }, [selectedRecipients, filteredUsers]);
-
-  const dropHiddenSelected = () => {
-    const visible = new Set(filteredUsers.map(u => u.id));
-    setSelectedRecipients(prev => prev.filter(id => visible.has(id)));
-  };
+  const recipientValue: RecipientValue = useMemo(() => ({
+    userIds: selectedRecipients,
+    groupIds: [],
+    expressContacts: [],
+  }), [selectedRecipients]);
 
 
   const addQuestion = (type: 'text' | 'rating' | 'choice' | 'checkbox' | 'dropdown' | 'linear_scale' | 'grid' | 'checkbox_grid') => {
@@ -221,14 +134,14 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
     if (isSending) return;
     setIsSending(true);
     try {
-      await onSave({ 
-        id: initialData?.id, 
-        title, 
-        description, 
-        questions, 
-        send_by_email: sendByEmail, 
-        send_by_inapp: sendByInApp, 
-        recipientIds: selectedRecipients 
+      await onSave({
+        id: initialData?.id,
+        title,
+        description,
+        questions,
+        send_by_email: sendByEmail,
+        send_by_inapp: sendByInApp,
+        recipientIds: selectedRecipients
       });
     } finally {
       setIsSending(false);
@@ -292,7 +205,7 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
             disabled={isSending}
             value=""
             placeholder="Acciones..."
-            onChange={(val) => {
+            onChange={(val: string | number) => {
               if (val === 'settings') setShowSettings(true);
               if (val === 'save') handleSave();
               if (val === 'send') handleSend();
@@ -316,7 +229,7 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                   <X size={20} />
                 </button>
               </div>
-              
+
               <div className={styles.modalBody}>
                 <section className={styles.settingsSection}>
                   <h4>Métodos de Envío</h4>
@@ -335,110 +248,13 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                 </section>
 
                 <section className={styles.settingsSection}>
-                  <div className={styles.sectionHeaderFlex}>
-                    <h4>Destinatarios ({selectedRecipients.length})</h4>
-                    <div className={styles.selectionActions}>
-                      <button onClick={selectAllFiltered} disabled={filteredUsers.length === 0}>
-                        Marcar los {filteredUsers.length} visibles
-                      </button>
-                      <button onClick={selectNone}>Ninguno</button>
-                    </div>
-                  </div>
-
-                  {/* A quién le va a llegar, por empresa. Sin esto, lo elegido
-                      bajo un filtro anterior viaja invisible en el envío. */}
-                  {selectionByCompany.length > 0 && (
-                    <div className={styles.selectionSummary}>
-                      {selectionByCompany.map(([name, count]) => (
-                        <span key={name} className={styles.selectionChip}>
-                          {name} <strong>{count}</strong>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {hiddenSelected.length > 0 && (
-                    <div className={styles.selectionWarning}>
-                      <AlertTriangle size={15} />
-                      <span>
-                        {hiddenSelected.length} destinatario{hiddenSelected.length === 1 ? '' : 's'} que
-                        {hiddenSelected.length === 1 ? ' sigue' : ' siguen'} en la selección no
-                        {hiddenSelected.length === 1 ? ' aparece' : ' aparecen'} con el filtro actual.
-                        {hiddenSelected.length === 1 ? ' Se le' : ' Se les'} enviará igual.
-                      </span>
-                      <button type="button" onClick={dropHiddenSelected}>
-                        Quitarlos
-                      </button>
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-                    <div className={styles.searchContainer} style={{ marginBottom: 0 }}>
-                      <Search size={16} />
-                      <input 
-                        type="text" 
-                        placeholder="Buscar usuarios..." 
-                        value={userSearch}
-                        onChange={e => setUserSearch(e.target.value)}
-                      />
-                    </div>
-                    {/* searchable: la lista de empresas crece con la cartera y
-                        buscar por nombre es más rápido que recorrerla. */}
-                    <Select
-                      fullWidth
-                      searchable
-                      value={companyFilter}
-                      onChange={v => { setCompanyFilter(String(v)); }}
-                      ariaLabel="Filtrar por empresa"
-                      leftIcon={<Building2 size={14} />}
-                      options={[
-                        { value: 'all', label: 'Todas las empresas' },
-                        ...companyOptions(availableUsers, companyIndex, companyFilter),
-                      ]}
-                    />
-                    <Select
-                      fullWidth
-                      value={roleFilter}
-                      onChange={v => setRoleFilter(String(v))}
-                      ariaLabel="Filtrar por tipo de usuario"
-                      leftIcon={<UserCog size={14} />}
-                      options={[
-                        { value: 'all', label: 'Todos los tipos de usuario' },
-                        { value: 'profesional', label: 'Profesionales' },
-                        { value: 'empleador', label: 'Empresas (Empleadores)' },
-                        { value: 'customer_success', label: 'Customer Success' },
-                        { value: 'manager', label: 'Managers' },
-                        { value: 'superadmin', label: 'Administradores' },
-                      ]}
-                    />
-                  </div>
-
-                  <div className={styles.userList}>
-                    {filteredUsers.map(user => (
-                      <div 
-                        key={user.id} 
-                        className={`${styles.userItem} ${selectedRecipients.includes(user.id) ? styles.selected : ''}`}
-                        onClick={() => toggleRecipient(user.id)}
-                      >
-                        <div className={styles.userAvatar}>
-                          {user.name.charAt(0)}
-                        </div>
-                        <div className={styles.userInfo}>
-                          <span className={styles.userName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {user.name}
-                            {user.is_superadmin && <span style={{ fontSize: 9, background: '#fee2e2', color: '#ef4444', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Admin</span>}
-                            {user.user_type === 'empleador' && <span style={{ fontSize: 9, background: '#dbeafe', color: '#2563eb', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Empresa</span>}
-                            {user.user_type === 'profesional' && <span style={{ fontSize: 9, background: '#f0fdf4', color: '#16a34a', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>Profesional</span>}
-                            {user.user_type === 'customer_success' && <span style={{ fontSize: 9, background: '#f5f3ff', color: '#7c3aed', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>CS</span>}
-                          </span>
-                          <span className={styles.userEmail}>{user.email}</span>
-                        </div>
-                        <div className={styles.checkboxMock}>
-                          {selectedRecipients.includes(user.id) && <Check size={14} />}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <label style={{ fontSize: '14px', fontWeight: 600, color: '#1e293b', marginBottom: '8px', display: 'block' }}>
+                    Destinatarios
+                  </label>
+                  <RecipientSelector
+                    value={recipientValue}
+                    onChange={v => setSelectedRecipients(v.userIds)}
+                  />
                 </section>
               </div>
 
@@ -462,8 +278,8 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
 
             <div className={styles.questionsList}>
               {questions.map((q, index) => (
-                <div 
-                  key={index} 
+                <div
+                  key={index}
                   className={`${styles.questionCard} ${draggedItemIndex === index ? styles.dragging : ''}`}
                   draggable
                   onDragStart={(e) => handleDragStart(e, index)}
@@ -500,7 +316,7 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                     )}
                     {(q.type === 'choice' || q.type === 'checkbox' || q.type === 'dropdown') && (
                       <div className={styles.choiceEditor}>
-                        {q.type === 'dropdown' && <div className={styles.mockInput} style={{marginBottom: 8}}>↓ El usuario verá un menú desplegable</div>}
+                        {q.type === 'dropdown' && <div className={styles.mockInput} style={{ marginBottom: 8 }}>↓ El usuario verá un menú desplegable</div>}
                         {(JSON.parse(q.options || '[]') as string[]).map((opt, oIndex) => (
                           <div key={oIndex} className={styles.choiceOptionEdit}>
                             <div className={q.type === 'checkbox' ? styles.choiceCheckMock : styles.choiceRadioMock}></div>
@@ -523,7 +339,7 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                     )}
                     {q.type === 'linear_scale' && (() => {
                       let cfg: any = {};
-                      try { cfg = JSON.parse(q.options || '{}'); } catch {}
+                      try { cfg = JSON.parse(q.options || '{}'); } catch { }
                       return (
                         <div className={styles.linearScaleEditor}>
                           <div className={styles.scaleRangeRow}>
@@ -533,7 +349,7 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                                 onChange={e => { cfg.min = parseInt(e.target.value); updateQuestion(index, 'options', JSON.stringify(cfg)); }} />
                             </div>
                             <div className={styles.scaleMockTrack}>
-                              {Array.from({length: (cfg.max ?? 5) - (cfg.min ?? 1) + 1}, (_, i) => (cfg.min ?? 1) + i).map(n => (
+                              {Array.from({ length: (cfg.max ?? 5) - (cfg.min ?? 1) + 1 }, (_, i) => (cfg.min ?? 1) + i).map(n => (
                                 <span key={n} className={styles.scaleDot}>{n}</span>
                               ))}
                             </div>
@@ -554,7 +370,7 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                     })()}
                     {(q.type === 'grid' || q.type === 'checkbox_grid') && (() => {
                       let cfg: any = { rows: ['Fila 1'], columns: ['Columna 1'] };
-                      try { cfg = JSON.parse(q.options || '{}'); } catch {}
+                      try { cfg = JSON.parse(q.options || '{}'); } catch { }
                       const updateGridField = (field: 'rows' | 'columns', vals: string[]) => {
                         updateQuestion(index, 'options', JSON.stringify({ ...cfg, [field]: vals }));
                       };
@@ -567,11 +383,11 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                                 <div key={ri} className={styles.choiceOptionEdit}>
                                   <input type="text" className={styles.choiceInputEdit} value={row}
                                     onChange={e => { const r = [...cfg.rows]; r[ri] = e.target.value; updateGridField('rows', r); }}
-                                    placeholder={`Fila ${ri+1}`} />
-                                  <button className={styles.removeOptionBtn} onClick={() => { const r = cfg.rows.filter((_:any, i:number) => i !== ri); updateGridField('rows', r); }}><X size={14}/></button>
+                                    placeholder={`Fila ${ri + 1}`} />
+                                  <button className={styles.removeOptionBtn} onClick={() => { const r = cfg.rows.filter((_: any, i: number) => i !== ri); updateGridField('rows', r); }}><X size={14} /></button>
                                 </div>
                               ))}
-                              <button className={styles.addOptionBtn} onClick={() => updateGridField('rows', [...cfg.rows, `Fila ${cfg.rows.length+1}`])}><Plus size={14}/> Añadir fila</button>
+                              <button className={styles.addOptionBtn} onClick={() => updateGridField('rows', [...cfg.rows, `Fila ${cfg.rows.length + 1}`])}><Plus size={14} /> Añadir fila</button>
                             </div>
                             <div className={styles.gridEditorSection}>
                               <strong>Columnas</strong>
@@ -579,17 +395,17 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
                                 <div key={ci} className={styles.choiceOptionEdit}>
                                   <input type="text" className={styles.choiceInputEdit} value={col}
                                     onChange={e => { const c = [...cfg.columns]; c[ci] = e.target.value; updateGridField('columns', c); }}
-                                    placeholder={`Col ${ci+1}`} />
-                                  <button className={styles.removeOptionBtn} onClick={() => { const c = cfg.columns.filter((_:any, i:number) => i !== ci); updateGridField('columns', c); }}><X size={14}/></button>
+                                    placeholder={`Col ${ci + 1}`} />
+                                  <button className={styles.removeOptionBtn} onClick={() => { const c = cfg.columns.filter((_: any, i: number) => i !== ci); updateGridField('columns', c); }}><X size={14} /></button>
                                 </div>
                               ))}
-                              <button className={styles.addOptionBtn} onClick={() => updateGridField('columns', [...cfg.columns, `Columna ${cfg.columns.length+1}`])}><Plus size={14}/> Añadir columna</button>
+                              <button className={styles.addOptionBtn} onClick={() => updateGridField('columns', [...cfg.columns, `Columna ${cfg.columns.length + 1}`])}><Plus size={14} /> Añadir columna</button>
                             </div>
                           </div>
                           <div className={styles.gridPreview}>
                             <table className={styles.gridTable}>
-                              <thead><tr><th></th>{(cfg.columns||[]).map((c:string, ci:number) => <th key={ci}>{c}</th>)}</tr></thead>
-                              <tbody>{(cfg.rows||[]).map((r:string, ri:number) => (<tr key={ri}><td>{r}</td>{(cfg.columns||[]).map((_:any, ci:number) => <td key={ci}><input type={q.type === 'checkbox_grid' ? 'checkbox' : 'radio'} disabled /></td>)}</tr>))}</tbody>
+                              <thead><tr><th></th>{(cfg.columns || []).map((c: string, ci: number) => <th key={ci}>{c}</th>)}</tr></thead>
+                              <tbody>{(cfg.rows || []).map((r: string, ri: number) => (<tr key={ri}><td>{r}</td>{(cfg.columns || []).map((_: any, ci: number) => <td key={ci}><input type={q.type === 'checkbox_grid' ? 'checkbox' : 'radio'} disabled /></td>)}</tr>))}</tbody>
                             </table>
                           </div>
                         </div>
@@ -599,10 +415,10 @@ const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ onBack, onSave, onSend, i
 
                   <div className={styles.questionFooter}>
                     <label className={styles.requiredToggle}>
-                      <input 
-                        type="checkbox" 
-                        checked={q.is_required} 
-                        onChange={(e) => updateQuestion(index, 'is_required', e.target.checked)} 
+                      <input
+                        type="checkbox"
+                        checked={q.is_required}
+                        onChange={(e) => updateQuestion(index, 'is_required', e.target.checked)}
                       />
                       Obligatoria
                     </label>
