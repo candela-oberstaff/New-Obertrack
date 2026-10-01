@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminService } from '../services/api'
 import type { User } from '../types'
@@ -161,7 +162,28 @@ function normalizeRecentActivity(items: any[] = []): ActivityItem[] {
 
 export function useAdmin(): UseAdminReturn {
   const qc = useQueryClient()
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabFromUrl = searchParams.get('tab')
+  const [activeTab, setActiveTabState] = useState(tabFromUrl || 'dashboard')
+
+  useEffect(() => {
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTabState(tabFromUrl)
+    }
+  }, [tabFromUrl, activeTab])
+
+  const setActiveTab = useCallback((tab: string) => {
+    setActiveTabState(tab)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (tab === 'dashboard') {
+        next.delete('tab')
+      } else {
+        next.set('tab', tab)
+      }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
 
   const statsQ = useQuery({
     queryKey: ['admin', 'dashboard'],
