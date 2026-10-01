@@ -23,6 +23,10 @@ func registerPublicRoutes(api *gin.RouterGroup, d *deps) {
 		// Refresh / logout read the refresh cookie — no access token required.
 		auth.POST("/refresh", d.auth.Refresh)
 		auth.POST("/logout", d.auth.Logout)
+		// Canje del token del CRM por una sesión acotada a Tareas
+		// (docs/integracion-crm-tareas.md). Responde con una redirección 303
+		// porque lo carga directamente el iframe del CRM.
+		auth.GET("/crm", middleware.AuthRateLimitMiddleware(), d.crmSSO.Exchange)
 	}
 
 	// Webhooks — each authenticated with a provider-specific shared secret /

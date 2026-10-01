@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { isEmbedMode } from '../../../embed/session'
 import { taskService } from '../../../services/api'
 import { gateFromError } from '../../../services/task.service'
 import type { Task, CreateTaskInput, TaskGateRequirement } from '../../../types'
@@ -70,6 +71,10 @@ export function useTasks({ boardId, showAllTasks, companyId }: UseTasksOptions =
       return fetched as Task[]
     },
     enabled: !!showAllTasks || !!boardId,
+    // La vista embebida en el CRM no abre el socket de notificaciones que
+    // dispara 'tasks-changed', así que refresca por intervalo (contrato CRM,
+    // §9). React Query lo pausa mientras la pestaña está oculta.
+    refetchInterval: isEmbedMode() ? 30_000 : false,
   })
 
   const fetchTasks = useCallback(async () => { await refetch() }, [refetch])

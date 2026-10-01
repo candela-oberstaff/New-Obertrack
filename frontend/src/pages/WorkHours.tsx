@@ -28,7 +28,13 @@ import { RecoverHoursModal } from '../components/WorkHours/Modals/RecoverHoursMo
 import { WorkHourDetailModal } from '../components/WorkHours/Modals/WorkHourDetailModal'
 import { MissingHoursModal } from '../components/WorkHours/Modals/MissingHoursModal'
 import api from '../services/client'
-import { htmlToText } from '../utils/sanitize'
+import { htmlToText, sanitizeRichHtml } from '../utils/sanitize'
+import { isEmbedMode, notifyEmbedReady } from '../embed/session'
+import { resolveUploadImages } from '../embed/authedFiles'
+
+// Texto de usuario que va dentro del HTML de la ventana de impresión.
+const escapeHtml = (value: unknown) =>
+  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
 import styles from './WorkHours.module.css'
 
@@ -237,7 +243,8 @@ export default function WorkHours() {
     })
   }, [workHours, currentMonth, currentYear])
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
+    // La ventana se abre dentro del clic, para que el navegador no la bloquee.
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
     const monthName = MONTHS_ES[currentMonth]
@@ -355,7 +362,7 @@ export default function WorkHours() {
             <div>
               <div class="logo">OBERTRACK</div>
               <div class="title">Reporte Mensual de Jornadas</div>
-              <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Empresa: ${user?.company_name || user?.name || ''}</div>
+              <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Empresa: ${escapeHtml(user?.company_name || user?.name)}</div>
             </div>
             <div class="meta-info">
               <div>Generado el: ${new Date().toLocaleDateString('es-ES')}</div>
@@ -392,10 +399,10 @@ export default function WorkHours() {
               ${exportRows.map(wh => `
                 <tr>
                   <td style="white-space: nowrap;">${parseLocalDate(wh.work_date).toLocaleDateString('es-ES')}</td>
-                  <td><strong>${wh.user?.name || ''}</strong></td>
-                  <td><span class="badge ${wh.work_type}">${wh.work_type === 'complete' ? 'Completo' : wh.work_type === 'absence' ? 'Ausencia' : 'Recuperación'}</span></td>
-                  <td><strong>${wh.hours_worked}h</strong></td>
-                  <td style="color: #64748b;">${wh.work_type === 'complete' ? wh.activities || '-' : wh.work_type === 'absence' ? `Ausencia: ${wh.absence_hours}h (${wh.absence_reason || ''})` : 'Recuperación de horas'}</td>
+                  <td><strong>${escapeHtml(wh.user?.name)}</strong></td>
+                  <td><span class="badge ${escapeHtml(wh.work_type)}">${wh.work_type === 'complete' ? 'Completo' : wh.work_type === 'absence' ? 'Ausencia' : 'Recuperación'}</span></td>
+                  <td><strong>${escapeHtml(wh.hours_worked)}h</strong></td>
+                  <td style="color: #64748b;">${wh.work_type === 'complete' ? sanitizeRichHtml(wh.activities) || '-' : wh.work_type === 'absence' ? `Ausencia: ${escapeHtml(wh.absence_hours)}h (${escapeHtml(wh.absence_reason)})` : 'Recuperación de horas'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -411,7 +418,9 @@ export default function WorkHours() {
         </body>
       </html>
     `
-    printWindow.document.write(html)
+    // En la vista embebida del CRM las imágenes de /api/uploads no llevarían
+    // sesión en esta ventana: se pasan antes a blob:. Fuera, no cambia nada.
+    printWindow.document.write(await resolveUploadImages(html))
     printWindow.document.close()
   }
 
@@ -633,6 +642,12 @@ export default function WorkHours() {
     </div>
   ) : null
 
+  // Vista embebida en el CRM: con los registros cargados, el CRM deja de
+  // esperar (contrato CRM, §6). Fuera del modo embebido no hace nada.
+  useEffect(() => {
+    if (!isLoading) notifyEmbedReady()
+  }, [isLoading])
+
   if (isLoading) {
     return (
       <div className={styles['work-hours-page']}>
@@ -713,15 +728,19 @@ export default function WorkHours() {
               >
                 <Download size={15} /> Descargar Excel
               </button>
-              <button
-                className={styles['btn-primary']}
-                onClick={handleSendEmail}
-                disabled={isMailing}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', fontSize: '13px', whiteSpace: 'nowrap' }}
-              >
-                {isMailing ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
-                {isMailing ? 'Enviando...' : 'Enviar por Correo'}
-              </button>
+              {/* En la vista embebida del CRM no: el envío por correo queda
+                  fuera de su alcance (contrato CRM, §10). */}
+              {!isEmbedMode() && (
+                <button
+                  className={styles['btn-primary']}
+                  onClick={handleSendEmail}
+                  disabled={isMailing}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 14px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', fontSize: '13px', whiteSpace: 'nowrap' }}
+                >
+                  {isMailing ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
+                  {isMailing ? 'Enviando...' : 'Enviar por Correo'}
+                </button>
+              )}
             </div>
             {showBtnRight && (
               <button className={styles['scroll-btn-right']} onClick={scrollBtnsRight} aria-label="Ver más botones">

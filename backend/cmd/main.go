@@ -61,7 +61,10 @@ func main() {
 	audit.RegisterDataAuditHooks(db)
 
 	log.Println("Initializing routes...")
-	r := gin.Default()
+	// Lo mismo que gin.Default(), pero el log de acceso oculta el query de las
+	// rutas que llevan una credencial en él (el token del CRM en /api/auth/crm).
+	r := gin.New()
+	r.Use(gin.LoggerWithFormatter(middleware.RedactedLogFormatter), gin.Recovery())
 
 	// Trust only known reverse proxies so X-Forwarded-For cannot be spoofed to
 	// bypass rate limiting (audit finding A-05). Configure TRUSTED_PROXIES as a

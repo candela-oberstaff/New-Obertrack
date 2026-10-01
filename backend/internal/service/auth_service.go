@@ -57,6 +57,12 @@ type AuthService interface {
 	// IssueTokens genera un par access/refresh para un usuario ya autenticado
 	// (usado al cambiar de empresa activa: re-emite el JWT con el nuevo tenant).
 	IssueTokens(user *models.User) (string, string, error)
+	// IssueScopedAccess emite solo un access token acotado a un alcance, con el
+	// tenant forzado. Lo usa el canje del CRM (acceso embebido a Tareas).
+	IssueScopedAccess(user *models.User, tenantID uint, scope string, ttl time.Duration) (string, error)
+	// AssertCanSignIn aplica las verificaciones de acceso del login (cuenta
+	// activa, inducción, empresa no suspendida) a un usuario ya identificado.
+	AssertCanSignIn(user *models.User) error
 	GetPublicCompanies() ([]map[string]interface{}, error)
 	ForgotPassword(email string) error
 	// SendPasswordSetupEmail invita a CREAR la contraseña por primera vez (alta
@@ -172,8 +178,15 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 	return user, access, refresh, nil
 }
 
+// NormalizeEmail deja el correo como se guarda: sin espacios alrededor y en
+// minúsculas. Quien lo escribe en el login no distingue mayúsculas (el móvil
+// pone la primera en mayúscula sola) y un espacio al copiar es invisible.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 func (s *authService) Login(email, password string) (*models.User, string, string, error) {
-	user, err := s.userRepo.GetByEmail(email)
+	user, err := s.userRepo.GetByEmail(NormalizeEmail(email))
 	if err != nil {
 		return nil, "", "", errors.New("Invalid credentials")
 	}
@@ -182,24 +195,8 @@ func (s *authService) Login(email, password string) (*models.User, string, strin
 		return nil, "", "", errors.New("Invalid credentials")
 	}
 
-	if !user.IsActive {
-		return nil, "", "", errors.New("Tu cuenta ha sido suspendida. Contacta al administrador.")
-	}
-
-	// Portero de inducción: el profesional recién contratado no entra hasta
-	// aprobar. Las cuentas existentes están en 'not_required' y no se ven
-	// afectadas (ver models/induction.go).
-	switch user.OnboardingStatus {
-	case models.OnboardingPending:
-		return nil, "", "", errors.New("Aún no completas tu inducción. Revisa el enlace que enviamos a tu correo.")
-	case models.OnboardingBlocked:
-		return nil, "", "", errors.New("Tu acceso está en revisión. Nuestro equipo de soporte se pondrá en contacto contigo.")
-	}
-
-	if user.UserType == models.UserTypeProfessional && user.EmpleadorID != nil {
-		if employer, err := s.userRepo.GetByID(*user.EmpleadorID); err == nil && !employer.IsActive {
-			return nil, "", "", errors.New("El acceso de tu empresa ha sido suspendido. Contacta al administrador.")
-		}
+	if err := s.AssertCanSignIn(user); err != nil {
+		return nil, "", "", err
 	}
 
 	access, refresh, err := s.generateTokenPair(user)
@@ -208,6 +205,33 @@ func (s *authService) Login(email, password string) (*models.User, string, strin
 	}
 
 	return user, access, refresh, nil
+}
+
+// AssertCanSignIn son las verificaciones de acceso del login, aparte de la
+// contraseña. Las comparte el canje del CRM para que entrar desde allí no
+// salte ninguna: cuenta suspendida, inducción pendiente o empresa suspendida
+// cierran el paso igual por las dos puertas.
+func (s *authService) AssertCanSignIn(user *models.User) error {
+	if !user.IsActive {
+		return errors.New("Tu cuenta ha sido suspendida. Contacta al administrador.")
+	}
+
+	// Portero de inducción: el profesional recién contratado no entra hasta
+	// aprobar. Las cuentas existentes están en 'not_required' y no se ven
+	// afectadas (ver models/induction.go).
+	switch user.OnboardingStatus {
+	case models.OnboardingPending:
+		return errors.New("Aún no completas tu inducción. Revisa el enlace que enviamos a tu correo.")
+	case models.OnboardingBlocked:
+		return errors.New("Tu acceso está en revisión. Nuestro equipo de soporte se pondrá en contacto contigo.")
+	}
+
+	if user.UserType == models.UserTypeProfessional && user.EmpleadorID != nil {
+		if employer, err := s.userRepo.GetByID(*user.EmpleadorID); err == nil && !employer.IsActive {
+			return errors.New("El acceso de tu empresa ha sido suspendido. Contacta al administrador.")
+		}
+	}
+	return nil
 }
 
 // Refresh validates a refresh token and, if the session is still valid, issues a
@@ -220,7 +244,10 @@ func (s *authService) Refresh(refreshToken string) (*models.User, string, string
 		}
 		return []byte(s.jwtSecret), nil
 	}, jwt.WithValidMethods([]string{"HS256"}))
-	if err != nil || !token.Valid || claims.TokenType != "refresh" {
+	// Una sesión con alcance (acceso embebido desde el CRM) nunca se renueva:
+	// no se emite refresh para ella, y si alguno llegara aquí, re-emitirlo
+	// con generateTokenPair la convertiría en una sesión completa.
+	if err != nil || !token.Valid || claims.TokenType != "refresh" || claims.Scope != "" {
 		return nil, "", "", errors.New("invalid refresh token")
 	}
 
@@ -322,7 +349,7 @@ func FrontendBaseURL() string {
 }
 
 func (s *authService) ForgotPassword(email string) error {
-	user, err := s.userRepo.GetByEmail(email)
+	user, err := s.userRepo.GetByEmail(NormalizeEmail(email))
 	if err != nil {
 		// Don't reveal whether the email exists
 		log.Printf("[Auth] ForgotPassword requested for unknown email: %s", email)

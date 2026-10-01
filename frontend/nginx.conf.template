@@ -4,6 +4,17 @@
 # TLS: terminate HTTPS here in production. A ready-to-use 443 server block is
 # provided below (commented) — mount your certs and uncomment it, then keep the
 # port-80 block only to redirect to HTTPS.
+#
+# This file is a TEMPLATE: at startup the nginx image runs envsubst on it
+# (NGINX_ENVSUBST_FILTER=^CRM_, so nginx's own $variables are left alone).
+# CRM_FRAME_ANCESTORS and CRM_EMBED_ORIGIN are derived from CRM_ORIGIN by
+# docker-entrypoint.d/18-crm-origin.envsh. See docs/features/crm-tareas-embebido.md.
+
+# Access log without the query string, for the CRM token exchange: the one-time
+# token travels in ?token= and must not end up in the log (CRM contract, §4).
+log_format crm_masked '$remote_addr - $remote_user [$time_local] '
+                      '"$request_method $uri $server_protocol" $status $body_bytes_sent '
+                      '"$http_user_agent"';
 
 server {
     listen 8080;                           # unprivileged Nginx (non-root, audit A-02)
@@ -36,6 +47,55 @@ server {
         root /usr/share/nginx/html;
         index index.html index.htm;
         try_files $uri $uri/ /index.html;
+    }
+
+    # ── Embedded Tasks for the CRM (CRM contract, §4-§6) ─────────────────────
+    # Only these two locations can be framed, and only by CRM_ORIGIN. A
+    # location with its own add_header does NOT inherit the server-level ones,
+    # so every security header is repeated here on purpose, minus
+    # X-Frame-Options (it cannot allow a single origin; frame-ancestors does).
+
+    # Token exchange: the CRM iframe loads it directly and gets a 303.
+    location = /api/auth/crm {
+        access_log /var/log/nginx/access.log crm_masked;
+        proxy_pass http://backend:8080/api/auth/crm;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # The backend already sends these; hide them so each appears once.
+        proxy_hide_header Referrer-Policy;
+        proxy_hide_header Cache-Control;
+
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Cache-Control "no-store" always;
+        add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+        add_header Content-Security-Policy "default-src 'none'; frame-ancestors ${CRM_FRAME_ANCESTORS}" always;
+    }
+
+    # Runtime config for the embedded SPA: the origin it may postMessage to.
+    # Generated from CRM_ORIGIN, so there is a single variable, set at runtime.
+    location = /embed/config.js {
+        default_type application/javascript;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Cache-Control "no-store" always;
+        return 200 'window.__OBERTRACK_EMBED__ = {"crmOrigin": "${CRM_EMBED_ORIGIN}"};';
+    }
+
+    # The embedded SPA routes (/embed/tareas, /embed/error).
+    location /embed/ {
+        root /usr/share/nginx/html;
+        # rewrite ... break serves index.html WITHOUT leaving this location.
+        # try_files' fallback would be an internal redirect to /index.html,
+        # handled by "location /" with its X-Frame-Options DENY.
+        rewrite ^ /index.html break;
+
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Cache-Control "no-store" always;
+        add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self' https://cdn.tailwindcss.com 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self' blob: https://drive.google.com https://docs.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; frame-ancestors ${CRM_FRAME_ANCESTORS}; base-uri 'self'; form-action 'self'" always;
     }
 
     location /api/ {

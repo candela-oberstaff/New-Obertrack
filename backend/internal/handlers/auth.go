@@ -86,8 +86,11 @@ type RegisterRequest struct {
 	JobTitle    string `json:"job_title"`
 }
 
+// El correo no lleva la regla "email" de binding: un espacio al copiarlo la
+// hacía fallar con un 400 antes de normalizarlo. El servicio lo normaliza, y
+// uno mal formado simplemente no existe (401, como cualquier credencial mala).
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
+	Email    string `json:"email" binding:"required"`
 	Password string `json:"password" binding:"required"`
 }
 
@@ -359,7 +362,7 @@ func (h *AuthHandler) GetCompanies(c *gin.Context) {
 }
 
 type ForgotPasswordRequest struct {
-	Email string `json:"email" binding:"required,email"`
+	Email string `json:"email" binding:"required"` // ver LoginRequest
 }
 
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {

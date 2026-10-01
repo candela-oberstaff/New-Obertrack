@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, Plus, LogOut, FileText, RotateCcw, Users, Eye, MailCheck, GraduationCap } from 'lucide-react'
+import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, Plus, LogOut, FileText, RotateCcw, Users, Eye, MailCheck, GraduationCap, Copy, Check } from 'lucide-react'
 import { userService, adminService, authService } from '../services/api'
 import { rbacService } from '../services/rbac.service'
 import { inductionService } from '../services/induction.service'
@@ -359,14 +359,41 @@ export default function AdminUserDetail() {
     }
   }
 
+  // La temporal va aparte del aviso general, en un recuadro con su botón de
+  // copiar: copiada a mano de una frase se colaban espacios o el guion, y el
+  // login la rechazaba.
+  const [resetTemp, setResetTemp] = useState<string | null>(null)
+  const [resetCopied, setResetCopied] = useState(false)
+
   const resetPass = async () => {
     if (!user) return
-    setBusy(true); setActionMsg(null)
+    // Un clic de más no debe dejar a nadie fuera: el reset también cierra
+    // todas sus sesiones abiertas.
+    const ok = await confirm({
+      title: 'Resetear contraseña',
+      message: `Se generará una contraseña temporal para ${user.name} y se cerrarán todas sus sesiones abiertas.`,
+      confirmLabel: 'Resetear',
+      variant: 'danger',
+    })
+    if (!ok) return
+    setBusy(true); setActionMsg(null); setActionErr(false); setResetTemp(null); setResetCopied(false)
     try {
       const temp = generateTempPassword()
       await adminService.resetPassword(user.id, temp)
-      setActionMsg(`Contraseña reseteada. Temporal: ${temp} — compártela por un canal seguro, no volverá a mostrarse.`)
-    } catch { setActionMsg('No se pudo resetear la contraseña.') } finally { setBusy(false) }
+      setResetTemp(temp)
+    } catch (err: any) {
+      setActionErr(true)
+      setActionMsg(err?.response?.data?.error ?? 'No se pudo resetear la contraseña.')
+    } finally { setBusy(false) }
+  }
+
+  const copyResetTemp = async () => {
+    if (!resetTemp) return
+    try {
+      await navigator.clipboard.writeText(resetTemp)
+      setResetCopied(true)
+      setTimeout(() => setResetCopied(false), 2000)
+    } catch { /* sin portapapeles: queda el texto seleccionable */ }
   }
 
   // Reenvía el acceso a esta persona. No reenvía la clave del import (se guarda
@@ -814,6 +841,39 @@ export default function AdminUserDetail() {
           </button>
         )}
       </div>
+      )}
+      {resetTemp && (
+        <Modal
+          isOpen
+          isDirty
+          onClose={() => setResetTemp(null)}
+          title="Contraseña restablecida"
+          size="md"
+          footer={<Button onClick={() => setResetTemp(null)}>Listo</Button>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <div style={{ padding: '0.7rem 0.9rem', borderRadius: 10, background: 'rgba(16,185,129,0.1)', color: '#059669', fontSize: '0.88rem', fontWeight: 600 }}>
+              Contraseña temporal generada para {user.name}. Se cerraron todas sus sesiones abiertas.
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Contraseña temporal</label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <code style={{ flex: 1, padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.95rem', fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all' }}>{resetTemp}</code>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={copyResetTemp}
+                  leftIcon={resetCopied ? <Check size={15} /> : <Copy size={15} />}
+                >
+                  {resetCopied ? 'Copiada' : 'Copiar'}
+                </Button>
+              </div>
+            </div>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#b45309', fontWeight: 600 }}>
+              Compártela por un canal seguro; no se vuelve a mostrar.
+            </p>
+          </div>
+        </Modal>
       )}
       {actionMsg && (
         <div style={{ margin: '0 0 1rem', padding: '0.6rem 0.9rem', borderRadius: '8px', background: actionErr ? 'rgba(220,38,38,0.1)' : 'rgba(16,185,129,0.1)', color: actionErr ? '#dc2626' : '#059669', fontSize: '0.85rem', fontWeight: 600 }}>{actionMsg}</div>

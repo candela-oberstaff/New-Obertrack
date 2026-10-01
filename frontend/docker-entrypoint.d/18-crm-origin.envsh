@@ -1,0 +1,30 @@
+#!/bin/sh
+# Derives the two values the nginx template needs from CRM_ORIGIN, the only
+# variable to configure (CRM contract, §1 and §5):
+#
+#   CRM_FRAME_ANCESTORS  frame-ancestors of /api/auth/crm and /embed/
+#   CRM_EMBED_ORIGIN     targetOrigin of the SPA's postMessage (/embed/config.js)
+#
+# Sourced by the image's entrypoint (*.envsh) BEFORE 20-envsubst-on-templates.sh,
+# so the exports reach it. Fail-closed: an empty or malformed CRM_ORIGIN leaves
+# the embedded view unframeable ('none') and without a postMessage target,
+# instead of rendering a broken or overly broad policy.
+
+crm_origin="${CRM_ORIGIN:-}"
+
+# A bare origin: scheme + host (+ port), no path, no trailing slash. https
+# everywhere; plain http only for localhost (local tests with crm-dev keys).
+if printf '%s' "$crm_origin" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?$' ||
+   printf '%s' "$crm_origin" | grep -Eq '^http://(localhost|127\.0\.0\.1)(:[0-9]+)?$'; then
+    export CRM_FRAME_ANCESTORS="$crm_origin"
+    export CRM_EMBED_ORIGIN="$crm_origin"
+    echo "18-crm-origin: embedded Tasks can be framed by $crm_origin"
+else
+    if [ -n "$crm_origin" ]; then
+        echo "18-crm-origin: WARNING: CRM_ORIGIN='$crm_origin' is not a bare origin (https://host[:port]); embedded Tasks disabled" >&2
+    else
+        echo "18-crm-origin: CRM_ORIGIN not set; embedded Tasks disabled"
+    fi
+    export CRM_FRAME_ANCESTORS="'none'"
+    export CRM_EMBED_ORIGIN=""
+fi

@@ -20,8 +20,17 @@ FROM nginxinc/nginx-unprivileged:1.27-alpine
 # Copy built files from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Nginx configuration as a TEMPLATE: the image's entrypoint renders it into
+# /etc/nginx/conf.d/default.conf at startup. Only CRM_* variables are
+# substituted, so nginx's own $variables are left alone.
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV NGINX_ENVSUBST_FILTER="^CRM_"
+
+# Embedded Tasks for the CRM: CRM_ORIGIN is set at RUNTIME (Coolify / compose),
+# not at build time. This script validates it and derives what the template
+# needs; without it the embedded view stays closed. See
+# docs/features/crm-tareas-embebido.md.
+COPY --chmod=0755 docker-entrypoint.d/18-crm-origin.envsh /docker-entrypoint.d/18-crm-origin.envsh
 
 EXPOSE 8080
 

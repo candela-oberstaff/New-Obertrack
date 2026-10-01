@@ -2,3 +2,5 @@
 # checked out on Windows (avoids "exec: no such file or directory" from CRLF).
 *.sh text eol=lf
 docker-entrypoint.sh text eol=lf
+# Scripts sourced by the nginx image entrypoint (frontend/docker-entrypoint.d).
+*.envsh text eol=lf

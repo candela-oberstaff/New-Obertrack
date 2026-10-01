@@ -21,6 +21,10 @@ type Claims struct {
 	EmpleadorID  *uint  `json:"empleador_id,omitempty"`
 	TokenVersion int    `json:"tv"`
 	TokenType    string `json:"typ"` // "access" or "refresh"
+	// Scope acota una sesión a un módulo (p. ej. "tasks" para el acceso
+	// embebido desde el CRM). Vacío = sesión completa. Lo hace cumplir
+	// RequireScope; ver scope.go.
+	Scope string `json:"scope,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -106,6 +110,7 @@ func AuthMiddleware(jwtSecret string, tvGetter TokenVersionGetter) gin.HandlerFu
 		c.Set("is_superadmin", claims.IsSuperadmin)
 		c.Set("empleador_id", claims.EmpleadorID)
 		c.Set("tenant_id", claims.TenantID)
+		c.Set("scope", claims.Scope)
 
 		c.Next()
 	}

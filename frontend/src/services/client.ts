@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { expireEmbedSession, getEmbedToken, isEmbedMode } from '../embed/session'
 
 // Auth is carried by httpOnly cookies (audit findings A-03/A-04); the browser
 // attaches them automatically. withCredentials must be true so cookies are sent
@@ -6,6 +7,19 @@ import axios from 'axios'
 const api = axios.create({
   baseURL: '/api',
   withCredentials: true,
+})
+
+// Vista embebida en el CRM (contrato CRM, §4): la sesión viaja SOLO en la
+// cabecera Authorization, con el token que vive en memoria. Nunca cookies: si
+// el CRM compartiera sitio con Obertrack, la cookie de una sesión completa se
+// colaría en una vista que debe ir acotada a Tareas.
+api.interceptors.request.use((config) => {
+  if (isEmbedMode()) {
+    config.withCredentials = false
+    const token = getEmbedToken()
+    if (token) config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
 })
 
 // On a 401, try to silently refresh the session once, then replay the request.
@@ -45,6 +59,13 @@ api.interceptors.response.use(
 
     const isAuthEndpoint =
       url.includes('/auth/refresh') || url.includes('/auth/login') || url.includes('/auth/logout')
+
+    // En la vista embebida no hay refresh ni /login: la sesión acotada no se
+    // renueva, y quien da una nueva es el CRM al recibir session_expired.
+    if (status === 401 && isEmbedMode()) {
+      expireEmbedSession()
+      return Promise.reject(error)
+    }
 
     if (status === 401 && !original?._retry && !isAuthEndpoint) {
       if (isRedirecting) {

@@ -30,12 +30,32 @@ const renderSelector = async (onChange = vi.fn()) => {
   return onChange;
 };
 
-const openCountries = () => fireEvent.click(screen.getByRole('button', { name: /todos los países/i }));
+// El filtro de país es un multiselect propio: un botón ("Todos los países", o
+// "N seleccionado(s)") abre un menú en un portal con buscador, "Seleccionar
+// todos", "Limpiar" y una casilla por país. Marcar no cierra el menú; se cierra
+// con un clic fuera.
+const openCountries = () =>
+  fireEvent.click(screen.getByRole('button', { name: /todos los países|seleccionados?$/i }));
+
+const closeCountries = () => fireEvent.mouseDown(document.body);
+
+// Las opciones del menú abierto, tal como se leen ("Venezuela (3)").
+const countryOptions = () => {
+  const menu = screen.getByPlaceholderText('Buscar...').closest('div')!.parentElement!;
+  return Array.from(menu.querySelectorAll('label')).map(l => l.textContent);
+};
 
 const pickCountry = async (label: string | RegExp) => {
   openCountries();
-  const labelEl = await screen.findByText(label);
-  fireEvent.click(labelEl);
+  fireEvent.click(await screen.findByText(label));
+  closeCountries();
+};
+
+const countryOption = async (label: RegExp) => {
+  openCountries();
+  const text = (await screen.findByText(label)).textContent;
+  closeCountries();
+  return text;
 };
 
 beforeEach(() => {
@@ -59,19 +79,91 @@ describe('RecipientSelector — filtro por rol', () => {
     await waitFor(() => expect(screen.queryByText('Ana Rivas')).not.toBeInTheDocument());
     expect(screen.getByText('Inactivo Juan')).toBeInTheDocument();
   });
+});
 
-  it('combina rol activo y país', async () => {
+describe('RecipientSelector — filtro por país', () => {
+  it('filtra el listado al país elegido', async () => {
+    await renderSelector();
+
+    await pickCountry(/^Venezuela \(/);
+
+    await waitFor(() => expect(screen.queryByText('Caro Díaz')).not.toBeInTheDocument());
+    expect(screen.getByText('Ana Rivas')).toBeInTheDocument();
+    expect(screen.getByText('Beto Salas')).toBeInTheDocument();
+  });
+
+  it('los países se ordenan por cantidad y muestran cuántos hay', async () => {
+    await renderSelector();
+
+    openCountries();
+    await screen.findByPlaceholderText('Buscar...');
+    expect(countryOptions()).toEqual([
+      'Venezuela (4)',
+      'Colombia (1)',
+      'Sin país registrado (1)',
+    ]);
+  });
+
+  it('el conteo de países respeta el rol elegido', async () => {
+    await renderSelector();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Profesionales activos' }));
+
+    // Dani (empleador, Venezuela) e Inactivo Juan salen de la cuenta: quedan Ana y Beto.
+    expect(await countryOption(/^Venezuela \(/)).toBe('Venezuela (2)');
+  });
+
+  it('permite encontrar a quienes no tienen país cargado', async () => {
+    await renderSelector();
+
+    await pickCountry(/^Sin país registrado/);
+
+    await waitFor(() => expect(screen.getByText('Eva Mora')).toBeInTheDocument());
+    expect(screen.queryByText('Ana Rivas')).not.toBeInTheDocument();
+  });
+
+  it('el país elegido se mantiene aunque el rol lo deje en cero', async () => {
+    await renderSelector();
+
+    await pickCountry(/^Colombia \(/);
+    fireEvent.click(screen.getByRole('button', { name: 'Empresas' }));
+
+    expect(await screen.findByText('Sin resultados para el filtro actual')).toBeInTheDocument();
+    expect(screen.getByText('Colombia')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /1 seleccionado$/ })).toBeInTheDocument();
+  });
+
+  it('"Seleccionar todos" toma solo a los del país filtrado', async () => {
+    const onChange = await renderSelector();
+
+    await pickCountry(/^Venezuela \(/);
+    await waitFor(() => expect(screen.queryByText('Caro Díaz')).not.toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Seleccionar todos' })[0]);
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ userIds: [1, 2, 4, 6] }));
+  });
+
+  it('combina rol activo y país: profesionales de Venezuela', async () => {
     const onChange = await renderSelector();
 
     fireEvent.click(screen.getByRole('button', { name: 'Profesionales activos' }));
-    openCountries();
-    const opt = await screen.findByText('Venezuela (2)');
-    fireEvent.click(opt);
-
+    await pickCountry(/^Venezuela \(/);
     await waitFor(() => expect(screen.queryByText('Dani Pérez')).not.toBeInTheDocument());
     fireEvent.click(screen.getAllByRole('button', { name: 'Seleccionar todos' })[0]);
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ userIds: [1, 2] }));
   });
-});
 
+  it('"Limpiar" vuelve a mostrar todos los países', async () => {
+    await renderSelector();
+
+    await pickCountry(/^Venezuela \(/);
+    await waitFor(() => expect(screen.queryByText('Caro Díaz')).not.toBeInTheDocument());
+    openCountries();
+    fireEvent.click(await screen.findByRole('button', { name: 'Limpiar' }));
+    closeCountries();
+
+    await waitFor(() => expect(screen.getByText('Caro Díaz')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /todos los países/i })).toBeInTheDocument();
+  });
+});

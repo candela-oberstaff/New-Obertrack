@@ -3129,6 +3129,18 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.Certificate{}, &models.CertificateTemplate{})
 			},
 		},
+		{
+			// Acceso embebido a Tareas desde el CRM: los jti ya canjeados. La
+			// clave primaria es la restricción única que impide reutilizar un
+			// token (contrato CRM v1.0, §2).
+			ID: "202609291200_crm_login_nonces",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.CrmLoginNonce{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.CrmLoginNonce{})
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

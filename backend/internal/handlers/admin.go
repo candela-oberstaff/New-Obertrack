@@ -1060,7 +1060,11 @@ func (h *AdminHandler) ResetPassword(c *gin.Context) {
 
 	if err := h.service.ResetPassword(uint(id), req.NewPassword); err != nil {
 		status := http.StatusInternalServerError
-		if err.Error() == "User not found" {
+		var weak *service.WeakPasswordError
+		switch {
+		case errors.As(err, &weak):
+			status = http.StatusBadRequest
+		case err.Error() == "User not found":
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
