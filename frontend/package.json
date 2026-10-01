@@ -19,7 +19,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@tanstack/react-query": "^5.90.21",
     "@types/leaflet": "^1.9.21",
-    "axios": "^1.7.9",
+    "axios": "^1.20.0",
     "country-state-city": "^3.2.1",
     "dompurify": "^3.4.7",
     "driver.js": "^1.4.0",
