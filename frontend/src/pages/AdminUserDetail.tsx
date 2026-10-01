@@ -843,16 +843,37 @@ export default function AdminUserDetail() {
       </div>
       )}
       {resetTemp && (
-        <div style={{ margin: '0 0 1rem', padding: '0.75rem 0.9rem', borderRadius: '8px', background: 'rgba(16,185,129,0.1)', color: '#059669', fontSize: '0.85rem', fontWeight: 600 }}>
-          <div style={{ marginBottom: '0.5rem' }}>Contraseña reseteada y sesiones cerradas. Contraseña temporal:</div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <code style={{ padding: '0.45rem 0.7rem', borderRadius: 8, border: '1px solid #a7f3d0', background: '#fff', color: '#0f172a', fontSize: '0.95rem', fontFamily: 'monospace', userSelect: 'all' }}>{resetTemp}</code>
-            <Button type="button" variant="secondary" onClick={copyResetTemp}>
-              {resetCopied ? <Check size={15} /> : <Copy size={15} />} {resetCopied ? 'Copiada' : 'Copiar'}
-            </Button>
+        <Modal
+          isOpen
+          isDirty
+          onClose={() => setResetTemp(null)}
+          title="Contraseña restablecida"
+          size="md"
+          footer={<Button onClick={() => setResetTemp(null)}>Listo</Button>}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <div style={{ padding: '0.7rem 0.9rem', borderRadius: 10, background: 'rgba(16,185,129,0.1)', color: '#059669', fontSize: '0.88rem', fontWeight: 600 }}>
+              Contraseña temporal generada para {user.name}. Se cerraron todas sus sesiones abiertas.
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Contraseña temporal</label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <code style={{ flex: 1, padding: '0.6rem 0.75rem', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.95rem', fontFamily: 'monospace', userSelect: 'all', wordBreak: 'break-all' }}>{resetTemp}</code>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={copyResetTemp}
+                  leftIcon={resetCopied ? <Check size={15} /> : <Copy size={15} />}
+                >
+                  {resetCopied ? 'Copiada' : 'Copiar'}
+                </Button>
+              </div>
+            </div>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#b45309', fontWeight: 600 }}>
+              Compártela por un canal seguro; no se vuelve a mostrar.
+            </p>
           </div>
-          <div style={{ marginTop: '0.5rem', color: '#b45309' }}>Compártela por un canal seguro; no se vuelve a mostrar.</div>
-        </div>
+        </Modal>
       )}
       {actionMsg && (
         <div style={{ margin: '0 0 1rem', padding: '0.6rem 0.9rem', borderRadius: '8px', background: actionErr ? 'rgba(220,38,38,0.1)' : 'rgba(16,185,129,0.1)', color: actionErr ? '#dc2626' : '#059669', fontSize: '0.85rem', fontWeight: 600 }}>{actionMsg}</div>
