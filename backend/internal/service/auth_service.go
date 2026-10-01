@@ -178,8 +178,15 @@ func (s *authService) Register(name, email, password, userTypeStr, companyName s
 	return user, access, refresh, nil
 }
 
+// NormalizeEmail deja el correo como se guarda: sin espacios alrededor y en
+// minúsculas. Quien lo escribe en el login no distingue mayúsculas (el móvil
+// pone la primera en mayúscula sola) y un espacio al copiar es invisible.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 func (s *authService) Login(email, password string) (*models.User, string, string, error) {
-	user, err := s.userRepo.GetByEmail(email)
+	user, err := s.userRepo.GetByEmail(NormalizeEmail(email))
 	if err != nil {
 		return nil, "", "", errors.New("Invalid credentials")
 	}
@@ -342,7 +349,7 @@ func FrontendBaseURL() string {
 }
 
 func (s *authService) ForgotPassword(email string) error {
-	user, err := s.userRepo.GetByEmail(email)
+	user, err := s.userRepo.GetByEmail(NormalizeEmail(email))
 	if err != nil {
 		// Don't reveal whether the email exists
 		log.Printf("[Auth] ForgotPassword requested for unknown email: %s", email)

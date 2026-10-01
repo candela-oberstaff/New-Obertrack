@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, Plus, LogOut, FileText, RotateCcw, Users, Eye, MailCheck, GraduationCap } from 'lucide-react'
+import { ArrowLeft, UserX, Power, KeyRound, Shield, UserCog, Pencil, Building2, Plus, LogOut, FileText, RotateCcw, Users, Eye, MailCheck, GraduationCap, Copy, Check } from 'lucide-react'
 import { userService, adminService, authService } from '../services/api'
 import { rbacService } from '../services/rbac.service'
 import { inductionService } from '../services/induction.service'
@@ -359,14 +359,41 @@ export default function AdminUserDetail() {
     }
   }
 
+  // La temporal va aparte del aviso general, en un recuadro con su botón de
+  // copiar: copiada a mano de una frase se colaban espacios o el guion, y el
+  // login la rechazaba.
+  const [resetTemp, setResetTemp] = useState<string | null>(null)
+  const [resetCopied, setResetCopied] = useState(false)
+
   const resetPass = async () => {
     if (!user) return
-    setBusy(true); setActionMsg(null)
+    // Un clic de más no debe dejar a nadie fuera: el reset también cierra
+    // todas sus sesiones abiertas.
+    const ok = await confirm({
+      title: 'Resetear contraseña',
+      message: `Se generará una contraseña temporal para ${user.name} y se cerrarán todas sus sesiones abiertas.`,
+      confirmLabel: 'Resetear',
+      variant: 'danger',
+    })
+    if (!ok) return
+    setBusy(true); setActionMsg(null); setActionErr(false); setResetTemp(null); setResetCopied(false)
     try {
       const temp = generateTempPassword()
       await adminService.resetPassword(user.id, temp)
-      setActionMsg(`Contraseña reseteada. Temporal: ${temp} — compártela por un canal seguro, no volverá a mostrarse.`)
-    } catch { setActionMsg('No se pudo resetear la contraseña.') } finally { setBusy(false) }
+      setResetTemp(temp)
+    } catch (err: any) {
+      setActionErr(true)
+      setActionMsg(err?.response?.data?.error ?? 'No se pudo resetear la contraseña.')
+    } finally { setBusy(false) }
+  }
+
+  const copyResetTemp = async () => {
+    if (!resetTemp) return
+    try {
+      await navigator.clipboard.writeText(resetTemp)
+      setResetCopied(true)
+      setTimeout(() => setResetCopied(false), 2000)
+    } catch { /* sin portapapeles: queda el texto seleccionable */ }
   }
 
   // Reenvía el acceso a esta persona. No reenvía la clave del import (se guarda
@@ -814,6 +841,18 @@ export default function AdminUserDetail() {
           </button>
         )}
       </div>
+      )}
+      {resetTemp && (
+        <div style={{ margin: '0 0 1rem', padding: '0.75rem 0.9rem', borderRadius: '8px', background: 'rgba(16,185,129,0.1)', color: '#059669', fontSize: '0.85rem', fontWeight: 600 }}>
+          <div style={{ marginBottom: '0.5rem' }}>Contraseña reseteada y sesiones cerradas. Contraseña temporal:</div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <code style={{ padding: '0.45rem 0.7rem', borderRadius: 8, border: '1px solid #a7f3d0', background: '#fff', color: '#0f172a', fontSize: '0.95rem', fontFamily: 'monospace', userSelect: 'all' }}>{resetTemp}</code>
+            <Button type="button" variant="secondary" onClick={copyResetTemp}>
+              {resetCopied ? <Check size={15} /> : <Copy size={15} />} {resetCopied ? 'Copiada' : 'Copiar'}
+            </Button>
+          </div>
+          <div style={{ marginTop: '0.5rem', color: '#b45309' }}>Compártela por un canal seguro; no se vuelve a mostrar.</div>
+        </div>
       )}
       {actionMsg && (
         <div style={{ margin: '0 0 1rem', padding: '0.6rem 0.9rem', borderRadius: '8px', background: actionErr ? 'rgba(220,38,38,0.1)' : 'rgba(16,185,129,0.1)', color: actionErr ? '#dc2626' : '#059669', fontSize: '0.85rem', fontWeight: 600 }}>{actionMsg}</div>

@@ -13,6 +13,7 @@ import (
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/utils"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 type DashboardMetrics struct {
@@ -921,7 +922,19 @@ func (s *adminService) FindUserByEmail(email string) (*models.User, error) {
 	return s.userRepo.GetByEmail(email)
 }
 
+// WeakPasswordError es una contraseña que no cumple ValidatePasswordStrength.
+// El handler la devuelve como 400 con su mensaje.
+type WeakPasswordError struct{ Msg string }
+
+func (e *WeakPasswordError) Error() string { return e.Msg }
+
 func (s *adminService) ResetPassword(id uint, newPassword string) error {
+	// La misma regla que el resto de la app: el panel genera claves que la
+	// cumplen, pero el endpoint no debe aceptar "123" de nadie.
+	if err := ValidatePasswordStrength(newPassword); err != nil {
+		return &WeakPasswordError{Msg: err.Error()}
+	}
+
 	user, err := s.userRepo.GetByID(id)
 	if err != nil {
 		return errors.New("User not found")
@@ -932,7 +945,13 @@ func (s *adminService) ResetPassword(id uint, newPassword string) error {
 		return errors.New("Failed to hash password")
 	}
 
-	return s.userRepo.Update(user, map[string]interface{}{"password": string(hashedPassword)})
+	// Subir token_version cierra todas las sesiones abiertas (A-04), igual
+	// que el reset por enlace: si se resetea porque la cuenta está
+	// comprometida, quien la tenía abierta no puede seguir dentro.
+	return s.userRepo.Update(user, map[string]interface{}{
+		"password":      string(hashedPassword),
+		"token_version": gorm.Expr("token_version + 1"),
+	})
 }
 
 func (s *adminService) GetSeniorityRanking() ([]repository.SeniorityItem, error) {
