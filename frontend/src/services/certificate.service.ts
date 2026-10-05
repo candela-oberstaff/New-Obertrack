@@ -22,6 +22,10 @@ export interface CertificateField {
   image?: string
   /** Solo la firma: ancho en % del ancho de la página (el alto sale de la imagen). */
   width?: number
+  /** Solo el texto libre: ancho del párrafo en % de la página (0 o vacío = una línea). */
+  wrap?: number
+  /** Solo el texto libre: color de las variables ({programa}...), que van en negrita. */
+  highlight?: string
 }
 
 /** Diseño subido por el equipo más la posición de los campos. */

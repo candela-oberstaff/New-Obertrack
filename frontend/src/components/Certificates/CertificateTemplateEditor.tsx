@@ -33,11 +33,58 @@ const FIELD_LABEL: Record<CertificateFieldKey, string> = {
 /** Lo que se pinta en el editor en lugar de cada campo. */
 const SAMPLE: Record<CertificateFieldKey, string> = {
   name: 'María Fernanda Pérez',
-  program: 'Programa de ejemplo',
+  program: 'Prueba de Inducción',
   date: '25 de septiembre de 2026',
   code: 'OBT-EJEM-PLO1',
   text: 'Texto libre',
   signature: '',
+}
+
+/**
+ * Variables del texto libre: el certificado las rellena con los datos de quien
+ * aprueba, así el párrafo lo escribe la app y el diseño puede ir limpio.
+ */
+const TEXT_VARIABLES: { token: string; label: string; sample: string }[] = [
+  { token: '{programa}', label: 'Programa', sample: 'Prueba de Inducción' },
+  { token: '{nombre}', label: 'Nombre', sample: 'María Fernanda Pérez' },
+  { token: '{fecha}', label: 'Fecha', sample: '25 de septiembre de 2026' },
+  { token: '{codigo}', label: 'Código', sample: 'OBT-EJEM-PLO1' },
+]
+const VARIABLE_RE = /(\{(?:programa|nombre|fecha|codigo)\})/g
+
+/** El párrafo que trae un texto libre nuevo: el de los certificados de Oberstaff. */
+const DEFAULT_TEXT_FIELD: CertificateField = {
+  key: 'text',
+  text: 'Por haber completado y aprobado satisfactoriamente la {programa}, demostrando las competencias, conocimientos y alineación requeridos.',
+  x: 50,
+  y: 62,
+  size: 13,
+  color: '#0f172a',
+  align: 'C',
+  bold: false,
+  font: 'Poppins',
+  wrap: 60,
+  highlight: '#fa3ab4',
+}
+
+/** Rango del ancho del párrafo: el mismo que acepta el servidor. */
+const PARAGRAPH_WRAP = { min: 10, max: 95 }
+
+/** Pinta un texto libre con las variables resaltadas, como sale en el PDF. */
+function renderParagraph(f: CertificateField) {
+  const parts = (f.text || 'Texto libre').split(VARIABLE_RE)
+  return parts.map((part, i) => {
+    const variable = TEXT_VARIABLES.find((v) => v.token === part)
+    if (!variable) return <span key={i}>{part}</span>
+    return (
+      <span
+        key={i}
+        style={{ color: f.highlight || f.color, fontWeight: f.font === 'Poppins' ? 600 : 700 }}
+      >
+        {variable.sample}
+      </span>
+    )
+  })
 }
 
 /** Ancho de la firma en % de la página: el mismo rango que acepta el servidor. */
@@ -197,9 +244,27 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
       bold: false,
       font: 'Helvetica' as const,
     }
-    const next: CertificateField = { ...base, key, text: key === 'text' ? 'por haber completado' : undefined }
+    const next: CertificateField = key === 'text'
+      ? existing.length > 0 ? { ...base } : { ...DEFAULT_TEXT_FIELD }
+      : { ...base, key, text: undefined }
     setFields((prev) => [...prev, next])
     setSelected(fields.length)
+  }
+
+  // Inserta una variable donde está el cursor del texto libre (o al final).
+  const textAreaRef = useRef<HTMLTextAreaElement>(null)
+  const insertVariable = (token: string) => {
+    const f = fields[selected]
+    if (!f || f.key !== 'text') return
+    const text = f.text ?? ''
+    const el = textAreaRef.current
+    const start = el?.selectionStart ?? text.length
+    const end = el?.selectionEnd ?? text.length
+    updateField(selected, { text: text.slice(0, start) + token + text.slice(end) })
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(start + token.length, start + token.length)
+    })
   }
 
   const removeField = (index: number) => {
@@ -430,8 +495,10 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                       // En Poppins la "negrita" del PDF es la semibold (600).
                       fontWeight: f.bold ? (f.font === 'Poppins' ? 600 : 700) : 400,
                       color: f.color,
-                      whiteSpace: 'nowrap',
-                      lineHeight: 1.2,
+                      whiteSpace: f.key === 'text' ? (f.wrap ? 'pre-line' : 'pre') : 'nowrap',
+                      ...(f.key === 'text' && f.wrap ? { width: `${f.wrap}%`, textAlign: f.align === 'C' ? 'center' : f.align === 'R' ? 'right' : 'left' } : {}),
+                      // El mismo interlineado que el PDF (1,2 una línea; 1,25 el párrafo).
+                      lineHeight: f.key === 'text' ? 1.25 : 1.2,
                       padding: '2px 4px',
                       borderRadius: 4,
                       cursor: 'grab',
@@ -448,7 +515,7 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                         draggable={false}
                         style={{ display: 'block', width: '100%', height: 'auto', pointerEvents: 'none' }}
                       />
-                    ) : f.key === 'text' ? f.text || 'Texto libre' : SAMPLE[f.key]}
+                    ) : f.key === 'text' ? renderParagraph(f) : SAMPLE[f.key]}
                   </div>
                 )
               })}
@@ -548,14 +615,57 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                   {current.key !== 'signature' && (
                   <>
                   {current.key === 'text' && (
-                    <div className={styles.field}>
-                      <label className={styles.smallLabel}>Texto</label>
-                      <input
-                        type="text"
-                        value={current.text ?? ''}
-                        onChange={(e) => updateField(selected, { text: e.target.value })}
-                      />
-                    </div>
+                    <>
+                      <div className={styles.field}>
+                        <label className={styles.smallLabel}>Texto</label>
+                        <textarea
+                          ref={textAreaRef}
+                          rows={4}
+                          value={current.text ?? ''}
+                          onChange={(e) => updateField(selected, { text: e.target.value })}
+                        />
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                          <span className={styles.smallLabel}>Insertar:</span>
+                          {TEXT_VARIABLES.map((v) => (
+                            <button
+                              key={v.token}
+                              type="button"
+                              className={styles.ghostBtnSm}
+                              onClick={() => insertVariable(v.token)}
+                              title={`Se reemplaza por ${v.label.toLowerCase()} de cada certificado`}
+                            >
+                              <Plus size={12} /> {v.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div className={styles.field}>
+                          <label className={styles.smallLabel}>Ancho del párrafo (%)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={PARAGRAPH_WRAP.max}
+                            step={1}
+                            value={current.wrap ?? 0}
+                            title="0 = todo en una línea"
+                            onChange={(e) => {
+                              const w = Number(e.target.value) || 0
+                              updateField(selected, { wrap: w <= 0 ? 0 : Math.min(PARAGRAPH_WRAP.max, Math.max(PARAGRAPH_WRAP.min, w)) })
+                            }}
+                          />
+                        </div>
+                        <div className={styles.field}>
+                          <label className={styles.smallLabel}>Color de las variables</label>
+                          <input
+                            type="color"
+                            value={current.highlight || current.color}
+                            onChange={(e) => updateField(selected, { highlight: e.target.value })}
+                            style={{ padding: 4, height: 42 }}
+                          />
+                        </div>
+                      </div>
+                    </>
                   )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

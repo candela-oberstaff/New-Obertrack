@@ -46,6 +46,11 @@ type CertificateField struct {
 	// ancho de la página (el alto sale de la proporción de la imagen).
 	Image string  `json:"image,omitempty"`
 	Width float64 `json:"width,omitempty"`
+	// Solo para el texto libre: ancho del párrafo en % de la página (0 = una
+	// sola línea) y color de las variables ({programa}, {nombre}...), que
+	// además van en negrita. Vacío = el mismo color del texto.
+	Wrap      float64 `json:"wrap,omitempty"`
+	Highlight string  `json:"highlight,omitempty"`
 }
 
 // CertificateTemplate es un diseño subido por el equipo (imagen A4) más la

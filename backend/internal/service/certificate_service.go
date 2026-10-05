@@ -219,8 +219,19 @@ func (s *certificateService) validateTemplateInput(in *TemplateInput) (orientati
 		}
 		if f.Key == models.CertificateFieldText {
 			f.Text = strings.TrimSpace(utils.SanitizeHTML(f.Text))
+			switch {
+			case f.Wrap <= 0:
+				f.Wrap = 0
+			case f.Wrap < paragraphMinWrap:
+				f.Wrap = paragraphMinWrap
+			case f.Wrap > paragraphMaxWrap:
+				f.Wrap = paragraphMaxWrap
+			}
+			if _, ok := hexToRGB(f.Highlight); !ok {
+				f.Highlight = ""
+			}
 		} else {
-			f.Text = ""
+			f.Text, f.Wrap, f.Highlight = "", 0, ""
 		}
 	}
 	return orientation, nil
@@ -238,6 +249,12 @@ func checkImageFilename(name string) error {
 	}
 	return nil
 }
+
+// Ancho del párrafo del texto libre, en porcentaje del ancho de la página.
+const (
+	paragraphMinWrap = 10.0
+	paragraphMaxWrap = 95.0
+)
 
 // Ancho de la firma, en porcentaje del ancho de la página.
 const (
@@ -383,7 +400,7 @@ func (s *certificateService) Preview(in TemplateInput) ([]byte, error) {
 	}
 	return s.render(t, certificateData{
 		Name:    "María Fernanda Pérez",
-		Program: "Programa de ejemplo",
+		Program: "Prueba de Inducción", // el mismo ejemplo que el editor (SAMPLE)
 		Date:    formatCertificateDate(time.Now()),
 		Code:    "OBT-EJEM-PLO1",
 	})
@@ -656,6 +673,10 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 			pdf.AddUTF8FontFromBytes("Poppins", "", poppinsRegular)
 			pdf.AddUTF8FontFromBytes("Poppins", "B", poppinsSemiBold)
 			poppinsLoaded = true
+		}
+		if f.Key == models.CertificateFieldText {
+			drawParagraph(pdf, f, data, font, pageW, pageH, tr)
+			continue
 		}
 		pdf.SetFont(font, style, f.Size)
 		if rgb, ok := hexToRGB(f.Color); ok {
