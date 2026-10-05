@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -189,6 +190,37 @@ func TestRender_ProduceUnPDF(t *testing.T) {
 	preview, err := svc.Preview(TemplateInput{Name: "x", ImageFilename: "diseno.png"})
 	if err != nil || !bytes.HasPrefix(preview, []byte("%PDF")) {
 		t.Fatalf("la vista previa debe ser un PDF: %v", err)
+	}
+}
+
+// Poppins va embebida: el PDF tiene que generarse con ella, incluir la fuente
+// y no romper los acentos (no pasa por la traducción a CP1252).
+func TestRender_PoppinsEmbebida(t *testing.T) {
+	svc, _, _, _, _ := newCertSvc(t)
+	fields := []models.CertificateField{
+		{Key: models.CertificateFieldName, X: 50, Y: 48, Size: 32, Color: "#fa3ab4", Align: "C", Bold: true, Font: "Poppins"},
+		{Key: models.CertificateFieldDate, X: 30, Y: 80, Size: 12, Color: "#0f172a", Align: "C", Font: "Poppins"},
+		{Key: models.CertificateFieldCode, X: 50, Y: 93, Size: 9, Color: "#94a3b8", Align: "C", Font: "Courier"},
+	}
+	tpl := &models.CertificateTemplate{ImageFilename: "diseno.png", Orientation: "L", Fields: fields}
+	pdf, err := svc.render(tpl, certificateData{Name: "María Fernanda Pérez Núñez", Date: "30/09/26", Code: "OBT-ABCD-EFGH"})
+	if err != nil {
+		t.Fatalf("render con Poppins: %v", err)
+	}
+	// gofpdf registra las fuentes UTF-8 como "utf8<familia><estilo>": la
+	// semibold ("B") para el nombre y la regular para la fecha.
+	if !bytes.Contains(pdf, []byte("/FontName /utf8poppinsB")) {
+		t.Fatal("el PDF debe llevar Poppins semibold embebida")
+	}
+	if !regexp.MustCompile(`/FontName /utf8poppins\s`).Match(pdf) {
+		t.Fatal("el PDF debe llevar Poppins regular embebida")
+	}
+}
+
+func TestDefaultCertificateFields_NombreEnPoppinsRosado(t *testing.T) {
+	name := DefaultCertificateFields()[0]
+	if name.Key != models.CertificateFieldName || name.Font != "Poppins" || name.Color != "#fa3ab4" || !name.Bold {
+		t.Fatalf("el nombre por defecto va en Poppins semibold y rosado: %+v", name)
 	}
 }
 

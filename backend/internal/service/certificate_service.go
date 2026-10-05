@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"crypto/rand"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -88,7 +89,21 @@ type certificateData struct {
 
 const certificatesDir = "certificates"
 
-var certificateFonts = map[string]bool{"Helvetica": true, "Times": true, "Courier": true}
+var certificateFonts = map[string]bool{"Helvetica": true, "Times": true, "Courier": true, "Poppins": true}
+
+// Poppins es la tipografía de la marca (licencia OFL, assets/fonts/OFL.txt).
+// No es una fuente básica del PDF, así que va embebida: la normal para el
+// estilo regular y la semibold para "negrita", que es el grosor del diseño.
+//
+//go:embed assets/fonts/Poppins-Regular.ttf
+var poppinsRegular []byte
+
+//go:embed assets/fonts/Poppins-SemiBold.ttf
+var poppinsSemiBold []byte
+
+// utf8Fonts son las fuentes embebidas: escriben UTF-8 tal cual, sin pasar por
+// la traducción a CP1252 de las fuentes básicas.
+var utf8Fonts = map[string]bool{"Poppins": true}
 
 type certificateService struct {
 	repo          repository.CertificateRepository
@@ -142,7 +157,10 @@ func (s *certificateService) GetTemplate(id uint) (*models.CertificateTemplate, 
 // el nombre al centro, el programa debajo, la fecha y el código al pie.
 func DefaultCertificateFields() []models.CertificateField {
 	return []models.CertificateField{
-		{Key: models.CertificateFieldName, X: 50, Y: 48, Size: 32, Color: "#0f172a", Align: "C", Bold: true, Font: "Helvetica"},
+		// El nombre, en la tipografía y el rosado de la marca (#fa3ab4, el de
+		// "CERTIFICADO" en el diseño de Oberstaff). Tiene que coincidir con
+		// DEFAULT_FIELDS del editor (CertificateTemplateEditor.tsx).
+		{Key: models.CertificateFieldName, X: 50, Y: 48, Size: 32, Color: "#fa3ab4", Align: "C", Bold: true, Font: "Poppins"},
 		{Key: models.CertificateFieldProgram, X: 50, Y: 62, Size: 18, Color: "#334155", Align: "C", Font: "Helvetica"},
 		{Key: models.CertificateFieldDate, X: 50, Y: 74, Size: 12, Color: "#64748b", Align: "C", Font: "Helvetica"},
 		{Key: models.CertificateFieldCode, X: 50, Y: 93, Size: 9, Color: "#94a3b8", Align: "C", Font: "Courier"},
@@ -533,6 +551,7 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 
 	// Traduce UTF-8 a CP1252 (fuentes core): sin esto los acentos salen mal.
 	tr := pdf.UnicodeTranslatorFromDescriptor("")
+	poppinsLoaded := false
 	for _, f := range t.Fields {
 		text := fieldValue(f, data)
 		if strings.TrimSpace(text) == "" {
@@ -546,13 +565,21 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 		if !certificateFonts[font] {
 			font = "Helvetica"
 		}
+		if font == "Poppins" && !poppinsLoaded {
+			pdf.AddUTF8FontFromBytes("Poppins", "", poppinsRegular)
+			pdf.AddUTF8FontFromBytes("Poppins", "B", poppinsSemiBold)
+			poppinsLoaded = true
+		}
 		pdf.SetFont(font, style, f.Size)
 		if rgb, ok := hexToRGB(f.Color); ok {
 			pdf.SetTextColor(rgb[0], rgb[1], rgb[2])
 		} else {
 			pdf.SetTextColor(15, 23, 42)
 		}
-		txt := tr(text)
+		txt := text
+		if !utf8Fonts[font] {
+			txt = tr(text)
+		}
 		width := pdf.GetStringWidth(txt)
 		x := pageW * f.X / 100
 		y := pageH * f.Y / 100

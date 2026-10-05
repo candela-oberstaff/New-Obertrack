@@ -14,7 +14,7 @@ export interface CertificateField {
   color: string
   align: 'L' | 'C' | 'R'
   bold: boolean
-  font: 'Helvetica' | 'Times' | 'Courier'
+  font: 'Helvetica' | 'Times' | 'Courier' | 'Poppins'
 }
 
 /** Diseño subido por el equipo más la posición de los campos. */

@@ -38,7 +38,10 @@ const SAMPLE: Record<CertificateFieldKey, string> = {
 }
 
 const DEFAULT_FIELDS: CertificateField[] = [
-  { key: 'name', x: 50, y: 48, size: 32, color: '#0f172a', align: 'C', bold: true, font: 'Helvetica' },
+  // El nombre, en la tipografía y el rosado de la marca (#fa3ab4, el de
+  // "CERTIFICADO" en el diseño de Oberstaff). Tiene que coincidir con
+  // DefaultCertificateFields del backend.
+  { key: 'name', x: 50, y: 48, size: 32, color: '#fa3ab4', align: 'C', bold: true, font: 'Poppins' },
   { key: 'program', x: 50, y: 62, size: 18, color: '#334155', align: 'C', bold: false, font: 'Helvetica' },
   { key: 'date', x: 50, y: 74, size: 12, color: '#64748b', align: 'C', bold: false, font: 'Helvetica' },
   { key: 'code', x: 50, y: 93, size: 9, color: '#94a3b8', align: 'C', bold: false, font: 'Courier' },
@@ -51,6 +54,7 @@ const FONT_FAMILY: Record<CertificateField['font'], string> = {
   Helvetica: 'Helvetica, Arial, sans-serif',
   Times: '"Times New Roman", Times, serif',
   Courier: '"Courier New", Courier, monospace',
+  Poppins: 'Poppins, sans-serif',
 }
 
 /**
@@ -359,7 +363,8 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                       transform: `translate(${translateX}, -50%)`,
                       fontSize: fontPx,
                       fontFamily: FONT_FAMILY[f.font],
-                      fontWeight: f.bold ? 700 : 400,
+                      // En Poppins la "negrita" del PDF es la semibold (600).
+                      fontWeight: f.bold ? (f.font === 'Poppins' ? 600 : 700) : 400,
                       color: f.color,
                       whiteSpace: 'nowrap',
                       lineHeight: 1.2,
@@ -465,6 +470,7 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                           { value: 'Helvetica', label: 'Helvetica' },
                           { value: 'Times', label: 'Times' },
                           { value: 'Courier', label: 'Courier' },
+                          { value: 'Poppins', label: 'Poppins' },
                         ]}
                       />
                     </div>
