@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { GraduationCap, Save, AlertTriangle, Route, Layers, FileCheck } from 'lucide-react'
+import { GraduationCap, Save, AlertTriangle, Check } from 'lucide-react'
 
 import { useNotification } from '../../context/NotificationContext'
 import {
@@ -13,9 +13,18 @@ import type { Tutorial, TutorialAudienceOption } from '../../types/tutorials'
 import InductionProgramList from './InductionProgramList'
 import InductionBlockLibrary from './InductionBlockLibrary'
 import CertificateTemplateList from '../Certificates/CertificateTemplateList'
+import { draftFromProgram, isReady, programIssues } from './inductionReadiness'
 import styles from './InductionSettings.module.css'
 
 type Section = 'programs' | 'blocks' | 'certificates'
+
+interface Step {
+  key: Section
+  label: string
+  /** Estado en una línea: qué hay o qué falta. */
+  sub: string
+  done: boolean
+}
 
 /**
  * Configuración de la inducción del profesional recién contratado.
@@ -45,7 +54,12 @@ export default function InductionSettings() {
     ])
     setPrograms(programList)
     setBlocks(blockList)
+    return blockList
   }, [])
+  // Para los hijos, que solo esperan que la lista se recargue.
+  const reload = useCallback(async () => {
+    await refresh()
+  }, [refresh])
 
   useEffect(() => {
     const load = async () => {
@@ -58,7 +72,9 @@ export default function InductionSettings() {
         setConfig(cfg)
         setTutorials(Array.isArray(tutorialList) ? tutorialList : [])
         setCompanies(audience?.companies ?? [])
-        await refresh()
+        // Sin bloques no hay con qué armar un programa: se empieza por el paso 1.
+        const blockList = await refresh()
+        if (blockList.length === 0) setSection('blocks')
       } catch {
         showError('No se pudo cargar la configuración de inducción.')
       } finally {
@@ -71,6 +87,46 @@ export default function InductionSettings() {
   const defaultProgram = useMemo(() => programs.find((p) => p.is_default) ?? null, [programs])
   // Usable = activo y con bloques: lo mismo que exige el backend para encender.
   const canActivate = !!defaultProgram && defaultProgram.is_active && defaultProgram.block_count > 0
+
+  // El armado tiene un orden natural: bloques, luego el programa que los
+  // ordena, luego (opcional) el certificado que emite. Las pestañas lo
+  // muestran como pasos con su avance.
+  const steps = useMemo<Step[]>(() => {
+    const withQuestions = blocks.filter((b) => b.question_count > 0).length
+    const defaultReady = !!defaultProgram && isReady(programIssues(draftFromProgram(defaultProgram)))
+    const pendingPrograms = programs.filter((p) => p.is_active && !isReady(programIssues(draftFromProgram(p)))).length
+    const certifying = programs.filter((p) => !!p.certificate_template_id).length
+    return [
+      {
+        key: 'blocks',
+        label: 'Bloques',
+        sub:
+          blocks.length === 0
+            ? 'Video + cuestionario'
+            : `${blocks.length} ${blocks.length === 1 ? 'bloque' : 'bloques'}${
+                withQuestions < blocks.length ? ` · ${blocks.length - withQuestions} sin preguntas` : ''
+              }`,
+        done: withQuestions > 0 && withQuestions === blocks.length,
+      },
+      {
+        key: 'programs',
+        label: 'Programas',
+        sub:
+          programs.length === 0
+            ? 'Ordena los bloques'
+            : pendingPrograms > 0
+              ? `${pendingPrograms} con pendientes`
+              : `${programs.length} ${programs.length === 1 ? 'programa listo' : 'programas listos'}`,
+        done: defaultReady && pendingPrograms === 0,
+      },
+      {
+        key: 'certificates',
+        label: 'Certificados',
+        sub: certifying > 0 ? `En ${certifying} ${certifying === 1 ? 'programa' : 'programas'}` : 'Opcional',
+        done: certifying > 0,
+      },
+    ]
+  }, [blocks, programs, defaultProgram])
 
   const handleSaveConfig = async () => {
     if (!config) return
@@ -189,38 +245,35 @@ export default function InductionSettings() {
       </p>
 
       <div className={styles.keySection}>
-        <div className={styles.subTabs}>
-          <button
-            type="button"
-            className={section === 'programs' ? styles.subTabActive : styles.subTab}
-            onClick={() => setSection('programs')}
-          >
-            <Route size={15} /> Programas <span className={styles.count}>{programs.length}</span>
-          </button>
-          <button
-            type="button"
-            className={section === 'blocks' ? styles.subTabActive : styles.subTab}
-            onClick={() => setSection('blocks')}
-          >
-            <Layers size={15} /> Bloques <span className={styles.count}>{blocks.length}</span>
-          </button>
-          <button
-            type="button"
-            className={section === 'certificates' ? styles.subTabActive : styles.subTab}
-            onClick={() => setSection('certificates')}
-          >
-            <FileCheck size={15} /> Certificados
-          </button>
+        <div className={styles.steps} role="tablist">
+          {steps.map((step, i) => (
+            <button
+              key={step.key}
+              type="button"
+              role="tab"
+              aria-selected={section === step.key}
+              className={section === step.key ? styles.stepActive : styles.step}
+              onClick={() => setSection(step.key)}
+            >
+              <span className={styles.stepNum} data-done={step.done}>
+                {step.done ? <Check size={16} strokeWidth={3} /> : i + 1}
+              </span>
+              <span className={styles.stepText}>
+                <span className={styles.stepLabel}>{step.label}</span>
+                <span className={styles.stepSub}>{step.sub}</span>
+              </span>
+            </button>
+          ))}
         </div>
 
         {section === 'certificates' ? (
-          <CertificateTemplateList onChanged={refresh} />
+          <CertificateTemplateList onChanged={reload} />
         ) : section === 'programs' ? (
           <InductionProgramList
             programs={programs}
             library={blocks}
             companies={companies}
-            onChanged={refresh}
+            onChanged={reload}
             onGoToBlocks={() => setSection('blocks')}
           />
         ) : (
@@ -229,7 +282,7 @@ export default function InductionSettings() {
             tutorials={tutorials}
             fallbackPassingScore={defaultProgram?.default_passing_score ?? 70}
             programs={programs}
-            onChanged={refresh}
+            onChanged={reload}
           />
         )}
       </div>

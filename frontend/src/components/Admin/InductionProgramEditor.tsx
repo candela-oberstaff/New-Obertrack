@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Save, ArrowUp, ArrowDown, Trash2, Plus } from 'lucide-react'
+import { ArrowLeft, Save, ArrowUp, ArrowDown, Trash2, Plus, SlidersHorizontal } from 'lucide-react'
 
 import { Select } from '../ui'
 import { useNotification } from '../../context/NotificationContext'
@@ -15,6 +15,8 @@ import { FileCheck, Download } from 'lucide-react'
 import type { TutorialAudienceOption } from '../../types/tutorials'
 import { BadgePicker, buildBadgePresets, type BadgeDraft } from '../Badges/BadgePicker'
 import { DEFAULT_PROGRAM_BADGE } from '../Badges/badgeCatalog'
+import ReadinessChecklist from './ReadinessChecklist'
+import { LOW_PASSING_SCORE, programIssues } from './inductionReadiness'
 import styles from './InductionSettings.module.css'
 
 interface Props {
@@ -166,6 +168,16 @@ export default function InductionProgramEditor({ programId, library, companies, 
 
   if (loading) return <p className={styles.muted}>Cargando programa...</p>
 
+  // Lo que falta, calculado sobre el borrador: cambia mientras se edita.
+  const issues = programIssues({
+    isActive,
+    isDefault,
+    defaultPassingScore: defaultPassing,
+    blocks: blockIds.map((id) => blockById.get(id)).filter((b): b is InductionBlock => !!b),
+    companyCount: companyIds.length,
+    hasCertificate: templateId > 0,
+  })
+
   const pendingSummary =
     blockIds.length === 0
       ? 'Sin bloques: el programa no se podrá emitir.'
@@ -296,13 +308,22 @@ export default function InductionProgramEditor({ programId, library, companies, 
             {blockIds.map((id, index) => {
               const b = blockById.get(id)
               const passing = b?.passing_score ?? defaultPassing
+              const noQuestions = (b?.question_count ?? 0) === 0
               return (
                 <div key={id} className={styles.seqItem}>
                   <span className={styles.seqNum}>{index + 1}</span>
                   <div className={styles.seqMain}>
                     <span className={styles.seqTitle}>{b?.name ?? `Bloque ${id}`}</span>
                     <span className={styles.seqMeta}>
-                      {b?.tutorial_title || 'Sin video'} · {b?.question_count ?? 0} preguntas · mínimo {passing}%
+                      {b?.tutorial_title || 'Sin video'} ·{' '}
+                      <span style={noQuestions ? { color: '#b91c1c', fontWeight: 600 } : undefined}>
+                        {b?.question_count ?? 0} preguntas
+                      </span>{' '}
+                      ·{' '}
+                      <span style={passing < LOW_PASSING_SCORE ? { color: '#b45309', fontWeight: 600 } : undefined}>
+                        mínimo {passing}%
+                      </span>
+                      {b?.tutorial_visible && ' · video visible en Novedades'}
                     </span>
                   </div>
                   <div className={styles.rowActions}>
@@ -406,24 +427,11 @@ export default function InductionProgramEditor({ programId, library, companies, 
         )}
       </div>
 
-      {/* --- 4. Insignia --- */}
+      {/* --- 4. Certificado --- */}
       <div className={styles.section}>
         <div className={styles.sectionHead}>
           <span className={styles.sectionNum}>4</span>
-          <h3 className={styles.keyTitle}>Insignia del programa</h3>
-        </div>
-        <p className={styles.sectionIntro}>
-          Es la medalla grande: se gana al completar todos los bloques. Además, quien lo haga sin
-          fallar ningún intento gana "A la primera", y quien saque 100% en todo gana "Impecable".
-        </p>
-        <BadgePicker value={badge} fallbackTitle={name} presets={presets} onChange={setBadge} />
-      </div>
-
-      {/* --- 5. Certificado --- */}
-      <div className={styles.section}>
-        <div className={styles.sectionHead}>
-          <span className={styles.sectionNum}>5</span>
-          <h3 className={styles.keyTitle}>Certificado</h3>
+          <h3 className={styles.keyTitle}>Certificado (opcional)</h3>
           {templateId > 0 && <span className={styles.tagOk}>Certifica</span>}
         </div>
         <p className={styles.sectionIntro}>
@@ -517,6 +525,27 @@ export default function InductionProgramEditor({ programId, library, companies, 
           </div>
         )}
       </div>
+
+      {/* --- Opciones avanzadas --- */}
+      <details className={styles.advanced}>
+        <summary>
+          <SlidersHorizontal size={15} /> Opciones avanzadas
+          <span className={styles.advancedHint}>Insignia del programa</span>
+        </summary>
+        <div className={styles.advancedBody}>
+          <p className={styles.hint} style={{ margin: '14px 0 12px' }}>
+            Es la medalla grande: se gana al completar todos los bloques. Además, quien lo haga sin
+            fallar ningún intento gana "A la primera", y quien saque 100% en todo gana "Impecable".
+            Si no la cambias, lleva el nombre del programa.
+          </p>
+          <BadgePicker value={badge} fallbackTitle={name} presets={presets} onChange={setBadge} />
+        </div>
+      </details>
+
+      <ReadinessChecklist
+        issues={issues}
+        readyText={isDefault ? 'Listo: es el programa que reciben todas las empresas sin asignación.' : 'Listo para recibir profesionales.'}
+      />
 
       <div className={styles.stickyBar}>
         <span className={styles.muted}>{pendingSummary}</span>

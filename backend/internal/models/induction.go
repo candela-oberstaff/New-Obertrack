@@ -80,6 +80,9 @@ type InductionBlock struct {
 	// Enriquecimientos de solo lectura para el panel. No son columnas: los
 	// llena el repositorio al listar, con consultas aparte.
 	TutorialTitle string   `gorm:"-" json:"tutorial_title,omitempty"`
+	// TutorialVisible indica si el video está publicado en Novedades (se
+	// anuncia a toda su audiencia). Para una inducción conviene oculto.
+	TutorialVisible bool     `gorm:"-" json:"tutorial_visible"`
 	SurveyTitle   string   `gorm:"-" json:"survey_title,omitempty"`
 	QuestionCount int      `gorm:"-" json:"question_count"`
 	ProgramNames  []string `gorm:"-" json:"program_names"`

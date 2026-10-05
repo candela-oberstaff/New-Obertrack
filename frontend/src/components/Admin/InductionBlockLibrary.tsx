@@ -6,6 +6,7 @@ import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
 import type { Tutorial } from '../../types/tutorials'
 import InductionBlockEditor from './InductionBlockEditor'
+import { LOW_PASSING_SCORE } from './inductionReadiness'
 import styles from './InductionSettings.module.css'
 
 interface Props {
@@ -91,6 +92,7 @@ export default function InductionBlockLibrary({ blocks, tutorials, fallbackPassi
         <div className={styles.list}>
           {blocks.map((b) => {
             const scorable = b.question_count > 0
+            const passing = b.passing_score ?? fallbackPassingScore
             return (
               <div key={b.id} className={styles.row}>
                 <div className={styles.rowIcon}>
@@ -100,16 +102,23 @@ export default function InductionBlockLibrary({ blocks, tutorials, fallbackPassi
                   <div className={styles.rowTitle}>
                     {b.name}
                     {b.passing_score !== null && b.passing_score !== undefined && (
-                      <span className={styles.tag}>Mínimo {b.passing_score}%</span>
+                      <span className={passing < LOW_PASSING_SCORE ? styles.tagWarn : styles.tag}>
+                        Mínimo {b.passing_score}%
+                      </span>
                     )}
                   </div>
                   <div className={styles.rowMeta}>
                     <span className={styles.tag}>
-                      <Video size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                      <Video size={12} />
                       {b.tutorial_title || 'Sin video'}
                     </span>
+                    {b.tutorial_id && b.tutorial_visible && (
+                      <span className={styles.tagWarn} title="Se anuncia a toda su audiencia en Novedades. Para inducción conviene ocultarla.">
+                        Visible en Novedades
+                      </span>
+                    )}
                     <span className={scorable ? styles.tagOk : styles.tagWarn}>
-                      <ListChecks size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                      <ListChecks size={12} />
                       {b.question_count} {b.question_count === 1 ? 'pregunta' : 'preguntas'}
                     </span>
                     {b.program_names.length > 0 ? (

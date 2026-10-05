@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react'
 import { Save, Plus, Trash2, ListChecks, Type, Star, ChevronDown, ChevronRight } from 'lucide-react'
 
 import { Select } from '../ui'
@@ -39,6 +39,18 @@ interface Props {
   passingScore: number
   /** Avisa cuando cambia el número de preguntas guardadas (para la biblioteca). */
   onSaved?: (questionCount: number) => void
+  /**
+   * Con ref, quien lo contiene guarda el cuestionario con su propio botón (el
+   * editor del bloque guarda todo de una vez) y este no muestra el suyo.
+   */
+  ref?: Ref<QuizBuilderHandle>
+}
+
+export interface QuizBuilderHandle {
+  /** Mensaje del primer problema que impide guardar, o null si se puede. */
+  validate: () => string | null
+  /** Guarda las preguntas y devuelve cuántas quedaron. Lanza si falla. */
+  save: () => Promise<number>
 }
 
 /**
@@ -46,7 +58,7 @@ interface Props {
  * respuesta y peso. Se arma aquí mismo para no obligar a saltar al módulo de
  * Encuestas y volver.
  */
-export default function InductionQuizBuilder({ surveyId, passingScore, onSaved }: Props) {
+export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, ref }: Props) {
   const { success, error: showError } = useNotification()
 
   const [quiz, setQuiz] = useState<Survey | null>(null)
@@ -135,26 +147,39 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved }
     })
   }
 
-  const handleSaveQuiz = async () => {
-    if (!quiz?.id) return
+  const validate = () => {
+    if (!quiz?.id) return null
+    if ((quiz.questions ?? []).some((q) => !q.text.trim())) return 'Hay preguntas sin enunciado.'
+    return null
+  }
 
+  // Guarda sin avisar: quien llama decide qué mensaje mostrar.
+  const persist = async () => {
+    if (!quiz?.id) return quiz?.questions?.length ?? 0
     const questions = (quiz.questions ?? []).map((q, i) => ({ ...q, order_index: i }))
-    if (questions.some((q) => !q.text.trim())) {
-      showError('Hay preguntas sin enunciado.')
+    await surveyService.updateSurvey(quiz.id, {
+      ...quiz,
+      questions,
+      kind: 'induction',
+      passing_score: passingScore,
+    })
+    await loadQuiz()
+    onSaved?.(questions.length)
+    return questions.length
+  }
+
+  useImperativeHandle(ref, () => ({ validate, save: persist }))
+
+  const handleSaveQuiz = async () => {
+    const problem = validate()
+    if (problem) {
+      showError(problem)
       return
     }
-
     setSavingQuiz(true)
     try {
-      await surveyService.updateSurvey(quiz.id, {
-        ...quiz,
-        questions,
-        kind: 'induction',
-        passing_score: passingScore,
-      })
+      await persist()
       success('Cuestionario guardado.')
-      await loadQuiz()
-      onSaved?.(questions.length)
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo guardar el cuestionario.')
     } finally {
@@ -339,11 +364,13 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved }
         ))}
       </div>
 
-      <div className={styles.actions}>
-        <button type="button" className={styles.saveBtn} disabled={savingQuiz} onClick={handleSaveQuiz}>
-          <Save size={16} /> {savingQuiz ? 'Guardando...' : 'Guardar cuestionario'}
-        </button>
-      </div>
+      {!ref && (
+        <div className={styles.actions}>
+          <button type="button" className={styles.saveBtn} disabled={savingQuiz} onClick={handleSaveQuiz}>
+            <Save size={16} /> {savingQuiz ? 'Guardando...' : 'Guardar cuestionario'}
+          </button>
+        </div>
+      )}
       <p className={styles.hint}>
         Las respuestas correctas nunca se envían al navegador de quien responde: el puntaje se
         calcula en el servidor.

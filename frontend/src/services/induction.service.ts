@@ -128,6 +128,8 @@ export interface InductionBlock {
   updated_at: string
   // Solo lectura, para el panel.
   tutorial_title?: string
+  /** El video está publicado en Novedades (se anuncia a toda su audiencia). */
+  tutorial_visible?: boolean
   survey_title?: string
   question_count: number
   program_names: string[]

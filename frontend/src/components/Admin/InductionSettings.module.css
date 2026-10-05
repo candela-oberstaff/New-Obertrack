@@ -367,7 +367,12 @@
 
 .tag,
 .tagOk,
-.tagWarn {
+.tagWarn,
+.tagDanger {
+  /* inline-flex: el ícono queda al lado del texto, nunca encima. */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
@@ -389,6 +394,11 @@
 .tagWarn {
   background: #fef3c7;
   color: #92400e;
+}
+
+.tagDanger {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 /* Al desplegarse, el enunciado editable se separa de la cabecera. */
@@ -1186,3 +1196,181 @@
   margin-right: auto;
 }
 
+
+/* --- Pasos del armado: 1 Bloques → 2 Programas → 3 Certificados --- */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.step,
+.stepActive {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  min-width: 0;
+}
+
+.step:hover {
+  border-color: var(--primary);
+}
+
+.stepActive {
+  border-color: var(--black, #0f172a);
+  box-shadow: 0 0 0 1px var(--black, #0f172a);
+}
+
+.stepNum {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.stepActive .stepNum {
+  background: var(--black, #0f172a);
+  color: white;
+}
+
+.stepNum[data-done='true'] {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.stepText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stepLabel {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--black, #0f172a);
+}
+
+.stepSub {
+  font-size: 12.5px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 720px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Qué le falta a un programa o bloque --- */
+.readinessBox,
+.readyBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin-top: 16px;
+}
+
+.readinessBox {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.readyBox {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.readinessItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.readinessItem svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.readinessItem[data-level='ok'] { color: #15803d; font-weight: 600; }
+.readinessItem[data-level='blocker'] svg { color: #dc2626; }
+.readinessItem[data-level='warning'] svg { color: #d97706; }
+.readinessItem[data-level='tip'] { color: #64748b; }
+.readinessItem[data-level='tip'] svg { color: #94a3b8; }
+
+/* Avisos del programa en su tarjeta de la lista. */
+.rowIssues {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: #92400e;
+  line-height: 1.5;
+}
+
+/* --- Opciones avanzadas, plegadas por defecto --- */
+.advanced {
+  margin-top: 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.advanced > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced > summary .advancedHint {
+  font-weight: 500;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.advanced[open] > summary {
+  border-bottom: 1px dashed #cbd5e1;
+}
+
+.advancedBody {
+  padding: 4px 18px 18px;
+}
+
+.advancedBody .section {
+  border: none;
+  padding: 0;
+  background: transparent;
+}
