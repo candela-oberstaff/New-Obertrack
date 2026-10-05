@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Save, Upload, Eye, Plus, Trash2, PenLine } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Save, Upload, Eye, Plus, Trash2, PenLine } from 'lucide-react'
 
 import { Button, Modal, Select } from '../ui'
 import SignaturePad from '../Testimonials/SignaturePad'
@@ -24,6 +24,8 @@ interface Props {
   onSaved: (t: CertificateTemplate) => void
   onBack: () => void
 }
+
+const STEPS = ['Diseño', 'Campos', 'Revisar']
 
 const FIELD_LABEL: Record<CertificateFieldKey, string> = {
   name: 'Nombre del profesional',
@@ -130,9 +132,10 @@ function fontWeight(f: CertificateField): number {
 }
 
 /**
- * Editor visual de una plantilla: se sube el diseño (PNG/JPG en A4), se
- * arrastran los campos sobre la imagen y se ajusta su tipografía. Las
- * posiciones van en porcentaje, así el PDF coincide con lo que se ve aquí.
+ * Editor visual de una plantilla, como asistente de tres pasos: se sube el
+ * diseño (PNG/JPG en A4), se arrastran los campos sobre la imagen y se ajusta
+ * su tipografía, y se revisa con el PDF de ejemplo. Las posiciones van en
+ * porcentaje, así el PDF coincide con lo que se ve aquí.
  */
 export default function CertificateTemplateEditor({ template, onSaved, onBack }: Props) {
   const { success, error: showError } = useNotification()
@@ -148,6 +151,9 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
   const [saving, setSaving] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const [canvasWidth, setCanvasWidth] = useState(0)
+  // Una plantilla nueva empieza por el diseño; una existente, por los campos.
+  const [step, setStep] = useState(template ? 1 : 0)
+  const [dragOver, setDragOver] = useState(false)
 
   const canvasRef = useRef<HTMLDivElement>(null)
   // offsetX/Y: desde dónde se agarró el campo (en % de la página), para que
@@ -168,7 +174,8 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
     const obs = new ResizeObserver(update)
     obs.observe(el)
     return () => obs.disconnect()
-  }, [imageFilename])
+    // El lienzo vive en el paso 2: al volver a él hay que medirlo de nuevo.
+  }, [imageFilename, step])
 
   const pxPerMm = canvasWidth > 0 ? canvasWidth / PAGE_WIDTH_MM[orientation] : 0
 
@@ -417,6 +424,24 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
 
   const current = fields[selected]
 
+  // --- Asistente por pasos ---------------------------------------------------
+  const goTo = (target: number) => {
+    if (target > 0 && (!name.trim() || !imageFilename)) {
+      showError(!name.trim() ? 'Primero ponle un nombre a la plantilla.' : 'Primero sube el diseño.')
+      setStep(0)
+      return
+    }
+    setStep(Math.max(0, Math.min(STEPS.length - 1, target)))
+  }
+  const isLast = step === STEPS.length - 1
+  const stepDone = [!!name.trim() && !!imageFilename, !!imageFilename && fields.length > 0, false]
+  const fieldSummary = Array.from(new Set(fields.map((f) => FIELD_LABEL[f.key]))).join(', ')
+  const stepSub = [
+    imageFilename ? (orientation === 'L' ? 'Horizontal' : 'Vertical') : 'Imagen A4',
+    `${fields.length} ${fields.length === 1 ? 'campo' : 'campos'}`,
+    'PDF de ejemplo',
+  ]
+
   return (
     <div>
       <div className={styles.editorHead}>
@@ -429,32 +454,79 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
         )}
       </div>
 
+      <ol
+        className={styles.wizard}
+        aria-label="Pasos de la plantilla"
+        style={{ gridTemplateColumns: `repeat(${STEPS.length}, minmax(0, 1fr))` }}
+      >
+        {STEPS.map((label, i) => (
+          <li key={label}>
+            <button
+              type="button"
+              className={i === step ? styles.wizardStepActive : styles.wizardStep}
+              aria-current={i === step ? 'step' : undefined}
+              onClick={() => goTo(i)}
+            >
+              <span className={styles.wizardNum} data-done={stepDone[i] && i !== step}>
+                {stepDone[i] && i !== step ? <Check size={14} strokeWidth={3} /> : i + 1}
+              </span>
+              <span className={styles.stepText}>
+                <span className={styles.stepLabel}>{label}</span>
+                <span className={styles.stepSub}>{stepSub[i]}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ol>
+
       {/* --- 1. Diseño --- */}
-      <div className={styles.section}>
-        <div className={styles.sectionHead}>
-          <span className={styles.sectionNum}>1</span>
-          <h3 className={styles.keyTitle}>Diseño</h3>
-        </div>
-        <p className={styles.sectionIntro}>
-          Sube el diseño del equipo como imagen PNG o JPG en tamaño A4 (horizontal o vertical). Los textos se
-          imprimen encima al emitir.
+      <div className={styles.section} hidden={step !== 0}>
+        <h3 className={styles.wizardTitle}>Sube el diseño</h3>
+        <p className={styles.wizardIntro}>
+          La imagen del certificado tal como la hizo el equipo de diseño, sin los datos de la
+          persona: esos se imprimen encima al emitir.
         </p>
-        <div className={styles.grid}>
-          <div className={`${styles.field} ${styles.fieldWide}`}>
-            <label htmlFor="cert-name">Nombre de la plantilla</label>
-            <input
-              id="cert-name"
-              type="text"
-              placeholder="Ej. Certificado de inducción 2026"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus={!template}
-            />
+        <div className={styles.wizardSplit}>
+          <div>
+            <div className={styles.field}>
+              <label htmlFor="cert-name">Nombre de la plantilla</label>
+              <input
+                id="cert-name"
+                type="text"
+                placeholder="Ej. Certificado de inducción 2026"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus={!template}
+              />
+            </div>
+            <ul className={styles.certTips}>
+              <li>
+                <Check size={14} /> PNG o JPG, en tamaño A4.
+              </li>
+              <li>
+                <Check size={14} /> Horizontal o vertical: se detecta solo.
+              </li>
+              <li>
+                <Check size={14} /> Deja libres las zonas del nombre, la fecha y el código.
+              </li>
+            </ul>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 14 }}>
-          <label className={styles.ghostBtn} style={{ cursor: uploading ? 'wait' : 'pointer' }}>
-            <Upload size={16} /> {uploading ? 'Subiendo...' : imageFilename ? 'Cambiar diseño' : 'Subir diseño'}
+
+          {/* Zona para soltar o elegir la imagen; con diseño, su vista previa. */}
+          <label
+            className={dragOver ? styles.dropZoneOver : imageFilename ? styles.dropZoneFilled : styles.dropZone}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragOver(true)
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragOver(false)
+              void handleUpload(e.dataTransfer.files?.[0])
+            }}
+            style={{ cursor: uploading ? 'wait' : 'pointer' }}
+          >
             <input
               type="file"
               accept="image/png,image/jpeg"
@@ -465,26 +537,48 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                 e.currentTarget.value = ''
               }}
             />
+            {imageFilename ? (
+              <>
+                <img
+                  src={templateImageUrl(imageFilename)}
+                  alt="Diseño del certificado"
+                  className={orientation === 'L' ? styles.dropPreviewL : styles.dropPreviewP}
+                />
+                <span className={styles.dropMeta}>
+                  <span className={styles.tag}>{orientation === 'L' ? 'Horizontal (A4)' : 'Vertical (A4)'}</span>
+                  <span className={styles.dropHint}>
+                    <Upload size={14} /> {uploading ? 'Subiendo...' : 'Suelta otra imagen o haz clic para cambiarla'}
+                  </span>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className={styles.dropIcon}>
+                  <Upload size={24} />
+                </span>
+                <strong>{uploading ? 'Subiendo...' : 'Arrastra aquí el diseño'}</strong>
+                <span className={styles.dropHint}>o haz clic para elegirlo · PNG o JPG</span>
+              </>
+            )}
           </label>
-          {imageFilename && (
-            <span className={styles.tag}>{orientation === 'L' ? 'Horizontal (A4)' : 'Vertical (A4)'}</span>
-          )}
         </div>
       </div>
 
       {/* --- 2. Campos --- */}
-      <div className={styles.section}>
-        <div className={styles.sectionHead}>
-          <span className={styles.sectionNum}>2</span>
-          <h3 className={styles.keyTitle}>Campos sobre el diseño</h3>
-        </div>
-        <p className={styles.sectionIntro}>
-          Arrastra cada campo a su lugar. Lo que ves aquí es lo que se imprime; los datos de ejemplo se reemplazan
-          por los reales al emitir. Una plantilla nueva ya trae nombre, programa, fecha y código colocados; haz clic
-          en uno sobre el diseño para editarlo, Supr para quitarlo y las flechas para ajustarlo. Al
-          arrastrar, las guías rosas lo centran en la página o lo alinean con otro campo; mantén Alt para
-          moverlo libre.
+      <div className={styles.section} hidden={step !== 1}>
+        <h3 className={styles.wizardTitle}>Coloca los datos sobre el diseño</h3>
+        <p className={styles.wizardIntro}>
+          Lo que ves es lo que se imprime; los datos de ejemplo se cambian por los reales al emitir.
+          Ya vienen colocados el nombre, el programa, la fecha y el código.
         </p>
+        <div className={styles.certKeys}>
+          <span><kbd>Arrastrar</kbd> mueve</span>
+          <span><kbd>Clic</kbd> edita</span>
+          <span><kbd>Flechas</kbd> ajustan</span>
+          <span><kbd>Supr</kbd> quita</span>
+          <span><kbd>Alt</kbd> sin imán</span>
+          <span className={styles.certKeyGuide}>Las guías rosas centran y alinean</span>
+        </div>
 
         {!imageFilename ? (
           <div className={styles.empty}>Sube el diseño para colocar los campos.</div>
@@ -831,6 +925,71 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
         )}
       </div>
 
+      {/* --- 3. Revisar --- */}
+      <div className={styles.section} hidden={step !== 2}>
+        <h3 className={styles.wizardTitle}>Revisa y {template ? 'guarda' : 'crea'} la plantilla</h3>
+        <p className={styles.wizardIntro}>
+          Antes de guardar, mira el PDF de ejemplo: es exactamente lo que recibirá el profesional.
+        </p>
+        <div className={styles.reviewSplit}>
+          <div className={styles.reviewList}>
+            <div className={styles.reviewRow}>
+              <span className={styles.reviewLabel}>Nombre</span>
+              <span className={styles.reviewValue}>{name || '—'}</span>
+              <button type="button" className={styles.linkBtn} onClick={() => goTo(0)}>
+                Cambiar
+              </button>
+            </div>
+            <div className={styles.reviewRow}>
+              <span className={styles.reviewLabel}>Diseño</span>
+              <span className={styles.reviewValue}>
+                {imageFilename ? (orientation === 'L' ? 'Horizontal (A4)' : 'Vertical (A4)') : 'Sin diseño'}
+              </span>
+              <button type="button" className={styles.linkBtn} onClick={() => goTo(0)}>
+                Cambiar
+              </button>
+            </div>
+            <div className={styles.reviewRow}>
+              <span className={styles.reviewLabel}>Datos impresos</span>
+              <span className={styles.reviewValue}>
+                {fields.length} {fields.length === 1 ? 'campo' : 'campos'}
+                <small>{fieldSummary}</small>
+              </span>
+              <button type="button" className={styles.linkBtn} onClick={() => goTo(1)}>
+                Editar
+              </button>
+            </div>
+            <div className={styles.reviewRow}>
+              <span className={styles.reviewLabel}>En uso</span>
+              <span className={styles.reviewValue}>
+                {template && template.program_names.length > 0 ? (
+                  template.program_names.join(', ')
+                ) : (
+                  <small style={{ fontSize: 13.5 }}>
+                    Ningún programa todavía. Se elige en el paso «Revisar» de cada programa.
+                  </small>
+                )}
+              </span>
+            </div>
+          </div>
+
+          <aside className={styles.certCard} aria-label="Vista previa del certificado">
+            <span className={styles.blockPreviewLabel}>Así se ve</span>
+            {imageFilename && (
+              <img
+                src={templateImageUrl(imageFilename)}
+                alt={`Diseño ${name}`}
+                className={orientation === 'L' ? styles.certThumbL : styles.certThumbP}
+              />
+            )}
+            <button type="button" className={styles.saveBtn} onClick={handlePreview} disabled={previewing || !imageFilename}>
+              <Eye size={16} /> {previewing ? 'Generando...' : 'Ver PDF de ejemplo'}
+            </button>
+            <span className={styles.badgeCardHint}>Se abre en otra pestaña con datos de ejemplo.</span>
+          </aside>
+        </div>
+      </div>
+
       {signatureFor !== undefined && (
         <Modal
           isOpen
@@ -855,17 +1014,37 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
 
       <div className={styles.stickyBar}>
         <span className={styles.muted}>
-          {fields.length} {fields.length === 1 ? 'campo' : 'campos'} · {orientation === 'L' ? 'horizontal' : 'vertical'}
+          Paso {step + 1} de {STEPS.length}
         </span>
-        <button type="button" className={styles.ghostBtn} onClick={handlePreview} disabled={previewing || !imageFilename}>
-          <Eye size={16} /> {previewing ? 'Generando...' : 'Vista previa PDF'}
-        </button>
-        <button type="button" className={styles.ghostBtn} onClick={onBack} disabled={saving}>
-          Cancelar
-        </button>
-        <button type="button" className={styles.saveBtn} disabled={saving} onClick={handleSave}>
-          <Save size={16} /> {saving ? 'Guardando...' : template ? 'Guardar plantilla' : 'Crear plantilla'}
-        </button>
+        {step === 1 && (
+          <button type="button" className={styles.ghostBtn} onClick={handlePreview} disabled={previewing || !imageFilename}>
+            <Eye size={16} /> {previewing ? 'Generando...' : 'Vista previa PDF'}
+          </button>
+        )}
+        {step === 0 ? (
+          <button type="button" className={styles.ghostBtn} onClick={onBack} disabled={saving}>
+            {template ? 'Volver' : 'Cancelar'}
+          </button>
+        ) : (
+          <button type="button" className={styles.ghostBtn} onClick={() => goTo(step - 1)} disabled={saving}>
+            <ArrowLeft size={16} /> Atrás
+          </button>
+        )}
+        {/* Una plantilla ya creada se puede guardar desde cualquier paso. */}
+        {template && !isLast && (
+          <button type="button" className={styles.ghostBtn} disabled={saving} onClick={handleSave}>
+            <Save size={16} /> {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+        )}
+        {isLast ? (
+          <button type="button" className={styles.saveBtn} disabled={saving} onClick={handleSave}>
+            <Save size={16} /> {saving ? 'Guardando...' : template ? 'Guardar plantilla' : 'Crear plantilla'}
+          </button>
+        ) : (
+          <button type="button" className={styles.saveBtn} onClick={() => goTo(step + 1)}>
+            Siguiente <ArrowRight size={16} />
+          </button>
+        )}
       </div>
     </div>
   )

@@ -97,66 +97,62 @@ export default function CertificateTemplateList({ onChanged }: Props) {
           </div>
         </div>
       ) : (
-        <div className={styles.list}>
+        <div className={styles.certGallery}>
           {templates.map((t) => (
-            <div key={t.id} className={styles.row}>
-              <div
-                style={{
-                  width: t.orientation === 'L' ? 64 : 46,
-                  height: t.orientation === 'L' ? 46 : 64,
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                  border: '1px solid #e2e8f0',
-                  background: '#f8fafc',
-                  flexShrink: 0,
-                }}
+            <div key={t.id} className={styles.certTile}>
+              <button
+                type="button"
+                className={styles.certTileThumb}
+                onClick={() => setEditing(t)}
+                aria-label={`Editar ${t.name}`}
               >
                 <img
                   src={templateImageUrl(t.image_filename)}
                   alt=""
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  className={t.orientation === 'L' ? styles.certTileImgL : styles.certTileImgP}
                 />
-              </div>
-              <div className={styles.rowMain}>
+              </button>
+              <div className={styles.certTileBody}>
                 <div className={styles.rowTitle}>
                   {t.name}
                   <span className={styles.tag}>{t.orientation === 'L' ? 'Horizontal' : 'Vertical'}</span>
                 </div>
                 <div className={styles.rowMeta}>
-                  <span className={styles.tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                  <span className={styles.tag}>
                     <FileCheck size={12} />
                     {t.fields.length} {t.fields.length === 1 ? 'campo' : 'campos'}
                   </span>
                   {t.program_names.length > 0 ? (
-                    <span>En: {t.program_names.join(', ')}</span>
+                    <span className={styles.tagOk}>En {t.program_names.join(', ')}</span>
                   ) : (
-                    <span>Sin usar en ningún programa</span>
+                    <span>Sin usar todavía</span>
                   )}
                 </div>
-              </div>
-              <div className={styles.rowActions}>
-                <button
-                  type="button"
-                  className={`${styles.iconBtn} ${styles.iconBtnNeutral}`}
-                  title="Editar"
-                  aria-label={`Editar ${t.name}`}
-                  onClick={() => setEditing(t)}
-                >
-                  <Pencil size={16} />
-                </button>
-                <button
-                  type="button"
-                  className={styles.iconBtn}
-                  title={t.program_names.length > 0 ? 'En uso: quítala de sus programas para borrarla' : 'Borrar'}
-                  aria-label={`Borrar ${t.name}`}
-                  disabled={t.program_names.length > 0}
-                  onClick={() => handleDelete(t)}
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div className={styles.certTileActions}>
+                  <button type="button" className={styles.ghostBtnSm} onClick={() => setEditing(t)}>
+                    <Pencil size={14} /> Editar
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    title={t.program_names.length > 0 ? 'En uso: quítala de sus programas para borrarla' : 'Borrar'}
+                    aria-label={`Borrar ${t.name}`}
+                    disabled={t.program_names.length > 0}
+                    onClick={() => handleDelete(t)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
+          <button type="button" className={styles.certTileNew} onClick={() => setEditing('new')}>
+            <span className={styles.dropIcon}>
+              <Plus size={22} />
+            </span>
+            <strong>Nueva plantilla</strong>
+            <span>Sube otro diseño</span>
+          </button>
         </div>
       )}
     </div>
