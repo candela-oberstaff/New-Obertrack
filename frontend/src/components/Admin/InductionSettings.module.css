@@ -1684,3 +1684,97 @@ button.summaryItem:hover {
     display: none;
   }
 }
+
+/* --- Paso 1: datos a la izquierda, vista previa a la derecha --- */
+.wizardSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+  gap: 32px;
+  align-items: start;
+}
+
+.wizardSplit textarea {
+  min-height: 140px;
+}
+
+@media (max-width: 900px) {
+  .wizardSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+.blockPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blockPreviewLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.blockPreviewCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, #fdf4ff 0%, #ffffff 60%);
+  border: 1px solid #f5d0fe;
+  box-shadow: 0 6px 18px rgba(6, 11, 35, 0.06);
+}
+
+.blockPreviewKicker {
+  font-size: 12px;
+  font-weight: 600;
+  color: #a21caf;
+}
+
+.blockPreviewName {
+  font-size: 18px;
+  color: var(--black, #0f172a);
+  overflow-wrap: anywhere;
+}
+
+.blockPreviewDesc {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+.blockPreviewChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.blockPreviewChips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.blockPreviewBadge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px dashed #f0abfc;
+  font-size: 13px;
+  color: #475569;
+}

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, Save, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ListChecks, Play, Save, SlidersHorizontal, Target } from 'lucide-react'
 
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
@@ -11,6 +11,7 @@ import ReadinessChecklist from './ReadinessChecklist'
 import { blockIssues, isReady } from './inductionReadiness'
 import { BadgePicker, buildBadgePresets, type BadgeDraft } from '../Badges/BadgePicker'
 import { DEFAULT_BLOCK_BADGE } from '../Badges/badgeCatalog'
+import { BadgeMedallion } from '../Badges/BadgeMedallion'
 import styles from './InductionSettings.module.css'
 
 interface Props {
@@ -246,30 +247,62 @@ export default function InductionBlockEditor({
           Un bloque es un video más su cuestionario. Se arma una vez y se reutiliza en los
           programas que haga falta.
         </p>
-        <div className={styles.wizardNarrow}>
-          <div className={styles.field}>
-            <label htmlFor="block-name">Nombre del bloque</label>
-            <input
-              id="block-name"
-              type="text"
-              placeholder="Ej. Bienvenida y cultura"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') goTo(1)
-              }}
-              autoFocus={!current}
-            />
+        <div className={styles.wizardSplit}>
+          <div>
+            <div className={styles.field}>
+              <label htmlFor="block-name">Nombre del bloque</label>
+              <input
+                id="block-name"
+                type="text"
+                placeholder="Ej. Bienvenida y cultura"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') goTo(1)
+                }}
+                autoFocus={!current}
+              />
+            </div>
+            <div className={styles.field} style={{ marginTop: 16 }}>
+              <label htmlFor="block-description">Descripción (opcional)</label>
+              <textarea
+                id="block-description"
+                placeholder="Qué aprende el profesional en este bloque."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
           </div>
-          <div className={styles.field} style={{ marginTop: 16 }}>
-            <label htmlFor="block-description">Descripción (opcional)</label>
-            <textarea
-              id="block-description"
-              placeholder="Qué aprende el profesional en este bloque."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
+
+          {/* Vista previa en vivo: lo que el nombre y la descripción significan
+              para quien recorre la inducción. */}
+          <aside className={styles.blockPreview} aria-label="Vista previa del bloque">
+            <span className={styles.blockPreviewLabel}>Así lo verá el profesional</span>
+            <div className={styles.blockPreviewCard}>
+              <span className={styles.blockPreviewKicker}>Bloque de tu inducción</span>
+              <strong className={styles.blockPreviewName}>{name.trim() || 'Nombre del bloque'}</strong>
+              <p className={styles.blockPreviewDesc}>
+                {description.trim() || 'Aquí aparece la descripción: qué va a aprender en este bloque.'}
+              </p>
+              <div className={styles.blockPreviewChips}>
+                <span>
+                  <Play size={12} /> {chosenVideo ? 'Video' : 'Sin video'}
+                </span>
+                <span>
+                  <ListChecks size={12} /> {questionCount} {questionCount === 1 ? 'pregunta' : 'preguntas'}
+                </span>
+                <span>
+                  <Target size={12} /> Aprueba con {effectivePassing}%
+                </span>
+              </div>
+              <div className={styles.blockPreviewBadge}>
+                <BadgeMedallion icon={badge.icon} color={badge.color} size="sm" />
+                <span>
+                  Al aprobarlo gana <strong>{badge.title.trim() || name.trim() || 'su insignia'}</strong>
+                </span>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
 
