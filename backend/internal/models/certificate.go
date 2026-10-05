@@ -51,6 +51,9 @@ type CertificateField struct {
 	// además van en negrita. Vacío = el mismo color del texto.
 	Wrap      float64 `json:"wrap,omitempty"`
 	Highlight string  `json:"highlight,omitempty"`
+	// Upper escribe el campo en mayúsculas (también los datos que trae: el
+	// programa, el nombre...). No aplica a la firma.
+	Upper bool `json:"upper,omitempty"`
 }
 
 // CertificateTemplate es un diseño subido por el equipo (imagen A4) más la

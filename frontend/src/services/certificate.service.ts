@@ -17,7 +17,7 @@ export interface CertificateField {
   color: string
   align: 'L' | 'C' | 'R'
   bold: boolean
-  font: 'Helvetica' | 'Times' | 'Courier' | 'Poppins'
+  font: 'Helvetica' | 'Times' | 'Courier' | 'Poppins' | 'Spartan'
   /** Solo la firma: archivo en uploads. */
   image?: string
   /** Solo la firma: ancho en % del ancho de la página (el alto sale de la imagen). */
@@ -26,6 +26,8 @@ export interface CertificateField {
   wrap?: number
   /** Solo el texto libre: color de las variables ({programa}...), que van en negrita. */
   highlight?: string
+  /** En mayúsculas, también los datos que trae (programa, nombre...). No aplica a la firma. */
+  upper?: boolean
 }
 
 /** Diseño subido por el equipo más la posición de los campos. */

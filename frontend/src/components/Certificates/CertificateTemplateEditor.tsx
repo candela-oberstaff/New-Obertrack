@@ -101,7 +101,8 @@ const DEFAULT_FIELDS: CertificateField[] = [
   // "CERTIFICADO" en el diseño de Oberstaff). Tiene que coincidir con
   // DefaultCertificateFields del backend.
   { key: 'name', x: 50, y: 48, size: 32, color: '#fa3ab4', align: 'C', bold: true, font: 'Poppins' },
-  { key: 'program', x: 50, y: 62, size: 18, color: '#334155', align: 'C', bold: false, font: 'Helvetica' },
+  // El programa hace de título: League Spartan, en mayúsculas y en negro.
+  { key: 'program', x: 50, y: 62, size: 18, color: '#000000', align: 'C', bold: true, font: 'Spartan', upper: true },
   { key: 'date', x: 50, y: 74, size: 12, color: '#64748b', align: 'C', bold: false, font: 'Helvetica' },
   { key: 'code', x: 50, y: 93, size: 9, color: '#94a3b8', align: 'C', bold: false, font: 'Courier' },
 ]
@@ -114,6 +115,14 @@ const FONT_FAMILY: Record<CertificateField['font'], string> = {
   Times: '"Times New Roman", Times, serif',
   Courier: '"Courier New", Courier, monospace',
   Poppins: 'Poppins, sans-serif',
+  Spartan: '"League Spartan", sans-serif',
+}
+
+/** Peso con el que se ve cada fuente, igual que en el PDF. */
+function fontWeight(f: CertificateField): number {
+  if (f.font === 'Spartan') return 700 // solo existe en Bold
+  if (!f.bold) return 400
+  return f.font === 'Poppins' ? 600 : 700 // la "negrita" de Poppins es la semibold
 }
 
 /**
@@ -492,8 +501,8 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                       ...(f.key === 'signature' ? { width: `${f.width ?? SIGNATURE_WIDTH.initial}%`, lineHeight: 0 } : {}),
                       fontSize: fontPx,
                       fontFamily: FONT_FAMILY[f.font],
-                      // En Poppins la "negrita" del PDF es la semibold (600).
-                      fontWeight: f.bold ? (f.font === 'Poppins' ? 600 : 700) : 400,
+                      fontWeight: fontWeight(f),
+                      textTransform: f.upper ? 'uppercase' : 'none',
                       color: f.color,
                       whiteSpace: f.key === 'text' ? (f.wrap ? 'pre-line' : 'pre') : 'nowrap',
                       ...(f.key === 'text' && f.wrap ? { width: `${f.wrap}%`, textAlign: f.align === 'C' ? 'center' : f.align === 'R' ? 'right' : 'left' } : {}),
@@ -702,6 +711,7 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                           { value: 'Times', label: 'Times' },
                           { value: 'Courier', label: 'Courier' },
                           { value: 'Poppins', label: 'Poppins' },
+                          { value: 'Spartan', label: 'League Spartan (Bold)' },
                         ]}
                       />
                     </div>
@@ -727,6 +737,14 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                       onChange={(e) => updateField(selected, { bold: e.target.checked })}
                     />
                     Negrita
+                  </label>
+                  <label className={styles.checkRow}>
+                    <input
+                      type="checkbox"
+                      checked={!!current.upper}
+                      onChange={(e) => updateField(selected, { upper: e.target.checked })}
+                    />
+                    Mayúsculas
                   </label>
                   </>
                   )}

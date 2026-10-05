@@ -89,7 +89,7 @@ type certificateData struct {
 
 const certificatesDir = "certificates"
 
-var certificateFonts = map[string]bool{"Helvetica": true, "Times": true, "Courier": true, "Poppins": true}
+var certificateFonts = map[string]bool{"Helvetica": true, "Times": true, "Courier": true, "Poppins": true, "Spartan": true}
 
 // Poppins es la tipografía de la marca (licencia OFL, assets/fonts/OFL.txt).
 // No es una fuente básica del PDF, así que va embebida: la normal para el
@@ -101,9 +101,28 @@ var poppinsRegular []byte
 //go:embed assets/fonts/Poppins-SemiBold.ttf
 var poppinsSemiBold []byte
 
-// utf8Fonts son las fuentes embebidas: escriben UTF-8 tal cual, sin pasar por
-// la traducción a CP1252 de las fuentes básicas.
-var utf8Fonts = map[string]bool{"Poppins": true}
+// League Spartan Bold, la "Spartan" de los títulos de la marca (licencia OFL,
+// assets/fonts/LeagueSpartan-OFL.txt). Solo existe en negrita: "Spartan" con o
+// sin negrita escribe siempre Bold. Va estática porque gofpdf no admite las
+// fuentes variables, que es como la publica Google Fonts.
+//
+//go:embed assets/fonts/LeagueSpartan-Bold.ttf
+var leagueSpartanBold []byte
+
+// utf8Fonts son las fuentes embebidas, con sus archivos para el estilo normal
+// y la negrita. Escriben UTF-8 tal cual, sin pasar por la traducción a CP1252
+// de las fuentes básicas.
+var utf8Fonts = map[string]bool{"Poppins": true, "Spartan": true}
+
+func embeddedFontFiles(font string) (regular, bold []byte) {
+	switch font {
+	case "Poppins":
+		return poppinsRegular, poppinsSemiBold
+	case "Spartan":
+		return leagueSpartanBold, leagueSpartanBold
+	}
+	return nil, nil
+}
 
 type certificateService struct {
 	repo          repository.CertificateRepository
@@ -161,7 +180,8 @@ func DefaultCertificateFields() []models.CertificateField {
 		// "CERTIFICADO" en el diseño de Oberstaff). Tiene que coincidir con
 		// DEFAULT_FIELDS del editor (CertificateTemplateEditor.tsx).
 		{Key: models.CertificateFieldName, X: 50, Y: 48, Size: 32, Color: "#fa3ab4", Align: "C", Bold: true, Font: "Poppins"},
-		{Key: models.CertificateFieldProgram, X: 50, Y: 62, Size: 18, Color: "#334155", Align: "C", Font: "Helvetica"},
+		// El programa hace de título: League Spartan, en mayúsculas y en negro.
+		{Key: models.CertificateFieldProgram, X: 50, Y: 62, Size: 18, Color: "#000000", Align: "C", Bold: true, Font: "Spartan", Upper: true},
 		{Key: models.CertificateFieldDate, X: 50, Y: 74, Size: 12, Color: "#64748b", Align: "C", Font: "Helvetica"},
 		{Key: models.CertificateFieldCode, X: 50, Y: 93, Size: 9, Color: "#94a3b8", Align: "C", Font: "Courier"},
 	}
@@ -289,7 +309,7 @@ func (s *certificateService) normalizeSignatureField(f *models.CertificateField)
 	default:
 		f.Align = "C"
 	}
-	f.Text, f.Size, f.Color, f.Bold, f.Font = "", 0, "", false, ""
+	f.Text, f.Size, f.Color, f.Bold, f.Font, f.Upper = "", 0, "", false, "", false
 	return nil
 }
 
@@ -651,7 +671,7 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 
 	// Traduce UTF-8 a CP1252 (fuentes core): sin esto los acentos salen mal.
 	tr := pdf.UnicodeTranslatorFromDescriptor("")
-	poppinsLoaded := false
+	loadedFonts := map[string]bool{}
 	for _, f := range t.Fields {
 		if f.Key == models.CertificateFieldSignature {
 			s.drawSignature(pdf, f, pageW, pageH)
@@ -669,10 +689,14 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 		if !certificateFonts[font] {
 			font = "Helvetica"
 		}
-		if font == "Poppins" && !poppinsLoaded {
-			pdf.AddUTF8FontFromBytes("Poppins", "", poppinsRegular)
-			pdf.AddUTF8FontFromBytes("Poppins", "B", poppinsSemiBold)
-			poppinsLoaded = true
+		if utf8Fonts[font] && !loadedFonts[font] {
+			regular, bold := embeddedFontFiles(font)
+			pdf.AddUTF8FontFromBytes(font, "", regular)
+			pdf.AddUTF8FontFromBytes(font, "B", bold)
+			loadedFonts[font] = true
+		}
+		if f.Upper {
+			text = strings.ToUpper(text)
 		}
 		if f.Key == models.CertificateFieldText {
 			drawParagraph(pdf, f, data, font, pageW, pageH, tr)

@@ -113,3 +113,32 @@ func TestCreateTemplate_TextoLibreAnchoYResaltado(t *testing.T) {
 		t.Errorf("solo el texto libre lleva ancho y resaltado: %+v", name)
 	}
 }
+
+// League Spartan va embebida y "Mayúsculas" se aplica al dato (el programa)
+// y a las variables del párrafo.
+func TestRender_SpartanEnMayusculas(t *testing.T) {
+	svc, _, _, _, _ := newCertSvc(t)
+	tpl := &models.CertificateTemplate{ImageFilename: "diseno.png", Orientation: "L", Fields: []models.CertificateField{
+		{Key: models.CertificateFieldProgram, X: 50, Y: 20, Size: 40, Color: "#000000", Align: "C", Bold: true, Font: "Spartan", Upper: true},
+		{Key: models.CertificateFieldText, X: 50, Y: 60, Size: 13, Color: "#0f172a", Align: "C", Font: "Spartan", Wrap: 55, Upper: true, Text: "aprobó la {programa}"},
+	}}
+	pdf, err := svc.render(tpl, paragraphData)
+	if err != nil {
+		t.Fatalf("render con Spartan: %v", err)
+	}
+	if !bytes.Contains(pdf, []byte("/FontName /utf8spartan")) {
+		t.Fatal("el PDF debe llevar League Spartan embebida")
+	}
+
+	st := paragraphStyle{upper: true, font: "Spartan"}
+	if got := st.text("Prueba de Inducción"); got != "PRUEBA DE INDUCCIÓN" {
+		t.Fatalf("mayúsculas con tildes: %q", got)
+	}
+}
+
+func TestDefaultCertificateFields_ProgramaComoTitulo(t *testing.T) {
+	program := DefaultCertificateFields()[1]
+	if program.Key != models.CertificateFieldProgram || program.Font != "Spartan" || !program.Upper || program.Color != "#000000" {
+		t.Fatalf("el programa por defecto va en League Spartan, mayúsculas y negro: %+v", program)
+	}
+}

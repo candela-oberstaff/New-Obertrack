@@ -91,6 +91,7 @@ type paragraphStyle struct {
 	bold      bool
 	color     [3]int
 	highlight [3]int
+	upper     bool
 	tr        func(string) string
 }
 
@@ -109,6 +110,9 @@ func (st paragraphStyle) apply(variable bool) {
 }
 
 func (st paragraphStyle) text(s string) string {
+	if st.upper {
+		s = strings.ToUpper(s)
+	}
 	if utf8Fonts[st.font] {
 		return s
 	}
@@ -181,7 +185,7 @@ func drawParagraph(pdf *gofpdf.Fpdf, f models.CertificateField, data certificate
 	if !ok {
 		highlight = color
 	}
-	st := paragraphStyle{pdf: pdf, font: font, size: f.Size, bold: f.Bold, color: color, highlight: highlight, tr: tr}
+	st := paragraphStyle{pdf: pdf, font: font, size: f.Size, bold: f.Bold, color: color, highlight: highlight, upper: f.Upper, tr: tr}
 
 	lines := layoutParagraph(st, f, data, pageW)
 	if len(lines) == 0 {
