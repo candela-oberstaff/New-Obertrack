@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { GraduationCap, Save, AlertTriangle, Check } from 'lucide-react'
+import { GraduationCap, Save, AlertTriangle } from 'lucide-react'
 
 import { useNotification } from '../../context/NotificationContext'
 import {
@@ -23,7 +23,6 @@ interface Step {
   label: string
   /** Estado en una línea: qué hay o qué falta. */
   sub: string
-  done: boolean
 }
 
 /**
@@ -90,10 +89,9 @@ export default function InductionSettings() {
 
   // El armado tiene un orden natural: bloques, luego el programa que los
   // ordena, luego (opcional) el certificado que emite. Las pestañas lo
-  // muestran como pasos con su avance.
+  // muestran como pasos numerados con su estado.
   const steps = useMemo<Step[]>(() => {
     const withQuestions = blocks.filter((b) => b.question_count > 0).length
-    const defaultReady = !!defaultProgram && isReady(programIssues(draftFromProgram(defaultProgram)))
     const pendingPrograms = programs.filter((p) => p.is_active && !isReady(programIssues(draftFromProgram(p)))).length
     const certifying = programs.filter((p) => !!p.certificate_template_id).length
     return [
@@ -106,7 +104,6 @@ export default function InductionSettings() {
             : `${blocks.length} ${blocks.length === 1 ? 'bloque' : 'bloques'}${
                 withQuestions < blocks.length ? ` · ${blocks.length - withQuestions} sin preguntas` : ''
               }`,
-        done: withQuestions > 0 && withQuestions === blocks.length,
       },
       {
         key: 'programs',
@@ -117,16 +114,14 @@ export default function InductionSettings() {
             : pendingPrograms > 0
               ? `${pendingPrograms} con pendientes`
               : `${programs.length} ${programs.length === 1 ? 'programa listo' : 'programas listos'}`,
-        done: defaultReady && pendingPrograms === 0,
       },
       {
         key: 'certificates',
         label: 'Certificados',
         sub: certifying > 0 ? `En ${certifying} ${certifying === 1 ? 'programa' : 'programas'}` : 'Opcional',
-        done: certifying > 0,
       },
     ]
-  }, [blocks, programs, defaultProgram])
+  }, [blocks, programs])
 
   const handleSaveConfig = async () => {
     if (!config) return
@@ -255,9 +250,7 @@ export default function InductionSettings() {
               className={section === step.key ? styles.stepActive : styles.step}
               onClick={() => setSection(step.key)}
             >
-              <span className={styles.stepNum} data-done={step.done}>
-                {step.done ? <Check size={16} strokeWidth={3} /> : i + 1}
-              </span>
+              <span className={styles.stepNum}>{i + 1}</span>
               <span className={styles.stepText}>
                 <span className={styles.stepLabel}>{step.label}</span>
                 <span className={styles.stepSub}>{step.sub}</span>
