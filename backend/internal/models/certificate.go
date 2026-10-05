@@ -15,11 +15,15 @@ const (
 	CertificateFieldDate    = "date"    // Fecha de emisión
 	CertificateFieldCode    = "code"    // Código de verificación
 	CertificateFieldText    = "text"    // Texto libre ("por haber completado...")
+	// CertificateFieldSignature es una imagen (la firma, dibujada, escrita o
+	// subida como PNG) en vez de un texto. Usa Image y Width; ignora la
+	// tipografía. Es una firma visual: la autenticidad la da el código.
+	CertificateFieldSignature = "signature"
 )
 
 func IsValidCertificateFieldKey(key string) bool {
 	switch key {
-	case CertificateFieldName, CertificateFieldProgram, CertificateFieldDate, CertificateFieldCode, CertificateFieldText:
+	case CertificateFieldName, CertificateFieldProgram, CertificateFieldDate, CertificateFieldCode, CertificateFieldText, CertificateFieldSignature:
 		return true
 	}
 	return false
@@ -29,15 +33,19 @@ func IsValidCertificateFieldKey(key string) bool {
 // porcentaje del ancho y alto de la página, que es lo que hace que la
 // posición sea la misma en el editor (imagen a escala) y en el PDF.
 type CertificateField struct {
-	Key   string `json:"key"`
-	Text  string `json:"text,omitempty"` // Solo para el campo libre
+	Key   string  `json:"key"`
+	Text  string  `json:"text,omitempty"` // Solo para el campo libre
 	X     float64 `json:"x"`
 	Y     float64 `json:"y"`
 	Size  float64 `json:"size"`  // Puntos
 	Color string  `json:"color"` // #rrggbb
 	Align string  `json:"align"` // L | C | R
 	Bold  bool    `json:"bold"`
-	Font  string  `json:"font"` // Helvetica | Times | Courier
+	Font  string  `json:"font"` // Helvetica | Times | Courier | Poppins
+	// Solo para la firma: el archivo en uploads y su ancho en porcentaje del
+	// ancho de la página (el alto sale de la proporción de la imagen).
+	Image string  `json:"image,omitempty"`
+	Width float64 `json:"width,omitempty"`
 }
 
 // CertificateTemplate es un diseño subido por el equipo (imagen A4) más la

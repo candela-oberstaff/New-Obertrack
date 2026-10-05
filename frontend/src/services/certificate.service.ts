@@ -1,8 +1,11 @@
 import api from './client'
 
-export type CertificateFieldKey = 'name' | 'program' | 'date' | 'code' | 'text'
+export type CertificateFieldKey = 'name' | 'program' | 'date' | 'code' | 'text' | 'signature'
 
-/** Un texto colocado sobre el diseño. X e Y en porcentaje de la página. */
+/**
+ * Un texto colocado sobre el diseño, o una imagen en el caso de la firma. X e Y
+ * en porcentaje de la página.
+ */
 export interface CertificateField {
   key: CertificateFieldKey
   text?: string
@@ -15,6 +18,10 @@ export interface CertificateField {
   align: 'L' | 'C' | 'R'
   bold: boolean
   font: 'Helvetica' | 'Times' | 'Courier' | 'Poppins'
+  /** Solo la firma: archivo en uploads. */
+  image?: string
+  /** Solo la firma: ancho en % del ancho de la página (el alto sale de la imagen). */
+  width?: number
 }
 
 /** Diseño subido por el equipo más la posición de los campos. */

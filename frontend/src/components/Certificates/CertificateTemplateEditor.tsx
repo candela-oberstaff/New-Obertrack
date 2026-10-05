@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Save, Upload, Eye, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Save, Upload, Eye, Plus, Trash2, PenLine } from 'lucide-react'
 
-import { Select } from '../ui'
+import { Button, Modal, Select } from '../ui'
+import SignaturePad from '../Testimonials/SignaturePad'
 import { useNotification } from '../../context/NotificationContext'
 import { uploadService } from '../../services/upload.service'
 import {
@@ -26,6 +27,7 @@ const FIELD_LABEL: Record<CertificateFieldKey, string> = {
   date: 'Fecha',
   code: 'Código de verificación',
   text: 'Texto libre',
+  signature: 'Firma',
 }
 
 /** Lo que se pinta en el editor en lugar de cada campo. */
@@ -35,6 +37,16 @@ const SAMPLE: Record<CertificateFieldKey, string> = {
   date: '25 de septiembre de 2026',
   code: 'OBT-EJEM-PLO1',
   text: 'Texto libre',
+  signature: '',
+}
+
+/** Ancho de la firma en % de la página: el mismo rango que acepta el servidor. */
+const SIGNATURE_WIDTH = { min: 5, max: 60, initial: 20 }
+
+/** Convierte el data URL PNG del SignaturePad en un archivo para subirlo. */
+async function dataURLToFile(dataURL: string, filename: string): Promise<File> {
+  const blob = await (await fetch(dataURL)).blob()
+  return new File([blob], filename, { type: 'image/png' })
 }
 
 const DEFAULT_FIELDS: CertificateField[] = [
@@ -121,7 +133,57 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
   // Cualquier campo puede ir más de una vez (un diseño puede repetir el
   // nombre o el código). El campo nuevo se coloca un poco desplazado del que
   // ya existe para que no quede escondido encima.
+  // Firma: se crea dibujándola, escribiéndola o subiendo una foto (el mismo
+  // SignaturePad que los testimonios), se sube como PNG y queda como un campo
+  // de imagen. signatureFor = índice del campo a reemplazar, null = nueva,
+  // undefined = modal cerrado.
+  const [signatureFor, setSignatureFor] = useState<number | null | undefined>(undefined)
+  const [signatureDraft, setSignatureDraft] = useState('')
+  const [signatureSaving, setSignatureSaving] = useState(false)
+
+  const closeSignature = () => {
+    setSignatureFor(undefined)
+    setSignatureDraft('')
+  }
+
+  const saveSignature = async () => {
+    if (!signatureDraft) return
+    setSignatureSaving(true)
+    try {
+      const up = await uploadService.upload(await dataURLToFile(signatureDraft, 'firma.png'))
+      if (signatureFor !== null && signatureFor !== undefined) {
+        updateField(signatureFor, { image: up.filename })
+      } else {
+        const next: CertificateField = {
+          key: 'signature',
+          image: up.filename,
+          width: SIGNATURE_WIDTH.initial,
+          x: 69,
+          y: 80,
+          align: 'C',
+          // No aplican a una imagen; el servidor los limpia.
+          size: 12,
+          color: '#0f172a',
+          bold: false,
+          font: 'Helvetica',
+        }
+        setFields((prev) => [...prev, next])
+        setSelected(fields.length)
+      }
+      closeSignature()
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo guardar la firma.')
+    } finally {
+      setSignatureSaving(false)
+    }
+  }
+
   const addField = (key: CertificateFieldKey) => {
+    if (key === 'signature') {
+      setSignatureDraft('')
+      setSignatureFor(null)
+      return
+    }
     const existing = fields.filter((f) => f.key === key)
     const base = existing.length > 0
       ? { ...existing[existing.length - 1], y: Math.min(96, existing[existing.length - 1].y + 8) }
@@ -361,6 +423,8 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                       left: `${f.x}%`,
                       top: `${f.y}%`,
                       transform: `translate(${translateX}, -50%)`,
+                      // La firma ocupa un ancho fijo de la página, como en el PDF.
+                      ...(f.key === 'signature' ? { width: `${f.width ?? SIGNATURE_WIDTH.initial}%`, lineHeight: 0 } : {}),
                       fontSize: fontPx,
                       fontFamily: FONT_FAMILY[f.font],
                       // En Poppins la "negrita" del PDF es la semibold (600).
@@ -377,7 +441,14 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                       background: active ? 'rgba(204, 51, 204, 0.08)' : 'transparent',
                     }}
                   >
-                    {f.key === 'text' ? f.text || 'Texto libre' : SAMPLE[f.key]}
+                    {f.key === 'signature' ? (
+                      <img
+                        src={templateImageUrl(f.image ?? '')}
+                        alt="Firma"
+                        draggable={false}
+                        style={{ display: 'block', width: '100%', height: 'auto', pointerEvents: 'none' }}
+                      />
+                    ) : f.key === 'text' ? f.text || 'Texto libre' : SAMPLE[f.key]}
                   </div>
                 )
               })}
@@ -426,6 +497,56 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                     </button>
                   </div>
 
+                  {current.key === 'signature' && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <img
+                          src={templateImageUrl(current.image ?? '')}
+                          alt="Firma"
+                          style={{ maxWidth: 160, maxHeight: 60, objectFit: 'contain', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 4 }}
+                        />
+                        <button
+                          type="button"
+                          className={styles.ghostBtnSm}
+                          onClick={() => { setSignatureDraft(''); setSignatureFor(selected) }}
+                        >
+                          <PenLine size={12} /> Cambiar firma
+                        </button>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div className={styles.field}>
+                          <label className={styles.smallLabel}>Ancho (% de la página)</label>
+                          <input
+                            type="number"
+                            min={SIGNATURE_WIDTH.min}
+                            max={SIGNATURE_WIDTH.max}
+                            step={1}
+                            value={current.width ?? SIGNATURE_WIDTH.initial}
+                            onChange={(e) => {
+                              const w = Number(e.target.value) || SIGNATURE_WIDTH.initial
+                              updateField(selected, { width: Math.min(SIGNATURE_WIDTH.max, Math.max(SIGNATURE_WIDTH.min, w)) })
+                            }}
+                          />
+                        </div>
+                        <div className={styles.field}>
+                          <label className={styles.smallLabel}>Alineación</label>
+                          <Select
+                            fullWidth
+                            value={current.align}
+                            onChange={(v) => updateField(selected, { align: v as CertificateField['align'] })}
+                            options={[
+                              { value: 'L', label: 'Izquierda' },
+                              { value: 'C', label: 'Centro' },
+                              { value: 'R', label: 'Derecha' },
+                            ]}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {current.key !== 'signature' && (
+                  <>
                   {current.key === 'text' && (
                     <div className={styles.field}>
                       <label className={styles.smallLabel}>Texto</label>
@@ -497,6 +618,8 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                     />
                     Negrita
                   </label>
+                  </>
+                  )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div className={styles.field}>
@@ -528,6 +651,28 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
           </div>
         )}
       </div>
+
+      {signatureFor !== undefined && (
+        <Modal
+          isOpen
+          isDirty={!!signatureDraft}
+          onClose={closeSignature}
+          title={signatureFor === null ? 'Agregar firma' : 'Cambiar firma'}
+          size="lg"
+          footer={
+            <>
+              <Button variant="secondary" onClick={closeSignature} disabled={signatureSaving}>Cancelar</Button>
+              <Button onClick={saveSignature} loading={signatureSaving} disabled={!signatureDraft}>Usar firma</Button>
+            </>
+          }
+        >
+          <SignaturePad
+            onChange={(dataURL) => setSignatureDraft(dataURL)}
+            hint="Dibuja la firma, escríbela o sube una foto. Se guarda como imagen y se coloca encima del diseño."
+            disabled={signatureSaving}
+          />
+        </Modal>
+      )}
 
       <div className={styles.stickyBar}>
         <span className={styles.muted}>

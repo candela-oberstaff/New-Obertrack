@@ -178,12 +178,8 @@ func (s *certificateService) validateTemplateInput(in *TemplateInput) (orientati
 	if in.ImageFilename == "" {
 		return "", errors.New("sube el diseño del certificado (PNG o JPG)")
 	}
-	if strings.ContainsAny(in.ImageFilename, "/\\") || strings.Contains(in.ImageFilename, "..") || in.ImageFilename != filepath.Base(in.ImageFilename) {
-		return "", errors.New("nombre de archivo inválido")
-	}
-	ext := strings.ToLower(filepath.Ext(in.ImageFilename))
-	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
-		return "", errors.New("el diseño debe ser una imagen PNG o JPG")
+	if err := checkImageFilename(in.ImageFilename); err != nil {
+		return "", fmt.Errorf("el diseño: %w", err)
 	}
 	orientation, err = imageOrientation(filepath.Join(s.uploadPath, in.ImageFilename))
 	if err != nil {
@@ -200,6 +196,13 @@ func (s *certificateService) validateTemplateInput(in *TemplateInput) (orientati
 		if f.X < 0 || f.X > 100 || f.Y < 0 || f.Y > 100 {
 			return "", errors.New("la posición de un campo debe estar entre 0 y 100")
 		}
+		if f.Key == models.CertificateFieldSignature {
+			if err := s.normalizeSignatureField(f); err != nil {
+				return "", err
+			}
+			continue
+		}
+		f.Image, f.Width = "", 0
 		if f.Size < 6 || f.Size > 120 {
 			return "", errors.New("el tamaño de letra debe estar entre 6 y 120")
 		}
@@ -221,6 +224,86 @@ func (s *certificateService) validateTemplateInput(in *TemplateInput) (orientati
 		}
 	}
 	return orientation, nil
+}
+
+// checkImageFilename acepta solo el nombre de un archivo de uploads (sin rutas)
+// con extensión PNG o JPG.
+func checkImageFilename(name string) error {
+	if strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") || name != filepath.Base(name) {
+		return errors.New("nombre de archivo inválido")
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
+		return errors.New("tiene que ser una imagen PNG o JPG")
+	}
+	return nil
+}
+
+// Ancho de la firma, en porcentaje del ancho de la página.
+const (
+	signatureMinWidth     = 5.0
+	signatureMaxWidth     = 60.0
+	signatureDefaultWidth = 20.0
+)
+
+// normalizeSignatureField valida la imagen de una firma (tiene que estar ya en
+// uploads) y deja el ancho dentro de rango. Los atributos de texto no aplican.
+func (s *certificateService) normalizeSignatureField(f *models.CertificateField) error {
+	f.Image = strings.TrimSpace(f.Image)
+	if f.Image == "" {
+		return errors.New("la firma no tiene imagen; vuelve a agregarla")
+	}
+	if err := checkImageFilename(f.Image); err != nil {
+		return fmt.Errorf("la firma: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(s.uploadPath, f.Image)); err != nil {
+		return errors.New("no se encontró la imagen de la firma; vuelve a agregarla")
+	}
+	switch {
+	case f.Width == 0:
+		f.Width = signatureDefaultWidth
+	case f.Width < signatureMinWidth:
+		f.Width = signatureMinWidth
+	case f.Width > signatureMaxWidth:
+		f.Width = signatureMaxWidth
+	}
+	switch f.Align {
+	case "L", "C", "R":
+	default:
+		f.Align = "C"
+	}
+	f.Text, f.Size, f.Color, f.Bold, f.Font = "", 0, "", false, ""
+	return nil
+}
+
+// drawSignature pone la imagen de una firma con su centro vertical en (X, Y),
+// alineada horizontalmente como un texto. El alto sale de su proporción.
+func (s *certificateService) drawSignature(pdf *gofpdf.Fpdf, f models.CertificateField, pageW, pageH float64) {
+	path := filepath.Join(s.uploadPath, filepath.Base(f.Image))
+	if _, err := os.Stat(path); err != nil {
+		log.Printf("[certificados] falta la imagen de firma %q: se omite", f.Image)
+		return
+	}
+	imageType := "PNG"
+	if ext := strings.ToLower(filepath.Ext(path)); ext == ".jpg" || ext == ".jpeg" {
+		imageType = "JPG"
+	}
+	opt := gofpdf.ImageOptions{ImageType: imageType, ReadDpi: false}
+	info := pdf.RegisterImageOptions(path, opt)
+	if info == nil || info.Width() == 0 {
+		return
+	}
+	w := pageW * f.Width / 100
+	h := w * info.Height() / info.Width()
+	x := pageW * f.X / 100
+	y := pageH*f.Y/100 - h/2
+	switch f.Align {
+	case "C":
+		x -= w / 2
+	case "R":
+		x -= w
+	}
+	pdf.ImageOptions(path, x, y, w, h, false, opt, 0, "")
 }
 
 // imageOrientation lee las dimensiones del diseño: apaisado = L, vertical = P.
@@ -553,6 +636,10 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 	tr := pdf.UnicodeTranslatorFromDescriptor("")
 	poppinsLoaded := false
 	for _, f := range t.Fields {
+		if f.Key == models.CertificateFieldSignature {
+			s.drawSignature(pdf, f, pageW, pageH)
+			continue
+		}
 		text := fieldValue(f, data)
 		if strings.TrimSpace(text) == "" {
 			continue
