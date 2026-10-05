@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { ArrowLeft, Save, SlidersHorizontal } from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
+import { ArrowLeft, ArrowRight, Check, Save, SlidersHorizontal } from 'lucide-react'
 
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
@@ -8,7 +8,7 @@ import type { Tutorial } from '../../types/tutorials'
 import InductionQuizBuilder, { type QuizBuilderHandle } from './InductionQuizBuilder'
 import InductionVideoPicker from './InductionVideoPicker'
 import ReadinessChecklist from './ReadinessChecklist'
-import { blockIssues } from './inductionReadiness'
+import { blockIssues, isReady } from './inductionReadiness'
 import { BadgePicker, buildBadgePresets, type BadgeDraft } from '../Badges/BadgePicker'
 import { DEFAULT_BLOCK_BADGE } from '../Badges/badgeCatalog'
 import styles from './InductionSettings.module.css'
@@ -27,11 +27,13 @@ interface Props {
   onBack: () => void
 }
 
+const STEPS = ['Datos', 'Video', 'Cuestionario', 'Revisar']
+
 /**
- * Editor de un bloque: nombre, video (de Novedades) y su cuestionario; el
- * mínimo propio y la insignia van plegados en opciones avanzadas. Las
- * preguntas se escriben desde el principio, también en un bloque nuevo: un
- * solo botón crea el cuestionario, el bloque y sus preguntas.
+ * Editor de un bloque, como asistente de cuatro pasos: datos, video (de
+ * Novedades), cuestionario y revisión (con el mínimo propio y la insignia
+ * plegados). Las preguntas se escriben antes de crear el bloque: un solo
+ * botón crea el cuestionario, el bloque y sus preguntas.
  */
 export default function InductionBlockEditor({
   block,
@@ -61,38 +63,55 @@ export default function InductionBlockEditor({
   const presets = buildBadgePresets(allBlocks, allPrograms, block ? { kind: 'block', id: block.id } : undefined)
   const [saving, setSaving] = useState(false)
   const quizRef = useRef<QuizBuilderHandle>(null)
+  // Un bloque nuevo empieza por el nombre; uno existente, por sus preguntas,
+  // que es lo que más se vuelve a tocar.
+  const [step, setStep] = useState(block ? 2 : 0)
+  const [questionCount, setQuestionCount] = useState(block?.question_count ?? 0)
+  // Sin dato todavía se asume que puntúan: el aviso aparece al cargar las preguntas.
+  const [scorableCount, setScorableCount] = useState<number | null>(null)
+  const onCountChange = useCallback((total: number, scorable: number) => {
+    setQuestionCount(total)
+    setScorableCount(scorable)
+  }, [])
 
   const passingValue = passing.trim() === '' ? null : Number(passing)
   const effectivePassing = passingValue ?? fallbackPassingScore
 
   const videoOptions = tutorials.filter((t) => (t.content_type || 'video') === 'video')
   const chosenVideo = videoOptions.find((t) => t.id === tutorialId)
-  // Lo que falta, con el borrador sin guardar (las preguntas cuentan las guardadas).
-  const issues = current
-    ? blockIssues(
-        {
-          name,
-          question_count: current.question_count,
-          passing_score: passingValue,
-          tutorial_id: tutorialId || null,
-          tutorial_visible: chosenVideo?.is_active ?? false,
-        },
-        fallbackPassingScore
-      )
-    : []
+  // Lo que falta, con el borrador tal como está (preguntas incluidas).
+  const issues = blockIssues(
+    {
+      name,
+      question_count: questionCount,
+      passing_score: passingValue,
+      tutorial_id: tutorialId || null,
+      tutorial_visible: chosenVideo?.is_active ?? false,
+    },
+    fallbackPassingScore
+  )
+  if (questionCount > 0 && scorableCount === 0) {
+    issues.unshift({
+      level: 'blocker',
+      text: 'Ninguna pregunta tiene respuesta correcta: todos aprueban sin importar lo que respondan.',
+    })
+  }
 
   const handleSave = async () => {
     if (!name.trim()) {
       showError('El bloque necesita un nombre.')
+      setStep(0)
       return
     }
     if (passingValue !== null && (Number.isNaN(passingValue) || passingValue < 0 || passingValue > 100)) {
       showError('El mínimo aprobatorio debe estar entre 0 y 100.')
+      setStep(3)
       return
     }
     const quizProblem = quizRef.current?.validate()
     if (quizProblem) {
       showError(quizProblem)
+      setStep(2)
       return
     }
     setSaving(true)
@@ -158,12 +177,34 @@ export default function InductionBlockEditor({
             : 'Bloque creado. Agrégale preguntas para que se pueda aprobar.'
       )
       onSaved(saved)
+      // Al crear, de vuelta a la biblioteca: el bloque ya aparece en la lista.
+      if (!current) onBack()
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo guardar el bloque.')
     } finally {
       setSaving(false)
     }
   }
+
+  // --- Asistente por pasos ---------------------------------------------------
+  // Todos los pasos quedan montados (ocultos los que no se ven): así el
+  // borrador de preguntas no se pierde al ir y volver.
+  const goTo = (target: number) => {
+    if (target > 0 && !name.trim()) {
+      showError('Primero ponle un nombre al bloque.')
+      setStep(0)
+      return
+    }
+    setStep(Math.max(0, Math.min(STEPS.length - 1, target)))
+  }
+  const isLast = step === STEPS.length - 1
+  const stepDone = [name.trim() !== '', tutorialId > 0, questionCount > 0 && scorableCount !== 0, isReady(issues)]
+  const stepSub = [
+    name.trim() || 'Nombre y descripción',
+    chosenVideo ? chosenVideo.title : 'Sin video',
+    `${questionCount} ${questionCount === 1 ? 'pregunta' : 'preguntas'}`,
+    isReady(issues) ? 'Todo listo' : 'Con avisos',
+  ]
 
   return (
     <div>
@@ -177,123 +218,184 @@ export default function InductionBlockEditor({
         )}
       </div>
 
-      {/* --- 1. Nombre y video --- */}
-      <div className={styles.section}>
-        <div className={styles.sectionHead}>
-          <span className={styles.sectionNum}>1</span>
-          <h3 className={styles.keyTitle}>Nombre y video</h3>
-        </div>
-        <p className={styles.sectionIntro}>
+      <ol className={styles.wizard} aria-label="Pasos del bloque">
+        {STEPS.map((label, i) => (
+          <li key={label}>
+            <button
+              type="button"
+              className={i === step ? styles.wizardStepActive : styles.wizardStep}
+              aria-current={i === step ? 'step' : undefined}
+              onClick={() => goTo(i)}
+            >
+              <span className={styles.wizardNum} data-done={stepDone[i] && i !== step}>
+                {stepDone[i] && i !== step ? <Check size={14} strokeWidth={3} /> : i + 1}
+              </span>
+              <span className={styles.stepText}>
+                <span className={styles.stepLabel}>{label}</span>
+                <span className={styles.stepSub}>{stepSub[i]}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ol>
+
+      {/* --- 1. Datos --- */}
+      <div className={styles.section} hidden={step !== 0}>
+        <h3 className={styles.wizardTitle}>¿Cómo se llama este bloque?</h3>
+        <p className={styles.wizardIntro}>
           Un bloque es un video más su cuestionario. Se arma una vez y se reutiliza en los
           programas que haga falta.
         </p>
-
-        <div className={styles.blockMain}>
-          <div className={styles.blockMainCol}>
-            <div className={styles.field}>
-              <label htmlFor="block-name">Nombre del bloque</label>
-              <input
-                id="block-name"
-                type="text"
-                placeholder="Ej. Bienvenida y cultura"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus={!current}
-              />
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="block-description">Descripción (opcional)</label>
-              <textarea
-                id="block-description"
-                placeholder="Qué aprende el profesional en este bloque."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
+        <div className={styles.wizardNarrow}>
+          <div className={styles.field}>
+            <label htmlFor="block-name">Nombre del bloque</label>
+            <input
+              id="block-name"
+              type="text"
+              placeholder="Ej. Bienvenida y cultura"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') goTo(1)
+              }}
+              autoFocus={!current}
+            />
           </div>
-
-          <div className={styles.blockMainCol}>
-            <div>
-              <span className={styles.fieldLabel}>Video (de Novedades)</span>
-              {/* La landing de inducción reproduce un video: una novedad de
-                  imagen o de texto no sirve como material aquí. */}
-              <InductionVideoPicker videos={videoOptions} value={tutorialId} onChange={setTutorialId} />
-            </div>
+          <div className={styles.field} style={{ marginTop: 16 }}>
+            <label htmlFor="block-description">Descripción (opcional)</label>
+            <textarea
+              id="block-description"
+              placeholder="Qué aprende el profesional en este bloque."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
         </div>
       </div>
 
-      {/* --- 2. Cuestionario --- */}
-      <div className={styles.section}>
-        <div className={styles.sectionHead}>
-          <span className={styles.sectionNum}>2</span>
-          <h3 className={styles.keyTitle}>Cuestionario</h3>
-          {current && (
-            <span className={current.question_count > 0 ? styles.tagOk : styles.tagWarn}>
-              {current.question_count} {current.question_count === 1 ? 'pregunta' : 'preguntas'}
-            </span>
-          )}
+      {/* --- 2. Video --- */}
+      <div className={styles.section} hidden={step !== 1}>
+        <h3 className={styles.wizardTitle}>Elige el video</h3>
+        <p className={styles.wizardIntro}>
+          Sale de Novedades. El profesional lo ve antes de responder el cuestionario. Si el bloque
+          es solo preguntas, elige «Sin video».
+        </p>
+        {/* La landing de inducción reproduce un video: una novedad de imagen o
+            de texto no sirve como material aquí. */}
+        <div className={styles.wizardMedium}>
+          <InductionVideoPicker videos={videoOptions} value={tutorialId} onChange={setTutorialId} />
         </div>
+      </div>
+
+      {/* --- 3. Cuestionario --- */}
+      <div className={styles.section} hidden={step !== 2}>
+        <h3 className={styles.wizardTitle}>Arma el cuestionario</h3>
+        <p className={styles.wizardIntro}>
+          Se responde después del video. Para aprobar hay que llegar al {effectivePassing}%.
+        </p>
         {/* En un bloque nuevo las preguntas quedan en borrador y se guardan al crearlo. */}
         <InductionQuizBuilder
           key={current?.survey_id ?? 'nuevo'}
           ref={quizRef}
           surveyId={current?.survey_id ?? null}
           passingScore={effectivePassing}
+          onCountChange={onCountChange}
         />
       </div>
 
-      {/* --- Opciones avanzadas: casi nunca hace falta tocarlas --- */}
-      <details className={styles.advanced} open={passingValue !== null || undefined}>
-        <summary>
-          <SlidersHorizontal size={15} /> Opciones avanzadas
-          <span className={styles.advancedHint}>Mínimo propio ({effectivePassing}%) e insignia</span>
-        </summary>
-        <div className={styles.advancedBody}>
-          <div className={styles.field} style={{ maxWidth: 320, marginTop: 14 }}>
-            <label htmlFor="block-passing">Mínimo aprobatorio propio (%)</label>
-            <input
-              id="block-passing"
-              type="number"
-              min={0}
-              max={100}
-              placeholder={`El del programa (${fallbackPassingScore})`}
-              value={passing}
-              onChange={(e) => setPassing(e.target.value)}
-            />
-          </div>
-          <p className={styles.hint}>
-            Vacío = usa el mínimo del programa. Cámbialo solo si este bloque debe ser más exigente
-            o más fácil.
-          </p>
-
-          <div className={styles.section}>
-            <h3 className={styles.keyTitle} style={{ fontSize: 14, margin: '0 0 4px' }}>
-              Insignia del bloque
-            </h3>
-            <p className={styles.hint} style={{ margin: '0 0 12px' }}>
-              Se gana al aprobar este bloque y aparece en el perfil del profesional y en su
-              expediente. Si no la cambias, lleva el nombre del bloque.
-            </p>
-            <BadgePicker value={badge} fallbackTitle={name} presets={presets} onChange={setBadge} />
+      {/* --- 4. Revisar --- */}
+      <div className={styles.section} hidden={step !== 3}>
+        <h3 className={styles.wizardTitle}>Revisa y {current ? 'guarda' : 'crea'} el bloque</h3>
+        <div className={styles.summaryGrid}>
+          <button type="button" className={styles.summaryItem} onClick={() => goTo(0)}>
+            <span className={styles.summaryLabel}>Nombre</span>
+            <span className={styles.summaryValue}>{name || '—'}</span>
+          </button>
+          <button type="button" className={styles.summaryItem} onClick={() => goTo(1)}>
+            <span className={styles.summaryLabel}>Video</span>
+            <span className={styles.summaryValue}>{chosenVideo?.title ?? 'Sin video'}</span>
+          </button>
+          <button type="button" className={styles.summaryItem} onClick={() => goTo(2)}>
+            <span className={styles.summaryLabel}>Cuestionario</span>
+            <span className={styles.summaryValue}>
+              {questionCount} {questionCount === 1 ? 'pregunta' : 'preguntas'}
+            </span>
+          </button>
+          <div className={styles.summaryItem}>
+            <span className={styles.summaryLabel}>Mínimo para aprobar</span>
+            <span className={styles.summaryValue}>
+              {effectivePassing}% {passingValue === null && <small>(el del programa)</small>}
+            </span>
           </div>
         </div>
-      </details>
 
-      {current && (
         <ReadinessChecklist issues={issues} readyText="Este bloque está listo para usarse en un programa." />
-      )}
+
+        <details className={styles.advanced} open={passingValue !== null || undefined}>
+          <summary>
+            <SlidersHorizontal size={15} /> Opciones avanzadas
+            <span className={styles.advancedHint}>Mínimo propio e insignia</span>
+          </summary>
+          <div className={styles.advancedBody}>
+            <div className={styles.field} style={{ maxWidth: 320, marginTop: 14 }}>
+              <label htmlFor="block-passing">Mínimo aprobatorio propio (%)</label>
+              <input
+                id="block-passing"
+                type="number"
+                min={0}
+                max={100}
+                placeholder={`El del programa (${fallbackPassingScore})`}
+                value={passing}
+                onChange={(e) => setPassing(e.target.value)}
+              />
+            </div>
+            <p className={styles.hint}>
+              Vacío = usa el mínimo del programa. Cámbialo solo si este bloque debe ser más
+              exigente o más fácil.
+            </p>
+
+            <div className={styles.section}>
+              <h3 className={styles.keyTitle} style={{ fontSize: 14, margin: '0 0 4px' }}>
+                Insignia del bloque
+              </h3>
+              <p className={styles.hint} style={{ margin: '0 0 12px' }}>
+                Se gana al aprobar este bloque y aparece en el perfil del profesional y en su
+                expediente. Si no la cambias, lleva el nombre del bloque.
+              </p>
+              <BadgePicker value={badge} fallbackTitle={name} presets={presets} onChange={setBadge} />
+            </div>
+          </div>
+        </details>
+      </div>
 
       <div className={styles.stickyBar}>
         <span className={styles.muted}>
-          {current ? `Mínimo efectivo: ${effectivePassing}%` : 'El cuestionario se crea al guardar.'}
+          Paso {step + 1} de {STEPS.length}
         </span>
-        <button type="button" className={styles.ghostBtn} onClick={onBack} disabled={saving}>
-          {current ? 'Volver' : 'Cancelar'}
-        </button>
-        <button type="button" className={styles.saveBtn} disabled={saving} onClick={handleSave}>
-          <Save size={16} /> {saving ? 'Guardando...' : current ? 'Guardar bloque' : 'Crear bloque'}
-        </button>
+        {step === 0 ? (
+          <button type="button" className={styles.ghostBtn} onClick={onBack} disabled={saving}>
+            {current ? 'Volver' : 'Cancelar'}
+          </button>
+        ) : (
+          <button type="button" className={styles.ghostBtn} onClick={() => goTo(step - 1)} disabled={saving}>
+            <ArrowLeft size={16} /> Atrás
+          </button>
+        )}
+        {/* Un bloque ya creado se puede guardar desde cualquier paso. */}
+        {current && !isLast && (
+          <button type="button" className={styles.ghostBtn} disabled={saving} onClick={handleSave}>
+            <Save size={16} /> {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+        )}
+        {isLast ? (
+          <button type="button" className={styles.saveBtn} disabled={saving} onClick={handleSave}>
+            <Save size={16} /> {saving ? 'Guardando...' : current ? 'Guardar bloque' : 'Crear bloque'}
+          </button>
+        ) : (
+          <button type="button" className={styles.saveBtn} onClick={() => goTo(step + 1)}>
+            Siguiente <ArrowRight size={16} />
+          </button>
+        )}
       </div>
     </div>
   )

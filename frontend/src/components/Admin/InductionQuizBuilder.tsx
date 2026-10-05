@@ -42,6 +42,8 @@ interface Props {
   passingScore: number
   /** Avisa cuando cambia el número de preguntas guardadas (para la biblioteca). */
   onSaved?: (questionCount: number) => void
+  /** Avisa cada vez que cambia el número de preguntas (y de las que puntúan), guardadas o no. */
+  onCountChange?: (questionCount: number, scorableCount: number) => void
   /**
    * Con ref, quien lo contiene guarda el cuestionario con su propio botón (el
    * editor del bloque guarda todo de una vez) y este no muestra el suyo.
@@ -63,7 +65,7 @@ export interface QuizBuilderHandle {
  * respuesta y peso. Se arma aquí mismo para no obligar a saltar al módulo de
  * Encuestas y volver.
  */
-export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, ref }: Props) {
+export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, onCountChange, ref }: Props) {
   const { success, error: showError } = useNotification()
 
   // Borrador: un cuestionario en memoria, sin id, hasta que se cree el bloque.
@@ -89,6 +91,7 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, 
     void loadQuiz()
   }, [loadQuiz])
 
+
   const scorableCount = useMemo(
     () =>
       (quiz?.questions ?? []).filter(
@@ -96,6 +99,11 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, 
       ).length,
     [quiz]
   )
+
+  const questionTotal = quiz?.questions?.length ?? 0
+  useEffect(() => {
+    onCountChange?.(questionTotal, scorableCount)
+  }, [questionTotal, scorableCount, onCountChange])
 
   const updateQuestion = (index: number, patch: Partial<SurveyQuestion>) => {
     if (!quiz?.questions) return
