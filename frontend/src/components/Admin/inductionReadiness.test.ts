@@ -16,7 +16,7 @@ const draft = (over: Partial<ProgramDraft> = {}): ProgramDraft => ({
   isDefault: true,
   defaultPassingScore: 70,
   blocks: [block()],
-  companyCount: 0,
+  recipientCount: 0,
   hasCertificate: true,
   ...over,
 })
@@ -51,8 +51,8 @@ describe('programIssues', () => {
   })
 
   it('un programa no por defecto sin empresas no lo recibe nadie', () => {
-    expect(programIssues(draft({ isDefault: false }))[0].text).toContain('No tiene empresas')
-    expect(programIssues(draft({ isDefault: false, companyCount: 2 }))).toEqual([])
+    expect(programIssues(draft({ isDefault: false }))[0].text).toContain('No tiene empresas ni profesionales')
+    expect(programIssues(draft({ isDefault: false, recipientCount: 2 }))).toEqual([])
   })
 
   it('apagado se avisa una sola vez, aunque tampoco tenga empresas', () => {

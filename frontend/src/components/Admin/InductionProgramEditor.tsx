@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ArrowDown,
   Award,
+  Building2,
   Check,
   Download,
   FileCheck,
@@ -12,14 +13,18 @@ import {
   Palette,
   Plus,
   Save,
+  Search,
   Star,
   Target,
   Trash2,
+  Users,
 } from 'lucide-react'
 
 import { Select } from '../ui'
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
+import { emailService } from '../../services/emailService'
+import { buildCompanyIndex, companyNameOf, type CompanyAwareUser } from '../../lib/recipientCompany'
 import {
   certificateService,
   certificateDownloadUrl,
@@ -35,7 +40,26 @@ import ReadinessChecklist from './ReadinessChecklist'
 import { LOW_PASSING_SCORE, isReady, programIssues } from './inductionReadiness'
 import styles from './InductionSettings.module.css'
 
-const STEPS = ['Datos', 'Bloques', 'Empresas', 'Revisar']
+const STEPS = ['Datos', 'Bloques', 'Destinatarios', 'Revisar']
+
+/** Iniciales para el avatar de una opción: «Marta Solís» → «MS». */
+function initials(name: string): string {
+  // Solo cuenta lo que empieza con letra: «Oberstaff (prueba)» → «OP», no «O(».
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}]+/u, ''))
+    .filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '·'
+}
+
+interface PickOption {
+  id: number
+  name: string
+  sub: string
+  /** Texto en el que busca el buscador. */
+  haystack: string
+}
 
 interface Props {
   /** null = programa nuevo. */
@@ -80,6 +104,11 @@ export default function InductionProgramEditor({
   const [blockIds, setBlockIds] = useState<number[]>([])
   const [companyIds, setCompanyIds] = useState<number[]>([])
   const [companySearch, setCompanySearch] = useState('')
+  const [userIds, setUserIds] = useState<number[]>([])
+  const [recipientMode, setRecipientMode] = useState<'companies' | 'users'>('companies')
+  const [pros, setPros] = useState<PickOption[]>([])
+  const [prosLoading, setProsLoading] = useState(true)
+  const [proSearch, setProSearch] = useState('')
   const [badge, setBadge] = useState<BadgeDraft>({ title: '', ...DEFAULT_PROGRAM_BADGE })
   const [customizingBadge, setCustomizingBadge] = useState(false)
   const [templateId, setTemplateId] = useState<number>(0)
@@ -97,6 +126,33 @@ export default function InductionProgramEditor({
       .then(setIssued)
       .catch(() => setIssued(null))
   }, [programId])
+
+  // Profesionales elegibles, con su empresa (que no viene en su propia fila).
+  useEffect(() => {
+    emailService
+      .getAvailableRecipients()
+      .then((resp: any) => {
+        const all: CompanyAwareUser[] = Array.isArray(resp) ? resp : (resp?.data ?? resp?.users ?? [])
+        const index = buildCompanyIndex(all)
+        setPros(
+          all
+            .filter((u) => u.user_type === 'profesional')
+            .map((u) => {
+              const company = companyNameOf(u, index)
+              const name = (u.name || u.email || `Usuario ${u.id}`).trim()
+              return {
+                id: u.id,
+                name,
+                sub: company || u.email || 'Sin empresa',
+                haystack: `${name} ${u.email ?? ''} ${company}`.toLowerCase(),
+              }
+            })
+            .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+        )
+      })
+      .catch(() => setPros([]))
+      .finally(() => setProsLoading(false))
+  }, [])
 
   useEffect(() => {
     certificateService
@@ -122,6 +178,9 @@ export default function InductionProgramEditor({
         setIsActive(p.is_active)
         setBlockIds(p.blocks.map((b) => b.id))
         setCompanyIds(p.company_ids)
+        setUserIds(p.user_ids ?? [])
+        // Abre en la pestaña que de verdad usa el programa.
+        if ((p.user_ids?.length ?? 0) > 0 && p.company_ids.length === 0) setRecipientMode('users')
         setBadge({
           title: p.badge_title || '',
           icon: p.badge_icon || DEFAULT_PROGRAM_BADGE.icon,
@@ -141,11 +200,22 @@ export default function InductionProgramEditor({
   const blockById = useMemo(() => new Map(library.map((b) => [b.id, b])), [library])
   const available = library.filter((b) => !blockIds.includes(b.id))
 
-  const filteredCompanies = useMemo(() => {
+  const filteredCompanies = useMemo<PickOption[]>(() => {
     const q = companySearch.trim().toLowerCase()
-    if (!q) return companies
-    return companies.filter((c) => c.name.toLowerCase().includes(q))
+    return companies
+      .filter((c) => !q || c.name.toLowerCase().includes(q))
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        sub: `${c.count} ${c.count === 1 ? 'profesional activo' : 'profesionales activos'}`,
+        haystack: c.name.toLowerCase(),
+      }))
   }, [companies, companySearch])
+
+  const filteredPros = useMemo(() => {
+    const q = proSearch.trim().toLowerCase()
+    return q ? pros.filter((p) => p.haystack.includes(q)) : pros
+  }, [pros, proSearch])
 
   const move = (index: number, dir: -1 | 1) => {
     const next = [...blockIds]
@@ -154,9 +224,6 @@ export default function InductionProgramEditor({
     ;[next[index], next[target]] = [next[target], next[index]]
     setBlockIds(next)
   }
-
-  const toggleCompany = (id: number) =>
-    setCompanyIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -183,7 +250,8 @@ export default function InductionProgramEditor({
           ? await inductionService.createProgram(input)
           : await inductionService.updateProgram(programId, input)
       await inductionService.setProgramBlocks(base.id, blockIds)
-      const saved = await inductionService.setProgramCompanies(base.id, companyIds)
+      await inductionService.setProgramCompanies(base.id, companyIds)
+      const saved = await inductionService.setProgramUsers(base.id, userIds)
       success(programId === null ? 'Programa creado.' : 'Programa guardado.')
       onSaved(saved)
       // Al crear, de vuelta a la lista: el programa ya aparece ahí.
@@ -204,17 +272,21 @@ export default function InductionProgramEditor({
     isDefault,
     defaultPassingScore: defaultPassing,
     blocks: sequence,
-    companyCount: companyIds.length,
+    recipientCount: companyIds.length + userIds.length,
     hasCertificate: templateId > 0,
   })
   const chosenTemplate = templates.find((t) => t.id === templateId) ?? null
   const blocksReady = sequence.length > 0 && sequence.every((b) => b.question_count > 0)
+  const audienceParts = [
+    companyIds.length > 0 && `${companyIds.length} ${companyIds.length === 1 ? 'empresa' : 'empresas'}`,
+    userIds.length > 0 && `${userIds.length} ${userIds.length === 1 ? 'profesional' : 'profesionales'}`,
+  ].filter(Boolean)
   const audience = isDefault
-    ? companyIds.length > 0
-      ? `Por defecto + ${companyIds.length} ${companyIds.length === 1 ? 'empresa' : 'empresas'}`
+    ? audienceParts.length > 0
+      ? `Por defecto + ${audienceParts.join(' y ')}`
       : 'Todas las empresas sin asignación'
-    : companyIds.length > 0
-      ? `${companyIds.length} ${companyIds.length === 1 ? 'empresa' : 'empresas'}`
+    : audienceParts.length > 0
+      ? audienceParts.join(' y ')
       : 'Nadie todavía'
 
   // --- Asistente por pasos ---------------------------------------------------
@@ -227,7 +299,12 @@ export default function InductionProgramEditor({
     setStep(Math.max(0, Math.min(STEPS.length - 1, target)))
   }
   const isLast = step === STEPS.length - 1
-  const stepDone = [name.trim() !== '', blocksReady, isDefault || companyIds.length > 0, isReady(issues)]
+  const stepDone = [
+    name.trim() !== '',
+    blocksReady,
+    isDefault || companyIds.length + userIds.length > 0,
+    isReady(issues),
+  ]
   const stepSub = [
     name.trim() || 'Nombre y descripción',
     `${blockIds.length} ${blockIds.length === 1 ? 'bloque' : 'bloques'}`,
@@ -448,64 +525,158 @@ export default function InductionProgramEditor({
         </div>
       </div>
 
-      {/* --- 3. Empresas --- */}
+      {/* --- 3. Destinatarios --- */}
       <div className={styles.section} hidden={step !== 2}>
-        <h3 className={styles.wizardTitle}>¿Quién lo recibe?</h3>
+        <h3 className={styles.wizardTitle}>¿A quién se envía?</h3>
         <p className={styles.wizardIntro}>
-          Quien se contrate en las empresas elegidas recibe este programa. Una empresa solo puede
-          estar en un programa: si ya estaba en otro, pasa a este.
+          Elige empresas completas o personas concretas. Lo recibirán cuando les toque la
+          inducción: al contratarlas o cuando Soporte las invite.
         </p>
 
-        <label className={isDefault ? styles.defaultCardOn : styles.defaultCard}>
-          <input
-            type="checkbox"
-            checked={isDefault}
-            // El por defecto no se desmarca desde aquí: se marca otro y este
-            // deja de serlo solo.
-            disabled={wasDefault}
-            onChange={(e) => setIsDefault(e.target.checked)}
-          />
-          <Star size={18} />
-          <span>
-            <strong>Programa por defecto</strong>
+        <div className={styles.audienceCards} role="radiogroup" aria-label="A quién se envía">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={recipientMode === 'companies'}
+            className={recipientMode === 'companies' ? styles.audienceCardOn : styles.audienceCard}
+            onClick={() => setRecipientMode('companies')}
+          >
+            <span className={styles.audienceIcon}>
+              <Building2 size={22} />
+            </span>
+            <span className={styles.audienceText}>
+              <strong>Empresas</strong>
+              <span>Lo recibe todo el que se contrate en las empresas que elijas.</span>
+            </span>
+            <span className={styles.audienceCount}>{companyIds.length}</span>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={recipientMode === 'users'}
+            className={recipientMode === 'users' ? styles.audienceCardOn : styles.audienceCard}
+            onClick={() => setRecipientMode('users')}
+          >
+            <span className={styles.audienceIcon}>
+              <Users size={22} />
+            </span>
+            <span className={styles.audienceText}>
+              <strong>Profesionales</strong>
+              <span>Personas concretas. Su programa manda sobre el de su empresa.</span>
+            </span>
+            <span className={styles.audienceCount}>{userIds.length}</span>
+          </button>
+        </div>
+
+        {(() => {
+          const isCompanies = recipientMode === 'companies'
+          const items = isCompanies ? filteredCompanies : filteredPros
+          const selected = isCompanies ? companyIds : userIds
+          const setSelected = isCompanies ? setCompanyIds : setUserIds
+          const query = isCompanies ? companySearch : proSearch
+          const setQuery = isCompanies ? setCompanySearch : setProSearch
+          const visibleIds = items.map((i) => i.id)
+          const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id))
+          const toggle = (id: number) =>
+            setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+          const total = isCompanies ? companies.length : pros.length
+          return (
+            <div className={styles.pickPanel}>
+              <div className={styles.pickToolbar}>
+                <div className={styles.videoSearch} style={{ margin: 0, flex: 1, maxWidth: 420 }}>
+                  <Search size={15} />
+                  <input
+                    type="text"
+                    placeholder={isCompanies ? 'Buscar empresa...' : 'Buscar por nombre, correo o empresa...'}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    aria-label={isCompanies ? 'Buscar empresa' : 'Buscar profesional'}
+                  />
+                </div>
+                <span className={styles.muted} style={{ fontSize: 13 }}>
+                  {selected.length}{' '}
+                  {isCompanies
+                    ? selected.length === 1
+                      ? 'empresa elegida'
+                      : 'empresas elegidas'
+                    : selected.length === 1
+                      ? 'persona elegida'
+                      : 'personas elegidas'}
+                </span>
+                {items.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.linkBtn}
+                    onClick={() =>
+                      setSelected((prev) =>
+                        allVisibleSelected
+                          ? prev.filter((id) => !visibleIds.includes(id))
+                          : [...prev, ...visibleIds.filter((id) => !prev.includes(id))]
+                      )
+                    }
+                  >
+                    {allVisibleSelected ? 'Quitar las visibles' : `Elegir las ${items.length} visibles`}
+                  </button>
+                )}
+              </div>
+
+              {!isCompanies && prosLoading ? (
+                <p className={styles.muted}>Cargando profesionales...</p>
+              ) : total === 0 ? (
+                <div className={styles.empty}>{isCompanies ? 'No hay empresas activas.' : 'No hay profesionales.'}</div>
+              ) : items.length === 0 ? (
+                <div className={styles.empty}>Nada coincide con «{query}».</div>
+              ) : (
+                <div className={styles.pickGrid}>
+                  {items.map((item) => {
+                    const on = selected.includes(item.id)
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={on}
+                        className={on ? styles.pickItemOn : styles.pickItem}
+                        onClick={() => toggle(item.id)}
+                      >
+                        <span className={styles.pickAvatar}>{on ? <Check size={14} strokeWidth={3} /> : initials(item.name)}</span>
+                        <span className={styles.pickText}>
+                          <span className={styles.pickName}>{item.name}</span>
+                          <span className={styles.pickSub}>{item.sub}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* El por defecto cubre a todas las empresas sin asignación. */}
+        <label className={styles.defaultRow} title={wasDefault ? 'Para cambiarlo, marca otro programa con la estrella desde la lista' : undefined}>
+          <span className={styles.switch}>
+            <input
+              type="checkbox"
+              checked={isDefault}
+              // El por defecto no se desmarca desde aquí: se marca otro y este
+              // deja de serlo solo.
+              disabled={wasDefault}
+              onChange={(e) => setIsDefault(e.target.checked)}
+            />
+            <span className={styles.slider} />
+          </span>
+          <span className={styles.audienceText}>
+            <strong>
+              <Star size={14} /> Programa por defecto
+            </strong>
             <span>
               {wasDefault
-                ? 'Lo reciben todas las empresas sin asignación. Para cambiarlo, marca otro programa con la estrella desde la lista.'
-                : 'Lo reciben todas las empresas que no tengan un programa asignado. Solo puede haber uno.'}
+                ? 'Lo reciben además todas las empresas sin programa. Para cambiarlo, marca otro con la estrella desde la lista.'
+                : 'Además lo recibirán todas las empresas que no tengan un programa asignado. Solo puede haber uno.'}
             </span>
           </span>
         </label>
-
-        <div className={styles.companyHead}>
-          <span className={styles.blockPreviewLabel}>
-            {isDefault ? 'Además, estas empresas' : 'Empresas'} · {companyIds.length} elegidas
-          </span>
-          <input
-            type="text"
-            className={styles.searchInput}
-            placeholder="Buscar empresa..."
-            value={companySearch}
-            onChange={(e) => setCompanySearch(e.target.value)}
-            style={{ margin: 0 }}
-          />
-        </div>
-        {companies.length === 0 ? (
-          <div className={styles.empty}>No hay empresas activas.</div>
-        ) : filteredCompanies.length === 0 ? (
-          <div className={styles.empty}>Ninguna empresa coincide con "{companySearch}".</div>
-        ) : (
-          <div className={styles.checkList}>
-            {filteredCompanies.map((c) => (
-              <label key={c.id} className={styles.checkItem}>
-                <input type="checkbox" checked={companyIds.includes(c.id)} onChange={() => toggleCompany(c.id)} />
-                <span>{c.name}</span>
-                <span className={styles.count} title="Profesionales activos">
-                  {c.count}
-                </span>
-              </label>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* --- 4. Revisar --- */}

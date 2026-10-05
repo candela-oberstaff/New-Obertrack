@@ -21,6 +21,7 @@ type fakeInductionRepo struct {
 
 	defaultProgram  *models.InductionProgram
 	companyPrograms map[uint]*models.InductionProgram
+	userPrograms    map[uint]*models.InductionProgram
 	programs        map[uint]*models.InductionProgram
 	blocks          map[uint]*models.InductionBlock
 	blockUsage      map[uint]int64
@@ -62,6 +63,10 @@ func (f *fakeInductionRepo) GetDefaultProgram() (*models.InductionProgram, error
 
 func (f *fakeInductionRepo) GetProgramForCompany(companyID uint) (*models.InductionProgram, error) {
 	return f.companyPrograms[companyID], nil
+}
+
+func (f *fakeInductionRepo) GetProgramForUser(userID uint) (*models.InductionProgram, error) {
+	return f.userPrograms[userID], nil
 }
 
 func (f *fakeInductionRepo) GetProgram(id uint) (*models.InductionProgram, error) {
@@ -266,6 +271,7 @@ func newInductionSvc(cfg *models.InductionConfig, users ...*models.User) (*induc
 	repo := &fakeInductionRepo{
 		cfg:             cfg,
 		companyPrograms: map[uint]*models.InductionProgram{},
+		userPrograms:    map[uint]*models.InductionProgram{},
 		programs:        map[uint]*models.InductionProgram{},
 		blocks:          map[uint]*models.InductionBlock{},
 		blockUsage:      map[uint]int64{},
@@ -529,6 +535,44 @@ func TestInvite_EmpresaConProgramaNoUsableCaeAlPorDefecto(t *testing.T) {
 	}
 	if repo.created.ProgramID == nil || *repo.created.ProgramID != 1 {
 		t.Fatalf("debe caer al programa por defecto (1), got %+v", repo.created.ProgramID)
+	}
+}
+
+// El programa asignado a la persona manda sobre el de su empresa.
+func TestInvite_ElProgramaDeLaPersonaMandaSobreElDeLaEmpresa(t *testing.T) {
+	pro := professional(5)
+	company := uint(10)
+	pro.EmpleadorID = &company
+	svc, repo, _ := newInductionSvc(enabledConfig(), pro)
+	repo.defaultProgram = twoBlockProgram(1, "Por defecto")
+	repo.companyPrograms[10] = twoBlockProgram(2, "Acme")
+	repo.userPrograms[5] = twoBlockProgram(4, "Solo para ella")
+
+	if err := svc.Invite(5, 0, true); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+	if repo.created.ProgramID == nil || *repo.created.ProgramID != 4 {
+		t.Fatalf("debe usar el programa de la persona (4), got %+v", repo.created.ProgramID)
+	}
+}
+
+// Si el programa de la persona está apagado, se sigue con el de su empresa.
+func TestInvite_ProgramaDeLaPersonaNoUsableCaeAlDeLaEmpresa(t *testing.T) {
+	pro := professional(5)
+	company := uint(10)
+	pro.EmpleadorID = &company
+	svc, repo, _ := newInductionSvc(enabledConfig(), pro)
+	repo.defaultProgram = twoBlockProgram(1, "Por defecto")
+	repo.companyPrograms[10] = twoBlockProgram(2, "Acme")
+	apagado := twoBlockProgram(4, "Solo para ella")
+	apagado.IsActive = false
+	repo.userPrograms[5] = apagado
+
+	if err := svc.Invite(5, 0, true); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+	if repo.created.ProgramID == nil || *repo.created.ProgramID != 2 {
+		t.Fatalf("debe caer al programa de la empresa (2), got %+v", repo.created.ProgramID)
 	}
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, Route, Building2, Layers, Star } from 'lucide-react'
+import { Plus, Pencil, Trash2, Route, Building2, Layers, Star, Users } from 'lucide-react'
 
 import { useConfirm } from '../ui/ConfirmProvider'
 import { useNotification } from '../../context/NotificationContext'
@@ -154,6 +154,12 @@ export default function InductionProgramList({ programs, library, companies, onC
                         : 'Todas las empresas sin asignación'
                       : `${p.company_count} ${p.company_count === 1 ? 'empresa' : 'empresas'}`}
                   </span>
+                  {p.user_count > 0 && (
+                    <span className={styles.tag}>
+                      <Users size={12} />
+                      {p.user_count} {p.user_count === 1 ? 'profesional' : 'profesionales'}
+                    </span>
+                  )}
                   <span>
                     Mínimo {p.default_passing_score}% · {p.max_attempts} intentos por bloque
                   </span>

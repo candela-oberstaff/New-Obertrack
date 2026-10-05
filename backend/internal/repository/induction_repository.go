@@ -39,12 +39,16 @@ type InductionRepository interface {
 	SetDefaultProgram(id uint) error
 	ReplaceProgramBlocks(programID uint, blockIDs []uint) error
 	ReplaceProgramCompanies(programID uint, companyIDs []uint) error
+	ReplaceProgramUsers(programID uint, userIDs []uint) error
 	// GetDefaultProgram devuelve el programa por defecto con sus bloques, o
 	// nil sin error si no hay ninguno.
 	GetDefaultProgram() (*models.InductionProgram, error)
 	// GetProgramForCompany devuelve el programa asignado a la empresa con sus
 	// bloques, o nil sin error si no tiene.
 	GetProgramForCompany(companyID uint) (*models.InductionProgram, error)
+	// GetProgramForUser devuelve el programa asignado al profesional uno a
+	// uno, o nil sin error si no tiene.
+	GetProgramForUser(userID uint) (*models.InductionProgram, error)
 
 	// --- Invitaciones ---
 	CreateInvite(invite *models.InductionInvite, blocks []models.InductionInviteBlock) error
@@ -306,8 +310,17 @@ func (r *inductionRepository) loadProgramDetail(program *models.InductionProgram
 	for _, c := range companies {
 		program.CompanyIDs = append(program.CompanyIDs, c.CompanyID)
 	}
+	var users []models.InductionProgramUser
+	if err := r.db.Where("program_id = ?", program.ID).Order("user_id ASC").Find(&users).Error; err != nil {
+		return err
+	}
+	program.UserIDs = make([]uint, 0, len(users))
+	for _, u := range users {
+		program.UserIDs = append(program.UserIDs, u.UserID)
+	}
 	program.BlockCount = len(program.Blocks)
 	program.CompanyCount = len(program.CompanyIDs)
+	program.UserCount = len(program.UserIDs)
 	return nil
 }
 
@@ -325,6 +338,9 @@ func (r *inductionRepository) DeleteProgram(id uint) error {
 			return err
 		}
 		if err := tx.Where("program_id = ?", id).Delete(&models.InductionProgramCompany{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("program_id = ?", id).Delete(&models.InductionProgramUser{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&models.InductionProgram{}, id).Error
@@ -378,6 +394,48 @@ func (r *inductionRepository) ReplaceProgramCompanies(programID uint, companyIDs
 		}
 		return nil
 	})
+}
+
+func (r *inductionRepository) ReplaceProgramUsers(programID uint, userIDs []uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("program_id = ?", programID).Delete(&models.InductionProgramUser{}).Error; err != nil {
+			return err
+		}
+		for _, userID := range userIDs {
+			// Un profesional tiene un solo programa: asignarlo aquí lo quita
+			// del que tuviera.
+			if err := tx.Where("user_id = ?", userID).Delete(&models.InductionProgramUser{}).Error; err != nil {
+				return err
+			}
+			link := models.InductionProgramUser{UserID: userID, ProgramID: programID}
+			if err := tx.Create(&link).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *inductionRepository) GetProgramForUser(userID uint) (*models.InductionProgram, error) {
+	var link models.InductionProgramUser
+	err := r.db.Where("user_id = ?", userID).First(&link).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var program models.InductionProgram
+	if err := r.db.First(&program, link.ProgramID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if err := r.loadProgramDetail(&program); err != nil {
+		return nil, err
+	}
+	return &program, nil
 }
 
 func (r *inductionRepository) GetDefaultProgram() (*models.InductionProgram, error) {

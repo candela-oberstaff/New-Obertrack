@@ -45,6 +45,7 @@ type InductionService interface {
 	DeleteProgram(id uint) error
 	SetProgramBlocks(id uint, blockIDs []uint) (*models.InductionProgram, error)
 	SetProgramCompanies(id uint, companyIDs []uint) (*models.InductionProgram, error)
+	SetProgramUsers(id uint, userIDs []uint) (*models.InductionProgram, error)
 
 	// InviteIfEnabled emite la invitación con el programa que le toca a la
 	// empresa del profesional (o el por defecto) y envía el correo con el
@@ -705,10 +706,46 @@ func (s *inductionService) SetProgramCompanies(id uint, companyIDs []uint) (*mod
 	return s.repo.GetProgram(id)
 }
 
-// resolveProgram decide qué programa recibe el profesional: el asignado a su
-// empresa si es usable; si no, el por defecto. Devuelve nil sin error cuando
-// no hay ninguno usable, que es "la inducción no aplica".
+func (s *inductionService) SetProgramUsers(id uint, userIDs []uint) (*models.InductionProgram, error) {
+	if _, err := s.repo.GetProgram(id); err != nil {
+		return nil, errors.New("programa no encontrado")
+	}
+	seen := map[uint]bool{}
+	clean := make([]uint, 0, len(userIDs))
+	for _, userID := range userIDs {
+		if userID == 0 || seen[userID] {
+			continue
+		}
+		user, err := s.userRepo.GetByID(userID)
+		if err != nil || user.UserType != models.UserTypeProfessional {
+			return nil, fmt.Errorf("el profesional %d no existe", userID)
+		}
+		seen[userID] = true
+		clean = append(clean, userID)
+	}
+	if err := s.repo.ReplaceProgramUsers(id, clean); err != nil {
+		return nil, err
+	}
+	return s.repo.GetProgram(id)
+}
+
+// resolveProgram decide qué programa recibe el profesional: el asignado a él
+// en persona; si no, el de su empresa; si no, el por defecto. En cada nivel
+// solo cuenta un programa usable. Devuelve nil sin error cuando no hay
+// ninguno usable, que es "la inducción no aplica".
 func (s *inductionService) resolveProgram(user *models.User) (*models.InductionProgram, error) {
+	if user != nil && user.ID > 0 {
+		program, err := s.repo.GetProgramForUser(user.ID)
+		if err != nil {
+			return nil, err
+		}
+		if program.Usable() {
+			return program, nil
+		}
+		if program != nil {
+			log.Printf("[Induction] el programa %q asignado al usuario %d no es usable; se sigue con el de su empresa", program.Name, user.ID)
+		}
+	}
 	if user != nil && user.EmpleadorID != nil && *user.EmpleadorID > 0 {
 		program, err := s.repo.GetProgramForCompany(*user.EmpleadorID)
 		if err != nil {

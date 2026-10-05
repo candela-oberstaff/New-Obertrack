@@ -27,7 +27,8 @@ export interface ProgramDraft {
   isDefault: boolean
   defaultPassingScore: number
   blocks: BlockLike[]
-  companyCount: number
+  /** Empresas más profesionales asignados uno a uno. */
+  recipientCount: number
   hasCertificate: boolean
 }
 
@@ -37,7 +38,7 @@ export function draftFromProgram(p: InductionProgram): ProgramDraft {
     isDefault: p.is_default,
     defaultPassingScore: p.default_passing_score,
     blocks: p.blocks ?? [],
-    companyCount: p.company_ids?.length ?? p.company_count,
+    recipientCount: (p.company_ids?.length ?? p.company_count) + (p.user_ids?.length ?? p.user_count ?? 0),
     hasCertificate: !!p.certificate_template_id,
   }
 }
@@ -70,8 +71,8 @@ export function programIssues(d: ProgramDraft): ReadinessIssue[] {
   }
   if (!d.isActive) {
     issues.push({ level: 'warning', text: 'Está apagado: nadie lo recibe.' })
-  } else if (!d.isDefault && d.companyCount === 0) {
-    issues.push({ level: 'warning', text: 'No tiene empresas asignadas: nadie lo recibe.' })
+  } else if (!d.isDefault && d.recipientCount === 0) {
+    issues.push({ level: 'warning', text: 'No tiene empresas ni profesionales asignados: nadie lo recibe.' })
   }
   if (!d.hasCertificate) {
     issues.push({ level: 'tip', text: 'No emite certificado al completarlo.' })
