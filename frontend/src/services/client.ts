@@ -39,6 +39,9 @@ const publicAuthPaths = [
   '/induccion',
   '/testimonio',
   '/encuesta',
+  // Verificación pública de un certificado: la abre cualquiera con el código
+  // impreso. Sin esto, el 401 de /auth/me lo mandaba al login.
+  '/certificado',
 ]
 
 function isPublicAuthPath(pathname: string) {

@@ -123,8 +123,8 @@ export default function CertificateTemplateList({ onChanged }: Props) {
                   <span className={styles.tag}>{t.orientation === 'L' ? 'Horizontal' : 'Vertical'}</span>
                 </div>
                 <div className={styles.rowMeta}>
-                  <span className={styles.tag}>
-                    <FileCheck size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                  <span className={styles.tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                    <FileCheck size={12} />
                     {t.fields.length} {t.fields.length === 1 ? 'campo' : 'campos'}
                   </span>
                   {t.program_names.length > 0 ? (
