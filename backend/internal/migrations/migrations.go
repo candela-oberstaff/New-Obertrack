@@ -3141,6 +3141,17 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.CrmLoginNonce{})
 			},
 		},
+		{
+			// Programas de inducción asignados a profesionales uno a uno, por
+			// encima del de su empresa. La clave es el profesional: uno solo.
+			ID: "202610051200_induction_program_users",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&models.InductionProgramUser{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.InductionProgramUser{})
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

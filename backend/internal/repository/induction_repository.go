@@ -39,12 +39,16 @@ type InductionRepository interface {
 	SetDefaultProgram(id uint) error
 	ReplaceProgramBlocks(programID uint, blockIDs []uint) error
 	ReplaceProgramCompanies(programID uint, companyIDs []uint) error
+	ReplaceProgramUsers(programID uint, userIDs []uint) error
 	// GetDefaultProgram devuelve el programa por defecto con sus bloques, o
 	// nil sin error si no hay ninguno.
 	GetDefaultProgram() (*models.InductionProgram, error)
 	// GetProgramForCompany devuelve el programa asignado a la empresa con sus
 	// bloques, o nil sin error si no tiene.
 	GetProgramForCompany(companyID uint) (*models.InductionProgram, error)
+	// GetProgramForUser devuelve el programa asignado al profesional uno a
+	// uno, o nil sin error si no tiene.
+	GetProgramForUser(userID uint) (*models.InductionProgram, error)
 
 	// --- Invitaciones ---
 	CreateInvite(invite *models.InductionInvite, blocks []models.InductionInviteBlock) error
@@ -169,17 +173,20 @@ func (r *inductionRepository) enrichBlocks(blocks []models.InductionBlock) error
 	}
 
 	tutorialTitles := map[uint]string{}
+	tutorialVisible := map[uint]bool{}
 	if len(tutorialIDs) > 0 {
 		var rows []struct {
-			ID    uint
-			Title string
+			ID       uint
+			Title    string
+			IsActive bool
 		}
-		if err := r.db.Table("tutorials").Select("id, title").
+		if err := r.db.Table("tutorials").Select("id, title, is_active").
 			Where("id IN ? AND deleted_at IS NULL", tutorialIDs).Scan(&rows).Error; err != nil {
 			return err
 		}
 		for _, row := range rows {
 			tutorialTitles[row.ID] = row.Title
+			tutorialVisible[row.ID] = row.IsActive
 		}
 	}
 
@@ -219,6 +226,7 @@ func (r *inductionRepository) enrichBlocks(blocks []models.InductionBlock) error
 		b := &blocks[i]
 		if b.TutorialID != nil {
 			b.TutorialTitle = tutorialTitles[*b.TutorialID]
+			b.TutorialVisible = tutorialVisible[*b.TutorialID]
 		}
 		if s, ok := surveys[b.SurveyID]; ok {
 			b.SurveyTitle = s.Title
@@ -239,47 +247,13 @@ func (r *inductionRepository) ListPrograms() ([]models.InductionProgram, error) 
 	if err := r.db.Order("is_default DESC, name ASC, id ASC").Find(&programs).Error; err != nil {
 		return nil, err
 	}
-	if len(programs) == 0 {
-		return programs, nil
-	}
-	ids := make([]uint, 0, len(programs))
-	for _, p := range programs {
-		ids = append(ids, p.ID)
-	}
-	var blockCounts []struct {
-		ProgramID uint
-		Count     int
-	}
-	if err := r.db.Table("induction_program_blocks pb").
-		Select("pb.program_id, COUNT(*) AS count").
-		Joins("JOIN induction_blocks b ON b.id = pb.block_id AND b.deleted_at IS NULL").
-		Where("pb.program_id IN ?", ids).Group("pb.program_id").
-		Scan(&blockCounts).Error; err != nil {
-		return nil, err
-	}
-	var companyCounts []struct {
-		ProgramID uint
-		Count     int
-	}
-	if err := r.db.Table("induction_program_companies").
-		Select("program_id, COUNT(*) AS count").
-		Where("program_id IN ?", ids).Group("program_id").
-		Scan(&companyCounts).Error; err != nil {
-		return nil, err
-	}
-	blocksBy := map[uint]int{}
-	for _, row := range blockCounts {
-		blocksBy[row.ProgramID] = row.Count
-	}
-	companiesBy := map[uint]int{}
-	for _, row := range companyCounts {
-		companiesBy[row.ProgramID] = row.Count
-	}
+	// El listado trae el detalle completo (bloques enriquecidos y empresas):
+	// el panel lo usa para decir qué le falta a cada programa sin abrirlo.
+	// Los programas son pocos, así que el costo de cargarlos uno a uno es bajo.
 	for i := range programs {
-		programs[i].BlockCount = blocksBy[programs[i].ID]
-		programs[i].CompanyCount = companiesBy[programs[i].ID]
-		programs[i].Blocks = []models.InductionBlock{}
-		programs[i].CompanyIDs = []uint{}
+		if err := r.loadProgramDetail(&programs[i]); err != nil {
+			return nil, err
+		}
 	}
 	return programs, nil
 }
@@ -336,8 +310,17 @@ func (r *inductionRepository) loadProgramDetail(program *models.InductionProgram
 	for _, c := range companies {
 		program.CompanyIDs = append(program.CompanyIDs, c.CompanyID)
 	}
+	var users []models.InductionProgramUser
+	if err := r.db.Where("program_id = ?", program.ID).Order("user_id ASC").Find(&users).Error; err != nil {
+		return err
+	}
+	program.UserIDs = make([]uint, 0, len(users))
+	for _, u := range users {
+		program.UserIDs = append(program.UserIDs, u.UserID)
+	}
 	program.BlockCount = len(program.Blocks)
 	program.CompanyCount = len(program.CompanyIDs)
+	program.UserCount = len(program.UserIDs)
 	return nil
 }
 
@@ -355,6 +338,9 @@ func (r *inductionRepository) DeleteProgram(id uint) error {
 			return err
 		}
 		if err := tx.Where("program_id = ?", id).Delete(&models.InductionProgramCompany{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("program_id = ?", id).Delete(&models.InductionProgramUser{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&models.InductionProgram{}, id).Error
@@ -408,6 +394,48 @@ func (r *inductionRepository) ReplaceProgramCompanies(programID uint, companyIDs
 		}
 		return nil
 	})
+}
+
+func (r *inductionRepository) ReplaceProgramUsers(programID uint, userIDs []uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("program_id = ?", programID).Delete(&models.InductionProgramUser{}).Error; err != nil {
+			return err
+		}
+		for _, userID := range userIDs {
+			// Un profesional tiene un solo programa: asignarlo aquí lo quita
+			// del que tuviera.
+			if err := tx.Where("user_id = ?", userID).Delete(&models.InductionProgramUser{}).Error; err != nil {
+				return err
+			}
+			link := models.InductionProgramUser{UserID: userID, ProgramID: programID}
+			if err := tx.Create(&link).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *inductionRepository) GetProgramForUser(userID uint) (*models.InductionProgram, error) {
+	var link models.InductionProgramUser
+	err := r.db.Where("user_id = ?", userID).First(&link).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var program models.InductionProgram
+	if err := r.db.First(&program, link.ProgramID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if err := r.loadProgramDetail(&program); err != nil {
+		return nil, err
+	}
+	return &program, nil
 }
 
 func (r *inductionRepository) GetDefaultProgram() (*models.InductionProgram, error) {

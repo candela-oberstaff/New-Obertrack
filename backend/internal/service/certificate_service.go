@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"crypto/rand"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -88,7 +89,40 @@ type certificateData struct {
 
 const certificatesDir = "certificates"
 
-var certificateFonts = map[string]bool{"Helvetica": true, "Times": true, "Courier": true}
+var certificateFonts = map[string]bool{"Helvetica": true, "Times": true, "Courier": true, "Poppins": true, "Spartan": true}
+
+// Poppins es la tipografía de la marca (licencia OFL, assets/fonts/OFL.txt).
+// No es una fuente básica del PDF, así que va embebida: la normal para el
+// estilo regular y la semibold para "negrita", que es el grosor del diseño.
+//
+//go:embed assets/fonts/Poppins-Regular.ttf
+var poppinsRegular []byte
+
+//go:embed assets/fonts/Poppins-SemiBold.ttf
+var poppinsSemiBold []byte
+
+// League Spartan Bold, la "Spartan" de los títulos de la marca (licencia OFL,
+// assets/fonts/LeagueSpartan-OFL.txt). Solo existe en negrita: "Spartan" con o
+// sin negrita escribe siempre Bold. Va estática porque gofpdf no admite las
+// fuentes variables, que es como la publica Google Fonts.
+//
+//go:embed assets/fonts/LeagueSpartan-Bold.ttf
+var leagueSpartanBold []byte
+
+// utf8Fonts son las fuentes embebidas, con sus archivos para el estilo normal
+// y la negrita. Escriben UTF-8 tal cual, sin pasar por la traducción a CP1252
+// de las fuentes básicas.
+var utf8Fonts = map[string]bool{"Poppins": true, "Spartan": true}
+
+func embeddedFontFiles(font string) (regular, bold []byte) {
+	switch font {
+	case "Poppins":
+		return poppinsRegular, poppinsSemiBold
+	case "Spartan":
+		return leagueSpartanBold, leagueSpartanBold
+	}
+	return nil, nil
+}
 
 type certificateService struct {
 	repo          repository.CertificateRepository
@@ -142,8 +176,12 @@ func (s *certificateService) GetTemplate(id uint) (*models.CertificateTemplate, 
 // el nombre al centro, el programa debajo, la fecha y el código al pie.
 func DefaultCertificateFields() []models.CertificateField {
 	return []models.CertificateField{
-		{Key: models.CertificateFieldName, X: 50, Y: 48, Size: 32, Color: "#0f172a", Align: "C", Bold: true, Font: "Helvetica"},
-		{Key: models.CertificateFieldProgram, X: 50, Y: 62, Size: 18, Color: "#334155", Align: "C", Font: "Helvetica"},
+		// El nombre, en la tipografía y el rosado de la marca (#fa3ab4, el de
+		// "CERTIFICADO" en el diseño de Oberstaff). Tiene que coincidir con
+		// DEFAULT_FIELDS del editor (CertificateTemplateEditor.tsx).
+		{Key: models.CertificateFieldName, X: 50, Y: 48, Size: 32, Color: "#fa3ab4", Align: "C", Bold: true, Font: "Poppins"},
+		// El programa hace de título: League Spartan, en mayúsculas y en negro.
+		{Key: models.CertificateFieldProgram, X: 50, Y: 62, Size: 18, Color: "#000000", Align: "C", Bold: true, Font: "Spartan", Upper: true},
 		{Key: models.CertificateFieldDate, X: 50, Y: 74, Size: 12, Color: "#64748b", Align: "C", Font: "Helvetica"},
 		{Key: models.CertificateFieldCode, X: 50, Y: 93, Size: 9, Color: "#94a3b8", Align: "C", Font: "Courier"},
 	}
@@ -160,12 +198,8 @@ func (s *certificateService) validateTemplateInput(in *TemplateInput) (orientati
 	if in.ImageFilename == "" {
 		return "", errors.New("sube el diseño del certificado (PNG o JPG)")
 	}
-	if strings.ContainsAny(in.ImageFilename, "/\\") || strings.Contains(in.ImageFilename, "..") || in.ImageFilename != filepath.Base(in.ImageFilename) {
-		return "", errors.New("nombre de archivo inválido")
-	}
-	ext := strings.ToLower(filepath.Ext(in.ImageFilename))
-	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
-		return "", errors.New("el diseño debe ser una imagen PNG o JPG")
+	if err := checkImageFilename(in.ImageFilename); err != nil {
+		return "", fmt.Errorf("el diseño: %w", err)
 	}
 	orientation, err = imageOrientation(filepath.Join(s.uploadPath, in.ImageFilename))
 	if err != nil {
@@ -182,6 +216,13 @@ func (s *certificateService) validateTemplateInput(in *TemplateInput) (orientati
 		if f.X < 0 || f.X > 100 || f.Y < 0 || f.Y > 100 {
 			return "", errors.New("la posición de un campo debe estar entre 0 y 100")
 		}
+		if f.Key == models.CertificateFieldSignature {
+			if err := s.normalizeSignatureField(f); err != nil {
+				return "", err
+			}
+			continue
+		}
+		f.Image, f.Width = "", 0
 		if f.Size < 6 || f.Size > 120 {
 			return "", errors.New("el tamaño de letra debe estar entre 6 y 120")
 		}
@@ -198,11 +239,108 @@ func (s *certificateService) validateTemplateInput(in *TemplateInput) (orientati
 		}
 		if f.Key == models.CertificateFieldText {
 			f.Text = strings.TrimSpace(utils.SanitizeHTML(f.Text))
+			switch {
+			case f.Wrap <= 0:
+				f.Wrap = 0
+			case f.Wrap < paragraphMinWrap:
+				f.Wrap = paragraphMinWrap
+			case f.Wrap > paragraphMaxWrap:
+				f.Wrap = paragraphMaxWrap
+			}
+			if _, ok := hexToRGB(f.Highlight); !ok {
+				f.Highlight = ""
+			}
 		} else {
-			f.Text = ""
+			f.Text, f.Wrap, f.Highlight = "", 0, ""
 		}
 	}
 	return orientation, nil
+}
+
+// checkImageFilename acepta solo el nombre de un archivo de uploads (sin rutas)
+// con extensión PNG o JPG.
+func checkImageFilename(name string) error {
+	if strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") || name != filepath.Base(name) {
+		return errors.New("nombre de archivo inválido")
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
+		return errors.New("tiene que ser una imagen PNG o JPG")
+	}
+	return nil
+}
+
+// Ancho del párrafo del texto libre, en porcentaje del ancho de la página.
+const (
+	paragraphMinWrap = 10.0
+	paragraphMaxWrap = 95.0
+)
+
+// Ancho de la firma, en porcentaje del ancho de la página.
+const (
+	signatureMinWidth     = 5.0
+	signatureMaxWidth     = 60.0
+	signatureDefaultWidth = 20.0
+)
+
+// normalizeSignatureField valida la imagen de una firma (tiene que estar ya en
+// uploads) y deja el ancho dentro de rango. Los atributos de texto no aplican.
+func (s *certificateService) normalizeSignatureField(f *models.CertificateField) error {
+	f.Image = strings.TrimSpace(f.Image)
+	if f.Image == "" {
+		return errors.New("la firma no tiene imagen; vuelve a agregarla")
+	}
+	if err := checkImageFilename(f.Image); err != nil {
+		return fmt.Errorf("la firma: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(s.uploadPath, f.Image)); err != nil {
+		return errors.New("no se encontró la imagen de la firma; vuelve a agregarla")
+	}
+	switch {
+	case f.Width == 0:
+		f.Width = signatureDefaultWidth
+	case f.Width < signatureMinWidth:
+		f.Width = signatureMinWidth
+	case f.Width > signatureMaxWidth:
+		f.Width = signatureMaxWidth
+	}
+	switch f.Align {
+	case "L", "C", "R":
+	default:
+		f.Align = "C"
+	}
+	f.Text, f.Size, f.Color, f.Bold, f.Font, f.Upper = "", 0, "", false, "", false
+	return nil
+}
+
+// drawSignature pone la imagen de una firma con su centro vertical en (X, Y),
+// alineada horizontalmente como un texto. El alto sale de su proporción.
+func (s *certificateService) drawSignature(pdf *gofpdf.Fpdf, f models.CertificateField, pageW, pageH float64) {
+	path := filepath.Join(s.uploadPath, filepath.Base(f.Image))
+	if _, err := os.Stat(path); err != nil {
+		log.Printf("[certificados] falta la imagen de firma %q: se omite", f.Image)
+		return
+	}
+	imageType := "PNG"
+	if ext := strings.ToLower(filepath.Ext(path)); ext == ".jpg" || ext == ".jpeg" {
+		imageType = "JPG"
+	}
+	opt := gofpdf.ImageOptions{ImageType: imageType, ReadDpi: false}
+	info := pdf.RegisterImageOptions(path, opt)
+	if info == nil || info.Width() == 0 {
+		return
+	}
+	w := pageW * f.Width / 100
+	h := w * info.Height() / info.Width()
+	x := pageW * f.X / 100
+	y := pageH*f.Y/100 - h/2
+	switch f.Align {
+	case "C":
+		x -= w / 2
+	case "R":
+		x -= w
+	}
+	pdf.ImageOptions(path, x, y, w, h, false, opt, 0, "")
 }
 
 // imageOrientation lee las dimensiones del diseño: apaisado = L, vertical = P.
@@ -282,7 +420,7 @@ func (s *certificateService) Preview(in TemplateInput) ([]byte, error) {
 	}
 	return s.render(t, certificateData{
 		Name:    "María Fernanda Pérez",
-		Program: "Programa de ejemplo",
+		Program: "Prueba de Inducción", // el mismo ejemplo que el editor (SAMPLE)
 		Date:    formatCertificateDate(time.Now()),
 		Code:    "OBT-EJEM-PLO1",
 	})
@@ -533,7 +671,12 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 
 	// Traduce UTF-8 a CP1252 (fuentes core): sin esto los acentos salen mal.
 	tr := pdf.UnicodeTranslatorFromDescriptor("")
+	loadedFonts := map[string]bool{}
 	for _, f := range t.Fields {
+		if f.Key == models.CertificateFieldSignature {
+			s.drawSignature(pdf, f, pageW, pageH)
+			continue
+		}
 		text := fieldValue(f, data)
 		if strings.TrimSpace(text) == "" {
 			continue
@@ -546,13 +689,29 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 		if !certificateFonts[font] {
 			font = "Helvetica"
 		}
+		if utf8Fonts[font] && !loadedFonts[font] {
+			regular, bold := embeddedFontFiles(font)
+			pdf.AddUTF8FontFromBytes(font, "", regular)
+			pdf.AddUTF8FontFromBytes(font, "B", bold)
+			loadedFonts[font] = true
+		}
+		if f.Upper {
+			text = strings.ToUpper(text)
+		}
+		if f.Key == models.CertificateFieldText {
+			drawParagraph(pdf, f, data, font, pageW, pageH, tr)
+			continue
+		}
 		pdf.SetFont(font, style, f.Size)
 		if rgb, ok := hexToRGB(f.Color); ok {
 			pdf.SetTextColor(rgb[0], rgb[1], rgb[2])
 		} else {
 			pdf.SetTextColor(15, 23, 42)
 		}
-		txt := tr(text)
+		txt := text
+		if !utf8Fonts[font] {
+			txt = tr(text)
+		}
 		width := pdf.GetStringWidth(txt)
 		x := pageW * f.X / 100
 		y := pageH * f.Y / 100

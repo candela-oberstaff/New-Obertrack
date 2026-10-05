@@ -230,6 +230,7 @@ func (h *InductionHandler) DeleteProgram(c *gin.Context) {
 type idListPayload struct {
 	BlockIDs   []uint `json:"block_ids"`
 	CompanyIDs []uint `json:"company_ids"`
+	UserIDs    []uint `json:"user_ids"`
 }
 
 // SetProgramBlocks reemplaza la lista ordenada de bloques del programa.
@@ -265,6 +266,26 @@ func (h *InductionHandler) SetProgramCompanies(c *gin.Context) {
 		return
 	}
 	program, err := h.svc.SetProgramCompanies(id, req.CompanyIDs)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, program)
+}
+
+// SetProgramUsers reemplaza los profesionales asignados uno a uno al programa.
+func (h *InductionHandler) SetProgramUsers(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Programa inválido"})
+		return
+	}
+	var req idListPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+		return
+	}
+	program, err := h.svc.SetProgramUsers(id, req.UserIDs)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

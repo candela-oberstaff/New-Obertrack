@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, Route, Building2, Layers, Star } from 'lucide-react'
+import { Plus, Pencil, Trash2, Route, Building2, Layers, Star, Users } from 'lucide-react'
 
 import { useConfirm } from '../ui/ConfirmProvider'
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
 import type { TutorialAudienceOption } from '../../types/tutorials'
 import InductionProgramEditor from './InductionProgramEditor'
+import { draftFromProgram, programIssues } from './inductionReadiness'
+import { ReadinessBadge } from './ReadinessChecklist'
 import styles from './InductionSettings.module.css'
 
 interface Props {
@@ -89,6 +91,7 @@ export default function InductionProgramList({ programs, library, companies, onC
           await onChanged()
         }}
         onBack={() => setEditing(null)}
+        onGoToBlocks={onGoToBlocks}
       />
     )
   }
@@ -123,7 +126,10 @@ export default function InductionProgramList({ programs, library, companies, onC
         <div className={styles.empty}>Todavía no hay programas. Crea el primero: será el programa por defecto.</div>
       ) : (
         <div className={styles.list}>
-          {programs.map((p) => (
+          {programs.map((p) => {
+            const issues = programIssues(draftFromProgram(p))
+            const pending = issues.filter((i) => i.level !== 'tip')
+            return (
             <div key={p.id} className={styles.row}>
               <div className={styles.rowIcon}>
                 <Route size={18} />
@@ -132,25 +138,40 @@ export default function InductionProgramList({ programs, library, companies, onC
                 <div className={styles.rowTitle}>
                   {p.name}
                   {p.is_default && <span className={styles.tagPrimary}>Por defecto</span>}
-                  {!p.is_active && <span className={styles.tagWarn}>Apagado</span>}
+                  {!p.is_active && <span className={styles.tag}>Apagado</span>}
+                  <ReadinessBadge issues={issues} />
                 </div>
                 <div className={styles.rowMeta}>
                   <span className={p.block_count > 0 ? styles.tagOk : styles.tagWarn}>
-                    <Layers size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                    <Layers size={12} />
                     {p.block_count} {p.block_count === 1 ? 'bloque' : 'bloques'}
                   </span>
                   <span className={styles.tag}>
-                    <Building2 size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                    <Building2 size={12} />
                     {p.is_default
                       ? p.company_count > 0
                         ? `${p.company_count} asignadas + las demás`
                         : 'Todas las empresas sin asignación'
                       : `${p.company_count} ${p.company_count === 1 ? 'empresa' : 'empresas'}`}
                   </span>
+                  {p.user_count > 0 && (
+                    <span className={styles.tag}>
+                      <Users size={12} />
+                      {p.user_count} {p.user_count === 1 ? 'profesional' : 'profesionales'}
+                    </span>
+                  )}
                   <span>
                     Mínimo {p.default_passing_score}% · {p.max_attempts} intentos por bloque
                   </span>
                 </div>
+                {pending.length > 0 && (
+                  <ul className={styles.rowIssues}>
+                    {pending.slice(0, 3).map((i) => (
+                      <li key={i.text}>• {i.text}</li>
+                    ))}
+                    {pending.length > 3 && <li>• Y {pending.length - 3} más: ábrelo para verlas.</li>}
+                  </ul>
+                )}
               </div>
               <div className={styles.rowActions}>
                 {!p.is_default && (
@@ -186,7 +207,8 @@ export default function InductionProgramList({ programs, library, companies, onC
                 </button>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
       {programs.some((p) => p.is_default) && programs.length === 1 && (

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react'
 import { Save, Plus, Trash2, ListChecks, Type, Star, ChevronDown, ChevronRight } from 'lucide-react'
 
 import { Select } from '../ui'
@@ -33,12 +33,31 @@ function parseOptions(raw?: string): string[] {
 }
 
 interface Props {
-  /** Cuestionario (kind induction) del bloque. */
-  surveyId: number
+  /**
+   * Cuestionario (kind induction) del bloque. null = bloque nuevo: las
+   * preguntas se arman en borrador y quien lo contiene las guarda al crear.
+   */
+  surveyId: number | null
   /** Mínimo aprobatorio con el que se guarda el registro del cuestionario. */
   passingScore: number
   /** Avisa cuando cambia el número de preguntas guardadas (para la biblioteca). */
   onSaved?: (questionCount: number) => void
+  /** Avisa cada vez que cambia el número de preguntas (y de las que puntúan), guardadas o no. */
+  onCountChange?: (questionCount: number, scorableCount: number) => void
+  /**
+   * Con ref, quien lo contiene guarda el cuestionario con su propio botón (el
+   * editor del bloque guarda todo de una vez) y este no muestra el suyo.
+   */
+  ref?: Ref<QuizBuilderHandle>
+}
+
+export interface QuizBuilderHandle {
+  /** Mensaje del primer problema que impide guardar, o null si se puede. */
+  validate: () => string | null
+  /** Guarda las preguntas y devuelve cuántas quedaron. Lanza si falla. */
+  save: (title?: string) => Promise<number>
+  /** Las preguntas tal como están, en orden (para guardar un borrador). */
+  questions: () => SurveyQuestion[]
 }
 
 /**
@@ -46,16 +65,18 @@ interface Props {
  * respuesta y peso. Se arma aquí mismo para no obligar a saltar al módulo de
  * Encuestas y volver.
  */
-export default function InductionQuizBuilder({ surveyId, passingScore, onSaved }: Props) {
+export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, onCountChange, ref }: Props) {
   const { success, error: showError } = useNotification()
 
-  const [quiz, setQuiz] = useState<Survey | null>(null)
-  const [loadingQuiz, setLoadingQuiz] = useState(true)
+  // Borrador: un cuestionario en memoria, sin id, hasta que se cree el bloque.
+  const [quiz, setQuiz] = useState<Survey | null>(surveyId ? null : ({ title: '', questions: [] } as unknown as Survey))
+  const [loadingQuiz, setLoadingQuiz] = useState(!!surveyId)
   const [savingQuiz, setSavingQuiz] = useState(false)
   // Acordeón: una pregunta abierta a la vez para que la lista no crezca sin fin.
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   const loadQuiz = useCallback(async () => {
+    if (!surveyId) return
     setLoadingQuiz(true)
     try {
       setQuiz(await surveyService.getSurvey(surveyId))
@@ -70,6 +91,7 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved }
     void loadQuiz()
   }, [loadQuiz])
 
+
   const scorableCount = useMemo(
     () =>
       (quiz?.questions ?? []).filter(
@@ -77,6 +99,11 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved }
       ).length,
     [quiz]
   )
+
+  const questionTotal = quiz?.questions?.length ?? 0
+  useEffect(() => {
+    onCountChange?.(questionTotal, scorableCount)
+  }, [questionTotal, scorableCount, onCountChange])
 
   const updateQuestion = (index: number, patch: Partial<SurveyQuestion>) => {
     if (!quiz?.questions) return
@@ -135,26 +162,42 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved }
     })
   }
 
-  const handleSaveQuiz = async () => {
-    if (!quiz?.id) return
+  const validate = () => {
+    if (!quiz?.id) return null
+    if ((quiz.questions ?? []).some((q) => !q.text.trim())) return 'Hay preguntas sin enunciado.'
+    return null
+  }
 
-    const questions = (quiz.questions ?? []).map((q, i) => ({ ...q, order_index: i }))
-    if (questions.some((q) => !q.text.trim())) {
-      showError('Hay preguntas sin enunciado.')
+  const ordered = () => (quiz?.questions ?? []).map((q, i) => ({ ...q, order_index: i }))
+
+  // Guarda sin avisar: quien llama decide qué mensaje mostrar.
+  const persist = async (title?: string) => {
+    if (!quiz?.id) return quiz?.questions?.length ?? 0
+    const questions = ordered()
+    await surveyService.updateSurvey(quiz.id, {
+      ...quiz,
+      ...(title ? { title } : {}),
+      questions,
+      kind: 'induction',
+      passing_score: passingScore,
+    })
+    await loadQuiz()
+    onSaved?.(questions.length)
+    return questions.length
+  }
+
+  useImperativeHandle(ref, () => ({ validate, save: persist, questions: ordered }))
+
+  const handleSaveQuiz = async () => {
+    const problem = validate()
+    if (problem) {
+      showError(problem)
       return
     }
-
     setSavingQuiz(true)
     try {
-      await surveyService.updateSurvey(quiz.id, {
-        ...quiz,
-        questions,
-        kind: 'induction',
-        passing_score: passingScore,
-      })
+      await persist()
       success('Cuestionario guardado.')
-      await loadQuiz()
-      onSaved?.(questions.length)
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo guardar el cuestionario.')
     } finally {
@@ -174,18 +217,21 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved }
         calcula sobre la suma de los pesos, no sobre el número de preguntas.
       </p>
 
-      <div className={styles.field} style={{ marginBottom: 18, maxWidth: 640 }}>
-        <label>Título del cuestionario</label>
-        <input
-          type="text"
-          value={quiz.title}
-          onChange={(e) => setQuiz({ ...quiz, title: e.target.value })}
-        />
-      </div>
+      {/* Dentro del editor del bloque el título sale del nombre del bloque. */}
+      {!ref && (
+        <div className={styles.field} style={{ marginBottom: 18, maxWidth: 640 }}>
+          <label>Título del cuestionario</label>
+          <input
+            type="text"
+            value={quiz.title}
+            onChange={(e) => setQuiz({ ...quiz, title: e.target.value })}
+          />
+        </div>
+      )}
 
-      <div className={total === 0 || scorableCount === 0 ? styles.danger : styles.ok}>
+      <div className={total === 0 ? styles.warn : scorableCount === 0 ? styles.danger : styles.ok}>
         {total === 0
-          ? 'El cuestionario no tiene preguntas todavía.'
+          ? 'Todavía no hay preguntas. Agrega la primera con los botones de abajo.'
           : scorableCount === 0
             ? 'Ninguna pregunta puntúa. Sin clave de respuestas, todo el mundo aprueba este bloque automáticamente.'
             : `${scorableCount} de ${total} preguntas puntúan.`}
@@ -339,11 +385,13 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved }
         ))}
       </div>
 
-      <div className={styles.actions}>
-        <button type="button" className={styles.saveBtn} disabled={savingQuiz} onClick={handleSaveQuiz}>
-          <Save size={16} /> {savingQuiz ? 'Guardando...' : 'Guardar cuestionario'}
-        </button>
-      </div>
+      {!ref && (
+        <div className={styles.actions}>
+          <button type="button" className={styles.saveBtn} disabled={savingQuiz} onClick={handleSaveQuiz}>
+            <Save size={16} /> {savingQuiz ? 'Guardando...' : 'Guardar cuestionario'}
+          </button>
+        </div>
+      )}
       <p className={styles.hint}>
         Las respuestas correctas nunca se envían al navegador de quien responde: el puntaje se
         calcula en el servidor.

@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -192,6 +193,37 @@ func TestRender_ProduceUnPDF(t *testing.T) {
 	}
 }
 
+// Poppins va embebida: el PDF tiene que generarse con ella, incluir la fuente
+// y no romper los acentos (no pasa por la traducción a CP1252).
+func TestRender_PoppinsEmbebida(t *testing.T) {
+	svc, _, _, _, _ := newCertSvc(t)
+	fields := []models.CertificateField{
+		{Key: models.CertificateFieldName, X: 50, Y: 48, Size: 32, Color: "#fa3ab4", Align: "C", Bold: true, Font: "Poppins"},
+		{Key: models.CertificateFieldDate, X: 30, Y: 80, Size: 12, Color: "#0f172a", Align: "C", Font: "Poppins"},
+		{Key: models.CertificateFieldCode, X: 50, Y: 93, Size: 9, Color: "#94a3b8", Align: "C", Font: "Courier"},
+	}
+	tpl := &models.CertificateTemplate{ImageFilename: "diseno.png", Orientation: "L", Fields: fields}
+	pdf, err := svc.render(tpl, certificateData{Name: "María Fernanda Pérez Núñez", Date: "30/09/26", Code: "OBT-ABCD-EFGH"})
+	if err != nil {
+		t.Fatalf("render con Poppins: %v", err)
+	}
+	// gofpdf registra las fuentes UTF-8 como "utf8<familia><estilo>": la
+	// semibold ("B") para el nombre y la regular para la fecha.
+	if !bytes.Contains(pdf, []byte("/FontName /utf8poppinsB")) {
+		t.Fatal("el PDF debe llevar Poppins semibold embebida")
+	}
+	if !regexp.MustCompile(`/FontName /utf8poppins\s`).Match(pdf) {
+		t.Fatal("el PDF debe llevar Poppins regular embebida")
+	}
+}
+
+func TestDefaultCertificateFields_NombreEnPoppinsRosado(t *testing.T) {
+	name := DefaultCertificateFields()[0]
+	if name.Key != models.CertificateFieldName || name.Font != "Poppins" || name.Color != "#fa3ab4" || !name.Bold {
+		t.Fatalf("el nombre por defecto va en Poppins semibold y rosado: %+v", name)
+	}
+}
+
 func TestRender_SinDisenoFalla(t *testing.T) {
 	svc, _, _, _, _ := newCertSvc(t)
 	tpl := &models.CertificateTemplate{ImageFilename: "borrado.png", Orientation: "L", Fields: DefaultCertificateFields()}
@@ -327,4 +359,69 @@ func (f *fakeIssuer) GetForInvite(inviteID uint) (*models.Certificate, error) {
 		return &models.Certificate{ID: 1, Code: "OBT-TEST-0001", IssuedAt: time.Now()}, nil
 	}
 	return nil, nil
+}
+
+// La firma es un campo de imagen: tiene que existir en uploads, el ancho se
+// acota y los atributos de texto no aplican.
+func TestCreateTemplate_Firma(t *testing.T) {
+	svc, _, _, _, dir := newCertSvc(t)
+	writeDesign(t, dir, "firma.png", 300, 100)
+
+	tpl, err := svc.CreateTemplate(1, TemplateInput{Name: "x", ImageFilename: "diseno.png", Fields: []models.CertificateField{
+		{Key: "name", X: 50, Y: 48, Size: 32, Color: "#fa3ab4", Align: "C", Bold: true, Font: "Poppins", Image: "firma.png", Width: 30},
+		{Key: "signature", X: 69, Y: 78, Image: "firma.png", Size: 40, Color: "#ff0000", Font: "Poppins", Bold: true, Text: "x"},
+		{Key: "signature", X: 30, Y: 78, Image: "firma.png", Width: 500, Align: "raro"},
+	}})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	name, sig, sig2 := tpl.Fields[0], tpl.Fields[1], tpl.Fields[2]
+	if name.Image != "" || name.Width != 0 {
+		t.Errorf("un campo de texto no conserva imagen ni ancho: %+v", name)
+	}
+	if sig.Image != "firma.png" || sig.Width != signatureDefaultWidth || sig.Align != "C" {
+		t.Errorf("firma sin ancho → ancho por defecto: %+v", sig)
+	}
+	if sig.Size != 0 || sig.Color != "" || sig.Font != "" || sig.Bold || sig.Text != "" {
+		t.Errorf("la firma no lleva atributos de texto: %+v", sig)
+	}
+	if sig2.Width != signatureMaxWidth || sig2.Align != "C" {
+		t.Errorf("el ancho se acota y la alineación inválida cae a C: %+v", sig2)
+	}
+
+	for name, img := range map[string]string{"sin imagen": "", "no existe": "otra.png", "ruta": "../firma.png", "extensión": "firma.gif"} {
+		_, err := svc.CreateTemplate(1, TemplateInput{Name: "x", ImageFilename: "diseno.png", Fields: []models.CertificateField{
+			{Key: "signature", X: 50, Y: 80, Image: img},
+		}})
+		if err == nil {
+			t.Errorf("%s: se esperaba error", name)
+		}
+	}
+}
+
+// El PDF dibuja la firma como una imagen más, encima del diseño.
+func TestRender_ConFirma(t *testing.T) {
+	svc, _, _, _, dir := newCertSvc(t)
+	writeDesign(t, dir, "firma.png", 300, 100)
+	tpl := &models.CertificateTemplate{ImageFilename: "diseno.png", Orientation: "L", Fields: []models.CertificateField{
+		{Key: "signature", X: 69, Y: 78, Image: "firma.png", Width: 20, Align: "C"},
+		{Key: "name", X: 50, Y: 48, Size: 32, Color: "#fa3ab4", Align: "C", Bold: true, Font: "Poppins"},
+	}}
+	pdf, err := svc.render(tpl, certificateData{Name: "Mary Marín"})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if n := bytes.Count(pdf, []byte("/Subtype /Image")); n != 2 {
+		t.Fatalf("esperaba 2 imágenes (diseño + firma), hay %d", n)
+	}
+
+	// Si la imagen de la firma desaparece de uploads, el certificado se emite
+	// igual, sin la firma, en vez de fallar.
+	if err := os.Remove(filepath.Join(dir, "firma.png")); err != nil {
+		t.Fatal(err)
+	}
+	pdf, err = svc.render(tpl, certificateData{Name: "Mary Marín"})
+	if err != nil || bytes.Count(pdf, []byte("/Subtype /Image")) != 1 {
+		t.Fatalf("sin la imagen de firma debe emitirse igual, solo con el diseño: %v", err)
+	}
 }

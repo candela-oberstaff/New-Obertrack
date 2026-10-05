@@ -128,6 +128,8 @@ export interface InductionBlock {
   updated_at: string
   // Solo lectura, para el panel.
   tutorial_title?: string
+  /** El video está publicado en Novedades (se anuncia a toda su audiencia). */
+  tutorial_visible?: boolean
   survey_title?: string
   question_count: number
   program_names: string[]
@@ -167,8 +169,11 @@ export interface InductionProgram {
   updated_at: string
   blocks: InductionBlock[]
   company_ids: number[]
+  /** Profesionales asignados uno a uno: mandan sobre el programa de su empresa. */
+  user_ids: number[]
   block_count: number
   company_count: number
+  user_count: number
 }
 
 export interface InductionProgramInput {
@@ -345,6 +350,13 @@ export const inductionService = {
   },
 
   /** Reemplaza las empresas asignadas al programa. */
+  setProgramUsers: async (id: number, userIds: number[]) => {
+    const { data } = await api.put<InductionProgram>(`/inductions/programs/${id}/users`, {
+      user_ids: userIds,
+    })
+    return data
+  },
+
   setProgramCompanies: async (id: number, companyIds: number[]) => {
     const { data } = await api.put<InductionProgram>(`/inductions/programs/${id}/companies`, {
       company_ids: companyIds,
