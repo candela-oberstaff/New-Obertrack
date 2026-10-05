@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react'
 import { ArrowLeft, Save, SlidersHorizontal } from 'lucide-react'
 
-import { Select } from '../ui'
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
 import { surveyService } from '../../services/surveyService'
 import type { Tutorial } from '../../types/tutorials'
 import InductionQuizBuilder, { type QuizBuilderHandle } from './InductionQuizBuilder'
+import InductionVideoPicker from './InductionVideoPicker'
 import ReadinessChecklist from './ReadinessChecklist'
 import { blockIssues } from './inductionReadiness'
 import { BadgePicker, buildBadgePresets, type BadgeDraft } from '../Badges/BadgePicker'
@@ -29,9 +29,9 @@ interface Props {
 
 /**
  * Editor de un bloque: nombre, video (de Novedades) y su cuestionario; el
- * mínimo propio y la insignia van plegados en opciones avanzadas. Un bloque
- * nuevo nace con un cuestionario vacío creado aquí mismo, y un solo botón
- * guarda el bloque y sus preguntas.
+ * mínimo propio y la insignia van plegados en opciones avanzadas. Las
+ * preguntas se escriben desde el principio, también en un bloque nuevo: un
+ * solo botón crea el cuestionario, el bloque y sus preguntas.
  */
 export default function InductionBlockEditor({
   block,
@@ -96,13 +96,15 @@ export default function InductionBlockEditor({
       return
     }
     setSaving(true)
+    let draftCount = 0
     try {
+      const quizTitle = `Cuestionario: ${name.trim()}`
       let surveyId = current?.survey_id
       if (!surveyId) {
         // Cuestionario propio del bloque. No se envía por correo ni por
         // campanita: se responde desde la landing.
         const created = await surveyService.createSurvey({
-          title: `Cuestionario: ${name.trim()}`,
+          title: quizTitle,
           description: 'Responde estas preguntas para completar este bloque de tu inducción.',
           status: 'active',
           kind: 'induction',
@@ -113,6 +115,19 @@ export default function InductionBlockEditor({
           questions: [],
         })
         surveyId = created.id as number
+        // Las preguntas del borrador se guardan por la misma vía que las de
+        // un bloque existente (la edición del cuestionario).
+        const draft = quizRef.current?.questions() ?? []
+        if (draft.length > 0) {
+          const fresh = await surveyService.getSurvey(surveyId)
+          await surveyService.updateSurvey(surveyId, {
+            ...fresh,
+            questions: draft,
+            kind: 'induction',
+            passing_score: effectivePassing,
+          })
+        }
+        draftCount = draft.length
       }
       const input = {
         name: name.trim(),
@@ -129,11 +144,19 @@ export default function InductionBlockEditor({
         : await inductionService.createBlock(input)
       // Las preguntas se guardan en el mismo clic (con el mínimo ya resuelto).
       if (current && quizRef.current) {
-        const count = await quizRef.current.save()
+        const count = await quizRef.current.save(quizTitle)
         saved = { ...saved, question_count: count }
+      } else if (!current) {
+        saved = { ...saved, question_count: draftCount }
       }
       setCurrent(saved)
-      success(current ? 'Bloque guardado.' : 'Bloque creado. Ahora agrégale preguntas.')
+      success(
+        current
+          ? 'Bloque guardado.'
+          : draftCount > 0
+            ? 'Bloque creado con su cuestionario.'
+            : 'Bloque creado. Agrégale preguntas para que se pueda aprobar.'
+      )
       onSaved(saved)
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo guardar el bloque.')
@@ -154,7 +177,7 @@ export default function InductionBlockEditor({
         )}
       </div>
 
-      {/* --- 1. Video --- */}
+      {/* --- 1. Nombre y video --- */}
       <div className={styles.section}>
         <div className={styles.sectionHead}>
           <span className={styles.sectionNum}>1</span>
@@ -165,61 +188,39 @@ export default function InductionBlockEditor({
           programas que haga falta.
         </p>
 
-        <div className={styles.grid}>
-          <div className={styles.field}>
-            <label htmlFor="block-name">Nombre del bloque</label>
-            <input
-              id="block-name"
-              type="text"
-              placeholder="Ej. Bienvenida y cultura"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus={!current}
-            />
+        <div className={styles.blockMain}>
+          <div className={styles.blockMainCol}>
+            <div className={styles.field}>
+              <label htmlFor="block-name">Nombre del bloque</label>
+              <input
+                id="block-name"
+                type="text"
+                placeholder="Ej. Bienvenida y cultura"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus={!current}
+              />
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="block-description">Descripción (opcional)</label>
+              <textarea
+                id="block-description"
+                placeholder="Qué aprende el profesional en este bloque."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className={styles.field}>
-            <label>Video (de Novedades)</label>
-            <Select
-              fullWidth
-              value={tutorialId}
-              onChange={(v) => setTutorialId(Number(v) || 0)}
-              options={[
-                { value: 0, label: 'Sin video (solo cuestionario)' },
-                // La landing de inducción reproduce un video: una novedad de
-                // imagen o de texto no sirve como material aquí.
-                ...videoOptions.map((t) => ({
-                  value: t.id,
-                  label: t.is_active ? `${t.title} (visible en Novedades)` : t.title,
-                })),
-              ]}
-            />
-          </div>
-
-          <div className={`${styles.field} ${styles.fieldWide}`}>
-            <label htmlFor="block-description">Descripción (opcional)</label>
-            <textarea
-              id="block-description"
-              placeholder="Qué aprende el profesional en este bloque."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
+          <div className={styles.blockMainCol}>
+            <div>
+              <span className={styles.fieldLabel}>Video (de Novedades)</span>
+              {/* La landing de inducción reproduce un video: una novedad de
+                  imagen o de texto no sirve como material aquí. */}
+              <InductionVideoPicker videos={videoOptions} value={tutorialId} onChange={setTutorialId} />
+            </div>
           </div>
         </div>
-
-        {videoOptions.length === 0 ? (
-          <p className={styles.hint}>
-            No hay novedades de tipo video todavía. Crea una desde la pestaña Novedades (puede
-            quedar oculta) y vuelve a elegirla aquí.
-          </p>
-        ) : (
-          chosenVideo?.is_active && (
-            <p className={styles.hint}>
-              Este video está visible en Novedades, así que se anuncia a toda su audiencia. Para
-              inducción conviene ocultarlo desde Novedades: el bloque lo reproduce igual.
-            </p>
-          )
-        )}
       </div>
 
       {/* --- 2. Cuestionario --- */}
@@ -233,14 +234,13 @@ export default function InductionBlockEditor({
             </span>
           )}
         </div>
-        {current ? (
-          <InductionQuizBuilder ref={quizRef} surveyId={current.survey_id} passingScore={effectivePassing} />
-        ) : (
-          <p className={styles.sectionIntro}>
-            Pulsa «Crear bloque» abajo: el cuestionario se crea con él y aquí mismo podrás
-            agregarle las preguntas.
-          </p>
-        )}
+        {/* En un bloque nuevo las preguntas quedan en borrador y se guardan al crearlo. */}
+        <InductionQuizBuilder
+          key={current?.survey_id ?? 'nuevo'}
+          ref={quizRef}
+          surveyId={current?.survey_id ?? null}
+          passingScore={effectivePassing}
+        />
       </div>
 
       {/* --- Opciones avanzadas: casi nunca hace falta tocarlas --- */}

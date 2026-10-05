@@ -33,8 +33,11 @@ function parseOptions(raw?: string): string[] {
 }
 
 interface Props {
-  /** Cuestionario (kind induction) del bloque. */
-  surveyId: number
+  /**
+   * Cuestionario (kind induction) del bloque. null = bloque nuevo: las
+   * preguntas se arman en borrador y quien lo contiene las guarda al crear.
+   */
+  surveyId: number | null
   /** Mínimo aprobatorio con el que se guarda el registro del cuestionario. */
   passingScore: number
   /** Avisa cuando cambia el número de preguntas guardadas (para la biblioteca). */
@@ -50,7 +53,9 @@ export interface QuizBuilderHandle {
   /** Mensaje del primer problema que impide guardar, o null si se puede. */
   validate: () => string | null
   /** Guarda las preguntas y devuelve cuántas quedaron. Lanza si falla. */
-  save: () => Promise<number>
+  save: (title?: string) => Promise<number>
+  /** Las preguntas tal como están, en orden (para guardar un borrador). */
+  questions: () => SurveyQuestion[]
 }
 
 /**
@@ -61,13 +66,15 @@ export interface QuizBuilderHandle {
 export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, ref }: Props) {
   const { success, error: showError } = useNotification()
 
-  const [quiz, setQuiz] = useState<Survey | null>(null)
-  const [loadingQuiz, setLoadingQuiz] = useState(true)
+  // Borrador: un cuestionario en memoria, sin id, hasta que se cree el bloque.
+  const [quiz, setQuiz] = useState<Survey | null>(surveyId ? null : ({ title: '', questions: [] } as unknown as Survey))
+  const [loadingQuiz, setLoadingQuiz] = useState(!!surveyId)
   const [savingQuiz, setSavingQuiz] = useState(false)
   // Acordeón: una pregunta abierta a la vez para que la lista no crezca sin fin.
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   const loadQuiz = useCallback(async () => {
+    if (!surveyId) return
     setLoadingQuiz(true)
     try {
       setQuiz(await surveyService.getSurvey(surveyId))
@@ -153,12 +160,15 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, 
     return null
   }
 
+  const ordered = () => (quiz?.questions ?? []).map((q, i) => ({ ...q, order_index: i }))
+
   // Guarda sin avisar: quien llama decide qué mensaje mostrar.
-  const persist = async () => {
+  const persist = async (title?: string) => {
     if (!quiz?.id) return quiz?.questions?.length ?? 0
-    const questions = (quiz.questions ?? []).map((q, i) => ({ ...q, order_index: i }))
+    const questions = ordered()
     await surveyService.updateSurvey(quiz.id, {
       ...quiz,
+      ...(title ? { title } : {}),
       questions,
       kind: 'induction',
       passing_score: passingScore,
@@ -168,7 +178,7 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, 
     return questions.length
   }
 
-  useImperativeHandle(ref, () => ({ validate, save: persist }))
+  useImperativeHandle(ref, () => ({ validate, save: persist, questions: ordered }))
 
   const handleSaveQuiz = async () => {
     const problem = validate()
@@ -199,18 +209,21 @@ export default function InductionQuizBuilder({ surveyId, passingScore, onSaved, 
         calcula sobre la suma de los pesos, no sobre el número de preguntas.
       </p>
 
-      <div className={styles.field} style={{ marginBottom: 18, maxWidth: 640 }}>
-        <label>Título del cuestionario</label>
-        <input
-          type="text"
-          value={quiz.title}
-          onChange={(e) => setQuiz({ ...quiz, title: e.target.value })}
-        />
-      </div>
+      {/* Dentro del editor del bloque el título sale del nombre del bloque. */}
+      {!ref && (
+        <div className={styles.field} style={{ marginBottom: 18, maxWidth: 640 }}>
+          <label>Título del cuestionario</label>
+          <input
+            type="text"
+            value={quiz.title}
+            onChange={(e) => setQuiz({ ...quiz, title: e.target.value })}
+          />
+        </div>
+      )}
 
-      <div className={total === 0 || scorableCount === 0 ? styles.danger : styles.ok}>
+      <div className={total === 0 ? styles.warn : scorableCount === 0 ? styles.danger : styles.ok}>
         {total === 0
-          ? 'El cuestionario no tiene preguntas todavía.'
+          ? 'Todavía no hay preguntas. Agrega la primera con los botones de abajo.'
           : scorableCount === 0
             ? 'Ninguna pregunta puntúa. Sin clave de respuestas, todo el mundo aprueba este bloque automáticamente.'
             : `${scorableCount} de ${total} preguntas puntúan.`}
