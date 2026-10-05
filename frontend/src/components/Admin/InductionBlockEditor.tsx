@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, ListChecks, Play, Save, SlidersHorizontal, Target } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ListChecks, Palette, Play, Save, Target } from 'lucide-react'
 
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
 import { surveyService } from '../../services/surveyService'
+import { tutorialService } from '../../services/tutorial.service'
 import type { Tutorial } from '../../types/tutorials'
 import InductionQuizBuilder, { type QuizBuilderHandle } from './InductionQuizBuilder'
 import InductionVideoPicker from './InductionVideoPicker'
@@ -78,7 +79,22 @@ export default function InductionBlockEditor({
   const passingValue = passing.trim() === '' ? null : Number(passing)
   const effectivePassing = passingValue ?? fallbackPassingScore
 
-  const videoOptions = tutorials.filter((t) => (t.content_type || 'video') === 'video')
+  // Videos ocultados desde aquí: se reflejan sin recargar la lista de Novedades.
+  const [hiddenIds, setHiddenIds] = useState<number[]>([])
+  const [customizingBadge, setCustomizingBadge] = useState(false)
+  const videoOptions = tutorials
+    .filter((t) => (t.content_type || 'video') === 'video')
+    .map((t) => (hiddenIds.includes(t.id) ? { ...t, is_active: false } : t))
+
+  const hideVideo = async (id: number) => {
+    try {
+      await tutorialService.update(id, { is_active: false })
+      setHiddenIds((prev) => [...prev, id])
+      success('Video ocultado en Novedades. El bloque lo sigue reproduciendo.')
+    } catch (err: any) {
+      showError(err?.response?.data?.error ?? 'No se pudo ocultar el video.')
+    }
+  }
   const chosenVideo = videoOptions.find((t) => t.id === tutorialId)
   // Lo que falta, con el borrador tal como está (preguntas incluidas).
   const issues = blockIssues(
@@ -315,9 +331,7 @@ export default function InductionBlockEditor({
         </p>
         {/* La landing de inducción reproduce un video: una novedad de imagen o
             de texto no sirve como material aquí. */}
-        <div className={styles.wizardMedium}>
-          <InductionVideoPicker videos={videoOptions} value={tutorialId} onChange={setTutorialId} />
-        </div>
+        <InductionVideoPicker videos={videoOptions} value={tutorialId} onChange={setTutorialId} onHide={hideVideo} />
       </div>
 
       {/* --- 3. Cuestionario --- */}
@@ -339,66 +353,112 @@ export default function InductionBlockEditor({
       {/* --- 4. Revisar --- */}
       <div className={styles.section} hidden={step !== 3}>
         <h3 className={styles.wizardTitle}>Revisa y {current ? 'guarda' : 'crea'} el bloque</h3>
-        <div className={styles.summaryGrid}>
-          <button type="button" className={styles.summaryItem} onClick={() => goTo(0)}>
-            <span className={styles.summaryLabel}>Nombre</span>
-            <span className={styles.summaryValue}>{name || '—'}</span>
-          </button>
-          <button type="button" className={styles.summaryItem} onClick={() => goTo(1)}>
-            <span className={styles.summaryLabel}>Video</span>
-            <span className={styles.summaryValue}>{chosenVideo?.title ?? 'Sin video'}</span>
-          </button>
-          <button type="button" className={styles.summaryItem} onClick={() => goTo(2)}>
-            <span className={styles.summaryLabel}>Cuestionario</span>
-            <span className={styles.summaryValue}>
-              {questionCount} {questionCount === 1 ? 'pregunta' : 'preguntas'}
-            </span>
-          </button>
-          <div className={styles.summaryItem}>
-            <span className={styles.summaryLabel}>Mínimo para aprobar</span>
-            <span className={styles.summaryValue}>
-              {effectivePassing}% {passingValue === null && <small>(el del programa)</small>}
-            </span>
+        <p className={styles.wizardIntro}>Todo se puede ajustar desde aquí antes de {current ? 'guardar' : 'crearlo'}.</p>
+
+        <div className={styles.reviewSplit}>
+          <div>
+            <div className={styles.reviewList}>
+              <div className={styles.reviewRow}>
+                <span className={styles.reviewLabel}>Nombre</span>
+                <span className={styles.reviewValue}>{name || '—'}</span>
+                <button type="button" className={styles.linkBtn} onClick={() => goTo(0)}>
+                  Cambiar
+                </button>
+              </div>
+              <div className={styles.reviewRow}>
+                <span className={styles.reviewLabel}>Video</span>
+                <span className={styles.reviewValue}>
+                  {chosenVideo?.title ?? 'Sin video'}
+                  {chosenVideo?.is_active && <span className={styles.tagWarn}>Visible en Novedades</span>}
+                </span>
+                <button type="button" className={styles.linkBtn} onClick={() => goTo(1)}>
+                  Cambiar
+                </button>
+              </div>
+              <div className={styles.reviewRow}>
+                <span className={styles.reviewLabel}>Cuestionario</span>
+                <span className={styles.reviewValue}>
+                  {questionCount} {questionCount === 1 ? 'pregunta' : 'preguntas'}
+                  {questionCount > 0 && scorableCount !== null && (
+                    <small>
+                      {scorableCount === questionCount
+                        ? 'todas puntúan'
+                        : `${scorableCount} ${scorableCount === 1 ? 'puntúa' : 'puntúan'}`}
+                    </small>
+                  )}
+                </span>
+                <button type="button" className={styles.linkBtn} onClick={() => goTo(2)}>
+                  Editar
+                </button>
+              </div>
+              <div className={styles.reviewRow}>
+                <span className={styles.reviewLabel}>Mínimo para aprobar</span>
+                <span className={styles.reviewValue}>
+                  <span className={styles.segmented} role="radiogroup" aria-label="Mínimo para aprobar">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={passingValue === null}
+                      className={passingValue === null ? styles.segmentActive : styles.segment}
+                      onClick={() => setPassing('')}
+                    >
+                      El del programa ({fallbackPassingScore}%)
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={passingValue !== null}
+                      className={passingValue !== null ? styles.segmentActive : styles.segment}
+                      onClick={() => passingValue === null && setPassing(String(fallbackPassingScore))}
+                    >
+                      Propio
+                    </button>
+                  </span>
+                  {passingValue !== null && (
+                    <span className={styles.percentInput}>
+                      <input
+                        id="block-passing"
+                        type="number"
+                        min={0}
+                        max={100}
+                        aria-label="Mínimo propio (%)"
+                        value={passing}
+                        onChange={(e) => setPassing(e.target.value)}
+                      />
+                      %
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <ReadinessChecklist issues={issues} readyText="Este bloque está listo para usarse en un programa." />
           </div>
+
+          {/* --- Insignia: se ve como la verá el profesional; se edita aparte --- */}
+          <aside className={styles.badgeCard} aria-label="Insignia del bloque">
+            <span className={styles.blockPreviewLabel}>Insignia que gana</span>
+            <BadgeMedallion icon={badge.icon} color={badge.color} size="lg" />
+            <strong className={styles.badgeCardTitle}>{badge.title.trim() || name.trim() || 'Insignia del bloque'}</strong>
+            <span className={styles.badgeCardHint}>
+              Se gana al aprobar este bloque y aparece en su perfil y en su expediente.
+            </span>
+            <button
+              type="button"
+              className={styles.ghostBtnSm}
+              aria-expanded={customizingBadge}
+              onClick={() => setCustomizingBadge((v) => !v)}
+            >
+              <Palette size={14} /> {customizingBadge ? 'Listo' : 'Personalizar'}
+            </button>
+          </aside>
         </div>
 
-        <ReadinessChecklist issues={issues} readyText="Este bloque está listo para usarse en un programa." />
-
-        <details className={styles.advanced} open={passingValue !== null || undefined}>
-          <summary>
-            <SlidersHorizontal size={15} /> Opciones avanzadas
-            <span className={styles.advancedHint}>Mínimo propio e insignia</span>
-          </summary>
-          <div className={styles.advancedBody}>
-            <div className={styles.field} style={{ maxWidth: 320, marginTop: 14 }}>
-              <label htmlFor="block-passing">Mínimo aprobatorio propio (%)</label>
-              <input
-                id="block-passing"
-                type="number"
-                min={0}
-                max={100}
-                placeholder={`El del programa (${fallbackPassingScore})`}
-                value={passing}
-                onChange={(e) => setPassing(e.target.value)}
-              />
-            </div>
-            <p className={styles.hint}>
-              Vacío = usa el mínimo del programa. Cámbialo solo si este bloque debe ser más
-              exigente o más fácil.
-            </p>
-
-            <div className={styles.section}>
-              <h3 className={styles.keyTitle} style={{ fontSize: 14, margin: '0 0 4px' }}>
-                Insignia del bloque
-              </h3>
-              <p className={styles.hint} style={{ margin: '0 0 12px' }}>
-                Se gana al aprobar este bloque y aparece en el perfil del profesional y en su
-                expediente. Si no la cambias, lleva el nombre del bloque.
-              </p>
-              <BadgePicker value={badge} fallbackTitle={name} presets={presets} onChange={setBadge} />
-            </div>
+        {customizingBadge && (
+          <div className={styles.badgeEditor}>
+            <BadgePicker value={badge} fallbackTitle={name} presets={presets} onChange={setBadge} />
           </div>
-        </details>
+        )}
       </div>
 
       <div className={styles.stickyBar}>
