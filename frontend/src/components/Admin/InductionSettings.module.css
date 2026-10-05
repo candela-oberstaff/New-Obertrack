@@ -2477,3 +2477,418 @@
   color: #c026d3;
   font-weight: 600;
 }
+
+/* --- Certificados: panel de propiedades del lienzo --- */
+.propsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.propsBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: white;
+}
+
+.propsTitle {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.addGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.addTile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.addTile:hover {
+  border-color: var(--primary);
+  background: #fdf4ff;
+  color: #a21caf;
+}
+
+.addTileCount {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 16px;
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.layerList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.layerItem,
+.layerItemOn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: #334155;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.layerItem:hover {
+  background: #f8fafc;
+}
+
+.layerItemOn {
+  border-color: #f0abfc;
+  background: #fdf4ff;
+  color: #a21caf;
+}
+
+.layerName {
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.layerSample {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.propsHeadRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.propsFieldName {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--black, #0f172a);
+}
+
+.propsFieldName svg {
+  color: var(--primary);
+}
+
+.propRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.propLabel {
+  display: block;
+  min-width: 56px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0;
+}
+
+div > .propLabel {
+  margin-bottom: 6px;
+}
+
+.propRow > .propLabel {
+  margin-bottom: 0;
+}
+
+.propValue {
+  min-width: 44px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+  text-align: right;
+}
+
+.propRange {
+  flex: 1;
+  accent-color: var(--primary);
+}
+
+.fontGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.fontTile,
+.fontTileOn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 2px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: white;
+  font-family: inherit;
+  cursor: pointer;
+  color: #0f172a;
+  min-width: 0;
+}
+
+.fontTile span,
+.fontTileOn span {
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.fontTile small,
+.fontTileOn small {
+  font-size: 10px;
+  color: #64748b;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fontTile:hover {
+  border-color: var(--primary);
+}
+
+.fontTileOn {
+  border-color: var(--primary);
+  background: #fdf4ff;
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: white;
+}
+
+.stepper button {
+  width: 32px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #f8fafc;
+  color: #334155;
+  cursor: pointer;
+}
+
+.stepper button:hover {
+  background: #fdf4ff;
+  color: #a21caf;
+}
+
+.stepper input {
+  width: 52px;
+  height: 34px;
+  border: none;
+  border-left: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  text-align: center;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  -moz-appearance: textfield;
+}
+
+.stepper input::-webkit-outer-spin-button,
+.stepper input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.toolGroup {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 10px;
+  background: #f1f5f9;
+}
+
+.tool,
+.toolOn {
+  width: 34px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+}
+
+.tool:hover:not(:disabled) {
+  color: var(--black, #0f172a);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.tool:disabled,
+.toolOn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolOn {
+  background: white;
+  color: #a21caf;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.propRow > .tool {
+  background: #f1f5f9;
+  width: 36px;
+  height: 36px;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.swatch,
+.swatchOn {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  cursor: pointer;
+  padding: 0;
+  overflow: hidden;
+}
+
+.swatchOn {
+  box-shadow: 0 0 0 2px white, 0 0 0 4px var(--primary);
+}
+
+.swatch input,
+.swatchOn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.varChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.varChips button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 10px;
+  border: 1px dashed #f0abfc;
+  border-radius: 999px;
+  background: #fdf4ff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a21caf;
+  cursor: pointer;
+}
+
+.posInputs {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.posInputs label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.posInputs input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #0f172a;
+  background: transparent;
+}
+
+.signaturePreview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.signaturePreview img {
+  max-width: 150px;
+  max-height: 56px;
+  object-fit: contain;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 4px;
+}

@@ -1,7 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, Save, Upload, Eye, Plus, Trash2, PenLine } from 'lucide-react'
+import {
+  AlignHorizontalJustifyCenter,
+  ArrowLeft,
+  ArrowRight,
+  Bold,
+  Calendar,
+  CaseUpper,
+  Check,
+  Eye,
+  GraduationCap,
+  Hash,
+  Minus,
+  PenLine,
+  Plus,
+  Save,
+  TextAlignCenter,
+  TextAlignEnd,
+  TextAlignStart,
+  Trash2,
+  Type,
+  Upload,
+  User,
+  type LucideIcon,
+} from 'lucide-react'
 
-import { Button, Modal, Select } from '../ui'
+import { Button, Modal } from '../ui'
 import SignaturePad from '../Testimonials/SignaturePad'
 import { snapPosition, type SnapGuide } from './snapGuides'
 
@@ -34,6 +57,70 @@ const FIELD_LABEL: Record<CertificateFieldKey, string> = {
   code: 'Código de verificación',
   text: 'Texto libre',
   signature: 'Firma',
+}
+
+/** Nombre corto para los mosaicos de «Agregar». */
+const FIELD_SHORT: Record<CertificateFieldKey, string> = {
+  name: 'Nombre',
+  program: 'Programa',
+  date: 'Fecha',
+  code: 'Código',
+  text: 'Texto',
+  signature: 'Firma',
+}
+
+const FIELD_ICON: Record<CertificateFieldKey, LucideIcon> = {
+  name: User,
+  program: GraduationCap,
+  date: Calendar,
+  code: Hash,
+  text: Type,
+  signature: PenLine,
+}
+
+const FONTS: { value: CertificateField['font']; label: string; short: string }[] = [
+  { value: 'Poppins', label: 'Poppins', short: 'Poppins' },
+  { value: 'Spartan', label: 'League Spartan (solo Bold)', short: 'Spartan' },
+  { value: 'Helvetica', label: 'Helvetica', short: 'Helvetica' },
+  { value: 'Times', label: 'Times', short: 'Times' },
+  { value: 'Courier', label: 'Courier', short: 'Courier' },
+]
+
+const ALIGNS: { value: CertificateField['align']; label: string; icon: LucideIcon }[] = [
+  { value: 'L', label: 'Alinear a la izquierda', icon: TextAlignStart },
+  { value: 'C', label: 'Centrar', icon: TextAlignCenter },
+  { value: 'R', label: 'Alinear a la derecha', icon: TextAlignEnd },
+]
+
+/** Colores de la marca a un clic; el último botón abre el selector libre. */
+const SWATCHES = ['#000000', '#0f172a', '#fa3ab4', '#cc33cc', '#64748b', '#94a3b8', '#ffffff']
+
+function Swatches({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  const current = value.toLowerCase()
+  const custom = !SWATCHES.includes(current)
+  return (
+    <div className={styles.swatches}>
+      {SWATCHES.map((c) => (
+        <button
+          key={c}
+          type="button"
+          className={current === c ? styles.swatchOn : styles.swatch}
+          style={{ background: c }}
+          title={c}
+          aria-label={`Color ${c}`}
+          aria-pressed={current === c}
+          onClick={() => onChange(c)}
+        />
+      ))}
+      <label
+        className={custom ? styles.swatchOn : styles.swatch}
+        style={{ background: custom ? value : 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }}
+        title="Otro color"
+      >
+        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} aria-label="Otro color" />
+      </label>
+    </div>
+  )
 }
 
 /** Lo que se pinta en el editor en lugar de cada campo. */
@@ -583,7 +670,7 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
         {!imageFilename ? (
           <div className={styles.empty}>Sube el diseño para colocar los campos.</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 280px', gap: 20, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 20, alignItems: 'start' }}>
             <div
               ref={canvasRef}
               style={{
@@ -675,28 +762,49 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
               )}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <div className={styles.smallLabel} style={{ marginBottom: 6 }}>
-                  Agregar campo
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div className={styles.propsPanel}>
+              {/* --- Agregar --- */}
+              <div className={styles.propsBlock}>
+                <span className={styles.propsTitle}>Agregar</span>
+                <div className={styles.addGrid}>
                   {(Object.keys(FIELD_LABEL) as CertificateFieldKey[]).map((key) => {
+                    const Icon = FIELD_ICON[key]
                     const count = fields.filter((f) => f.key === key).length
                     return (
                       <button
                         key={key}
                         type="button"
-                        className={styles.ghostBtnSm}
+                        className={styles.addTile}
                         onClick={() => addField(key)}
                         title={count > 0 ? `Ya hay ${count} en el diseño; se agrega otro` : 'Agregar al diseño'}
                       >
-                        <Plus size={12} /> {FIELD_LABEL[key]}
-                        {count > 0 && (
-                          <span className={styles.tagOk} style={{ marginLeft: 4, padding: '1px 7px' }}>
-                            {count}
-                          </span>
-                        )}
+                        <Icon size={18} />
+                        <span>{FIELD_SHORT[key]}</span>
+                        {count > 0 && <span className={styles.addTileCount}>{count}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* --- Elementos: elegir uno aunque esté tapado por otro --- */}
+              <div className={styles.propsBlock}>
+                <span className={styles.propsTitle}>En el diseño · {fields.length}</span>
+                <div className={styles.layerList}>
+                  {fields.map((f, i) => {
+                    const Icon = FIELD_ICON[f.key]
+                    return (
+                      <button
+                        key={`${f.key}-${i}`}
+                        type="button"
+                        className={i === selected ? styles.layerItemOn : styles.layerItem}
+                        onClick={() => setSelected(i)}
+                      >
+                        <Icon size={14} />
+                        <span className={styles.layerName}>{FIELD_LABEL[f.key]}</span>
+                        <span className={styles.layerSample}>
+                          {f.key === 'signature' ? 'Imagen' : f.key === 'text' ? (f.text || '').slice(0, 24) : SAMPLE[f.key]}
+                        </span>
                       </button>
                     )
                   })}
@@ -704,13 +812,19 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
               </div>
 
               {current && (
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <strong style={{ fontSize: 14, color: '#0f172a' }}>{FIELD_LABEL[current.key]}</strong>
+                <div className={styles.propsBlock}>
+                  <div className={styles.propsHeadRow}>
+                    <span className={styles.propsFieldName}>
+                      {(() => {
+                        const Icon = FIELD_ICON[current.key]
+                        return <Icon size={16} />
+                      })()}
+                      {FIELD_LABEL[current.key]}
+                    </span>
                     <button
                       type="button"
                       className={styles.iconBtn}
-                      title="Quitar campo"
+                      title="Quitar del diseño (Supr)"
                       aria-label="Quitar campo"
                       onClick={() => removeField(selected)}
                     >
@@ -720,203 +834,230 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
 
                   {current.key === 'signature' && (
                     <>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <img
-                          src={templateImageUrl(current.image ?? '')}
-                          alt="Firma"
-                          style={{ maxWidth: 160, maxHeight: 60, objectFit: 'contain', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 4 }}
-                        />
+                      <div className={styles.signaturePreview}>
+                        <img src={templateImageUrl(current.image ?? '')} alt="Firma" />
                         <button
                           type="button"
                           className={styles.ghostBtnSm}
-                          onClick={() => { setSignatureDraft(''); setSignatureFor(selected) }}
+                          onClick={() => {
+                            setSignatureDraft('')
+                            setSignatureFor(selected)
+                          }}
                         >
                           <PenLine size={12} /> Cambiar firma
                         </button>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                        <div className={styles.field}>
-                          <label className={styles.smallLabel}>Ancho (% de la página)</label>
-                          <input
-                            type="number"
-                            min={SIGNATURE_WIDTH.min}
-                            max={SIGNATURE_WIDTH.max}
-                            step={1}
-                            value={current.width ?? SIGNATURE_WIDTH.initial}
-                            onChange={(e) => {
-                              const w = Number(e.target.value) || SIGNATURE_WIDTH.initial
-                              updateField(selected, { width: Math.min(SIGNATURE_WIDTH.max, Math.max(SIGNATURE_WIDTH.min, w)) })
-                            }}
-                          />
-                        </div>
-                        <div className={styles.field}>
-                          <label className={styles.smallLabel}>Alineación</label>
-                          <Select
-                            fullWidth
-                            value={current.align}
-                            onChange={(v) => updateField(selected, { align: v as CertificateField['align'] })}
-                            options={[
-                              { value: 'L', label: 'Izquierda' },
-                              { value: 'C', label: 'Centro' },
-                              { value: 'R', label: 'Derecha' },
-                            ]}
-                          />
-                        </div>
+                      <div className={styles.propRow}>
+                        <span className={styles.propLabel}>Ancho</span>
+                        <input
+                          type="range"
+                          className={styles.propRange}
+                          min={SIGNATURE_WIDTH.min}
+                          max={SIGNATURE_WIDTH.max}
+                          value={current.width ?? SIGNATURE_WIDTH.initial}
+                          aria-label="Ancho de la firma (% de la página)"
+                          onChange={(e) => updateField(selected, { width: Number(e.target.value) })}
+                        />
+                        <span className={styles.propValue}>{current.width ?? SIGNATURE_WIDTH.initial}%</span>
                       </div>
                     </>
                   )}
 
-                  {current.key !== 'signature' && (
-                  <>
                   {current.key === 'text' && (
                     <>
                       <div className={styles.field}>
-                        <label className={styles.smallLabel}>Texto</label>
+                        <label className={styles.propLabel}>Texto</label>
                         <textarea
                           ref={textAreaRef}
                           rows={4}
                           value={current.text ?? ''}
                           onChange={(e) => updateField(selected, { text: e.target.value })}
                         />
-                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                          <span className={styles.smallLabel}>Insertar:</span>
+                        <div className={styles.varChips}>
                           {TEXT_VARIABLES.map((v) => (
                             <button
                               key={v.token}
                               type="button"
-                              className={styles.ghostBtnSm}
                               onClick={() => insertVariable(v.token)}
                               title={`Se reemplaza por ${v.label.toLowerCase()} de cada certificado`}
                             >
-                              <Plus size={12} /> {v.label}
+                              <Plus size={11} /> {v.label}
                             </button>
                           ))}
                         </div>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                        <div className={styles.field}>
-                          <label className={styles.smallLabel}>Ancho del párrafo (%)</label>
+                      <div className={styles.propRow}>
+                        <span className={styles.propLabel}>Ancho</span>
+                        <input
+                          type="range"
+                          className={styles.propRange}
+                          min={0}
+                          max={PARAGRAPH_WRAP.max}
+                          value={current.wrap ?? 0}
+                          aria-label="Ancho del párrafo (% de la página)"
+                          onChange={(e) => {
+                            const w = Number(e.target.value) || 0
+                            updateField(selected, { wrap: w < PARAGRAPH_WRAP.min ? 0 : w })
+                          }}
+                        />
+                        <span className={styles.propValue}>{current.wrap ? `${current.wrap}%` : 'Una línea'}</span>
+                      </div>
+                      <div>
+                        <span className={styles.propLabel}>Color de las variables</span>
+                        <Swatches
+                          value={current.highlight || current.color}
+                          onChange={(c) => updateField(selected, { highlight: c })}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {current.key !== 'signature' && (
+                    <>
+                      <div>
+                        <span className={styles.propLabel}>Fuente</span>
+                        <div className={styles.fontGrid}>
+                          {FONTS.map((font) => (
+                            <button
+                              key={font.value}
+                              type="button"
+                              className={current.font === font.value ? styles.fontTileOn : styles.fontTile}
+                              onClick={() => updateField(selected, { font: font.value })}
+                              title={font.label}
+                            >
+                              <span
+                                style={{
+                                  fontFamily: FONT_FAMILY[font.value],
+                                  fontWeight: font.value === 'Spartan' ? 700 : 500,
+                                }}
+                              >
+                                Aa
+                              </span>
+                              <small>{font.short}</small>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className={styles.propRow}>
+                        <span className={styles.propLabel}>Tamaño</span>
+                        <div className={styles.stepper}>
+                          <button
+                            type="button"
+                            aria-label="Más pequeño"
+                            onClick={() => updateField(selected, { size: Math.max(6, current.size - 1) })}
+                          >
+                            <Minus size={14} />
+                          </button>
                           <input
                             type="number"
-                            min={0}
-                            max={PARAGRAPH_WRAP.max}
-                            step={1}
-                            value={current.wrap ?? 0}
-                            title="0 = todo en una línea"
-                            onChange={(e) => {
-                              const w = Number(e.target.value) || 0
-                              updateField(selected, { wrap: w <= 0 ? 0 : Math.min(PARAGRAPH_WRAP.max, Math.max(PARAGRAPH_WRAP.min, w)) })
-                            }}
+                            min={6}
+                            max={120}
+                            value={current.size}
+                            aria-label="Tamaño (pt)"
+                            onChange={(e) => updateField(selected, { size: Number(e.target.value) || 12 })}
                           />
+                          <button
+                            type="button"
+                            aria-label="Más grande"
+                            onClick={() => updateField(selected, { size: Math.min(120, current.size + 1) })}
+                          >
+                            <Plus size={14} />
+                          </button>
                         </div>
-                        <div className={styles.field}>
-                          <label className={styles.smallLabel}>Color de las variables</label>
-                          <input
-                            type="color"
-                            value={current.highlight || current.color}
-                            onChange={(e) => updateField(selected, { highlight: e.target.value })}
-                            style={{ padding: 4, height: 42 }}
-                          />
+                        <span className={styles.muted} style={{ fontSize: 12.5 }}>
+                          pt
+                        </span>
+                      </div>
+
+                      <div className={styles.propRow}>
+                        <span className={styles.propLabel}>Estilo</span>
+                        <div className={styles.toolGroup}>
+                          <button
+                            type="button"
+                            className={current.bold ? styles.toolOn : styles.tool}
+                            aria-pressed={current.bold}
+                            title="Negrita"
+                            disabled={current.font === 'Spartan'}
+                            onClick={() => updateField(selected, { bold: !current.bold })}
+                          >
+                            <Bold size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className={current.upper ? styles.toolOn : styles.tool}
+                            aria-pressed={!!current.upper}
+                            title="Mayúsculas"
+                            onClick={() => updateField(selected, { upper: !current.upper })}
+                          >
+                            <CaseUpper size={16} />
+                          </button>
                         </div>
                       </div>
                     </>
                   )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div className={styles.field}>
-                      <label className={styles.smallLabel}>Tamaño (pt)</label>
-                      <input
-                        type="number"
-                        min={6}
-                        max={120}
-                        value={current.size}
-                        onChange={(e) => updateField(selected, { size: Number(e.target.value) || 12 })}
-                      />
-                    </div>
-                    <div className={styles.field}>
-                      <label className={styles.smallLabel}>Color</label>
-                      <input
-                        type="color"
-                        value={current.color}
-                        onChange={(e) => updateField(selected, { color: e.target.value })}
-                        style={{ padding: 4, height: 42 }}
-                      />
+                  <div className={styles.propRow}>
+                    <span className={styles.propLabel}>Alinear</span>
+                    <div className={styles.toolGroup}>
+                      {ALIGNS.map(({ value, label, icon: Icon }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={current.align === value ? styles.toolOn : styles.tool}
+                          aria-pressed={current.align === value}
+                          title={label}
+                          onClick={() => updateField(selected, { align: value })}
+                        >
+                          <Icon size={15} />
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div className={styles.field}>
-                      <label className={styles.smallLabel}>Fuente</label>
-                      <Select
-                        fullWidth
-                        value={current.font}
-                        onChange={(v) => updateField(selected, { font: v as CertificateField['font'] })}
-                        options={[
-                          { value: 'Helvetica', label: 'Helvetica' },
-                          { value: 'Times', label: 'Times' },
-                          { value: 'Courier', label: 'Courier' },
-                          { value: 'Poppins', label: 'Poppins' },
-                          { value: 'Spartan', label: 'League Spartan (Bold)' },
-                        ]}
-                      />
+                  {current.key !== 'signature' && (
+                    <div>
+                      <span className={styles.propLabel}>Color</span>
+                      <Swatches value={current.color} onChange={(c) => updateField(selected, { color: c })} />
                     </div>
-                    <div className={styles.field}>
-                      <label className={styles.smallLabel}>Alineación</label>
-                      <Select
-                        fullWidth
-                        value={current.align}
-                        onChange={(v) => updateField(selected, { align: v as CertificateField['align'] })}
-                        options={[
-                          { value: 'L', label: 'Izquierda' },
-                          { value: 'C', label: 'Centro' },
-                          { value: 'R', label: 'Derecha' },
-                        ]}
-                      />
-                    </div>
-                  </div>
-
-                  <label className={styles.checkRow}>
-                    <input
-                      type="checkbox"
-                      checked={current.bold}
-                      onChange={(e) => updateField(selected, { bold: e.target.checked })}
-                    />
-                    Negrita
-                  </label>
-                  <label className={styles.checkRow}>
-                    <input
-                      type="checkbox"
-                      checked={!!current.upper}
-                      onChange={(e) => updateField(selected, { upper: e.target.checked })}
-                    />
-                    Mayúsculas
-                  </label>
-                  </>
                   )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div className={styles.field}>
-                      <label className={styles.smallLabel}>X (%)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        value={current.x}
-                        onChange={(e) => updateField(selected, { x: Number(e.target.value) })}
-                      />
+                  <div className={styles.propRow}>
+                    <span className={styles.propLabel}>Posición</span>
+                    <div className={styles.posInputs}>
+                      <label>
+                        X
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={current.x}
+                          aria-label="X (%)"
+                          onChange={(e) => updateField(selected, { x: Number(e.target.value) })}
+                        />
+                      </label>
+                      <label>
+                        Y
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={current.y}
+                          aria-label="Y (%)"
+                          onChange={(e) => updateField(selected, { y: Number(e.target.value) })}
+                        />
+                      </label>
                     </div>
-                    <div className={styles.field}>
-                      <label className={styles.smallLabel}>Y (%)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        value={current.y}
-                        onChange={(e) => updateField(selected, { y: Number(e.target.value) })}
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      className={styles.tool}
+                      title="Centrar en la página"
+                      onClick={() => updateField(selected, { x: 50, align: 'C' })}
+                    >
+                      <AlignHorizontalJustifyCenter size={15} />
+                    </button>
                   </div>
                 </div>
               )}
