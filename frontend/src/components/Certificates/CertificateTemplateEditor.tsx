@@ -3,6 +3,10 @@ import { ArrowLeft, Save, Upload, Eye, Plus, Trash2, PenLine } from 'lucide-reac
 
 import { Button, Modal, Select } from '../ui'
 import SignaturePad from '../Testimonials/SignaturePad'
+import { snapPosition, type SnapGuide } from './snapGuides'
+
+/** Distancia (en píxeles de pantalla) a la que una guía atrae al campo. */
+const SNAP_PX = 6
 import { useNotification } from '../../context/NotificationContext'
 import { uploadService } from '../../services/upload.service'
 import {
@@ -146,7 +150,14 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
   const [canvasWidth, setCanvasWidth] = useState(0)
 
   const canvasRef = useRef<HTMLDivElement>(null)
-  const dragRef = useRef<{ index: number } | null>(null)
+  // offsetX/Y: desde dónde se agarró el campo (en % de la página), para que
+  // no salte al punto de anclaje al empezar a arrastrar.
+  const dragRef = useRef<{ index: number; offsetX: number; offsetY: number } | null>(null)
+  // Guías visibles mientras se arrastra (como las de Canva).
+  const [guides, setGuides] = useState<{ vertical: SnapGuide | null; horizontal: SnapGuide | null } | null>(null)
+  // Los campos al momento, para calcular las guías desde los eventos del puntero.
+  const fieldsRef = useRef(fields)
+  fieldsRef.current = fields
 
   // Ancho real del lienzo, para escalar los tamaños de letra como en el PDF.
   useEffect(() => {
@@ -281,21 +292,33 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
     setSelected((cur) => (cur === index ? 0 : cur > index ? cur - 1 : cur))
   }
 
-  // Arrastre: se convierte la posición del puntero a porcentaje del lienzo.
+  // Arrastre: se convierte la posición del puntero a porcentaje del lienzo y
+  // se ajusta a las guías (centro de la página y los demás campos). Con Alt
+  // se arrastra libre, sin imán.
   const onPointerMove = useCallback((e: PointerEvent) => {
     const drag = dragRef.current
     const el = canvasRef.current
     if (!drag || !el) return
     const rect = el.getBoundingClientRect()
-    const x = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100))
-    const y = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100))
-    setFields((prev) =>
-      prev.map((f, i) => (i === drag.index ? { ...f, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 } : f))
-    )
+    const rawX = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100 - drag.offsetX))
+    const rawY = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100 - drag.offsetY))
+    let x = Math.round(rawX * 10) / 10
+    let y = Math.round(rawY * 10) / 10
+    if (e.altKey) {
+      setGuides(null)
+    } else {
+      const others = fieldsRef.current.filter((_, i) => i !== drag.index)
+      const snap = snapPosition({ x: rawX, y: rawY }, others, (SNAP_PX / rect.width) * 100, (SNAP_PX / rect.height) * 100)
+      if (snap.vertical) x = snap.x
+      if (snap.horizontal) y = snap.y
+      setGuides(snap.vertical || snap.horizontal ? { vertical: snap.vertical, horizontal: snap.horizontal } : null)
+    }
+    setFields((prev) => prev.map((f, i) => (i === drag.index ? { ...f, x, y } : f)))
   }, [])
 
   const onPointerUp = useCallback(() => {
     dragRef.current = null
+    setGuides(null)
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)
   }, [onPointerMove])
@@ -335,7 +358,13 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
     e.preventDefault()
     ;(e.currentTarget as HTMLElement).focus()
     setSelected(index)
-    dragRef.current = { index }
+    const rect = canvasRef.current?.getBoundingClientRect()
+    const f = fields[index]
+    dragRef.current = {
+      index,
+      offsetX: rect ? ((e.clientX - rect.left) / rect.width) * 100 - f.x : 0,
+      offsetY: rect ? ((e.clientY - rect.top) / rect.height) * 100 - f.y : 0,
+    }
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
   }
@@ -452,7 +481,9 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
         <p className={styles.sectionIntro}>
           Arrastra cada campo a su lugar. Lo que ves aquí es lo que se imprime; los datos de ejemplo se reemplazan
           por los reales al emitir. Una plantilla nueva ya trae nombre, programa, fecha y código colocados; haz clic
-          en uno sobre el diseño para editarlo, Supr para quitarlo y las flechas para ajustarlo.
+          en uno sobre el diseño para editarlo, Supr para quitarlo y las flechas para ajustarlo. Al
+          arrastrar, las guías rosas lo centran en la página o lo alinean con otro campo; mantén Alt para
+          moverlo libre.
         </p>
 
         {!imageFilename ? (
@@ -528,6 +559,26 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
                   </div>
                 )
               })}
+              {guides?.vertical && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: 'absolute', top: 0, bottom: 0, left: `${guides.vertical.at}%`, width: 0,
+                    borderLeft: `1px ${guides.vertical.center ? 'solid' : 'dashed'} #fa3ab4`,
+                    pointerEvents: 'none', zIndex: 5,
+                  }}
+                />
+              )}
+              {guides?.horizontal && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: 'absolute', left: 0, right: 0, top: `${guides.horizontal.at}%`, height: 0,
+                    borderTop: `1px ${guides.horizontal.center ? 'solid' : 'dashed'} #fa3ab4`,
+                    pointerEvents: 'none', zIndex: 5,
+                  }}
+                />
+              )}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
