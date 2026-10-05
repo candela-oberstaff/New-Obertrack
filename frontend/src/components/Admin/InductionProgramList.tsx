@@ -91,6 +91,7 @@ export default function InductionProgramList({ programs, library, companies, onC
           await onChanged()
         }}
         onBack={() => setEditing(null)}
+        onGoToBlocks={onGoToBlocks}
       />
     )
   }
