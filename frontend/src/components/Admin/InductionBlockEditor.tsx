@@ -100,7 +100,9 @@ export default function InductionBlockEditor({
   if (questionCount > 0 && scorableCount === 0) {
     issues.unshift({
       level: 'blocker',
-      text: 'Ninguna pregunta tiene respuesta correcta: todos aprueban sin importar lo que respondan.',
+      text: 'Ninguna pregunta tiene respuesta correcta, así que todos aprueban sin importar lo que respondan.',
+      short: 'Sin respuestas correctas',
+      fix: 'En el paso «Cuestionario», abre cada pregunta y elige su respuesta correcta.',
     })
   }
 

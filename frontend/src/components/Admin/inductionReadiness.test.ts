@@ -34,11 +34,23 @@ describe('programIssues', () => {
 
   it('nombra el bloque sin preguntas', () => {
     const issues = programIssues(draft({ blocks: [block({ name: 'Seguridad', question_count: 0 })] }))
-    expect(issues).toContainEqual({ level: 'blocker', text: '«Seguridad»: no tiene preguntas: nadie puede aprobarlo.' })
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        level: 'blocker',
+        text: 'El bloque «Seguridad» no tiene preguntas, así que nadie puede aprobarlo.',
+        short: 'Bloque sin preguntas',
+      })
+    )
+    expect(issues[0].fix).toContain('Cuestionario')
   })
 
-  it('el mínimo bajo cuenta el heredado del programa', () => {
-    expect(programIssues(draft({ defaultPassingScore: 30 }))[0]).toMatchObject({ level: 'warning', text: expect.stringContaining('30%') })
+  it('el mínimo bajo cuenta el heredado del programa y dice dónde se sube', () => {
+    const [heredado] = programIssues(draft({ defaultPassingScore: 30 }))
+    expect(heredado).toMatchObject({ level: 'warning', short: 'Mínimo bajo (30%)', text: expect.stringContaining('el mínimo del programa') })
+    expect(heredado.fix).toContain('mínimo del programa')
+    const [propio] = programIssues(draft({ blocks: [block({ passing_score: 19 })] }))
+    expect(propio.text).toBe('El bloque «Bienvenida» se aprueba con solo 19% de aciertos.')
+    expect(propio.fix).toContain('en el bloque')
     // El propio del bloque manda sobre el del programa.
     expect(programIssues(draft({ defaultPassingScore: 30, blocks: [block({ passing_score: 80 })] }))).toEqual([])
   })
@@ -50,12 +62,12 @@ describe('programIssues', () => {
 
   it('apagado se avisa una sola vez, aunque tampoco tenga empresas', () => {
     const issues = programIssues(draft({ isDefault: false, isActive: false }))
-    expect(issues.map((i) => i.text)).toEqual(['Está apagado: nadie lo recibe.'])
+    expect(issues.map((i) => i.short)).toEqual(['Apagado'])
   })
 
   it('sin certificado es solo una sugerencia', () => {
     const issues = programIssues(draft({ hasCertificate: false }))
-    expect(issues).toEqual([{ level: 'tip', text: 'No emite certificado al completarlo.' }])
+    expect(issues).toEqual([expect.objectContaining({ level: 'tip', short: 'Sin certificado' })])
     expect(isReady(issues)).toBe(true)
   })
 })

@@ -2960,3 +2960,9 @@ div > .propLabel {
   font-size: 11.5px;
   font-weight: 700;
 }
+
+/* Cómo se arregla un aviso: detrás del problema, más tenue. */
+.readinessFix {
+  color: #64748b;
+  font-weight: 400;
+}

@@ -14,7 +14,12 @@ export type IssueLevel = 'blocker' | 'warning' | 'tip'
 
 export interface ReadinessIssue {
   level: IssueLevel
+  /** El problema, con el bloque al que se refiere cuando aplica. */
   text: string
+  /** Etiqueta corta para la insignia de la lista («Mínimo bajo»). */
+  short: string
+  /** Dónde se arregla, en los términos del panel. */
+  fix: string
 }
 
 /** Por debajo de este mínimo, aprobar el cuestionario casi no exige nada. */
@@ -47,11 +52,24 @@ export function draftFromProgram(p: InductionProgram): ProgramDraft {
 export function blockIssues(b: BlockLike, fallbackPassingScore: number): ReadinessIssue[] {
   const issues: ReadinessIssue[] = []
   if (b.question_count === 0) {
-    issues.push({ level: 'blocker', text: 'No tiene preguntas: nadie puede aprobarlo.' })
+    issues.push({
+      level: 'blocker',
+      text: 'No tiene preguntas, así que nadie puede aprobarlo.',
+      short: 'Bloque sin preguntas',
+      fix: 'Agrégalas en el bloque, paso «Cuestionario».',
+    })
   }
-  const passing = b.passing_score ?? fallbackPassingScore
+  const own = b.passing_score !== null && b.passing_score !== undefined
+  const passing = own ? (b.passing_score as number) : fallbackPassingScore
   if (passing < LOW_PASSING_SCORE) {
-    issues.push({ level: 'warning', text: `Se aprueba con solo ${passing}%.` })
+    issues.push({
+      level: 'warning',
+      text: `Se aprueba con solo ${passing}% de aciertos${own ? '' : ' (el mínimo del programa)'}.`,
+      short: `Mínimo bajo (${passing}%)`,
+      fix: own
+        ? `Súbelo a ${LOW_PASSING_SCORE}% o más en el bloque, paso «Revisar» → Mínimo para aprobar.`
+        : `Sube el mínimo del programa en «Revisar», o ponle al bloque uno propio de ${LOW_PASSING_SCORE}% o más.`,
+    })
   }
   return issues
 }
@@ -59,20 +77,40 @@ export function blockIssues(b: BlockLike, fallbackPassingScore: number): Readine
 export function programIssues(d: ProgramDraft): ReadinessIssue[] {
   const issues: ReadinessIssue[] = []
   if (d.blocks.length === 0) {
-    issues.push({ level: 'blocker', text: 'No tiene bloques: agrega al menos uno.' })
+    issues.push({
+      level: 'blocker',
+      text: 'No tiene bloques, así que no hay nada que recorrer.',
+      short: 'Sin bloques',
+      fix: 'Agrega al menos uno en el paso «Bloques» del programa.',
+    })
   }
   for (const b of d.blocks) {
     for (const issue of blockIssues(b, d.defaultPassingScore)) {
-      issues.push({ ...issue, text: `«${b.name}»: ${lowerFirst(issue.text)}` })
+      issues.push({ ...issue, text: `El bloque «${b.name}» ${lowerFirst(issue.text)}` })
     }
   }
   if (!d.isActive) {
-    issues.push({ level: 'warning', text: 'Está apagado: nadie lo recibe.' })
+    issues.push({
+      level: 'warning',
+      text: 'Está apagado, así que nadie lo recibe.',
+      short: 'Apagado',
+      fix: 'Actívalo en «Revisar» → Estado.',
+    })
   } else if (!d.isDefault && d.recipientCount === 0) {
-    issues.push({ level: 'warning', text: 'No tiene empresas ni profesionales asignados: nadie lo recibe.' })
+    issues.push({
+      level: 'warning',
+      text: 'No tiene empresas ni profesionales asignados, así que nadie lo recibe.',
+      short: 'Sin destinatarios',
+      fix: 'Elígelos en el paso «Destinatarios», o márcalo como programa por defecto.',
+    })
   }
   if (!d.hasCertificate) {
-    issues.push({ level: 'tip', text: 'No emite certificado al completarlo.' })
+    issues.push({
+      level: 'tip',
+      text: 'No emite certificado al completarlo.',
+      short: 'Sin certificado',
+      fix: 'Elige una plantilla en «Revisar» → Certificado.',
+    })
   }
   return issues
 }

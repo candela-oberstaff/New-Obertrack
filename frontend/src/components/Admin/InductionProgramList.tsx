@@ -167,7 +167,9 @@ export default function InductionProgramList({ programs, library, companies, onC
                 {pending.length > 0 && (
                   <ul className={styles.rowIssues}>
                     {pending.slice(0, 3).map((i) => (
-                      <li key={i.text}>• {i.text}</li>
+                      <li key={i.text}>
+                        • {i.text} <span className={styles.readinessFix}>{i.fix}</span>
+                      </li>
                     ))}
                     {pending.length > 3 && <li>• Y {pending.length - 3} más: ábrelo para verlas.</li>}
                   </ul>
