@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, ListChecks, Palette, Play, Save, Target } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ListChecks, Play, Save, Target } from 'lucide-react'
 
 import { useNotification } from '../../context/NotificationContext'
 import {
@@ -9,6 +9,8 @@ import {
   type InductionVideo,
 } from '../../services/induction.service'
 import { surveyService } from '../../services/surveyService'
+import { Modal } from '../ui/Modal'
+import { useDirtySnapshot } from '../ui/useCloseGuard'
 import InductionQuizBuilder, { type QuizBuilderHandle } from './InductionQuizBuilder'
 import InductionVideoPicker from './InductionVideoPicker'
 import ReadinessChecklist from './ReadinessChecklist'
@@ -29,25 +31,25 @@ interface Props {
   allBlocks?: InductionBlock[]
   allPrograms?: InductionProgram[]
   onSaved: (block: InductionBlock) => void
-  onBack: () => void
+  onClose: () => void
 }
 
 const STEPS = ['Datos', 'Video', 'Cuestionario', 'Revisar']
 
 /**
- * Editor de un bloque, como asistente de cuatro pasos: datos, video (de la
+ * Modal con el asistente de un bloque, en cuatro pasos: datos, video (de la
  * biblioteca de la inducción), cuestionario y revisión (con el mínimo propio y la insignia
  * plegados). Las preguntas se escriben antes de crear el bloque: un solo
  * botón crea el cuestionario, el bloque y sus preguntas.
  */
-export default function InductionBlockEditor({
+export default function InductionBlockModal({
   block,
   videos,
   fallbackPassingScore,
   allBlocks = [],
   allPrograms = [],
   onSaved,
-  onBack,
+  onClose,
 }: Props) {
   const { success, error: showError } = useNotification()
 
@@ -74,6 +76,8 @@ export default function InductionBlockEditor({
   const [questionCount, setQuestionCount] = useState(block?.question_count ?? 0)
   // Sin dato todavía se asume que puntúan: el aviso aparece al cargar las preguntas.
   const [scorableCount, setScorableCount] = useState<number | null>(null)
+  // Cerrar con Escape, la X o fuera del modal pide confirmar si hay cambios.
+  const isDirty = useDirtySnapshot({ name, description, videoId, passing, badge, questionCount })
   const onCountChange = useCallback((total: number, scorable: number) => {
     setQuestionCount(total)
     setScorableCount(scorable)
@@ -82,7 +86,6 @@ export default function InductionBlockEditor({
   const passingValue = passing.trim() === '' ? null : Number(passing)
   const effectivePassing = passingValue ?? fallbackPassingScore
 
-  const [customizingBadge, setCustomizingBadge] = useState(false)
   // Videos agregados a la biblioteca desde este editor, antes de que el panel
   // recargue la suya.
   const [createdVideos, setCreatedVideos] = useState<InductionVideo[]>([])
@@ -187,7 +190,7 @@ export default function InductionBlockEditor({
       )
       onSaved(saved)
       // Al crear, de vuelta a la biblioteca: el bloque ya aparece en la lista.
-      if (!current) onBack()
+      if (!current) onClose()
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo guardar el bloque.')
     } finally {
@@ -215,19 +218,58 @@ export default function InductionBlockEditor({
     isReady(issues) ? 'Todo listo' : 'Con avisos',
   ]
 
-  return (
-    <div>
-      <div className={styles.editorHead}>
-        <button type="button" className={styles.backBtn} onClick={onBack}>
-          <ArrowLeft size={14} /> Bloques
+  const footer = (
+    <>
+      <span className={`${styles.muted} ${styles.modalFooterNote}`}>
+        Paso {step + 1} de {STEPS.length}
+      </span>
+      {step === 0 ? (
+        <button type="button" className={styles.ghostBtn} onClick={onClose} disabled={saving}>
+          {current ? 'Cerrar' : 'Cancelar'}
         </button>
-        <h3 className={styles.keyTitle}>{current ? current.name : 'Nuevo bloque'}</h3>
-        {current && current.program_names.length > 0 && (
-          <span className={styles.tag}>En uso: {current.program_names.join(', ')}</span>
-        )}
-      </div>
+      ) : (
+        <button type="button" className={styles.ghostBtn} onClick={() => goTo(step - 1)} disabled={saving}>
+          <ArrowLeft size={16} /> Atrás
+        </button>
+      )}
+      {/* Un bloque ya creado se puede guardar desde cualquier paso. */}
+      {current && !isLast && (
+        <button type="button" className={styles.ghostBtn} disabled={saving} onClick={handleSave}>
+          <Save size={16} /> {saving ? 'Guardando...' : 'Guardar'}
+        </button>
+      )}
+      {isLast ? (
+        <button type="button" className={styles.saveBtn} disabled={saving} onClick={handleSave}>
+          <Save size={16} /> {saving ? 'Guardando...' : current ? 'Guardar bloque' : 'Crear bloque'}
+        </button>
+      ) : (
+        <button type="button" className={styles.saveBtn} onClick={() => goTo(step + 1)}>
+          Siguiente <ArrowRight size={16} />
+        </button>
+      )}
+    </>
+  )
 
-      <ol className={styles.wizard} aria-label="Pasos del bloque">
+  const title = current ? current.name : 'Nuevo bloque'
+
+  return (
+    <Modal
+      isOpen
+      onClose={onClose}
+      size="xl"
+      isDirty={isDirty}
+      ariaLabel={title}
+      title={
+        <>
+          {title}
+          {current && current.program_names.length > 0 && (
+            <span className={`${styles.tag} ${styles.modalTitleTag}`}>En uso: {current.program_names.join(', ')}</span>
+          )}
+        </>
+      }
+      footer={footer}
+    >
+      <ol className={`${styles.wizard} ${styles.modalWizard}`} aria-label="Pasos del bloque">
         {STEPS.map((label, i) => (
           <li key={label}>
             <button
@@ -353,7 +395,24 @@ export default function InductionBlockEditor({
         <h3 className={styles.wizardTitle}>Revisa y {current ? 'guarda' : 'crea'} el bloque</h3>
         <p className={styles.wizardIntro}>Todo se puede ajustar desde aquí antes de {current ? 'guardar' : 'crearlo'}.</p>
 
-        <div className={styles.reviewSplit}>
+        {/* Una sola columna: primero la insignia, luego el resumen. La insignia es un
+            único bloque: cómo la verá el profesional a la izquierda y su editor a la
+            derecha (debajo en pantallas angostas). */}
+        <div className={styles.reviewStack}>
+          <section className={styles.badgePanel} aria-label="Insignia del bloque">
+            <div className={styles.badgePanelPreview}>
+              <span className={styles.blockPreviewLabel}>Insignia que gana</span>
+              <BadgeMedallion icon={badge.icon} color={badge.color} size="lg" />
+              <strong className={styles.badgeCardTitle}>{badge.title.trim() || name.trim() || 'Insignia del bloque'}</strong>
+              <span className={styles.badgeCardHint}>
+                Se gana al aprobar este bloque y aparece en su perfil y en su expediente.
+              </span>
+            </div>
+            <div className={styles.badgePanelEditor}>
+              <BadgePicker value={badge} fallbackTitle={name} presets={presets} showPreview={false} onChange={setBadge} />
+            </div>
+          </section>
+
           <div>
             <div className={styles.reviewList}>
               <div className={styles.reviewRow}>
@@ -431,62 +490,8 @@ export default function InductionBlockEditor({
 
             <ReadinessChecklist issues={issues} readyText="Este bloque está listo para usarse en un programa." />
           </div>
-
-          {/* --- Insignia: se ve como la verá el profesional; se edita aparte --- */}
-          <aside className={styles.badgeCard} aria-label="Insignia del bloque">
-            <span className={styles.blockPreviewLabel}>Insignia que gana</span>
-            <BadgeMedallion icon={badge.icon} color={badge.color} size="lg" />
-            <strong className={styles.badgeCardTitle}>{badge.title.trim() || name.trim() || 'Insignia del bloque'}</strong>
-            <span className={styles.badgeCardHint}>
-              Se gana al aprobar este bloque y aparece en su perfil y en su expediente.
-            </span>
-            <button
-              type="button"
-              className={styles.ghostBtnSm}
-              aria-expanded={customizingBadge}
-              onClick={() => setCustomizingBadge((v) => !v)}
-            >
-              <Palette size={14} /> {customizingBadge ? 'Listo' : 'Personalizar'}
-            </button>
-          </aside>
         </div>
-
-        {customizingBadge && (
-          <div className={styles.badgeEditor}>
-            <BadgePicker value={badge} fallbackTitle={name} presets={presets} onChange={setBadge} />
-          </div>
-        )}
       </div>
-
-      <div className={styles.stickyBar}>
-        <span className={styles.muted}>
-          Paso {step + 1} de {STEPS.length}
-        </span>
-        {step === 0 ? (
-          <button type="button" className={styles.ghostBtn} onClick={onBack} disabled={saving}>
-            {current ? 'Volver' : 'Cancelar'}
-          </button>
-        ) : (
-          <button type="button" className={styles.ghostBtn} onClick={() => goTo(step - 1)} disabled={saving}>
-            <ArrowLeft size={16} /> Atrás
-          </button>
-        )}
-        {/* Un bloque ya creado se puede guardar desde cualquier paso. */}
-        {current && !isLast && (
-          <button type="button" className={styles.ghostBtn} disabled={saving} onClick={handleSave}>
-            <Save size={16} /> {saving ? 'Guardando...' : 'Guardar'}
-          </button>
-        )}
-        {isLast ? (
-          <button type="button" className={styles.saveBtn} disabled={saving} onClick={handleSave}>
-            <Save size={16} /> {saving ? 'Guardando...' : current ? 'Guardar bloque' : 'Crear bloque'}
-          </button>
-        ) : (
-          <button type="button" className={styles.saveBtn} onClick={() => goTo(step + 1)}>
-            Siguiente <ArrowRight size={16} />
-          </button>
-        )}
-      </div>
-    </div>
+    </Modal>
   )
 }

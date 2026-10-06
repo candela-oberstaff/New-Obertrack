@@ -5,7 +5,7 @@ import { useConfirm } from '../ui/ConfirmProvider'
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
 import type { TutorialAudienceOption } from '../../types/tutorials'
-import InductionProgramEditor from './InductionProgramEditor'
+import InductionProgramModal from './InductionProgramModal'
 import SendProgramModal from './SendProgramModal'
 import { draftFromProgram, programIssues } from './inductionReadiness'
 import { ReadinessBadge } from './ReadinessChecklist'
@@ -80,23 +80,6 @@ export default function InductionProgramList({ programs, library, companies, onC
     } finally {
       setBusyId(null)
     }
-  }
-
-  if (editing !== null) {
-    return (
-      <InductionProgramEditor
-        programId={editing === 'new' ? null : editing}
-        library={library}
-        companies={companies}
-        allPrograms={programs}
-        onSaved={async (saved) => {
-          setEditing(saved.id)
-          await onChanged()
-        }}
-        onBack={() => setEditing(null)}
-        onGoToBlocks={onGoToBlocks}
-      />
-    )
   }
 
   return (
@@ -235,6 +218,28 @@ export default function InductionProgramList({ programs, library, companies, onC
           El programa por defecto no se puede borrar. Para reemplazarlo, crea otro y márcalo por
           defecto con la estrella.
         </p>
+      )}
+
+      {editing !== null && (
+        <InductionProgramModal
+          programId={editing === 'new' ? null : editing}
+          library={library}
+          companies={companies}
+          allPrograms={programs}
+          onSaved={async (saved) => {
+            setEditing(saved.id)
+            await onChanged()
+          }}
+          onClose={() => setEditing(null)}
+          onGoToBlocks={
+            onGoToBlocks &&
+            (() => {
+              // La biblioteca está en otra pestaña: se cierra el modal al ir.
+              setEditing(null)
+              onGoToBlocks()
+            })
+          }
+        />
       )}
     </div>
   )

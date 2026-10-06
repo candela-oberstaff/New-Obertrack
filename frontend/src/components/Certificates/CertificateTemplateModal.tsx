@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 
 import { Button, Modal } from '../ui'
+import { useDirtySnapshot } from '../ui/useCloseGuard'
 import SignaturePad from '../Testimonials/SignaturePad'
 import { snapPosition, type SnapGuide } from './snapGuides'
 
@@ -45,7 +46,7 @@ interface Props {
   /** null = plantilla nueva. */
   template: CertificateTemplate | null
   onSaved: (t: CertificateTemplate) => void
-  onBack: () => void
+  onClose: () => void
 }
 
 const STEPS = ['Diseño', 'Campos', 'Revisar']
@@ -219,12 +220,12 @@ function fontWeight(f: CertificateField): number {
 }
 
 /**
- * Editor visual de una plantilla, como asistente de tres pasos: se sube el
- * diseño (PNG/JPG en A4), se arrastran los campos sobre la imagen y se ajusta
- * su tipografía, y se revisa con el PDF de ejemplo. Las posiciones van en
- * porcentaje, así el PDF coincide con lo que se ve aquí.
+ * Modal con el editor visual de una plantilla, como asistente de tres pasos:
+ * se sube el diseño (PNG/JPG en A4), se arrastran los campos sobre la imagen y
+ * se ajusta su tipografía, y se revisa con el PDF de ejemplo. Las posiciones
+ * van en porcentaje, así el PDF coincide con lo que se ve aquí.
  */
-export default function CertificateTemplateEditor({ template, onSaved, onBack }: Props) {
+export default function CertificateTemplateModal({ template, onSaved, onClose }: Props) {
   const { success, error: showError } = useNotification()
 
   const [name, setName] = useState(template?.name ?? '')
@@ -241,6 +242,8 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
   // Una plantilla nueva empieza por el diseño; una existente, por los campos.
   const [step, setStep] = useState(template ? 1 : 0)
   const [dragOver, setDragOver] = useState(false)
+  // Cerrar con Escape, la X o fuera del modal pide confirmar si hay cambios.
+  const isDirty = useDirtySnapshot({ name, imageFilename, orientation, fields })
 
   const canvasRef = useRef<HTMLDivElement>(null)
   // offsetX/Y: desde dónde se agarró el campo (en % de la página), para que
@@ -502,6 +505,8 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
         : await certificateService.createTemplate(input)
       success(template ? 'Plantilla guardada.' : 'Plantilla creada.')
       onSaved(saved)
+      // Al crear, de vuelta a la galería: la plantilla ya aparece ahí.
+      if (!template) onClose()
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo guardar la plantilla.')
     } finally {
@@ -529,20 +534,64 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
     'PDF de ejemplo',
   ]
 
-  return (
-    <div>
-      <div className={styles.editorHead}>
-        <button type="button" className={styles.backBtn} onClick={onBack}>
-          <ArrowLeft size={14} /> Certificados
+  const footer = (
+    <>
+      <span className={`${styles.muted} ${styles.modalFooterNote}`}>
+        Paso {step + 1} de {STEPS.length}
+      </span>
+      {step === 1 && (
+        <button type="button" className={styles.ghostBtn} onClick={handlePreview} disabled={previewing || !imageFilename}>
+          <Eye size={16} /> {previewing ? 'Generando...' : 'Vista previa PDF'}
         </button>
-        <h3 className={styles.keyTitle}>{template ? template.name : 'Nueva plantilla de certificado'}</h3>
-        {template && template.program_names.length > 0 && (
-          <span className={styles.tag}>En uso: {template.program_names.join(', ')}</span>
-        )}
-      </div>
+      )}
+      {step === 0 ? (
+        <button type="button" className={styles.ghostBtn} onClick={onClose} disabled={saving}>
+          {template ? 'Cerrar' : 'Cancelar'}
+        </button>
+      ) : (
+        <button type="button" className={styles.ghostBtn} onClick={() => goTo(step - 1)} disabled={saving}>
+          <ArrowLeft size={16} /> Atrás
+        </button>
+      )}
+      {/* Una plantilla ya creada se puede guardar desde cualquier paso. */}
+      {template && !isLast && (
+        <button type="button" className={styles.ghostBtn} disabled={saving} onClick={handleSave}>
+          <Save size={16} /> {saving ? 'Guardando...' : 'Guardar'}
+        </button>
+      )}
+      {isLast ? (
+        <button type="button" className={styles.saveBtn} disabled={saving} onClick={handleSave}>
+          <Save size={16} /> {saving ? 'Guardando...' : template ? 'Guardar plantilla' : 'Crear plantilla'}
+        </button>
+      ) : (
+        <button type="button" className={styles.saveBtn} onClick={() => goTo(step + 1)}>
+          Siguiente <ArrowRight size={16} />
+        </button>
+      )}
+    </>
+  )
 
+  const title = template ? template.name : 'Nueva plantilla de certificado'
+
+  return (
+    <Modal
+      isOpen
+      onClose={onClose}
+      size="xl"
+      isDirty={isDirty}
+      ariaLabel={title}
+      title={
+        <>
+          {title}
+          {template && template.program_names.length > 0 && (
+            <span className={`${styles.tag} ${styles.modalTitleTag}`}>En uso: {template.program_names.join(', ')}</span>
+          )}
+        </>
+      }
+      footer={footer}
+    >
       <ol
-        className={styles.wizard}
+        className={`${styles.wizard} ${styles.modalWizard}`}
         aria-label="Pasos de la plantilla"
         style={{ gridTemplateColumns: `repeat(${STEPS.length}, minmax(0, 1fr))` }}
       >
@@ -1152,41 +1201,6 @@ export default function CertificateTemplateEditor({ template, onSaved, onBack }:
           />
         </Modal>
       )}
-
-      <div className={styles.stickyBar}>
-        <span className={styles.muted}>
-          Paso {step + 1} de {STEPS.length}
-        </span>
-        {step === 1 && (
-          <button type="button" className={styles.ghostBtn} onClick={handlePreview} disabled={previewing || !imageFilename}>
-            <Eye size={16} /> {previewing ? 'Generando...' : 'Vista previa PDF'}
-          </button>
-        )}
-        {step === 0 ? (
-          <button type="button" className={styles.ghostBtn} onClick={onBack} disabled={saving}>
-            {template ? 'Volver' : 'Cancelar'}
-          </button>
-        ) : (
-          <button type="button" className={styles.ghostBtn} onClick={() => goTo(step - 1)} disabled={saving}>
-            <ArrowLeft size={16} /> Atrás
-          </button>
-        )}
-        {/* Una plantilla ya creada se puede guardar desde cualquier paso. */}
-        {template && !isLast && (
-          <button type="button" className={styles.ghostBtn} disabled={saving} onClick={handleSave}>
-            <Save size={16} /> {saving ? 'Guardando...' : 'Guardar'}
-          </button>
-        )}
-        {isLast ? (
-          <button type="button" className={styles.saveBtn} disabled={saving} onClick={handleSave}>
-            <Save size={16} /> {saving ? 'Guardando...' : template ? 'Guardar plantilla' : 'Crear plantilla'}
-          </button>
-        ) : (
-          <button type="button" className={styles.saveBtn} onClick={() => goTo(step + 1)}>
-            Siguiente <ArrowRight size={16} />
-          </button>
-        )}
-      </div>
-    </div>
+    </Modal>
   )
 }

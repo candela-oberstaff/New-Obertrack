@@ -10,7 +10,6 @@ import {
   Download,
   FileCheck,
   Layers,
-  Palette,
   Plus,
   Save,
   Search,
@@ -22,6 +21,8 @@ import {
 } from 'lucide-react'
 
 import { Select } from '../ui'
+import { Modal } from '../ui/Modal'
+import { useDirtySnapshot } from '../ui/useCloseGuard'
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
 import { emailService } from '../../services/emailService'
@@ -73,24 +74,24 @@ interface Props {
   /** Programas existentes, para copiar una insignia ya definida. */
   allPrograms?: InductionProgram[]
   onSaved: (program: InductionProgram) => void
-  onBack: () => void
+  onClose: () => void
   /** Lleva a la biblioteca de bloques cuando está vacía. */
   onGoToBlocks?: () => void
 }
 
 /**
- * Editor de un programa, como asistente de cuatro pasos: datos, secuencia de
+ * Modal con el asistente de un programa, en cuatro pasos: datos, secuencia de
  * bloques, empresas que lo reciben y revisión (reglas, estado, certificado e
  * insignia). Todo se guarda de una vez: el programa, luego su secuencia y
  * luego sus empresas.
  */
-export default function InductionProgramEditor({
+export default function InductionProgramModal({
   programId,
   library,
   companies,
   allPrograms = [],
   onSaved,
-  onBack,
+  onClose,
   onGoToBlocks,
 }: Props) {
   const { success, error: showError } = useNotification()
@@ -112,7 +113,6 @@ export default function InductionProgramEditor({
   const [prosLoading, setProsLoading] = useState(true)
   const [proSearch, setProSearch] = useState('')
   const [badge, setBadge] = useState<BadgeDraft>({ title: '', ...DEFAULT_PROGRAM_BADGE })
-  const [customizingBadge, setCustomizingBadge] = useState(false)
   const [templateId, setTemplateId] = useState<number>(0)
   const [templates, setTemplates] = useState<CertificateTemplate[]>([])
   const [issued, setIssued] = useState<ProgramCertificates | null>(null)
@@ -122,6 +122,12 @@ export default function InductionProgramEditor({
   // Uno nuevo empieza por el nombre; uno existente, por el resumen, desde
   // donde se salta a lo que haya que cambiar.
   const [step, setStep] = useState(programId === null ? 0 : 3)
+  // Cerrar con Escape, la X o fuera del modal pide confirmar si hay cambios.
+  // En un programa existente la foto se toma cuando terminan de cargar sus datos.
+  const isDirty = useDirtySnapshot(
+    { name, description, defaultPassing, maxAttempts, isDefault, isActive, blockIds, companyIds, userIds, badge, templateId },
+    !loading
+  )
 
   useEffect(() => {
     if (programId === null) return
@@ -264,7 +270,7 @@ export default function InductionProgramEditor({
         setSendingProgram(saved)
       } else if (programId === null) {
         // Al crear, de vuelta a la lista: el programa ya aparece ahí.
-        onBack()
+        onClose()
       }
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo guardar el programa.')
@@ -273,7 +279,13 @@ export default function InductionProgramEditor({
     }
   }
 
-  if (loading) return <p className={styles.muted}>Cargando programa...</p>
+  if (loading) {
+    return (
+      <Modal isOpen onClose={onClose} size="xl" title="Programa" ariaLabel="Cargando programa">
+        <p className={styles.muted}>Cargando programa...</p>
+      </Modal>
+    )
+  }
 
   const sequence = blockIds.map((id) => blockById.get(id)).filter((b): b is InductionBlock => !!b)
   // Lo que falta, calculado sobre el borrador: cambia mientras se edita.
@@ -323,17 +335,71 @@ export default function InductionProgramEditor({
   ]
   const badgeTitle = badge.title.trim() || name.trim() || 'Insignia del programa'
 
-  return (
-    <div>
-      <div className={styles.editorHead}>
-        <button type="button" className={styles.backBtn} onClick={onBack}>
-          <ArrowLeft size={14} /> Programas
+  const footer = (
+    <>
+      <span className={`${styles.muted} ${styles.modalFooterNote}`}>
+        Paso {step + 1} de {STEPS.length}
+      </span>
+      {step === 0 ? (
+        <button type="button" className={styles.ghostBtn} onClick={onClose} disabled={saving}>
+          {programId === null ? 'Cancelar' : 'Cerrar'}
         </button>
-        <h3 className={styles.keyTitle}>{programId === null ? 'Nuevo programa' : name || 'Programa'}</h3>
-        {wasDefault && <span className={styles.tagPrimary}>Por defecto</span>}
-      </div>
+      ) : (
+        <button type="button" className={styles.ghostBtn} onClick={() => goTo(step - 1)} disabled={saving}>
+          <ArrowLeft size={16} /> Atrás
+        </button>
+      )}
+      {/* Un programa ya creado se puede guardar desde cualquier paso. */}
+      {programId !== null && !isLast && (
+        <button type="button" className={styles.ghostBtn} disabled={saving} onClick={() => handleSave()}>
+          <Save size={16} /> {saving ? 'Guardando...' : 'Guardar'}
+        </button>
+      )}
+      {isLast && (
+        <button
+          type="button"
+          className={styles.sendBtnLg}
+          disabled={saving || !isActive || blockIds.length === 0}
+          title={
+            !isActive || blockIds.length === 0
+              ? 'Para enviarlo, el programa tiene que estar activo y tener bloques'
+              : 'Guarda el programa y elige a quién enviárselo ahora'
+          }
+          onClick={() => handleSave(true)}
+        >
+          <Send size={16} /> Guardar y enviar
+        </button>
+      )}
+      {isLast ? (
+        <button type="button" className={styles.saveBtn} disabled={saving} onClick={() => handleSave()}>
+          <Save size={16} /> {saving ? 'Guardando...' : programId === null ? 'Crear programa' : 'Guardar programa'}
+        </button>
+      ) : (
+        <button type="button" className={styles.saveBtn} onClick={() => goTo(step + 1)}>
+          Siguiente <ArrowRight size={16} />
+        </button>
+      )}
+    </>
+  )
 
-      <ol className={styles.wizard} aria-label="Pasos del programa">
+  const title = programId === null ? 'Nuevo programa' : name || 'Programa'
+
+  return (
+    <Modal
+      isOpen
+      onClose={onClose}
+      size="xl"
+      isDirty={isDirty}
+      ariaLabel={title}
+      title={
+        <>
+          {title}
+          {wasDefault && <span className={`${styles.tagPrimary} ${styles.modalTitleTag}`}>Por defecto</span>}
+        </>
+      }
+      footer={footer}
+    >
+      <ol className={`${styles.wizard} ${styles.modalWizard}`} aria-label="Pasos del programa">
         {STEPS.map((label, i) => (
           <li key={label}>
             <button
@@ -636,7 +702,7 @@ export default function InductionProgramEditor({
               ) : items.length === 0 ? (
                 <div className={styles.empty}>Nada coincide con «{query}».</div>
               ) : (
-                <div className={styles.pickGrid}>
+                <div className={styles.pickList}>
                   {items.map((item) => {
                     const on = selected.includes(item.id)
                     return (
@@ -695,7 +761,25 @@ export default function InductionProgramEditor({
           Las reglas, el estado y el certificado se ajustan aquí mismo.
         </p>
 
-        <div className={styles.reviewSplit}>
+        {/* Una sola columna: primero la insignia, luego el resumen. La insignia es un
+            único bloque: cómo la verá el profesional a la izquierda y su editor a la
+            derecha (debajo en pantallas angostas). */}
+        <div className={styles.reviewStack}>
+          <section className={styles.badgePanel} aria-label="Insignia del programa">
+            <div className={styles.badgePanelPreview}>
+              <span className={styles.blockPreviewLabel}>Insignia que gana</span>
+              <BadgeMedallion icon={badge.icon} color={badge.color} size="lg" />
+              <strong className={styles.badgeCardTitle}>{badgeTitle}</strong>
+              <span className={styles.badgeCardHint}>
+                Se gana al completar todos los bloques. Además, «A la primera» si no falla ningún
+                intento e «Impecable» si saca 100% en todo.
+              </span>
+            </div>
+            <div className={styles.badgePanelEditor}>
+              <BadgePicker value={badge} fallbackTitle={name} presets={presets} showPreview={false} onChange={setBadge} />
+            </div>
+          </section>
+
           <div>
             <div className={styles.reviewList}>
               <div className={styles.reviewRow}>
@@ -820,48 +904,21 @@ export default function InductionProgramEditor({
             />
           </div>
 
-          <div className={styles.reviewAside}>
-            {/* --- Insignia: como la verá el profesional; se edita aparte --- */}
-            <aside className={styles.badgeCard} aria-label="Insignia del programa">
-              <span className={styles.blockPreviewLabel}>Insignia que gana</span>
-              <BadgeMedallion icon={badge.icon} color={badge.color} size="lg" />
-              <strong className={styles.badgeCardTitle}>{badgeTitle}</strong>
+          {chosenTemplate && (
+            <div className={styles.certCard}>
+              <span className={styles.blockPreviewLabel}>Certificado</span>
+              <img
+                src={templateImageUrl(chosenTemplate.image_filename)}
+                alt={`Diseño ${chosenTemplate.name}`}
+                className={chosenTemplate.orientation === 'L' ? styles.certThumbL : styles.certThumbP}
+              />
               <span className={styles.badgeCardHint}>
-                Se gana al completar todos los bloques. Además, «A la primera» si no falla ningún
-                intento e «Impecable» si saca 100% en todo.
+                Se emite al completar el programa, con el nombre, la fecha y un código de
+                verificación. Se descarga desde la plataforma.
               </span>
-              <button
-                type="button"
-                className={styles.ghostBtnSm}
-                aria-expanded={customizingBadge}
-                onClick={() => setCustomizingBadge((v) => !v)}
-              >
-                <Palette size={14} /> {customizingBadge ? 'Listo' : 'Personalizar'}
-              </button>
-            </aside>
-
-            {chosenTemplate && (
-              <div className={styles.certCard}>
-                <span className={styles.blockPreviewLabel}>Certificado</span>
-                <img
-                  src={templateImageUrl(chosenTemplate.image_filename)}
-                  alt={`Diseño ${chosenTemplate.name}`}
-                  className={chosenTemplate.orientation === 'L' ? styles.certThumbL : styles.certThumbP}
-                />
-                <span className={styles.badgeCardHint}>
-                  Se emite al completar el programa, con el nombre, la fecha y un código de
-                  verificación. Se descarga desde la plataforma.
-                </span>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
-
-        {customizingBadge && (
-          <div className={styles.badgeEditor}>
-            <BadgePicker value={badge} fallbackTitle={name} presets={presets} onChange={setBadge} />
-          </div>
-        )}
 
         {issued && programId !== null && (
           <div style={{ marginTop: 24 }}>
@@ -913,60 +970,16 @@ export default function InductionProgramEditor({
         )}
       </div>
 
+      {/* Envío masivo tras «Guardar y enviar»: un modal dentro del asistente. */}
       {sendingProgram && (
         <SendProgramModal
           program={sendingProgram}
           onClose={() => {
             setSendingProgram(null)
-            if (programId === null) onBack()
+            if (programId === null) onClose()
           }}
         />
       )}
-
-      <div className={styles.stickyBar}>
-        <span className={styles.muted}>
-          Paso {step + 1} de {STEPS.length}
-        </span>
-        {step === 0 ? (
-          <button type="button" className={styles.ghostBtn} onClick={onBack} disabled={saving}>
-            {programId === null ? 'Cancelar' : 'Volver'}
-          </button>
-        ) : (
-          <button type="button" className={styles.ghostBtn} onClick={() => goTo(step - 1)} disabled={saving}>
-            <ArrowLeft size={16} /> Atrás
-          </button>
-        )}
-        {/* Un programa ya creado se puede guardar desde cualquier paso. */}
-        {programId !== null && !isLast && (
-          <button type="button" className={styles.ghostBtn} disabled={saving} onClick={() => handleSave()}>
-            <Save size={16} /> {saving ? 'Guardando...' : 'Guardar'}
-          </button>
-        )}
-        {isLast && (
-          <button
-            type="button"
-            className={styles.sendBtnLg}
-            disabled={saving || !isActive || blockIds.length === 0}
-            title={
-              !isActive || blockIds.length === 0
-                ? 'Para enviarlo, el programa tiene que estar activo y tener bloques'
-                : 'Guarda el programa y elige a quién enviárselo ahora'
-            }
-            onClick={() => handleSave(true)}
-          >
-            <Send size={16} /> Guardar y enviar
-          </button>
-        )}
-        {isLast ? (
-          <button type="button" className={styles.saveBtn} disabled={saving} onClick={() => handleSave()}>
-            <Save size={16} /> {saving ? 'Guardando...' : programId === null ? 'Crear programa' : 'Guardar programa'}
-          </button>
-        ) : (
-          <button type="button" className={styles.saveBtn} onClick={() => goTo(step + 1)}>
-            Siguiente <ArrowRight size={16} />
-          </button>
-        )}
-      </div>
-    </div>
+    </Modal>
   )
 }
