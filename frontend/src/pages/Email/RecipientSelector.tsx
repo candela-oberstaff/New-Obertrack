@@ -24,6 +24,7 @@ interface User {
   is_manager: boolean
   is_supervisor: boolean
   is_superadmin: boolean
+  is_active?: boolean
   country?: string
   // La empresa de un profesional no está en su fila: solo trae el id de su
   // empleador, y el nombre vive en la cuenta empleador. Ver lib/recipientCompany.
@@ -40,14 +41,15 @@ const NO_COUNTRY = '__sin_pais__'
 
 // Todos los roles disponibles para filtrar
 const ROLE_FILTERS = [
-  { value: 'all',              label: 'Todos',            color: '#7c3aed', bg: '#f5f3ff' },
-  { value: 'profesional',      label: 'Profesionales',    color: '#0369a1', bg: '#e0f2fe' },
-  { value: 'empleador',        label: 'Empresas',         color: '#0f766e', bg: '#ccfbf1' },
-  { value: 'customer_success', label: 'Customer Success', color: '#b45309', bg: '#fef3c7' },
-  { value: 'it_analyst',       label: 'Analista de IT',   color: '#7c3aed', bg: '#ede9fe' },
-  { value: 'manager',          label: 'Manager',          color: '#3730a3', bg: '#e0e7ff' },
-  { value: 'supervisor',       label: 'Supervisor',       color: '#be185d', bg: '#fce7f3' },
-  { value: 'superadmin',       label: 'Superadmin',       color: '#dc2626', bg: '#fee2e2' },
+  { value: 'all',                  label: 'Todos',                  color: '#7c3aed', bg: '#f5f3ff' },
+  { value: 'profesional_activo',   label: 'Profesionales activos',   color: '#0369a1', bg: '#e0f2fe' },
+  { value: 'profesional_inactivo', label: 'Profesionales inactivos', color: '#475569', bg: '#f1f5f9' },
+  { value: 'empleador',            label: 'Empresas',               color: '#0f766e', bg: '#ccfbf1' },
+  { value: 'customer_success',     label: 'Customer Success',       color: '#b45309', bg: '#fef3c7' },
+  { value: 'it_analyst',           label: 'Analista de IT',         color: '#7c3aed', bg: '#ede9fe' },
+  { value: 'manager',              label: 'Manager',                color: '#3730a3', bg: '#e0e7ff' },
+  { value: 'supervisor',           label: 'Supervisor',             color: '#be185d', bg: '#fce7f3' },
+  { value: 'superadmin',           label: 'Superadmin',             color: '#dc2626', bg: '#fee2e2' },
 ]
 
 interface Props {
@@ -248,9 +250,13 @@ export default function RecipientSelector({ value, onChange }: Props) {
       if (roleFilter === 'manager')          return u.is_manager === true && !u.is_supervisor
       if (roleFilter === 'supervisor')       return u.is_supervisor === true
       if (roleFilter === 'it_analyst')       return u.user_type === 'it_analyst' || u.user_type === 'analista_it'
-      if (roleFilter === 'profesional') {
-        // Profesionales puros: user_type='profesional' pero NO managers ni supervisores
-        return u.user_type === 'profesional' && !u.is_manager && !u.is_supervisor
+      if (roleFilter === 'profesional_activo' || roleFilter === 'profesional') {
+        // Profesionales activos: user_type='profesional' pero NO managers ni supervisores, y no inactivos (is_active !== false)
+        return u.user_type === 'profesional' && !u.is_manager && !u.is_supervisor && u.is_active !== false
+      }
+      if (roleFilter === 'profesional_inactivo') {
+        // Profesionales inactivos: user_type='profesional' pero NO managers ni supervisores, e is_active === false
+        return u.user_type === 'profesional' && !u.is_manager && !u.is_supervisor && u.is_active === false
       }
       return true
     })
@@ -576,6 +582,7 @@ export default function RecipientSelector({ value, onChange }: Props) {
                     if (u.user_type === 'customer_success') return { label: 'CS', color: '#b45309', bg: '#fef3c7' }
                     if (u.user_type === 'it_analyst' || u.user_type === 'analista_it') return { label: 'IT', color: '#7c3aed', bg: '#ede9fe' }
                     if (u.user_type === 'empleador') return { label: 'Empresa', color: '#0f766e', bg: '#ccfbf1' }
+                    if (u.is_active === false) return { label: 'Inactivo', color: '#64748b', bg: '#f1f5f9' }
                     return null
                   })()
                   const empresa = companyNameOf(u, companyIndex)

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import RecipientSelector, { RecipientValue } from './RecipientSelector';
 import { emailService } from '../../services/emailService';
 import { audienceService } from '../../services/audienceService';
@@ -13,12 +14,12 @@ vi.mock('../../services/audienceService', () => ({
 }));
 
 const PEOPLE = [
-  { id: 1, name: 'Ana Rivas',    email: 'ana@x.com',    user_type: 'profesional', is_manager: false, is_superadmin: false, country: 'Venezuela' },
-  { id: 2, name: 'Beto Salas',   email: 'beto@x.com',   user_type: 'profesional', is_manager: false, is_superadmin: false, country: 'Venezuela' },
-  { id: 3, name: 'Caro Díaz',    email: 'caro@x.com',   user_type: 'profesional', is_manager: false, is_superadmin: false, country: 'Colombia' },
-  { id: 4, name: 'Dani Pérez',   email: 'dani@x.com',   user_type: 'empleador',   is_manager: false, is_superadmin: false, country: 'Venezuela' },
-  // Sin país cargado: el caso que desaparece del listado sin aviso al filtrar.
-  { id: 5, name: 'Eva Mora',     email: 'eva@x.com',    user_type: 'profesional', is_manager: false, is_superadmin: false, country: '' },
+  { id: 1, name: 'Ana Rivas', email: 'ana@x.com', user_type: 'profesional', is_manager: false, is_superadmin: false, is_active: true, country: 'Venezuela' },
+  { id: 2, name: 'Beto Salas', email: 'beto@x.com', user_type: 'profesional', is_manager: false, is_superadmin: false, is_active: true, country: 'Venezuela' },
+  { id: 3, name: 'Caro Díaz', email: 'caro@x.com', user_type: 'profesional', is_manager: false, is_superadmin: false, is_active: true, country: 'Colombia' },
+  { id: 4, name: 'Dani Pérez', email: 'dani@x.com', user_type: 'empleador', is_manager: false, is_superadmin: false, is_active: true, country: 'Venezuela' },
+  { id: 5, name: 'Eva Mora', email: 'eva@x.com', user_type: 'profesional', is_manager: false, is_superadmin: false, is_active: true, country: '' },
+  { id: 6, name: 'Inactivo Juan', email: 'juan@x.com', user_type: 'profesional', is_manager: false, is_superadmin: false, is_active: false, country: 'Venezuela' },
 ];
 
 const EMPTY: RecipientValue = { userIds: [], groupIds: [], expressContacts: [] };
@@ -44,7 +45,7 @@ const countryOptions = () => {
   return Array.from(menu.querySelectorAll('label')).map(l => l.textContent);
 };
 
-const pickCountry = async (label: RegExp) => {
+const pickCountry = async (label: string | RegExp) => {
   openCountries();
   fireEvent.click(await screen.findByText(label));
   closeCountries();
@@ -63,6 +64,23 @@ beforeEach(() => {
   vi.mocked(audienceService.getGroups).mockResolvedValue([] as never);
 });
 
+describe('RecipientSelector — filtro por rol', () => {
+  it('separa profesionales activos de inactivos', async () => {
+    await renderSelector();
+
+    // Al seleccionar Profesionales activos
+    fireEvent.click(screen.getByRole('button', { name: 'Profesionales activos' }));
+    await waitFor(() => expect(screen.queryByText('Inactivo Juan')).not.toBeInTheDocument());
+    expect(screen.getByText('Ana Rivas')).toBeInTheDocument();
+    expect(screen.getByText('Beto Salas')).toBeInTheDocument();
+
+    // Al seleccionar Profesionales inactivos
+    fireEvent.click(screen.getByRole('button', { name: 'Profesionales inactivos' }));
+    await waitFor(() => expect(screen.queryByText('Ana Rivas')).not.toBeInTheDocument());
+    expect(screen.getByText('Inactivo Juan')).toBeInTheDocument();
+  });
+});
+
 describe('RecipientSelector — filtro por país', () => {
   it('filtra el listado al país elegido', async () => {
     await renderSelector();
@@ -71,7 +89,7 @@ describe('RecipientSelector — filtro por país', () => {
 
     await waitFor(() => expect(screen.queryByText('Caro Díaz')).not.toBeInTheDocument());
     expect(screen.getByText('Ana Rivas')).toBeInTheDocument();
-    expect(screen.getByText('Dani Pérez')).toBeInTheDocument();
+    expect(screen.getByText('Beto Salas')).toBeInTheDocument();
   });
 
   it('los países se ordenan por cantidad y muestran cuántos hay', async () => {
@@ -79,9 +97,8 @@ describe('RecipientSelector — filtro por país', () => {
 
     openCountries();
     await screen.findByPlaceholderText('Buscar...');
-    // Venezuela (3) antes que Colombia (1): el país con más gente es el que se busca.
     expect(countryOptions()).toEqual([
-      'Venezuela (3)',
+      'Venezuela (4)',
       'Colombia (1)',
       'Sin país registrado (1)',
     ]);
@@ -90,9 +107,9 @@ describe('RecipientSelector — filtro por país', () => {
   it('el conteo de países respeta el rol elegido', async () => {
     await renderSelector();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Profesionales' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Profesionales activos' }));
 
-    // Dani (empleador, Venezuela) sale de la cuenta: quedan Ana y Beto.
+    // Dani (empleador, Venezuela) e Inactivo Juan salen de la cuenta: quedan Ana y Beto.
     expect(await countryOption(/^Venezuela \(/)).toBe('Venezuela (2)');
   });
 
@@ -105,10 +122,6 @@ describe('RecipientSelector — filtro por país', () => {
     expect(screen.queryByText('Ana Rivas')).not.toBeInTheDocument();
   });
 
-  // Si cambiar de rol soltara en silencio el país elegido, el listado cambiaría
-  // sin que nadie lo haya tocado — justo antes de mandar el envío. El país
-  // elegido sigue a la vista (etiqueta) y sigue filtrando, aunque el rol lo
-  // deje en cero y ya no salga en el menú.
   it('el país elegido se mantiene aunque el rol lo deje en cero', async () => {
     await renderSelector();
 
@@ -125,18 +138,18 @@ describe('RecipientSelector — filtro por país', () => {
 
     await pickCountry(/^Venezuela \(/);
     await waitFor(() => expect(screen.queryByText('Caro Díaz')).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Seleccionar todos' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Seleccionar todos' })[0]);
 
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ userIds: [1, 2, 4] }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ userIds: [1, 2, 4, 6] }));
   });
 
-  it('combina rol y país: profesionales de Venezuela', async () => {
+  it('combina rol activo y país: profesionales de Venezuela', async () => {
     const onChange = await renderSelector();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Profesionales' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Profesionales activos' }));
     await pickCountry(/^Venezuela \(/);
     await waitFor(() => expect(screen.queryByText('Dani Pérez')).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Seleccionar todos' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Seleccionar todos' })[0]);
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ userIds: [1, 2] }));
   });
