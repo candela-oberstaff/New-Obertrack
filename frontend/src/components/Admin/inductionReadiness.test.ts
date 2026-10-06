@@ -6,8 +6,6 @@ const block = (over: Partial<ProgramDraft['blocks'][number]> = {}) => ({
   name: 'Bienvenida',
   question_count: 3,
   passing_score: null,
-  tutorial_id: 5,
-  tutorial_visible: false,
   ...over,
 })
 
@@ -45,11 +43,6 @@ describe('programIssues', () => {
     expect(programIssues(draft({ defaultPassingScore: 30, blocks: [block({ passing_score: 80 })] }))).toEqual([])
   })
 
-  it('avisa del video visible en Novedades', () => {
-    const issues = programIssues(draft({ blocks: [block({ tutorial_visible: true })] }))
-    expect(issues[0].text).toContain('visible en Novedades')
-  })
-
   it('un programa no por defecto sin empresas no lo recibe nadie', () => {
     expect(programIssues(draft({ isDefault: false }))[0].text).toContain('No tiene empresas ni profesionales')
     expect(programIssues(draft({ isDefault: false, recipientCount: 2 }))).toEqual([])
@@ -68,7 +61,7 @@ describe('programIssues', () => {
 })
 
 describe('blockIssues', () => {
-  it('sin video no avisa nada del video', () => {
-    expect(blockIssues(block({ tutorial_id: null, tutorial_visible: true }), 70)).toEqual([])
+  it('un bloque con preguntas y mínimo razonable no tiene avisos', () => {
+    expect(blockIssues(block(), 70)).toEqual([])
   })
 })

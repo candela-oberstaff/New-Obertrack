@@ -36,6 +36,15 @@ export function parseVideoUrl(rawUrl: string): VideoUrlInfo | null {
   return null
 }
 
+/** Miniatura del video: YouTube y Drive la publican por id. */
+export function videoThumbnailUrl(url: string): string | null {
+  const info = parseVideoUrl(url)
+  if (!info) return null
+  return info.provider === 'youtube'
+    ? `https://img.youtube.com/vi/${info.videoId}/mqdefault.jpg`
+    : `https://drive.google.com/thumbnail?id=${info.videoId}&sz=w320`
+}
+
 export function buildEmbedUrl(url: string): string | null {
   return parseVideoUrl(url)?.embedUrl ?? null
 }

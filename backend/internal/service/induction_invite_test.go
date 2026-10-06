@@ -43,6 +43,10 @@ type fakeInductionRepo struct {
 
 	surveys   map[uint]*models.Survey
 	tutorials map[uint]*models.Tutorial
+	videos    map[uint]*models.InductionVideo
+
+	videoUsage   int64
+	deletedVideo uint
 }
 
 func (f *fakeInductionRepo) GetConfig() (*models.InductionConfig, error) {
@@ -217,6 +221,22 @@ func (f *fakeInductionRepo) GetSurveyWithQuestions(surveyID uint) (*models.Surve
 	return nil, errors.New("not found")
 }
 
+func (f *fakeInductionRepo) CountBlocksUsingVideo(videoID uint) (int64, error) {
+	return f.videoUsage, nil
+}
+
+func (f *fakeInductionRepo) DeleteVideo(id uint) error {
+	f.deletedVideo = id
+	return nil
+}
+
+func (f *fakeInductionRepo) GetVideo(id uint) (*models.InductionVideo, error) {
+	if v, ok := f.videos[id]; ok {
+		return v, nil
+	}
+	return nil, errors.New("not found")
+}
+
 func (f *fakeInductionRepo) GetTutorial(tutorialID uint) (*models.Tutorial, error) {
 	if t, ok := f.tutorials[tutorialID]; ok {
 		return t, nil
@@ -277,6 +297,7 @@ func newInductionSvc(cfg *models.InductionConfig, users ...*models.User) (*induc
 		blockUsage:      map[uint]int64{},
 		surveys:         map[uint]*models.Survey{},
 		tutorials:       map[uint]*models.Tutorial{},
+		videos:          map[uint]*models.InductionVideo{},
 	}
 	userRepo := &fakeInductionUserRepo{users: byID}
 	// brevoSvc nil: sendInviteEmail sale sin hacer nada, así el test no manda correo.
@@ -895,6 +916,54 @@ func TestLanding_DevuelveElBloqueActualSinRespuestas(t *testing.T) {
 	}
 	if view.Current.PassingScore != 70 || view.Current.AttemptsLeft != 3 {
 		t.Fatalf("reglas del bloque: %+v", view.Current)
+	}
+}
+
+// El video sale de la biblioteca de la inducción, no de Novedades.
+func TestLanding_VideoDeLaBiblioteca(t *testing.T) {
+	svc, repo, _ := newInductionSvc(enabledConfig(), professional(5))
+	pendingInvite(repo, 3)
+	video := uint(7)
+	repo.inviteBlocks[0].VideoID = &video
+	repo.videos[7] = &models.InductionVideo{ID: 7, Title: "Bienvenida", VideoURL: "https://youtu.be/xyz", DurationMin: 3}
+
+	view, err := svc.Landing("tok")
+	if err != nil {
+		t.Fatalf("landing: %v", err)
+	}
+	if view.Current == nil || view.Current.VideoURL != "https://youtu.be/xyz" || view.Current.VideoTitle != "Bienvenida" {
+		t.Fatalf("el video de la biblioteca debe viajar: %+v", view.Current)
+	}
+	if !view.Blocks[0].HasVideo {
+		t.Fatalf("el bloque con video de la biblioteca debe decir que tiene video")
+	}
+}
+
+// Un video que usa algún bloque no se borra.
+func TestDeleteVideo_EnUsoNoSeBorra(t *testing.T) {
+	svc, repo, _ := newInductionSvc(enabledConfig())
+	repo.videos[7] = &models.InductionVideo{ID: 7, Title: "Bienvenida", VideoURL: "https://youtu.be/xyz"}
+	repo.videoUsage = 2
+	if err := svc.DeleteVideo(7); err == nil {
+		t.Fatal("un video en uso no debe borrarse")
+	}
+	repo.videoUsage = 0
+	if err := svc.DeleteVideo(7); err != nil {
+		t.Fatalf("sin uso sí se borra: %v", err)
+	}
+	if repo.deletedVideo != 7 {
+		t.Fatalf("debe borrar el video 7, got %d", repo.deletedVideo)
+	}
+}
+
+// El enlace se valida como el de una novedad.
+func TestCreateVideo_ValidaElEnlace(t *testing.T) {
+	svc, _, _ := newInductionSvc(enabledConfig())
+	if _, err := svc.CreateVideo(1, VideoInput{Title: "X", VideoURL: "https://example.com/video"}); err == nil {
+		t.Fatal("un enlace que no es de Drive ni YouTube no debe aceptarse")
+	}
+	if _, err := svc.CreateVideo(1, VideoInput{Title: " ", VideoURL: "https://youtu.be/abcdefghijk"}); err == nil {
+		t.Fatal("sin título no debe aceptarse")
 	}
 }
 

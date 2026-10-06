@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, BookOpen, Search, Compass, GraduationCap, LayoutGrid, List } from 'lucide-react'
+import { Plus, BookOpen, Search, Compass, GraduationCap, LayoutGrid, List, Clapperboard, ArrowLeft } from 'lucide-react'
 import { startCurrentPageTour } from '../lib/tour'
 import { DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
@@ -11,6 +11,7 @@ import { TutorialFormModal } from '../components/Tutorials/Modals/TutorialFormMo
 import { TutorialMetricsModal } from '../components/Tutorials/Modals/TutorialMetricsModal'
 import { useAuth } from '../context/AuthContext'
 import InductionSettings from '../components/Admin/InductionSettings'
+import InductionVideoLibrary from '../components/Admin/InductionVideoLibrary'
 import { Skeleton } from '../components/ui'
 import styles from './Tutoriales.module.css'
 
@@ -57,6 +58,8 @@ export default function Tutoriales() {
   // Pestaña principal. La de inducción solo existe para superadmin, así que
   // para el resto la página se comporta exactamente como antes.
   const [mainTab, setMainTab] = useState<'novedades' | 'induccion'>('novedades')
+  // Los videos de la inducción viven en su propia biblioteca, fuera de Novedades.
+  const [videoLibrary, setVideoLibrary] = useState(false)
   const showNovedades = !isAdmin || mainTab === 'novedades'
 
   const canReorder = isAdmin && categoryFilter === ALL_CATEGORIES && audienceFilter === ALL_AUDIENCES && !searchQuery.trim()
@@ -117,6 +120,12 @@ export default function Tutoriales() {
               <Plus size={18} /> Nueva novedad
             </button>
           )}
+          {isAdmin && mainTab === 'induccion' && (
+            <button type="button" className={styles['tutorials-create-btn']} onClick={() => setVideoLibrary((v) => !v)}>
+              {videoLibrary ? <ArrowLeft size={18} /> : <Clapperboard size={18} />}
+              {videoLibrary ? 'Volver a la inducción' : 'Biblioteca de videos'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -127,7 +136,10 @@ export default function Tutoriales() {
           <button
             type="button"
             className={`${styles['tutorials-tab']} ${mainTab === 'novedades' ? styles['active'] : ''}`}
-            onClick={() => setMainTab('novedades')}
+            onClick={() => {
+              setMainTab('novedades')
+              setVideoLibrary(false)
+            }}
           >
             <BookOpen size={16} /> Novedades
             <span className={styles['tutorials-tab-count']}>{tutorials.length}</span>
@@ -142,7 +154,9 @@ export default function Tutoriales() {
         </div>
       )}
 
-      {isAdmin && mainTab === 'induccion' && <InductionSettings />}
+      {isAdmin &&
+        mainTab === 'induccion' &&
+        (videoLibrary ? <InductionVideoLibrary onBack={() => setVideoLibrary(false)} /> : <InductionSettings />)}
 
       {showNovedades && tutorials.length > 0 && (
         <div className={styles['tutorials-toolbar']}>

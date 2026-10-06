@@ -435,7 +435,7 @@ export default function InductionProgramEditor({
                       <div className={styles.seqMain}>
                         <span className={styles.seqTitle}>{b?.name ?? `Bloque ${id}`}</span>
                         <span className={styles.seqMeta}>
-                          {b?.tutorial_title || 'Sin video'} ·{' '}
+                          {b?.video_title || 'Sin video'} ·{' '}
                           <span style={noQuestions ? { color: '#b91c1c', fontWeight: 600 } : undefined}>
                             {b?.question_count ?? 0} preguntas
                           </span>{' '}
@@ -443,7 +443,6 @@ export default function InductionProgramEditor({
                           <span style={passing < LOW_PASSING_SCORE ? { color: '#b45309', fontWeight: 600 } : undefined}>
                             mínimo {passing}%
                           </span>
-                          {b?.tutorial_visible && ' · video visible en Novedades'}
                         </span>
                       </div>
                       <div className={styles.rowActions}>
@@ -510,7 +509,7 @@ export default function InductionProgramEditor({
                     <span className={styles.seqMain}>
                       <span className={styles.seqTitle}>{b.name}</span>
                       <span className={styles.seqMeta}>
-                        {b.tutorial_title || 'Sin video'} · {b.question_count}{' '}
+                        {b.video_title || 'Sin video'} · {b.question_count}{' '}
                         {b.question_count === 1 ? 'pregunta' : 'preguntas'}
                       </span>
                     </span>

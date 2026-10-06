@@ -2887,3 +2887,76 @@ div > .propLabel {
   border-radius: 8px;
   padding: 4px;
 }
+
+/* --- Biblioteca de videos de la inducción --- */
+.videoFormSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .videoFormSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+.videoFormFields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.videoFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.videoOptionNew {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 2px dashed #e2e8f0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  color: #a21caf;
+}
+
+.videoOptionNew:hover {
+  border-color: var(--primary);
+}
+
+.videoOptionNew .videoThumb {
+  background: #fdf4ff;
+  color: var(--primary);
+}
+
+.libVideoThumb {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid #f1f5f9;
+  background: #0f172a;
+  cursor: pointer;
+}
+
+.libVideoDuration {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.8);
+  color: white;
+  font-size: 11.5px;
+  font-weight: 700;
+}

@@ -31,6 +31,12 @@ type InductionService interface {
 	GetConfig() (*models.InductionConfig, error)
 	SaveConfig(cfg *models.InductionConfig) error
 
+	// --- Biblioteca de videos ---
+	ListVideos() ([]models.InductionVideo, error)
+	CreateVideo(actorID uint, in VideoInput) (*models.InductionVideo, error)
+	UpdateVideo(id uint, in VideoInput) (*models.InductionVideo, error)
+	DeleteVideo(id uint) error
+
 	// --- Biblioteca de bloques ---
 	ListBlocks() ([]models.InductionBlock, error)
 	CreateBlock(actorID uint, in BlockInput) (*models.InductionBlock, error)
@@ -91,7 +97,7 @@ type InductionService interface {
 type BlockInput struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
-	TutorialID   *uint  `json:"tutorial_id"`
+	VideoID      *uint  `json:"video_id"`
 	SurveyID     uint   `json:"survey_id"`
 	PassingScore *int   `json:"passing_score"`
 	BadgeTitle   string `json:"badge_title"`
@@ -409,8 +415,8 @@ func validateBlockInput(in *BlockInput) error {
 	if in.SurveyID == 0 {
 		return errors.New("el bloque necesita un cuestionario")
 	}
-	if in.TutorialID != nil && *in.TutorialID == 0 {
-		in.TutorialID = nil
+	if in.VideoID != nil && *in.VideoID == 0 {
+		in.VideoID = nil
 	}
 	if in.PassingScore != nil && (*in.PassingScore < 0 || *in.PassingScore > 100) {
 		return errors.New("el mínimo aprobatorio debe estar entre 0 y 100")
@@ -421,6 +427,91 @@ func validateBlockInput(in *BlockInput) error {
 	return nil
 }
 
+// --- Biblioteca de videos ----------------------------------------------------
+
+// VideoInput es lo que llega del formulario de un video de la biblioteca.
+type VideoInput struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	VideoURL    string `json:"video_url"`
+	DurationMin int    `json:"duration_min"`
+}
+
+func validateVideoInput(in *VideoInput) error {
+	in.Title = strings.TrimSpace(utils.SanitizeHTML(in.Title))
+	in.Description = strings.TrimSpace(utils.SanitizeHTML(in.Description))
+	in.VideoURL = strings.TrimSpace(in.VideoURL)
+	if in.Title == "" {
+		return errors.New("el video necesita un título")
+	}
+	if in.VideoURL == "" {
+		return errors.New("pega el enlace del video (Drive o YouTube)")
+	}
+	if err := validateVideoURL(in.VideoURL); err != nil {
+		return err
+	}
+	if in.DurationMin < 0 || in.DurationMin > 600 {
+		return errors.New("la duración debe estar entre 0 y 600 minutos")
+	}
+	return nil
+}
+
+func (s *inductionService) ListVideos() ([]models.InductionVideo, error) {
+	return s.repo.ListVideos()
+}
+
+func (s *inductionService) CreateVideo(actorID uint, in VideoInput) (*models.InductionVideo, error) {
+	if err := validateVideoInput(&in); err != nil {
+		return nil, err
+	}
+	video := &models.InductionVideo{
+		Title:       in.Title,
+		Description: in.Description,
+		VideoURL:    in.VideoURL,
+		DurationMin: in.DurationMin,
+		CreatedBy:   actorID,
+	}
+	if err := s.repo.CreateVideo(video); err != nil {
+		return nil, err
+	}
+	return s.repo.GetVideo(video.ID)
+}
+
+func (s *inductionService) UpdateVideo(id uint, in VideoInput) (*models.InductionVideo, error) {
+	if _, err := s.repo.GetVideo(id); err != nil {
+		return nil, errors.New("video no encontrado")
+	}
+	if err := validateVideoInput(&in); err != nil {
+		return nil, err
+	}
+	updates := map[string]interface{}{
+		"title":        in.Title,
+		"description":  in.Description,
+		"video_url":    in.VideoURL,
+		"duration_min": in.DurationMin,
+	}
+	if err := s.repo.UpdateVideo(id, updates); err != nil {
+		return nil, err
+	}
+	return s.repo.GetVideo(id)
+}
+
+func (s *inductionService) DeleteVideo(id uint) error {
+	if _, err := s.repo.GetVideo(id); err != nil {
+		return errors.New("video no encontrado")
+	}
+	// En uso no se borra: el bloque quedaría sin su video sin que nadie lo
+	// note. Quien recorre una invitación ya emitida tampoco lo perdería.
+	used, err := s.repo.CountBlocksUsingVideo(id)
+	if err != nil {
+		return err
+	}
+	if used > 0 {
+		return fmt.Errorf("Este video está en uso en %d bloque(s). Cámbialo en esos bloques antes de borrarlo", used)
+	}
+	return s.repo.DeleteVideo(id)
+}
+
 func (s *inductionService) CreateBlock(actorID uint, in BlockInput) (*models.InductionBlock, error) {
 	if err := validateBlockInput(&in); err != nil {
 		return nil, err
@@ -428,15 +519,15 @@ func (s *inductionService) CreateBlock(actorID uint, in BlockInput) (*models.Ind
 	if _, err := s.repo.GetSurveyWithQuestions(in.SurveyID); err != nil {
 		return nil, errors.New("el cuestionario elegido no existe")
 	}
-	if in.TutorialID != nil {
-		if _, err := s.repo.GetTutorial(*in.TutorialID); err != nil {
+	if in.VideoID != nil {
+		if _, err := s.repo.GetVideo(*in.VideoID); err != nil {
 			return nil, errors.New("el video elegido no existe")
 		}
 	}
 	block := &models.InductionBlock{
 		Name:         in.Name,
 		Description:  in.Description,
-		TutorialID:   in.TutorialID,
+		VideoID:      in.VideoID,
 		SurveyID:     in.SurveyID,
 		PassingScore: in.PassingScore,
 		BadgeTitle:   in.BadgeTitle,
@@ -460,16 +551,16 @@ func (s *inductionService) UpdateBlock(id uint, in BlockInput) (*models.Inductio
 	if _, err := s.repo.GetSurveyWithQuestions(in.SurveyID); err != nil {
 		return nil, errors.New("el cuestionario elegido no existe")
 	}
-	if in.TutorialID != nil {
-		if _, err := s.repo.GetTutorial(*in.TutorialID); err != nil {
+	if in.VideoID != nil {
+		if _, err := s.repo.GetVideo(*in.VideoID); err != nil {
 			return nil, errors.New("el video elegido no existe")
 		}
 	}
 	// Los opcionales van como nil explícito (no como puntero nulo tipado)
 	// para que el UPDATE escriba NULL sin depender del driver.
-	var tutorialID interface{}
-	if in.TutorialID != nil {
-		tutorialID = *in.TutorialID
+	var videoID interface{}
+	if in.VideoID != nil {
+		videoID = *in.VideoID
 	}
 	var passingScore interface{}
 	if in.PassingScore != nil {
@@ -478,7 +569,7 @@ func (s *inductionService) UpdateBlock(id uint, in BlockInput) (*models.Inductio
 	updates := map[string]interface{}{
 		"name":          in.Name,
 		"description":   in.Description,
-		"tutorial_id":   tutorialID,
+		"video_id":      videoID,
 		"survey_id":     in.SurveyID,
 		"passing_score": passingScore,
 		"badge_title":   in.BadgeTitle,
@@ -831,7 +922,7 @@ func (s *inductionService) issueInvite(user *models.User, program *models.Induct
 			BlockID:      b.ID,
 			OrderIndex:   i,
 			Name:         b.Name,
-			TutorialID:   b.TutorialID,
+			VideoID:      b.VideoID,
 			SurveyID:     b.SurveyID,
 			PassingScore: b.EffectivePassingScore(program.DefaultPassingScore),
 			Status:       models.InductionPending,
@@ -1004,7 +1095,7 @@ func (s *inductionService) Landing(token string) (*LandingView, error) {
 			AttemptsLeft: b.AttemptsLeft(invite.MaxAttempts),
 			BestScore:    b.BestScore,
 			PassingScore: b.PassingScore,
-			HasVideo:     b.TutorialID != nil && *b.TutorialID > 0,
+			HasVideo:     b.HasVideo(),
 		})
 	}
 
@@ -1031,9 +1122,16 @@ func (s *inductionService) Landing(token string) (*LandingView, error) {
 		BestScore:    current.BestScore,
 		Questions:    []LandingQuestion{},
 	}
-	// Video (Novedades/Tutoriales). Es opcional: el bloque puede ser solo
-	// cuestionario.
-	if current.TutorialID != nil && *current.TutorialID > 0 {
+	// Video de la biblioteca de la inducción. Es opcional: el bloque puede
+	// ser solo cuestionario. Las invitaciones de antes de la biblioteca aún
+	// apuntan a la novedad.
+	if current.VideoID != nil && *current.VideoID > 0 {
+		if v, err := s.repo.GetVideo(*current.VideoID); err == nil {
+			cur.VideoTitle = v.Title
+			cur.VideoURL = v.VideoURL
+			cur.VideoDurationMin = v.DurationMin
+		}
+	} else if current.TutorialID != nil && *current.TutorialID > 0 {
 		if t, err := s.repo.GetTutorial(*current.TutorialID); err == nil {
 			cur.VideoTitle = t.Title
 			cur.VideoURL = t.GoogleDriveURL

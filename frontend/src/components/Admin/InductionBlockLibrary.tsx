@@ -3,15 +3,19 @@ import { Plus, Pencil, Trash2, Layers, Video, ListChecks } from 'lucide-react'
 
 import { useConfirm } from '../ui/ConfirmProvider'
 import { useNotification } from '../../context/NotificationContext'
-import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
-import type { Tutorial } from '../../types/tutorials'
+import {
+  inductionService,
+  type InductionBlock,
+  type InductionProgram,
+  type InductionVideo,
+} from '../../services/induction.service'
 import InductionBlockEditor from './InductionBlockEditor'
 import { LOW_PASSING_SCORE } from './inductionReadiness'
 import styles from './InductionSettings.module.css'
 
 interface Props {
   blocks: InductionBlock[]
-  tutorials: Tutorial[]
+  videos: InductionVideo[]
   /** Mínimo por defecto del programa por defecto, para mostrar el efectivo. */
   fallbackPassingScore: number
   /** Programas existentes, para copiar sus insignias. */
@@ -23,7 +27,7 @@ interface Props {
  * Biblioteca de bloques: cada uno es un video más su cuestionario, y puede
  * usarse en cualquier programa. Desde aquí se crean, editan y borran.
  */
-export default function InductionBlockLibrary({ blocks, tutorials, fallbackPassingScore, programs = [], onChanged }: Props) {
+export default function InductionBlockLibrary({ blocks, videos, fallbackPassingScore, programs = [], onChanged }: Props) {
   const { success, error: showError } = useNotification()
   const confirm = useConfirm()
 
@@ -54,7 +58,7 @@ export default function InductionBlockLibrary({ blocks, tutorials, fallbackPassi
     return (
       <InductionBlockEditor
         block={editing === 'new' ? null : editing}
-        tutorials={tutorials}
+        videos={videos}
         fallbackPassingScore={fallbackPassingScore}
         allBlocks={blocks}
         allPrograms={programs}
@@ -110,13 +114,8 @@ export default function InductionBlockLibrary({ blocks, tutorials, fallbackPassi
                   <div className={styles.rowMeta}>
                     <span className={styles.tag}>
                       <Video size={12} />
-                      {b.tutorial_title || 'Sin video'}
+                      {b.video_title || 'Sin video'}
                     </span>
-                    {b.tutorial_id && b.tutorial_visible && (
-                      <span className={styles.tagWarn} title="Se anuncia a toda su audiencia en Novedades. Para inducción conviene ocultarla.">
-                        Visible en Novedades
-                      </span>
-                    )}
                     <span className={scorable ? styles.tagOk : styles.tagWarn}>
                       <ListChecks size={12} />
                       {b.question_count} {b.question_count === 1 ? 'pregunta' : 'preguntas'}

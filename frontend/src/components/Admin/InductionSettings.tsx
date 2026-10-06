@@ -7,9 +7,10 @@ import {
   type InductionBlock,
   type InductionConfig,
   type InductionProgram,
+  type InductionVideo,
 } from '../../services/induction.service'
 import { tutorialService } from '../../services/tutorial.service'
-import type { Tutorial, TutorialAudienceOption } from '../../types/tutorials'
+import type { TutorialAudienceOption } from '../../types/tutorials'
 import InductionProgramList from './InductionProgramList'
 import InductionBlockLibrary from './InductionBlockLibrary'
 import CertificateTemplateList from '../Certificates/CertificateTemplateList'
@@ -29,7 +30,7 @@ interface Step {
  * Configuración de la inducción del profesional recién contratado.
  *
  * Tres piezas: el interruptor global (con la vigencia del enlace), la
- * biblioteca de bloques (video de Novedades + cuestionario propio) y los
+ * biblioteca de bloques (video de su biblioteca + cuestionario propio) y los
  * programas (secuencias de bloques asignadas por empresa).
  *
  * Solo debe renderizarse para superadmin: es quien puede guardar en el backend.
@@ -40,19 +41,21 @@ export default function InductionSettings() {
   const [config, setConfig] = useState<InductionConfig | null>(null)
   const [programs, setPrograms] = useState<InductionProgram[]>([])
   const [blocks, setBlocks] = useState<InductionBlock[]>([])
-  const [tutorials, setTutorials] = useState<Tutorial[]>([])
+  const [videos, setVideos] = useState<InductionVideo[]>([])
   const [companies, setCompanies] = useState<TutorialAudienceOption[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [section, setSection] = useState<Section>('programs')
 
   const refresh = useCallback(async () => {
-    const [programList, blockList] = await Promise.all([
+    const [programList, blockList, videoList] = await Promise.all([
       inductionService.listPrograms().catch(() => [] as InductionProgram[]),
       inductionService.listBlocks().catch(() => [] as InductionBlock[]),
+      inductionService.listVideos().catch(() => [] as InductionVideo[]),
     ])
     setPrograms(programList)
     setBlocks(blockList)
+    setVideos(videoList)
     return blockList
   }, [])
   // Para los hijos, que solo esperan que la lista se recargue.
@@ -63,13 +66,11 @@ export default function InductionSettings() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [cfg, tutorialList, audience] = await Promise.all([
+        const [cfg, audience] = await Promise.all([
           inductionService.getConfig(),
-          tutorialService.getAll().catch(() => [] as Tutorial[]),
           tutorialService.getAudienceOptions().catch(() => null),
         ])
         setConfig(cfg)
-        setTutorials(Array.isArray(tutorialList) ? tutorialList : [])
         setCompanies(audience?.companies ?? [])
         // Sin bloques no hay con qué armar un programa: se empieza por el paso 1.
         const blockList = await refresh()
@@ -272,7 +273,7 @@ export default function InductionSettings() {
         ) : (
           <InductionBlockLibrary
             blocks={blocks}
-            tutorials={tutorials}
+            videos={videos}
             fallbackPassingScore={defaultProgram?.default_passing_score ?? 70}
             programs={programs}
             onChanged={reload}

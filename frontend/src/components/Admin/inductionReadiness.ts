@@ -20,7 +20,7 @@ export interface ReadinessIssue {
 /** Por debajo de este mínimo, aprobar el cuestionario casi no exige nada. */
 export const LOW_PASSING_SCORE = 50
 
-type BlockLike = Pick<InductionBlock, 'name' | 'question_count' | 'passing_score' | 'tutorial_id' | 'tutorial_visible'>
+type BlockLike = Pick<InductionBlock, 'name' | 'question_count' | 'passing_score'>
 
 export interface ProgramDraft {
   isActive: boolean
@@ -52,9 +52,6 @@ export function blockIssues(b: BlockLike, fallbackPassingScore: number): Readine
   const passing = b.passing_score ?? fallbackPassingScore
   if (passing < LOW_PASSING_SCORE) {
     issues.push({ level: 'warning', text: `Se aprueba con solo ${passing}%.` })
-  }
-  if (b.tutorial_id && b.tutorial_visible) {
-    issues.push({ level: 'warning', text: 'Su video está visible en Novedades: lo ve toda su audiencia.' })
   }
   return issues
 }

@@ -51,17 +51,48 @@ func (InductionConfig) TableName() string {
 	return "induction_configs"
 }
 
-// InductionBlock es la unidad reutilizable de la inducción: un video (de
-// Novedades, opcional) más su propio cuestionario calificado. Vive en una
+// InductionVideo es un video de la biblioteca de la inducción. Vive aparte de
+// Novedades a propósito: una novedad se anuncia a su audiencia, cuenta vistas
+// y emerge al iniciar sesión; un video de inducción solo lo ve quien recorre
+// el bloque que lo usa.
+type InductionVideo struct {
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	Title       string `gorm:"size:255;not null" json:"title"`
+	Description string `gorm:"type:text" json:"description"`
+	// VideoURL es el enlace de Drive o YouTube, con las mismas reglas que el
+	// de una novedad.
+	VideoURL    string `gorm:"size:1000;not null" json:"video_url"`
+	DurationMin int    `gorm:"not null;default:0" json:"duration_min"`
+	// LegacyTutorialID es la novedad de la que salió al separar la biblioteca
+	// (migración 202610061200). Solo sirve para enlazar los bloques viejos.
+	LegacyTutorialID *uint          `gorm:"index" json:"-"`
+	CreatedBy        uint           `gorm:"not null;index" json:"created_by"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	DeletedAt        gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// BlockNames son los bloques que lo usan (solo lectura, para el panel).
+	BlockNames []string `gorm:"-" json:"block_names"`
+}
+
+func (InductionVideo) TableName() string {
+	return "induction_videos"
+}
+
+// InductionBlock es la unidad reutilizable de la inducción: un video (de la
+// biblioteca de la inducción, opcional) más su propio cuestionario calificado. Vive en una
 // biblioteca y un mismo bloque puede formar parte de varios programas: por eso
 // es una tabla propia y no una fila dentro del programa.
 type InductionBlock struct {
 	ID          uint   `gorm:"primaryKey" json:"id"`
 	Name        string `gorm:"size:160;not null" json:"name"`
 	Description string `gorm:"type:text" json:"description"`
-	// TutorialID es el video (módulo Novedades). Es opcional: un bloque puede
-	// ser solo cuestionario.
-	TutorialID *uint `gorm:"index" json:"tutorial_id,omitempty"`
+	// VideoID es el video de la biblioteca de la inducción. Es opcional: un
+	// bloque puede ser solo cuestionario.
+	VideoID *uint `gorm:"index" json:"video_id,omitempty"`
+	// TutorialID es el video de antes, cuando salía de Novedades. Ya no se
+	// escribe: la migración 202610061200 lo pasó a VideoID.
+	TutorialID *uint `gorm:"index" json:"-"`
 	// SurveyID es el cuestionario calificado (módulo Encuestas, kind induction).
 	SurveyID uint `gorm:"not null;index" json:"survey_id"`
 	// PassingScore es el mínimo aprobatorio del bloque, en porcentaje. Nil = se
@@ -79,10 +110,8 @@ type InductionBlock struct {
 
 	// Enriquecimientos de solo lectura para el panel. No son columnas: los
 	// llena el repositorio al listar, con consultas aparte.
-	TutorialTitle string   `gorm:"-" json:"tutorial_title,omitempty"`
-	// TutorialVisible indica si el video está publicado en Novedades (se
-	// anuncia a toda su audiencia). Para una inducción conviene oculto.
-	TutorialVisible bool     `gorm:"-" json:"tutorial_visible"`
+	VideoTitle    string   `gorm:"-" json:"video_title,omitempty"`
+	VideoURL      string   `gorm:"-" json:"video_url,omitempty"`
 	SurveyTitle   string   `gorm:"-" json:"survey_title,omitempty"`
 	QuestionCount int      `gorm:"-" json:"question_count"`
 	ProgramNames  []string `gorm:"-" json:"program_names"`
@@ -243,6 +272,8 @@ type InductionInviteBlock struct {
 
 	// Snapshot del bloque al momento de invitar.
 	Name         string `gorm:"size:160;not null" json:"name"`
+	VideoID      *uint  `json:"video_id,omitempty"`
+	// TutorialID: invitaciones de antes de la biblioteca de videos.
 	TutorialID   *uint  `json:"tutorial_id,omitempty"`
 	SurveyID     uint   `gorm:"not null" json:"survey_id"`
 	PassingScore int    `gorm:"not null;default:70" json:"passing_score"`
@@ -257,6 +288,12 @@ type InductionInviteBlock struct {
 
 func (InductionInviteBlock) TableName() string {
 	return "induction_invite_blocks"
+}
+
+// HasVideo dice si el bloque de la invitación lleva video, sea de la
+// biblioteca o de una novedad (invitaciones de antes de la biblioteca).
+func (b *InductionInviteBlock) HasVideo() bool {
+	return (b.VideoID != nil && *b.VideoID > 0) || (b.TutorialID != nil && *b.TutorialID > 0)
 }
 
 // AttemptsLeft son los intentos que le quedan al profesional en este bloque.

@@ -18,6 +18,15 @@ type InductionRepository interface {
 	GetConfig() (*models.InductionConfig, error)
 	SaveConfig(cfg *models.InductionConfig) error
 
+	// --- Biblioteca de videos ---
+	ListVideos() ([]models.InductionVideo, error)
+	GetVideo(id uint) (*models.InductionVideo, error)
+	CreateVideo(video *models.InductionVideo) error
+	UpdateVideo(id uint, updates map[string]interface{}) error
+	DeleteVideo(id uint) error
+	// CountBlocksUsingVideo dice cuántos bloques vivos usan el video.
+	CountBlocksUsingVideo(videoID uint) (int64, error)
+
 	// --- Biblioteca de bloques ---
 	ListBlocks() ([]models.InductionBlock, error)
 	GetBlock(id uint) (*models.InductionBlock, error)
@@ -162,31 +171,24 @@ func (r *inductionRepository) enrichBlocks(blocks []models.InductionBlock) error
 		return nil
 	}
 	blockIDs := make([]uint, 0, len(blocks))
-	tutorialIDs := make([]uint, 0, len(blocks))
+	videoIDs := make([]uint, 0, len(blocks))
 	surveyIDs := make([]uint, 0, len(blocks))
 	for _, b := range blocks {
 		blockIDs = append(blockIDs, b.ID)
 		surveyIDs = append(surveyIDs, b.SurveyID)
-		if b.TutorialID != nil && *b.TutorialID > 0 {
-			tutorialIDs = append(tutorialIDs, *b.TutorialID)
+		if b.VideoID != nil && *b.VideoID > 0 {
+			videoIDs = append(videoIDs, *b.VideoID)
 		}
 	}
 
-	tutorialTitles := map[uint]string{}
-	tutorialVisible := map[uint]bool{}
-	if len(tutorialIDs) > 0 {
-		var rows []struct {
-			ID       uint
-			Title    string
-			IsActive bool
-		}
-		if err := r.db.Table("tutorials").Select("id, title, is_active").
-			Where("id IN ? AND deleted_at IS NULL", tutorialIDs).Scan(&rows).Error; err != nil {
+	videos := map[uint]models.InductionVideo{}
+	if len(videoIDs) > 0 {
+		var rows []models.InductionVideo
+		if err := r.db.Where("id IN ?", videoIDs).Find(&rows).Error; err != nil {
 			return err
 		}
 		for _, row := range rows {
-			tutorialTitles[row.ID] = row.Title
-			tutorialVisible[row.ID] = row.IsActive
+			videos[row.ID] = row
 		}
 	}
 
@@ -224,9 +226,11 @@ func (r *inductionRepository) enrichBlocks(blocks []models.InductionBlock) error
 
 	for i := range blocks {
 		b := &blocks[i]
-		if b.TutorialID != nil {
-			b.TutorialTitle = tutorialTitles[*b.TutorialID]
-			b.TutorialVisible = tutorialVisible[*b.TutorialID]
+		if b.VideoID != nil {
+			if v, ok := videos[*b.VideoID]; ok {
+				b.VideoTitle = v.Title
+				b.VideoURL = v.VideoURL
+			}
 		}
 		if s, ok := surveys[b.SurveyID]; ok {
 			b.SurveyTitle = s.Title
@@ -600,6 +604,69 @@ func (r *inductionRepository) GetSurveyWithQuestions(surveyID uint) (*models.Sur
 		return nil, err
 	}
 	return &survey, nil
+}
+
+// --- Biblioteca de videos ----------------------------------------------------
+
+func (r *inductionRepository) ListVideos() ([]models.InductionVideo, error) {
+	var videos []models.InductionVideo
+	if err := r.db.Order("title ASC, id ASC").Find(&videos).Error; err != nil {
+		return nil, err
+	}
+	if len(videos) == 0 {
+		return videos, nil
+	}
+	ids := make([]uint, 0, len(videos))
+	for _, v := range videos {
+		ids = append(ids, v.ID)
+	}
+	var usage []struct {
+		VideoID uint
+		Name    string
+	}
+	if err := r.db.Table("induction_blocks").Select("video_id, name").
+		Where("video_id IN ? AND deleted_at IS NULL", ids).
+		Order("name ASC").Scan(&usage).Error; err != nil {
+		return nil, err
+	}
+	names := map[uint][]string{}
+	for _, row := range usage {
+		names[row.VideoID] = append(names[row.VideoID], row.Name)
+	}
+	for i := range videos {
+		videos[i].BlockNames = names[videos[i].ID]
+		if videos[i].BlockNames == nil {
+			videos[i].BlockNames = []string{}
+		}
+	}
+	return videos, nil
+}
+
+func (r *inductionRepository) GetVideo(id uint) (*models.InductionVideo, error) {
+	var video models.InductionVideo
+	if err := r.db.First(&video, id).Error; err != nil {
+		return nil, err
+	}
+	video.BlockNames = []string{}
+	return &video, nil
+}
+
+func (r *inductionRepository) CreateVideo(video *models.InductionVideo) error {
+	return r.db.Create(video).Error
+}
+
+func (r *inductionRepository) UpdateVideo(id uint, updates map[string]interface{}) error {
+	return r.db.Model(&models.InductionVideo{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *inductionRepository) DeleteVideo(id uint) error {
+	return r.db.Delete(&models.InductionVideo{}, id).Error
+}
+
+func (r *inductionRepository) CountBlocksUsingVideo(videoID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.InductionBlock{}).Where("video_id = ?", videoID).Count(&count).Error
+	return count, err
 }
 
 func (r *inductionRepository) GetTutorial(tutorialID uint) (*models.Tutorial, error) {

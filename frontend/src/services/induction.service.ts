@@ -108,14 +108,40 @@ export interface InductionConfig {
 }
 
 /**
- * Bloque de la biblioteca: un video de Novedades (opcional) más su propio
- * cuestionario calificado. Reutilizable en cualquier programa.
+ * Video de la biblioteca de la inducción. Vive aparte de Novedades: no se
+ * anuncia ni cuenta vistas; solo lo ve quien recorre el bloque que lo usa.
+ */
+export interface InductionVideo {
+  id: number
+  title: string
+  description: string
+  /** Enlace de Drive o YouTube. */
+  video_url: string
+  duration_min: number
+  created_by: number
+  created_at: string
+  updated_at: string
+  /** Bloques que lo usan (solo lectura). */
+  block_names: string[]
+}
+
+export interface InductionVideoInput {
+  title: string
+  description: string
+  video_url: string
+  duration_min: number
+}
+
+/**
+ * Bloque de la biblioteca: un video de la biblioteca de la inducción
+ * (opcional) más su propio cuestionario calificado. Reutilizable en cualquier
+ * programa.
  */
 export interface InductionBlock {
   id: number
   name: string
   description: string
-  tutorial_id?: number | null
+  video_id?: number | null
   survey_id: number
   /** Mínimo propio; null = usa el del programa. */
   passing_score?: number | null
@@ -127,9 +153,8 @@ export interface InductionBlock {
   created_at: string
   updated_at: string
   // Solo lectura, para el panel.
-  tutorial_title?: string
-  /** El video está publicado en Novedades (se anuncia a toda su audiencia). */
-  tutorial_visible?: boolean
+  video_title?: string
+  video_url?: string
   survey_title?: string
   question_count: number
   program_names: string[]
@@ -140,7 +165,7 @@ export interface InductionBlock {
 export interface InductionBlockInput {
   name: string
   description: string
-  tutorial_id?: number | null
+  video_id?: number | null
   survey_id: number
   passing_score?: number | null
   badge_title?: string
@@ -295,6 +320,25 @@ export const inductionService = {
   },
 
   // Biblioteca de bloques
+  listVideos: async () => {
+    const { data } = await api.get<{ data: InductionVideo[] }>('/inductions/videos')
+    return data.data
+  },
+
+  createVideo: async (input: InductionVideoInput) => {
+    const { data } = await api.post<InductionVideo>('/inductions/videos', input)
+    return data
+  },
+
+  updateVideo: async (id: number, input: InductionVideoInput) => {
+    const { data } = await api.put<InductionVideo>(`/inductions/videos/${id}`, input)
+    return data
+  },
+
+  deleteVideo: async (id: number) => {
+    await api.delete(`/inductions/videos/${id}`)
+  },
+
   listBlocks: async () => {
     const { data } = await api.get<{ data: InductionBlock[] }>('/inductions/blocks')
     return data.data
