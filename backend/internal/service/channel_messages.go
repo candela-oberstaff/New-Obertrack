@@ -857,12 +857,16 @@ func (s *channelService) ContactSupport(userID uint, subject, message, priority,
 	if user.CompanyName != "" {
 		who = fmt.Sprintf("%s (%s)", user.Name, user.CompanyName)
 	}
+	// El Customer Success asignado a la empresa se entera siempre de que su
+	// cliente pidió soporte, aunque la solicitud siga abierta de antes y la
+	// tenga otra persona. Puede ser un superadmin, que no está en activeCS.
+	companyCS := s.companyCSID(ticket.TenantID)
 	if ticket.AssignedTo != nil {
 		s.notifySupport(*ticket.AssignedTo, channel.ID, "Soporte: nueva actividad", fmt.Sprintf("%s volvió a escribir en su solicitud de soporte.", who))
+		if companyCS != 0 && companyCS != *ticket.AssignedTo {
+			s.notifySupport(companyCS, channel.ID, "Tu cliente pidió soporte", fmt.Sprintf("%s escribió en su solicitud de soporte, que ya atiende otra persona.", who))
+		}
 	} else {
-		// El Customer Success asignado a la empresa recibe su propio aviso: es
-		// su cliente. Puede ser un superadmin, que no está en activeCS.
-		companyCS := s.companyCSID(ticket.TenantID)
 		if companyCS != 0 {
 			s.notifySupport(companyCS, channel.ID, "Nueva solicitud de tu cliente", fmt.Sprintf("%s solicita soporte. Acéptala para atenderla.", who))
 		}
