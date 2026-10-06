@@ -3144,3 +3144,32 @@ label.sendChannel {
 .sendChannelOff small {
   color: #b45309;
 }
+
+/* «Guardar y enviar» en la barra del editor de programa. */
+.sendBtnLg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid #f0abfc;
+  background: #fdf4ff;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #a21caf;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sendBtnLg:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.sendBtnLg:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
