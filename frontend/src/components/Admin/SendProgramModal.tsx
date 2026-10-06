@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, CheckCircle2, Info, Search, Send } from 'lucide-react'
+import { Bell, Check, CheckCircle2, Info, Mail, Search, Send } from 'lucide-react'
 
 import { Button, Modal } from '../ui'
 import { useNotification } from '../../context/NotificationContext'
@@ -37,14 +37,18 @@ export default function SendProgramModal({ program, onClose }: Props) {
   const [query, setQuery] = useState('')
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<SendProgramResult | null>(null)
+  // Si el correo de invitación está encendido en Configuración → Correos.
+  const [emailEnabled, setEmailEnabled] = useState(true)
+  const [sendEmail, setSendEmail] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     inductionService
       .programRecipients(program.id)
-      .then((list) => {
+      .then(({ recipients: list, emailEnabled: enabled }) => {
         if (cancelled) return
         setRecipients(list)
+        setEmailEnabled(enabled)
         setSelected(list.filter((r) => !busy(r) && !r.passed_this).map((r) => r.user_id))
       })
       .catch(() => {
@@ -70,7 +74,7 @@ export default function SendProgramModal({ program, onClose }: Props) {
   const handleSend = async () => {
     setSending(true)
     try {
-      const res = await inductionService.sendProgram(program.id, selected)
+      const res = await inductionService.sendProgram(program.id, selected, sendEmail && emailEnabled)
       setResult(res)
       if (res.sent > 0) success(`Inducción enviada a ${res.sent} ${res.sent === 1 ? 'profesional' : 'profesionales'}.`)
     } catch (err: any) {
@@ -116,7 +120,11 @@ export default function SendProgramModal({ program, onClose }: Props) {
               ? `Enviada a ${result.sent} ${result.sent === 1 ? 'profesional' : 'profesionales'}`
               : 'No se envió a nadie'}
           </strong>
-          <span>Les llega por correo (si ese correo está encendido) y la ven en la app al entrar.</span>
+          <span>
+            {result.emailed
+              ? 'Les llegó por correo y en la campanita de la app.'
+              : 'Les llegó en la campanita de la app (sin correo).'}
+          </span>
           {result.failed.length > 0 && (
             <div className={styles.readinessBox} style={{ alignSelf: 'stretch', textAlign: 'left' }}>
               <strong style={{ fontSize: 13.5 }}>No se pudo enviar a {result.failed.length}:</strong>
@@ -138,6 +146,23 @@ export default function SendProgramModal({ program, onClose }: Props) {
               Llega como <strong>capacitación</strong>: quien ya trabaja sigue trabajando normal mientras la
               hace. Quien todavía no tiene acceso a la plataforma lo tendrá al aprobarla.
             </span>
+          </div>
+
+          <div className={styles.sendChannels}>
+            <span className={styles.sendChannel}>
+              <Bell size={15} /> Campanita en la app
+              <small>siempre</small>
+            </span>
+            <label className={emailEnabled ? styles.sendChannel : styles.sendChannelOff}>
+              <input
+                type="checkbox"
+                checked={sendEmail && emailEnabled}
+                disabled={!emailEnabled}
+                onChange={(e) => setSendEmail(e.target.checked)}
+              />
+              <Mail size={15} /> También por correo
+              <small>{emailEnabled ? 'con el enlace a la capacitación' : 'apagado en Configuración → Correos'}</small>
+            </label>
           </div>
 
           {recipients === null ? (

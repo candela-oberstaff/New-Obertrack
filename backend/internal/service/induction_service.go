@@ -54,9 +54,13 @@ type InductionService interface {
 	SetProgramUsers(id uint, userIDs []uint) (*models.InductionProgram, error)
 	// ProgramRecipients dice a quién le llega el programa y cómo va cada uno.
 	ProgramRecipients(id uint) ([]repository.ProgramRecipient, error)
+	// InviteEmailEnabled dice si el correo de invitación está encendido en
+	// Configuración → Correos (si no, solo llega por la campanita).
+	InviteEmailEnabled() bool
 	// SendProgram envía el programa ahora, como capacitación (sin bloquear el
-	// acceso), a los profesionales elegidos. Sigue con el resto si uno falla.
-	SendProgram(id uint, userIDs []uint) (*SendProgramResult, error)
+	// acceso), a los profesionales elegidos; con sendEmail, también por
+	// correo. Sigue con el resto si uno falla.
+	SendProgram(id uint, userIDs []uint, sendEmail bool) (*SendProgramResult, error)
 
 	// InviteIfEnabled emite la invitación con el programa que le toca a la
 	// empresa del profesional (o el por defecto) y envía el correo con el
@@ -837,6 +841,8 @@ func (s *inductionService) ProgramRecipients(id uint) ([]repository.ProgramRecip
 type SendProgramResult struct {
 	Sent   int                 `json:"sent"`
 	Failed []SendProgramFailed `json:"failed"`
+	// Emailed: además de la campanita, salió el correo (pedido y encendido).
+	Emailed bool `json:"emailed"`
 }
 
 type SendProgramFailed struct {
@@ -845,7 +851,11 @@ type SendProgramFailed struct {
 	Reason string `json:"reason"`
 }
 
-func (s *inductionService) SendProgram(id uint, userIDs []uint) (*SendProgramResult, error) {
+func (s *inductionService) InviteEmailEnabled() bool {
+	return s.brevoSvc != nil && s.brevoSvc.AllowsKind(EmailKindInductionInvite)
+}
+
+func (s *inductionService) SendProgram(id uint, userIDs []uint, sendEmail bool) (*SendProgramResult, error) {
 	program, err := s.repo.GetProgram(id)
 	if err != nil {
 		return nil, errors.New("programa no encontrado")
@@ -866,7 +876,7 @@ func (s *inductionService) SendProgram(id uint, userIDs []uint) (*SendProgramRes
 	if len(userIDs) > 500 {
 		return nil, errors.New("se pueden enviar como mucho 500 a la vez")
 	}
-	result := &SendProgramResult{Failed: []SendProgramFailed{}}
+	result := &SendProgramResult{Failed: []SendProgramFailed{}, Emailed: sendEmail && s.InviteEmailEnabled()}
 	seen := map[uint]bool{}
 	for _, userID := range userIDs {
 		if userID == 0 || seen[userID] {
@@ -875,7 +885,7 @@ func (s *inductionService) SendProgram(id uint, userIDs []uint) (*SendProgramRes
 		seen[userID] = true
 		// Como capacitación: quien ya trabaja sigue trabajando. A quien aún no
 		// tiene acceso, Invite se lo bloquea igual hasta aprobar.
-		if err := s.Invite(userID, id, false); err != nil {
+		if err := s.invite(userID, id, false, sendEmail); err != nil {
 			name := ""
 			if u, uErr := s.userRepo.GetByID(userID); uErr == nil {
 				name = u.Name
@@ -950,12 +960,12 @@ func (s *inductionService) InviteIfEnabled(user *models.User) (bool, error) {
 		return false, nil
 	}
 	// Ingreso desde Obersuite: sin acceso hasta aprobar.
-	return true, s.issueInvite(user, program, cfg.InviteTTLDays, true)
+	return true, s.issueInvite(user, program, cfg.InviteTTLDays, true, true)
 }
 
 // issueInvite reemplaza la invitación viva del usuario por una nueva con el
 // snapshot del programa, lo deja sin acceso y manda el correo.
-func (s *inductionService) issueInvite(user *models.User, program *models.InductionProgram, ttlDays int, gatesAccess bool) error {
+func (s *inductionService) issueInvite(user *models.User, program *models.InductionProgram, ttlDays int, gatesAccess bool, sendEmail bool) error {
 	token, err := generateInductionToken()
 	if err != nil {
 		return err
@@ -1016,7 +1026,9 @@ func (s *inductionService) issueInvite(user *models.User, program *models.Induct
 			map[string]interface{}{"link": "/induccion/" + token})
 	}
 
-	s.sendInviteEmail(user, token)
+	if sendEmail {
+		s.sendInviteEmail(user, token, program.Name, len(program.Blocks), !gatesAccess)
+	}
 	return nil
 }
 
@@ -1028,6 +1040,11 @@ func pluralBlocks(n int) string {
 }
 
 func (s *inductionService) Invite(userID uint, programID uint, gatesAccess bool) error {
+	return s.invite(userID, programID, gatesAccess, true)
+}
+
+// invite es Invite eligiendo si además va por correo.
+func (s *inductionService) invite(userID uint, programID uint, gatesAccess bool, sendEmail bool) error {
 	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
 		return errors.New("usuario no encontrado")
@@ -1075,7 +1092,7 @@ func (s *inductionService) Invite(userID uint, programID uint, gatesAccess bool)
 			return errors.New("no hay un programa de inducción usable para este profesional")
 		}
 	}
-	return s.issueInvite(user, program, cfg.InviteTTLDays, gatesAccess)
+	return s.issueInvite(user, program, cfg.InviteTTLDays, gatesAccess, sendEmail)
 }
 
 func (s *inductionService) MyInduction(userID uint) (*MyInductionView, error) {
@@ -1442,7 +1459,11 @@ func (s *inductionService) resetInvite(invite *models.InductionInvite) error {
 			return err
 		}
 	}
-	s.sendInviteEmail(user, token)
+	blockCount := 0
+	if blocks, err := s.repo.ListInviteBlocks(invite.ID); err == nil {
+		blockCount = len(blocks)
+	}
+	s.sendInviteEmail(user, token, invite.ProgramName, blockCount, !invite.GatesAccess)
 	return nil
 }
 
@@ -1790,13 +1811,19 @@ func (s *inductionService) alertSupport(user *models.User, invite *models.Induct
 	}
 }
 
-func (s *inductionService) sendInviteEmail(user *models.User, token string) {
+func (s *inductionService) sendInviteEmail(user *models.User, token string, programName string, blocks int, training bool) {
 	if s.brevoSvc == nil {
 		return
 	}
 	link := s.baseURL() + "/induccion/" + token
+	// Un ingreso es una bienvenida que condiciona el acceso; una capacitación
+	// le llega a quien ya trabaja y no cambia nada de su acceso.
 	subject := "Bienvenido a Obertrack — completa tu inducción"
 	html := BuildInductionInviteHTML(user.Name, link)
+	if training {
+		subject = "Nueva capacitación en Obertrack: " + programName
+		html = BuildTrainingInviteHTML(user.Name, programName, blocks, link)
+	}
 
 	go func() {
 		if err := s.brevoSvc.SendEmailKind(EmailKindInductionInvite, user.Email, user.Name, subject, html); err != nil {

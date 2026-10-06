@@ -219,6 +219,8 @@ export interface ProgramRecipient {
 export interface SendProgramResult {
   sent: number
   failed: { user_id: number; name: string; reason: string }[]
+  /** Además de la campanita salió el correo (se pidió y está encendido). */
+  emailed: boolean
 }
 
 export interface InductionProgramInput {
@@ -415,13 +417,18 @@ export const inductionService = {
 
   /** A quién le llega el programa y cómo va cada uno. */
   programRecipients: async (id: number) => {
-    const { data } = await api.get<{ data: ProgramRecipient[] }>(`/inductions/programs/${id}/recipients`)
-    return data.data
+    const { data } = await api.get<{ data: ProgramRecipient[]; email_enabled: boolean }>(
+      `/inductions/programs/${id}/recipients`
+    )
+    return { recipients: data.data, emailEnabled: data.email_enabled }
   },
 
   /** Envía el programa ahora, como capacitación, a los profesionales elegidos. */
-  sendProgram: async (id: number, userIds: number[]) => {
-    const { data } = await api.post<SendProgramResult>(`/inductions/programs/${id}/send`, { user_ids: userIds })
+  sendProgram: async (id: number, userIds: number[], sendEmail: boolean) => {
+    const { data } = await api.post<SendProgramResult>(`/inductions/programs/${id}/send`, {
+      user_ids: userIds,
+      send_email: sendEmail,
+    })
     return data
   },
 

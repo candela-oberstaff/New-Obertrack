@@ -605,7 +605,7 @@ func TestSendProgram_SigueConElRestoSiUnoFalla(t *testing.T) {
 	svc, repo, _ := newInductionSvc(enabledConfig(), ok, empresa)
 	repo.programs[3] = twoBlockProgram(3, "Especial")
 
-	res, err := svc.SendProgram(3, []uint{5, 6, 5})
+	res, err := svc.SendProgram(3, []uint{5, 6, 5}, true)
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
@@ -621,7 +621,7 @@ func TestSendProgram_SigueConElRestoSiUnoFalla(t *testing.T) {
 func TestSendProgram_InduccionApagada(t *testing.T) {
 	svc, repo, _ := newInductionSvc(&models.InductionConfig{ID: 1, IsActive: false, InviteTTLDays: 15}, professional(5))
 	repo.programs[3] = twoBlockProgram(3, "Especial")
-	if _, err := svc.SendProgram(3, []uint{5}); err == nil {
+	if _, err := svc.SendProgram(3, []uint{5}, true); err == nil {
 		t.Fatal("con la inducción apagada no debe enviarse")
 	}
 }

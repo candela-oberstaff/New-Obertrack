@@ -288,6 +288,9 @@ type idListPayload struct {
 	BlockIDs   []uint `json:"block_ids"`
 	CompanyIDs []uint `json:"company_ids"`
 	UserIDs    []uint `json:"user_ids"`
+	// SendEmail: el envío de un programa va también por correo. Sin el campo
+	// se asume que sí.
+	SendEmail *bool `json:"send_email"`
 }
 
 // SetProgramBlocks reemplaza la lista ordenada de bloques del programa.
@@ -362,7 +365,7 @@ func (h *InductionHandler) ProgramRecipients(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": recipients})
+	c.JSON(http.StatusOK, gin.H{"data": recipients, "email_enabled": h.svc.InviteEmailEnabled()})
 }
 
 // SendProgram envía el programa ahora a los profesionales elegidos.
@@ -377,7 +380,8 @@ func (h *InductionHandler) SendProgram(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
 		return
 	}
-	result, err := h.svc.SendProgram(id, req.UserIDs)
+	sendEmail := req.SendEmail == nil || *req.SendEmail
+	result, err := h.svc.SendProgram(id, req.UserIDs, sendEmail)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

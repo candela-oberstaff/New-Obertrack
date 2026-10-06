@@ -144,6 +144,24 @@ func BuildInductionInviteHTML(name, landingLink string) string {
 	return brandedEmailShell("Completa tu inducción", body)
 }
 
+// BuildTrainingInviteHTML: la invitación a una CAPACITACIÓN, para quien ya
+// trabaja en la plataforma. No es una bienvenida ni condiciona el acceso.
+func BuildTrainingInviteHTML(name, programName string, blocks int, landingLink string) string {
+	que := "una capacitación"
+	if blocks == 1 {
+		que = "una capacitación de 1 bloque"
+	} else if blocks > 1 {
+		que = fmt.Sprintf("una capacitación de %d bloques", blocks)
+	}
+	body := emailGreeting(name) +
+		emailParagraph("Tienes "+que+" por completar en Obertrack: <strong>"+programName+"</strong>.") +
+		emailParagraph("En cada bloque ves un video corto y respondes unas preguntas. Puedes hacerla cuando quieras; tu acceso a la plataforma no cambia mientras tanto.") +
+		emailButton("Empezar la capacitación", landingLink) +
+		emailNote("Este enlace es personal, no lo compartas.") +
+		emailFallbackLink(landingLink)
+	return brandedEmailShell("Nueva capacitación: "+programName, body)
+}
+
 // SurveyQuickOption es una opción de valoración que se pulsa DENTRO del correo:
 // cada una es un enlace que ya deja registrada esa respuesta.
 type SurveyQuickOption struct {
