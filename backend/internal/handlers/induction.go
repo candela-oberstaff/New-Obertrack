@@ -350,6 +350,41 @@ func (h *InductionHandler) SetProgramUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, program)
 }
 
+// ProgramRecipients lista a quién le llega el programa y cómo va cada uno.
+func (h *InductionHandler) ProgramRecipients(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Programa inválido"})
+		return
+	}
+	recipients, err := h.svc.ProgramRecipients(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": recipients})
+}
+
+// SendProgram envía el programa ahora a los profesionales elegidos.
+func (h *InductionHandler) SendProgram(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Programa inválido"})
+		return
+	}
+	var req idListPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+		return
+	}
+	result, err := h.svc.SendProgram(id, req.UserIDs)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 // --- Interno: Soporte ---
 
 // Status devuelve el detalle de la inducción de un profesional (bloques,

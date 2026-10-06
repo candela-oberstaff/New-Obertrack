@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, Route, Building2, Layers, Star, Users } from 'lucide-react'
+import { Plus, Pencil, Trash2, Route, Building2, Layers, Star, Users, Send } from 'lucide-react'
 
 import { useConfirm } from '../ui/ConfirmProvider'
 import { useNotification } from '../../context/NotificationContext'
 import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
 import type { TutorialAudienceOption } from '../../types/tutorials'
 import InductionProgramEditor from './InductionProgramEditor'
+import SendProgramModal from './SendProgramModal'
 import { draftFromProgram, programIssues } from './inductionReadiness'
 import { ReadinessBadge } from './ReadinessChecklist'
 import styles from './InductionSettings.module.css'
@@ -30,6 +31,8 @@ export default function InductionProgramList({ programs, library, companies, onC
   // null = lista; 'new' = creando; número = editando ese programa.
   const [editing, setEditing] = useState<number | 'new' | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  // Programa que se está enviando ahora (abre la ventana de destinatarios).
+  const [sending, setSending] = useState<InductionProgram | null>(null)
 
   const handleDelete = async (program: InductionProgram) => {
     const ok = await confirm({
@@ -98,6 +101,7 @@ export default function InductionProgramList({ programs, library, companies, onC
 
   return (
     <div>
+      {sending && <SendProgramModal program={sending} onClose={() => setSending(null)} />}
       <div className={styles.toolbar}>
         <p className={styles.intro}>
           Un programa es la lista ordenada de bloques que recorre el profesional. Asigna programas
@@ -176,6 +180,19 @@ export default function InductionProgramList({ programs, library, companies, onC
                 )}
               </div>
               <div className={styles.rowActions}>
+                <button
+                  type="button"
+                  className={styles.sendBtn}
+                  title={
+                    !p.is_active || p.block_count === 0
+                      ? 'Para enviarlo, el programa tiene que estar activo y tener bloques'
+                      : 'Enviar la inducción ahora a sus destinatarios'
+                  }
+                  disabled={!p.is_active || p.block_count === 0}
+                  onClick={() => setSending(p)}
+                >
+                  <Send size={14} /> Enviar
+                </button>
                 {!p.is_default && (
                   <button
                     type="button"

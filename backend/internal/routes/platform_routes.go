@@ -111,6 +111,8 @@ func registerPlatformRoutes(api *gin.RouterGroup, d *deps) {
 		inductions.PUT("/programs/:id/blocks", middleware.RequireSuperadmin(), d.induction.SetProgramBlocks)
 		inductions.PUT("/programs/:id/companies", middleware.RequireSuperadmin(), d.induction.SetProgramCompanies)
 		inductions.PUT("/programs/:id/users", middleware.RequireSuperadmin(), d.induction.SetProgramUsers)
+		inductions.GET("/programs/:id/recipients", middleware.RequireSuperadmin(), d.induction.ProgramRecipients)
+		inductions.POST("/programs/:id/send", middleware.RequireSuperadmin(), d.induction.SendProgram)
 		inductions.GET("/programs/:id/certificates", d.certificate.ForProgram)
 
 		// Plantillas de certificado (diseños + posición de campos). Leer lo

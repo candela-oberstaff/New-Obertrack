@@ -58,6 +58,11 @@ type InductionRepository interface {
 	// GetProgramForUser devuelve el programa asignado al profesional uno a
 	// uno, o nil sin error si no tiene.
 	GetProgramForUser(userID uint) (*models.InductionProgram, error)
+	// ListProgramRecipients devuelve los profesionales activos que reciben el
+	// programa: los asignados en persona, los de sus empresas (salvo quien
+	// tenga otro programa en persona) y, si es el por defecto, los de empresas
+	// sin programa. Con su última invitación, para mostrar su estado.
+	ListProgramRecipients(programID uint, isDefault bool) ([]ProgramRecipient, error)
 
 	// --- Invitaciones ---
 	CreateInvite(invite *models.InductionInvite, blocks []models.InductionInviteBlock) error
@@ -88,6 +93,22 @@ type InductionRepository interface {
 	// no dependa del módulo completo de encuestas.
 	GetSurveyWithQuestions(surveyID uint) (*models.Survey, error)
 	GetTutorial(tutorialID uint) (*models.Tutorial, error)
+}
+
+// ProgramRecipient es un profesional que recibe un programa, con el estado de
+// su inducción para decidir si tiene sentido enviársela.
+type ProgramRecipient struct {
+	UserID  uint   `json:"user_id"`
+	Name    string `json:"name"`
+	Email   string `json:"email"`
+	Company string `json:"company"`
+	// Source: "persona" (asignado uno a uno), "empresa" o "por_defecto".
+	Source string `json:"source"`
+	// Status de su última invitación: "" (nunca), pending, passed, blocked.
+	Status      string `json:"status"`
+	ProgramName string `json:"program_name"`
+	// PassedThis: ya aprobó ESTE programa alguna vez.
+	PassedThis bool `json:"passed_this"`
 }
 
 type inductionRepository struct {
@@ -440,6 +461,58 @@ func (r *inductionRepository) GetProgramForUser(userID uint) (*models.InductionP
 		return nil, err
 	}
 	return &program, nil
+}
+
+func (r *inductionRepository) ListProgramRecipients(programID uint, isDefault bool) ([]ProgramRecipient, error) {
+	recipients := []ProgramRecipient{}
+	err := r.db.Raw(`
+		SELECT u.id AS user_id, u.name, u.email,
+			COALESCE(NULLIF(c.company_name, ''), c.name, '') AS company,
+			CASE WHEN au.program_id = ? THEN 'persona'
+			     WHEN ac.program_id = ? THEN 'empresa'
+			     ELSE 'por_defecto' END AS source
+		FROM users u
+		LEFT JOIN users c ON c.id = u.empleador_id AND c.deleted_at IS NULL
+		LEFT JOIN induction_program_users au ON au.user_id = u.id
+		LEFT JOIN induction_program_companies ac ON ac.company_id = u.empleador_id
+		WHERE u.user_type = 'profesional' AND u.deleted_at IS NULL AND u.is_active
+		  AND (
+		    au.program_id = ?
+		    OR (au.user_id IS NULL AND ac.program_id = ?)
+		    OR (? AND au.user_id IS NULL AND ac.company_id IS NULL)
+		  )
+		ORDER BY u.name ASC, u.id ASC`, programID, programID, programID, programID, isDefault).
+		Scan(&recipients).Error
+	if err != nil || len(recipients) == 0 {
+		return recipients, err
+	}
+
+	ids := make([]uint, 0, len(recipients))
+	for _, rcp := range recipients {
+		ids = append(ids, rcp.UserID)
+	}
+	var invites []models.InductionInvite
+	if err := r.db.Where("user_id IN ?", ids).Order("created_at DESC, id DESC").Find(&invites).Error; err != nil {
+		return nil, err
+	}
+	latest := map[uint]models.InductionInvite{}
+	passed := map[uint]bool{}
+	for _, inv := range invites {
+		if _, ok := latest[inv.UserID]; !ok {
+			latest[inv.UserID] = inv
+		}
+		if inv.Status == models.InductionPassed && inv.ProgramID != nil && *inv.ProgramID == programID {
+			passed[inv.UserID] = true
+		}
+	}
+	for i := range recipients {
+		if inv, ok := latest[recipients[i].UserID]; ok {
+			recipients[i].Status = inv.Status
+			recipients[i].ProgramName = inv.ProgramName
+		}
+		recipients[i].PassedThis = passed[recipients[i].UserID]
+	}
+	return recipients, nil
 }
 
 func (r *inductionRepository) GetDefaultProgram() (*models.InductionProgram, error) {

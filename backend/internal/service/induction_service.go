@@ -52,6 +52,11 @@ type InductionService interface {
 	SetProgramBlocks(id uint, blockIDs []uint) (*models.InductionProgram, error)
 	SetProgramCompanies(id uint, companyIDs []uint) (*models.InductionProgram, error)
 	SetProgramUsers(id uint, userIDs []uint) (*models.InductionProgram, error)
+	// ProgramRecipients dice a quién le llega el programa y cómo va cada uno.
+	ProgramRecipients(id uint) ([]repository.ProgramRecipient, error)
+	// SendProgram envía el programa ahora, como capacitación (sin bloquear el
+	// acceso), a los profesionales elegidos. Sigue con el resto si uno falla.
+	SendProgram(id uint, userIDs []uint) (*SendProgramResult, error)
 
 	// InviteIfEnabled emite la invitación con el programa que le toca a la
 	// empresa del profesional (o el por defecto) y envía el correo con el
@@ -818,6 +823,69 @@ func (s *inductionService) SetProgramUsers(id uint, userIDs []uint) (*models.Ind
 		return nil, err
 	}
 	return s.repo.GetProgram(id)
+}
+
+func (s *inductionService) ProgramRecipients(id uint) ([]repository.ProgramRecipient, error) {
+	program, err := s.repo.GetProgram(id)
+	if err != nil {
+		return nil, errors.New("programa no encontrado")
+	}
+	return s.repo.ListProgramRecipients(program.ID, program.IsDefault)
+}
+
+// SendProgramResult resume un envío: a cuántos llegó y por qué no a los demás.
+type SendProgramResult struct {
+	Sent   int                 `json:"sent"`
+	Failed []SendProgramFailed `json:"failed"`
+}
+
+type SendProgramFailed struct {
+	UserID uint   `json:"user_id"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+func (s *inductionService) SendProgram(id uint, userIDs []uint) (*SendProgramResult, error) {
+	program, err := s.repo.GetProgram(id)
+	if err != nil {
+		return nil, errors.New("programa no encontrado")
+	}
+	if !program.Usable() {
+		return nil, errors.New("el programa está apagado o no tiene bloques")
+	}
+	cfg, err := s.repo.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.IsActive {
+		return nil, errors.New("la inducción está apagada: enciéndela antes de enviar")
+	}
+	if len(userIDs) == 0 {
+		return nil, errors.New("elige al menos un profesional")
+	}
+	if len(userIDs) > 500 {
+		return nil, errors.New("se pueden enviar como mucho 500 a la vez")
+	}
+	result := &SendProgramResult{Failed: []SendProgramFailed{}}
+	seen := map[uint]bool{}
+	for _, userID := range userIDs {
+		if userID == 0 || seen[userID] {
+			continue
+		}
+		seen[userID] = true
+		// Como capacitación: quien ya trabaja sigue trabajando. A quien aún no
+		// tiene acceso, Invite se lo bloquea igual hasta aprobar.
+		if err := s.Invite(userID, id, false); err != nil {
+			name := ""
+			if u, uErr := s.userRepo.GetByID(userID); uErr == nil {
+				name = u.Name
+			}
+			result.Failed = append(result.Failed, SendProgramFailed{UserID: userID, Name: name, Reason: err.Error()})
+			continue
+		}
+		result.Sent++
+	}
+	return result, nil
 }
 
 // resolveProgram decide qué programa recibe el profesional: el asignado a él

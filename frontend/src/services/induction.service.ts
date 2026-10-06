@@ -201,6 +201,26 @@ export interface InductionProgram {
   user_count: number
 }
 
+/** Profesional que recibe un programa, con el estado de su inducción. */
+export interface ProgramRecipient {
+  user_id: number
+  name: string
+  email: string
+  company: string
+  /** De dónde le llega: asignado en persona, por su empresa o por defecto. */
+  source: 'persona' | 'empresa' | 'por_defecto'
+  /** Su última invitación: '' (nunca), pending, passed, blocked. */
+  status: '' | 'pending' | 'passed' | 'blocked'
+  program_name: string
+  /** Ya aprobó ESTE programa alguna vez. */
+  passed_this: boolean
+}
+
+export interface SendProgramResult {
+  sent: number
+  failed: { user_id: number; name: string; reason: string }[]
+}
+
 export interface InductionProgramInput {
   name: string
   description: string
@@ -393,7 +413,19 @@ export const inductionService = {
     return data
   },
 
-  /** Reemplaza las empresas asignadas al programa. */
+  /** A quién le llega el programa y cómo va cada uno. */
+  programRecipients: async (id: number) => {
+    const { data } = await api.get<{ data: ProgramRecipient[] }>(`/inductions/programs/${id}/recipients`)
+    return data.data
+  },
+
+  /** Envía el programa ahora, como capacitación, a los profesionales elegidos. */
+  sendProgram: async (id: number, userIds: number[]) => {
+    const { data } = await api.post<SendProgramResult>(`/inductions/programs/${id}/send`, { user_ids: userIds })
+    return data
+  },
+
+  /** Reemplaza los profesionales asignados uno a uno al programa. */
   setProgramUsers: async (id: number, userIds: number[]) => {
     const { data } = await api.put<InductionProgram>(`/inductions/programs/${id}/users`, {
       user_ids: userIds,
@@ -401,6 +433,7 @@ export const inductionService = {
     return data
   },
 
+  /** Reemplaza las empresas asignadas al programa. */
   setProgramCompanies: async (id: number, companyIds: number[]) => {
     const { data } = await api.put<InductionProgram>(`/inductions/programs/${id}/companies`, {
       company_ids: companyIds,

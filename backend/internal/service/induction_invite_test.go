@@ -597,6 +597,35 @@ func TestInvite_ProgramaDeLaPersonaNoUsableCaeAlDeLaEmpresa(t *testing.T) {
 	}
 }
 
+// Enviar un programa: llega como capacitación y un fallo no frena al resto.
+func TestSendProgram_SigueConElRestoSiUnoFalla(t *testing.T) {
+	ok := professional(5)
+	ok.OnboardingStatus = models.OnboardingPassed
+	empresa := &models.User{ID: 6, Name: "Acme", UserType: models.UserTypeEmployer}
+	svc, repo, _ := newInductionSvc(enabledConfig(), ok, empresa)
+	repo.programs[3] = twoBlockProgram(3, "Especial")
+
+	res, err := svc.SendProgram(3, []uint{5, 6, 5})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if res.Sent != 1 || len(res.Failed) != 1 || res.Failed[0].UserID != 6 || res.Failed[0].Name != "Acme" {
+		t.Fatalf("debe enviar a 5 y reportar a 6 (repetidos una vez): %+v", res)
+	}
+	if repo.created == nil || repo.created.GatesAccess {
+		t.Fatalf("a quien ya trabaja le llega como capacitación, sin bloquear: %+v", repo.created)
+	}
+}
+
+// Con la inducción apagada no se envía nada.
+func TestSendProgram_InduccionApagada(t *testing.T) {
+	svc, repo, _ := newInductionSvc(&models.InductionConfig{ID: 1, IsActive: false, InviteTTLDays: 15}, professional(5))
+	repo.programs[3] = twoBlockProgram(3, "Especial")
+	if _, err := svc.SendProgram(3, []uint{5}); err == nil {
+		t.Fatal("con la inducción apagada no debe enviarse")
+	}
+}
+
 // Soporte puede elegir un programa concreto sin tocar la asignación.
 func TestInvite_ProgramaExplicito(t *testing.T) {
 	svc, repo, _ := newInductionSvc(enabledConfig(), professional(5))
