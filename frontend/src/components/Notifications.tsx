@@ -32,7 +32,8 @@ import {
   Award,
   GraduationCap,
   FileCheck,
-  LifeBuoy
+  LifeBuoy,
+  UserX
 } from 'lucide-react'
 import styles from './Notifications.module.css'
 
@@ -358,7 +359,9 @@ export default function Notifications() {
       case 'insignia': return <Award size={18} className="text-amber-500" />
       case 'capacitacion': return <GraduationCap size={18} className="text-fuchsia-500" />
       case 'certificado': return <FileCheck size={18} className="text-emerald-500" />
-      case 'ticket_cliente': return <LifeBuoy size={18} className="text-fuchsia-500" />
+      case 'ticket_cliente':
+      case 'support': return <LifeBuoy size={18} className="text-fuchsia-500" />
+      case 'inactivity_alert': return <UserX size={18} className="text-amber-500" />
       // Testimonios: la solicitud (a quien escribe) y el aviso de recepción
       // (a quien lo pidió). Comparten icono porque son el mismo asunto.
       case 'testimonial_request':
@@ -445,7 +448,9 @@ export default function Notifications() {
                   <span className={styles['notification-icon']}>{getNotificationIcon(notification.type)}</span>
                   <div className={styles['notification-content']}>
                     <div className={styles['notification-title']}>{notification.title}</div>
-                    <div className={styles['notification-message']}>{notification.message}</div>
+                    <div className={styles['notification-message']} title={notification.message}>
+                      {notification.message}
+                    </div>
                     <div className={styles['notification-time']}>{formatDate(notification.created_at)}</div>
                   </div>
                   {!notification.read_at && <span className={styles['unread-dot']}></span>}

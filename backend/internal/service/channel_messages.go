@@ -864,7 +864,19 @@ func (s *channelService) ContactSupport(userID uint, subject, message, priority,
 	if ticket.AssignedTo != nil {
 		s.notifySupport(*ticket.AssignedTo, channel.ID, "Soporte: nueva actividad", fmt.Sprintf("%s volvió a escribir en su solicitud de soporte.", who))
 		if companyCS != 0 && companyCS != *ticket.AssignedTo {
-			s.notifySupport(companyCS, channel.ID, "Tu cliente pidió soporte", fmt.Sprintf("%s escribió en su solicitud de soporte, que ya atiende otra persona.", who))
+			// Se nombra a quien la tiene: "otra persona" a secas no dice si
+			// hay que tomarla o si ya está en buenas manos.
+			holder := "otra persona"
+			if s.userRepo != nil {
+				if a, err := s.userRepo.GetByID(*ticket.AssignedTo); err == nil && a != nil && a.Name != "" {
+					holder = a.Name
+				}
+			}
+			since := ticket.CreatedAt
+			if ticket.AssignedAt != nil {
+				since = *ticket.AssignedAt
+			}
+			s.notifySupport(companyCS, channel.ID, "Tu cliente pidió soporte", fmt.Sprintf("%s escribió en su solicitud de soporte abierta, asignada a %s desde el %s.", who, holder, formatSupportDate(since)))
 		}
 	} else {
 		if companyCS != 0 {
@@ -1554,4 +1566,14 @@ func (s *channelService) GetAllUsers(tenantID uint, isSuperadmin bool, companyFi
 		return s.repo.GetActiveUsers(companyFilter, false)
 	}
 	return s.repo.GetActiveUsers(tenantID, isSuperadmin)
+}
+
+// formatSupportDate: «1 de julio» (con el año si no es el actual).
+func formatSupportDate(t time.Time) string {
+	months := []string{"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"}
+	out := fmt.Sprintf("%d de %s", t.Day(), months[t.Month()-1])
+	if t.Year() != time.Now().Year() {
+		out += fmt.Sprintf(" de %d", t.Year())
+	}
+	return out
 }

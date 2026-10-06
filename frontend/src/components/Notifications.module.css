@@ -195,16 +195,24 @@
   font-weight: 500;
   color: #111827;
   margin-bottom: 2px;
-  overflow-wrap: break-word;
-  word-break: break-all;
+  /* Corta solo palabras que no caben (un enlace largo), nunca a mitad de
+     una palabra normal. */
+  overflow-wrap: anywhere;
 }
 
 .notification-message {
   font-size: 13px;
   color: #6b7280;
   line-height: 1.4;
-  overflow-wrap: break-word;
-  word-break: break-all;
+  /* Un aviso largo no se come el panel: 4 líneas y el resto al pasar el ratón. */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+  /* Corta solo palabras que no caben (un enlace largo), nunca a mitad de
+     una palabra normal. */
+  overflow-wrap: anywhere;
 }
 
 .notification-time {
