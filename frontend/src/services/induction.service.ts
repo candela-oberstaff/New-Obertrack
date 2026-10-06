@@ -214,6 +214,8 @@ export interface ProgramRecipient {
   program_name: string
   /** Ya aprobó ESTE programa alguna vez. */
   passed_this: boolean
+  /** Lo que tiene en curso es su ingreso (con bloqueo): enviarle este lo reemplaza. */
+  pending_ingreso: boolean
 }
 
 export interface SendProgramResult {

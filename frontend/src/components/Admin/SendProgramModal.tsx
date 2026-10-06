@@ -22,8 +22,13 @@ const SOURCE_LABEL: Record<ProgramRecipient['source'], string> = {
   por_defecto: 'Programa por defecto',
 }
 
-/** Quien tiene otra capacitación en curso no puede recibir esta todavía. */
-const busy = (r: ProgramRecipient) => r.status === 'pending'
+/**
+ * Quien tiene otra CAPACITACIÓN en curso no puede recibir esta todavía. Un
+ * ingreso en curso sí se puede reemplazar (sigue sin acceso hasta aprobar).
+ */
+const busy = (r: ProgramRecipient) => r.status === 'pending' && !r.pending_ingreso
+/** Ingreso en curso: se puede, pero no se marca solo porque le cambia el programa. */
+const replacesIngreso = (r: ProgramRecipient) => r.status === 'pending' && r.pending_ingreso
 
 /**
  * Enviar un programa ahora a sus destinatarios. Llega como capacitación: quien
@@ -49,7 +54,7 @@ export default function SendProgramModal({ program, onClose }: Props) {
         if (cancelled) return
         setRecipients(list)
         setEmailEnabled(enabled)
-        setSelected(list.filter((r) => !busy(r) && !r.passed_this).map((r) => r.user_id))
+        setSelected(list.filter((r) => !busy(r) && !replacesIngreso(r) && !r.passed_this).map((r) => r.user_id))
       })
       .catch(() => {
         if (!cancelled) setRecipients([])
@@ -85,7 +90,13 @@ export default function SendProgramModal({ program, onClose }: Props) {
   }
 
   const statusTag = (r: ProgramRecipient) => {
-    if (busy(r)) return <span className={styles.tagWarn}>En curso: {r.program_name || 'otra capacitación'}</span>
+    if (busy(r)) return <span className={styles.tagWarn}>Capacitación en curso: {r.program_name || 'otra'}</span>
+    if (replacesIngreso(r))
+      return (
+        <span className={styles.tagWarn} title="Su inducción de ingreso pasa a ser este programa. Sigue sin acceso hasta aprobarla.">
+          Ingreso en curso ({r.program_name}): se reemplaza
+        </span>
+      )
     if (r.passed_this) return <span className={styles.tagOk}>Ya la completó</span>
     if (r.status === 'blocked') return <span className={styles.tagDanger}>Bloqueado en {r.program_name}</span>
     return null
@@ -214,7 +225,11 @@ export default function SendProgramModal({ program, onClose }: Props) {
                       role="checkbox"
                       aria-checked={on}
                       disabled={disabled}
-                      title={disabled ? 'Tiene otra capacitación en curso: podrá recibir esta cuando la termine.' : undefined}
+                      title={
+                        disabled
+                          ? 'Tiene otra capacitación en curso: podrá recibir esta cuando la termine, o reiníciala desde Soporte.'
+                          : undefined
+                      }
                       className={on ? styles.sendRowOn : styles.sendRow}
                       onClick={() => toggle(r.user_id)}
                     >

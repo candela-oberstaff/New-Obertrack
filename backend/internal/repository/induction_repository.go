@@ -109,6 +109,10 @@ type ProgramRecipient struct {
 	ProgramName string `json:"program_name"`
 	// PassedThis: ya aprobó ESTE programa alguna vez.
 	PassedThis bool `json:"passed_this"`
+	// PendingIngreso: lo que tiene en curso es su inducción de INGRESO (con
+	// bloqueo). Enviarle otro programa la reemplaza; una capacitación en
+	// curso, en cambio, no se reemplaza.
+	PendingIngreso bool `json:"pending_ingreso"`
 }
 
 type inductionRepository struct {
@@ -509,6 +513,7 @@ func (r *inductionRepository) ListProgramRecipients(programID uint, isDefault bo
 		if inv, ok := latest[recipients[i].UserID]; ok {
 			recipients[i].Status = inv.Status
 			recipients[i].ProgramName = inv.ProgramName
+			recipients[i].PendingIngreso = inv.Status == models.InductionPending && inv.GatesAccess
 		}
 		recipients[i].PassedThis = passed[recipients[i].UserID]
 	}
