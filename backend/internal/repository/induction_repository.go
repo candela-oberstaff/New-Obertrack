@@ -556,8 +556,20 @@ func (r *inductionRepository) GetProgramForCompany(companyID uint) (*models.Indu
 
 func (r *inductionRepository) CreateInvite(invite *models.InductionInvite, blocks []models.InductionInviteBlock) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		// gates_access lleva default:true: con el valor en false, GORM inserta
+		// el default y además lo copia al struct. Una capacitación quedaba
+		// guardada como ingreso con bloqueo. Se recuerda lo pedido antes de
+		// crear y se escribe explícito.
+		gates := invite.GatesAccess
 		if err := tx.Create(invite).Error; err != nil {
 			return err
+		}
+		if !gates {
+			if err := tx.Model(&models.InductionInvite{}).Where("id = ?", invite.ID).
+				Update("gates_access", false).Error; err != nil {
+				return err
+			}
+			invite.GatesAccess = false
 		}
 		for i := range blocks {
 			blocks[i].InviteID = invite.ID

@@ -3198,6 +3198,27 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.InductionVideo{})
 			},
 		},
+		{
+			// Capacitaciones guardadas como ingreso: gates_access tiene
+			// default:true y GORM lo aplicaba al crear con false. Un ingreso de
+			// verdad deja a la persona en onboarding_status = pending; una
+			// invitación pendiente con bloqueo de alguien que ya aprobó o no lo
+			// necesita era una capacitación. Se le quita el bloqueo para que, si
+			// agota intentos, no pierda el acceso.
+			ID: "202610061400_fix_training_gates_access",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					UPDATE induction_invites i SET gates_access = false
+					FROM users u
+					WHERE u.id = i.user_id AND i.status = 'pending' AND i.gates_access
+					  AND i.deleted_at IS NULL
+					  AND u.onboarding_status IN ('passed', 'not_required')`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// No hay forma de saber cuáles se tocaron: no se deshace.
+				return nil
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {
