@@ -101,6 +101,63 @@ func (h *InductionHandler) SaveConfig(c *gin.Context) {
 
 // --- Interno: biblioteca de bloques ---
 
+// --- Interno: biblioteca de videos ---
+
+func (h *InductionHandler) ListVideos(c *gin.Context) {
+	videos, err := h.svc.ListVideos()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": videos})
+}
+
+func (h *InductionHandler) CreateVideo(c *gin.Context) {
+	var in service.VideoInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+		return
+	}
+	video, err := h.svc.CreateVideo(middleware.GetUserID(c), in)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, video)
+}
+
+func (h *InductionHandler) UpdateVideo(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Video inválido"})
+		return
+	}
+	var in service.VideoInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+		return
+	}
+	video, err := h.svc.UpdateVideo(id, in)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, video)
+}
+
+func (h *InductionHandler) DeleteVideo(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Video inválido"})
+		return
+	}
+	if err := h.svc.DeleteVideo(id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Video eliminado"})
+}
+
 func (h *InductionHandler) ListBlocks(c *gin.Context) {
 	blocks, err := h.svc.ListBlocks()
 	if err != nil {
@@ -231,6 +288,9 @@ type idListPayload struct {
 	BlockIDs   []uint `json:"block_ids"`
 	CompanyIDs []uint `json:"company_ids"`
 	UserIDs    []uint `json:"user_ids"`
+	// SendEmail: el envío de un programa va también por correo. Sin el campo
+	// se asume que sí.
+	SendEmail *bool `json:"send_email"`
 }
 
 // SetProgramBlocks reemplaza la lista ordenada de bloques del programa.
@@ -291,6 +351,42 @@ func (h *InductionHandler) SetProgramUsers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, program)
+}
+
+// ProgramRecipients lista a quién le llega el programa y cómo va cada uno.
+func (h *InductionHandler) ProgramRecipients(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Programa inválido"})
+		return
+	}
+	recipients, err := h.svc.ProgramRecipients(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": recipients, "email_enabled": h.svc.InviteEmailEnabled()})
+}
+
+// SendProgram envía el programa ahora a los profesionales elegidos.
+func (h *InductionHandler) SendProgram(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Programa inválido"})
+		return
+	}
+	var req idListPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+		return
+	}
+	sendEmail := req.SendEmail == nil || *req.SendEmail
+	result, err := h.svc.SendProgram(id, req.UserIDs, sendEmail)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // --- Interno: Soporte ---

@@ -84,6 +84,9 @@ function today(): string {
   return toISODate(new Date())
 }
 
+/** Valor de la opción que abre el campo para escribir una categoría nueva. */
+const NEW_CATEGORY = '__nueva__'
+
 interface TutorialFormModalProps {
   isOpen: boolean
   isEditing: boolean
@@ -116,6 +119,14 @@ export function TutorialFormModal({
   // Casi todas las novedades se publican al guardarlas: las fechas solo
   // aparecen cuando alguien las pide.
   const [scheduling, setScheduling] = useState(() => !!formData.publish_at || !!formData.expires_at)
+  // Categorías elegibles: las que ya usan las novedades, más «General» y la
+  // que trae la novedad (aunque ya nadie más la use).
+  const categoryOptions = useMemo(() => {
+    const set = new Set(['General', ...availableCategories])
+    if (formData.category.trim()) set.add(formData.category.trim())
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'))
+  }, [availableCategories, formData.category])
+  const [newCategory, setNewCategory] = useState(false)
 
   const isVideo = formData.content_type === 'video'
   const urlInfo = useMemo(() => parseVideoUrl(formData.google_drive_url), [formData.google_drive_url])
@@ -295,18 +306,46 @@ export function TutorialFormModal({
 
         <div className={`${field} ${isVideo ? half : ''}`}>
           <label>Categoría</label>
-          <input
-            type="text"
-            list="tutorial-categories"
-            value={formData.category}
-            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-            placeholder="Ej: Onboarding, Tareas..."
-          />
-          <datalist id="tutorial-categories">
-            {availableCategories.map((cat) => (
-              <option key={cat} value={cat} />
-            ))}
-          </datalist>
+          {/* El datalist nativo solo mostraba las categorías que coincidían con
+              lo ya escrito (con «General» puesto, solo «General») y con el
+              estilo del navegador. Aquí se elige de la lista o se crea una. */}
+          {newCategory ? (
+            <div className={styles['tutorial-category-new']}>
+              <input
+                type="text"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                placeholder="Nombre de la nueva categoría"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setNewCategory(false)
+                  if (!formData.category.trim()) setFormData({ ...formData, category: 'General' })
+                }}
+              >
+                Elegir de la lista
+              </button>
+            </div>
+          ) : (
+            <Select
+              fullWidth
+              value={formData.category}
+              onChange={(v) => {
+                if (v === NEW_CATEGORY) {
+                  setNewCategory(true)
+                  setFormData({ ...formData, category: '' })
+                } else {
+                  setFormData({ ...formData, category: String(v) })
+                }
+              }}
+              options={[
+                ...categoryOptions.map((cat) => ({ value: cat, label: cat })),
+                { value: NEW_CATEGORY, label: '+ Nueva categoría…' },
+              ]}
+            />
+          )}
         </div>
 
         {isVideo && (

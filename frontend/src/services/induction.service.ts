@@ -108,14 +108,40 @@ export interface InductionConfig {
 }
 
 /**
- * Bloque de la biblioteca: un video de Novedades (opcional) más su propio
- * cuestionario calificado. Reutilizable en cualquier programa.
+ * Video de la biblioteca de la inducción. Vive aparte de Novedades: no se
+ * anuncia ni cuenta vistas; solo lo ve quien recorre el bloque que lo usa.
+ */
+export interface InductionVideo {
+  id: number
+  title: string
+  description: string
+  /** Enlace de Drive o YouTube. */
+  video_url: string
+  duration_min: number
+  created_by: number
+  created_at: string
+  updated_at: string
+  /** Bloques que lo usan (solo lectura). */
+  block_names: string[]
+}
+
+export interface InductionVideoInput {
+  title: string
+  description: string
+  video_url: string
+  duration_min: number
+}
+
+/**
+ * Bloque de la biblioteca: un video de la biblioteca de la inducción
+ * (opcional) más su propio cuestionario calificado. Reutilizable en cualquier
+ * programa.
  */
 export interface InductionBlock {
   id: number
   name: string
   description: string
-  tutorial_id?: number | null
+  video_id?: number | null
   survey_id: number
   /** Mínimo propio; null = usa el del programa. */
   passing_score?: number | null
@@ -127,9 +153,8 @@ export interface InductionBlock {
   created_at: string
   updated_at: string
   // Solo lectura, para el panel.
-  tutorial_title?: string
-  /** El video está publicado en Novedades (se anuncia a toda su audiencia). */
-  tutorial_visible?: boolean
+  video_title?: string
+  video_url?: string
   survey_title?: string
   question_count: number
   program_names: string[]
@@ -140,7 +165,7 @@ export interface InductionBlock {
 export interface InductionBlockInput {
   name: string
   description: string
-  tutorial_id?: number | null
+  video_id?: number | null
   survey_id: number
   passing_score?: number | null
   badge_title?: string
@@ -174,6 +199,30 @@ export interface InductionProgram {
   block_count: number
   company_count: number
   user_count: number
+}
+
+/** Profesional que recibe un programa, con el estado de su inducción. */
+export interface ProgramRecipient {
+  user_id: number
+  name: string
+  email: string
+  company: string
+  /** De dónde le llega: asignado en persona, por su empresa o por defecto. */
+  source: 'persona' | 'empresa' | 'por_defecto'
+  /** Su última invitación: '' (nunca), pending, passed, blocked. */
+  status: '' | 'pending' | 'passed' | 'blocked'
+  program_name: string
+  /** Ya aprobó ESTE programa alguna vez. */
+  passed_this: boolean
+  /** Lo que tiene en curso es su ingreso (con bloqueo): enviarle este lo reemplaza. */
+  pending_ingreso: boolean
+}
+
+export interface SendProgramResult {
+  sent: number
+  failed: { user_id: number; name: string; reason: string }[]
+  /** Además de la campanita salió el correo (se pidió y está encendido). */
+  emailed: boolean
 }
 
 export interface InductionProgramInput {
@@ -295,6 +344,25 @@ export const inductionService = {
   },
 
   // Biblioteca de bloques
+  listVideos: async () => {
+    const { data } = await api.get<{ data: InductionVideo[] }>('/inductions/videos')
+    return data.data
+  },
+
+  createVideo: async (input: InductionVideoInput) => {
+    const { data } = await api.post<InductionVideo>('/inductions/videos', input)
+    return data
+  },
+
+  updateVideo: async (id: number, input: InductionVideoInput) => {
+    const { data } = await api.put<InductionVideo>(`/inductions/videos/${id}`, input)
+    return data
+  },
+
+  deleteVideo: async (id: number) => {
+    await api.delete(`/inductions/videos/${id}`)
+  },
+
   listBlocks: async () => {
     const { data } = await api.get<{ data: InductionBlock[] }>('/inductions/blocks')
     return data.data
@@ -349,7 +417,24 @@ export const inductionService = {
     return data
   },
 
-  /** Reemplaza las empresas asignadas al programa. */
+  /** A quién le llega el programa y cómo va cada uno. */
+  programRecipients: async (id: number) => {
+    const { data } = await api.get<{ data: ProgramRecipient[]; email_enabled: boolean }>(
+      `/inductions/programs/${id}/recipients`
+    )
+    return { recipients: data.data, emailEnabled: data.email_enabled }
+  },
+
+  /** Envía el programa ahora, como capacitación, a los profesionales elegidos. */
+  sendProgram: async (id: number, userIds: number[], sendEmail: boolean) => {
+    const { data } = await api.post<SendProgramResult>(`/inductions/programs/${id}/send`, {
+      user_ids: userIds,
+      send_email: sendEmail,
+    })
+    return data
+  },
+
+  /** Reemplaza los profesionales asignados uno a uno al programa. */
   setProgramUsers: async (id: number, userIds: number[]) => {
     const { data } = await api.put<InductionProgram>(`/inductions/programs/${id}/users`, {
       user_ids: userIds,
@@ -357,6 +442,7 @@ export const inductionService = {
     return data
   },
 
+  /** Reemplaza las empresas asignadas al programa. */
   setProgramCompanies: async (id: number, companyIds: number[]) => {
     const { data } = await api.put<InductionProgram>(`/inductions/programs/${id}/companies`, {
       company_ids: companyIds,

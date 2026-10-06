@@ -2887,3 +2887,289 @@ div > .propLabel {
   border-radius: 8px;
   padding: 4px;
 }
+
+/* --- Biblioteca de videos de la inducción --- */
+.videoFormSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .videoFormSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+.videoFormFields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.videoFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.videoOptionNew {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 2px dashed #e2e8f0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  color: #a21caf;
+}
+
+.videoOptionNew:hover {
+  border-color: var(--primary);
+}
+
+.videoOptionNew .videoThumb {
+  background: #fdf4ff;
+  color: var(--primary);
+}
+
+.libVideoThumb {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid #f1f5f9;
+  background: #0f172a;
+  cursor: pointer;
+}
+
+.libVideoDuration {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.8);
+  color: white;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+/* Cómo se arregla un aviso: detrás del problema, más tenue. */
+.readinessFix {
+  color: #64748b;
+  font-weight: 400;
+}
+
+/* --- Enviar un programa --- */
+.sendBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #f0abfc;
+  background: #fdf4ff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #a21caf;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sendBtn:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.sendBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sendNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.sendNote svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--primary);
+}
+
+.sendList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.sendRow,
+.sendRowOn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.sendRow:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+.sendRow:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.sendRowOn {
+  border-color: var(--primary);
+  background: #fdf4ff;
+}
+
+.sendCheck {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1.5px solid #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: white;
+  color: white;
+}
+
+.sendRowOn .sendCheck {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.sendResult {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 12px 0;
+  font-size: 13.5px;
+  color: #64748b;
+}
+
+.sendResult > svg {
+  color: #16a34a;
+}
+
+.sendResult > strong {
+  font-size: 17px;
+  color: var(--black, #0f172a);
+}
+
+/* Por dónde le llega: campanita siempre; correo si se pide y está encendido. */
+.sendChannels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.sendChannel,
+.sendChannelOff {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--black, #0f172a);
+}
+
+label.sendChannel {
+  cursor: pointer;
+}
+
+.sendChannel small,
+.sendChannelOff small {
+  font-size: 12px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.sendChannel input,
+.sendChannelOff input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.sendChannel svg {
+  color: var(--primary);
+}
+
+.sendChannelOff {
+  color: #94a3b8;
+  background: #f8fafc;
+}
+
+.sendChannelOff small {
+  color: #b45309;
+}
+
+/* «Guardar y enviar» en la barra del editor de programa. */
+.sendBtnLg {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid #f0abfc;
+  background: #fdf4ff;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #a21caf;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sendBtnLg:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.sendBtnLg:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

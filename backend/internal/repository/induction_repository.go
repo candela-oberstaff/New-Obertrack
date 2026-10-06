@@ -18,6 +18,15 @@ type InductionRepository interface {
 	GetConfig() (*models.InductionConfig, error)
 	SaveConfig(cfg *models.InductionConfig) error
 
+	// --- Biblioteca de videos ---
+	ListVideos() ([]models.InductionVideo, error)
+	GetVideo(id uint) (*models.InductionVideo, error)
+	CreateVideo(video *models.InductionVideo) error
+	UpdateVideo(id uint, updates map[string]interface{}) error
+	DeleteVideo(id uint) error
+	// CountBlocksUsingVideo dice cuántos bloques vivos usan el video.
+	CountBlocksUsingVideo(videoID uint) (int64, error)
+
 	// --- Biblioteca de bloques ---
 	ListBlocks() ([]models.InductionBlock, error)
 	GetBlock(id uint) (*models.InductionBlock, error)
@@ -49,6 +58,11 @@ type InductionRepository interface {
 	// GetProgramForUser devuelve el programa asignado al profesional uno a
 	// uno, o nil sin error si no tiene.
 	GetProgramForUser(userID uint) (*models.InductionProgram, error)
+	// ListProgramRecipients devuelve los profesionales activos que reciben el
+	// programa: los asignados en persona, los de sus empresas (salvo quien
+	// tenga otro programa en persona) y, si es el por defecto, los de empresas
+	// sin programa. Con su última invitación, para mostrar su estado.
+	ListProgramRecipients(programID uint, isDefault bool) ([]ProgramRecipient, error)
 
 	// --- Invitaciones ---
 	CreateInvite(invite *models.InductionInvite, blocks []models.InductionInviteBlock) error
@@ -79,6 +93,26 @@ type InductionRepository interface {
 	// no dependa del módulo completo de encuestas.
 	GetSurveyWithQuestions(surveyID uint) (*models.Survey, error)
 	GetTutorial(tutorialID uint) (*models.Tutorial, error)
+}
+
+// ProgramRecipient es un profesional que recibe un programa, con el estado de
+// su inducción para decidir si tiene sentido enviársela.
+type ProgramRecipient struct {
+	UserID  uint   `json:"user_id"`
+	Name    string `json:"name"`
+	Email   string `json:"email"`
+	Company string `json:"company"`
+	// Source: "persona" (asignado uno a uno), "empresa" o "por_defecto".
+	Source string `json:"source"`
+	// Status de su última invitación: "" (nunca), pending, passed, blocked.
+	Status      string `json:"status"`
+	ProgramName string `json:"program_name"`
+	// PassedThis: ya aprobó ESTE programa alguna vez.
+	PassedThis bool `json:"passed_this"`
+	// PendingIngreso: lo que tiene en curso es su inducción de INGRESO (con
+	// bloqueo). Enviarle otro programa la reemplaza; una capacitación en
+	// curso, en cambio, no se reemplaza.
+	PendingIngreso bool `json:"pending_ingreso"`
 }
 
 type inductionRepository struct {
@@ -162,31 +196,24 @@ func (r *inductionRepository) enrichBlocks(blocks []models.InductionBlock) error
 		return nil
 	}
 	blockIDs := make([]uint, 0, len(blocks))
-	tutorialIDs := make([]uint, 0, len(blocks))
+	videoIDs := make([]uint, 0, len(blocks))
 	surveyIDs := make([]uint, 0, len(blocks))
 	for _, b := range blocks {
 		blockIDs = append(blockIDs, b.ID)
 		surveyIDs = append(surveyIDs, b.SurveyID)
-		if b.TutorialID != nil && *b.TutorialID > 0 {
-			tutorialIDs = append(tutorialIDs, *b.TutorialID)
+		if b.VideoID != nil && *b.VideoID > 0 {
+			videoIDs = append(videoIDs, *b.VideoID)
 		}
 	}
 
-	tutorialTitles := map[uint]string{}
-	tutorialVisible := map[uint]bool{}
-	if len(tutorialIDs) > 0 {
-		var rows []struct {
-			ID       uint
-			Title    string
-			IsActive bool
-		}
-		if err := r.db.Table("tutorials").Select("id, title, is_active").
-			Where("id IN ? AND deleted_at IS NULL", tutorialIDs).Scan(&rows).Error; err != nil {
+	videos := map[uint]models.InductionVideo{}
+	if len(videoIDs) > 0 {
+		var rows []models.InductionVideo
+		if err := r.db.Where("id IN ?", videoIDs).Find(&rows).Error; err != nil {
 			return err
 		}
 		for _, row := range rows {
-			tutorialTitles[row.ID] = row.Title
-			tutorialVisible[row.ID] = row.IsActive
+			videos[row.ID] = row
 		}
 	}
 
@@ -224,9 +251,11 @@ func (r *inductionRepository) enrichBlocks(blocks []models.InductionBlock) error
 
 	for i := range blocks {
 		b := &blocks[i]
-		if b.TutorialID != nil {
-			b.TutorialTitle = tutorialTitles[*b.TutorialID]
-			b.TutorialVisible = tutorialVisible[*b.TutorialID]
+		if b.VideoID != nil {
+			if v, ok := videos[*b.VideoID]; ok {
+				b.VideoTitle = v.Title
+				b.VideoURL = v.VideoURL
+			}
 		}
 		if s, ok := surveys[b.SurveyID]; ok {
 			b.SurveyTitle = s.Title
@@ -438,6 +467,59 @@ func (r *inductionRepository) GetProgramForUser(userID uint) (*models.InductionP
 	return &program, nil
 }
 
+func (r *inductionRepository) ListProgramRecipients(programID uint, isDefault bool) ([]ProgramRecipient, error) {
+	recipients := []ProgramRecipient{}
+	err := r.db.Raw(`
+		SELECT u.id AS user_id, u.name, u.email,
+			COALESCE(NULLIF(c.company_name, ''), c.name, '') AS company,
+			CASE WHEN au.program_id = ? THEN 'persona'
+			     WHEN ac.program_id = ? THEN 'empresa'
+			     ELSE 'por_defecto' END AS source
+		FROM users u
+		LEFT JOIN users c ON c.id = u.empleador_id AND c.deleted_at IS NULL
+		LEFT JOIN induction_program_users au ON au.user_id = u.id
+		LEFT JOIN induction_program_companies ac ON ac.company_id = u.empleador_id
+		WHERE u.user_type = 'profesional' AND u.deleted_at IS NULL AND u.is_active
+		  AND (
+		    au.program_id = ?
+		    OR (au.user_id IS NULL AND ac.program_id = ?)
+		    OR (? AND au.user_id IS NULL AND ac.company_id IS NULL)
+		  )
+		ORDER BY u.name ASC, u.id ASC`, programID, programID, programID, programID, isDefault).
+		Scan(&recipients).Error
+	if err != nil || len(recipients) == 0 {
+		return recipients, err
+	}
+
+	ids := make([]uint, 0, len(recipients))
+	for _, rcp := range recipients {
+		ids = append(ids, rcp.UserID)
+	}
+	var invites []models.InductionInvite
+	if err := r.db.Where("user_id IN ?", ids).Order("created_at DESC, id DESC").Find(&invites).Error; err != nil {
+		return nil, err
+	}
+	latest := map[uint]models.InductionInvite{}
+	passed := map[uint]bool{}
+	for _, inv := range invites {
+		if _, ok := latest[inv.UserID]; !ok {
+			latest[inv.UserID] = inv
+		}
+		if inv.Status == models.InductionPassed && inv.ProgramID != nil && *inv.ProgramID == programID {
+			passed[inv.UserID] = true
+		}
+	}
+	for i := range recipients {
+		if inv, ok := latest[recipients[i].UserID]; ok {
+			recipients[i].Status = inv.Status
+			recipients[i].ProgramName = inv.ProgramName
+			recipients[i].PendingIngreso = inv.Status == models.InductionPending && inv.GatesAccess
+		}
+		recipients[i].PassedThis = passed[recipients[i].UserID]
+	}
+	return recipients, nil
+}
+
 func (r *inductionRepository) GetDefaultProgram() (*models.InductionProgram, error) {
 	var program models.InductionProgram
 	err := r.db.Where("is_default = ?", true).First(&program).Error
@@ -479,8 +561,20 @@ func (r *inductionRepository) GetProgramForCompany(companyID uint) (*models.Indu
 
 func (r *inductionRepository) CreateInvite(invite *models.InductionInvite, blocks []models.InductionInviteBlock) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		// gates_access lleva default:true: con el valor en false, GORM inserta
+		// el default y además lo copia al struct. Una capacitación quedaba
+		// guardada como ingreso con bloqueo. Se recuerda lo pedido antes de
+		// crear y se escribe explícito.
+		gates := invite.GatesAccess
 		if err := tx.Create(invite).Error; err != nil {
 			return err
+		}
+		if !gates {
+			if err := tx.Model(&models.InductionInvite{}).Where("id = ?", invite.ID).
+				Update("gates_access", false).Error; err != nil {
+				return err
+			}
+			invite.GatesAccess = false
 		}
 		for i := range blocks {
 			blocks[i].InviteID = invite.ID
@@ -600,6 +694,69 @@ func (r *inductionRepository) GetSurveyWithQuestions(surveyID uint) (*models.Sur
 		return nil, err
 	}
 	return &survey, nil
+}
+
+// --- Biblioteca de videos ----------------------------------------------------
+
+func (r *inductionRepository) ListVideos() ([]models.InductionVideo, error) {
+	var videos []models.InductionVideo
+	if err := r.db.Order("title ASC, id ASC").Find(&videos).Error; err != nil {
+		return nil, err
+	}
+	if len(videos) == 0 {
+		return videos, nil
+	}
+	ids := make([]uint, 0, len(videos))
+	for _, v := range videos {
+		ids = append(ids, v.ID)
+	}
+	var usage []struct {
+		VideoID uint
+		Name    string
+	}
+	if err := r.db.Table("induction_blocks").Select("video_id, name").
+		Where("video_id IN ? AND deleted_at IS NULL", ids).
+		Order("name ASC").Scan(&usage).Error; err != nil {
+		return nil, err
+	}
+	names := map[uint][]string{}
+	for _, row := range usage {
+		names[row.VideoID] = append(names[row.VideoID], row.Name)
+	}
+	for i := range videos {
+		videos[i].BlockNames = names[videos[i].ID]
+		if videos[i].BlockNames == nil {
+			videos[i].BlockNames = []string{}
+		}
+	}
+	return videos, nil
+}
+
+func (r *inductionRepository) GetVideo(id uint) (*models.InductionVideo, error) {
+	var video models.InductionVideo
+	if err := r.db.First(&video, id).Error; err != nil {
+		return nil, err
+	}
+	video.BlockNames = []string{}
+	return &video, nil
+}
+
+func (r *inductionRepository) CreateVideo(video *models.InductionVideo) error {
+	return r.db.Create(video).Error
+}
+
+func (r *inductionRepository) UpdateVideo(id uint, updates map[string]interface{}) error {
+	return r.db.Model(&models.InductionVideo{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *inductionRepository) DeleteVideo(id uint) error {
+	return r.db.Delete(&models.InductionVideo{}, id).Error
+}
+
+func (r *inductionRepository) CountBlocksUsingVideo(videoID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.InductionBlock{}).Where("video_id = ?", videoID).Count(&count).Error
+	return count, err
 }
 
 func (r *inductionRepository) GetTutorial(tutorialID uint) (*models.Tutorial, error) {

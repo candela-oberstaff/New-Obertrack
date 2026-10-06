@@ -1,84 +1,66 @@
 import { useMemo, useState } from 'react'
-import { Ban, EyeOff, Eye, ListChecks, Play, Search } from 'lucide-react'
+import { Ban, ListChecks, Play, Plus, Search } from 'lucide-react'
 
-import type { Tutorial } from '../../types/tutorials'
-import { getProviderLabel, parseVideoUrl } from '../Tutorials/utils'
+import type { InductionVideo } from '../../services/induction.service'
+import { getProviderLabel, parseVideoUrl, videoThumbnailUrl } from '../Tutorials/utils'
+import InductionVideoForm from './InductionVideoForm'
 import styles from './InductionSettings.module.css'
 
 interface Props {
-  /** Novedades de tipo video. */
-  videos: Tutorial[]
+  /** Videos de la biblioteca de la inducción. */
+  videos: InductionVideo[]
   /** 0 = sin video. */
   value: number
   onChange: (id: number) => void
-  /**
-   * Oculta el video en Novedades sin salir del bloque. Ausente = no se ofrece.
-   * Devuelve cuando terminó (o lanza si falló).
-   */
-  onHide?: (id: number) => Promise<void>
+  /** Un video recién agregado a la biblioteca desde aquí. */
+  onCreated: (video: InductionVideo) => void
 }
 
-/** Miniatura del video: YouTube y Drive la publican por id. */
-function thumbnailUrl(url: string): string | null {
-  const info = parseVideoUrl(url)
-  if (!info) return null
-  return info.provider === 'youtube'
-    ? `https://img.youtube.com/vi/${info.videoId}/mqdefault.jpg`
-    : `https://drive.google.com/thumbnail?id=${info.videoId}&sz=w320`
-}
-
-function Thumb({ video }: { video: Tutorial }) {
-  const src = thumbnailUrl(video.google_drive_url)
+function Thumb({ video }: { video: InductionVideo }) {
+  const src = videoThumbnailUrl(video.video_url)
   const [failed, setFailed] = useState(false)
   return (
     <div className={styles.videoThumb}>
-      {src && !failed ? (
-        <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />
-      ) : (
-        <Play size={22} />
-      )}
+      {src && !failed ? <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} /> : <Play size={22} />}
     </div>
   )
 }
 
 /**
- * Elegir el video del bloque: la lista con miniaturas a la izquierda y, a la
- * derecha, el elegido con su reproductor para confirmar que es el correcto.
- * Cambiar de video es un clic en otra tarjeta.
+ * Elegir el video del bloque desde la biblioteca de la inducción: la lista con
+ * miniaturas a la izquierda y el elegido con su reproductor a la derecha. Si
+ * el video aún no está, se agrega aquí mismo sin salir del bloque.
  */
-export default function InductionVideoPicker({ videos, value, onChange, onHide }: Props) {
+export default function InductionVideoPicker({ videos, value, onChange, onCreated }: Props) {
   const selected = videos.find((v) => v.id === value) ?? null
   const [query, setQuery] = useState('')
-  const [hiding, setHiding] = useState(false)
+  const [adding, setAdding] = useState(false)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return q ? videos.filter((v) => v.title.toLowerCase().includes(q)) : videos
   }, [videos, query])
 
-  if (videos.length === 0) {
+  if (adding) {
     return (
-      <div className={styles.videoEmpty}>
-        <Play size={22} />
-        <span>
-          No hay novedades de tipo video todavía. Crea una desde la pestaña Novedades (puede quedar
-          oculta) y vuelve aquí. Mientras tanto, el bloque puede ser solo cuestionario.
-        </span>
+      <div className={styles.pickPanel}>
+        <span className={styles.blockPreviewLabel}>Nuevo video para la biblioteca</span>
+        <div style={{ marginTop: 10 }}>
+          <InductionVideoForm
+            video={null}
+            onSaved={(video) => {
+              setAdding(false)
+              onCreated(video)
+              onChange(video.id)
+            }}
+            onCancel={() => setAdding(false)}
+          />
+        </div>
       </div>
     )
   }
 
-  const info = selected ? parseVideoUrl(selected.google_drive_url) : null
-
-  const hide = async () => {
-    if (!selected || !onHide) return
-    setHiding(true)
-    try {
-      await onHide(selected.id)
-    } finally {
-      setHiding(false)
-    }
-  }
+  const info = selected ? parseVideoUrl(selected.video_url) : null
 
   return (
     <div className={styles.videoSplit}>
@@ -95,7 +77,7 @@ export default function InductionVideoPicker({ videos, value, onChange, onHide }
             />
           </div>
         )}
-        <div className={styles.videoGrid} role="listbox" aria-label="Videos de Novedades">
+        <div className={styles.videoGrid} role="listbox" aria-label="Videos de la biblioteca">
           <button
             type="button"
             role="option"
@@ -122,14 +104,20 @@ export default function InductionVideoPicker({ videos, value, onChange, onHide }
               <Thumb video={v} />
               <span className={styles.videoTitle}>{v.title}</span>
               <span className={styles.videoMeta}>
-                {v.is_active ? <Eye size={12} /> : <EyeOff size={12} />}
-                {v.is_active ? 'Visible' : 'Oculta'}
-                {v.duration_min > 0 && ` · ${v.duration_min} min`}
+                {v.duration_min > 0 ? `${v.duration_min} min` : 'Video'}
+                {v.block_names.length > 0 && ` · en ${v.block_names.length} ${v.block_names.length === 1 ? 'bloque' : 'bloques'}`}
               </span>
             </button>
           ))}
+          <button type="button" className={styles.videoOptionNew} onClick={() => setAdding(true)}>
+            <div className={styles.videoThumb}>
+              <Plus size={22} />
+            </div>
+            <span className={styles.videoTitle}>Nuevo video</span>
+            <span className={styles.videoMeta}>Agregarlo a la biblioteca</span>
+          </button>
         </div>
-        {filtered.length === 0 && <p className={styles.hint}>Ningún video coincide con «{query}».</p>}
+        {filtered.length === 0 && query && <p className={styles.hint}>Ningún video coincide con «{query}».</p>}
       </div>
 
       {/* --- El elegido --- */}
@@ -158,30 +146,18 @@ export default function InductionVideoPicker({ videos, value, onChange, onHide }
                 {info && <span>{getProviderLabel(info.provider)}</span>}
                 {selected.duration_min > 0 && <span>· {selected.duration_min} min</span>}
               </div>
-              {selected.is_active ? (
-                <div className={styles.videoNotice}>
-                  <span>
-                    <strong>Visible en Novedades:</strong> se anuncia a toda su audiencia. Para
-                    inducción conviene ocultarlo; el bloque lo reproduce igual.
-                  </span>
-                  {onHide && (
-                    <button type="button" className={styles.ghostBtnSm} disabled={hiding} onClick={hide}>
-                      <EyeOff size={14} /> {hiding ? 'Ocultando...' : 'Ocultar de Novedades'}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <span className={styles.videoOk}>
-                  <EyeOff size={13} /> Oculto en Novedades: solo lo ve quien hace la inducción.
-                </span>
-              )}
+              {selected.description && <p className={styles.hint} style={{ margin: '4px 0 0' }}>{selected.description}</p>}
             </div>
           </div>
         ) : (
           <div className={styles.videoNone}>
             <ListChecks size={26} />
             <strong>Sin video</strong>
-            <span>El profesional pasa directo al cuestionario. Elige una tarjeta para agregar uno.</span>
+            <span>
+              {videos.length === 0
+                ? 'La biblioteca está vacía. Agrega el primer video con «Nuevo video».'
+                : 'El profesional pasa directo al cuestionario. Elige una tarjeta para agregar uno.'}
+            </span>
           </div>
         )}
       </aside>

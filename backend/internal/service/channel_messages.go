@@ -857,10 +857,35 @@ func (s *channelService) ContactSupport(userID uint, subject, message, priority,
 	if user.CompanyName != "" {
 		who = fmt.Sprintf("%s (%s)", user.Name, user.CompanyName)
 	}
+	// El Customer Success asignado a la empresa se entera siempre de que su
+	// cliente pidió soporte, aunque la solicitud siga abierta de antes y la
+	// tenga otra persona. Puede ser un superadmin, que no está en activeCS.
+	companyCS := s.companyCSID(ticket.TenantID)
 	if ticket.AssignedTo != nil {
 		s.notifySupport(*ticket.AssignedTo, channel.ID, "Soporte: nueva actividad", fmt.Sprintf("%s volvió a escribir en su solicitud de soporte.", who))
+		if companyCS != 0 && companyCS != *ticket.AssignedTo {
+			// Se nombra a quien la tiene: "otra persona" a secas no dice si
+			// hay que tomarla o si ya está en buenas manos.
+			holder := "otra persona"
+			if s.userRepo != nil {
+				if a, err := s.userRepo.GetByID(*ticket.AssignedTo); err == nil && a != nil && a.Name != "" {
+					holder = a.Name
+				}
+			}
+			since := ticket.CreatedAt
+			if ticket.AssignedAt != nil {
+				since = *ticket.AssignedAt
+			}
+			s.notifySupport(companyCS, channel.ID, "Tu cliente pidió soporte", fmt.Sprintf("%s escribió en su solicitud de soporte abierta, asignada a %s desde el %s.", who, holder, formatSupportDate(since)))
+		}
 	} else {
+		if companyCS != 0 {
+			s.notifySupport(companyCS, channel.ID, "Nueva solicitud de tu cliente", fmt.Sprintf("%s solicita soporte. Acéptala para atenderla.", who))
+		}
 		for _, cs := range activeCS {
+			if cs.ID == companyCS {
+				continue
+			}
 			s.notifySupport(cs.ID, channel.ID, "Nueva solicitud de soporte", fmt.Sprintf("%s solicita soporte. Acéptala para atenderla.", who))
 		}
 	}
@@ -1287,6 +1312,22 @@ func (s *channelService) postSupportSystemMessage(channelID, actorID uint, conte
 	}
 }
 
+// companyCSID devuelve el Customer Success activo asignado a la empresa, o 0.
+func (s *channelService) companyCSID(tenantID uint) uint {
+	if tenantID == 0 || s.userRepo == nil {
+		return 0
+	}
+	company, err := s.userRepo.GetByID(tenantID)
+	if err != nil || company == nil || company.AssignedCSID == nil || *company.AssignedCSID == 0 {
+		return 0
+	}
+	cs, err := s.userRepo.GetByID(*company.AssignedCSID)
+	if err != nil || cs == nil || !cs.IsActive {
+		return 0
+	}
+	return cs.ID
+}
+
 func (s *channelService) notifySupport(userID uint, channelID uint, title, message string) {
 	if err := s.notifSvc.CreateNotification(userID, "support", title, message, map[string]interface{}{
 		"channel_id": channelID,
@@ -1525,4 +1566,14 @@ func (s *channelService) GetAllUsers(tenantID uint, isSuperadmin bool, companyFi
 		return s.repo.GetActiveUsers(companyFilter, false)
 	}
 	return s.repo.GetActiveUsers(tenantID, isSuperadmin)
+}
+
+// formatSupportDate: «1 de julio» (con el año si no es el actual).
+func formatSupportDate(t time.Time) string {
+	months := []string{"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"}
+	out := fmt.Sprintf("%d de %s", t.Day(), months[t.Month()-1])
+	if t.Year() != time.Now().Year() {
+		out += fmt.Sprintf(" de %d", t.Year())
+	}
+	return out
 }

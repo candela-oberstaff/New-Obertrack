@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react'
-import { Save, Plus, Trash2, ListChecks, Type, Star, ChevronDown, ChevronRight } from 'lucide-react'
+import { Save, Plus, Trash2, ListChecks, Star, ChevronDown, ChevronRight } from 'lucide-react'
 
 import { Select } from '../ui'
 import { useNotification } from '../../context/NotificationContext'
@@ -7,13 +7,13 @@ import { surveyService, type Survey, type SurveyQuestion } from '../../services/
 import styles from './InductionSettings.module.css'
 
 /**
- * Tipos de pregunta soportados por la landing de inducción. Deliberadamente son
- * solo tres: la landing pública renderiza estos y ningún otro, así que ofrecer
- * más aquí produciría cuestionarios que el profesional no podría responder.
+ * Tipos de pregunta que se pueden agregar. La respuesta escrita ya no se ofrece:
+ * para calificar tenía que coincidir exacta con la clave (solo se ignoran
+ * mayúsculas y espacios), así que una tilde o una palabra de más la reprobaba. Las que ya existen se siguen mostrando y
+ * la landing las sigue respondiendo.
  */
 const QUESTION_TYPES = [
   { type: 'choice' as const, label: 'Opción múltiple', icon: ListChecks },
-  { type: 'text' as const, label: 'Respuesta escrita', icon: Type },
   { type: 'rating' as const, label: 'Escala 1-5', icon: Star },
 ]
 

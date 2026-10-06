@@ -1049,3 +1049,31 @@
   color: var(--primary);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
 }
+
+/* Categoría nueva: el campo de texto y la vuelta a la lista, en una fila. */
+.tutorial-category-new {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tutorial-category-new input {
+  flex: 1;
+  min-width: 0;
+}
+
+.tutorial-category-new button {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.tutorial-category-new button:hover {
+  text-decoration: underline;
+}

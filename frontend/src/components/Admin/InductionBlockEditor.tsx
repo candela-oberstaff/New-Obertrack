@@ -2,10 +2,13 @@ import { useCallback, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Check, ListChecks, Palette, Play, Save, Target } from 'lucide-react'
 
 import { useNotification } from '../../context/NotificationContext'
-import { inductionService, type InductionBlock, type InductionProgram } from '../../services/induction.service'
+import {
+  inductionService,
+  type InductionBlock,
+  type InductionProgram,
+  type InductionVideo,
+} from '../../services/induction.service'
 import { surveyService } from '../../services/surveyService'
-import { tutorialService } from '../../services/tutorial.service'
-import type { Tutorial } from '../../types/tutorials'
 import InductionQuizBuilder, { type QuizBuilderHandle } from './InductionQuizBuilder'
 import InductionVideoPicker from './InductionVideoPicker'
 import ReadinessChecklist from './ReadinessChecklist'
@@ -18,8 +21,8 @@ import styles from './InductionSettings.module.css'
 interface Props {
   /** null = bloque nuevo. */
   block: InductionBlock | null
-  /** Novedades de tipo video, elegibles como material del bloque. */
-  tutorials: Tutorial[]
+  /** Videos de la biblioteca de la inducción, elegibles para el bloque. */
+  videos: InductionVideo[]
   /** Mínimo que se aplica cuando el bloque no trae uno propio (solo informativo). */
   fallbackPassingScore: number
   /** Biblioteca completa y programas, para copiar una insignia ya definida. */
@@ -32,14 +35,14 @@ interface Props {
 const STEPS = ['Datos', 'Video', 'Cuestionario', 'Revisar']
 
 /**
- * Editor de un bloque, como asistente de cuatro pasos: datos, video (de
- * Novedades), cuestionario y revisión (con el mínimo propio y la insignia
+ * Editor de un bloque, como asistente de cuatro pasos: datos, video (de la
+ * biblioteca de la inducción), cuestionario y revisión (con el mínimo propio y la insignia
  * plegados). Las preguntas se escriben antes de crear el bloque: un solo
  * botón crea el cuestionario, el bloque y sus preguntas.
  */
 export default function InductionBlockEditor({
   block,
-  tutorials,
+  videos,
   fallbackPassingScore,
   allBlocks = [],
   allPrograms = [],
@@ -51,7 +54,7 @@ export default function InductionBlockEditor({
   const [current, setCurrent] = useState<InductionBlock | null>(block)
   const [name, setName] = useState(block?.name ?? '')
   const [description, setDescription] = useState(block?.description ?? '')
-  const [tutorialId, setTutorialId] = useState<number>(block?.tutorial_id ?? 0)
+  const [videoId, setVideoId] = useState<number>(block?.video_id ?? 0)
   // Cadena vacía = usa el del programa. Se guarda como texto para permitir
   // borrar el campo sin que salte a 0.
   const [passing, setPassing] = useState<string>(
@@ -79,38 +82,27 @@ export default function InductionBlockEditor({
   const passingValue = passing.trim() === '' ? null : Number(passing)
   const effectivePassing = passingValue ?? fallbackPassingScore
 
-  // Videos ocultados desde aquí: se reflejan sin recargar la lista de Novedades.
-  const [hiddenIds, setHiddenIds] = useState<number[]>([])
   const [customizingBadge, setCustomizingBadge] = useState(false)
-  const videoOptions = tutorials
-    .filter((t) => (t.content_type || 'video') === 'video')
-    .map((t) => (hiddenIds.includes(t.id) ? { ...t, is_active: false } : t))
-
-  const hideVideo = async (id: number) => {
-    try {
-      await tutorialService.update(id, { is_active: false })
-      setHiddenIds((prev) => [...prev, id])
-      success('Video ocultado en Novedades. El bloque lo sigue reproduciendo.')
-    } catch (err: any) {
-      showError(err?.response?.data?.error ?? 'No se pudo ocultar el video.')
-    }
-  }
-  const chosenVideo = videoOptions.find((t) => t.id === tutorialId)
+  // Videos agregados a la biblioteca desde este editor, antes de que el panel
+  // recargue la suya.
+  const [createdVideos, setCreatedVideos] = useState<InductionVideo[]>([])
+  const videoOptions = [...videos, ...createdVideos.filter((c) => !videos.some((v) => v.id === c.id))]
+  const chosenVideo = videoOptions.find((v) => v.id === videoId)
   // Lo que falta, con el borrador tal como está (preguntas incluidas).
   const issues = blockIssues(
     {
       name,
       question_count: questionCount,
       passing_score: passingValue,
-      tutorial_id: tutorialId || null,
-      tutorial_visible: chosenVideo?.is_active ?? false,
     },
     fallbackPassingScore
   )
   if (questionCount > 0 && scorableCount === 0) {
     issues.unshift({
       level: 'blocker',
-      text: 'Ninguna pregunta tiene respuesta correcta: todos aprueban sin importar lo que respondan.',
+      text: 'Ninguna pregunta tiene respuesta correcta, así que todos aprueban sin importar lo que respondan.',
+      short: 'Sin respuestas correctas',
+      fix: 'En el paso «Cuestionario», abre cada pregunta y elige su respuesta correcta.',
     })
   }
 
@@ -168,7 +160,7 @@ export default function InductionBlockEditor({
       const input = {
         name: name.trim(),
         description: description.trim(),
-        tutorial_id: tutorialId || null,
+        video_id: videoId || null,
         survey_id: surveyId,
         passing_score: passingValue,
         badge_title: badge.title.trim(),
@@ -215,7 +207,7 @@ export default function InductionBlockEditor({
     setStep(Math.max(0, Math.min(STEPS.length - 1, target)))
   }
   const isLast = step === STEPS.length - 1
-  const stepDone = [name.trim() !== '', tutorialId > 0, questionCount > 0 && scorableCount !== 0, isReady(issues)]
+  const stepDone = [name.trim() !== '', videoId > 0, questionCount > 0 && scorableCount !== 0, isReady(issues)]
   const stepSub = [
     name.trim() || 'Nombre y descripción',
     chosenVideo ? chosenVideo.title : 'Sin video',
@@ -326,12 +318,18 @@ export default function InductionBlockEditor({
       <div className={styles.section} hidden={step !== 1}>
         <h3 className={styles.wizardTitle}>Elige el video</h3>
         <p className={styles.wizardIntro}>
-          Sale de Novedades. El profesional lo ve antes de responder el cuestionario. Si el bloque
-          es solo preguntas, elige «Sin video».
+          Sale de la biblioteca de videos de la inducción. El profesional lo ve antes de responder
+          el cuestionario. Si aún no está, agrégalo con «Nuevo video»; si el bloque es solo
+          preguntas, elige «Sin video».
         </p>
         {/* La landing de inducción reproduce un video: una novedad de imagen o
             de texto no sirve como material aquí. */}
-        <InductionVideoPicker videos={videoOptions} value={tutorialId} onChange={setTutorialId} onHide={hideVideo} />
+        <InductionVideoPicker
+          videos={videoOptions}
+          value={videoId}
+          onChange={setVideoId}
+          onCreated={(video) => setCreatedVideos((prev) => [...prev, video])}
+        />
       </div>
 
       {/* --- 3. Cuestionario --- */}
@@ -369,7 +367,6 @@ export default function InductionBlockEditor({
                 <span className={styles.reviewLabel}>Video</span>
                 <span className={styles.reviewValue}>
                   {chosenVideo?.title ?? 'Sin video'}
-                  {chosenVideo?.is_active && <span className={styles.tagWarn}>Visible en Novedades</span>}
                 </span>
                 <button type="button" className={styles.linkBtn} onClick={() => goTo(1)}>
                   Cambiar

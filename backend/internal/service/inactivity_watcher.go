@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -127,8 +128,8 @@ func (w *InactivityWatcher) notifySupportTeam(users []repository.InactiveUser) {
 		return fmt.Sprintf("• %s (%s) — %d días hábiles sin registrar horas", u.Name, u.Company, u.DaysInactive)
 	}
 
-	// Asignación de líneas por destinatario (un CS puede cubrir varias empresas).
-	linesByRecipient := map[uint][]string{}
+	// Asignación de casos por destinatario (un CS puede cubrir varias empresas).
+	casesByRecipient := map[uint][]repository.InactiveUser{}
 	recipientByID := map[uint]models.User{}
 	for _, cs := range csUsers {
 		if cs.IsActive {
@@ -136,13 +137,44 @@ func (w *InactivityWatcher) notifySupportTeam(users []repository.InactiveUser) {
 		}
 	}
 
+	// El CS de cada empresa es el que tiene asignado (users.assigned_cs_id).
+	// Puede ser un superadmin, que no está en la lista de CS: se suma.
+	assignedCS := map[uint]uint{}
+	for _, u := range users {
+		if u.TenantID == 0 {
+			continue
+		}
+		if _, done := assignedCS[u.TenantID]; done {
+			continue
+		}
+		assignedCS[u.TenantID] = 0
+		company, err := w.userRepo.GetByID(u.TenantID)
+		if err != nil || company == nil || company.AssignedCSID == nil {
+			continue
+		}
+		cs, err := w.userRepo.GetByID(*company.AssignedCSID)
+		if err != nil || cs == nil || !cs.IsActive {
+			continue
+		}
+		assignedCS[u.TenantID] = cs.ID
+		if _, ok := recipientByID[cs.ID]; !ok {
+			recipientByID[cs.ID] = *cs
+		}
+	}
+
 	for _, u := range users {
 		assignedToSomeone := false
+		if csID := assignedCS[u.TenantID]; csID != 0 {
+			casesByRecipient[csID] = append(casesByRecipient[csID], u)
+			assignedToSomeone = true
+		}
 		for _, cs := range recipientByID {
-			isAssignedAnalyst := cs.EmpleadorID != nil && *cs.EmpleadorID == u.TenantID && u.TenantID != 0
-			if cs.IsManager || isAssignedAnalyst {
-				linesByRecipient[cs.ID] = append(linesByRecipient[cs.ID], line(u))
-				if isAssignedAnalyst {
+			// Asignación antigua: el analista cuya empresa (empleador_id) es la
+			// del profesional. Se respeta mientras haya datos así.
+			legacyAnalyst := cs.EmpleadorID != nil && *cs.EmpleadorID == u.TenantID && u.TenantID != 0
+			if cs.IsManager || legacyAnalyst {
+				casesByRecipient[cs.ID] = append(casesByRecipient[cs.ID], u)
+				if legacyAnalyst {
 					assignedToSomeone = true
 				}
 			}
@@ -150,29 +182,36 @@ func (w *InactivityWatcher) notifySupportTeam(users []repository.InactiveUser) {
 		if !assignedToSomeone {
 			// Empresa sin CS asignado: el caso va a todo el equipo.
 			for _, cs := range recipientByID {
-				if !cs.IsManager {
-					linesByRecipient[cs.ID] = append(linesByRecipient[cs.ID], line(u))
+				if !cs.IsManager && cs.UserType == models.UserTypeCustomerSuccess {
+					casesByRecipient[cs.ID] = append(casesByRecipient[cs.ID], u)
 				}
 			}
 		}
 	}
 
 	// Best-effort por destinatario: un canal caído no detiene los demás.
-	for csID, lines := range linesByRecipient {
+	for csID, cases := range casesByRecipient {
 		cs := recipientByID[csID]
 		// Dedup por si un caso entró por más de una vía.
-		seen := map[string]bool{}
-		unique := lines[:0]
-		for _, l := range lines {
-			if !seen[l] {
-				seen[l] = true
-				unique = append(unique, l)
+		seen := map[uint]bool{}
+		unique := cases[:0]
+		for _, c := range cases {
+			if !seen[c.ID] {
+				seen[c.ID] = true
+				unique = append(unique, c)
 			}
 		}
-		detail := strings.Join(unique, "\n")
-		title := fmt.Sprintf("⚠️ %d profesional(es) con %d+ días hábiles de inactividad", len(unique), inactivityAlertDays)
+		lines := make([]string, 0, len(unique))
+		for _, c := range unique {
+			lines = append(lines, line(c))
+		}
+		detail := strings.Join(lines, "\n")
+		title := inactivityTitle(len(unique))
 
-		if err := w.notifSvc.CreateNotification(cs.ID, "inactivity_alert", title, detail, map[string]interface{}{"kind": "inactivity"}); err != nil {
+		// En la campanita, un resumen: la lista completa va por correo y está
+		// en la pestaña Actividad, adonde lleva el aviso.
+		if err := w.notifSvc.CreateNotification(cs.ID, "inactivity_alert", title, inactivitySummary(unique),
+			map[string]interface{}{"kind": "inactivity", "link": "/admin?tab=activity"}); err != nil {
 			log.Printf("[inactivity-watcher] notificación interna a %s falló: %v", cs.Email, err)
 		}
 		html := fmt.Sprintf("<p>%s</p><p>%s</p><p>Revisa la pestaña <b>Actividad</b> del panel de administración de Obertrack para contactarlos.</p>",
@@ -189,8 +228,37 @@ func (w *InactivityWatcher) notifySupportTeam(users []repository.InactiveUser) {
 	for _, u := range users {
 		allLines = append(allLines, line(u))
 	}
-	globalTitle := fmt.Sprintf("⚠️ %d profesional(es) con %d+ días hábiles de inactividad", len(users), inactivityAlertDays)
+	globalTitle := inactivityTitle(len(users))
 	if err := w.slackSvc.Notify(fmt.Sprintf("*%s*\n%s", globalTitle, strings.Join(allLines, "\n"))); err != nil {
 		log.Printf("[inactivity-watcher] aviso a Slack falló: %v", err)
 	}
+}
+
+// inactivityTitle: «69 profesionales llevan 2+ días hábiles sin registrar horas».
+func inactivityTitle(n int) string {
+	if n == 1 {
+		return fmt.Sprintf("1 profesional lleva %d+ días hábiles sin registrar horas", inactivityAlertDays)
+	}
+	return fmt.Sprintf("%d profesionales llevan %d+ días hábiles sin registrar horas", n, inactivityAlertDays)
+}
+
+// inactivitySummary nombra a los más atrasados y cuenta el resto, para que el
+// aviso quepa en la campanita: «Carlos Pérez (81 días), Daniela López (60
+// días), Johelys Bocanegra (60 días) y 66 más.»
+func inactivitySummary(cases []repository.InactiveUser) string {
+	sorted := append([]repository.InactiveUser(nil), cases...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].DaysInactive > sorted[j].DaysInactive })
+	const shown = 3
+	names := make([]string, 0, shown)
+	for i, c := range sorted {
+		if i == shown {
+			break
+		}
+		names = append(names, fmt.Sprintf("%s (%d días)", c.Name, c.DaysInactive))
+	}
+	summary := strings.Join(names, ", ")
+	if rest := len(sorted) - shown; rest > 0 {
+		summary += fmt.Sprintf(" y %d más", rest)
+	}
+	return summary + ". Revísalos en Actividad."
 }

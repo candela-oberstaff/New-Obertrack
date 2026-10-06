@@ -14,6 +14,7 @@ import {
   Plus,
   Save,
   Search,
+  Send,
   Star,
   Target,
   Trash2,
@@ -37,6 +38,7 @@ import { BadgePicker, buildBadgePresets, type BadgeDraft } from '../Badges/Badge
 import { BadgeMedallion } from '../Badges/BadgeMedallion'
 import { DEFAULT_PROGRAM_BADGE } from '../Badges/badgeCatalog'
 import ReadinessChecklist from './ReadinessChecklist'
+import SendProgramModal from './SendProgramModal'
 import { LOW_PASSING_SCORE, isReady, programIssues } from './inductionReadiness'
 import styles from './InductionSettings.module.css'
 
@@ -115,6 +117,8 @@ export default function InductionProgramEditor({
   const [templates, setTemplates] = useState<CertificateTemplate[]>([])
   const [issued, setIssued] = useState<ProgramCertificates | null>(null)
   const [saving, setSaving] = useState(false)
+  // Programa recién guardado que se está enviando (abre la ventana de envío).
+  const [sendingProgram, setSendingProgram] = useState<InductionProgram | null>(null)
   // Uno nuevo empieza por el nombre; uno existente, por el resumen, desde
   // donde se salta a lo que haya que cambiar.
   const [step, setStep] = useState(programId === null ? 0 : 3)
@@ -225,7 +229,9 @@ export default function InductionProgramEditor({
     setBlockIds(next)
   }
 
-  const handleSave = async () => {
+  // thenSend: «Guardar y enviar» guarda primero y luego abre el envío masivo
+  // con el programa ya guardado (los destinatarios salen de lo guardado).
+  const handleSave = async (thenSend = false) => {
     if (!name.trim()) {
       showError('El programa necesita un nombre.')
       setStep(0)
@@ -254,8 +260,12 @@ export default function InductionProgramEditor({
       const saved = await inductionService.setProgramUsers(base.id, userIds)
       success(programId === null ? 'Programa creado.' : 'Programa guardado.')
       onSaved(saved)
-      // Al crear, de vuelta a la lista: el programa ya aparece ahí.
-      if (programId === null) onBack()
+      if (thenSend) {
+        setSendingProgram(saved)
+      } else if (programId === null) {
+        // Al crear, de vuelta a la lista: el programa ya aparece ahí.
+        onBack()
+      }
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo guardar el programa.')
     } finally {
@@ -435,7 +445,7 @@ export default function InductionProgramEditor({
                       <div className={styles.seqMain}>
                         <span className={styles.seqTitle}>{b?.name ?? `Bloque ${id}`}</span>
                         <span className={styles.seqMeta}>
-                          {b?.tutorial_title || 'Sin video'} ·{' '}
+                          {b?.video_title || 'Sin video'} ·{' '}
                           <span style={noQuestions ? { color: '#b91c1c', fontWeight: 600 } : undefined}>
                             {b?.question_count ?? 0} preguntas
                           </span>{' '}
@@ -443,7 +453,6 @@ export default function InductionProgramEditor({
                           <span style={passing < LOW_PASSING_SCORE ? { color: '#b45309', fontWeight: 600 } : undefined}>
                             mínimo {passing}%
                           </span>
-                          {b?.tutorial_visible && ' · video visible en Novedades'}
                         </span>
                       </div>
                       <div className={styles.rowActions}>
@@ -510,7 +519,7 @@ export default function InductionProgramEditor({
                     <span className={styles.seqMain}>
                       <span className={styles.seqTitle}>{b.name}</span>
                       <span className={styles.seqMeta}>
-                        {b.tutorial_title || 'Sin video'} · {b.question_count}{' '}
+                        {b.video_title || 'Sin video'} · {b.question_count}{' '}
                         {b.question_count === 1 ? 'pregunta' : 'preguntas'}
                       </span>
                     </span>
@@ -904,6 +913,16 @@ export default function InductionProgramEditor({
         )}
       </div>
 
+      {sendingProgram && (
+        <SendProgramModal
+          program={sendingProgram}
+          onClose={() => {
+            setSendingProgram(null)
+            if (programId === null) onBack()
+          }}
+        />
+      )}
+
       <div className={styles.stickyBar}>
         <span className={styles.muted}>
           Paso {step + 1} de {STEPS.length}
@@ -919,12 +938,27 @@ export default function InductionProgramEditor({
         )}
         {/* Un programa ya creado se puede guardar desde cualquier paso. */}
         {programId !== null && !isLast && (
-          <button type="button" className={styles.ghostBtn} disabled={saving} onClick={handleSave}>
+          <button type="button" className={styles.ghostBtn} disabled={saving} onClick={() => handleSave()}>
             <Save size={16} /> {saving ? 'Guardando...' : 'Guardar'}
           </button>
         )}
+        {isLast && (
+          <button
+            type="button"
+            className={styles.sendBtnLg}
+            disabled={saving || !isActive || blockIds.length === 0}
+            title={
+              !isActive || blockIds.length === 0
+                ? 'Para enviarlo, el programa tiene que estar activo y tener bloques'
+                : 'Guarda el programa y elige a quién enviárselo ahora'
+            }
+            onClick={() => handleSave(true)}
+          >
+            <Send size={16} /> Guardar y enviar
+          </button>
+        )}
         {isLast ? (
-          <button type="button" className={styles.saveBtn} disabled={saving} onClick={handleSave}>
+          <button type="button" className={styles.saveBtn} disabled={saving} onClick={() => handleSave()}>
             <Save size={16} /> {saving ? 'Guardando...' : programId === null ? 'Crear programa' : 'Guardar programa'}
           </button>
         ) : (

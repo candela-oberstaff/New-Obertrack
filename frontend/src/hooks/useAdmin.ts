@@ -162,6 +162,7 @@ function normalizeRecentActivity(items: any[] = []): ActivityItem[] {
 
 export function useAdmin(): UseAdminReturn {
   const qc = useQueryClient()
+  // ?tab=activity abre directo esa pestaña (lo usan los avisos de la campanita).
   const [searchParams, setSearchParams] = useSearchParams()
   const tabFromUrl = searchParams.get('tab')
   const [activeTab, setActiveTabState] = useState(tabFromUrl || 'dashboard')

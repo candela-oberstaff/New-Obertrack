@@ -3152,6 +3152,73 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.InductionProgramUser{})
 			},
 		},
+		{
+			// Biblioteca de videos propia de la inducción, separada de
+			// Novedades. Cada novedad que usaba un bloque (o una invitación
+			// emitida) se copia como video de la biblioteca y el bloque pasa a
+			// apuntar a la copia. Las novedades no se tocan ni se borran.
+			ID: "202610061200_induction_video_library",
+			Migrate: func(tx *gorm.DB) error {
+				if err := tx.AutoMigrate(
+					&models.InductionVideo{},
+					&models.InductionBlock{},
+					&models.InductionInviteBlock{},
+				); err != nil {
+					return err
+				}
+				if err := tx.Exec(`
+					INSERT INTO induction_videos (title, description, video_url, duration_min, legacy_tutorial_id, created_by, created_at, updated_at)
+					SELECT t.title, COALESCE(t.description, ''), t.google_drive_url, COALESCE(t.duration_min, 0), t.id, t.created_by, NOW(), NOW()
+					FROM tutorials t
+					WHERE t.id IN (
+						SELECT tutorial_id FROM induction_blocks WHERE tutorial_id IS NOT NULL
+						UNION
+						SELECT tutorial_id FROM induction_invite_blocks WHERE tutorial_id IS NOT NULL
+					)
+					AND NOT EXISTS (SELECT 1 FROM induction_videos v WHERE v.legacy_tutorial_id = t.id)`).Error; err != nil {
+					return err
+				}
+				if err := tx.Exec(`
+					UPDATE induction_blocks b SET video_id = v.id
+					FROM induction_videos v
+					WHERE v.legacy_tutorial_id = b.tutorial_id AND b.video_id IS NULL`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					UPDATE induction_invite_blocks ib SET video_id = v.id
+					FROM induction_videos v
+					WHERE v.legacy_tutorial_id = ib.tutorial_id AND ib.video_id IS NULL`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				for _, m := range []interface{}{&models.InductionBlock{}, &models.InductionInviteBlock{}} {
+					if err := tx.Migrator().DropColumn(m, "video_id"); err != nil {
+						return err
+					}
+				}
+				return tx.Migrator().DropTable(&models.InductionVideo{})
+			},
+		},
+		{
+			// Capacitaciones guardadas como ingreso: gates_access tiene
+			// default:true y GORM lo aplicaba al crear con false. Un ingreso de
+			// verdad deja a la persona en onboarding_status = pending; una
+			// invitación pendiente con bloqueo de alguien que ya aprobó o no lo
+			// necesita era una capacitación. Se le quita el bloqueo para que, si
+			// agota intentos, no pierda el acceso.
+			ID: "202610061400_fix_training_gates_access",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.Exec(`
+					UPDATE induction_invites i SET gates_access = false
+					FROM users u
+					WHERE u.id = i.user_id AND i.status = 'pending' AND i.gates_access
+					  AND i.deleted_at IS NULL
+					  AND u.onboarding_status IN ('passed', 'not_required')`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				// No hay forma de saber cuáles se tocaron: no se deshace.
+				return nil
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

@@ -43,6 +43,10 @@ type fakeInductionRepo struct {
 
 	surveys   map[uint]*models.Survey
 	tutorials map[uint]*models.Tutorial
+	videos    map[uint]*models.InductionVideo
+
+	videoUsage   int64
+	deletedVideo uint
 }
 
 func (f *fakeInductionRepo) GetConfig() (*models.InductionConfig, error) {
@@ -217,6 +221,22 @@ func (f *fakeInductionRepo) GetSurveyWithQuestions(surveyID uint) (*models.Surve
 	return nil, errors.New("not found")
 }
 
+func (f *fakeInductionRepo) CountBlocksUsingVideo(videoID uint) (int64, error) {
+	return f.videoUsage, nil
+}
+
+func (f *fakeInductionRepo) DeleteVideo(id uint) error {
+	f.deletedVideo = id
+	return nil
+}
+
+func (f *fakeInductionRepo) GetVideo(id uint) (*models.InductionVideo, error) {
+	if v, ok := f.videos[id]; ok {
+		return v, nil
+	}
+	return nil, errors.New("not found")
+}
+
 func (f *fakeInductionRepo) GetTutorial(tutorialID uint) (*models.Tutorial, error) {
 	if t, ok := f.tutorials[tutorialID]; ok {
 		return t, nil
@@ -277,6 +297,7 @@ func newInductionSvc(cfg *models.InductionConfig, users ...*models.User) (*induc
 		blockUsage:      map[uint]int64{},
 		surveys:         map[uint]*models.Survey{},
 		tutorials:       map[uint]*models.Tutorial{},
+		videos:          map[uint]*models.InductionVideo{},
 	}
 	userRepo := &fakeInductionUserRepo{users: byID}
 	// brevoSvc nil: sendInviteEmail sale sin hacer nada, así el test no manda correo.
@@ -573,6 +594,35 @@ func TestInvite_ProgramaDeLaPersonaNoUsableCaeAlDeLaEmpresa(t *testing.T) {
 	}
 	if repo.created.ProgramID == nil || *repo.created.ProgramID != 2 {
 		t.Fatalf("debe caer al programa de la empresa (2), got %+v", repo.created.ProgramID)
+	}
+}
+
+// Enviar un programa: llega como capacitación y un fallo no frena al resto.
+func TestSendProgram_SigueConElRestoSiUnoFalla(t *testing.T) {
+	ok := professional(5)
+	ok.OnboardingStatus = models.OnboardingPassed
+	empresa := &models.User{ID: 6, Name: "Acme", UserType: models.UserTypeEmployer}
+	svc, repo, _ := newInductionSvc(enabledConfig(), ok, empresa)
+	repo.programs[3] = twoBlockProgram(3, "Especial")
+
+	res, err := svc.SendProgram(3, []uint{5, 6, 5}, true)
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if res.Sent != 1 || len(res.Failed) != 1 || res.Failed[0].UserID != 6 || res.Failed[0].Name != "Acme" {
+		t.Fatalf("debe enviar a 5 y reportar a 6 (repetidos una vez): %+v", res)
+	}
+	if repo.created == nil || repo.created.GatesAccess {
+		t.Fatalf("a quien ya trabaja le llega como capacitación, sin bloquear: %+v", repo.created)
+	}
+}
+
+// Con la inducción apagada no se envía nada.
+func TestSendProgram_InduccionApagada(t *testing.T) {
+	svc, repo, _ := newInductionSvc(&models.InductionConfig{ID: 1, IsActive: false, InviteTTLDays: 15}, professional(5))
+	repo.programs[3] = twoBlockProgram(3, "Especial")
+	if _, err := svc.SendProgram(3, []uint{5}, true); err == nil {
+		t.Fatal("con la inducción apagada no debe enviarse")
 	}
 }
 
@@ -895,6 +945,54 @@ func TestLanding_DevuelveElBloqueActualSinRespuestas(t *testing.T) {
 	}
 	if view.Current.PassingScore != 70 || view.Current.AttemptsLeft != 3 {
 		t.Fatalf("reglas del bloque: %+v", view.Current)
+	}
+}
+
+// El video sale de la biblioteca de la inducción, no de Novedades.
+func TestLanding_VideoDeLaBiblioteca(t *testing.T) {
+	svc, repo, _ := newInductionSvc(enabledConfig(), professional(5))
+	pendingInvite(repo, 3)
+	video := uint(7)
+	repo.inviteBlocks[0].VideoID = &video
+	repo.videos[7] = &models.InductionVideo{ID: 7, Title: "Bienvenida", VideoURL: "https://youtu.be/xyz", DurationMin: 3}
+
+	view, err := svc.Landing("tok")
+	if err != nil {
+		t.Fatalf("landing: %v", err)
+	}
+	if view.Current == nil || view.Current.VideoURL != "https://youtu.be/xyz" || view.Current.VideoTitle != "Bienvenida" {
+		t.Fatalf("el video de la biblioteca debe viajar: %+v", view.Current)
+	}
+	if !view.Blocks[0].HasVideo {
+		t.Fatalf("el bloque con video de la biblioteca debe decir que tiene video")
+	}
+}
+
+// Un video que usa algún bloque no se borra.
+func TestDeleteVideo_EnUsoNoSeBorra(t *testing.T) {
+	svc, repo, _ := newInductionSvc(enabledConfig())
+	repo.videos[7] = &models.InductionVideo{ID: 7, Title: "Bienvenida", VideoURL: "https://youtu.be/xyz"}
+	repo.videoUsage = 2
+	if err := svc.DeleteVideo(7); err == nil {
+		t.Fatal("un video en uso no debe borrarse")
+	}
+	repo.videoUsage = 0
+	if err := svc.DeleteVideo(7); err != nil {
+		t.Fatalf("sin uso sí se borra: %v", err)
+	}
+	if repo.deletedVideo != 7 {
+		t.Fatalf("debe borrar el video 7, got %d", repo.deletedVideo)
+	}
+}
+
+// El enlace se valida como el de una novedad.
+func TestCreateVideo_ValidaElEnlace(t *testing.T) {
+	svc, _, _ := newInductionSvc(enabledConfig())
+	if _, err := svc.CreateVideo(1, VideoInput{Title: "X", VideoURL: "https://example.com/video"}); err == nil {
+		t.Fatal("un enlace que no es de Drive ni YouTube no debe aceptarse")
+	}
+	if _, err := svc.CreateVideo(1, VideoInput{Title: " ", VideoURL: "https://youtu.be/abcdefghijk"}); err == nil {
+		t.Fatal("sin título no debe aceptarse")
 	}
 }
 

@@ -31,6 +31,12 @@ type InductionService interface {
 	GetConfig() (*models.InductionConfig, error)
 	SaveConfig(cfg *models.InductionConfig) error
 
+	// --- Biblioteca de videos ---
+	ListVideos() ([]models.InductionVideo, error)
+	CreateVideo(actorID uint, in VideoInput) (*models.InductionVideo, error)
+	UpdateVideo(id uint, in VideoInput) (*models.InductionVideo, error)
+	DeleteVideo(id uint) error
+
 	// --- Biblioteca de bloques ---
 	ListBlocks() ([]models.InductionBlock, error)
 	CreateBlock(actorID uint, in BlockInput) (*models.InductionBlock, error)
@@ -46,6 +52,15 @@ type InductionService interface {
 	SetProgramBlocks(id uint, blockIDs []uint) (*models.InductionProgram, error)
 	SetProgramCompanies(id uint, companyIDs []uint) (*models.InductionProgram, error)
 	SetProgramUsers(id uint, userIDs []uint) (*models.InductionProgram, error)
+	// ProgramRecipients dice a quién le llega el programa y cómo va cada uno.
+	ProgramRecipients(id uint) ([]repository.ProgramRecipient, error)
+	// InviteEmailEnabled dice si el correo de invitación está encendido en
+	// Configuración → Correos (si no, solo llega por la campanita).
+	InviteEmailEnabled() bool
+	// SendProgram envía el programa ahora, como capacitación (sin bloquear el
+	// acceso), a los profesionales elegidos; con sendEmail, también por
+	// correo. Sigue con el resto si uno falla.
+	SendProgram(id uint, userIDs []uint, sendEmail bool) (*SendProgramResult, error)
 
 	// InviteIfEnabled emite la invitación con el programa que le toca a la
 	// empresa del profesional (o el por defecto) y envía el correo con el
@@ -91,7 +106,7 @@ type InductionService interface {
 type BlockInput struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
-	TutorialID   *uint  `json:"tutorial_id"`
+	VideoID      *uint  `json:"video_id"`
 	SurveyID     uint   `json:"survey_id"`
 	PassingScore *int   `json:"passing_score"`
 	BadgeTitle   string `json:"badge_title"`
@@ -409,8 +424,8 @@ func validateBlockInput(in *BlockInput) error {
 	if in.SurveyID == 0 {
 		return errors.New("el bloque necesita un cuestionario")
 	}
-	if in.TutorialID != nil && *in.TutorialID == 0 {
-		in.TutorialID = nil
+	if in.VideoID != nil && *in.VideoID == 0 {
+		in.VideoID = nil
 	}
 	if in.PassingScore != nil && (*in.PassingScore < 0 || *in.PassingScore > 100) {
 		return errors.New("el mínimo aprobatorio debe estar entre 0 y 100")
@@ -421,6 +436,91 @@ func validateBlockInput(in *BlockInput) error {
 	return nil
 }
 
+// --- Biblioteca de videos ----------------------------------------------------
+
+// VideoInput es lo que llega del formulario de un video de la biblioteca.
+type VideoInput struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	VideoURL    string `json:"video_url"`
+	DurationMin int    `json:"duration_min"`
+}
+
+func validateVideoInput(in *VideoInput) error {
+	in.Title = strings.TrimSpace(utils.SanitizeHTML(in.Title))
+	in.Description = strings.TrimSpace(utils.SanitizeHTML(in.Description))
+	in.VideoURL = strings.TrimSpace(in.VideoURL)
+	if in.Title == "" {
+		return errors.New("el video necesita un título")
+	}
+	if in.VideoURL == "" {
+		return errors.New("pega el enlace del video (Drive o YouTube)")
+	}
+	if err := validateVideoURL(in.VideoURL); err != nil {
+		return err
+	}
+	if in.DurationMin < 0 || in.DurationMin > 600 {
+		return errors.New("la duración debe estar entre 0 y 600 minutos")
+	}
+	return nil
+}
+
+func (s *inductionService) ListVideos() ([]models.InductionVideo, error) {
+	return s.repo.ListVideos()
+}
+
+func (s *inductionService) CreateVideo(actorID uint, in VideoInput) (*models.InductionVideo, error) {
+	if err := validateVideoInput(&in); err != nil {
+		return nil, err
+	}
+	video := &models.InductionVideo{
+		Title:       in.Title,
+		Description: in.Description,
+		VideoURL:    in.VideoURL,
+		DurationMin: in.DurationMin,
+		CreatedBy:   actorID,
+	}
+	if err := s.repo.CreateVideo(video); err != nil {
+		return nil, err
+	}
+	return s.repo.GetVideo(video.ID)
+}
+
+func (s *inductionService) UpdateVideo(id uint, in VideoInput) (*models.InductionVideo, error) {
+	if _, err := s.repo.GetVideo(id); err != nil {
+		return nil, errors.New("video no encontrado")
+	}
+	if err := validateVideoInput(&in); err != nil {
+		return nil, err
+	}
+	updates := map[string]interface{}{
+		"title":        in.Title,
+		"description":  in.Description,
+		"video_url":    in.VideoURL,
+		"duration_min": in.DurationMin,
+	}
+	if err := s.repo.UpdateVideo(id, updates); err != nil {
+		return nil, err
+	}
+	return s.repo.GetVideo(id)
+}
+
+func (s *inductionService) DeleteVideo(id uint) error {
+	if _, err := s.repo.GetVideo(id); err != nil {
+		return errors.New("video no encontrado")
+	}
+	// En uso no se borra: el bloque quedaría sin su video sin que nadie lo
+	// note. Quien recorre una invitación ya emitida tampoco lo perdería.
+	used, err := s.repo.CountBlocksUsingVideo(id)
+	if err != nil {
+		return err
+	}
+	if used > 0 {
+		return fmt.Errorf("Este video está en uso en %d bloque(s). Cámbialo en esos bloques antes de borrarlo", used)
+	}
+	return s.repo.DeleteVideo(id)
+}
+
 func (s *inductionService) CreateBlock(actorID uint, in BlockInput) (*models.InductionBlock, error) {
 	if err := validateBlockInput(&in); err != nil {
 		return nil, err
@@ -428,15 +528,15 @@ func (s *inductionService) CreateBlock(actorID uint, in BlockInput) (*models.Ind
 	if _, err := s.repo.GetSurveyWithQuestions(in.SurveyID); err != nil {
 		return nil, errors.New("el cuestionario elegido no existe")
 	}
-	if in.TutorialID != nil {
-		if _, err := s.repo.GetTutorial(*in.TutorialID); err != nil {
+	if in.VideoID != nil {
+		if _, err := s.repo.GetVideo(*in.VideoID); err != nil {
 			return nil, errors.New("el video elegido no existe")
 		}
 	}
 	block := &models.InductionBlock{
 		Name:         in.Name,
 		Description:  in.Description,
-		TutorialID:   in.TutorialID,
+		VideoID:      in.VideoID,
 		SurveyID:     in.SurveyID,
 		PassingScore: in.PassingScore,
 		BadgeTitle:   in.BadgeTitle,
@@ -460,16 +560,16 @@ func (s *inductionService) UpdateBlock(id uint, in BlockInput) (*models.Inductio
 	if _, err := s.repo.GetSurveyWithQuestions(in.SurveyID); err != nil {
 		return nil, errors.New("el cuestionario elegido no existe")
 	}
-	if in.TutorialID != nil {
-		if _, err := s.repo.GetTutorial(*in.TutorialID); err != nil {
+	if in.VideoID != nil {
+		if _, err := s.repo.GetVideo(*in.VideoID); err != nil {
 			return nil, errors.New("el video elegido no existe")
 		}
 	}
 	// Los opcionales van como nil explícito (no como puntero nulo tipado)
 	// para que el UPDATE escriba NULL sin depender del driver.
-	var tutorialID interface{}
-	if in.TutorialID != nil {
-		tutorialID = *in.TutorialID
+	var videoID interface{}
+	if in.VideoID != nil {
+		videoID = *in.VideoID
 	}
 	var passingScore interface{}
 	if in.PassingScore != nil {
@@ -478,7 +578,7 @@ func (s *inductionService) UpdateBlock(id uint, in BlockInput) (*models.Inductio
 	updates := map[string]interface{}{
 		"name":          in.Name,
 		"description":   in.Description,
-		"tutorial_id":   tutorialID,
+		"video_id":      videoID,
 		"survey_id":     in.SurveyID,
 		"passing_score": passingScore,
 		"badge_title":   in.BadgeTitle,
@@ -729,6 +829,75 @@ func (s *inductionService) SetProgramUsers(id uint, userIDs []uint) (*models.Ind
 	return s.repo.GetProgram(id)
 }
 
+func (s *inductionService) ProgramRecipients(id uint) ([]repository.ProgramRecipient, error) {
+	program, err := s.repo.GetProgram(id)
+	if err != nil {
+		return nil, errors.New("programa no encontrado")
+	}
+	return s.repo.ListProgramRecipients(program.ID, program.IsDefault)
+}
+
+// SendProgramResult resume un envío: a cuántos llegó y por qué no a los demás.
+type SendProgramResult struct {
+	Sent   int                 `json:"sent"`
+	Failed []SendProgramFailed `json:"failed"`
+	// Emailed: además de la campanita, salió el correo (pedido y encendido).
+	Emailed bool `json:"emailed"`
+}
+
+type SendProgramFailed struct {
+	UserID uint   `json:"user_id"`
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+func (s *inductionService) InviteEmailEnabled() bool {
+	return s.brevoSvc != nil && s.brevoSvc.AllowsKind(EmailKindInductionInvite)
+}
+
+func (s *inductionService) SendProgram(id uint, userIDs []uint, sendEmail bool) (*SendProgramResult, error) {
+	program, err := s.repo.GetProgram(id)
+	if err != nil {
+		return nil, errors.New("programa no encontrado")
+	}
+	if !program.Usable() {
+		return nil, errors.New("el programa está apagado o no tiene bloques")
+	}
+	cfg, err := s.repo.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.IsActive {
+		return nil, errors.New("la inducción está apagada: enciéndela antes de enviar")
+	}
+	if len(userIDs) == 0 {
+		return nil, errors.New("elige al menos un profesional")
+	}
+	if len(userIDs) > 500 {
+		return nil, errors.New("se pueden enviar como mucho 500 a la vez")
+	}
+	result := &SendProgramResult{Failed: []SendProgramFailed{}, Emailed: sendEmail && s.InviteEmailEnabled()}
+	seen := map[uint]bool{}
+	for _, userID := range userIDs {
+		if userID == 0 || seen[userID] {
+			continue
+		}
+		seen[userID] = true
+		// Como capacitación: quien ya trabaja sigue trabajando. A quien aún no
+		// tiene acceso, Invite se lo bloquea igual hasta aprobar.
+		if err := s.invite(userID, id, false, sendEmail); err != nil {
+			name := ""
+			if u, uErr := s.userRepo.GetByID(userID); uErr == nil {
+				name = u.Name
+			}
+			result.Failed = append(result.Failed, SendProgramFailed{UserID: userID, Name: name, Reason: err.Error()})
+			continue
+		}
+		result.Sent++
+	}
+	return result, nil
+}
+
 // resolveProgram decide qué programa recibe el profesional: el asignado a él
 // en persona; si no, el de su empresa; si no, el por defecto. En cada nivel
 // solo cuenta un programa usable. Devuelve nil sin error cuando no hay
@@ -791,12 +960,12 @@ func (s *inductionService) InviteIfEnabled(user *models.User) (bool, error) {
 		return false, nil
 	}
 	// Ingreso desde Obersuite: sin acceso hasta aprobar.
-	return true, s.issueInvite(user, program, cfg.InviteTTLDays, true)
+	return true, s.issueInvite(user, program, cfg.InviteTTLDays, true, true)
 }
 
 // issueInvite reemplaza la invitación viva del usuario por una nueva con el
 // snapshot del programa, lo deja sin acceso y manda el correo.
-func (s *inductionService) issueInvite(user *models.User, program *models.InductionProgram, ttlDays int, gatesAccess bool) error {
+func (s *inductionService) issueInvite(user *models.User, program *models.InductionProgram, ttlDays int, gatesAccess bool, sendEmail bool) error {
 	token, err := generateInductionToken()
 	if err != nil {
 		return err
@@ -831,7 +1000,7 @@ func (s *inductionService) issueInvite(user *models.User, program *models.Induct
 			BlockID:      b.ID,
 			OrderIndex:   i,
 			Name:         b.Name,
-			TutorialID:   b.TutorialID,
+			VideoID:      b.VideoID,
 			SurveyID:     b.SurveyID,
 			PassingScore: b.EffectivePassingScore(program.DefaultPassingScore),
 			Status:       models.InductionPending,
@@ -857,7 +1026,9 @@ func (s *inductionService) issueInvite(user *models.User, program *models.Induct
 			map[string]interface{}{"link": "/induccion/" + token})
 	}
 
-	s.sendInviteEmail(user, token)
+	if sendEmail {
+		s.sendInviteEmail(user, token, program.Name, len(program.Blocks), !gatesAccess)
+	}
 	return nil
 }
 
@@ -869,6 +1040,11 @@ func pluralBlocks(n int) string {
 }
 
 func (s *inductionService) Invite(userID uint, programID uint, gatesAccess bool) error {
+	return s.invite(userID, programID, gatesAccess, true)
+}
+
+// invite es Invite eligiendo si además va por correo.
+func (s *inductionService) invite(userID uint, programID uint, gatesAccess bool, sendEmail bool) error {
 	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
 		return errors.New("usuario no encontrado")
@@ -916,7 +1092,7 @@ func (s *inductionService) Invite(userID uint, programID uint, gatesAccess bool)
 			return errors.New("no hay un programa de inducción usable para este profesional")
 		}
 	}
-	return s.issueInvite(user, program, cfg.InviteTTLDays, gatesAccess)
+	return s.issueInvite(user, program, cfg.InviteTTLDays, gatesAccess, sendEmail)
 }
 
 func (s *inductionService) MyInduction(userID uint) (*MyInductionView, error) {
@@ -1004,7 +1180,7 @@ func (s *inductionService) Landing(token string) (*LandingView, error) {
 			AttemptsLeft: b.AttemptsLeft(invite.MaxAttempts),
 			BestScore:    b.BestScore,
 			PassingScore: b.PassingScore,
-			HasVideo:     b.TutorialID != nil && *b.TutorialID > 0,
+			HasVideo:     b.HasVideo(),
 		})
 	}
 
@@ -1031,9 +1207,16 @@ func (s *inductionService) Landing(token string) (*LandingView, error) {
 		BestScore:    current.BestScore,
 		Questions:    []LandingQuestion{},
 	}
-	// Video (Novedades/Tutoriales). Es opcional: el bloque puede ser solo
-	// cuestionario.
-	if current.TutorialID != nil && *current.TutorialID > 0 {
+	// Video de la biblioteca de la inducción. Es opcional: el bloque puede
+	// ser solo cuestionario. Las invitaciones de antes de la biblioteca aún
+	// apuntan a la novedad.
+	if current.VideoID != nil && *current.VideoID > 0 {
+		if v, err := s.repo.GetVideo(*current.VideoID); err == nil {
+			cur.VideoTitle = v.Title
+			cur.VideoURL = v.VideoURL
+			cur.VideoDurationMin = v.DurationMin
+		}
+	} else if current.TutorialID != nil && *current.TutorialID > 0 {
 		if t, err := s.repo.GetTutorial(*current.TutorialID); err == nil {
 			cur.VideoTitle = t.Title
 			cur.VideoURL = t.GoogleDriveURL
@@ -1276,7 +1459,11 @@ func (s *inductionService) resetInvite(invite *models.InductionInvite) error {
 			return err
 		}
 	}
-	s.sendInviteEmail(user, token)
+	blockCount := 0
+	if blocks, err := s.repo.ListInviteBlocks(invite.ID); err == nil {
+		blockCount = len(blocks)
+	}
+	s.sendInviteEmail(user, token, invite.ProgramName, blockCount, !invite.GatesAccess)
 	return nil
 }
 
@@ -1624,13 +1811,19 @@ func (s *inductionService) alertSupport(user *models.User, invite *models.Induct
 	}
 }
 
-func (s *inductionService) sendInviteEmail(user *models.User, token string) {
+func (s *inductionService) sendInviteEmail(user *models.User, token string, programName string, blocks int, training bool) {
 	if s.brevoSvc == nil {
 		return
 	}
 	link := s.baseURL() + "/induccion/" + token
+	// Un ingreso es una bienvenida que condiciona el acceso; una capacitación
+	// le llega a quien ya trabaja y no cambia nada de su acceso.
 	subject := "Bienvenido a Obertrack — completa tu inducción"
 	html := BuildInductionInviteHTML(user.Name, link)
+	if training {
+		subject = "Nueva capacitación en Obertrack: " + programName
+		html = BuildTrainingInviteHTML(user.Name, programName, blocks, link)
+	}
 
 	go func() {
 		if err := s.brevoSvc.SendEmailKind(EmailKindInductionInvite, user.Email, user.Name, subject, html); err != nil {
