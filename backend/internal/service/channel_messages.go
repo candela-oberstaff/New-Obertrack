@@ -860,7 +860,16 @@ func (s *channelService) ContactSupport(userID uint, subject, message, priority,
 	if ticket.AssignedTo != nil {
 		s.notifySupport(*ticket.AssignedTo, channel.ID, "Soporte: nueva actividad", fmt.Sprintf("%s volvió a escribir en su solicitud de soporte.", who))
 	} else {
+		// El Customer Success asignado a la empresa recibe su propio aviso: es
+		// su cliente. Puede ser un superadmin, que no está en activeCS.
+		companyCS := s.companyCSID(ticket.TenantID)
+		if companyCS != 0 {
+			s.notifySupport(companyCS, channel.ID, "Nueva solicitud de tu cliente", fmt.Sprintf("%s solicita soporte. Acéptala para atenderla.", who))
+		}
 		for _, cs := range activeCS {
+			if cs.ID == companyCS {
+				continue
+			}
 			s.notifySupport(cs.ID, channel.ID, "Nueva solicitud de soporte", fmt.Sprintf("%s solicita soporte. Acéptala para atenderla.", who))
 		}
 	}
@@ -1285,6 +1294,22 @@ func (s *channelService) postSupportSystemMessage(channelID, actorID uint, conte
 	if s.broadcast != nil {
 		s.broadcast(channelID, message)
 	}
+}
+
+// companyCSID devuelve el Customer Success activo asignado a la empresa, o 0.
+func (s *channelService) companyCSID(tenantID uint) uint {
+	if tenantID == 0 || s.userRepo == nil {
+		return 0
+	}
+	company, err := s.userRepo.GetByID(tenantID)
+	if err != nil || company == nil || company.AssignedCSID == nil || *company.AssignedCSID == 0 {
+		return 0
+	}
+	cs, err := s.userRepo.GetByID(*company.AssignedCSID)
+	if err != nil || cs == nil || !cs.IsActive {
+		return 0
+	}
+	return cs.ID
 }
 
 func (s *channelService) notifySupport(userID uint, channelID uint, title, message string) {

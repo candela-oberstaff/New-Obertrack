@@ -180,6 +180,7 @@ func (s *ticketService) CreateObersuiteTransfer(in ObersuiteTransferInput) (*Obe
 			}
 			return nil, err
 		}
+		s.notifyCompanyCS(ticket, phone, "")
 	}
 
 	// 4. Los mensajes, con su hora original: todos con la hora de ahora saldrían

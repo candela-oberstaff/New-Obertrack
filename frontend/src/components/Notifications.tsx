@@ -31,7 +31,8 @@ import {
   MessageSquareQuote,
   Award,
   GraduationCap,
-  FileCheck
+  FileCheck,
+  LifeBuoy
 } from 'lucide-react'
 import styles from './Notifications.module.css'
 
@@ -55,6 +56,8 @@ const LIVE_NOTIFICATION_TYPES = new Set([
   'insignia',
   'capacitacion',
   'certificado',
+  // Ticket nuevo de una empresa: le llega a su Customer Success asignado.
+  'ticket_cliente',
 ])
 
 const ALERT_NOTIFICATION_TYPES = new Set([
@@ -67,6 +70,8 @@ const ALERT_NOTIFICATION_TYPES = new Set([
   'insignia',
   'capacitacion',
   'certificado',
+  // Ticket nuevo de una empresa: le llega a su Customer Success asignado.
+  'ticket_cliente',
 ])
 
 const RECONNECT_BASE_DELAY = 1000
@@ -353,6 +358,7 @@ export default function Notifications() {
       case 'insignia': return <Award size={18} className="text-amber-500" />
       case 'capacitacion': return <GraduationCap size={18} className="text-fuchsia-500" />
       case 'certificado': return <FileCheck size={18} className="text-emerald-500" />
+      case 'ticket_cliente': return <LifeBuoy size={18} className="text-fuchsia-500" />
       // Testimonios: la solicitud (a quien escribe) y el aviso de recepción
       // (a quien lo pidió). Comparten icono porque son el mismo asunto.
       case 'testimonial_request':

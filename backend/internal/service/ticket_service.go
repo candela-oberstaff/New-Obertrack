@@ -445,6 +445,9 @@ func (s *ticketService) IngestWhatsApp(session, peer, body, externalID string, f
 		}
 		// Solo se avisa a soporte cuando escribe el contacto: un mensaje que salió
 		// del propio teléfono no es una solicitud que haya que atender.
+		if !fromMe {
+			s.notifyCompanyCS(ticket, phone, "")
+		}
 		if s.supportNtfy != nil && !fromMe {
 			s.supportNtfy.Notify(SupportTicketInfo{
 				Type:        "WhatsApp",
@@ -540,6 +543,7 @@ func (s *ticketService) IngestEmail(fromEmail, fromName, subject, textBody, mess
 		if err := s.repo.CreateTicket(ticket); err != nil {
 			return err
 		}
+		s.notifyCompanyCS(ticket, "", fromEmail)
 		if s.supportNtfy != nil {
 			s.supportNtfy.Notify(SupportTicketInfo{
 				Type:        "Email",
@@ -1252,6 +1256,7 @@ func (s *ticketService) CreateWorkHourRejectionAlert(in RejectionAlertInput) err
 	if err := s.repo.CreateTicket(ticket); err != nil {
 		return err
 	}
+	s.notifyCompanyCS(ticket, "", "")
 	if s.supportNtfy != nil {
 		s.supportNtfy.Notify(SupportTicketInfo{
 			Type:        "Rechazo de horas",
@@ -1302,6 +1307,7 @@ func (s *ticketService) CreateInductionFailureAlert(in InductionAlertInput) erro
 	if err := s.repo.CreateTicket(ticket); err != nil {
 		return err
 	}
+	s.notifyCompanyCS(ticket, "", "")
 	if s.supportNtfy != nil {
 		kind := "Inducción no aprobada"
 		if !in.GatesAccess {
@@ -1360,6 +1366,7 @@ func (s *ticketService) CreateObersuiteHireAlert(in ObersuiteHireInput) error {
 	if err := s.repo.CreateTicket(ticket); err != nil {
 		return err
 	}
+	s.notifyCompanyCS(ticket, "", "")
 	if s.supportNtfy != nil {
 		s.supportNtfy.Notify(SupportTicketInfo{
 			Type:        "Alta desde Obersuite",
@@ -1724,6 +1731,7 @@ func (s *ticketService) CreateObervoiceRequest(companyName, requesterEmail strin
 			return err
 		}
 		log.Printf("[Obervoice] Ticket #%d creado exitosamente en la BD", ticket.ID)
+		s.notifyCompanyCS(ticket, "", "")
 	}
 
 	if s.supportNtfy != nil {
