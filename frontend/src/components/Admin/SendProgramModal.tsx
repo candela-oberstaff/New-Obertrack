@@ -33,7 +33,7 @@ const replacesIngreso = (r: ProgramRecipient) => r.status === 'pending' && r.pen
 /**
  * Enviar un programa ahora a sus destinatarios. Llega como capacitación: quien
  * ya trabaja sigue trabajando; quien aún no tiene acceso lo tendrá al aprobar.
- * Por defecto se marcan los que no lo han hecho ni tienen otra en curso.
+ * Por defecto no se marca ninguno para que el usuario elija a quién enviar.
  */
 export default function SendProgramModal({ program, onClose }: Props) {
   const { success, error: showError } = useNotification()
@@ -54,7 +54,7 @@ export default function SendProgramModal({ program, onClose }: Props) {
         if (cancelled) return
         setRecipients(list)
         setEmailEnabled(enabled)
-        setSelected(list.filter((r) => !busy(r) && !replacesIngreso(r) && !r.passed_this).map((r) => r.user_id))
+        setSelected([])
       })
       .catch(() => {
         if (!cancelled) setRecipients([])
