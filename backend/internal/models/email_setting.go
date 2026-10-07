@@ -2,24 +2,26 @@ package models
 
 import "time"
 
-// EmailSetting es el interruptor persistido de UN tipo de correo del sistema
-// (por ejemplo "support_ticket" o "inactivity_alert"). Solo se guarda la fila
-// cuando alguien cambia el valor: la ausencia de fila significa "activo", que
-// es el comportamiento por defecto de todos los correos.
-//
-// Reemplaza a las constantes de código que se usaban para pausar correos: el
-// equipo los enciende y apaga desde Configuración → Correos, sin redeploy.
+// EmailRecipient representa un destinatario configurado para un tipo de correo.
+type EmailRecipient struct {
+	Email   string `json:"email"`
+	Name    string `json:"name,omitempty"`
+	Enabled bool   `json:"enabled"`
+}
+
+// EmailSetting es la configuración persistida de UN tipo de correo del sistema.
 type EmailSetting struct {
-	// Key es la clave del catálogo (service.EmailKind...).
-	Key string `gorm:"primaryKey;size:60" json:"key"`
-	// Enabled NO lleva `default:true` en el tag a propósito: con un default,
-	// GORM sustituye el valor CERO del bool (false) por ese default al
-	// escribir, así que apagar un correo guardaba `true` y el interruptor no
-	// apagaba nada. La columna sí conserva DEFAULT true en la base, que es lo
-	// correcto para una fila insertada sin este campo.
-	Enabled   bool      `gorm:"not null" json:"enabled"`
-	UpdatedBy uint      `json:"updated_by"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Key        string    `gorm:"primaryKey;size:60" json:"key"`
+	Enabled    bool      `gorm:"not null" json:"enabled"`
+	Frequency  string    `gorm:"size:20;not null;default:'diaria'" json:"frequency"`
+	DayOfMonth int       `gorm:"not null;default:1" json:"day_of_month"`
+	Weekday    int       `gorm:"not null;default:1" json:"weekday"`
+	Hour       int       `gorm:"not null;default:8" json:"hour"`
+	Minute     int       `gorm:"not null;default:0" json:"minute"`
+	Timezone   string    `gorm:"size:64;not null;default:'America/Santiago'" json:"timezone"`
+	Recipients string    `gorm:"type:text" json:"recipients"` // JSON array string
+	UpdatedBy  uint      `json:"updated_by"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 func (EmailSetting) TableName() string {

@@ -125,7 +125,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	// Interruptores de correo por tipo (Configuración → Correos). Se cablea
 	// dentro de Brevo para que TODO envío hecho con SendEmailKind los respete,
 	// sin que cada emisor tenga que consultarlos.
-	emailSettingsSvc := service.NewEmailSettingsService(repository.NewEmailSettingRepository(db), brevoSvc)
+	emailSettingsSvc := service.NewEmailSettingsService(repository.NewEmailSettingRepository(db), userRepo, brevoSvc)
 	brevoSvc.SetKindGate(emailSettingsSvc.Enabled)
 	wahaSvc := service.NewWahaService()
 	zohoSvc := service.NewZohoService()

@@ -6,10 +6,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// EmailSettingRepository guarda los interruptores de correo por tipo. Solo
-// existe fila para los tipos que alguien tocó: la ausencia significa activo.
+// EmailSettingRepository guarda los interruptores y configuración de correo por tipo.
 type EmailSettingRepository interface {
 	List() ([]models.EmailSetting, error)
+	Get(key string) (*models.EmailSetting, error)
 	Upsert(setting *models.EmailSetting) error
 }
 
@@ -27,9 +27,20 @@ func (r *emailSettingRepository) List() ([]models.EmailSetting, error) {
 	return settings, err
 }
 
+func (r *emailSettingRepository) Get(key string) (*models.EmailSetting, error) {
+	var setting models.EmailSetting
+	err := r.db.Where("key = ?", key).First(&setting).Error
+	if err != nil {
+		return nil, err
+	}
+	return &setting, nil
+}
+
 func (r *emailSettingRepository) Upsert(setting *models.EmailSetting) error {
 	return r.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "key"}},
-		DoUpdates: clause.AssignmentColumns([]string{"enabled", "updated_by", "updated_at"}),
+		Columns: []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"enabled", "frequency", "day_of_month", "weekday", "hour", "minute", "timezone", "recipients", "updated_by", "updated_at",
+		}),
 	}).Create(setting).Error
 }

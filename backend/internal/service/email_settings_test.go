@@ -24,6 +24,15 @@ func (f *fakeSettingRepo) List() ([]models.EmailSetting, error) {
 	return f.rows, nil
 }
 
+func (f *fakeSettingRepo) Get(key string) (*models.EmailSetting, error) {
+	for _, r := range f.rows {
+		if r.Key == key {
+			return &r, nil
+		}
+	}
+	return nil, errors.New("not found")
+}
+
 func (f *fakeSettingRepo) Upsert(s *models.EmailSetting) error {
 	f.upserted = append(f.upserted, *s)
 	f.rows = append(f.rows, *s)
@@ -32,7 +41,7 @@ func (f *fakeSettingRepo) Upsert(s *models.EmailSetting) error {
 
 func TestEnabled_SinFilaGuardadaEstaEncendido(t *testing.T) {
 	// La ausencia de fila significa "nunca se tocó": por defecto todo sale.
-	s := NewEmailSettingsService(&fakeSettingRepo{}, nil)
+	s := NewEmailSettingsService(&fakeSettingRepo{}, nil, nil)
 	if !s.Enabled(EmailKindInactivityAlert) {
 		t.Fatal("sin fila guardada el correo debe estar encendido")
 	}
@@ -40,7 +49,7 @@ func TestEnabled_SinFilaGuardadaEstaEncendido(t *testing.T) {
 
 func TestEnabled_RespetaElApagado(t *testing.T) {
 	repo := &fakeSettingRepo{rows: []models.EmailSetting{{Key: EmailKindSurveyInvite, Enabled: false}}}
-	s := NewEmailSettingsService(repo, nil)
+	s := NewEmailSettingsService(repo, nil, nil)
 	if s.Enabled(EmailKindSurveyInvite) {
 		t.Fatal("un correo apagado no debe poder salir")
 	}
@@ -53,7 +62,7 @@ func TestEnabled_RespetaElApagado(t *testing.T) {
 // Este es el caso que dejaba salir correos apagados sin dejar rastro: si no se
 // puede leer la tabla, antes se respondía "encendido" para TODO.
 func TestEnabled_AnteFalloDeBaseSoloPasanLosEsenciales(t *testing.T) {
-	s := NewEmailSettingsService(&fakeSettingRepo{failList: true}, nil)
+	s := NewEmailSettingsService(&fakeSettingRepo{failList: true}, nil, nil)
 
 	// Esenciales: sin ellos alguien queda fuera de la plataforma, así que ante
 	// la duda se envían.
@@ -74,7 +83,7 @@ func TestEnabled_AnteFalloDeBaseSoloPasanLosEsenciales(t *testing.T) {
 
 func TestSetEnabled_GuardaYSurteEfectoDeInmediato(t *testing.T) {
 	repo := &fakeSettingRepo{}
-	s := NewEmailSettingsService(repo, nil)
+	s := NewEmailSettingsService(repo, nil, nil)
 
 	// Se consulta antes para dejar el caché cargado: apagar tiene que invalidarlo.
 	if !s.Enabled(EmailKindInactivityAlert) {
@@ -93,7 +102,7 @@ func TestSetEnabled_GuardaYSurteEfectoDeInmediato(t *testing.T) {
 
 func TestSetEnabled_RechazaTipoDesconocido(t *testing.T) {
 	repo := &fakeSettingRepo{}
-	s := NewEmailSettingsService(repo, nil)
+	s := NewEmailSettingsService(repo, nil, nil)
 	if err := s.SetEnabled("inventado", false, 1); err == nil {
 		t.Fatal("un tipo fuera del catálogo debe rechazarse")
 	}
@@ -124,7 +133,7 @@ func TestCatalogo_CubreTodosLosTiposEnUso(t *testing.T) {
 // nil hacía que una campaña se reportara "enviada" sin haber salido.
 func TestBrevoGate_TipoApagadoDevuelveElCentinela(t *testing.T) {
 	settings := NewEmailSettingsService(
-		&fakeSettingRepo{rows: []models.EmailSetting{{Key: EmailKindCampaign, Enabled: false}}}, nil)
+		&fakeSettingRepo{rows: []models.EmailSetting{{Key: EmailKindCampaign, Enabled: false}}}, nil, nil)
 	brevo := NewBrevoService()
 	brevo.SetKindGate(settings.Enabled)
 

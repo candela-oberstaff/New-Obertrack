@@ -282,6 +282,7 @@ func registerAccountRoutes(api *gin.RouterGroup, d *deps) {
 			// peligroso. El apagado se hace tipo por tipo.
 			settings.PUT("/emails/:key", d.emailSettings.Update)
 			settings.POST("/emails/:key/test", d.emailSettings.SendTest)
+			settings.GET("/emails/:key/preview", d.emailSettings.GetPreview)
 		}
 
 		// Membresías (multi-empresa + expediente). GET lo puede consultar CS;

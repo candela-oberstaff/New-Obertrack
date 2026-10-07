@@ -25,32 +25,31 @@ func (h *EmailSettingsHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, h.svc.List())
 }
 
-// Update enciende o apaga un tipo de correo.
+// Update enciende/apaga o actualiza la fecha y destinatarios de un tipo de correo.
 func (h *EmailSettingsHandler) Update(c *gin.Context) {
 	key := c.Param("key")
-	var req struct {
-		Enabled *bool `json:"enabled" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Falta el valor de 'enabled'"})
+	var req service.UpdateEmailSettingReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Cuerpo de solicitud inválido"})
 		return
 	}
-	if err := h.svc.SetEnabled(key, *req.Enabled, middleware.GetUserID(c)); err != nil {
+
+	if err := h.svc.UpdateSetting(key, req, middleware.GetUserID(c)); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Apagar un correo del sistema es justo el cambio que hay que poder rastrear
-	// después ("¿por qué dejó de llegar esto?" / "¿quién lo apagó y cuándo?").
-	// Sin esto quedaba como un "admin.update" sin entidad ni valor, así que la
-	// Auditoría no servía para responderlo.
-	action := "email_settings.disabled"
-	if *req.Enabled {
-		action = "email_settings.enabled"
+	action := "email_settings.updated"
+	if req.Enabled != nil {
+		if *req.Enabled {
+			action = "email_settings.enabled"
+		} else {
+			action = "email_settings.disabled"
+		}
 	}
-	middleware.SetAudit(c, action, key, fmt.Sprintf(`{"key":%q,"enabled":%t}`, key, *req.Enabled))
+	middleware.SetAudit(c, action, key, fmt.Sprintf(`{"key":%q}`, key))
 
-	c.JSON(http.StatusOK, gin.H{"key": key, "enabled": *req.Enabled})
+	c.JSON(http.StatusOK, gin.H{"key": key, "message": "Configuración actualizada correctamente"})
 }
 
 // SendTest manda una muestra del correo. Sin destinatario en el cuerpo usa el
@@ -80,4 +79,21 @@ func (h *EmailSettingsHandler) SendTest(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Correo de prueba enviado a " + to, "email": to})
+}
+
+// GetPreview devuelve el asunto y cuerpo de la vista previa de un correo.
+func (h *EmailSettingsHandler) GetPreview(c *gin.Context) {
+	key := c.Param("key")
+	userName := "Lorena Moujalli"
+	if v, ok := c.Get("name"); ok {
+		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+			userName = s
+		}
+	}
+	subject, body, err := h.svc.GetPreview(key, userName)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"key": key, "subject": subject, "body": body})
 }

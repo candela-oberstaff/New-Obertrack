@@ -12,7 +12,7 @@ func sampleEmail(kind, toName string) (subject, body string) {
 
 	case EmailKindSupportTicket:
 		n := &SupportNotifier{}
-		return "🎫 Nuevo ticket de soporte", n.buildHTML(SupportTicketInfo{
+		rawHTML := n.buildHTML(SupportTicketInfo{
 			Type:        "Solicitud de soporte",
 			Requester:   "Laura Méndez",
 			Company:     "Acme S.A.",
@@ -20,6 +20,7 @@ func sampleEmail(kind, toName string) (subject, body string) {
 			Description: "Al intentar subir un PDF en la tarea semanal me sale un error.",
 			Link:        "/tickets/soporte",
 		})
+		return "🎫 Nuevo ticket de soporte", brandedEmailShell("🎫 Nuevo ticket de soporte", rawHTML)
 
 	case EmailKindInductionInvite:
 		return "Invitación a tu inducción en Obertrack",
@@ -47,27 +48,30 @@ func sampleEmail(kind, toName string) (subject, body string) {
 			"Revisar actividad", "/admin",
 			"")
 
+	case EmailKindStaleCompany:
+		return "⚠️ Empresas sin actividad en Obertrack", sampleBody(
+			"Empresas sin abrir la aplicación",
+			"Estas empresas llevan 14 días o más sin que ningún usuario inicie sesión:",
+			[][2]string{{"Acme S.A.", "14 días sin actividad"}, {"Globex Corp", "16 días sin actividad"}},
+			"Revisar empresas", "/admin",
+			"Aviso automático al equipo de Customer Success.")
+
+	case EmailKindWorkflow:
+		return "⚡ Notificación de automatización", sampleBody(
+			"Acción de automatización activada",
+			"Se ha ejecutado la regla de automatización «Aviso a responsables al cambiar estado»:",
+			[][2]string{{"Tablero", "Desarrollo & Proyectos"}, {"Tarjeta / Tarea", "Revisión de requerimientos"}, {"Disparador", "Movido a «En Pruebas»"}},
+			"Ver tarjeta", "/tasks",
+			"Este correo fue generado por una regla del tablero.")
+
 	case EmailKindPasswordReset:
-		return "Obertrack - Recuperar Contraseña", sampleBody(
-			"Restablece tu contraseña",
-			fmt.Sprintf("Hola %s: recibimos una solicitud para restablecer tu contraseña. El enlace caduca en 1 hora.", toName),
-			nil, "Restablecer contraseña", "/reset-password?token=ejemplo",
-			"Si no lo solicitaste, puedes ignorar este mensaje.")
+		return "Obertrack - Recuperar Contraseña", BuildPasswordResetHTML(toName, frontendLink("/reset-password?token=ejemplo"))
 
 	case EmailKindAccountSetup:
-		return "Obertrack - Crea tu contraseña", sampleBody(
-			"Te damos la bienvenida a Obertrack",
-			fmt.Sprintf("Hola %s: tu cuenta ya está creada. Define tu contraseña para entrar por primera vez.", toName),
-			nil, "Crear mi contraseña", "/set-password?token=ejemplo",
-			"")
+		return "Obertrack - Crea tu contraseña", BuildPasswordSetupHTML(toName, toName+"@empresa.com", frontendLink("/set-password?token=ejemplo"))
 
 	case EmailKindAccessCredentials:
-		return "Obertrack - Tus datos de acceso", sampleBody(
-			"Tus datos de acceso",
-			fmt.Sprintf("Hola %s: estas son tus credenciales para entrar a Obertrack. Cámbialas al iniciar sesión.", toName),
-			[][2]string{{"Usuario", "persona@empresa.com"}, {"Contraseña temporal", "Ejemplo-1234"}},
-			"Entrar a Obertrack", "/login",
-			"")
+		return "Obertrack - Tus datos de acceso", BuildCredentialsHTML(toName, toName+"@empresa.com", "Ejemplo-1234", frontendLink("/login"))
 
 	case EmailKindIncidentBroadcast:
 		return "Comunicado: sismo en la región", sampleBody(
@@ -77,11 +81,7 @@ func sampleEmail(kind, toName string) (subject, body string) {
 			"Mensaje enviado por el equipo de Obertrack.")
 
 	case EmailKindSurveyInvite:
-		return "Nueva Encuesta: Clima laboral", sampleBody(
-			"Tu opinión cuenta",
-			"Te invitamos a responder la encuesta «Clima laboral». Toma menos de 5 minutos.",
-			nil, "Responder encuesta", "/encuestas",
-			"")
+		return "Nueva Encuesta: Clima laboral", BuildSurveyInviteHTML(toName, "Clima laboral", "Te invitamos a responder la encuesta «Clima laboral». Toma menos de 5 minutos.", frontendLink("/encuestas"))
 
 	case EmailKindTicketReply:
 		return "Respuesta a tu solicitud", sampleBody(
@@ -106,8 +106,8 @@ func sampleEmail(kind, toName string) (subject, body string) {
 
 	case EmailKindObervoiceCredentials:
 		return "📞 Tus datos de Obervoice", BuildObervoiceCredentialsHTML(
-			"María García",
-			"maria.garcia@empresa.com",
+			toName,
+			toName+"@empresa.com",
 			"1001",
 			"9",
 			"+34 900 123 456",
@@ -131,11 +131,10 @@ func frontendLink(path string) string {
 // sampleBody arma un cuerpo con el estilo de los correos de Obertrack: título,
 // texto, una tabla opcional de datos, botón opcional y una nota al pie.
 func sampleBody(title, intro string, rows [][2]string, ctaLabel, ctaPath, footnote string) string {
-	html := fmt.Sprintf(`<h2 style="margin:0 0 16px 0;color:#060b23;">%s</h2>
-<p style="margin:0 0 16px 0;line-height:1.6;">%s</p>`, title, intro)
+	html := fmt.Sprintf(`<p style="margin:0 0 16px 0;line-height:1.6;font-size:15px;color:#060b23;font-family:sans-serif;">%s</p>`, intro)
 
 	if len(rows) > 0 {
-		html += `<table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:8px;">`
+		html += `<table style="width:100%%;border-collapse:collapse;font-size:14px;margin-bottom:16px;font-family:sans-serif;">`
 		for _, r := range rows {
 			html += fmt.Sprintf(`<tr><td style="padding:6px 12px 6px 0;color:#8880a8;font-weight:600;white-space:nowrap;vertical-align:top;">%s</td><td style="padding:6px 0;color:#060b23;">%s</td></tr>`, r[0], r[1])
 		}
@@ -143,13 +142,11 @@ func sampleBody(title, intro string, rows [][2]string, ctaLabel, ctaPath, footno
 	}
 
 	if ctaLabel != "" {
-		html += fmt.Sprintf(`<div style="margin-top:24px;">
-	<a href="%s" style="display:inline-block;background:#cc33cc;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;">%s</a>
-</div>`, frontendLink(ctaPath), ctaLabel)
+		html += emailButton(ctaLabel, frontendLink(ctaPath))
 	}
 
 	if footnote != "" {
-		html += fmt.Sprintf(`<p style="margin:16px 0 0;color:#8880a8;font-size:12px;">%s</p>`, footnote)
+		html += emailNote(footnote)
 	}
-	return html
+	return brandedEmailShell(title, html)
 }

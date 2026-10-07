@@ -3219,6 +3219,16 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			ID: "202610071200_add_schedule_and_recipients_to_email_settings",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Migrating email_settings for schedule and recipients...")
+				return tx.AutoMigrate(&models.EmailSetting{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return nil
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

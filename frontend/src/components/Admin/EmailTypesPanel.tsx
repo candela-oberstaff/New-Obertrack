@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { Mail, Send, AlertTriangle, Settings2, Power, PowerOff } from 'lucide-react'
+import { Mail, Send, Eye, AlertTriangle, Settings2, Power, PowerOff } from 'lucide-react'
 import { useEmailSettings } from '../../hooks/useEmailSettings'
 import { useNotification } from '../../context/NotificationContext'
 import { useConfirm } from '../ui/ConfirmProvider'
 import { Skeleton } from '../ui'
 import type { EmailType } from '../../services/settings.service'
+import { EmailConfigModal } from './Modals/EmailConfigModal'
+import { EmailPreviewModal } from './Modals/EmailPreviewModal'
 import styles from './Admin.module.css'
 
 const CATEGORY_LABEL: Record<EmailType['category'], string> = {
@@ -23,13 +25,15 @@ const CATEGORY_ORDER: EmailType['category'][] = ['automatic', 'event', 'manual']
 
 /**
  * Configuración → Correos: todas las salidas de correo del sistema, con su
- * interruptor y un envío de prueba para revisar el formato.
+ * interruptor, vista previa del formato y envío de muestra.
  */
 export function EmailTypesPanel() {
-  const { types, isLoading, toggle, togglingKey, sendTest, testingKey } = useEmailSettings()
+  const { types, isLoading, toggle, togglingKey, updateSetting, sendTest, testingKey } = useEmailSettings()
   const { success, error: showError } = useNotification()
   const confirm = useConfirm()
   const [testEmail, setTestEmail] = useState('')
+  const [configEmail, setConfigEmail] = useState<EmailType | null>(null)
+  const [previewEmail, setPreviewEmail] = useState<EmailType | null>(null)
 
   const allOff = types.length > 0 && types.every((t) => !t.enabled)
   const offCount = types.filter((t) => !t.enabled).length
@@ -70,14 +74,10 @@ export function EmailTypesPanel() {
         <Mail size={19} /> Correos
       </h2>
       <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: 13 }}>
-        Todas las salidas de correo de Obertrack. Apaga las que no quieras que salgan y envía una prueba para ver cómo llega el formato.
+        Todas las salidas de correo de Obertrack. Apaga las que no quieras que salgan, revisa la vista previa o envía una prueba para ver cómo llega el formato.
       </p>
 
-      {/* Estado global, solo informativo. NO hay interruptor general a
-          propósito: un clic capaz de tumbar todos los correos —incluidos los de
-          recuperar y crear contraseña— es demasiado peligroso para tenerlo a
-          mano. Apagar todo sigue siendo posible, pero tipo por tipo, que obliga
-          a pensar cada uno. */}
+      {/* Estado global, solo informativo. */}
       <div
         style={{
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
@@ -161,7 +161,17 @@ export function EmailTypesPanel() {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {t.category !== 'manual' && t.key !== 'manual_composer' && t.key !== 'campaign' && (
+                      <button
+                        onClick={() => setPreviewEmail(t)}
+                        title="Ver la vista previa del diseño de este correo"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', borderRadius: 10, padding: '8px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', width: 'auto', whiteSpace: 'nowrap' }}
+                      >
+                        <Eye size={13} /> Vista previa
+                      </button>
+                    )}
+
                     <button
                       onClick={() => handleTest(t)}
                       disabled={testingKey === t.key}
@@ -170,6 +180,31 @@ export function EmailTypesPanel() {
                     >
                       <Send size={13} /> {testingKey === t.key ? 'Enviando…' : 'Probar'}
                     </button>
+
+                    {!t.managed_elsewhere && t.category === 'automatic' && (
+                      <button
+                        onClick={() => setConfigEmail(t)}
+                        title="Ajustar fecha y destinatarios de este correo"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          border: '1px solid #cbd5e1',
+                          background: '#fff',
+                          color: '#475569',
+                          borderRadius: 10,
+                          padding: '8px 10px',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          width: 'auto',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <Settings2 size={14} />
+                      </button>
+                    )}
 
                     {!t.managed_elsewhere && (
                       <label className={styles['checkbox-label']} style={{ margin: 0, cursor: togglingKey === t.key ? 'wait' : 'pointer' }}>
@@ -188,6 +223,24 @@ export function EmailTypesPanel() {
           </div>
         )
       })}
+
+      {configEmail && (
+        <EmailConfigModal
+          emailType={configEmail}
+          onClose={() => setConfigEmail(null)}
+          onSave={async (payload) => {
+            await updateSetting(payload)
+            success(`Configuración de «${configEmail.name}» guardada.`)
+          }}
+        />
+      )}
+
+      {previewEmail && (
+        <EmailPreviewModal
+          emailType={previewEmail}
+          onClose={() => setPreviewEmail(null)}
+        />
+      )}
     </div>
   )
 }

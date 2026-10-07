@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -66,8 +67,15 @@ type EmailType struct {
 	// ManagedElsewhere: su encendido vive en otra parte del panel (el reporte
 	// de jornadas se gobierna con "Envío automático de reportes"), así que la
 	// fila se muestra sin toggle propio para no tener dos mandos.
-	ManagedElsewhere string `json:"managed_elsewhere,omitempty"`
-	Enabled          bool   `json:"enabled"`
+	ManagedElsewhere string                  `json:"managed_elsewhere,omitempty"`
+	Enabled          bool                    `json:"enabled"`
+	Frequency        string                  `json:"frequency"`
+	DayOfMonth       int                     `json:"day_of_month"`
+	Weekday          int                     `json:"weekday"`
+	Hour             int                     `json:"hour"`
+	Minute           int                     `json:"minute"`
+	Timezone         string                  `json:"timezone"`
+	Recipients       []models.EmailRecipient `json:"recipients"`
 }
 
 // emailCatalog es la lista COMPLETA de correos que salen de Obertrack. Al
@@ -194,8 +202,9 @@ var emailCatalog = []EmailType{
 // catálogo al panel. La consulta ocurre en CADA envío, así que el estado vive
 // en un caché en memoria que se invalida al guardar.
 type EmailSettingsService struct {
-	repo  repository.EmailSettingRepository
-	brevo *BrevoService
+	repo     repository.EmailSettingRepository
+	userRepo repository.UserRepository
+	brevo    *BrevoService
 
 	mu      sync.RWMutex
 	cache   map[string]bool
@@ -207,27 +216,11 @@ type EmailSettingsService struct {
 // instancia del backend (despliegues con más de una réplica).
 const emailSettingsTTL = 60 * time.Second
 
-func NewEmailSettingsService(repo repository.EmailSettingRepository, brevo *BrevoService) *EmailSettingsService {
-	return &EmailSettingsService{repo: repo, cache: map[string]bool{}, brevo: brevo}
+func NewEmailSettingsService(repo repository.EmailSettingRepository, userRepo repository.UserRepository, brevo *BrevoService) *EmailSettingsService {
+	return &EmailSettingsService{repo: repo, userRepo: userRepo, cache: map[string]bool{}, brevo: brevo}
 }
 
 // Enabled dice si un tipo de correo puede salir.
-//
-// Sin fila guardada responde true: la ausencia significa "nunca se tocó", y por
-// defecto todos los correos están encendidos.
-//
-// Ante un FALLO DE BASE el criterio cambia según el tipo. Antes se respondía
-// siempre true —"el silencio nunca debe nacer de un error"—, que es correcto
-// para recuperar contraseña: preferimos un correo de más antes que dejar a
-// alguien sin poder entrar. Pero aplicado a un correo automático que alguien
-// apagó a propósito, convertía el interruptor en algo que funciona CASI
-// siempre, y en silencio: el correo salía y no quedaba constancia de que se
-// había ignorado el apagado. Peor que no tener interruptor, porque nadie
-// desconfía de él.
-//
-// Ahora solo los tipos Essential se dejan pasar ante un error; el resto se
-// frena. Y en ambos casos queda un log, para que la próxima vez esto se
-// responda leyendo los logs en vez de deduciéndolo.
 func (s *EmailSettingsService) Enabled(kind string) bool {
 	s.mu.RLock()
 	fresh := s.loaded && time.Now().Before(s.expires)
@@ -266,35 +259,212 @@ func (s *EmailSettingsService) Enabled(kind string) bool {
 	return true
 }
 
+func defaultFrequency(key string) string {
+	if key == EmailKindWorkHourReport {
+		return "mensual"
+	}
+	return "diaria"
+}
+
+func (s *EmailSettingsService) getDefaultRecipients(key string) []models.EmailRecipient {
+	if s.userRepo != nil {
+		switch key {
+		case EmailKindInactivityAlert, EmailKindStaleCompany:
+			users, err := s.userRepo.ListActiveByTypes([]models.UserType{
+				models.UserTypeCustomerSuccess,
+				models.UserTypeSuperadmin,
+			})
+			if err == nil && len(users) > 0 {
+				seen := map[string]bool{}
+				var out []models.EmailRecipient
+				for _, u := range users {
+					if u.IsSystem || strings.TrimSpace(u.Email) == "" {
+						continue
+					}
+					email := strings.ToLower(strings.TrimSpace(u.Email))
+					if !seen[email] {
+						seen[email] = true
+						out = append(out, models.EmailRecipient{
+							Email:   email,
+							Name:    u.Name,
+							Enabled: true,
+						})
+					}
+				}
+				if len(out) > 0 {
+					return out
+				}
+			}
+
+		case EmailKindWorkflow:
+			users, err := s.userRepo.ListActiveByTypes([]models.UserType{
+				models.UserTypeCustomerSuccess,
+				models.UserTypeSuperadmin,
+				models.UserTypeProfessional,
+			})
+			if err == nil && len(users) > 0 {
+				seen := map[string]bool{}
+				var out []models.EmailRecipient
+				for _, u := range users {
+					if u.IsSystem || strings.TrimSpace(u.Email) == "" {
+						continue
+					}
+					if u.IsManager || u.IsSupervisor || u.UserType == models.UserTypeCustomerSuccess || u.UserType == models.UserTypeSuperadmin {
+						email := strings.ToLower(strings.TrimSpace(u.Email))
+						if !seen[email] {
+							seen[email] = true
+							out = append(out, models.EmailRecipient{
+								Email:   email,
+								Name:    u.Name,
+								Enabled: true,
+							})
+						}
+					}
+				}
+				if len(out) > 0 {
+					return out
+				}
+			}
+		}
+	}
+
+	return []models.EmailRecipient{
+		{Email: "lorena@oberstaff.com", Name: "Lorena Moujalli", Enabled: true},
+	}
+}
+
 // List devuelve el catálogo con el estado actual de cada correo.
 func (s *EmailSettingsService) List() []EmailType {
-	saved := map[string]bool{}
+	saved := map[string]models.EmailSetting{}
 	if rows, err := s.repo.List(); err == nil {
 		for _, r := range rows {
-			saved[r.Key] = r.Enabled
+			saved[r.Key] = r
 		}
 	}
 	out := make([]EmailType, 0, len(emailCatalog))
 	for _, t := range emailCatalog {
-		enabled, ok := saved[t.Key]
-		t.Enabled = !ok || enabled
+		if r, ok := saved[t.Key]; ok {
+			t.Enabled = r.Enabled
+			if r.Frequency != "" {
+				t.Frequency = r.Frequency
+			} else {
+				t.Frequency = defaultFrequency(t.Key)
+			}
+			if r.DayOfMonth > 0 {
+				t.DayOfMonth = r.DayOfMonth
+			} else {
+				t.DayOfMonth = 1
+			}
+			if r.Weekday > 0 {
+				t.Weekday = r.Weekday
+			} else {
+				t.Weekday = 1
+			}
+			t.Hour = r.Hour
+			t.Minute = r.Minute
+			if r.Timezone != "" {
+				t.Timezone = r.Timezone
+			} else {
+				t.Timezone = "America/Santiago"
+			}
+			var recs []models.EmailRecipient
+			if r.Recipients != "" {
+				_ = json.Unmarshal([]byte(r.Recipients), &recs)
+			}
+			if len(recs) == 0 || (len(recs) == 1 && (recs[0].Email == "cs@oberstaff.com" || recs[0].Email == "responsables@oberstaff.com" || recs[0].Email == "soporte@oberstaff.com" || recs[0].Email == "reportes@empresa.com")) {
+				recs = s.getDefaultRecipients(t.Key)
+			}
+			t.Recipients = recs
+		} else {
+			t.Enabled = true
+			t.Frequency = defaultFrequency(t.Key)
+			t.DayOfMonth = 1
+			t.Weekday = 1
+			t.Hour = 8
+			t.Minute = 0
+			t.Timezone = "America/Santiago"
+			t.Recipients = s.getDefaultRecipients(t.Key)
+		}
 		out = append(out, t)
 	}
 	return out
 }
 
-// SetEnabled guarda el interruptor de un tipo y refresca el caché.
-func (s *EmailSettingsService) SetEnabled(kind string, enabled bool, userID uint) error {
+type UpdateEmailSettingReq struct {
+	Enabled    *bool                   `json:"enabled"`
+	Frequency  *string                 `json:"frequency"`
+	DayOfMonth *int                    `json:"day_of_month"`
+	Weekday    *int                    `json:"weekday"`
+	Hour       *int                    `json:"hour"`
+	Minute     *int                    `json:"minute"`
+	Timezone   *string                 `json:"timezone"`
+	Recipients []models.EmailRecipient `json:"recipients"`
+}
+
+// UpdateSetting guarda los ajustes (interruptor, fecha, destinatarios) de un tipo y refresca el caché.
+func (s *EmailSettingsService) UpdateSetting(kind string, req UpdateEmailSettingReq, userID uint) error {
 	if !isKnownEmailKind(kind) {
 		return fmt.Errorf("tipo de correo desconocido: %s", kind)
 	}
-	if err := s.repo.Upsert(&models.EmailSetting{Key: kind, Enabled: enabled, UpdatedBy: userID}); err != nil {
+
+	current, err := s.repo.Get(kind)
+	setting := models.EmailSetting{
+		Key:        kind,
+		Enabled:    true,
+		Frequency:  defaultFrequency(kind),
+		DayOfMonth: 1,
+		Weekday:    1,
+		Hour:       8,
+		Minute:     0,
+		Timezone:   "America/Santiago",
+		UpdatedBy:  userID,
+		UpdatedAt:  time.Now(),
+	}
+	if err == nil && current != nil {
+		setting = *current
+		setting.UpdatedBy = userID
+		setting.UpdatedAt = time.Now()
+	}
+
+	if req.Enabled != nil {
+		setting.Enabled = *req.Enabled
+	}
+	if req.Frequency != nil {
+		setting.Frequency = *req.Frequency
+	}
+	if req.DayOfMonth != nil {
+		setting.DayOfMonth = *req.DayOfMonth
+	}
+	if req.Weekday != nil {
+		setting.Weekday = *req.Weekday
+	}
+	if req.Hour != nil {
+		setting.Hour = *req.Hour
+	}
+	if req.Minute != nil {
+		setting.Minute = *req.Minute
+	}
+	if req.Timezone != nil {
+		setting.Timezone = *req.Timezone
+	}
+	if req.Recipients != nil {
+		bytes, _ := json.Marshal(req.Recipients)
+		setting.Recipients = string(bytes)
+	}
+
+	if err := s.repo.Upsert(&setting); err != nil {
 		return err
 	}
+
 	s.mu.Lock()
-	s.loaded = false // fuerza recarga en la próxima consulta
+	s.loaded = false
 	s.mu.Unlock()
 	return nil
+}
+
+// SetEnabled guarda el interruptor de un tipo y refresca el caché.
+func (s *EmailSettingsService) SetEnabled(kind string, enabled bool, userID uint) error {
+	return s.UpdateSetting(kind, UpdateEmailSettingReq{Enabled: &enabled}, userID)
 }
 
 // NOTA: no hay un SetAll (apagar/encender todo de una vez) a propósito. Existió
@@ -349,4 +519,16 @@ func (s *EmailSettingsService) SendTest(kind, toEmail, toName string) error {
 	</div>`
 
 	return s.brevo.SendEmail(toEmail, toName, "[Prueba] "+subject, notice+body)
+}
+
+// GetPreview devuelve el asunto y cuerpo HTML de la muestra del correo para la vista previa.
+func (s *EmailSettingsService) GetPreview(kind, toName string) (string, string, error) {
+	if !isKnownEmailKind(kind) {
+		return "", "", fmt.Errorf("tipo de correo desconocido: %s", kind)
+	}
+	if toName == "" {
+		toName = "Lorena Moujalli"
+	}
+	subject, body := sampleEmail(kind, toName)
+	return subject, body, nil
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { settingsService } from '../services/api'
+import { settingsService, type UpdateEmailSettingPayload } from '../services/settings.service'
 
 const EMAIL_TYPES_KEY = ['settings', 'email-types'] as const
 
@@ -21,6 +21,12 @@ export function useEmailSettings() {
     onSuccess: () => qc.invalidateQueries({ queryKey: EMAIL_TYPES_KEY }),
   })
 
+  const updateSettingMut = useMutation({
+    mutationFn: (payload: UpdateEmailSettingPayload) =>
+      settingsService.updateEmailSetting(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: EMAIL_TYPES_KEY }),
+  })
+
   const testMut = useMutation({
     mutationFn: ({ key, email }: { key: string; email?: string }) =>
       settingsService.sendEmailTest(key, email),
@@ -31,6 +37,8 @@ export function useEmailSettings() {
     isLoading: typesQ.isLoading,
     toggle: toggleMut.mutateAsync,
     togglingKey: toggleMut.isPending ? toggleMut.variables?.key : undefined,
+    updateSetting: updateSettingMut.mutateAsync,
+    isUpdating: updateSettingMut.isPending,
     sendTest: testMut.mutateAsync,
     testingKey: testMut.isPending ? testMut.variables?.key : undefined,
   }

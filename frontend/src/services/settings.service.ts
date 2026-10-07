@@ -33,7 +33,13 @@ export interface RunNowResult {
   failed: number
 }
 
-/** Un tipo de correo del sistema, con su interruptor (Configuración → Correos). */
+export interface EmailRecipient {
+  email: string
+  name?: string
+  enabled: boolean
+}
+
+/** Un tipo de correo del sistema, con su interruptor y configuración (Configuración → Correos). */
 export interface EmailType {
   key: string
   name: string
@@ -45,6 +51,25 @@ export interface EmailType {
   /** Si viene, su encendido se gobierna en otra sección (no lleva toggle propio). */
   managed_elsewhere?: string
   enabled: boolean
+  frequency?: 'diaria' | 'semanal' | 'mensual'
+  day_of_month?: number
+  weekday?: number
+  hour?: number
+  minute?: number
+  timezone?: string
+  recipients?: EmailRecipient[]
+}
+
+export interface UpdateEmailSettingPayload {
+  key: string
+  enabled?: boolean
+  frequency?: 'diaria' | 'semanal' | 'mensual'
+  day_of_month?: number
+  weekday?: number
+  hour?: number
+  minute?: number
+  timezone?: string
+  recipients?: EmailRecipient[]
 }
 
 export const settingsService = {
@@ -70,9 +95,19 @@ export const settingsService = {
     const { data } = await api.put<{ key: string; enabled: boolean }>(`/admin/settings/emails/${key}`, { enabled })
     return data
   },
+  updateEmailSetting: async (payload: UpdateEmailSettingPayload) => {
+    const { key, ...body } = payload
+    const { data } = await api.put<{ key: string; message: string }>(`/admin/settings/emails/${key}`, body)
+    return data
+  },
   /** Envía una muestra del correo (a la sesión si no se indica destinatario). */
   sendEmailTest: async (key: string, email?: string) => {
     const { data } = await api.post<{ message: string; email: string }>(`/admin/settings/emails/${key}/test`, { email })
+    return data
+  },
+  /** Obtiene la vista previa (asunto y cuerpo HTML) de un correo. */
+  getEmailPreview: async (key: string) => {
+    const { data } = await api.get<{ key: string; subject: string; body: string }>(`/admin/settings/emails/${key}/preview`)
     return data
   },
 
