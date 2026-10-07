@@ -21,12 +21,15 @@ import { useConfirmOptional } from './ConfirmProvider'
  * una foto del formulario al abrirse y compara contra ella. Sirve igual para
  * crear (la foto es el formulario vacío) que para editar (la foto son los
  * datos cargados), así cerrar sin tocar nada nunca pregunta.
+ *
+ * Si los datos llegan de forma asíncrona, pasa `ready = false` mientras cargan:
+ * la foto se toma en el primer render con `ready`, ya con los datos cargados.
  */
-export function useDirtySnapshot(value: unknown): boolean {
+export function useDirtySnapshot(value: unknown, ready = true): boolean {
   const baseline = useRef<string | null>(null)
   const current = JSON.stringify(value ?? null)
-  if (baseline.current === null) baseline.current = current
-  return current !== baseline.current
+  if (ready && baseline.current === null) baseline.current = current
+  return baseline.current !== null && current !== baseline.current
 }
 
 export function useCloseGuard(

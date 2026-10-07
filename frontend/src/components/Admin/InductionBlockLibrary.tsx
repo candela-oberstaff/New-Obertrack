@@ -9,7 +9,7 @@ import {
   type InductionProgram,
   type InductionVideo,
 } from '../../services/induction.service'
-import InductionBlockEditor from './InductionBlockEditor'
+import InductionBlockModal from './InductionBlockModal'
 import { LOW_PASSING_SCORE } from './inductionReadiness'
 import styles from './InductionSettings.module.css'
 
@@ -25,7 +25,8 @@ interface Props {
 
 /**
  * Biblioteca de bloques: cada uno es un video más su cuestionario, y puede
- * usarse en cualquier programa. Desde aquí se crean, editan y borran.
+ * usarse en cualquier programa. Desde aquí se crean y editan (en un modal por
+ * pasos) y se borran.
  */
 export default function InductionBlockLibrary({ blocks, videos, fallbackPassingScore, programs = [], onChanged }: Props) {
   const { success, error: showError } = useNotification()
@@ -52,23 +53,6 @@ export default function InductionBlockLibrary({ blocks, videos, fallbackPassingS
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo borrar el bloque.')
     }
-  }
-
-  if (editing) {
-    return (
-      <InductionBlockEditor
-        block={editing === 'new' ? null : editing}
-        videos={videos}
-        fallbackPassingScore={fallbackPassingScore}
-        allBlocks={blocks}
-        allPrograms={programs}
-        onSaved={async (saved) => {
-          setEditing(saved)
-          await onChanged()
-        }}
-        onBack={() => setEditing(null)}
-      />
-    )
   }
 
   return (
@@ -152,6 +136,21 @@ export default function InductionBlockLibrary({ blocks, videos, fallbackPassingS
             )
           })}
         </div>
+      )}
+
+      {editing && (
+        <InductionBlockModal
+          block={editing === 'new' ? null : editing}
+          videos={videos}
+          fallbackPassingScore={fallbackPassingScore}
+          allBlocks={blocks}
+          allPrograms={programs}
+          onSaved={async (saved) => {
+            setEditing(saved)
+            await onChanged()
+          }}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   )

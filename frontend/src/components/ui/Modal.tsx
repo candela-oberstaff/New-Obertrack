@@ -26,6 +26,13 @@ export interface ModalProps {
   isDirty?: boolean
 }
 
+/**
+ * Modales abiertos, el último es el de encima. Los atajos de teclado son de
+ * documento, así que sin esto Escape cerraría también el modal de debajo
+ * cuando hay uno anidado (p. ej. la firma dentro del asistente de plantillas).
+ */
+const openModals: symbol[] = []
+
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -64,6 +71,9 @@ export function Modal({
 
     previouslyFocused.current = document.activeElement as HTMLElement | null
 
+    const modalId = Symbol('modal')
+    openModals.push(modalId)
+
     // Lock background scroll.
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -78,6 +88,7 @@ export function Modal({
     const raf = requestAnimationFrame(focusFirst)
 
     const handleKey = (e: KeyboardEvent) => {
+      if (openModals[openModals.length - 1] !== modalId) return
       if (e.key === 'Escape') {
         onCloseRef.current()
         return
@@ -106,6 +117,7 @@ export function Modal({
     return () => {
       cancelAnimationFrame(raf)
       document.removeEventListener('keydown', handleKey)
+      openModals.splice(openModals.indexOf(modalId), 1)
       document.body.style.overflow = prevOverflow
       previouslyFocused.current?.focus?.()
     }

@@ -21,6 +21,8 @@ interface Props {
   /** Nombre del bloque o programa: es el título si el propio está vacío. */
   fallbackTitle: string
   presets?: BadgePreset[]
+  /** Medallón de vista previa junto a los controles. Se apaga si el contenedor ya muestra uno. */
+  showPreview?: boolean
   onChange: (next: BadgeDraft) => void
 }
 
@@ -75,18 +77,20 @@ const inputStyle: React.CSSProperties = {
  * verá el profesional. Si ya hay insignias definidas en otros bloques o
  * programas, se puede copiar una en vez de armarla desde cero.
  */
-export function BadgePicker({ value, fallbackTitle, presets = [], onChange }: Props) {
+export function BadgePicker({ value, fallbackTitle, presets = [], showPreview = true, onChange }: Props) {
   const effectiveTitle = value.title.trim() || fallbackTitle.trim() || 'Sin nombre'
 
   return (
     <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, minWidth: 130 }}>
-        <BadgeMedallion icon={value.icon} color={value.color} size="lg" title={effectiveTitle} />
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', textAlign: 'center', maxWidth: 150 }}>
-          {effectiveTitle}
-        </span>
-        <span style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>Vista previa</span>
-      </div>
+      {showPreview && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, minWidth: 130 }}>
+          <BadgeMedallion icon={value.icon} color={value.color} size="lg" title={effectiveTitle} />
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', textAlign: 'center', maxWidth: 150 }}>
+            {effectiveTitle}
+          </span>
+          <span style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>Vista previa</span>
+        </div>
+      )}
 
       <div style={{ flex: 1, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>

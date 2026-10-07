@@ -4,7 +4,7 @@ import { Plus, Pencil, Trash2, FileCheck } from 'lucide-react'
 import { useConfirm } from '../ui/ConfirmProvider'
 import { useNotification } from '../../context/NotificationContext'
 import { certificateService, templateImageUrl, type CertificateTemplate } from '../../services/certificate.service'
-import CertificateTemplateEditor from './CertificateTemplateEditor'
+import CertificateTemplateModal from './CertificateTemplateModal'
 import styles from '../Admin/InductionSettings.module.css'
 
 interface Props {
@@ -14,7 +14,7 @@ interface Props {
 
 /**
  * Biblioteca de plantillas de certificado. Cada programa elige una; sin
- * plantilla, el programa no certifica.
+ * plantilla, el programa no certifica. Crear y editar se hace en un modal.
  */
 export default function CertificateTemplateList({ onChanged }: Props) {
   const { success, error: showError } = useNotification()
@@ -57,20 +57,6 @@ export default function CertificateTemplateList({ onChanged }: Props) {
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo borrar la plantilla.')
     }
-  }
-
-  if (editing) {
-    return (
-      <CertificateTemplateEditor
-        template={editing === 'new' ? null : editing}
-        onSaved={async (saved) => {
-          setEditing(saved)
-          await load()
-          onChanged?.()
-        }}
-        onBack={() => setEditing(null)}
-      />
-    )
   }
 
   return (
@@ -154,6 +140,18 @@ export default function CertificateTemplateList({ onChanged }: Props) {
             <span>Sube otro diseño</span>
           </button>
         </div>
+      )}
+
+      {editing && (
+        <CertificateTemplateModal
+          template={editing === 'new' ? null : editing}
+          onSaved={async (saved) => {
+            setEditing(saved)
+            await load()
+            onChanged?.()
+          }}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   )
