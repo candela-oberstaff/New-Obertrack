@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   RotateCcw, Trash2, RefreshCw, AlertTriangle, Undo2, CheckCircle2,
-  Users, Inbox, Contact, ClipboardList, GraduationCap, LayoutGrid, CheckSquare, Siren, FileText,
+  Users, Inbox, Contact, ClipboardList, GraduationCap, LayoutGrid, CheckSquare, Siren, FileText, Search, X,
 } from 'lucide-react'
 import { adminService, type TrashItem, type TrashTypeInfo } from '../../services/admin.service'
 import styles from './Admin.module.css'
@@ -29,6 +29,7 @@ export function TrashPanel() {
   const [types, setTypes] = useState<TrashTypeInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [typeFilter, setTypeFilter] = useState<string>('')
+  const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ tone: 'success' | 'error' | 'info'; text: string } | null>(null)
@@ -50,16 +51,25 @@ export function TrashPanel() {
 
   useEffect(() => { load() }, [load])
 
+  // Búsqueda por título, subtítulo o tipo, sin distinguir tildes ni mayúsculas.
+  const searched = useMemo(() => {
+    const q = normalize(query.trim())
+    if (!q) return items
+    return items.filter((it) => normalize(`${it.title} ${it.subtitle} ${it.type_label}`).includes(q))
+  }, [items, query])
+
+  // Los contadores de los filtros reflejan la búsqueda: dicen cuántos hay de
+  // cada tipo entre lo que coincide.
   const countByType = useMemo(() => {
     const m = new Map<string, number>()
-    items.forEach((it) => m.set(it.type, (m.get(it.type) || 0) + 1))
+    searched.forEach((it) => m.set(it.type, (m.get(it.type) || 0) + 1))
     return m
-  }, [items])
+  }, [searched])
 
   const visible = useMemo(() => {
-    const rows = typeFilter ? items.filter((it) => it.type === typeFilter) : items
+    const rows = typeFilter ? searched.filter((it) => it.type === typeFilter) : searched
     return [...rows].sort((a, b) => (b.deleted_at || '').localeCompare(a.deleted_at || ''))
-  }, [items, typeFilter])
+  }, [searched, typeFilter])
 
   const allVisibleSelected = visible.length > 0 && visible.every((it) => selected.has(refKey(it.type, it.id)))
   const toggle = (t: string, id: number) => setSelected((prev) => {
@@ -157,7 +167,7 @@ export function TrashPanel() {
             <span style={{ fontSize: 13, fontWeight: 700, color: '#64748b', background: '#f1f5f9', borderRadius: 999, padding: '2px 10px' }}>{items.length}</span>
           </h3>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
-            Lo que borres queda acá. Restauralo para devolverlo a su sección, o eliminalo para siempre.
+            Lo que borres queda aquí. Restáuralo para devolverlo a su sección, o elimínalo para siempre.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -182,9 +192,26 @@ export function TrashPanel() {
       </div>
 
       {items.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+          <label style={searchBox}>
+            <Search size={15} style={{ color: '#94a3b8', flexShrink: 0 }} />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar en la papelera..."
+              aria-label="Buscar en la papelera"
+              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, flex: 1, minWidth: 0, fontFamily: 'inherit', color: '#0f172a' }}
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery('')} title="Borrar búsqueda" aria-label="Borrar búsqueda"
+                style={{ border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', display: 'inline-flex', padding: 0 }}>
+                <X size={14} />
+              </button>
+            )}
+          </label>
           <button onClick={() => setTypeFilter('')} style={chipStyle(typeFilter === '')}>
-            Todos <span style={chipCount}>{items.length}</span>
+            Todos <span style={chipCount}>{searched.length}</span>
           </button>
           {types.filter((t) => (countByType.get(t.key) || 0) > 0).map((t) => {
             const M = metaFor(t.key)
@@ -296,7 +323,9 @@ export function TrashPanel() {
                 )
               })}
               {!loading && visible.length === 0 && items.length > 0 && (
-                <tr><td colSpan={5} style={{ textAlign: 'center', padding: '28px 16px', color: '#94a3b8' }}>No hay elementos de este tipo.</td></tr>
+                <tr><td colSpan={5} style={{ textAlign: 'center', padding: '28px 16px', color: '#94a3b8' }}>
+                  {query ? `Nada en la papelera coincide con «${query}».` : 'No hay elementos de este tipo.'}
+                </td></tr>
               )}
             </tbody>
           </table>
@@ -332,3 +361,13 @@ const chipStyle = (active: boolean): React.CSSProperties => ({
   color: active ? '#6d28d9' : '#475569', fontSize: 13, fontWeight: 600, cursor: 'pointer',
 })
 const chipCount: React.CSSProperties = { fontSize: 11, fontWeight: 800, background: 'rgba(0,0,0,0.06)', borderRadius: 999, padding: '1px 7px' }
+
+/** Para buscar sin distinguir tildes ni mayúsculas. */
+function normalize(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
+const searchBox: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 999,
+  border: '1px solid #e2e8f0', background: '#fff', width: 280, maxWidth: '100%',
+}
