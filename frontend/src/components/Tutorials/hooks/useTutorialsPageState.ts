@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import { useNotification } from '../../../context/NotificationContext'
 import { useConfirm } from '../../ui/ConfirmProvider'
@@ -231,6 +231,17 @@ export function useTutorialsPageState() {
     setSelectedTutorial(tutorial)
     recordView(tutorial.id)
   }, [recordView])
+
+  // /novedades?ver=ID abre esa novedad al llegar (desde el dashboard). Una sola
+  // vez: cerrarla no debe volver a abrirla.
+  const deepLinkHandled = useRef(false)
+  useEffect(() => {
+    if (deepLinkHandled.current || tutorials.length === 0) return
+    deepLinkHandled.current = true
+    const id = Number(new URLSearchParams(window.location.search).get('ver'))
+    const target = id ? tutorials.find((t) => t.id === id) : undefined
+    if (target) handleOpenTutorial(target)
+  }, [tutorials, handleOpenTutorial])
 
   return {
     isAdmin,
