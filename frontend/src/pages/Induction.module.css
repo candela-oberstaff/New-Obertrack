@@ -131,6 +131,10 @@
   font-size: 14px;
   line-height: 1.6;
   color: rgba(255, 255, 255, 0.75);
+  /* Saltos de línea parejos: sin una última palabra suelta («plataforma.»).
+     `pretty` queda como respaldo donde `balance` no existe. */
+  text-wrap: pretty;
+  text-wrap: balance;
 }
 
 /* Stepper vertical. */
@@ -580,6 +584,43 @@
   border-color: #b9a6d4;
 }
 
+/* Descargar certificado: botón de contorno con el icono de descarga en el
+   color de la marca; al pasar el cursor se tiñe de orquídea. */
+.downloadBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 11px 22px;
+  border: 1px solid #e7c6ee;
+  border-radius: 12px;
+  background: #fdf7ff;
+  color: #7a1f7a;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.downloadBtn svg {
+  color: #cc33cc;
+  flex-shrink: 0;
+}
+
+.downloadBtn:hover {
+  background: #fbeaff;
+  border-color: #cc33cc;
+  transform: translateY(-1px);
+}
+
+.downloadBtn:focus-visible {
+  outline: 2px solid #cc33cc;
+  outline-offset: 2px;
+}
+
 /* ===================== Estados y resultado ===================== */
 
 .state,
@@ -627,6 +668,90 @@
   letter-spacing: -0.4px;
 }
 
+/* Línea previa al título (p. ej. «¡Felicidades!»): sola y en el color de la marca. */
+/* Vista del certificado: el PDF en un marco y, debajo, descargar e ir a la plataforma. */
+.certView {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  padding: 8px 0;
+  min-width: 0;
+}
+
+.certFrame {
+  width: 100%;
+  height: min(52vh, 440px);
+  margin: 10px 0 6px;
+  border: 1px solid #e7e0f3;
+  border-radius: 14px;
+  background: #f7f4fc;
+  overflow: hidden;
+  display: flex;
+}
+
+.certFrame iframe {
+  flex: 1;
+  width: 100%;
+  border: 0;
+}
+
+.certFrameMsg {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: #5c5680;
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+.certActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.certActions .downloadBtn {
+  margin-top: 0;
+}
+
+.certBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: #5c5680;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.certBack:hover {
+  color: #7a1f7a;
+}
+
+.stateKicker {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: #cc33cc;
+}
+
 .stateText {
   margin: 0 auto;
   max-width: 42ch;
@@ -649,7 +774,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 8px 0 4px;
+  margin: 14px 0 4px;
   background: conic-gradient(var(--ring-color) calc(var(--pct) * 1%), #ece7f6 0);
 }
 
