@@ -2,6 +2,7 @@ import { render, screen, act, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NovedadAnnouncer } from './NovedadAnnouncer'
+import { clearAnnouncerSession } from './announcerSession'
 import { tutorialService } from '../../services/api'
 import type { Tutorial } from '../../types'
 
@@ -61,6 +62,8 @@ function renderAnnouncer() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Cada prueba empieza en un inicio de sesión nuevo.
+  clearAnnouncerSession()
   vi.mocked(tutorialService.getPending).mockResolvedValue([NOVEDAD])
   vi.mocked(tutorialService.recordShow).mockResolvedValue(undefined)
   vi.mocked(tutorialService.recordView).mockResolvedValue(undefined)
@@ -91,18 +94,42 @@ describe('NovedadAnnouncer · conteo de apariciones', () => {
     expect(tutorialService.recordShow).toHaveBeenCalledTimes(1)
   })
 
-  it('cuenta otra vez cuando la persona vuelve a entrar sin cerrar sesión', async () => {
+  it('recargar la página no gasta otra aparición', async () => {
     renderAnnouncer()
     await screen.findByText('Cambio en el registro de horas')
     expect(tutorialService.recordShow).toHaveBeenCalledTimes(1)
 
-    // Recargar la página: el componente se monta de nuevo y el servidor sigue
-    // devolviéndola porque no se cerró. Esa es la segunda aparición.
+    // Un F5 monta el componente de nuevo, pero sigue siendo el mismo inicio
+    // de sesión: no es una segunda aparición.
     cleanup()
     renderAnnouncer()
     await screen.findByText('Cambio en el registro de horas')
 
+    expect(tutorialService.recordShow).toHaveBeenCalledTimes(1)
+  })
+
+  it('cuenta otra vez en un inicio de sesión nuevo', async () => {
+    renderAnnouncer()
+    await screen.findByText('Cambio en el registro de horas')
+
+    // Salir y volver a entrar limpia la sesión del aviso.
+    cleanup()
+    clearAnnouncerSession()
+    renderAnnouncer()
+    await screen.findByText('Cambio en el registro de horas')
+
     expect(tutorialService.recordShow).toHaveBeenCalledTimes(2)
+  })
+
+  it('cerrada, no vuelve en la misma sesión aunque el servidor la siga devolviendo', async () => {
+    renderAnnouncer()
+    await screen.findByText('Cambio en el registro de horas')
+    await act(async () => { screen.getAllByRole('button').find(b => /cerrar|entendido/i.test(b.textContent || b.getAttribute('aria-label') || ''))?.click() })
+
+    cleanup()
+    renderAnnouncer()
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByText('Cambio en el registro de horas')).not.toBeInTheDocument()
   })
 
   it('deja de aparecer cuando el servidor ya no la devuelve', async () => {

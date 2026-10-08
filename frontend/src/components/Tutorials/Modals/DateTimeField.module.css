@@ -2,9 +2,15 @@
    dos controles, así que van pegados en una fila. */
 .field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 118px;
+  grid-template-columns: minmax(0, 1fr) 136px;
   gap: 8px;
   align-items: start;
+}
+
+/* Sin esto, el ancho mínimo propio del calendario y del desplegable empuja la
+   fila fuera de la columna y el modal acaba con scroll horizontal. */
+.field > * {
+  min-width: 0;
 }
 
 @media (max-width: 560px) {

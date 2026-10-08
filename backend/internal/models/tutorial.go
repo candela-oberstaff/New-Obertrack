@@ -116,9 +116,10 @@ type Tutorial struct {
 	// RequireAck exige confirmar la lectura en vez de bastar con cerrar. Para
 	// lo que tiene consecuencias: cambios de pago, politicas, obligaciones.
 	RequireAck bool `gorm:"not null;default:false" json:"require_ack"`
-	// AnnounceMaxShows es cuántas veces se le puede mostrar el aviso a una
-	// misma persona. 0 = sin límite (manda solo el plazo en días). Es el freno
-	// para quien nunca cierra el aviso y lo esquiva recargando.
+	// AnnounceMaxShows es en cuántos inicios de sesión distintos le sale el
+	// aviso a cada persona. 1 = una vez (al cerrarlo no vuelve); N = hasta N
+	// sesiones aunque lo cierre; 0 = en cada sesión mientras dure el plazo.
+	// Siempre deja de salir si la abre desde Novedades o confirma la lectura.
 	AnnounceMaxShows int            `gorm:"not null;default:0" json:"announce_max_shows"`
 	CreatedBy        uint           `gorm:"not null;index" json:"created_by"`
 	Creator          User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`

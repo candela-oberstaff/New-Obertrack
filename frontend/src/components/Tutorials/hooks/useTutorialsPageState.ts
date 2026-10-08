@@ -21,7 +21,7 @@ const EMPTY_FORM: CreateTutorialInput = {
   duration_min: 0,
   order_index: 0,
   announce_days: 2,
-  announce_max_shows: 0,
+  announce_max_shows: 1,
   cta_label: '',
   cta_url: '',
   publish_at: null,
@@ -140,13 +140,15 @@ export function useTutorialsPageState() {
       duration_min: tutorial.duration_min,
       order_index: tutorial.order_index,
       announce_days: tutorial.announce_days ?? 2,
-      announce_max_shows: tutorial.announce_max_shows ?? 0,
+      announce_max_shows: tutorial.announce_max_shows ?? 1,
       cta_label: tutorial.cta_label || '',
       cta_url: tutorial.cta_url || '',
       publish_at: tutorial.publish_at ?? null,
       expires_at: tutorial.expires_at ?? null,
       require_ack: tutorial.require_ack ?? false,
-      is_active: tutorial.is_active,
+      // Una programada está oculta solo porque espera su hora: se abre como
+      // visible para que guardarla no la deje en borrador para siempre.
+      is_active: tutorial.is_active || (!!tutorial.publish_at && !tutorial.announced_at),
     })
     setShowFormModal(true)
   }, [])

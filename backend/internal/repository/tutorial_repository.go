@@ -253,7 +253,15 @@ func (r *tutorialRepository) FindPendingAnnouncements(userID uint, audiences []s
 		Where("is_active = ?", true).
 		Where("announced_at IS NOT NULL AND announce_days > 0").
 		Where("announced_at + (announce_days * INTERVAL '1 day') > ?", now).
-		Where("NOT EXISTS (SELECT 1 FROM tutorial_views v WHERE v.tutorial_id = tutorials.id AND v.user_id = ?)", userID).
+		// Deja de salir cuando ya la leyó de verdad: la abrió desde Novedades,
+		// confirmó la lectura o, con tope de 1 vez, la cerró. Cerrar el aviso
+		// también deja una vista, pero con varias apariciones esa vista no la
+		// apaga: manda el tope de veces de abajo.
+		Where(`NOT EXISTS (
+			SELECT 1 FROM tutorial_views v
+			WHERE v.tutorial_id = tutorials.id AND v.user_id = ?
+			  AND (v.source <> 'anuncio' OR v.acknowledged_at IS NOT NULL OR tutorials.announce_max_shows = 1)
+		)`, userID).
 		// Tope de apariciones: con announce_max_shows a 0 no se aplica.
 		Where(`announce_max_shows = 0 OR NOT EXISTS (
 			SELECT 1 FROM tutorial_shows s

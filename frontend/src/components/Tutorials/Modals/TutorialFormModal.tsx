@@ -19,13 +19,13 @@ import styles from '../../../pages/Tutoriales.module.css'
  * menos, y el 0 tiene que estar a la vista para poder publicar sin interrumpir.
  */
 const ANNOUNCE_DAYS_OPTIONS = [
-  { value: 0, label: 'Sin aviso emergente (solo notificación)' },
-  { value: 1, label: '1 día' },
-  { value: 2, label: '2 días' },
-  { value: 3, label: '3 días' },
-  { value: 7, label: '1 semana' },
-  { value: 15, label: '15 días' },
-  { value: 30, label: '30 días' },
+  { value: 0, label: 'No mostrar (solo notificación)' },
+  { value: 1, label: 'Mostrar durante 1 día' },
+  { value: 2, label: 'Mostrar durante 2 días' },
+  { value: 3, label: 'Mostrar durante 3 días' },
+  { value: 7, label: 'Mostrar durante 1 semana' },
+  { value: 15, label: 'Mostrar durante 15 días' },
+  { value: 30, label: 'Mostrar durante 30 días' },
 ]
 
 /**
@@ -57,12 +57,12 @@ const CTA_DESTINATIONS = [
  * se cumpla primero.
  */
 const ANNOUNCE_SHOWS_OPTIONS = [
-  { value: 0, label: 'Sin límite de veces' },
-  { value: 1, label: '1 vez' },
-  { value: 2, label: '2 veces' },
-  { value: 3, label: '3 veces' },
-  { value: 5, label: '5 veces' },
-  { value: 10, label: '10 veces' },
+  { value: 1, label: 'Una vez (al cerrarla no vuelve)' },
+  { value: 2, label: 'En 2 inicios de sesión' },
+  { value: 3, label: 'En 3 inicios de sesión' },
+  { value: 5, label: 'En 5 inicios de sesión' },
+  { value: 10, label: 'En 10 inicios de sesión' },
+  { value: 0, label: 'En cada inicio de sesión' },
 ]
 
 /** Los tres formatos que puede tener una novedad, en el orden del selector. */
@@ -174,7 +174,18 @@ export function TutorialFormModal({
       {/* El formulario va en dos columnas: los campos cortos se emparejan y solo
           el contenido ocupa el ancho completo. Antes era una sola columna larga
           en la que había que desplazarse para ver de qué trataba la novedad. */}
-      <form onSubmit={onSubmit} id="tutorial-form" className={styles['tutorial-form-body']}>
+      <form
+        onSubmit={(e) => {
+          // Marcar "Programar" y no elegir fecha publicaba al instante sin
+          // avisar: justo lo contrario de lo que se quería.
+          if (scheduling && !formData.publish_at && !formData.expires_at) {
+            e.preventDefault()
+            error('Elige la fecha de publicación, o desmarca «Programar la publicación» para publicarla al guardar.')
+            return
+          }
+          onSubmit(e)
+        }}
+        id="tutorial-form" className={styles['tutorial-form-body']}>
         {/* El formato va primero porque decide qué se pide después. */}
         <div className={styles['tutorial-form-section']}>Contenido</div>
 
@@ -379,7 +390,9 @@ export function TutorialFormModal({
             ariaLabel="Días que el aviso emergente insiste con la novedad"
           />
           <small className={styles['tutorial-form-hint']}>
-            Sale a pantalla completa hasta que la persona lo cierra, o hasta cumplirse el plazo.
+            {formData.announce_days > 0
+              ? 'Sale a pantalla completa al entrar, contando el plazo desde que se publica.'
+              : 'Solo llega a la campanita y queda en Novedades.'}
           </small>
         </div>
 
@@ -395,7 +408,8 @@ export function TutorialFormModal({
               ariaLabel="Veces que el aviso puede aparecerle a una misma persona"
             />
             <small className={styles['tutorial-form-hint']}>
-              Tope por persona. Deja de salir con lo que ocurra primero: el plazo o estas veces.
+              Cada inicio de sesión cuenta una vez. Deja de salir al cumplirse el plazo o si la abre desde
+              Novedades{formData.require_ack ? ' o confirma la lectura' : ''}.
             </small>
           </div>
         )}
@@ -485,6 +499,13 @@ export function TutorialFormModal({
                 minDate={today()}
                 ariaLabel="Fecha de publicación"
               />
+              <small className={styles['tutorial-form-hint']}>
+                {!formData.publish_at
+                  ? 'Sin fecha se publica al guardarla.'
+                  : new Date(formData.publish_at).getTime() <= Date.now()
+                    ? 'Esa hora ya pasó: se publicará al guardarla.'
+                    : 'Hasta entonces queda oculta; a esa hora se publica, se notifica y empieza el aviso.'}
+              </small>
             </div>
 
             <div className={`${field} ${half}`}>

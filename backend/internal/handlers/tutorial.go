@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -66,10 +67,42 @@ type UpdateTutorialRequest struct {
 	Target           *models.TutorialTarget `json:"target"`
 	CTALabel         *string                `json:"cta_label"`
 	CTAURL           *string                `json:"cta_url"`
-	PublishAt        *time.Time             `json:"publish_at"`
-	ExpiresAt        *time.Time             `json:"expires_at"`
+	// Las fechas distinguen "no vino" de "vino null": al editar, null es
+	// quitar la programación y la ausencia es no tocarla.
+	PublishAt        optionalTime           `json:"publish_at"`
+	ExpiresAt        optionalTime           `json:"expires_at"`
 	RequireAck       *bool                  `json:"require_ack"`
 	IsActive         *bool                  `json:"is_active"`
+}
+
+// optionalTime es una fecha opcional que recuerda si llegó en el JSON. Con un
+// *time.Time a secas, null y ausente se leen igual y no habría forma de
+// desprogramar una novedad: desmarcar "Programar" no se guardaba.
+type optionalTime struct {
+	Set   bool
+	Value *time.Time
+}
+
+func (o *optionalTime) UnmarshalJSON(b []byte) error {
+	o.Set = true
+	if string(b) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var t time.Time
+	if err := json.Unmarshal(b, &t); err != nil {
+		return err
+	}
+	o.Value = &t
+	return nil
+}
+
+// field es el valor para el mapa de cambios: la fecha, o nil para borrarla.
+func (o optionalTime) field() interface{} {
+	if o.Value == nil {
+		return nil
+	}
+	return *o.Value
 }
 
 type ReorderTutorialsRequest struct {
@@ -158,7 +191,9 @@ func (h *TutorialHandler) Create(c *gin.Context) {
 	if req.AnnounceDays != nil {
 		announceDays = *req.AnnounceDays
 	}
-	announceMaxShows := 0 // Sin tope, que es como se comportaba siempre.
+	// Una vez por defecto: al cerrarlo no vuelve. Más veces es una decisión
+	// explícita de quien publica.
+	announceMaxShows := 1
 	if req.AnnounceMaxShows != nil {
 		announceMaxShows = *req.AnnounceMaxShows
 	}
@@ -256,11 +291,11 @@ func (h *TutorialHandler) Update(c *gin.Context) {
 	if req.CTAURL != nil {
 		updates["cta_url"] = *req.CTAURL
 	}
-	if req.PublishAt != nil {
-		updates["publish_at"] = *req.PublishAt
+	if req.PublishAt.Set {
+		updates["publish_at"] = req.PublishAt.field()
 	}
-	if req.ExpiresAt != nil {
-		updates["expires_at"] = *req.ExpiresAt
+	if req.ExpiresAt.Set {
+		updates["expires_at"] = req.ExpiresAt.field()
 	}
 	if req.RequireAck != nil {
 		updates["require_ack"] = *req.RequireAck

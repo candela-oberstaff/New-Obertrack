@@ -165,6 +165,17 @@ func uniqueIDs(ids []uint) []uint {
 	return out
 }
 
+// timeOrNil lee una fecha del mapa de cambios (nil = se borra).
+func timeOrNil(v interface{}) *time.Time {
+	switch t := v.(type) {
+	case time.Time:
+		return &t
+	case *time.Time:
+		return t
+	}
+	return nil
+}
+
 // normalizeAnnounceDays acota la ventana del aviso. El 0 es intencional y se
 // respeta: significa "avisa por la campanita, pero no interrumpas a nadie".
 // Tope de apariciones del aviso. Más de diez veces delante de la misma persona
@@ -555,8 +566,26 @@ func (s *tutorialService) Create(userID uint, in TutorialInput) (*models.Tutoria
 		tutorial.AnnouncedAt = &now
 	}
 
+	// GORM no escribe los ceros de campos con default en la base: un borrador
+	// o una programada (is_active=false) se guardaba visible, y "sin aviso
+	// emergente" (0 días) se guardaba con 2. Además copia el default de vuelta
+	// al struct, así que se recuerda antes de crear y se escribe explícito.
+	wantActive, wantDays := tutorial.IsActive, tutorial.AnnounceDays
 	if err := s.repo.Create(tutorial); err != nil {
 		return nil, err
+	}
+	fix := map[string]interface{}{}
+	if !wantActive {
+		fix["is_active"] = false
+	}
+	if wantDays == 0 {
+		fix["announce_days"] = 0
+	}
+	if len(fix) > 0 {
+		if err := s.repo.SetFields(tutorial.ID, fix); err != nil {
+			return nil, err
+		}
+		tutorial.IsActive, tutorial.AnnounceDays = wantActive, wantDays
 	}
 
 	if tutorial.AnnouncedAt != nil {
@@ -671,6 +700,32 @@ func (s *tutorialService) Update(actorID, id uint, updates map[string]interface{
 
 	if len(updates) == 0 {
 		return tutorial, nil
+	}
+
+	// Programación, con los valores que quedarán tras el cambio.
+	_, publishChanged := updates["publish_at"]
+	_, expiresChanged := updates["expires_at"]
+	if publishChanged || expiresChanged {
+		publishAt, expiresAt := tutorial.PublishAt, tutorial.ExpiresAt
+		if publishChanged {
+			publishAt = timeOrNil(updates["publish_at"])
+		}
+		if expiresChanged {
+			expiresAt = timeOrNil(updates["expires_at"])
+		}
+		if err := validateSchedule(publishAt, expiresAt); err != nil {
+			return nil, err
+		}
+		if publishAt != nil && publishAt.After(time.Now()) {
+			// Ya publicada: moverla al futuro no la "despublica" ni la
+			// vuelve a anunciar, así que se rechaza en vez de ignorarlo.
+			if tutorial.AnnouncedAt != nil {
+				return nil, errors.New("Esta novedad ya se publicó: no se puede volver a programar. Usa «Recordar» para avisar otra vez.")
+			}
+			// Programada: espera al reloj aunque se marque visible. Es el
+			// mismo trato que al crearla.
+			updates["is_active"] = false
+		}
 	}
 
 	// Activar por primera vez una novedad que estaba en borrador equivale a
