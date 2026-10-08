@@ -183,6 +183,14 @@ export function TutorialFormModal({
             error('Elige la fecha de publicación, o desmarca «Programar la publicación» para publicarla al guardar.')
             return
           }
+          // Programar para una hora que ya pasó la publicaba al instante, que
+          // es justo lo que no se quería. Al editar se deja: puede ser una ya
+          // publicada que conserva su fecha.
+          if (!isEditing && scheduling && formData.publish_at && new Date(formData.publish_at).getTime() <= Date.now()) {
+            e.preventDefault()
+            error('La fecha y hora de publicación ya pasaron. Revisa si es a. m. o p. m., o desmarca «Programar la publicación».')
+            return
+          }
           onSubmit(e)
         }}
         id="tutorial-form" className={styles['tutorial-form-body']}>

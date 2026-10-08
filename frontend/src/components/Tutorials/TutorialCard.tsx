@@ -2,6 +2,7 @@ import { Pencil, Trash2, Check, GripVertical, BarChart3, Video, Image as ImageIc
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TutorialIcon } from './icons'
+import { formatWhen } from './utils'
 import { isEmptyTarget } from '../../types'
 import { audienceLabel, isPeopleTarget } from './audienceLabel'
 import type { Tutorial } from '../../types'
@@ -70,6 +71,9 @@ export function TutorialCard({ tutorial, isAdmin, isViewed, sortable, onOpen, on
   // Programada: tiene hora futura y todavía no se ha publicado.
   const scheduled = isAdmin && !!tutorial.publish_at && !tutorial.announced_at
     && new Date(tutorial.publish_at).getTime() > Date.now()
+  // Publicada con fecha de retiro todavía por llegar.
+  const retiring = isAdmin && !scheduled && tutorial.is_active && !!tutorial.expires_at
+    && new Date(tutorial.expires_at).getTime() > Date.now()
 
   return (
     <article
@@ -153,10 +157,13 @@ export function TutorialCard({ tutorial, isAdmin, isViewed, sortable, onOpen, on
           <span className={styles['tutorial-card-duration']}>{tutorial.duration_min} min</span>
         )}
         {scheduled && (
-          <span className={`${styles['tutorial-card-badge']} ${styles['scheduled']}`} title="Se publicará sola a esa hora">
-            <CalendarClock size={11} /> {new Date(tutorial.publish_at!).toLocaleString('es-ES', {
-              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-            })}
+          <span className={`${styles['tutorial-card-badge']} ${styles['scheduled']}`} title="Programada: hasta entonces nadie la ve. A esa hora se publica, se notifica y empieza el aviso.">
+            <CalendarClock size={11} /> Sale el {formatWhen(tutorial.publish_at!)}
+          </span>
+        )}
+        {retiring && (
+          <span className={`${styles['tutorial-card-badge']} ${styles['scheduled']}`} title="A esa hora se oculta sola">
+            <CalendarClock size={11} /> Se retira el {formatWhen(tutorial.expires_at!)}
           </span>
         )}
         {isAdmin && tutorial.require_ack && (
@@ -174,7 +181,7 @@ export function TutorialCard({ tutorial, isAdmin, isViewed, sortable, onOpen, on
             <Crosshair size={11} /> Público acotado
           </span>
         )}
-        {!tutorial.is_active && (
+        {!tutorial.is_active && !scheduled && (
           <span className={styles['tutorial-card-badge']}>Oculto</span>
         )}
         {/* A quién va, salvo que sea a todos: es lo habitual y no aporta. */}

@@ -1,5 +1,6 @@
 import { Clock } from 'lucide-react'
 import { DatePicker, Select, toISODate, fromISODate } from '../../ui'
+import { formatClock } from '../utils'
 import styles from './DateTimeField.module.css'
 
 interface DateTimeFieldProps {
@@ -11,10 +12,16 @@ interface DateTimeFieldProps {
   ariaLabel?: string
 }
 
-/** Horas en pasos de media hora: programar un anuncio al minuto no aporta. */
+/**
+ * Horas en pasos de media hora: programar un anuncio al minuto no aporta. El
+ * valor va en 24 horas, pero se muestra con a. m./p. m.: «02:30» se leía como
+ * las dos y media de la tarde y la novedad salía de madrugada.
+ */
 const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const value = `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`
-  return { value, label: value }
+  const hours = Math.floor(i / 2)
+  const minutes = i % 2 ? 30 : 0
+  const value = `${String(hours).padStart(2, '0')}:${minutes ? '30' : '00'}`
+  return { value, label: formatClock(hours, minutes) }
 })
 
 const DEFAULT_TIME = '09:00'
