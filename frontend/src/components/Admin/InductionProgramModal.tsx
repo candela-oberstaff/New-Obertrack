@@ -17,7 +17,6 @@ import {
   Star,
   Target,
   Trash2,
-  Users,
 } from 'lucide-react'
 
 import { Select } from '../ui'
@@ -106,9 +105,7 @@ export default function InductionProgramModal({
   const [maxAttempts, setMaxAttempts] = useState(3)
   const [blockIds, setBlockIds] = useState<number[]>([])
   const [companyIds, setCompanyIds] = useState<number[]>([])
-  const [companySearch, setCompanySearch] = useState('')
   const [userIds, setUserIds] = useState<number[]>([])
-  const [recipientMode, setRecipientMode] = useState<'companies' | 'users'>('companies')
   const [pros, setPros] = useState<PickOption[]>([])
   const [prosLoading, setProsLoading] = useState(true)
   const [proSearch, setProSearch] = useState('')
@@ -170,7 +167,7 @@ export default function InductionProgramModal({
       .then(setTemplates)
       .catch(() => setTemplates([]))
   }, [])
-  const presets = buildBadgePresets(library, allPrograms, programId !== null ? { kind: 'program', id: programId } : undefined)
+  const presets = buildBadgePresets(allPrograms, programId)
 
   useEffect(() => {
     if (programId === null) return
@@ -189,8 +186,6 @@ export default function InductionProgramModal({
         setBlockIds(p.blocks.map((b) => b.id))
         setCompanyIds(p.company_ids)
         setUserIds(p.user_ids ?? [])
-        // Abre en la pestaña que de verdad usa el programa.
-        if ((p.user_ids?.length ?? 0) > 0 && p.company_ids.length === 0) setRecipientMode('users')
         setBadge({
           title: p.badge_title || '',
           icon: p.badge_icon || DEFAULT_PROGRAM_BADGE.icon,
@@ -210,17 +205,11 @@ export default function InductionProgramModal({
   const blockById = useMemo(() => new Map(library.map((b) => [b.id, b])), [library])
   const available = library.filter((b) => !blockIds.includes(b.id))
 
-  const filteredCompanies = useMemo<PickOption[]>(() => {
-    const q = companySearch.trim().toLowerCase()
-    return companies
-      .filter((c) => !q || c.name.toLowerCase().includes(q))
-      .map((c) => ({
-        id: c.id,
-        name: c.name,
-        sub: `${c.count} ${c.count === 1 ? 'profesional activo' : 'profesionales activos'}`,
-        haystack: c.name.toLowerCase(),
-      }))
-  }, [companies, companySearch])
+  // Empresas asignadas de antes (ya no se eligen aquí), con su nombre.
+  const companyNames = useMemo(
+    () => companyIds.map((id) => companies.find((c) => c.id === id)?.name).filter((n): n is string => !!n),
+    [companyIds, companies]
+  )
 
   const filteredPros = useMemo(() => {
     const q = proSearch.trim().toLowerCase()
@@ -604,57 +593,36 @@ export default function InductionProgramModal({
       <div className={styles.section} hidden={step !== 2}>
         <h3 className={styles.wizardTitle}>¿A quién se envía?</h3>
         <p className={styles.wizardIntro}>
-          Elige empresas completas o personas concretas. Lo recibirán cuando les toque la
-          inducción: al contratarlas o cuando Soporte las invite.
+          Elige a los profesionales que lo reciben. Les llegará cuando les toque la formación: al
+          contratarlos o cuando Soporte los invite. Su programa manda sobre el de su empresa.
         </p>
 
-        <div className={styles.audienceCards} role="radiogroup" aria-label="A quién se envía">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={recipientMode === 'companies'}
-            className={recipientMode === 'companies' ? styles.audienceCardOn : styles.audienceCard}
-            onClick={() => setRecipientMode('companies')}
-          >
-            <span className={styles.audienceIcon}>
-              <Building2 size={22} />
-            </span>
-            <span className={styles.audienceText}>
-              <strong>Empresas</strong>
-              <span>Lo recibe todo el que se contrate en las empresas que elijas.</span>
-            </span>
-            <span className={styles.audienceCount}>{companyIds.length}</span>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={recipientMode === 'users'}
-            className={recipientMode === 'users' ? styles.audienceCardOn : styles.audienceCard}
-            onClick={() => setRecipientMode('users')}
-          >
-            <span className={styles.audienceIcon}>
-              <Users size={22} />
-            </span>
-            <span className={styles.audienceText}>
-              <strong>Profesionales</strong>
-              <span>Personas concretas. Su programa manda sobre el de su empresa.</span>
-            </span>
-            <span className={styles.audienceCount}>{userIds.length}</span>
-          </button>
-        </div>
+        {/* Programas de antes podían asignarse a empresas enteras. Ya no se
+            elige así, pero esas asignaciones siguen valiendo: se muestran para
+            que no queden escondidas y se pueden quitar. */}
+        {companyIds.length > 0 && (
+          <div className={styles.readinessBox} style={{ marginTop: 0, marginBottom: 14 }}>
+            <div className={styles.readinessItem} data-level="warning">
+              <Building2 size={15} />
+              <span>
+                Este programa también está asignado a {companyIds.length}{' '}
+                {companyIds.length === 1 ? 'empresa' : 'empresas'} de antes
+                {companyNames.length > 0 && <> ({companyNames.join(', ')})</>}: lo recibe todo el que se
+                contrate ahí.{' '}
+                <button type="button" className={styles.linkBtn} onClick={() => setCompanyIds([])}>
+                  Quitar esas empresas
+                </button>
+              </span>
+            </div>
+          </div>
+        )}
 
         {(() => {
-          const isCompanies = recipientMode === 'companies'
-          const items = isCompanies ? filteredCompanies : filteredPros
-          const selected = isCompanies ? companyIds : userIds
-          const setSelected = isCompanies ? setCompanyIds : setUserIds
-          const query = isCompanies ? companySearch : proSearch
-          const setQuery = isCompanies ? setCompanySearch : setProSearch
+          const items = filteredPros
           const visibleIds = items.map((i) => i.id)
-          const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id))
+          const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => userIds.includes(id))
           const toggle = (id: number) =>
-            setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-          const total = isCompanies ? companies.length : pros.length
+            setUserIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
           return (
             <div className={styles.pickPanel}>
               <div className={styles.pickToolbar}>
@@ -662,49 +630,42 @@ export default function InductionProgramModal({
                   <Search size={15} />
                   <input
                     type="text"
-                    placeholder={isCompanies ? 'Buscar empresa...' : 'Buscar por nombre, correo o empresa...'}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    aria-label={isCompanies ? 'Buscar empresa' : 'Buscar profesional'}
+                    placeholder="Buscar por nombre, correo o empresa..."
+                    value={proSearch}
+                    onChange={(e) => setProSearch(e.target.value)}
+                    aria-label="Buscar profesional"
                   />
                 </div>
                 <span className={styles.muted} style={{ fontSize: 13 }}>
-                  {selected.length}{' '}
-                  {isCompanies
-                    ? selected.length === 1
-                      ? 'empresa elegida'
-                      : 'empresas elegidas'
-                    : selected.length === 1
-                      ? 'persona elegida'
-                      : 'personas elegidas'}
+                  {userIds.length} {userIds.length === 1 ? 'profesional elegido' : 'profesionales elegidos'}
                 </span>
                 {items.length > 0 && (
                   <button
                     type="button"
                     className={styles.linkBtn}
                     onClick={() =>
-                      setSelected((prev) =>
+                      setUserIds((prev) =>
                         allVisibleSelected
                           ? prev.filter((id) => !visibleIds.includes(id))
                           : [...prev, ...visibleIds.filter((id) => !prev.includes(id))]
                       )
                     }
                   >
-                    {allVisibleSelected ? 'Quitar las visibles' : `Elegir las ${items.length} visibles`}
+                    {allVisibleSelected ? 'Quitar los visibles' : `Elegir los ${items.length} visibles`}
                   </button>
                 )}
               </div>
 
-              {!isCompanies && prosLoading ? (
+              {prosLoading ? (
                 <p className={styles.muted}>Cargando profesionales...</p>
-              ) : total === 0 ? (
-                <div className={styles.empty}>{isCompanies ? 'No hay empresas activas.' : 'No hay profesionales.'}</div>
+              ) : pros.length === 0 ? (
+                <div className={styles.empty}>No hay profesionales.</div>
               ) : items.length === 0 ? (
-                <div className={styles.empty}>Nada coincide con «{query}».</div>
+                <div className={styles.empty}>Nadie coincide con «{proSearch}».</div>
               ) : (
                 <div className={styles.pickList}>
                   {items.map((item) => {
-                    const on = selected.includes(item.id)
+                    const on = userIds.includes(item.id)
                     return (
                       <button
                         key={item.id}

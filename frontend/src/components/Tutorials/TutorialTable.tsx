@@ -1,6 +1,8 @@
 import { Pencil, Trash2, Check, BarChart3, Video, Image as ImageIcon, FileText, Crosshair, Radio, CalendarClock, ShieldCheck, MousePointerClick } from 'lucide-react'
 import { TutorialIcon } from './icons'
+import { formatWhen } from './utils'
 import { isEmptyTarget } from '../../types'
+import { audienceLabel } from './audienceLabel'
 import type { Tutorial } from '../../types'
 import styles from './TutorialTable.module.css'
 
@@ -20,21 +22,9 @@ const CONTENT_LABELS = {
   texto: { icon: FileText, label: 'Texto' },
 } as const
 
-const AUDIENCE_LABELS: Record<string, string> = {
-  all: 'Todos',
-  empleador: 'Empresas',
-  profesional: 'Profesionales',
-  manager: 'Managers',
-}
-
 function isAnnouncementOpen(tutorial: Tutorial): boolean {
   if (!tutorial.announced_at || !tutorial.announce_days) return false
   return new Date(tutorial.announced_at).getTime() + tutorial.announce_days * 86_400_000 > Date.now()
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return '—'
-  return new Date(value).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
 /**
@@ -99,7 +89,7 @@ export function TutorialTable({ tutorials, isAdmin, viewedIds, onOpen, onEdit, o
 
                 {isAdmin && (
                   <td className={styles['col-audience']}>
-                    {AUDIENCE_LABELS[tutorial.audience] ?? tutorial.audience}
+                    {audienceLabel(tutorial)}
                     {!isEmptyTarget(tutorial.target) && (
                       <span className={styles['target']} title="Público acotado">
                         <Crosshair size={11} /> acotado
@@ -112,8 +102,13 @@ export function TutorialTable({ tutorials, isAdmin, viewedIds, onOpen, onEdit, o
                   <div className={styles['states']}>
                     {!tutorial.is_active && !scheduled && <span className={styles['chip']}>Oculta</span>}
                     {scheduled && (
-                      <span className={`${styles['chip']} ${styles['scheduled']}`} title="Se publicará sola">
-                        <CalendarClock size={11} /> {formatDate(tutorial.publish_at)}
+                      <span className={`${styles['chip']} ${styles['scheduled']}`} title="Programada: hasta entonces nadie la ve">
+                        <CalendarClock size={11} /> Sale el {formatWhen(tutorial.publish_at!)}
+                      </span>
+                    )}
+                    {!scheduled && tutorial.is_active && !!tutorial.expires_at && new Date(tutorial.expires_at).getTime() > Date.now() && (
+                      <span className={`${styles['chip']} ${styles['scheduled']}`} title="A esa hora se oculta sola">
+                        <CalendarClock size={11} /> Se retira el {formatWhen(tutorial.expires_at)}
                       </span>
                     )}
                     {announcing && (

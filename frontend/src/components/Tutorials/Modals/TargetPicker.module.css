@@ -252,3 +252,167 @@
 .reach-empty strong {
   color: #dc2626;
 }
+
+/* --- Modo: por perfil o personas concretas --- */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  color: #64748b;
+  text-align: left;
+  cursor: pointer;
+  width: auto;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.mode:hover {
+  border-color: #cbd5e1;
+}
+
+.mode span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mode strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.mode small {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.mode-active {
+  border-color: var(--primary);
+  background: #fdf4ff;
+  color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(192, 38, 211, 0.1);
+}
+
+/* --- Perfiles --- */
+.roles-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.link {
+  border: none;
+  background: none;
+  padding: 0;
+  width: auto;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.role {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  width: auto;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.role:hover {
+  border-color: #cbd5e1;
+}
+
+.role-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.role-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.role-text strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.role-text small {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+.role-count {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.role-active {
+  border-color: var(--primary);
+  background: #fdf4ff;
+}
+
+.role-active .role-icon {
+  background: var(--primary);
+  color: #fff;
+}
+
+.role-active .role-text strong,
+.role-active .role-count {
+  color: var(--primary);
+}
+
+@media (max-width: 640px) {
+  .modes {
+    grid-template-columns: 1fr;
+  }
+}

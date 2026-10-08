@@ -164,3 +164,40 @@ func TestAudiencesForUser(t *testing.T) {
 		t.Error("el superadmin no debería llevar filtro de audiencia")
 	}
 }
+
+func TestTargetRoleOf(t *testing.T) {
+	cases := []struct {
+		user User
+		want string
+	}{
+		{User{UserType: UserTypeEmployer}, TargetRoleEmployer},
+		{User{UserType: UserTypeProfessional}, TargetRoleProfessional},
+		{User{UserType: UserTypeProfessional, IsManager: true}, TargetRoleManager},
+		// Todo supervisor es manager: cuenta como supervisor.
+		{User{UserType: UserTypeProfessional, IsManager: true, IsSupervisor: true}, TargetRoleSupervisor},
+		{User{UserType: UserTypeSuperadmin}, TargetRoleSuperadmin},
+		{User{UserType: UserTypeCustomerSuccess}, ""},
+	}
+	for i, tc := range cases {
+		if got := TargetRoleOf(&tc.user); got != tc.want {
+			t.Errorf("caso %d: rol %q, esperaba %q", i, got, tc.want)
+		}
+	}
+}
+
+func TestTargetMatchesPeople(t *testing.T) {
+	target := TutorialTarget{Mode: TargetModePeople, UserIDs: []uint{7}, CompanyIDs: []uint{99}}
+	if !target.Matches(&User{ID: 7, UserType: UserTypeProfessional}, false) {
+		t.Error("la persona elegida debe entrar aunque haya filtros de perfil sueltos")
+	}
+	if target.Matches(&User{ID: 8, UserType: UserTypeProfessional}, false) {
+		t.Error("quien no está en la lista no entra")
+	}
+	withGroup := TutorialTarget{Mode: TargetModePeople, GroupIDs: []uint{1}}
+	if !withGroup.Matches(&User{ID: 8}, true) || withGroup.Matches(&User{ID: 8}, false) {
+		t.Error("por personas, el grupo también da entrada")
+	}
+	if (TutorialTarget{Mode: TargetModePeople}).IsEmpty() {
+		t.Error("por personas nunca es un público vacío")
+	}
+}

@@ -136,7 +136,7 @@ programa = asignado a la empresa contratante (req.CompanyID / user.EmpleadorID)
 
 ---
 
-## 5. Panel de administración (Novedades → pestaña Inducción)
+## 5. Panel de administración (sección Formaciones, `/formaciones`, solo superadmin)
 
 La pestaña se reorganiza en tres partes, todo superadmin:
 
@@ -385,7 +385,7 @@ plataforma y se verifica por código.
 - **Verificación pública**: `/certificado/<código>` → `GET
   /api/public/certificates/:code` y descarga `.../:code/pdf`, con límite de
   tasa. Quien tiene el código (impreso) puede comprobar y bajar el documento.
-- **Panel**: pestaña Inducción → Certificados: subida del diseño (por
+- **Panel**: Formaciones → Certificados: subida del diseño (por
   `/api/uploads`), editor visual con arrastre de campos, vista previa PDF
   con datos de ejemplo. Una plantilla en uso no se borra.
 - Migración `202609251900_induction_certificates`. Sin QR por ahora: los

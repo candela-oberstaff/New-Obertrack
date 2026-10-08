@@ -1,11 +1,11 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import { useNotification } from '../../../context/NotificationContext'
 import { useConfirm } from '../../ui/ConfirmProvider'
 import { useTutorials } from './useTutorials'
 import { parseVideoUrl } from '../utils'
 import type { Tutorial, CreateTutorialInput } from '../../../types'
-import { EMPTY_TARGET } from '../../../types'
+import { EMPTY_TARGET, rolesOf } from '../../../types'
 
 const EMPTY_FORM: CreateTutorialInput = {
   title: '',
@@ -21,7 +21,7 @@ const EMPTY_FORM: CreateTutorialInput = {
   duration_min: 0,
   order_index: 0,
   announce_days: 2,
-  announce_max_shows: 0,
+  announce_max_shows: 1,
   cta_label: '',
   cta_url: '',
   publish_at: null,
@@ -126,22 +126,29 @@ export function useTutorialsPageState() {
       icon_name: tutorial.icon_name,
       category: tutorial.category || 'General',
       audience: tutorial.audience || 'all',
+      // Las novedades anteriores a los roles se abren con los roles que
+      // equivalen a su audiencia, para que se vea a quién le llegaban.
       target: {
+        mode: tutorial.target?.mode === 'personas' ? 'personas' : 'perfil',
+        roles: rolesOf(tutorial.audience, tutorial.target),
+        user_ids: tutorial.target?.user_ids ?? [],
         company_ids: tutorial.target?.company_ids ?? [],
         countries: tutorial.target?.countries ?? [],
         group_ids: tutorial.target?.group_ids ?? [],
-        managers_only: tutorial.target?.managers_only ?? false,
+        managers_only: false,
       },
       duration_min: tutorial.duration_min,
       order_index: tutorial.order_index,
       announce_days: tutorial.announce_days ?? 2,
-      announce_max_shows: tutorial.announce_max_shows ?? 0,
+      announce_max_shows: tutorial.announce_max_shows ?? 1,
       cta_label: tutorial.cta_label || '',
       cta_url: tutorial.cta_url || '',
       publish_at: tutorial.publish_at ?? null,
       expires_at: tutorial.expires_at ?? null,
       require_ack: tutorial.require_ack ?? false,
-      is_active: tutorial.is_active,
+      // Una programada está oculta solo porque espera su hora: se abre como
+      // visible para que guardarla no la deje en borrador para siempre.
+      is_active: tutorial.is_active || (!!tutorial.publish_at && !tutorial.announced_at),
     })
     setShowFormModal(true)
   }, [])
@@ -171,6 +178,16 @@ export function useTutorialsPageState() {
     }
     if (formData.content_type === 'texto' && !formData.body.replace(/<[^>]*>/g, '').trim()) {
       error('Escribe el contenido de la novedad')
+      return
+    }
+
+    const target = formData.target
+    if (target.mode === 'personas' && !target.user_ids?.length && !target.group_ids.length) {
+      error('Elige al menos una persona o un grupo')
+      return
+    }
+    if (target.mode !== 'personas' && !target.roles?.length) {
+      error('Elige al menos un perfil: empresas, profesionales, managers…')
       return
     }
 
@@ -231,6 +248,17 @@ export function useTutorialsPageState() {
     setSelectedTutorial(tutorial)
     recordView(tutorial.id)
   }, [recordView])
+
+  // /novedades?ver=ID abre esa novedad al llegar (desde el dashboard). Una sola
+  // vez: cerrarla no debe volver a abrirla.
+  const deepLinkHandled = useRef(false)
+  useEffect(() => {
+    if (deepLinkHandled.current || tutorials.length === 0) return
+    deepLinkHandled.current = true
+    const id = Number(new URLSearchParams(window.location.search).get('ver'))
+    const target = id ? tutorials.find((t) => t.id === id) : undefined
+    if (target) handleOpenTutorial(target)
+  }, [tutorials, handleOpenTutorial])
 
   return {
     isAdmin,

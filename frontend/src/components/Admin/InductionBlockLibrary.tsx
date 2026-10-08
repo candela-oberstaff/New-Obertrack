@@ -6,7 +6,6 @@ import { useNotification } from '../../context/NotificationContext'
 import {
   inductionService,
   type InductionBlock,
-  type InductionProgram,
   type InductionVideo,
 } from '../../services/induction.service'
 import InductionBlockModal from './InductionBlockModal'
@@ -18,8 +17,6 @@ interface Props {
   videos: InductionVideo[]
   /** Mínimo por defecto del programa por defecto, para mostrar el efectivo. */
   fallbackPassingScore: number
-  /** Programas existentes, para copiar sus insignias. */
-  programs?: InductionProgram[]
   onChanged: () => Promise<void> | void
 }
 
@@ -28,7 +25,7 @@ interface Props {
  * usarse en cualquier programa. Desde aquí se crean y editan (en un modal por
  * pasos) y se borran.
  */
-export default function InductionBlockLibrary({ blocks, videos, fallbackPassingScore, programs = [], onChanged }: Props) {
+export default function InductionBlockLibrary({ blocks, videos, fallbackPassingScore, onChanged }: Props) {
   const { success, error: showError } = useNotification()
   const confirm = useConfirm()
 
@@ -143,8 +140,6 @@ export default function InductionBlockLibrary({ blocks, videos, fallbackPassingS
           block={editing === 'new' ? null : editing}
           videos={videos}
           fallbackPassingScore={fallbackPassingScore}
-          allBlocks={blocks}
-          allPrograms={programs}
           onSaved={async (saved) => {
             setEditing(saved)
             await onChanged()

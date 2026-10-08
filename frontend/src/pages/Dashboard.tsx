@@ -14,6 +14,7 @@ import {
 import Tooltip from '../components/Common/Tooltip'
 import { formatDateOnly } from '../utils/date'
 import { TeamPanel } from '../components/Profile/TeamPanel'
+import NovedadesCard from '../components/Tutorials/NovedadesCard'
 import { Skeleton } from '../components/ui'
 import styles from './Dashboard.module.css'
 
@@ -245,7 +246,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') && (
+        {(user?.is_superadmin || user?.is_manager || user?.user_type === 'empleador') ? (
           <div data-tour="dashboard-team-card">
             {user?.is_manager && !user?.is_superadmin && !user?.user_type?.includes('empleador') && (
               <TeamPanel type="manager" />
@@ -254,6 +255,9 @@ export default function Dashboard() {
               <TeamPanel type="employer" />
             )}
           </div>
+        ) : (
+          // Quien no tiene equipo a cargo usa este hueco para ver las novedades.
+          <NovedadesCard />
         )}
       </div>
 

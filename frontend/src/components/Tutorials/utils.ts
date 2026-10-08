@@ -52,3 +52,21 @@ export function buildEmbedUrl(url: string): string | null {
 export function getProviderLabel(provider: VideoProvider): string {
   return provider === 'drive' ? 'Google Drive' : 'YouTube'
 }
+
+/**
+ * Un momento en palabras para las chapas de programación: «8 oct, 2:30 p. m.».
+ * Con a. m./p. m. y no en 24 horas: «02:30» se leía como las dos y media de
+ * la tarde y la novedad salía de madrugada.
+ */
+export function formatWhen(value: string): string {
+  const date = new Date(value)
+  const day = date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '')
+  return `${day}, ${formatClock(date.getHours(), date.getMinutes())}`
+}
+
+/** Hora con a. m./p. m.: 14:30 → «2:30 p. m.». */
+export function formatClock(hours: number, minutes: number): string {
+  const suffix = hours < 12 ? 'a. m.' : 'p. m.'
+  const h = hours % 12 === 0 ? 12 : hours % 12
+  return `${h}:${String(minutes).padStart(2, '0')} ${suffix}`
+}

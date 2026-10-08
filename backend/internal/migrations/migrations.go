@@ -3229,6 +3229,18 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			// Antes, 0 = "sin tope" pero cerrar el aviso lo apagaba para
+			// siempre. Ahora 0 = "en cada sesión". Las novedades existentes
+			// pasan a 1 para que sigan comportándose exactamente igual.
+			ID: "202610081200_tutorial_announce_shows_once",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.Exec(`UPDATE tutorials SET announce_max_shows = 1 WHERE announce_max_shows = 0`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return nil
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

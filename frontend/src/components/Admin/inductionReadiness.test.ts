@@ -56,7 +56,7 @@ describe('programIssues', () => {
   })
 
   it('un programa no por defecto sin empresas no lo recibe nadie', () => {
-    expect(programIssues(draft({ isDefault: false }))[0].text).toContain('No tiene empresas ni profesionales')
+    expect(programIssues(draft({ isDefault: false }))[0].text).toContain('No tiene profesionales asignados')
     expect(programIssues(draft({ isDefault: false, recipientCount: 2 }))).toEqual([])
   })
 

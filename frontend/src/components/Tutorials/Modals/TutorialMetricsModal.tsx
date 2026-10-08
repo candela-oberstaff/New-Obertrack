@@ -6,6 +6,7 @@ import { useConfirm } from '../../ui/ConfirmProvider'
 import { useNotification } from '../../../context/NotificationContext'
 import { tutorialService } from '../../../services/api'
 import { isEmptyTarget } from '../../../types'
+import { audienceLabel, isPeopleTarget } from '../audienceLabel'
 import type { Tutorial } from '../../../types'
 import styles from './TutorialMetricsModal.module.css'
 
@@ -18,6 +19,7 @@ const USER_TYPE_LABELS: Record<string, string> = {
   empleador: 'Empresas',
   profesional: 'Profesionales',
   manager: 'Managers',
+  superadmin: 'Superadmins',
 }
 
 /** Resume el público acotado en una frase legible. */
@@ -264,9 +266,10 @@ export function TutorialMetricsModal({ tutorial, onClose }: TutorialMetricsModal
             )}
           </div>
 
-          {!isEmptyTarget(tutorial.target) && (
+          {(!isEmptyTarget(tutorial.target) || isPeopleTarget(tutorial)) && (
             <p className={styles['note']}>
-              Público acotado: {describeTarget(tutorial.target)}. El alcance de arriba ya lo tiene en cuenta.
+              Dirigida a {audienceLabel(tutorial)}
+              {!isPeopleTarget(tutorial) && <> · {describeTarget(tutorial.target)}</>}. El alcance de arriba ya lo tiene en cuenta.
             </p>
           )}
 

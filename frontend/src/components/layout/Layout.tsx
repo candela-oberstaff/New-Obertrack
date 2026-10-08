@@ -23,6 +23,7 @@ import {
   Inbox,
   MessageSquare,
   GraduationCap,
+  Megaphone,
   Building2,
   Network,
   Users,
@@ -57,6 +58,7 @@ import { usePushNotifications } from '../../hooks/usePushNotifications'
 import { startCurrentPageTour, startSystemTour } from '../../lib/tour'
 import { WALLET_ENABLED, GOOGLE_INTEGRATIONS_ENABLED } from '../../config/features'
 import { hierarchyLabel } from '../../lib/permissions'
+import { useNovedadesFeed } from '../Tutorials/hooks/useNovedadesFeed'
 import styles from './Layout.module.css'
 
 // Module-level flag prevents the auto-tour from firing more than once per
@@ -159,6 +161,9 @@ export default function Layout() {
   // pantallas: Papelera, Auditoría, Configuración y Novedades. Esas cuatro
   // siguen mirando `isSuper` a secas; el resto usa este.
   const isPlatformAdmin = isSuper || isCS
+  // Novedades sin abrir: contador junto al menú. El superadmin las publica y
+  // CS / IT no tienen el módulo, así que para ellos no se pide nada.
+  const { unseen: unseenNovedades } = useNovedadesFeed(!!user && !isSuper && !isCS && !isIT)
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, show: !isIT },
@@ -188,7 +193,9 @@ export default function Layout() {
     { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} />, show: isSuper || isIT },
     { path: '/admin/settings', label: 'Configuración', icon: <SlidersHorizontal size={20} />, show: isSuper },
     { path: '/papelera', label: 'Papelera', icon: <Trash2 size={20} />, show: isSuper },
-    { path: '/novedades', label: 'Novedades', icon: <GraduationCap size={20} />, show: !isIT && !isCS },
+    { path: '/novedades', label: 'Novedades', icon: <Megaphone size={20} />, show: !isIT && !isCS },
+    // Inducción y capacitaciones: su propia sección, solo superadmin.
+    { path: '/formaciones', label: 'Formaciones', icon: <GraduationCap size={20} />, show: isSuper },
     { path: '/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isEndUser },
     { path: '/obervoice', label: 'Obervoice', icon: <Phone size={20} />, show: true },
     { path: '/profile', label: 'Perfil', icon: <User size={20} />, show: true },
@@ -282,6 +289,11 @@ export default function Layout() {
                 {item.icon}
                 {item.path === '/chat' && totalChatUnread > 0 && !isChatPage && (
                   <span className={styles['nav-badge']}>{totalChatUnread > 9 ? '9+' : totalChatUnread}</span>
+                )}
+                {item.path === '/novedades' && unseenNovedades.length > 0 && (
+                  <span className={styles['nav-badge']} title={`${unseenNovedades.length} sin ver`}>
+                    {unseenNovedades.length > 9 ? '9+' : unseenNovedades.length}
+                  </span>
                 )}
               </span>
               {(!sidebarCollapsed || isMobileSidebarOpen) && <span className={styles['nav-label']}>{item.label}</span>}

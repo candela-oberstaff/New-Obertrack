@@ -48,7 +48,9 @@ type TutorialInput struct {
 }
 
 type TutorialService interface {
-	GetAll(onlyActive bool, audiences []string) ([]models.Tutorial, error)
+	// GetAll lista las novedades. viewerID != 0 aplica además el público
+	// objetivo de cada una (empresas y profesionales); 0 = sin ese filtro.
+	GetAll(onlyActive bool, audiences []string, viewerID uint) ([]models.Tutorial, error)
 	GetByID(id uint) (*models.Tutorial, error)
 	Create(userID uint, in TutorialInput) (*models.Tutorial, error)
 	Update(actorID, id uint, updates map[string]interface{}) (*models.Tutorial, error)
@@ -113,6 +115,65 @@ func encodeTarget(target models.TutorialTarget) string {
 		return ""
 	}
 	return string(encoded)
+}
+
+// normalizeTarget limpia el público y devuelve la audiencia que le toca a la
+// novedad. Audiencia vacía = el público no la decide (novedades sin roles, que
+// siguen usando la que se eligió aparte).
+//
+// Por personas no se mezcla con filtros de perfil: la lista ES el público. Por
+// perfil, los roles reemplazan a "solo con equipo a cargo".
+func normalizeTarget(target models.TutorialTarget) (models.TutorialTarget, string, error) {
+	if target.IsPeople() {
+		target.UserIDs = uniqueIDs(target.UserIDs)
+		target.GroupIDs = uniqueIDs(target.GroupIDs)
+		if len(target.UserIDs) == 0 && len(target.GroupIDs) == 0 {
+			return target, "", errors.New("Elige al menos una persona o un grupo")
+		}
+		target.Roles, target.CompanyIDs, target.Countries, target.ManagersOnly = nil, nil, nil, false
+		return target, models.TutorialAudienceAll, nil
+	}
+	target.Mode = ""
+	target.UserIDs = nil
+	roles := make([]string, 0, len(target.Roles))
+	seen := map[string]bool{}
+	for _, role := range target.Roles {
+		role = strings.TrimSpace(role)
+		if models.IsValidTargetRole(role) && !seen[role] {
+			seen[role] = true
+			roles = append(roles, role)
+		}
+	}
+	target.Roles = roles
+	if len(roles) == 0 {
+		return target, "", nil
+	}
+	target.ManagersOnly = false
+	return target, models.AudienceForRoles(roles), nil
+}
+
+// uniqueIDs quita ceros y repetidos sin cambiar el orden.
+func uniqueIDs(ids []uint) []uint {
+	out := make([]uint, 0, len(ids))
+	seen := map[uint]bool{}
+	for _, id := range ids {
+		if id != 0 && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// timeOrNil lee una fecha del mapa de cambios (nil = se borra).
+func timeOrNil(v interface{}) *time.Time {
+	switch t := v.(type) {
+	case time.Time:
+		return &t
+	case *time.Time:
+		return t
+	}
+	return nil
 }
 
 // normalizeAnnounceDays acota la ventana del aviso. El 0 es intencional y se
@@ -193,7 +254,11 @@ func (s *tutorialService) resolveAudience(audience string, target models.Tutoria
 	if s.userRepo == nil {
 		return nil, errors.New("Repositorio de usuarios no disponible")
 	}
-	candidates, err := s.userRepo.ListActiveByTypes(announceRecipientTypes(audience))
+	types := announceRecipientTypes(audience)
+	if target.IsPeople() || len(target.Roles) > 0 {
+		types = []models.UserType{models.UserTypeSuperadmin, models.UserTypeEmployer, models.UserTypeProfessional}
+	}
+	candidates, err := s.userRepo.ListActiveByTypes(types)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +266,7 @@ func (s *tutorialService) resolveAudience(audience string, target models.Tutoria
 	// Audiencia "manager": dentro de los profesionales, solo quienes tienen
 	// equipo a cargo. El superadmin sigue recibiendo el aviso, como en el
 	// resto de audiencias.
-	if audience == models.TutorialAudienceManager {
+	if audience == models.TutorialAudienceManager && len(target.Roles) == 0 && !target.IsPeople() {
 		managers := make([]models.User, 0, len(candidates))
 		for i := range candidates {
 			user := candidates[i]
@@ -384,8 +449,41 @@ func normalizeAudience(audience string) (string, error) {
 	return audience, nil
 }
 
-func (s *tutorialService) GetAll(onlyActive bool, audiences []string) ([]models.Tutorial, error) {
-	return s.repo.FindAll(onlyActive, audiences)
+func (s *tutorialService) GetAll(onlyActive bool, audiences []string, viewerID uint) ([]models.Tutorial, error) {
+	tutorials, err := s.repo.FindAll(onlyActive, audiences)
+	if err != nil || viewerID == 0 {
+		return tutorials, err
+	}
+	// El tipo de cuenta se filtra en SQL; el público fino (roles, empresas,
+	// personas) vive en JSON y se aplica aquí con la MISMA regla que el
+	// reparto. Sin esto, una novedad para dos personas aparecería en la lista
+	// de todo el mundo.
+	var viewer *models.User
+	visible := make([]models.Tutorial, 0, len(tutorials))
+	for _, tutorial := range tutorials {
+		if tutorial.Target.IsEmpty() {
+			visible = append(visible, tutorial)
+			continue
+		}
+		if viewer == nil {
+			viewer, err = s.userRepo.GetByID(viewerID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		inGroup := false
+		if len(tutorial.Target.GroupIDs) > 0 {
+			members, err := s.repo.UsersInGroups(tutorial.Target.GroupIDs)
+			if err != nil {
+				return nil, err
+			}
+			inGroup = members[viewerID]
+		}
+		if tutorial.Target.Matches(viewer, inGroup) {
+			visible = append(visible, tutorial)
+		}
+	}
+	return visible, nil
 }
 
 func (s *tutorialService) GetByID(id uint) (*models.Tutorial, error) {
@@ -415,6 +513,13 @@ func (s *tutorialService) Create(userID uint, in TutorialInput) (*models.Tutoria
 	if err != nil {
 		return nil, err
 	}
+	target, targetAudience, err := normalizeTarget(in.Target)
+	if err != nil {
+		return nil, err
+	}
+	if targetAudience != "" {
+		audience = targetAudience
+	}
 	ctaLabel, ctaURL, err := validateCTA(in.CTALabel, in.CTAURL)
 	if err != nil {
 		return nil, err
@@ -437,8 +542,8 @@ func (s *tutorialService) Create(userID uint, in TutorialInput) (*models.Tutoria
 		OrderIndex:       in.OrderIndex,
 		AnnounceDays:     normalizeAnnounceDays(in.AnnounceDays),
 		AnnounceMaxShows: normalizeAnnounceShows(in.AnnounceMaxShows),
-		TargetSpec:       encodeTarget(in.Target),
-		Target:           in.Target,
+		TargetSpec:       encodeTarget(target),
+		Target:           target,
 		CTALabel:         utils.SanitizeHTML(ctaLabel),
 		CTAURL:           ctaURL,
 		PublishAt:        in.PublishAt,
@@ -461,8 +566,26 @@ func (s *tutorialService) Create(userID uint, in TutorialInput) (*models.Tutoria
 		tutorial.AnnouncedAt = &now
 	}
 
+	// GORM no escribe los ceros de campos con default en la base: un borrador
+	// o una programada (is_active=false) se guardaba visible, y "sin aviso
+	// emergente" (0 días) se guardaba con 2. Además copia el default de vuelta
+	// al struct, así que se recuerda antes de crear y se escribe explícito.
+	wantActive, wantDays := tutorial.IsActive, tutorial.AnnounceDays
 	if err := s.repo.Create(tutorial); err != nil {
 		return nil, err
+	}
+	fix := map[string]interface{}{}
+	if !wantActive {
+		fix["is_active"] = false
+	}
+	if wantDays == 0 {
+		fix["announce_days"] = 0
+	}
+	if len(fix) > 0 {
+		if err := s.repo.SetFields(tutorial.ID, fix); err != nil {
+			return nil, err
+		}
+		tutorial.IsActive, tutorial.AnnounceDays = wantActive, wantDays
 	}
 
 	if tutorial.AnnouncedAt != nil {
@@ -517,8 +640,14 @@ func (s *tutorialService) Update(actorID, id uint, updates map[string]interface{
 	}
 	// El publico llega ya desempaquetado desde el handler y se vuelve a
 	// serializar aqui, que es donde vive la forma de guardarlo.
-	if target, ok := updates["target"].(models.TutorialTarget); ok {
+	targetAudience := ""
+	if raw, ok := updates["target"].(models.TutorialTarget); ok {
 		delete(updates, "target")
+		target, derived, err := normalizeTarget(raw)
+		if err != nil {
+			return nil, err
+		}
+		targetAudience = derived
 		updates["target_spec"] = encodeTarget(target)
 	}
 
@@ -558,6 +687,10 @@ func (s *tutorialService) Update(actorID, id uint, updates map[string]interface{
 		}
 		updates["audience"] = normalized
 	}
+	// Con roles o personas, la audiencia sale del público y no del selector.
+	if targetAudience != "" {
+		updates["audience"] = targetAudience
+	}
 	if days, ok := updates["announce_days"].(int); ok {
 		updates["announce_days"] = normalizeAnnounceDays(days)
 	}
@@ -567,6 +700,32 @@ func (s *tutorialService) Update(actorID, id uint, updates map[string]interface{
 
 	if len(updates) == 0 {
 		return tutorial, nil
+	}
+
+	// Programación, con los valores que quedarán tras el cambio.
+	_, publishChanged := updates["publish_at"]
+	_, expiresChanged := updates["expires_at"]
+	if publishChanged || expiresChanged {
+		publishAt, expiresAt := tutorial.PublishAt, tutorial.ExpiresAt
+		if publishChanged {
+			publishAt = timeOrNil(updates["publish_at"])
+		}
+		if expiresChanged {
+			expiresAt = timeOrNil(updates["expires_at"])
+		}
+		if err := validateSchedule(publishAt, expiresAt); err != nil {
+			return nil, err
+		}
+		if publishAt != nil && publishAt.After(time.Now()) {
+			// Ya publicada: moverla al futuro no la "despublica" ni la
+			// vuelve a anunciar, así que se rechaza en vez de ignorarlo.
+			if tutorial.AnnouncedAt != nil {
+				return nil, errors.New("Esta novedad ya se publicó: no se puede volver a programar. Usa «Recordar» para avisar otra vez.")
+			}
+			// Programada: espera al reloj aunque se marque visible. Es el
+			// mismo trato que al crearla.
+			updates["is_active"] = false
+		}
 	}
 
 	// Activar por primera vez una novedad que estaba en borrador equivale a
@@ -674,7 +833,7 @@ func (s *tutorialService) RemindPending(actorID, tutorialID uint) (int, error) {
 	data := map[string]interface{}{"link": "/novedades", "tutorial_id": tutorial.ID}
 	reminded := 0
 	for _, user := range people {
-		if user.ID == actorID || seen[user.ID] || user.UserType == models.UserTypeSuperadmin {
+		if user.ID == actorID || seen[user.ID] || (user.UserType == models.UserTypeSuperadmin && !tutorial.Target.IncludesSuperadmins()) {
 			continue
 		}
 		if s.notifSvc != nil {
@@ -731,11 +890,13 @@ const metricsViewerLimit = 25
 
 // countableAudience deja fuera al superadmin. Es quien publica: sumarlo al
 // denominador ensuciaria el porcentaje de lectura del equipo (y su propia
-// vista podria empujarlo por encima del 100%).
-func countableAudience(people []models.User) []models.User {
+// vista podria empujarlo por encima del 100%). Salvo que el público lo nombre
+// a propósito (rol Superadmins o elegido como persona): ahí es destinatario.
+func countableAudience(people []models.User, target models.TutorialTarget) []models.User {
+	keepAdmins := target.IncludesSuperadmins()
 	countable := make([]models.User, 0, len(people))
 	for _, user := range people {
-		if user.UserType == models.UserTypeSuperadmin {
+		if user.UserType == models.UserTypeSuperadmin && !keepAdmins {
 			continue
 		}
 		countable = append(countable, user)
@@ -745,7 +906,7 @@ func countableAudience(people []models.User) []models.User {
 
 // audienceStats agrupa alcance y vistas por tipo de cuenta.
 func audienceStats(people []models.User, viewers map[uint]bool) []models.TutorialAudienceStat {
-	order := []models.UserType{models.UserTypeEmployer, models.UserTypeProfessional}
+	order := []models.UserType{models.UserTypeEmployer, models.UserTypeProfessional, models.UserTypeSuperadmin}
 	reach := map[models.UserType]int64{}
 	views := map[models.UserType]int64{}
 	for _, user := range people {
@@ -790,7 +951,7 @@ func (s *tutorialService) GetMetrics(tutorialID uint) (*models.TutorialMetrics, 
 	if err != nil {
 		return nil, err
 	}
-	people = countableAudience(people)
+	people = countableAudience(people, tutorial.Target)
 	metrics.Reach = int64(len(people))
 
 	byID := make(map[uint]models.User, len(people))
@@ -920,11 +1081,19 @@ func (s *tutorialService) PreviewAudience(audience string, target models.Tutoria
 	if err != nil {
 		return nil, err
 	}
+	// Una lista de personas vacía no es un error al previsualizar: es alcance 0.
+	target, derived, err := normalizeTarget(target)
+	if err != nil {
+		return &models.TutorialAudiencePreview{ByAudience: []models.TutorialAudienceStat{}}, nil
+	}
+	if derived != "" {
+		normalized = derived
+	}
 	people, err := s.resolveAudience(normalized, target)
 	if err != nil {
 		return nil, err
 	}
-	countable := countableAudience(people)
+	countable := countableAudience(people, target)
 	return &models.TutorialAudiencePreview{
 		Reach:      int64(len(countable)),
 		ByAudience: audienceStats(countable, nil),
@@ -932,9 +1101,16 @@ func (s *tutorialService) PreviewAudience(audience string, target models.Tutoria
 }
 
 func (s *tutorialService) GetAudienceOptions() (*models.TutorialAudienceOptions, error) {
-	people, err := s.userRepo.ListActiveByTypes([]models.UserType{models.UserTypeEmployer, models.UserTypeProfessional})
+	people, err := s.userRepo.ListActiveByTypes([]models.UserType{models.UserTypeEmployer, models.UserTypeProfessional, models.UserTypeSuperadmin})
 	if err != nil {
 		return nil, err
+	}
+	// Cuánta gente hay en cada rol, para los botones de perfil.
+	roleCounts := map[string]int64{}
+	for i := range people {
+		if role := models.TargetRoleOf(&people[i]); role != "" {
+			roleCounts[role]++
+		}
 	}
 
 	// Las empresas y los paises salen de la gente activa, no de una lista
@@ -951,17 +1127,23 @@ func (s *tutorialService) GetAudienceOptions() (*models.TutorialAudienceOptions,
 	}
 
 	options := &models.TutorialAudienceOptions{
-		Companies: []models.TutorialAudienceOption{},
-		Countries: []string{},
-		Groups:    []models.TutorialAudienceOption{},
+		Companies:  []models.TutorialAudienceOption{},
+		Countries:  []string{},
+		Groups:     []models.TutorialAudienceOption{},
+		RoleCounts: roleCounts,
 	}
 	for _, user := range people {
 		if user.UserType != models.UserTypeEmployer {
 			continue
 		}
+		// El nombre comercial; el de la persona dueña solo si no hay otro.
+		name := strings.TrimSpace(user.CompanyName)
+		if name == "" {
+			name = user.Name
+		}
 		options.Companies = append(options.Companies, models.TutorialAudienceOption{
 			ID:   user.ID,
-			Name: user.Name,
+			Name: name,
 			// La cuenta de la empresa cuenta ademas de sus profesionales.
 			Count: headcount[user.ID] + 1,
 		})

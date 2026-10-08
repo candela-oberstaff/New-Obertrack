@@ -1326,7 +1326,8 @@ func (s *inductionService) Submit(token string, blockID uint, answers []Submitte
 		current.BestScore = best
 		current.CompletedAt = &now
 		result.BlockStatus = models.InductionPassed
-		result.BadgesEarned = append(result.BadgesEarned, s.awardBlockBadge(user, invite, current, score, now)...)
+		// Aprobar un bloque no da insignia: solo se gana al completar el
+		// programa entero (más abajo).
 
 		next := currentBlock(blocks)
 		if next == nil {
@@ -1583,35 +1584,6 @@ func (s *inductionService) award(user *models.User, badge models.UserBadge) *mod
 	return &badge
 }
 
-// awardBlockBadge otorga la insignia del bloque recién aprobado. El aspecto se
-// lee de la definición viva del bloque; si ya no existe, el de respaldo.
-func (s *inductionService) awardBlockBadge(user *models.User, invite *models.InductionInvite, block *models.InductionInviteBlock, score float64, at time.Time) []models.UserBadge {
-	icon, color, title := DefaultBlockBadgeIcon, DefaultBlockBadgeColor, block.Name
-	if def, err := s.repo.GetBlock(block.BlockID); err == nil && def != nil {
-		icon = normalizeBadgeIcon(def.BadgeIcon, icon)
-		color = normalizeBadgeColor(def.BadgeColor, color)
-		if strings.TrimSpace(def.BadgeTitle) != "" {
-			title = def.BadgeTitle
-		}
-	}
-	badge := models.UserBadge{
-		UserID:      user.ID,
-		Kind:        models.BadgeKindBlock,
-		SourceKey:   blockBadgeKey(block.BlockID),
-		Title:       title,
-		Description: fmt.Sprintf("Aprobaste el bloque «%s» de tu inducción.", block.Name),
-		Icon:        icon,
-		Color:       color,
-		Score:       score,
-		ProgramName: invite.ProgramName,
-		EarnedAt:    at,
-	}
-	if got := s.award(user, badge); got != nil {
-		return []models.UserBadge{*got}
-	}
-	return nil
-}
-
 // awardProgramBadges otorga la insignia del programa completado y los méritos
 // que correspondan por cómo se hizo.
 func (s *inductionService) awardProgramBadges(user *models.User, invite *models.InductionInvite, blocks []models.InductionInviteBlock, at time.Time) []models.UserBadge {
@@ -1680,30 +1652,10 @@ func (s *inductionService) ListBadges(userID uint) (*models.BadgeOverview, error
 			overview.Earned = earned
 		}
 	}
-	// Lo que falta: los bloques y el programa de la capacitación en curso.
+	// Lo que falta: la insignia del programa en curso (los bloques no dan).
 	invite, err := s.repo.GetPendingInviteByUser(userID)
 	if err != nil || invite == nil {
 		return overview, nil
-	}
-	blocks, err := s.repo.ListInviteBlocks(invite.ID)
-	if err != nil {
-		return overview, nil
-	}
-	for _, b := range blocks {
-		if b.Status == models.InductionPassed {
-			continue
-		}
-		icon, color, title := DefaultBlockBadgeIcon, DefaultBlockBadgeColor, b.Name
-		if def, err := s.repo.GetBlock(b.BlockID); err == nil && def != nil {
-			icon = normalizeBadgeIcon(def.BadgeIcon, icon)
-			color = normalizeBadgeColor(def.BadgeColor, color)
-			if strings.TrimSpace(def.BadgeTitle) != "" {
-				title = def.BadgeTitle
-			}
-		}
-		overview.Pending = append(overview.Pending, models.PendingBadge{
-			Kind: models.BadgeKindBlock, Title: title, Icon: icon, Color: color,
-		})
 	}
 	if invite.ProgramID != nil && *invite.ProgramID > 0 {
 		icon, color, title := DefaultProgramBadgeIcon, DefaultProgramBadgeColor, invite.ProgramName

@@ -70,5 +70,4 @@ export function badgeColor(key: string | undefined): BadgeColorDef {
   return BADGE_COLORS.find((c) => c.key === key) ?? BADGE_COLORS[0]
 }
 
-export const DEFAULT_BLOCK_BADGE = { icon: 'Award', color: 'orchid' }
 export const DEFAULT_PROGRAM_BADGE = { icon: 'Trophy', color: 'gold' }

@@ -3,6 +3,7 @@ import axios from 'axios'
 import type { User } from '../types'
 import { authService } from '../services/api'
 import { getEmbedToken, isEmbedMode } from '../embed/session'
+import { clearAnnouncerSession } from '../components/Tutorials/announcerSession'
 
 interface AuthContextType {
   user: User | null
@@ -60,6 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const response = await authService.login(email, password)
+    // Inicio de sesión nuevo: los avisos de novedades vuelven a contar.
+    clearAnnouncerSession()
     setUser(response.user)
   }
 
@@ -80,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authService.logout()
     } finally {
+      clearAnnouncerSession()
       setUser(null)
     }
   }

@@ -76,7 +76,7 @@ export default function InductionSettings() {
         const blockList = await refresh()
         if (blockList.length === 0) setSection('blocks')
       } catch {
-        showError('No se pudo cargar la configuración de inducción.')
+        showError('No se pudo cargar la configuración de formaciones.')
       } finally {
         setLoading(false)
       }
@@ -133,7 +133,7 @@ export default function InductionSettings() {
         is_active: config.is_active,
       })
       setConfig(saved)
-      success(saved.is_active ? 'Inducción encendida.' : 'Configuración guardada.')
+      success(saved.is_active ? 'Formación de ingreso encendida.' : 'Configuración guardada.')
     } catch (err: any) {
       showError(err?.response?.data?.error ?? 'No se pudo guardar la configuración.')
     } finally {
@@ -144,7 +144,7 @@ export default function InductionSettings() {
   if (loading || !config) {
     return (
       <div className={styles.panel}>
-        <p className={styles.muted}>Cargando inducción...</p>
+        <p className={styles.muted}>Cargando formaciones...</p>
       </div>
     )
   }
@@ -156,7 +156,7 @@ export default function InductionSettings() {
           <GraduationCap size={22} />
         </div>
         <div>
-          <h2 className={styles.title}>Inducción de nuevos profesionales</h2>
+          <h2 className={styles.title}>Formación de ingreso</h2>
           <p className={styles.intro}>
             Quien llega contratado recibe un enlace y recorre los bloques de su programa: en cada
             uno ve un video y responde su cuestionario. Si aprueba todos, se le habilita el acceso;
@@ -170,8 +170,8 @@ export default function InductionSettings() {
           <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
           <span>
             {defaultProgram
-              ? 'El programa por defecto no tiene bloques (o está apagado). Agrégale al menos un bloque para poder activar la inducción.'
-              : 'Crea un programa por defecto con al menos un bloque para poder activar la inducción.'}{' '}
+              ? 'El programa por defecto no tiene bloques (o está apagado). Agrégale al menos un bloque para poder activar la formación de ingreso.'
+              : 'Crea un programa por defecto con al menos un bloque para poder activar la formación de ingreso.'}{' '}
             Mientras esté apagada, los profesionales contratados reciben acceso directo, como hasta ahora.
           </span>
         </div>
@@ -179,7 +179,7 @@ export default function InductionSettings() {
 
       <div className={styles.configCard}>
         <div className={styles.configMain}>
-          <label className={styles.switch} title={config.is_active ? 'Apagar inducción' : 'Encender inducción'}>
+          <label className={styles.switch} title={config.is_active ? 'Apagar formación de ingreso' : 'Encender formación de ingreso'}>
             <input
               type="checkbox"
               checked={config.is_active}
@@ -190,7 +190,7 @@ export default function InductionSettings() {
           </label>
           <div className={styles.configText}>
             <span className={styles.configTitle}>
-              Inducción obligatoria
+              Formación de ingreso obligatoria
               <span className={config.is_active ? styles.pillOn : styles.pillOff}>
                 {config.is_active ? 'Encendida' : 'Apagada'}
               </span>
@@ -275,7 +275,6 @@ export default function InductionSettings() {
             blocks={blocks}
             videos={videos}
             fallbackPassingScore={defaultProgram?.default_passing_score ?? 70}
-            programs={programs}
             onChanged={reload}
           />
         )}

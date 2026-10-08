@@ -8,3 +8,7 @@ server.exe
 main.exe
 bin/
 uploads/
+# Caché de compilación de Go y binarios sueltos: no van a la imagen (la
+# caché pesaba 1,5 GB y se copiaba entera en cada construcción).
+.gocache/
+*.exe

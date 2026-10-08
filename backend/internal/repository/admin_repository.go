@@ -914,21 +914,17 @@ const tenantSelect = `
 		u.is_active,
 		u.created_at,
 		u.client_since,
-		COUNT(DISTINCT m.id) as user_count,
-		COUNT(DISTINCT b.id) as board_count,
-		COUNT(DISTINCT t.id) as task_count,
-		COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh
-			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
-			AND wh.work_date >= date_trunc('month', CURRENT_DATE)), 0) as hours_this_month,
-		COALESCE((SELECT SUM(wh.hours_worked) FROM work_hours wh
-			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
-			AND wh.approved = false AND wh.rejected = false), 0) as pending_hours,
-		(SELECT COUNT(*) FROM work_hours wh
-			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
-			AND wh.approved = false AND wh.rejected = false) as pending_count,
-		(SELECT COUNT(*) FROM work_hours wh
-			WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
-			AND wh.rejected = true) as rejected_count,
+		-- Conteos con subconsultas por índice. Antes eran LEFT JOIN a
+		-- profesionales, tableros y tareas a la vez con COUNT(DISTINCT): el
+		-- producto cartesiano (50 × 30 × 2.000 filas en una empresa grande) era lo
+		-- que hacía lenta la lista.
+		(SELECT COUNT(*) FROM users m WHERE m.empleador_id = u.id AND m.deleted_at IS NULL) as user_count,
+		(SELECT COUNT(*) FROM boards b WHERE b.tenant_id = u.id AND b.deleted_at IS NULL) as board_count,
+		COALESCE(tk_stats.task_count, 0) as task_count,
+		COALESCE(wh_stats.hours_this_month, 0) as hours_this_month,
+		COALESCE(wh_stats.pending_hours, 0) as pending_hours,
+		COALESCE(wh_stats.pending_count, 0) as pending_count,
+		COALESCE(wh_stats.rejected_count, 0) as rejected_count,
 		(SELECT COUNT(*) FROM tickets tk
 			WHERE tk.status = 'open' AND ` + tenantTicketScope + `) as open_tickets,
 		-- Última vez que NOSOTROS contactamos con la empresa. Es la pregunta que
@@ -948,39 +944,66 @@ const tenantSelect = `
 		-- conservan porque cubren el tramo anterior a que existiera el contador
 		-- (ver models/user_activity.go: no hay relleno hacia atrás).
 		--
+		-- La gente de la empresa se resuelve contra users (la fuente de verdad):
+		-- la cuenta empresa por su id y su equipo por empleador_id, escrito así
+		-- para que use los índices en vez de recorrer toda la actividad por
+		-- cada empresa.
+		--
 		-- GREATEST ignora los NULL, así que una empresa sin ninguna de las tres
 		-- señales sigue devolviendo NULL y se pinta como "nunca".
 		GREATEST(
 			(SELECT MAX(a.last_at) FROM user_activity_daily a
-				JOIN users au ON au.id = a.user_id
-				WHERE a.module = 'app' AND au.deleted_at IS NULL
-				  AND (CASE WHEN au.user_type = 'empleador' THEN au.id ELSE au.empleador_id END) = u.id),
-			(SELECT MAX(wh.created_at) FROM work_hours wh
-				WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL),
-			(SELECT MAX(t2.created_at) FROM tasks t2
-				WHERE t2.tenant_id = u.id AND t2.deleted_at IS NULL)
+				WHERE a.module = 'app' AND a.user_id IN (
+					SELECT au.id FROM users au
+					WHERE au.deleted_at IS NULL
+					  AND ((au.user_type = 'empleador' AND au.id = u.id)
+					    OR (au.user_type IS DISTINCT FROM 'empleador' AND au.empleador_id = u.id)))),
+			wh_stats.last_created_at,
+			tk_stats.last_created_at
 		) as last_activity_at,
 		u.assigned_cs_id,
-		COALESCE((SELECT cs.name FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_name,
-		COALESCE((SELECT cs.email FROM users cs WHERE cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL), '') as assigned_cs_email,
-		COALESCE((SELECT cr.external_id FROM company_recruiters cr WHERE cr.company_id = u.id), '') as recruiter_external_id,
-		COALESCE((SELECT cr.name FROM company_recruiters cr WHERE cr.company_id = u.id), '') as recruiter_name,
-		COALESCE((SELECT cr.email FROM company_recruiters cr WHERE cr.company_id = u.id), '') as recruiter_email,
-		(SELECT cr.assigned_at FROM company_recruiters cr WHERE cr.company_id = u.id) as recruiter_assigned_at,
+		COALESCE(cs.name, '') as assigned_cs_name,
+		COALESCE(cs.email, '') as assigned_cs_email,
+		COALESCE(cr.external_id, '') as recruiter_external_id,
+		COALESCE(cr.name, '') as recruiter_name,
+		COALESCE(cr.email, '') as recruiter_email,
+		cr.assigned_at as recruiter_assigned_at,
 		COALESCE(u.obersuite_id, '') as obersuite_id
 	FROM users u
-	LEFT JOIN users m ON m.empleador_id = u.id AND m.deleted_at IS NULL
-	LEFT JOIN boards b ON b.tenant_id = u.id AND b.deleted_at IS NULL
-	LEFT JOIN tasks t ON t.tenant_id = u.id AND t.deleted_at IS NULL
+	-- Las jornadas de la empresa en una sola pasada (antes eran cinco).
+	LEFT JOIN LATERAL (
+		SELECT
+			SUM(wh.hours_worked) FILTER (WHERE wh.work_date >= date_trunc('month', CURRENT_DATE)) as hours_this_month,
+			SUM(wh.hours_worked) FILTER (WHERE wh.approved = false AND wh.rejected = false) as pending_hours,
+			COUNT(*) FILTER (WHERE wh.approved = false AND wh.rejected = false) as pending_count,
+			COUNT(*) FILTER (WHERE wh.rejected = true) as rejected_count,
+			MAX(wh.created_at) as last_created_at
+		FROM work_hours wh
+		WHERE wh.tenant_id = u.id AND wh.deleted_at IS NULL
+	) wh_stats ON true
+	LEFT JOIN LATERAL (
+		SELECT COUNT(*) as task_count, MAX(t.created_at) as last_created_at
+		FROM tasks t
+		WHERE t.tenant_id = u.id AND t.deleted_at IS NULL
+	) tk_stats ON true
+	LEFT JOIN users cs ON cs.id = u.assigned_cs_id AND cs.deleted_at IS NULL
+	LEFT JOIN company_recruiters cr ON cr.company_id = u.id
 	WHERE u.user_type = 'empleador' AND u.deleted_at IS NULL
 `
 
 func (r *adminRepository) GetTenants() ([]TenantSummary, error) {
 	var tenants []TenantSummary
-	err := r.db.Raw(tenantSelect + `
-		GROUP BY u.id
-		ORDER BY LOWER(COALESCE(NULLIF(u.company_name, ''), u.name)) ASC
-	`).Scan(&tenants).Error
+	// Sin JIT: las subconsultas por empresa inflan el coste estimado y Postgres
+	// decide compilar el plan, lo que con ~150 empresas costaba más (~2 s) que
+	// ejecutar la consulta entera. SET LOCAL lo apaga solo en esta transacción.
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SET LOCAL jit = off").Error; err != nil {
+			return err
+		}
+		return tx.Raw(tenantSelect + `
+			ORDER BY LOWER(COALESCE(NULLIF(u.company_name, ''), u.name)) ASC
+		`).Scan(&tenants).Error
+	})
 	return tenants, err
 }
 
@@ -988,7 +1011,6 @@ func (r *adminRepository) GetTenantByID(id uint) (*TenantSummary, error) {
 	var tenant TenantSummary
 	err := r.db.Raw(tenantSelect+`
 		AND u.id = ?
-		GROUP BY u.id
 	`, id).Scan(&tenant).Error
 	if err != nil {
 		return nil, err

@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { tutorialService } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { NovedadOverlay } from './NovedadOverlay'
+import { readAnnouncerSession, writeAnnouncerSession } from './announcerSession'
 import type { Tutorial } from '../../types'
 
 /**
@@ -24,10 +25,12 @@ export function NovedadAnnouncer() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  // IDs ya despachados en esta sesión. Se llevan aparte de la lista del
-  // servidor porque esa se recarga sola: con un índice, una recarga a mitad de
-  // la cola haría reaparecer lo que ya se cerró.
-  const [dismissed, setDismissed] = useState<number[]>([])
+  // IDs ya despachados en este inicio de sesión. Se llevan aparte de la lista
+  // del servidor porque, con varias apariciones, el servidor la sigue
+  // devolviendo: cerrarla la aparta hasta la próxima sesión, no para siempre.
+  // Se guardan en sessionStorage para que recargar no la vuelva a sacar.
+  const userId = user?.id ?? 0
+  const [dismissed, setDismissed] = useState<number[]>(() => (userId ? readAnnouncerSession(userId).dismissed : []))
 
   const { data: pending } = useQuery({
     queryKey: ['tutorial-pending'],
@@ -53,7 +56,11 @@ export function NovedadAnnouncer() {
   // best-effort: si falla, el aviso simplemente reaparecerá en la próxima
   // entrada, que es preferible a bloquear el cierre.
   const acknowledge = useCallback(async (tutorial: Tutorial) => {
-    setDismissed(prev => (prev.includes(tutorial.id) ? prev : [...prev, tutorial.id]))
+    setDismissed(prev => {
+      const next = prev.includes(tutorial.id) ? prev : [...prev, tutorial.id]
+      if (userId) writeAnnouncerSession(userId, { ...readAnnouncerSession(userId), dismissed: next })
+      return next
+    })
     try {
       // Origen 'anuncio': así las métricas distinguen a quien se enteró por el
       // aviso de quien fue a buscarla a la sección. El acuse solo se sella en
@@ -63,7 +70,7 @@ export function NovedadAnnouncer() {
     } catch (error) {
       console.error('No se pudo registrar la vista de la novedad:', error)
     }
-  }, [qc])
+  }, [qc, userId])
 
   // Una novedad publicada con la app abierta llega por WebSocket a la
   // campanita; aquí se aprovecha ese mismo aviso para releer los pendientes al
@@ -74,14 +81,17 @@ export function NovedadAnnouncer() {
     return () => window.removeEventListener('novedad-published', onPublished)
   }, [qc])
 
-  // Cada aparición se cuenta una sola vez por novedad y sesión. Es lo que
-  // sostiene el tope de veces: sin esto, recargar la página lo esquivaría.
-  const reported = useRef<Set<number>>(new Set())
+  // Cada aparición se cuenta una sola vez por novedad e inicio de sesión. Es
+  // lo que sostiene el tope de veces: recargar la página no gasta otra.
+  const reported = useRef<Set<number> | null>(null)
   useEffect(() => {
-    if (!current || reported.current.has(current.id)) return
+    if (!current || !userId) return
+    if (!reported.current) reported.current = new Set(readAnnouncerSession(userId).shown)
+    if (reported.current.has(current.id)) return
     reported.current.add(current.id)
+    writeAnnouncerSession(userId, { ...readAnnouncerSession(userId), shown: Array.from(reported.current) })
     void tutorialService.recordShow(current.id).catch(() => {})
-  }, [current])
+  }, [current, userId])
 
   if (!current) return null
 
@@ -102,7 +112,9 @@ export function NovedadAnnouncer() {
   // cola entera en lugar de encadenar avisos encima de la página.
   const goToNovedades = () => {
     void acknowledge(current)
-    setDismissed(queue.map(t => t.id))
+    const all = [...dismissed, ...queue.map(t => t.id)]
+    setDismissed(all)
+    if (userId) writeAnnouncerSession(userId, { ...readAnnouncerSession(userId), dismissed: all })
     navigate('/novedades')
   }
 

@@ -116,9 +116,10 @@ type Tutorial struct {
 	// RequireAck exige confirmar la lectura en vez de bastar con cerrar. Para
 	// lo que tiene consecuencias: cambios de pago, politicas, obligaciones.
 	RequireAck bool `gorm:"not null;default:false" json:"require_ack"`
-	// AnnounceMaxShows es cuántas veces se le puede mostrar el aviso a una
-	// misma persona. 0 = sin límite (manda solo el plazo en días). Es el freno
-	// para quien nunca cierra el aviso y lo esquiva recargando.
+	// AnnounceMaxShows es en cuántos inicios de sesión distintos le sale el
+	// aviso a cada persona. 1 = una vez (al cerrarlo no vuelve); N = hasta N
+	// sesiones aunque lo cierre; 0 = en cada sesión mientras dure el plazo.
+	// Siempre deja de salir si la abre desde Novedades o confirma la lectura.
 	AnnounceMaxShows int            `gorm:"not null;default:0" json:"announce_max_shows"`
 	CreatedBy        uint           `gorm:"not null;index" json:"created_by"`
 	Creator          User           `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
@@ -143,10 +144,94 @@ func (t *Tutorial) AfterFind(tx *gorm.DB) error {
 	return nil
 }
 
+// Roles por los que se puede dirigir una novedad. Managers y supervisores son
+// profesionales, pero aquí van separados: "Profesionales" son quienes NO
+// tienen equipo a cargo, así que marcar los tres equivale a todos los
+// profesionales y marcar solo uno llega únicamente a ese rol.
+const (
+	TargetRoleEmployer     = "empresa"
+	TargetRoleProfessional = "profesional"
+	TargetRoleManager      = "manager"
+	TargetRoleSupervisor   = "supervisor"
+	TargetRoleSuperadmin   = "superadmin"
+)
+
+// Cómo se eligió el público: por perfil (roles y filtros que se recalculan
+// solos cuando entra gente nueva) o por personas concretas (una lista fija).
+const (
+	TargetModeProfile = "perfil"
+	TargetModePeople  = "personas"
+)
+
+func IsValidTargetRole(role string) bool {
+	switch role {
+	case TargetRoleEmployer, TargetRoleProfessional, TargetRoleManager, TargetRoleSupervisor, TargetRoleSuperadmin:
+		return true
+	}
+	return false
+}
+
+// TargetRoleOf es el rol de una persona a efectos del público de una novedad.
+// Vacío = ninguno de los elegibles (CS, analista de IT: para ellos el módulo
+// de Novedades no existe).
+func TargetRoleOf(user *User) string {
+	if user == nil {
+		return ""
+	}
+	switch {
+	case user.UserType == UserTypeSuperadmin || user.IsSuperadmin:
+		return TargetRoleSuperadmin
+	case user.UserType == UserTypeEmployer:
+		return TargetRoleEmployer
+	case user.UserType == UserTypeProfessional && user.IsSupervisor:
+		return TargetRoleSupervisor
+	case user.UserType == UserTypeProfessional && user.IsManager:
+		return TargetRoleManager
+	case user.UserType == UserTypeProfessional:
+		return TargetRoleProfessional
+	}
+	return ""
+}
+
+// AudienceForRoles traduce los roles elegidos a la audiencia de la columna
+// (la que filtra el listado en SQL). Es un primer corte grueso: el fino lo
+// hace Matches. Solo empresas → empleador; solo roles de profesional →
+// profesional; cualquier mezcla → all.
+func AudienceForRoles(roles []string) string {
+	employer, professional, other := false, false, false
+	for _, role := range roles {
+		switch role {
+		case TargetRoleEmployer:
+			employer = true
+		case TargetRoleProfessional, TargetRoleManager, TargetRoleSupervisor:
+			professional = true
+		default:
+			other = true
+		}
+	}
+	switch {
+	case employer && !professional && !other:
+		return TutorialAudienceEmployer
+	case professional && !employer && !other:
+		return TutorialAudienceProfessional
+	}
+	return TutorialAudienceAll
+}
+
 // TutorialTarget acota a QUIÉN va dirigida una novedad, por encima del tipo de
-// cuenta (Audience). Los criterios se combinan con Y: "profesionales de Acme
-// que además estén en Venezuela". Todos vacíos = toda la audiencia.
+// cuenta (Audience).
+//
+// Por perfil, los criterios se combinan con Y: "managers de Acme que además
+// estén en Venezuela". Por personas, llega a la lista elegida y a los grupos
+// marcados, y nada más. Todo vacío = toda la audiencia.
 type TutorialTarget struct {
+	// Mode es TargetModeProfile o TargetModePeople. Vacío = por perfil (así
+	// se leen las novedades anteriores a esta opción).
+	Mode string `json:"mode,omitempty"`
+	// Roles son los perfiles elegidos (TargetRole*). Vacío = no acota por rol.
+	Roles []string `json:"roles"`
+	// UserIDs son las personas elegidas una a una (solo por personas).
+	UserIDs []uint `json:"user_ids"`
 	// CompanyIDs son las empresas elegidas. Alcanza a la cuenta de la empresa
 	// y a sus profesionales.
 	CompanyIDs []uint `json:"company_ids"`
@@ -154,13 +239,35 @@ type TutorialTarget struct {
 	Countries []string `json:"countries"`
 	// GroupIDs son grupos de audiencia (los mismos de Correos).
 	GroupIDs []uint `json:"group_ids"`
-	// ManagersOnly deja fuera a quien no tiene equipo a cargo.
+	// ManagersOnly deja fuera a quien no tiene equipo a cargo. Lo reemplazan
+	// los roles; se sigue respetando en las novedades que ya lo traían.
 	ManagersOnly bool `json:"managers_only"`
+}
+
+// IsPeople indica que el público es una lista de personas concretas.
+func (t TutorialTarget) IsPeople() bool { return t.Mode == TargetModePeople }
+
+// HasRole indica si el rol está entre los elegidos.
+func (t TutorialTarget) HasRole(role string) bool {
+	for _, r := range t.Roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+// IncludesSuperadmins indica que el público nombra a superadmins a propósito
+// (por rol o por persona). Si no, el superadmin no cuenta en el alcance: es
+// quien publica y ve todas las novedades igual.
+func (t TutorialTarget) IncludesSuperadmins() bool {
+	return t.IsPeople() || t.HasRole(TargetRoleSuperadmin)
 }
 
 // IsEmpty indica que la novedad va a toda su audiencia, sin acotar.
 func (t TutorialTarget) IsEmpty() bool {
-	return len(t.CompanyIDs) == 0 && len(t.Countries) == 0 && len(t.GroupIDs) == 0 && !t.ManagersOnly
+	return !t.IsPeople() && len(t.Roles) == 0 && len(t.UserIDs) == 0 &&
+		len(t.CompanyIDs) == 0 && len(t.Countries) == 0 && len(t.GroupIDs) == 0 && !t.ManagersOnly
 }
 
 // Matches decide si una persona entra en el público objetivo. inTargetGroup lo
@@ -168,10 +275,22 @@ func (t TutorialTarget) IsEmpty() bool {
 // público acota por grupos.
 //
 // Esta función es la ÚNICA definición de la regla: la usan el reparto de
-// notificaciones, el aviso a pantalla completa y el alcance de las métricas.
-// Si alguna vez se reescribe en SQL, los tres se van a desincronizar.
+// notificaciones, el aviso a pantalla completa, el listado de Novedades y el
+// alcance de las métricas. Si alguna vez se reescribe en SQL, se van a
+// desincronizar.
 func (t TutorialTarget) Matches(user *User, inTargetGroup bool) bool {
 	if user == nil {
+		return false
+	}
+	if t.IsPeople() {
+		for _, id := range t.UserIDs {
+			if user.ID == id {
+				return true
+			}
+		}
+		return len(t.GroupIDs) > 0 && inTargetGroup
+	}
+	if len(t.Roles) > 0 && !t.HasRole(TargetRoleOf(user)) {
 		return false
 	}
 	if len(t.CompanyIDs) > 0 {
@@ -340,4 +459,6 @@ type TutorialAudienceOptions struct {
 	Companies []TutorialAudienceOption `json:"companies"`
 	Countries []string                 `json:"countries"`
 	Groups    []TutorialAudienceOption `json:"groups"`
+	// RoleCounts es cuánta gente activa hay en cada rol (TargetRole*).
+	RoleCounts map[string]int64 `json:"role_counts"`
 }

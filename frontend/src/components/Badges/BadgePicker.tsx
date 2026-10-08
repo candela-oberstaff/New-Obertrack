@@ -3,13 +3,13 @@ import { BADGE_COLORS, BADGE_ICON_NAMES, badgeIcon } from './badgeCatalog'
 import { BadgeMedallion } from './BadgeMedallion'
 
 export interface BadgeDraft {
-  /** Nombre propio de la insignia; vacío = se usa el del bloque o programa. */
+  /** Nombre propio de la insignia; vacío = se usa el del programa. */
   title: string
   icon: string
   color: string
 }
 
-/** Una insignia ya definida en otro bloque o programa, para copiarla. */
+/** Una insignia ya definida en otro programa, para copiarla. */
 export interface BadgePreset extends BadgeDraft {
   key: string
   /** De dónde sale: "Bloque · Bienvenida", "Programa · Inducción". */
@@ -18,7 +18,7 @@ export interface BadgePreset extends BadgeDraft {
 
 interface Props {
   value: BadgeDraft
-  /** Nombre del bloque o programa: es el título si el propio está vacío. */
+  /** Nombre del programa: es el título si el propio está vacío. */
   fallbackTitle: string
   presets?: BadgePreset[]
   /** Medallón de vista previa junto a los controles. Se apaga si el contenedor ya muestra uno. */
@@ -72,10 +72,10 @@ const inputStyle: React.CSSProperties = {
 }
 
 /**
- * Define una insignia: nombre propio (o el del bloque/programa), icono del
- * set cerrado y color de la paleta, con vista previa del medallón tal como lo
- * verá el profesional. Si ya hay insignias definidas en otros bloques o
- * programas, se puede copiar una en vez de armarla desde cero.
+ * Define una insignia: nombre propio (o el del programa), icono del set
+ * cerrado y color de la paleta, con vista previa del medallón tal como lo
+ * verá el profesional. Si ya hay insignias definidas en otros programas, se
+ * puede copiar una en vez de armarla desde cero.
  */
 export function BadgePicker({ value, fallbackTitle, presets = [], showPreview = true, onChange }: Props) {
   const effectiveTitle = value.title.trim() || fallbackTitle.trim() || 'Sin nombre'
@@ -110,7 +110,7 @@ export function BadgePicker({ value, fallbackTitle, presets = [], showPreview = 
               <Select
                 fullWidth
                 value=""
-                placeholder="Copiar de otro bloque o programa..."
+                placeholder="Copiar de otro programa..."
                 onChange={(v) => {
                   const preset = presets.find((p) => p.key === String(v))
                   if (preset) onChange({ title: preset.title, icon: preset.icon, color: preset.color })
@@ -183,19 +183,17 @@ export function BadgePicker({ value, fallbackTitle, presets = [], showPreview = 
   )
 }
 
-/** Arma la lista de insignias existentes a partir de bloques y programas. */
+/**
+ * Arma la lista de insignias existentes a partir de los programas, sin el que
+ * se está editando. Solo los programas otorgan insignia: los bloques no.
+ */
 export function buildBadgePresets(
-  blocks: { id: number; name: string; badge_title?: string; badge_icon: string; badge_color: string }[],
   programs: { id: number; name: string; badge_title?: string; badge_icon: string; badge_color: string }[],
-  exclude?: { kind: 'block' | 'program'; id: number }
+  excludeId?: number | null
 ): BadgePreset[] {
   const out: BadgePreset[] = []
-  for (const b of blocks) {
-    if (exclude?.kind === 'block' && exclude.id === b.id) continue
-    out.push({ key: `block:${b.id}`, source: `Bloque · ${b.name}`, title: b.badge_title || '', icon: b.badge_icon, color: b.badge_color })
-  }
   for (const p of programs) {
-    if (exclude?.kind === 'program' && exclude.id === p.id) continue
+    if (excludeId != null && excludeId === p.id) continue
     out.push({ key: `program:${p.id}`, source: `Programa · ${p.name}`, title: p.badge_title || '', icon: p.badge_icon, color: p.badge_color })
   }
   return out
