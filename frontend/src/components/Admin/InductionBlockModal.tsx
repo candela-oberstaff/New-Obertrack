@@ -5,7 +5,6 @@ import { useNotification } from '../../context/NotificationContext'
 import {
   inductionService,
   type InductionBlock,
-  type InductionProgram,
   type InductionVideo,
 } from '../../services/induction.service'
 import { surveyService } from '../../services/surveyService'
@@ -15,9 +14,6 @@ import InductionQuizBuilder, { type QuizBuilderHandle } from './InductionQuizBui
 import InductionVideoPicker from './InductionVideoPicker'
 import ReadinessChecklist from './ReadinessChecklist'
 import { blockIssues, isReady } from './inductionReadiness'
-import { BadgePicker, buildBadgePresets, type BadgeDraft } from '../Badges/BadgePicker'
-import { DEFAULT_BLOCK_BADGE } from '../Badges/badgeCatalog'
-import { BadgeMedallion } from '../Badges/BadgeMedallion'
 import styles from './InductionSettings.module.css'
 
 interface Props {
@@ -27,9 +23,6 @@ interface Props {
   videos: InductionVideo[]
   /** Mínimo que se aplica cuando el bloque no trae uno propio (solo informativo). */
   fallbackPassingScore: number
-  /** Biblioteca completa y programas, para copiar una insignia ya definida. */
-  allBlocks?: InductionBlock[]
-  allPrograms?: InductionProgram[]
   onSaved: (block: InductionBlock) => void
   onClose: () => void
 }
@@ -38,16 +31,14 @@ const STEPS = ['Datos', 'Video', 'Cuestionario', 'Revisar']
 
 /**
  * Modal con el asistente de un bloque, en cuatro pasos: datos, video (de la
- * biblioteca de la inducción), cuestionario y revisión (con el mínimo propio y la insignia
- * plegados). Las preguntas se escriben antes de crear el bloque: un solo
+ * biblioteca de la inducción), cuestionario y revisión. La insignia no
+ * es del bloque: se gana al completar el programa. Las preguntas se escriben antes de crear el bloque: un solo
  * botón crea el cuestionario, el bloque y sus preguntas.
  */
 export default function InductionBlockModal({
   block,
   videos,
   fallbackPassingScore,
-  allBlocks = [],
-  allPrograms = [],
   onSaved,
   onClose,
 }: Props) {
@@ -62,12 +53,6 @@ export default function InductionBlockModal({
   const [passing, setPassing] = useState<string>(
     block?.passing_score === null || block?.passing_score === undefined ? '' : String(block.passing_score)
   )
-  const [badge, setBadge] = useState<BadgeDraft>({
-    title: block?.badge_title || '',
-    icon: block?.badge_icon || DEFAULT_BLOCK_BADGE.icon,
-    color: block?.badge_color || DEFAULT_BLOCK_BADGE.color,
-  })
-  const presets = buildBadgePresets(allBlocks, allPrograms, block ? { kind: 'block', id: block.id } : undefined)
   const [saving, setSaving] = useState(false)
   const quizRef = useRef<QuizBuilderHandle>(null)
   // Un bloque nuevo empieza por el nombre; uno existente, por sus preguntas,
@@ -77,7 +62,7 @@ export default function InductionBlockModal({
   // Sin dato todavía se asume que puntúan: el aviso aparece al cargar las preguntas.
   const [scorableCount, setScorableCount] = useState<number | null>(null)
   // Cerrar con Escape, la X o fuera del modal pide confirmar si hay cambios.
-  const isDirty = useDirtySnapshot({ name, description, videoId, passing, badge, questionCount })
+  const isDirty = useDirtySnapshot({ name, description, videoId, passing, questionCount })
   const onCountChange = useCallback((total: number, scorable: number) => {
     setQuestionCount(total)
     setScorableCount(scorable)
@@ -166,9 +151,6 @@ export default function InductionBlockModal({
         video_id: videoId || null,
         survey_id: surveyId,
         passing_score: passingValue,
-        badge_title: badge.title.trim(),
-        badge_icon: badge.icon,
-        badge_color: badge.color,
       }
       let saved = current
         ? await inductionService.updateBlock(current.id, input)
@@ -345,12 +327,6 @@ export default function InductionBlockModal({
                   <Target size={12} /> Aprueba con {effectivePassing}%
                 </span>
               </div>
-              <div className={styles.blockPreviewBadge}>
-                <BadgeMedallion icon={badge.icon} color={badge.color} size="sm" />
-                <span>
-                  Al aprobarlo gana <strong>{badge.title.trim() || name.trim() || 'su insignia'}</strong>
-                </span>
-              </div>
             </div>
           </aside>
         </div>
@@ -395,24 +371,7 @@ export default function InductionBlockModal({
         <h3 className={styles.wizardTitle}>Revisa y {current ? 'guarda' : 'crea'} el bloque</h3>
         <p className={styles.wizardIntro}>Todo se puede ajustar desde aquí antes de {current ? 'guardar' : 'crearlo'}.</p>
 
-        {/* Una sola columna: primero la insignia, luego el resumen. La insignia es un
-            único bloque: cómo la verá el profesional a la izquierda y su editor a la
-            derecha (debajo en pantallas angostas). */}
         <div className={styles.reviewStack}>
-          <section className={styles.badgePanel} aria-label="Insignia del bloque">
-            <div className={styles.badgePanelPreview}>
-              <span className={styles.blockPreviewLabel}>Insignia que gana</span>
-              <BadgeMedallion icon={badge.icon} color={badge.color} size="lg" />
-              <strong className={styles.badgeCardTitle}>{badge.title.trim() || name.trim() || 'Insignia del bloque'}</strong>
-              <span className={styles.badgeCardHint}>
-                Se gana al aprobar este bloque y aparece en su perfil y en su expediente.
-              </span>
-            </div>
-            <div className={styles.badgePanelEditor}>
-              <BadgePicker value={badge} fallbackTitle={name} presets={presets} showPreview={false} onChange={setBadge} />
-            </div>
-          </section>
-
           <div>
             <div className={styles.reviewList}>
               <div className={styles.reviewRow}>

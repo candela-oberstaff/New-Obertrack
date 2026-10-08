@@ -275,7 +275,6 @@ export default function InductionSettings() {
             blocks={blocks}
             videos={videos}
             fallbackPassingScore={defaultProgram?.default_passing_score ?? 70}
-            programs={programs}
             onChanged={reload}
           />
         )}

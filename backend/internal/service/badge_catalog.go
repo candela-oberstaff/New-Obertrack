@@ -107,7 +107,6 @@ func earnedMerits(blocks []models.InductionInviteBlock) []string {
 	return out
 }
 
-func blockBadgeKey(blockID uint) string   { return fmt.Sprintf("block:%d", blockID) }
 func programBadgeKey(programID uint) string { return fmt.Sprintf("program:%d", programID) }
 func meritBadgeKey(merit string, programID uint) string {
 	return fmt.Sprintf("merit:%s:%d", merit, programID)

@@ -75,7 +75,9 @@ func TestEarnedMerits(t *testing.T) {
 	}
 }
 
-func TestSubmit_AprobarUnBloqueOtorgaSuInsignia(t *testing.T) {
+// Los bloques no dan insignia: aprobar uno que no cierra el programa no
+// otorga nada, aunque la definición vieja del bloque traiga una.
+func TestSubmit_AprobarUnBloqueNoOtorgaInsignia(t *testing.T) {
 	svc, repo, _ := newInductionSvc(enabledConfig(), professional(5))
 	badges := &fakeBadgeRepo{}
 	svc.badgeRepo = badges
@@ -83,39 +85,11 @@ func TestSubmit_AprobarUnBloqueOtorgaSuInsignia(t *testing.T) {
 	repo.blocks[11] = &models.InductionBlock{ID: 11, Name: "Bienvenida", SurveyID: 7, BadgeTitle: "Bienvenido a bordo", BadgeIcon: "Rocket", BadgeColor: "sky"}
 
 	res, err := svc.Submit("tok", 11, []SubmittedAnswer{{QuestionID: 71, Value: "a"}})
-	if err != nil {
-		t.Fatalf("submit: %v", err)
+	if err != nil || !res.Passed {
+		t.Fatalf("submit: %+v %v", res, err)
 	}
-	if len(res.BadgesEarned) != 1 {
-		t.Fatalf("se esperaba 1 insignia, got %v", kinds(res.BadgesEarned))
-	}
-	b := res.BadgesEarned[0]
-	// El nombre propio de la insignia manda sobre el del bloque.
-	if b.Kind != models.BadgeKindBlock || b.SourceKey != "block:11" || b.Title != "Bienvenido a bordo" {
-		t.Fatalf("insignia mal formada: %+v", b)
-	}
-	// El aspecto sale de la definición viva del bloque.
-	if b.Icon != "Rocket" || b.Color != "sky" {
-		t.Fatalf("debe usar el icono y color del bloque: %+v", b)
-	}
-	if b.Score != 100 || b.ProgramName != "Por defecto" {
-		t.Fatalf("debe llevar puntaje y programa: %+v", b)
-	}
-}
-
-// Un bloque sin definición viva (borrado) igual da insignia, con el aspecto
-// de respaldo.
-func TestSubmit_BloqueBorradoUsaAspectoDeRespaldo(t *testing.T) {
-	svc, repo, _ := newInductionSvc(enabledConfig(), professional(5))
-	svc.badgeRepo = &fakeBadgeRepo{}
-	pendingInvite(repo, 3)
-
-	res, err := svc.Submit("tok", 11, []SubmittedAnswer{{QuestionID: 71, Value: "a"}})
-	if err != nil {
-		t.Fatalf("submit: %v", err)
-	}
-	if len(res.BadgesEarned) != 1 || res.BadgesEarned[0].Icon != DefaultBlockBadgeIcon {
-		t.Fatalf("esperaba la insignia de respaldo: %v", res.BadgesEarned)
+	if len(res.BadgesEarned) != 0 || len(badges.awarded) != 0 {
+		t.Fatalf("un bloque no debe dar insignia: %v", kinds(res.BadgesEarned))
 	}
 }
 
@@ -135,7 +109,7 @@ func TestSubmit_CompletarElProgramaOtorgaProgramaYMeritos(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	got := kinds(res.BadgesEarned)
-	want := []string{"block:12", "program:1", "merit:first_try:1", "merit:perfect:1"}
+	want := []string{"program:1", "merit:first_try:1", "merit:perfect:1"}
 	if len(got) != len(want) {
 		t.Fatalf("insignias = %v, esperaba %v", got, want)
 	}
@@ -145,8 +119,8 @@ func TestSubmit_CompletarElProgramaOtorgaProgramaYMeritos(t *testing.T) {
 		}
 	}
 	// La del programa promedia los bloques.
-	if res.BadgesEarned[1].Kind != models.BadgeKindProgram || res.BadgesEarned[1].Score != 100 {
-		t.Fatalf("insignia de programa mal formada: %+v", res.BadgesEarned[1])
+	if res.BadgesEarned[0].Kind != models.BadgeKindProgram || res.BadgesEarned[0].Score != 100 {
+		t.Fatalf("insignia de programa mal formada: %+v", res.BadgesEarned[0])
 	}
 }
 
@@ -166,8 +140,8 @@ func TestSubmit_ConFallosNoHayMeritoALaPrimera(t *testing.T) {
 		t.Fatalf("submit: %v", err)
 	}
 	got := kinds(res.BadgesEarned)
-	if len(got) != 3 || got[1] != "program:1" || got[2] != "merit:perfect:1" {
-		t.Fatalf("insignias = %v, esperaba bloque, programa e impecable", got)
+	if len(got) != 2 || got[0] != "program:1" || got[1] != "merit:perfect:1" {
+		t.Fatalf("insignias = %v, esperaba programa e impecable", got)
 	}
 }
 
@@ -175,18 +149,27 @@ func TestSubmit_ConFallosNoHayMeritoALaPrimera(t *testing.T) {
 // salir en el resultado.
 func TestSubmit_NoDuplicaInsigniasYaGanadas(t *testing.T) {
 	svc, repo, _ := newInductionSvc(enabledConfig(), professional(5))
-	badges := &fakeBadgeRepo{awarded: []models.UserBadge{{ID: 1, UserID: 5, SourceKey: "block:11"}}}
+	badges := &fakeBadgeRepo{awarded: []models.UserBadge{
+		{ID: 1, UserID: 5, SourceKey: "program:1"},
+		{ID: 2, UserID: 5, SourceKey: "merit:first_try:1"},
+		{ID: 3, UserID: 5, SourceKey: "merit:perfect:1"},
+	}}
 	svc.badgeRepo = badges
 	pendingInvite(repo, 3)
+	programID := uint(1)
+	repo.invite.ProgramID = &programID
+	repo.inviteBlocks[0].Status = models.InductionPassed
+	repo.inviteBlocks[0].Attempts = 1
+	repo.inviteBlocks[0].BestScore = 100
 
-	res, err := svc.Submit("tok", 11, []SubmittedAnswer{{QuestionID: 71, Value: "a"}})
+	res, err := svc.Submit("tok", 12, []SubmittedAnswer{{QuestionID: 81, Value: "b"}})
 	if err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	if len(res.BadgesEarned) != 0 {
 		t.Fatalf("no debía otorgarse nada nuevo: %v", kinds(res.BadgesEarned))
 	}
-	if len(badges.awarded) != 1 {
+	if len(badges.awarded) != 3 {
 		t.Fatalf("la tabla no debe crecer: %d", len(badges.awarded))
 	}
 }
@@ -224,15 +207,13 @@ func TestListBadges_IncluyeLoGanadoYLoPendiente(t *testing.T) {
 	if len(overview.Earned) != 1 || overview.Earned[0].Title != "Bienvenida" {
 		t.Fatalf("ganadas = %+v", overview.Earned)
 	}
-	// Pendientes: el bloque 2 (con su aspecto) y el programa.
-	if len(overview.Pending) != 2 {
+	// Las de bloque ya ganadas siguen en el historial, pero pendiente solo
+	// queda la del programa: el bloque 2 sin aprobar no suma una.
+	if len(overview.Pending) != 1 {
 		t.Fatalf("pendientes = %+v", overview.Pending)
 	}
-	if overview.Pending[0].Title != "Seguridad" || overview.Pending[0].Icon != "Shield" || overview.Pending[0].Color != "indigo" {
-		t.Fatalf("pendiente de bloque mal formado: %+v", overview.Pending[0])
-	}
-	if overview.Pending[1].Kind != models.BadgeKindProgram || overview.Pending[1].Title != "Por defecto" {
-		t.Fatalf("pendiente de programa mal formado: %+v", overview.Pending[1])
+	if overview.Pending[0].Kind != models.BadgeKindProgram || overview.Pending[0].Title != "Por defecto" {
+		t.Fatalf("pendiente de programa mal formado: %+v", overview.Pending[0])
 	}
 }
 

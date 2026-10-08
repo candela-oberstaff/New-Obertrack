@@ -167,7 +167,7 @@ export default function InductionProgramModal({
       .then(setTemplates)
       .catch(() => setTemplates([]))
   }, [])
-  const presets = buildBadgePresets(library, allPrograms, programId !== null ? { kind: 'program', id: programId } : undefined)
+  const presets = buildBadgePresets(allPrograms, programId)
 
   useEffect(() => {
     if (programId === null) return
