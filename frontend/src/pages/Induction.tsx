@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   CheckCircle2,
@@ -8,6 +8,7 @@ import {
   Clock,
   RotateCcw,
   ArrowRight,
+  Eye,
 } from 'lucide-react'
 
 import {
@@ -17,8 +18,9 @@ import {
   type InductionResult,
 } from '../services/induction.service'
 import { buildEmbedUrl } from '../components/Tutorials/utils'
+import { celebrate, DEFAULT_CELEBRATION, type CelebrationConfig } from '../lib/confetti'
+import InductionCertificate from './InductionCertificate'
 import { BadgeMedallion } from '../components/Badges/BadgeMedallion'
-import { FileCheck } from 'lucide-react'
 import badgeStyles from '../components/Badges/Badges.module.css'
 import styles from './Induction.module.css'
 
@@ -46,8 +48,30 @@ function errorMessage(err: unknown, fallback: string): string {
  * del bloque en curso. El servidor decide cuál es el bloque actual: aquí solo
  * se pinta y se envía lo que él diga.
  */
-export default function Induction() {
-  const { token = '' } = useParams<{ token: string }>()
+/**
+ * Las dos llamadas que hace la pantalla. Se pueden sustituir (la vista de
+ * pruebas de /dev/induccion usa datos simulados); por defecto va al servidor.
+ */
+export type InductionApi = Pick<typeof inductionService, 'getLanding' | 'submit'>
+
+interface InductionProps {
+  service?: InductionApi
+  /** Sustituye al token de la URL. */
+  token?: string
+  /** Ajustes del confeti al aprobar; la vista de pruebas los afina en vivo. */
+  celebration?: CelebrationConfig
+}
+
+export default function Induction({
+  service = inductionService,
+  token: tokenProp,
+  celebration = DEFAULT_CELEBRATION,
+}: InductionProps = {}) {
+  const { token: routeToken = '' } = useParams<{ token: string }>()
+  const token = tokenProp ?? routeToken
+  // Por ref: mover un ajuste en la vista de pruebas no debe volver a lanzarlo.
+  const celebrationRef = useRef(celebration)
+  celebrationRef.current = celebration
 
   const [landing, setLanding] = useState<InductionLanding | null>(null)
   const [loadError, setLoadError] = useState('')
@@ -58,12 +82,14 @@ export default function Induction() {
   const [result, setResult] = useState<InductionResult | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  // Vista del certificado (se abre desde el resultado final o desde «ya completaste»).
+  const [viewingCertificate, setViewingCertificate] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setLoadError('')
     try {
-      const data = await inductionService.getLanding(token)
+      const data = await service.getLanding(token)
       setLanding(data)
       // Si el bloque actual no trae video, es solo cuestionario.
       setStep(data.current?.video_url ? 'video' : 'quiz')
@@ -72,7 +98,7 @@ export default function Induction() {
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, service])
 
   useEffect(() => {
     void load()
@@ -86,6 +112,23 @@ export default function Induction() {
   )
 
   const currentStep: Step = result ? 'result' : step
+
+  // El certificado que se puede ver: el recién emitido al completar, o el de una
+  // inducción ya completada.
+  const certificate = result?.completed
+    ? result.certificate
+    : !result && landing?.status === 'passed'
+      ? landing.certificate
+      : undefined
+  const home = landing?.gates_access
+    ? { href: '/login', label: 'Ir a Obertrack' }
+    : { href: '/profile', label: 'Volver a Obertrack' }
+
+  // Al aprobar (un bloque o el programa entero), confeti. Se dispara al llegar
+  // el veredicto, no al repintar.
+  useEffect(() => {
+    if (result?.passed) void celebrate(celebrationRef.current, result.completed)
+  }, [result])
 
   const setAnswer = (questionId: number, value: string) =>
     setAnswers((prev) => ({ ...prev, [questionId]: value }))
@@ -101,7 +144,7 @@ export default function Induction() {
         question_id: q.id,
         value: answers[q.id] ?? '',
       }))
-      const res = await inductionService.submit(token, current.block_id, payload)
+      const res = await service.submit(token, current.block_id, payload)
       setResult(res)
       setStep('result')
     } catch (err) {
@@ -181,7 +224,7 @@ export default function Induction() {
       )}
 
       <p className={styles.brandFoot}>
-        ¿Problemas con tu inducción? Responde al correo que recibiste y te ayudamos.
+        ¿Problemas con tu inducción? <br /> Responde al correo que recibiste y te ayudamos.
       </p>
     </aside>
   )
@@ -206,6 +249,14 @@ export default function Induction() {
         <p className={styles.stateText}>{loadError}</p>
       </div>
     )
+  } else if (viewingCertificate && certificate) {
+    content = (
+      <InductionCertificate
+        certificate={certificate}
+        destination={home}
+        onBack={() => setViewingCertificate(false)}
+      />
+    )
   } else if (!result && landing.status === 'passed') {
     content = (
       <div className={styles.state}>
@@ -220,14 +271,17 @@ export default function Induction() {
             ? 'Tu acceso está habilitado. Revisa tu correo para crear tu contraseña.'
             : 'Tus insignias ya están en tu perfil.'}
         </p>
-        {landing.certificate && (
-          <a className={styles.secondaryBtn} href={landing.certificate.download_url}>
-            <FileCheck size={18} /> Descargar certificado
+        {/* Con certificado, se pasa por su vista (ahí están descargar e ir a la
+            plataforma); sin él, el botón lleva directo a Obertrack. */}
+        {landing.certificate ? (
+          <button type="button" className={styles.primaryBtn} onClick={() => setViewingCertificate(true)}>
+            <Eye size={18} /> Ver certificado
+          </button>
+        ) : (
+          <a className={styles.primaryBtn} href={home.href}>
+            {home.label} <ArrowRight size={18} />
           </a>
         )}
-        <a className={styles.primaryBtn} href={landing.gates_access ? '/login' : '/profile'}>
-          {landing.gates_access ? 'Ir a Obertrack' : 'Volver a Obertrack'} <ArrowRight size={18} />
-        </a>
       </div>
     )
   } else if (!result && landing.status === 'blocked') {
@@ -411,8 +465,10 @@ export default function Induction() {
     )
   } else if (result) {
     const tone = result.passed ? 'ok' : 'warn'
+    // Al terminar el programa, «¡Felicidades!» va en su propia línea sobre el título.
+    const kicker = result.completed ? '¡Felicidades!' : ''
     const title = result.completed
-      ? '¡Aprobaste tu inducción!'
+      ? 'Aprobaste tu inducción'
       : result.passed
         ? `¡Aprobaste el bloque ${result.block_index} de ${landing.total_blocks}!`
         : result.status === 'blocked'
@@ -420,15 +476,12 @@ export default function Induction() {
           : 'Casi lo logras'
     content = (
       <section className={styles.result}>
-        <div className={`${styles.stateIcon} ${result.passed ? styles.iconOk : styles.iconWarn}`}>
-          {result.passed ? (
-            <CheckCircle2 size={30} />
-          ) : result.status === 'blocked' ? (
-            <LifeBuoy size={30} />
-          ) : (
-            <AlertTriangle size={30} />
-          )}
-        </div>
+        {/* Título y mensaje primero; el anillo de puntaje va debajo. */}
+        <h2 className={styles.stateTitle}>
+          {kicker && <span className={styles.stateKicker}>{kicker}</span>}
+          {title}
+        </h2>
+        <p className={styles.stateText}>{result.message}</p>
 
         {/* Anillo de puntaje */}
         <div
@@ -441,34 +494,33 @@ export default function Induction() {
           </div>
         </div>
 
-        <h2 className={styles.stateTitle}>{title}</h2>
-        <p className={styles.stateText}>{result.message}</p>
-
         {result.badges_earned && result.badges_earned.length > 0 && (
-          <div className={badgeStyles.reveal} aria-live="polite">
-            {result.badges_earned.map((b) => (
-              <div key={b.id} className={badgeStyles.revealItem}>
-                <span className={badgeStyles.revealKicker}>
-                  {b.kind === 'merit' ? 'Mérito' : 'Insignia desbloqueada'}
-                </span>
-                <BadgeMedallion icon={b.icon} color={b.color} size="lg" shine title={b.title} />
-                <span className={badgeStyles.revealTitle}>{b.title}</span>
-              </div>
-            ))}
-          </div>
+          <section className={badgeStyles.revealGroup} aria-live="polite">
+            {/* Un solo título para toda la lista, no uno por insignia. */}
+            <h3 className={badgeStyles.revealHeading}>
+              {result.badges_earned.length === 1 ? 'Insignia desbloqueada' : 'Insignias desbloqueadas'}
+            </h3>
+            <div className={badgeStyles.reveal} data-many={result.badges_earned.length >= 3}>
+              {result.badges_earned.map((b) => (
+                <div key={b.id} className={badgeStyles.revealItem}>
+                  <BadgeMedallion icon={b.icon} color={b.color} size="lg" shine title={b.title} />
+                  <span className={badgeStyles.revealTitle}>{b.title}</span>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
-        {result.completed && result.certificate && (
-          <a className={styles.secondaryBtn} href={result.certificate.download_url}>
-            <FileCheck size={18} /> Descargar certificado
-          </a>
-        )}
-
-        {result.completed && (
-          <a className={styles.primaryBtn} href={landing.gates_access ? '/login' : '/profile'}>
-            {landing.gates_access ? 'Ir a Obertrack' : 'Ver mis insignias'} <ArrowRight size={18} />
-          </a>
-        )}
+        {result.completed &&
+          (result.certificate ? (
+            <button type="button" className={styles.primaryBtn} onClick={() => setViewingCertificate(true)}>
+              <Eye size={18} /> Ver certificado
+            </button>
+          ) : (
+            <a className={styles.primaryBtn} href={landing.gates_access ? '/login' : '/profile'}>
+              {landing.gates_access ? 'Ir a Obertrack' : 'Ver mis insignias'} <ArrowRight size={18} />
+            </a>
+          ))}
 
         {result.passed && !result.completed && (
           <button type="button" className={styles.primaryBtn} onClick={handleContinue}>
