@@ -79,7 +79,7 @@ export default function InductionVideoLibrary({ onBack }: Props) {
     <div className={styles.panel}>
       <div className={styles.editorHead}>
         <button type="button" className={styles.backBtn} onClick={editing ? () => setEditing(null) : onBack}>
-          <ArrowLeft size={14} /> {editing ? 'Biblioteca' : 'Inducción'}
+          <ArrowLeft size={14} /> {editing ? 'Biblioteca' : 'Formaciones'}
         </button>
         <h3 className={styles.keyTitle}>
           {editing === 'new' ? 'Nuevo video' : editing ? editing.title : 'Biblioteca de videos'}
@@ -101,7 +101,7 @@ export default function InductionVideoLibrary({ onBack }: Props) {
         <>
           <div className={styles.toolbar}>
             <p className={styles.intro}>
-              Los videos que reproducen los bloques de la inducción. Están separados de Novedades: no
+              Los videos que reproducen los bloques de las formaciones. Están separados de Novedades: no
               se anuncian a nadie y solo los ve quien recorre el bloque que los usa.
             </p>
             <button type="button" className={styles.saveBtn} onClick={() => setEditing('new')}>

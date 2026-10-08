@@ -99,9 +99,9 @@ export function programIssues(d: ProgramDraft): ReadinessIssue[] {
   } else if (!d.isDefault && d.recipientCount === 0) {
     issues.push({
       level: 'warning',
-      text: 'No tiene empresas ni profesionales asignados, así que nadie lo recibe.',
+      text: 'No tiene profesionales asignados, así que nadie lo recibe.',
       short: 'Sin destinatarios',
-      fix: 'Elígelos en el paso «Destinatarios», o márcalo como programa por defecto.',
+      fix: 'Elige profesionales en el paso «Destinatarios», o márcalo como programa por defecto.',
     })
   }
   if (!d.hasCertificate) {

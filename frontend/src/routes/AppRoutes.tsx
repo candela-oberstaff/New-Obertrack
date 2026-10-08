@@ -28,6 +28,7 @@ const Tools = lazy(() => import('../components/Admin/Tools'))
 const Metrics = lazy(() => import('../pages/Metrics'))
 const AuditLogs = lazy(() => import('../pages/AuditLogs'))
 const Tutoriales = lazy(() => import('../pages/Tutoriales'))
+const Formaciones = lazy(() => import('../pages/Formaciones'))
 const RolesGroups = lazy(() => import('../pages/RolesGroups'))
 const SurveyViewer = lazy(() => import('../pages/SurveyViewer'))
 const SurveyPublic = lazy(() => import('../pages/SurveyPublic'))
@@ -137,6 +138,8 @@ export function AppRoutes() {
           <Route path="organigrama" element={<OrgChartRoute><Organigrama /></OrgChartRoute>} />
           <Route path="empresa/employees/:id" element={<EmployerRoute><EmpresaEmployeeDetail /></EmployerRoute>} />
           <Route path="novedades" element={<NovedadesRoute><Tutoriales /></NovedadesRoute>} />
+          {/* Inducción y capacitaciones: solo superadmin (es quien puede guardarlas). */}
+          <Route path="formaciones" element={<AdminRoute><Formaciones /></AdminRoute>} />
           <Route path="tutoriales" element={<Navigate to="/novedades" replace />} />
           <Route path="reports" element={<ReportsRoute><Reports /></ReportsRoute>} />
           {/* Roles y Grupos: no disponible para empresas en esta versión (superadmin y customer success). */}

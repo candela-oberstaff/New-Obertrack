@@ -23,6 +23,7 @@ import {
   Inbox,
   MessageSquare,
   GraduationCap,
+  Megaphone,
   Building2,
   Network,
   Users,
@@ -188,7 +189,9 @@ export default function Layout() {
     { path: '/admin/audit', label: 'Auditoría', icon: <Shield size={20} />, show: isSuper || isIT },
     { path: '/admin/settings', label: 'Configuración', icon: <SlidersHorizontal size={20} />, show: isSuper },
     { path: '/papelera', label: 'Papelera', icon: <Trash2 size={20} />, show: isSuper },
-    { path: '/novedades', label: 'Novedades', icon: <GraduationCap size={20} />, show: !isIT && !isCS },
+    { path: '/novedades', label: 'Novedades', icon: <Megaphone size={20} />, show: !isIT && !isCS },
+    // Inducción y capacitaciones: su propia sección, solo superadmin.
+    { path: '/formaciones', label: 'Formaciones', icon: <GraduationCap size={20} />, show: isSuper },
     { path: '/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isEndUser },
     { path: '/obervoice', label: 'Obervoice', icon: <Phone size={20} />, show: true },
     { path: '/profile', label: 'Perfil', icon: <User size={20} />, show: true },
