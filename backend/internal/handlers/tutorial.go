@@ -96,7 +96,14 @@ func audienceForRequest(c *gin.Context) []string {
 func (h *TutorialHandler) GetAll(c *gin.Context) {
 	onlyActive := !middleware.IsSuperadmin(c)
 
-	tutorials, err := h.service.GetAll(onlyActive, audienceForRequest(c))
+	// El público fino solo se aplica a empresas y profesionales: el
+	// superadmin las ve todas porque es quien las publica.
+	audiences := audienceForRequest(c)
+	var viewerID uint
+	if audiences != nil {
+		viewerID = middleware.GetUserID(c)
+	}
+	tutorials, err := h.service.GetAll(onlyActive, audiences, viewerID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch tutorials", "details": err.Error()})
 		return

@@ -1,6 +1,7 @@
 import { Pencil, Trash2, Check, BarChart3, Video, Image as ImageIcon, FileText, Crosshair, Radio, CalendarClock, ShieldCheck, MousePointerClick } from 'lucide-react'
 import { TutorialIcon } from './icons'
 import { isEmptyTarget } from '../../types'
+import { audienceLabel } from './audienceLabel'
 import type { Tutorial } from '../../types'
 import styles from './TutorialTable.module.css'
 
@@ -19,13 +20,6 @@ const CONTENT_LABELS = {
   imagen: { icon: ImageIcon, label: 'Imagen' },
   texto: { icon: FileText, label: 'Texto' },
 } as const
-
-const AUDIENCE_LABELS: Record<string, string> = {
-  all: 'Todos',
-  empleador: 'Empresas',
-  profesional: 'Profesionales',
-  manager: 'Managers',
-}
 
 function isAnnouncementOpen(tutorial: Tutorial): boolean {
   if (!tutorial.announced_at || !tutorial.announce_days) return false
@@ -99,7 +93,7 @@ export function TutorialTable({ tutorials, isAdmin, viewedIds, onOpen, onEdit, o
 
                 {isAdmin && (
                   <td className={styles['col-audience']}>
-                    {AUDIENCE_LABELS[tutorial.audience] ?? tutorial.audience}
+                    {audienceLabel(tutorial)}
                     {!isEmptyTarget(tutorial.target) && (
                       <span className={styles['target']} title="Público acotado">
                         <Crosshair size={11} /> acotado

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Check, AlertCircle, PlayCircle, HardDrive, Video, Image as ImageIcon, FileText, Upload, Trash2, Users, BellRing, Layers, Eye, MousePointerClick, Repeat } from 'lucide-react'
+import { Check, AlertCircle, PlayCircle, HardDrive, Video, Image as ImageIcon, FileText, Upload, Trash2, Users, BellRing, Eye, MousePointerClick, Repeat } from 'lucide-react'
 import { TUTORIAL_ICON_NAMES, TutorialIcon } from '../icons'
 import { parseVideoUrl, getProviderLabel } from '../utils'
 import { useDirtySnapshot } from '../../ui/useCloseGuard'
@@ -10,7 +10,7 @@ import { DateTimeField } from './DateTimeField'
 import { NovedadOverlay } from '../NovedadOverlay'
 import { uploadService } from '../../../services/api'
 import { useNotification } from '../../../context/NotificationContext'
-import type { CreateTutorialInput, Tutorial, TutorialAudience, TutorialContentType } from '../../../types'
+import type { CreateTutorialInput, Tutorial, TutorialContentType } from '../../../types'
 import styles from '../../../pages/Tutoriales.module.css'
 
 /**
@@ -49,13 +49,6 @@ const CTA_DESTINATIONS = [
   { value: '/soporte', label: 'Soporte' },
   { value: '/profile', label: 'Mi perfil' },
   { value: CTA_EXTERNAL, label: 'Otro enlace…' },
-]
-
-const AUDIENCE_OPTIONS = [
-  { value: 'all', label: 'Todos (empresas y profesionales)' },
-  { value: 'empleador', label: 'Empresas' },
-  { value: 'profesional', label: 'Profesionales' },
-  { value: 'manager', label: 'Managers (con equipo a cargo)' },
 ]
 
 /**
@@ -369,21 +362,9 @@ export function TutorialFormModal({
             <strong>¿A quién le llega?</strong>
           </div>
 
-          <div className={styles['tutorial-audience-card-row']}>
-            <Select
-              options={AUDIENCE_OPTIONS}
-              value={formData.audience}
-              onChange={(value) => setFormData({ ...formData, audience: value as TutorialAudience })}
-              leftIcon={<Layers size={15} />}
-              fullWidth
-              ariaLabel="Tipo de cuenta al que va dirigida la novedad"
-            />
-          </div>
-
           <TargetPicker
-            audience={formData.audience}
             value={formData.target}
-            onChange={(target) => setFormData(prev => ({ ...prev, target }))}
+            onChange={(target, audience) => setFormData(prev => ({ ...prev, target, audience }))}
           />
         </div>
 

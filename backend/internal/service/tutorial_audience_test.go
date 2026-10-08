@@ -181,3 +181,139 @@ func TestNormalizeAnnounceShows(t *testing.T) {
 		}
 	}
 }
+
+// --- Público por roles y por personas ---
+
+func reachOf(t *testing.T, svc TutorialService, target models.TutorialTarget) int64 {
+	t.Helper()
+	preview, err := svc.PreviewAudience(models.TutorialAudienceAll, target)
+	if err != nil {
+		t.Fatalf("previsualización falló: %v", err)
+	}
+	return preview.Reach
+}
+
+// Managers y supervisores van separados de los profesionales: cada rol llega
+// solo a los suyos y los tres juntos cubren a todos los profesionales.
+func TestPreviewAudienceByRoles(t *testing.T) {
+	svc := audienceFixture()
+	cases := []struct {
+		roles []string
+		want  int64
+	}{
+		{[]string{models.TargetRoleManager}, 1},      // Ana
+		{[]string{models.TargetRoleSupervisor}, 1},   // Sara
+		{[]string{models.TargetRoleProfessional}, 2}, // Luis y Pedro
+		{[]string{models.TargetRoleProfessional, models.TargetRoleManager, models.TargetRoleSupervisor}, 4},
+		{[]string{models.TargetRoleEmployer}, 2},
+		// Nombrar a los superadmins los hace contar.
+		{[]string{models.TargetRoleSuperadmin}, 1},
+	}
+	for _, tc := range cases {
+		if got := reachOf(t, svc, models.TutorialTarget{Roles: tc.roles}); got != tc.want {
+			t.Errorf("roles %v: alcance %d, esperaba %d", tc.roles, got, tc.want)
+		}
+	}
+}
+
+// "Profesionales de una empresa": rol y empresa se combinan con Y.
+func TestPreviewAudienceRolesAndCompany(t *testing.T) {
+	svc := audienceFixture()
+	target := models.TutorialTarget{Roles: []string{models.TargetRoleProfessional, models.TargetRoleManager}, CompanyIDs: []uint{1}}
+	if got := reachOf(t, svc, target); got != 2 {
+		t.Errorf("profesionales y managers de Acme = %d, esperaba 2 (Ana y Luis)", got)
+	}
+}
+
+// Por personas llega a la lista y a los grupos, sin filtros de perfil.
+func TestPreviewAudienceByPeople(t *testing.T) {
+	svc := audienceFixture()
+	target := models.TutorialTarget{Mode: models.TargetModePeople, UserIDs: []uint{3, 2, 3}, Roles: []string{models.TargetRoleSupervisor}}
+	if got := reachOf(t, svc, target); got != 2 {
+		t.Errorf("dos personas elegidas = %d, esperaba 2 (los roles no aplican)", got)
+	}
+	withGroup := models.TutorialTarget{Mode: models.TargetModePeople, UserIDs: []uint{3}, GroupIDs: []uint{1}}
+	if got := reachOf(t, svc, withGroup); got != 3 {
+		t.Errorf("persona + grupo = %d, esperaba 3 (Ana, Luis y Pedro)", got)
+	}
+	if got := reachOf(t, svc, models.TutorialTarget{Mode: models.TargetModePeople}); got != 0 {
+		t.Errorf("sin nadie elegido = %d, esperaba 0", got)
+	}
+}
+
+func TestNormalizeTarget(t *testing.T) {
+	target, audience, err := normalizeTarget(models.TutorialTarget{Roles: []string{"empresa", "nada", "empresa"}, ManagersOnly: true, UserIDs: []uint{4}})
+	if err != nil || audience != models.TutorialAudienceEmployer {
+		t.Fatalf("solo empresas debe dar audiencia empleador: %q %v", audience, err)
+	}
+	if len(target.Roles) != 1 || target.ManagersOnly || target.UserIDs != nil {
+		t.Fatalf("público mal limpiado: %+v", target)
+	}
+	if _, audience, _ := normalizeTarget(models.TutorialTarget{Roles: []string{"manager", "supervisor"}}); audience != models.TutorialAudienceProfessional {
+		t.Errorf("roles de profesional deben dar audiencia profesional, dio %q", audience)
+	}
+	if _, audience, _ := normalizeTarget(models.TutorialTarget{Roles: []string{"empresa", "manager"}}); audience != models.TutorialAudienceAll {
+		t.Errorf("una mezcla debe dar audiencia all, dio %q", audience)
+	}
+	if _, audience, _ := normalizeTarget(models.TutorialTarget{CompanyIDs: []uint{1}}); audience != "" {
+		t.Errorf("sin roles no se decide la audiencia, dio %q", audience)
+	}
+	if _, _, err := normalizeTarget(models.TutorialTarget{Mode: models.TargetModePeople}); err == nil {
+		t.Error("por personas sin nadie debe fallar al guardar")
+	}
+}
+
+type fakeListTutorialRepo struct {
+	fakeAudienceTutorialRepo
+	tutorials []models.Tutorial
+}
+
+func (f *fakeListTutorialRepo) FindAll(onlyActive bool, audiences []string) ([]models.Tutorial, error) {
+	return f.tutorials, nil
+}
+
+func (f *fakeAudienceUserRepo) GetByID(id uint) (*models.User, error) {
+	for i := range f.users {
+		if f.users[i].ID == id {
+			return &f.users[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// El listado aplica el público: una novedad para dos personas no aparece en
+// la lista de los demás, y una por rol solo en la de ese rol.
+func TestGetAllFiltersByTarget(t *testing.T) {
+	users := []models.User{
+		{ID: 3, UserType: models.UserTypeProfessional, IsManager: true},
+		{ID: 4, UserType: models.UserTypeProfessional},
+	}
+	repo := &fakeListTutorialRepo{tutorials: []models.Tutorial{
+		{ID: 1, Title: "Para todos"},
+		{ID: 2, Title: "Para Ana", Target: models.TutorialTarget{Mode: models.TargetModePeople, UserIDs: []uint{3}}},
+		{ID: 3, Title: "Para managers", Target: models.TutorialTarget{Roles: []string{models.TargetRoleManager}}},
+	}}
+	svc := NewTutorialService(repo, &fakeAudienceUserRepo{users: users}, nil)
+
+	titles := func(viewer uint) []string {
+		list, err := svc.GetAll(true, []string{models.TutorialAudienceAll}, viewer)
+		if err != nil {
+			t.Fatalf("listado: %v", err)
+		}
+		out := []string{}
+		for _, tu := range list {
+			out = append(out, tu.Title)
+		}
+		return out
+	}
+	if got := titles(3); len(got) != 3 {
+		t.Errorf("Ana (manager elegida) debe ver las tres: %v", got)
+	}
+	if got := titles(4); len(got) != 1 || got[0] != "Para todos" {
+		t.Errorf("Luis solo debe ver la general: %v", got)
+	}
+	// Sin espectador (superadmin) no se filtra.
+	if got := titles(0); len(got) != 3 {
+		t.Errorf("sin espectador se listan todas: %v", got)
+	}
+}

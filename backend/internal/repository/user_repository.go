@@ -381,7 +381,7 @@ func (r *userRepository) ListActiveByTypes(types []models.UserType) ([]models.Us
 	}
 	var users []models.User
 	if err := r.db.Model(&models.User{}).
-		Select("id", "name", "email", "user_type", "empleador_id", "country", "is_manager", "is_supervisor").
+		Select("id", "name", "email", "user_type", "empleador_id", "country", "is_manager", "is_supervisor", "is_superadmin", "company_name").
 		Where("is_active = ? AND user_type IN ?", true, raw).
 		Find(&users).Error; err != nil {
 		return nil, err

@@ -5,7 +5,7 @@ import { useConfirm } from '../../ui/ConfirmProvider'
 import { useTutorials } from './useTutorials'
 import { parseVideoUrl } from '../utils'
 import type { Tutorial, CreateTutorialInput } from '../../../types'
-import { EMPTY_TARGET } from '../../../types'
+import { EMPTY_TARGET, rolesOf } from '../../../types'
 
 const EMPTY_FORM: CreateTutorialInput = {
   title: '',
@@ -126,11 +126,16 @@ export function useTutorialsPageState() {
       icon_name: tutorial.icon_name,
       category: tutorial.category || 'General',
       audience: tutorial.audience || 'all',
+      // Las novedades anteriores a los roles se abren con los roles que
+      // equivalen a su audiencia, para que se vea a quién le llegaban.
       target: {
+        mode: tutorial.target?.mode === 'personas' ? 'personas' : 'perfil',
+        roles: rolesOf(tutorial.audience, tutorial.target),
+        user_ids: tutorial.target?.user_ids ?? [],
         company_ids: tutorial.target?.company_ids ?? [],
         countries: tutorial.target?.countries ?? [],
         group_ids: tutorial.target?.group_ids ?? [],
-        managers_only: tutorial.target?.managers_only ?? false,
+        managers_only: false,
       },
       duration_min: tutorial.duration_min,
       order_index: tutorial.order_index,
@@ -171,6 +176,16 @@ export function useTutorialsPageState() {
     }
     if (formData.content_type === 'texto' && !formData.body.replace(/<[^>]*>/g, '').trim()) {
       error('Escribe el contenido de la novedad')
+      return
+    }
+
+    const target = formData.target
+    if (target.mode === 'personas' && !target.user_ids?.length && !target.group_ids.length) {
+      error('Elige al menos una persona o un grupo')
+      return
+    }
+    if (target.mode !== 'personas' && !target.roles?.length) {
+      error('Elige al menos un perfil: empresas, profesionales, managers…')
       return
     }
 

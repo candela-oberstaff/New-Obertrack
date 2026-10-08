@@ -23,7 +23,8 @@ export type {
   CreateTutorialInput,
   UpdateTutorialInput,
 } from './tutorials'
-export { EMPTY_TARGET, isEmptyTarget } from './tutorials'
+export { EMPTY_TARGET, DEFAULT_ROLES, isEmptyTarget, rolesOf } from './tutorials'
+export type { TargetRole, TargetMode } from './tutorials'
 
 // Re-export from rbac types (roles y grupos por empresa)
 export type { PermissionLevel, CompanyRole, CompanyGroup } from './rbac'

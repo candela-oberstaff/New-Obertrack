@@ -55,6 +55,10 @@ const ROLE_FILTERS = [
 interface Props {
   value: RecipientValue
   onChange: (v: RecipientValue) => void
+  /** Filtros de rol que se ofrecen (valores de ROLE_FILTERS). Ausente = todos. */
+  roleFilters?: string[]
+  /** Quién puede elegirse. Ausente = cualquiera que devuelva el servidor. */
+  eligible?: (u: { user_type: string; is_superadmin: boolean; is_active?: boolean }) => boolean
 }
 
 type Tab = 'users' | 'groups'
@@ -217,13 +221,14 @@ function MultiSelectFilter({ options, selected, onChange, placeholder, icon }: M
   )
 }
 
-export default function RecipientSelector({ value, onChange }: Props) {
+export default function RecipientSelector({ value, onChange, roleFilters, eligible }: Props) {
   const [tab, setTab] = useState<Tab>('users')
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('all')
   const [countryFilters, setCountryFilters] = useState<string[]>([])
   const [companyFilters, setCompanyFilters] = useState<string[]>([])
-  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [rawUsers, setRawUsers] = useState<User[]>([])
+  const allUsers = useMemo(() => (eligible ? rawUsers.filter(eligible) : rawUsers), [rawUsers, eligible])
   const [groups, setGroups] = useState<AudienceGroup[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -234,7 +239,7 @@ export default function RecipientSelector({ value, onChange }: Props) {
       audienceService.getGroups().catch(() => []),
     ]).then(([usersResp, grps]) => {
       const users: User[] = Array.isArray(usersResp) ? usersResp : (usersResp?.data ?? usersResp?.users ?? [])
-      setAllUsers(users)
+      setRawUsers(users)
       setGroups(grps)
     }).finally(() => setLoading(false))
   }, [])
@@ -433,7 +438,7 @@ export default function RecipientSelector({ value, onChange }: Props) {
                   <Filter size={9} /> Rol
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {ROLE_FILTERS.map(r => {
+                  {(roleFilters ? ROLE_FILTERS.filter(r => roleFilters.includes(r.value)) : ROLE_FILTERS).map(r => {
                     const isRoleActive = roleFilter === r.value
                     return (
                       <button

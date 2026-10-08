@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TutorialIcon } from './icons'
 import { isEmptyTarget } from '../../types'
+import { audienceLabel, isPeopleTarget } from './audienceLabel'
 import type { Tutorial } from '../../types'
 import styles from '../../pages/Tutoriales.module.css'
 
@@ -63,7 +64,8 @@ export function TutorialCard({ tutorial, isAdmin, isViewed, sortable, onOpen, on
 
   const contentBadge = CONTENT_BADGES[tutorial.content_type] ?? CONTENT_BADGES.video
   const ContentIcon = contentBadge.icon
-  const isTargeted = !isEmptyTarget(tutorial.target)
+  const isTargeted = !isEmptyTarget(tutorial.target) || isPeopleTarget(tutorial)
+  const audience = audienceLabel(tutorial)
   const announcing = isAdmin && isAnnouncementOpen(tutorial)
   // Programada: tiene hora futura y todavía no se ha publicado.
   const scheduled = isAdmin && !!tutorial.publish_at && !tutorial.announced_at
@@ -175,14 +177,11 @@ export function TutorialCard({ tutorial, isAdmin, isViewed, sortable, onOpen, on
         {!tutorial.is_active && (
           <span className={styles['tutorial-card-badge']}>Oculto</span>
         )}
-        {isAdmin && tutorial.audience === 'empleador' && (
-          <span className={`${styles['tutorial-card-badge']} ${styles['audience-empleador']}`}>Empresas</span>
-        )}
-        {isAdmin && tutorial.audience === 'profesional' && (
-          <span className={`${styles['tutorial-card-badge']} ${styles['audience-profesional']}`}>Profesionales</span>
-        )}
-        {isAdmin && tutorial.audience === 'manager' && (
-          <span className={`${styles['tutorial-card-badge']} ${styles['audience-manager']}`}>Managers</span>
+        {/* A quién va, salvo que sea a todos: es lo habitual y no aporta. */}
+        {isAdmin && audience !== 'Todos' && (
+          <span className={`${styles['tutorial-card-badge']} ${styles[`audience-${tutorial.audience}`] ?? ''}`} title={`Dirigida a: ${audience}`}>
+            {audience}
+          </span>
         )}
       </div>
     </article>
