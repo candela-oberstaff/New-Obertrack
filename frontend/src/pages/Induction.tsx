@@ -127,7 +127,9 @@ export default function Induction({
   // Al finalizar una prueba (un bloque o el programa entero) o cargar una ya aprobada, confeti.
   useEffect(() => {
     if (result) {
-      void celebrate(celebrationRef.current, result.completed)
+      if (result.passed) {
+        void celebrate(celebrationRef.current, result.completed)
+      }
     } else if (landing?.status === 'passed') {
       void celebrate(celebrationRef.current, true)
     }

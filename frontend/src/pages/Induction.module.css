@@ -36,6 +36,7 @@
     opacity: 0;
     transform: translateY(18px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -174,6 +175,7 @@
 .step_todo {
   color: rgba(255, 255, 255, 0.45);
 }
+
 .step_todo .stepDot {
   background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.55);
@@ -182,6 +184,7 @@
 .step_active {
   color: #ffffff;
 }
+
 .step_active .stepDot {
   background: #ffffff;
   color: #7a1f7a;
@@ -191,6 +194,7 @@
 .step_done {
   color: rgba(255, 255, 255, 0.85);
 }
+
 .step_done .stepDot {
   background: #cc33cc;
   color: #ffffff;
@@ -685,15 +689,14 @@
 
 .certFrame {
   width: 100%;
-  height: min(72vh, 560px);
-  min-height: 460px;
-  margin: 12px 0 16px;
-  border: 1px solid #e2d9f3;
-  border-radius: 18px;
-  background: #ffffff;
-  overflow: hidden;
+  max-width: 840px;
+  aspect-ratio: 1.414;
+  /* A4 landscape proportion */
+  margin: 16px auto 24px;
+  border: none;
+  background: transparent;
   display: flex;
-  box-shadow: 0 14px 36px -12px rgba(6, 11, 35, 0.16);
+  box-shadow: none;
 }
 
 .certFrame iframe {
@@ -701,7 +704,7 @@
   width: 100%;
   height: 100%;
   border: 0;
-  background: #ffffff;
+  background: transparent;
 }
 
 .certFrameMsg {
