@@ -7,11 +7,12 @@ import type confettiLib from 'canvas-confetti'
  * CDN: la CSP de producción (nginx.conf.template) solo permite scripts propios.
  *
  * Si el módulo no carga (sin red al pedir el chunk), `celebrate` no hace nada:
- * la celebración es un adorno y nunca debe romper la pantalla.
+ * la celebración es un adorno y nunca debe romper la pantalla. Todo corre en el
+ * hilo principal (sin Worker ni blob:) para cumplir la CSP de producción.
  */
 
 type ConfettiOptions = confettiLib.Options
-type ConfettiFn = (options?: ConfettiOptions) => unknown
+type ConfettiFn = confettiLib.CreateTypes
 
 /** Valores que se afinan en la vista de pruebas (/dev/induccion). */
 export interface CelebrationConfig {
@@ -40,10 +41,20 @@ export const DEFAULT_CELEBRATION: CelebrationConfig = {
 
 let loading: Promise<ConfettiFn | null> | null = null
 
-/** Carga el paquete una sola vez; devuelve null si no se pudo. */
+/**
+ * Carga el paquete una sola vez y devuelve su lanzador; null si no se pudo.
+ *
+ * `useWorker: false` es imprescindible: la instancia por defecto del paquete
+ * dibuja en un Worker creado desde una URL `blob:`, y la CSP de producción
+ * (script-src sin blob:, sin worker-src) lo bloquea. En el hilo principal un
+ * efecto corto como este va igual de fluido. Sin `canvas`, el paquete crea su
+ * propio lienzo a pantalla completa y lo retira al terminar.
+ */
 export function loadConfetti(): Promise<ConfettiFn | null> {
   loading ??= import('canvas-confetti')
-    .then((module) => module.default as ConfettiFn)
+    .then((module) =>
+      module.default.create(undefined, { resize: true, useWorker: false, disableForReducedMotion: true })
+    )
     .catch(() => {
       // Se permite reintentar en la siguiente celebración.
       loading = null
