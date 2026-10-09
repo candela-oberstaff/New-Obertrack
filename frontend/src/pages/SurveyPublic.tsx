@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 import SurveyQuestions, { type SurveyAnswers } from '../components/Surveys/SurveyQuestions';
 import { publicSurveyService, buildAnswerPayload, type PublicSurvey } from '../services/surveyService';
+import { celebrate } from '../lib/confetti';
 import styles from './SurveyPublic.module.css';
 
 /**
@@ -71,6 +72,7 @@ const SurveyPublic: React.FC = () => {
     try {
       await publicSurveyService.submit(token, buildAnswerPayload(survey.questions || [], answers));
       setSubmitted(true);
+      void celebrate();
     } catch (err) {
       setSubmitError(errorMessage(err, 'No se pudieron guardar tus respuestas. Vuelve a intentarlo.'));
     } finally {

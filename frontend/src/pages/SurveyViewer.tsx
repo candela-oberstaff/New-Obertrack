@@ -5,6 +5,8 @@ import SurveyQuestions, { type SurveyAnswers } from '../components/Surveys/Surve
 import styles from './SurveyViewer.module.css';
 import { CheckCircle2 } from 'lucide-react';
 
+import { celebrate } from '../lib/confetti';
+
 /**
  * Encuesta respondida DENTRO de la aplicación, con sesión iniciada. Es la vía de
  * los profesionales y del equipo interno; las empresas tienen además la página
@@ -49,6 +51,7 @@ const SurveyViewer: React.FC = () => {
     try {
       await surveyService.submitResponse(survey.id, buildAnswerPayload(survey.questions || [], answers));
       setSubmitted(true);
+      void celebrate();
     } catch (err) {
       alert("Hubo un error al enviar tus respuestas. Por favor, intenta de nuevo.");
     }

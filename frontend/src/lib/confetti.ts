@@ -69,7 +69,7 @@ export async function celebrate(config: CelebrationConfig = DEFAULT_CELEBRATION,
     ticks: config.ticks,
     colors: config.colors,
     zIndex: 10000,
-    disableForReducedMotion: true,
+    disableForReducedMotion: false,
   }
 
   confetti({ ...base, particleCount: config.particleCount, origin: { x: 0.5, y: config.originY } })

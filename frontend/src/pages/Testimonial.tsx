@@ -17,6 +17,7 @@ import {
   type TestimonialAnswer,
   type TestimonialLanding,
 } from '../services/testimonial.service'
+import { celebrate } from '../lib/confetti'
 import styles from './Testimonial.module.css'
 
 /** Paso visible de la página. */
@@ -152,6 +153,7 @@ export default function Testimonial() {
         signature_mode: signatureMode,
       })
       setStep('done')
+      void celebrate()
     } catch (err) {
       setSubmitError(errorMessage(err, 'No pudimos enviar tu testimonio. Intenta de nuevo.'))
     } finally {

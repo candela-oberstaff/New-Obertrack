@@ -124,11 +124,14 @@ export default function Induction({
     ? { href: '/login', label: 'Ir a Obertrack' }
     : { href: '/profile', label: 'Volver a Obertrack' }
 
-  // Al aprobar (un bloque o el programa entero), confeti. Se dispara al llegar
-  // el veredicto, no al repintar.
+  // Al finalizar una prueba (un bloque o el programa entero) o cargar una ya aprobada, confeti.
   useEffect(() => {
-    if (result?.passed) void celebrate(celebrationRef.current, result.completed)
-  }, [result])
+    if (result) {
+      void celebrate(celebrationRef.current, result.completed)
+    } else if (landing?.status === 'passed') {
+      void celebrate(celebrationRef.current, true)
+    }
+  }, [result, landing?.status])
 
   const setAnswer = (questionId: number, value: string) =>
     setAnswers((prev) => ({ ...prev, [questionId]: value }))

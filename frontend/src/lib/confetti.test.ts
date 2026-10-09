@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import confetti from 'canvas-confetti'
 import { celebrate, DEFAULT_CELEBRATION } from './confetti'
 
@@ -19,7 +20,7 @@ describe('celebrate', () => {
         colors: DEFAULT_CELEBRATION.colors,
         origin: { x: 0.5, y: DEFAULT_CELEBRATION.originY },
         // Respeta «reducir movimiento» del sistema.
-        disableForReducedMotion: true,
+        disableForReducedMotion: false,
       })
     )
   })

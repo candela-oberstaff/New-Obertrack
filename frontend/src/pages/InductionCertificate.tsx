@@ -61,8 +61,8 @@ export default function InductionCertificate({ certificate, destination, onBack 
 
       <div className={styles.certFrame}>
         {previewUrl ? (
-          // #toolbar=0: sin la barra del visor, que no aporta aquí.
-          <iframe src={`${previewUrl}#toolbar=0&navpanes=0`} title={`Certificado de ${certificate.program_name}`} />
+          // #toolbar=0&navpanes=0&view=FitH: ajusta el ancho al marco sin márgenes laterales oscuros.
+          <iframe src={`${previewUrl}#toolbar=0&navpanes=0&view=FitH`} title={`Certificado de ${certificate.program_name}`} />
         ) : failed ? (
           <p className={styles.certFrameMsg}>
             No pudimos mostrar la vista previa. Puedes descargar tu certificado con el botón de abajo.
