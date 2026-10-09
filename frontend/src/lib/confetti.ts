@@ -1,42 +1,17 @@
+import type confettiLib from 'canvas-confetti'
+
 /**
- * Confeti de celebración (canvas-confetti), cargado bajo demanda desde la CDN:
- * solo se descarga cuando alguien aprueba, no pesa en el resto de la app.
+ * Confeti de celebración (paquete canvas-confetti), cargado bajo demanda: solo
+ * se descarga cuando alguien aprueba (import dinámico, chunk aparte), así que no
+ * pesa en el resto de la app. Se sirve desde nuestro propio build, no desde una
+ * CDN: la CSP de producción (nginx.conf.template) solo permite scripts propios.
  *
- * Si el script no carga (sin red, bloqueado por la CSP), `celebrate` no hace
- * nada: la celebración es un adorno y nunca debe romper la pantalla.
- *
- * OJO: la CSP de producción (nginx.conf.template) no permite cdn.jsdelivr.net
- * en script-src. Antes de publicarlo hay que sumarlo ahí o instalar el paquete
- * `canvas-confetti` y cambiar solo `loadConfetti`.
+ * Si el módulo no carga (sin red al pedir el chunk), `celebrate` no hace nada:
+ * la celebración es un adorno y nunca debe romper la pantalla.
  */
 
-const CONFETTI_SRC = 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js'
-const LOAD_TIMEOUT_MS = 6000
-
-/** Lo que usamos de canvas-confetti (https://github.com/catdad/canvas-confetti). */
-interface ConfettiOptions {
-  particleCount?: number
-  angle?: number
-  spread?: number
-  startVelocity?: number
-  decay?: number
-  gravity?: number
-  drift?: number
-  ticks?: number
-  origin?: { x?: number; y?: number }
-  colors?: string[]
-  scalar?: number
-  zIndex?: number
-  disableForReducedMotion?: boolean
-}
-
+type ConfettiOptions = confettiLib.Options
 type ConfettiFn = (options?: ConfettiOptions) => unknown
-
-declare global {
-  interface Window {
-    confetti?: ConfettiFn
-  }
-}
 
 /** Valores que se afinan en la vista de pruebas (/dev/induccion). */
 export interface CelebrationConfig {
@@ -65,27 +40,15 @@ export const DEFAULT_CELEBRATION: CelebrationConfig = {
 
 let loading: Promise<ConfettiFn | null> | null = null
 
-/** Carga el script una sola vez; devuelve null si no se pudo. */
+/** Carga el paquete una sola vez; devuelve null si no se pudo. */
 export function loadConfetti(): Promise<ConfettiFn | null> {
-  if (typeof window === 'undefined') return Promise.resolve(null)
-  if (window.confetti) return Promise.resolve(window.confetti)
-  if (loading) return loading
-
-  loading = new Promise<ConfettiFn | null>((resolve) => {
-    const script = document.createElement('script')
-    const finish = (fn: ConfettiFn | null) => {
-      window.clearTimeout(timer)
-      // Si falló, se permite reintentar en la siguiente celebración.
-      if (!fn) loading = null
-      resolve(fn)
-    }
-    const timer = window.setTimeout(() => finish(null), LOAD_TIMEOUT_MS)
-    script.src = CONFETTI_SRC
-    script.async = true
-    script.onload = () => finish(window.confetti ?? null)
-    script.onerror = () => finish(null)
-    document.head.appendChild(script)
-  })
+  loading ??= import('canvas-confetti')
+    .then((module) => module.default as ConfettiFn)
+    .catch(() => {
+      // Se permite reintentar en la siguiente celebración.
+      loading = null
+      return null
+    })
   return loading
 }
 
