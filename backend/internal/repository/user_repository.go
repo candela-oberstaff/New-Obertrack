@@ -181,9 +181,16 @@ func (r *userRepository) GetByID(id uint) (*models.User, error) {
 	return &user, nil
 }
 
+// GetByEmail busca sin distinguir mayúsculas. Hay cuentas guardadas como
+// "GenesisMarquez74@gmail.com" y el login normaliza lo que se escribe a
+// minúsculas: con una comparación exacta esa persona nunca podía entrar
+// ("credenciales inválidas") y resetear la contraseña no lo arreglaba.
+// Si dos cuentas difieren solo en mayúsculas, gana la que coincide exacta.
 func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 	var user models.User
-	if err := r.db.Where("email = ?", email).First(&user).Error; err != nil {
+	if err := r.db.Where("LOWER(email) = LOWER(?)", email).
+		Order(gorm.Expr("(email = ?) DESC, id ASC", email)).
+		First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil

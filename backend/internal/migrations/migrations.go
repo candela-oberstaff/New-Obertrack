@@ -3241,6 +3241,18 @@ func Run(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			// Índice para buscar usuarios por correo sin distinguir mayúsculas
+			// (login, recuperar contraseña, SSO). Sin él, LOWER(email) recorre la
+			// tabla entera en cada inicio de sesión.
+			ID: "202610091000_users_email_lower_index",
+			Migrate: func(tx *gorm.DB) error {
+				return tx.Exec(`CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email))`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`DROP INDEX IF EXISTS idx_users_email_lower`).Error
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {
