@@ -202,13 +202,15 @@ export default function Tasks() {
   // elegido es la forma más fácil de creer que faltan tareas.
   const [scopeMemberId, setScopeMemberId] = useState<number | null>(null)
 
-  const [onlyPending, setOnlyPending] = useState(
-    () => localStorage.getItem('tasks_only_pending') === '1'
-  )
+  // «Solo pendientes» tampoco se recuerda, por la misma razón: quedaba puesto
+  // en un navegador y ese tablero aparecía vacío o sin Revisión ni Finalizado,
+  // como si se hubieran borrado las tareas (en otro navegador se veían todas).
+  const [onlyPending, setOnlyPending] = useState(false)
 
+  // Limpia el valor que dejaron las versiones que sí lo guardaban.
   useEffect(() => {
-    localStorage.setItem('tasks_only_pending', onlyPending ? '1' : '0')
-  }, [onlyPending])
+    try { localStorage.removeItem('tasks_only_pending') } catch { /* sin almacenamiento */ }
+  }, [])
 
   // Cambiar de tablero suelta el filtro: sus integrantes son otros.
   useEffect(() => {
@@ -258,6 +260,15 @@ export default function Tasks() {
       onlyPending,
     }),
     [boardTasks, effectiveScope, user?.id, scopeMember, onlyPending]
+  )
+
+  // Cuántas esconde «Solo pendientes» ahora mismo. Si no se dice, un tablero
+  // con todo terminado se ve vacío y parece que faltan tareas.
+  const hiddenDone = useMemo(
+    () => onlyPending
+      ? filterTasksByScope(boardTasks, { scope: effectiveScope, currentUserId: user?.id, memberId: scopeMember?.id ?? null, onlyPending: false }).length - visibleTasks.length
+      : 0,
+    [onlyPending, boardTasks, effectiveScope, user?.id, scopeMember, visibleTasks.length]
   )
 
   // Deep-link from other pages (e.g. Dashboard "Próximas tareas"):
@@ -637,6 +648,15 @@ export default function Tasks() {
           )}
         </div>
       </div>
+
+      {selectedBoard && hiddenDone > 0 && (
+        <div className={styles['hidden-done-notice']} role="status">
+          <span>
+            {hiddenDone === 1 ? '1 tarea terminada oculta' : `${hiddenDone} tareas terminadas ocultas`} por «Solo pendientes».
+          </span>
+          <button type="button" onClick={() => setOnlyPending(false)}>Mostrar todas</button>
+        </div>
+      )}
 
       {!selectedBoard ? (
         boards.length > 0 ? (
