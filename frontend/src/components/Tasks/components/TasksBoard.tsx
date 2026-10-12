@@ -15,7 +15,7 @@ import {
   type CollisionDetection,
 } from '@dnd-kit/core'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
-import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { Plus, X } from 'lucide-react'
 import { useNotification } from '../../../context/NotificationContext'
 import { Column } from '../Column'
@@ -23,6 +23,7 @@ import { TaskCard } from '../TaskCard'
 import type { Task, Board } from '../../../types'
 import type { ColumnType, Phase } from '../types'
 import { phaseStatusId } from '../phaseStatus'
+import { columnInViewOrder, moveCard } from './boardDrag'
 import styles from '../../../pages/Tasks.module.css'
 
 const DEFAULT_PHASE_COLOR = '#6b7280'
@@ -209,44 +210,19 @@ export function TasksBoard({
 
     if (!targetStatus) return
 
-    // Core helper to move task position in state optimistically
-    const updateList = (list: Task[]) => {
-      const activeObj = list.find((t) => t.id === activeId)
-      if (!activeObj) return list
-
-      if (activeObj.status !== targetStatus) {
-        // Dragging into a different column
-        const filtered = list.filter((t) => t.id !== activeId)
-        let insertIndex = filtered.length
-
-        if (typeof overId !== 'string') {
-          const overIndex = filtered.findIndex((t) => t.id === Number(overId))
-          if (overIndex !== -1) {
-            insertIndex = overIndex
-          }
-        }
-
-        const updated = { ...activeObj, status: targetStatus as Task['status'] }
-        const result = [...filtered]
-        result.splice(insertIndex, 0, updated)
-        return result
-      } else {
-        // Dragging/sorting within the same column
-        if (typeof overId !== 'string') {
-          const oldIndex = list.findIndex((t) => t.id === activeId)
-          const newIndex = list.findIndex((t) => t.id === Number(overId))
-          if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-            return arrayMove(list, oldIndex, newIndex)
-          }
-        }
-        return list
-      }
-    }
-
-    // Trigger state changes
-    setLocalTasks((prev) => updateList(prev))
-    setLocalAllTasks((prev) => updateList(prev))
-  }, [localTasks, localAllTasks, getCurrentColumns])
+    const boardId = selectedBoard?.id
+    if (!boardId) return
+    // La posición se calcula sobre el orden en que se VEN las tarjetas (ver
+    // boardDrag.ts). Se mueve sobre la lista completa y la visible toma de ahí
+    // las tarjetas actualizadas, para que las dos digan lo mismo.
+    const overTaskId = typeof overId === 'string' ? null : Number(overId)
+    const base = localAllTasks.some((t) => t.id === activeId) ? localAllTasks : localTasks
+    const next = moveCard(base, activeId, boardId, targetStatus, overTaskId)
+    if (next === base) return
+    const byId = new Map(next.map((t) => [t.id, t]))
+    setLocalAllTasks(next)
+    setLocalTasks((prev) => prev.map((t) => byId.get(t.id) ?? t))
+  }, [localTasks, localAllTasks, getCurrentColumns, selectedBoard?.id])
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event
@@ -260,7 +236,8 @@ export function TasksBoard({
     }
 
     const activeId = Number(active.id)
-    const activeTaskObj = localAllTasks.find((t) => t.id === activeId)
+    const source = localAllTasks.some((t) => t.id === activeId) ? localAllTasks : localTasks
+    const activeTaskObj = source.find((t) => t.id === activeId)
     if (!activeTaskObj) {
       setLocalTasks(tasks)
       setLocalAllTasks(allTasks || [])
@@ -271,10 +248,14 @@ export function TasksBoard({
     const boardId = selectedBoard?.id
     if (!boardId) return
 
-    // Get the final order of task IDs in the target column from localAllTasks
-    const targetColumnTasks = localAllTasks
-      .filter((t) => t.status === targetStatus && t.board_id === boardId)
-    const ids = targetColumnTasks.map((t) => t.id)
+    // El orden final de la columna, el mismo que se ve.
+    const ids = columnInViewOrder(source, boardId, targetStatus).map((t) => t.id)
+
+    // Que se vea dónde quedó: en una columna con scroll, una tarjeta soltada
+    // abajo quedaba fuera de la vista y parecía que había desaparecido.
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-task-id="${activeId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
 
     try {
       const originalTaskObj = tasks.find((t) => t.id === activeId)
@@ -300,7 +281,7 @@ export function TasksBoard({
         showError(backendMsg || 'No se pudo mover la tarea. Inténtalo de nuevo.')
       }
     }
-  }, [tasks, allTasks, localAllTasks, selectedBoard, onUpdateTask, onMoveTask, onReorderColumn, showError])
+  }, [tasks, allTasks, localTasks, localAllTasks, selectedBoard, onUpdateTask, onMoveTask, onReorderColumn, showError])
 
   return (
     <DndContext

@@ -107,7 +107,7 @@ export function SortableTaskCard({ task, onClick }: SortableTaskCardProps) {
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} data-task-id={task.id} {...attributes} {...listeners}>
       <TaskCard task={task} isPlaceholder={isDragging} onClick={onClick} />
     </div>
   )
