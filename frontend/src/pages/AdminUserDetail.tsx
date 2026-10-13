@@ -106,6 +106,10 @@ export default function AdminUserDetail() {
   // busca otra: quedarse sin empresa activa lo deja sin poder operar.
   const [relinkAfterEnd, setRelinkAfterEnd] = useState(true)
   const [linkAfter, setLinkAfter] = useState<{ companyId: number; company: string; jobTitle: string } | null>(null)
+  // Reactivar con otra empresa activa: casi siempre es deshacer una baja, y
+  // reactivar a secas dejaba a la persona trabajando en las dos sin querer.
+  const [reactivating, setReactivating] = useState<any | null>(null)
+  const [keepOthers, setKeepOthers] = useState(false)
   // Id del empleo cuya fecha de ingreso se está guardando (uno por fila) y lo
   // que el usuario acaba de escribir en él. El borrador existe para que el
   // input muestre lo elegido mientras viaja al servidor; al volver se borra, y
@@ -501,16 +505,39 @@ export default function AdminUserDetail() {
     } finally { setEmpBusy(false) }
   }
 
-  const reactivateEmp = async (emp: any) => {
+  const otherActive = employments.filter(e => e.status === 'active')
+
+  const askReactivate = (emp: any) => {
+    setEmpError(null)
+    if (otherActive.length === 0) {
+      void reactivateEmp(emp, false)
+      return
+    }
+    setKeepOthers(false)
+    setReactivating(emp)
+  }
+
+  // keepOthers=false: vuelve SOLO a esa empresa. Se reactiva primero y luego
+  // se finalizan las demás, así nunca queda un momento sin empresa activa.
+  const reactivateEmp = async (emp: any, keep = true) => {
     if (!user) return
     setEmpBusy(true); setEmpError(null)
     try {
       await adminService.reactivateEmployment(user.id, emp.id)
+      if (!keep) {
+        for (const other of otherActive) {
+          await adminService.endUserEmployment(user.id, other.id, `Vuelve a ${emp.company_name}`)
+        }
+      }
+      setReactivating(null)
       await loadEmployments(user)
       await load()
       invalidateAdmin()
     } catch (err: any) {
       setEmpError(err?.response?.data?.error ?? 'No se pudo reactivar el empleo.')
+      // Puede haber quedado a medias (reactivada, pero sin poder finalizar la
+      // otra): se recarga para que la ficha muestre el estado real.
+      await loadEmployments(user)
     } finally { setEmpBusy(false) }
   }
 
@@ -1090,7 +1117,7 @@ export default function AdminUserDetail() {
                         </button>
                       )}
                       {canManage && ended && (
-                        <button onClick={() => reactivateEmp(emp)} disabled={empBusy} title="Reactivar empleo"
+                        <button onClick={() => askReactivate(emp)} disabled={empBusy} title="Reactivar empleo"
                           style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)', background: '#fff', color: '#047857', fontWeight: 600, cursor: empBusy ? 'progress' : 'pointer', fontSize: '0.8rem' }}>
                           <RotateCcw size={14} /> Reactivar
                         </button>
@@ -1286,6 +1313,36 @@ export default function AdminUserDetail() {
             </p>
           )}
         </div>
+        {empError && <p style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem', marginTop: '10px' }}>{empError}</p>}
+      </Modal>
+
+      <Modal
+        isOpen={!!reactivating}
+        onClose={() => setReactivating(null)}
+        title="Reactivar empleo"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setReactivating(null)} disabled={empBusy}>Cancelar</Button>
+            <Button onClick={() => reactivating && reactivateEmp(reactivating, keepOthers)} loading={empBusy}>Reactivar</Button>
+          </>
+        }
+      >
+        <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 0 }}>
+          {reactivating && `${user.name} trabaja ahora en ${otherActive.map(e => e.company_name).join(', ')}. ¿Cómo queda al volver a ${reactivating.company_name}?`}
+        </p>
+        {[
+          { value: false, title: `Volver solo a ${reactivating?.company_name ?? ''}`, hint: `Se finaliza su empleo en ${otherActive.map(e => e.company_name).join(', ')}. Su expediente allí se conserva.` },
+          { value: true, title: 'Trabajar en las dos', hint: 'Queda activo en ambas empresas a la vez.' },
+        ].map(opt => (
+          <label key={String(opt.value)} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', marginBottom: '6px', borderRadius: '10px', cursor: 'pointer', border: `1.5px solid ${keepOthers === opt.value ? 'var(--primary)' : '#e2e8f0'}`, background: keepOthers === opt.value ? '#fdf4ff' : '#fff' }}>
+            <input type="radio" name="reactivate-mode" checked={keepOthers === opt.value} onChange={() => setKeepOthers(opt.value)} style={{ marginTop: '3px', accentColor: 'var(--primary)' }} />
+            <span>
+              <strong style={{ display: 'block', fontSize: '0.85rem', color: '#0f172a' }}>{opt.title}</strong>
+              <small style={{ fontSize: '0.78rem', color: '#64748b' }}>{opt.hint}</small>
+            </span>
+          </label>
+        ))}
         {empError && <p style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem', marginTop: '10px' }}>{empError}</p>}
       </Modal>
 
