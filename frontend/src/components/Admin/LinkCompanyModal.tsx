@@ -38,6 +38,10 @@ export function LinkCompanyModal({
 }: LinkCompanyModalProps) {
   const [companies, setCompanies] = useState<{ id: number; name: string }[]>([])
   const [companyId, setCompanyId] = useState<number | ''>('')
+  // Managers de todas las empresas; se filtra por la elegida. Sin manager, sus
+  // horas no tienen quién las apruebe en la empresa nueva.
+  const [managers, setManagers] = useState<{ id: number; name: string; empleador_id?: number | null }[]>([])
+  const [managerId, setManagerId] = useState<number | ''>('')
   const [jobTitle, setJobTitle] = useState(defaultJobTitle)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -46,13 +50,23 @@ export function LinkCompanyModal({
   useEffect(() => {
     if (!isOpen) return
     setCompanyId('')
+    setManagerId('')
     setJobTitle(defaultJobTitle)
     setReason(fromCompany ? `Reubicación tras su salida de ${fromCompany}` : '')
     setError(null)
     if (companies.length === 0) {
       authService.getPublicCompanies().then(setCompanies).catch(() => { /* selector vacío si falla */ })
     }
+    if (managers.length === 0) {
+      adminService.getUsers({ is_manager: 'true', limit: 1000 })
+        .then((res: any) => setManagers(res?.data ?? (Array.isArray(res) ? res : [])))
+        .catch(() => { /* sin managers: el campo queda vacío */ })
+    }
   }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const companyManagers = companyId
+    ? managers.filter((m) => m.empleador_id === companyId && m.id !== userId)
+    : []
 
   const submit = async () => {
     if (!companyId) return
@@ -63,6 +77,7 @@ export function LinkCompanyModal({
         company_id: Number(companyId),
         job_title: jobTitle.trim() || undefined,
         start_reason: reason.trim() || undefined,
+        manager_id: managerId ? Number(managerId) : undefined,
       })
       onLinked()
       onClose()
@@ -97,7 +112,7 @@ export function LinkCompanyModal({
           fullWidth
           searchable
           value={companyId}
-          onChange={(v) => setCompanyId(v ? Number(v) : '')}
+          onChange={(v) => { setCompanyId(v ? Number(v) : ''); setManagerId('') }}
           placeholder="Selecciona una empresa..."
           options={companies
             .filter((c) => !excludeCompanyIds.includes(c.id))
@@ -107,6 +122,23 @@ export function LinkCompanyModal({
       <div style={{ marginBottom: '14px' }}>
         <label style={labelStyle}>Cargo en esa empresa</label>
         <input type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="Ej: Asistente comercial" style={inputStyle} />
+      </div>
+      <div style={{ marginBottom: '14px' }}>
+        <label style={labelStyle}>Manager en esa empresa</label>
+        <Select
+          fullWidth
+          searchable
+          value={managerId}
+          onChange={(v) => setManagerId(v ? Number(v) : '')}
+          disabled={!companyId}
+          placeholder={!companyId ? 'Elige primero la empresa' : companyManagers.length === 0 ? 'Esa empresa no tiene managers' : 'Sin manager por ahora'}
+          options={companyManagers.map((m) => ({ value: m.id, label: m.name }))}
+        />
+        {companyId && !managerId && (
+          <small style={{ display: 'block', marginTop: '6px', fontSize: '0.78rem', color: '#b45309' }}>
+            Sin manager nadie aprobará sus horas en esa empresa. Puedes asignarlo después desde su ficha.
+          </small>
+        )}
       </div>
       <div>
         <label style={labelStyle}>Motivo de ingreso (opcional)</label>

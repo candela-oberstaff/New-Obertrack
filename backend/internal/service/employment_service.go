@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"sort"
 	"time"
@@ -221,6 +222,10 @@ type EmploymentService interface {
 
 	SetChannelCleaner(fn func(userID, companyID uint) ([]uint, error))
 	SetChannelRestorer(fn func(userID, companyID uint, channelIDs []uint) error)
+	SetMailer(m EmploymentMailer)
+	// NotifyLinked avisa al profesional (notificación y correo) de que ahora
+	// trabaja en la empresa de ese empleo. Best-effort.
+	NotifyLinked(employmentID uint)
 
 	// --- Conjunto de managers por empleo (FASE 3 multi-manager) ---
 	// ListEmploymentManagers devuelve el CONJUNTO de managers del empleo
@@ -329,6 +334,12 @@ type employmentService struct {
 	notifSvc       NotificationService
 	channelCleaner  func(userID, companyID uint) ([]uint, error)
 	channelRestorer func(userID, companyID uint, channelIDs []uint) error
+	mailer          EmploymentMailer
+}
+
+// EmploymentMailer es lo que hace falta de Brevo para avisar de un empleo nuevo.
+type EmploymentMailer interface {
+	SendEmailKind(kind, toEmail, toName, subject, htmlContent string) error
 }
 
 func NewEmploymentService(repo repository.EmploymentRepository, userRepo repository.UserRepository, workHourRepo repository.WorkHourRepository, notifSvc NotificationService) EmploymentService {
@@ -341,6 +352,74 @@ func (s *employmentService) SetChannelCleaner(fn func(userID, companyID uint) ([
 
 func (s *employmentService) SetChannelRestorer(fn func(userID, companyID uint, channelIDs []uint) error) {
 	s.channelRestorer = fn
+}
+
+func (s *employmentService) SetMailer(m EmploymentMailer) {
+	s.mailer = m
+}
+
+// NotifyLinked le cuenta al profesional dónde trabaja ahora. Sin esto, al
+// vincularlo a otra empresa se le cerraba la sesión de golpe (el tenant cambia
+// en el JWT) y al volver a entrar aparecía en otra empresa sin explicación.
+func (s *employmentService) NotifyLinked(employmentID uint) {
+	emp, err := s.repo.GetByID(employmentID)
+	if err != nil {
+		return
+	}
+	user, err := s.userRepo.GetByID(emp.UserID)
+	if err != nil {
+		return
+	}
+	company := "una empresa nueva"
+	if c, err := s.userRepo.GetByID(emp.CompanyID); err == nil {
+		if n := firstNonEmpty(c.CompanyName, c.Name); n != "" {
+			company = n
+		}
+	}
+	manager := ""
+	if emp.ManagerID != nil {
+		if m, err := s.userRepo.GetByID(*emp.ManagerID); err == nil {
+			manager = m.Name
+		}
+	}
+
+	if s.notifSvc != nil {
+		msg := "Desde hoy trabajas en " + company + "."
+		if emp.JobTitle != "" {
+			msg += " Tu cargo: " + emp.JobTitle + "."
+		}
+		if manager != "" {
+			msg += " Tu manager: " + manager + "."
+		}
+		_ = s.notifSvc.CreateNotification(user.ID, "expediente", "Ahora formas parte de "+company, msg,
+			map[string]interface{}{"employment_id": emp.ID, "link": "/profile"})
+	}
+	if s.mailer != nil && user.Email != "" {
+		_ = s.mailer.SendEmailKind(EmailKindEmploymentLinked, user.Email, user.Name,
+			employmentLinkedSubject(company), BuildEmploymentLinkedHTML(user.Name, company, emp.JobTitle, manager))
+	}
+}
+
+func employmentLinkedSubject(company string) string {
+	return "Obertrack - Ahora formas parte de " + company
+}
+
+// BuildEmploymentLinkedHTML es el correo de "nueva empresa asignada".
+func BuildEmploymentLinkedHTML(name, company, jobTitle, manager string) string {
+	rows := [][2]string{{"Empresa", html.EscapeString(company)}}
+	if jobTitle != "" {
+		rows = append(rows, [2]string{"Cargo", html.EscapeString(jobTitle)})
+	}
+	if manager != "" {
+		rows = append(rows, [2]string{"Tu manager", html.EscapeString(manager)})
+	}
+	return sampleBody(
+		"Tienes una empresa nueva",
+		fmt.Sprintf("Hola %s, desde hoy formas parte de <strong>%s</strong> en Obertrack. Tus tareas, tus horas y tu equipo pasan a ser los de esta empresa.", html.EscapeString(name), html.EscapeString(company)),
+		rows,
+		"Entrar a Obertrack", "/login",
+		"Si tenías la sesión abierta, te pedirá iniciarla de nuevo: es para que entres ya en tu nueva empresa. Tu historial en la empresa anterior se conserva en tu perfil.",
+	)
 }
 
 func (s *employmentService) SyncActiveForUser(user *models.User) error {

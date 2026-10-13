@@ -67,7 +67,7 @@ func TestCorreos_ElCatalogoCubreTodasLasClavesDeclaradas(t *testing.T) {
 		EmailKindSupportTicket, EmailKindPasswordReset, EmailKindAccountSetup,
 		EmailKindAccessCredentials, EmailKindInductionInvite, EmailKindTestimonialRequest,
 		EmailKindIncidentBroadcast, EmailKindSurveyInvite, EmailKindTicketReply,
-		EmailKindManualComposer, EmailKindCampaign, EmailKindWorkflow,
+		EmailKindManualComposer, EmailKindCampaign, EmailKindWorkflow, EmailKindEmploymentLinked,
 	}
 	enCatalogo := map[string]bool{}
 	for _, tipo := range emailCatalog {

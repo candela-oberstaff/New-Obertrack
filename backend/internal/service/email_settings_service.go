@@ -42,6 +42,9 @@ const (
 	EmailKindWorkflow = "workflow"
 	// EmailKindObervoiceCredentials envía al usuario sus datos de telefonía SIP.
 	EmailKindObervoiceCredentials = "obervoice_credentials"
+	// EmailKindEmploymentLinked avisa al profesional de que lo vincularon a
+	// otra empresa (reubicación tras una baja, o una empresa adicional).
+	EmailKindEmploymentLinked = "employment_linked"
 )
 
 // EmailCategory agrupa los correos en el panel.
@@ -144,6 +147,13 @@ var emailCatalog = []EmailType{
 		Name:        "Invitación a inducción",
 		Description: "Invita a completar el proceso de inducción.",
 		Trigger:     "Al asignar una inducción a alguien.",
+		Recipient:   "El profesional",
+	},
+	{
+		Key: EmailKindEmploymentLinked, Category: EmailCategoryEvent,
+		Name:        "Nueva empresa asignada",
+		Description: "Avisa al profesional de la empresa y el cargo nuevos.",
+		Trigger:     "Al vincularlo a otra empresa desde su ficha o desde Archivados.",
 		Recipient:   "El profesional",
 	},
 	{

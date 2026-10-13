@@ -73,6 +73,9 @@ func sampleEmail(kind, toName string) (subject, body string) {
 	case EmailKindAccessCredentials:
 		return "Obertrack - Tus datos de acceso", BuildCredentialsHTML(toName, toName+"@empresa.com", "Ejemplo-1234", frontendLink("/login"))
 
+	case EmailKindEmploymentLinked:
+		return employmentLinkedSubject("Acme S.A."), BuildEmploymentLinkedHTML(toName, "Acme S.A.", "Diseñador Digital", "Laura Pérez")
+
 	case EmailKindIncidentBroadcast:
 		return "Comunicado: sismo en la región", sampleBody(
 			"Comunicado de incidente",

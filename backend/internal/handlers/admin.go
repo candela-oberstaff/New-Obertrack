@@ -1641,6 +1641,9 @@ func (h *AdminHandler) AddUserEmployment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Aviso al profesional en segundo plano: el correo no debe frenar la
+	// respuesta ni deshacer el vínculo si Brevo falla.
+	go h.employmentSvc.NotifyLinked(employment.ID)
 	c.JSON(http.StatusCreated, employment)
 }
 
