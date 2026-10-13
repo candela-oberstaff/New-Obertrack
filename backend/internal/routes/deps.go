@@ -184,6 +184,7 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	rbacSvc := service.NewRBACService(rbacRepo, userRepo)
 	employmentSvc := service.NewEmploymentService(employmentRepo, userRepo, workHourRepo, notifSvc)
 	employmentSvc.SetChannelCleaner(channelSvc.RemoveUserFromCompanyChannels)
+	employmentSvc.SetChannelRestorer(channelSvc.RestoreUserToCompanyChannels)
 	auditSvc := service.NewAuditService(auditRepo)
 	incidentSvc := service.NewIncidentService(incidentRepo, userRepo, brevoSvc)
 	ontopSvc := service.NewOntopService(cfg)

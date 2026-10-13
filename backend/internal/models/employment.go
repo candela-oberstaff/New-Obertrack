@@ -40,6 +40,10 @@ type Employment struct {
 	// EndSummary guarda un snapshot inmutable al terminar el empleo (horas,
 	// tareas, antigüedad...). Se llena en la fase 3; nullable hasta entonces.
 	EndSummary string         `gorm:"type:text" json:"end_summary,omitempty"`
+	// RemovedChannels son los canales de chat de los que se sacó a la persona
+	// al finalizar el empleo (JSON con los ids). Reactivar la devuelve a ellos:
+	// sin este registro, la reactivación la dejaba fuera de sus conversaciones.
+	RemovedChannels string `gorm:"type:text" json:"-"`
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`

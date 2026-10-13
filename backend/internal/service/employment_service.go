@@ -219,7 +219,8 @@ type EmploymentService interface {
 	// seguimientos se leen desde esa fecha), así que corregirla los recalcula.
 	UpdateEmploymentStart(userID, employmentID uint, startedAt time.Time) error
 
-	SetChannelCleaner(fn func(userID, companyID uint) error)
+	SetChannelCleaner(fn func(userID, companyID uint) ([]uint, error))
+	SetChannelRestorer(fn func(userID, companyID uint, channelIDs []uint) error)
 
 	// --- Conjunto de managers por empleo (FASE 3 multi-manager) ---
 	// ListEmploymentManagers devuelve el CONJUNTO de managers del empleo
@@ -326,15 +327,20 @@ type employmentService struct {
 	userRepo       repository.UserRepository
 	workHourRepo   repository.WorkHourRepository
 	notifSvc       NotificationService
-	channelCleaner func(userID, companyID uint) error
+	channelCleaner  func(userID, companyID uint) ([]uint, error)
+	channelRestorer func(userID, companyID uint, channelIDs []uint) error
 }
 
 func NewEmploymentService(repo repository.EmploymentRepository, userRepo repository.UserRepository, workHourRepo repository.WorkHourRepository, notifSvc NotificationService) EmploymentService {
 	return &employmentService{repo: repo, userRepo: userRepo, workHourRepo: workHourRepo, notifSvc: notifSvc}
 }
 
-func (s *employmentService) SetChannelCleaner(fn func(userID, companyID uint) error) {
+func (s *employmentService) SetChannelCleaner(fn func(userID, companyID uint) ([]uint, error)) {
 	s.channelCleaner = fn
+}
+
+func (s *employmentService) SetChannelRestorer(fn func(userID, companyID uint, channelIDs []uint) error) {
+	s.channelRestorer = fn
 }
 
 func (s *employmentService) SyncActiveForUser(user *models.User) error {
@@ -578,7 +584,12 @@ func (s *employmentService) EndEmployment(userID, employmentID uint, endReason s
 	}
 
 	if s.channelCleaner != nil {
-		_ = s.channelCleaner(target.UserID, target.CompanyID)
+		// Se anota de qué canales salió para poder devolverla si se reactiva.
+		if removed, err := s.channelCleaner(target.UserID, target.CompanyID); err == nil && len(removed) > 0 {
+			if blob, err := json.Marshal(removed); err == nil {
+				_ = s.repo.Update(target, map[string]interface{}{"removed_channels": string(blob)})
+			}
+		}
 	}
 
 	// Si era la empresa activa, reasigna empleador_id a otra membresía activa
@@ -617,13 +628,25 @@ func (s *employmentService) ReactivateEmployment(employmentID uint) error {
 		return errors.New("El usuario ya tiene un empleo activo en esta empresa")
 	}
 
+	// Se lee ANTES de actualizar: Updates sobre el struct le copia los valores
+	// nuevos y removed_channels quedaría vacío.
+	var channelIDs []uint
+	_ = json.Unmarshal([]byte(emp.RemovedChannels), &channelIDs)
+
 	if err := s.repo.Update(emp, map[string]interface{}{
-		"status":      models.EmploymentActive,
-		"ended_at":    nil,
-		"end_reason":  "",
-		"end_summary": "",
+		"status":           models.EmploymentActive,
+		"ended_at":         nil,
+		"end_reason":       "",
+		"end_summary":      "",
+		"removed_channels": "",
 	}); err != nil {
 		return err
+	}
+
+	// De vuelta a sus canales de esa empresa. Best-effort: el empleo ya está
+	// reactivado y no se deshace por un fallo del chat.
+	if s.channelRestorer != nil {
+		_ = s.channelRestorer(emp.UserID, emp.CompanyID, channelIDs)
 	}
 
 	// Si el usuario no tenía empresa activa, esta vuelve a serlo (e invalida su

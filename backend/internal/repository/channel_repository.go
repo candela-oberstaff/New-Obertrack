@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -44,6 +45,8 @@ type ChannelRepository interface {
 	AddMember(member *models.ChannelMember) error
 	RemoveMember(channelID, userID uint) error
 	RemoveUserFromTenantChannels(userID, tenantID uint) ([]uint, error)
+	// RestoreUserToTenantChannels deshace lo anterior al reactivar un empleo.
+	RestoreUserToTenantChannels(userID, tenantID uint, channelIDs []uint) ([]uint, error)
 	UpdateMemberRole(channelID, userID uint, role string) error
 	IsMember(channelID, userID uint) (bool, error)
 
@@ -326,6 +329,33 @@ func (r *channelRepository) RemoveUserFromTenantChannels(userID, tenantID uint) 
 		return nil, err
 	}
 	return channelIDs, nil
+}
+
+// RestoreUserToTenantChannels vuelve a meter a la persona en los canales de
+// esa empresa que se indican y, además, en sus chats directos de esa empresa
+// (DM-<a>-<b>): las bajas anteriores a este registro no guardaron de dónde se
+// la sacó, y un chat directo siempre es suyo. Solo canales vivos de ese tenant
+// y solo donde ya no es miembro.
+func (r *channelRepository) RestoreUserToTenantChannels(userID, tenantID uint, channelIDs []uint) ([]uint, error) {
+	uid := strconv.FormatUint(uint64(userID), 10)
+	if channelIDs == nil {
+		channelIDs = []uint{}
+	}
+	var ids []uint
+	if err := r.db.Model(&models.Channel{}).
+		Where("tenant_id = ?", tenantID).
+		Where("(id IN ? OR (type = 'direct' AND (split_part(name, '-', 2) = ? OR split_part(name, '-', 3) = ?)))", append(channelIDs, 0), uid, uid).
+		Where("NOT EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = channels.id AND cm.user_id = ?)", userID).
+		Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	for _, id := range ids {
+		if err := r.db.Create(&models.ChannelMember{ChannelID: id, UserID: userID, Role: "member", JoinedAt: now}).Error; err != nil {
+			return nil, err
+		}
+	}
+	return ids, nil
 }
 
 func (r *channelRepository) IsMember(channelID, userID uint) (bool, error) {

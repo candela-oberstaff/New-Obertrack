@@ -97,7 +97,8 @@ type ChannelService interface {
 	SetMemberRole(channelID, actorID, targetID uint, role string, isSuperadmin bool) error
 	Join(channelID, userID uint) error
 	Leave(channelID, userID uint) error
-	RemoveUserFromCompanyChannels(userID, companyID uint) error
+	RemoveUserFromCompanyChannels(userID, companyID uint) ([]uint, error)
+	RestoreUserToCompanyChannels(userID, companyID uint, channelIDs []uint) error
 	HideChannel(userID, channelID uint) error
 	UnhideChannel(userID, channelID uint) error
 	// MuteChannel / UnmuteChannel silencian o reactivan la campana de un canal
@@ -1058,12 +1059,25 @@ func (s *channelService) ListArchivedChannels(userID uint) ([]ChannelWithUnread,
 	return out, nil
 }
 
-func (s *channelService) RemoveUserFromCompanyChannels(userID, companyID uint) error {
+func (s *channelService) RemoveUserFromCompanyChannels(userID, companyID uint) ([]uint, error) {
 	affected, err := s.repo.RemoveUserFromTenantChannels(userID, companyID)
+	if err != nil {
+		return nil, err
+	}
+	for _, channelID := range affected {
+		s.invalidateMembers(channelID)
+	}
+	return affected, nil
+}
+
+// RestoreUserToCompanyChannels devuelve a la persona a los canales de los que
+// salió al darle de baja (y a sus chats directos de esa empresa).
+func (s *channelService) RestoreUserToCompanyChannels(userID, companyID uint, channelIDs []uint) error {
+	restored, err := s.repo.RestoreUserToTenantChannels(userID, companyID, channelIDs)
 	if err != nil {
 		return err
 	}
-	for _, channelID := range affected {
+	for _, channelID := range restored {
 		s.invalidateMembers(channelID)
 	}
 	return nil

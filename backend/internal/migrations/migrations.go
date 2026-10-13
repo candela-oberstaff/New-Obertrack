@@ -3253,6 +3253,35 @@ func Run(db *gorm.DB) error {
 				return tx.Exec(`DROP INDEX IF EXISTS idx_users_email_lower`).Error
 			},
 		},
+		{
+			// Reactivar un empleo no devolvía a la persona a los chats de esa
+			// empresa: la baja la sacaba y no quedaba registro de dónde. Se
+			// añade el registro y se reparan los chats directos de quien tuvo
+			// una baja que se reactivó (la auditoría lo registra). Solo ese caso:
+			// cualquiera puede salir de un chat a propósito.
+			ID: "202610131000_employment_removed_channels",
+			Migrate: func(tx *gorm.DB) error {
+				if err := tx.Exec(`ALTER TABLE employments ADD COLUMN IF NOT EXISTS removed_channels text`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`
+					INSERT INTO channel_members (channel_id, user_id, role, joined_at, created_at)
+					SELECT DISTINCT ch.id, e.user_id, 'member', now(), now()
+					FROM channels ch
+					JOIN employments e ON e.company_id = ch.tenant_id
+						AND e.status = 'active' AND e.deleted_at IS NULL
+					WHERE ch.type = 'direct' AND ch.deleted_at IS NULL
+					  AND (split_part(ch.name, '-', 2) = e.user_id::text OR split_part(ch.name, '-', 3) = e.user_id::text)
+					  -- Solo empleos que la auditoría registra como reactivados.
+					  AND EXISTS (SELECT 1 FROM audit_logs al
+						WHERE al.entity_type = 'employments' AND al.entity_id = e.id::text
+						  AND al.changes LIKE '%"status":"active"%')
+					  AND NOT EXISTS (SELECT 1 FROM channel_members cm WHERE cm.channel_id = ch.id AND cm.user_id = e.user_id)`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Exec(`ALTER TABLE employments DROP COLUMN IF EXISTS removed_channels`).Error
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {
