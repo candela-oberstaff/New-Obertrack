@@ -173,6 +173,12 @@ type ArchivedEntry struct {
 	JobTitle     string    `json:"job_title"`
 	Reason       string    `json:"reason"`
 	ArchivedAt   time.Time `json:"archived_at"`
+	// CurrentCompany son las empresas donde trabaja HOY (empleos activos). Vacío
+	// = sigue sin empresa: es a quien hay que buscarle un nuevo destino.
+	CurrentCompany string `json:"current_company"`
+	// UserDeleted: la cuenta se eliminó (queda anonimizada). Su baja se lista
+	// como historial, pero ya no se puede vincular a nada.
+	UserDeleted bool `json:"user_deleted"`
 }
 
 type AbsenceReasonCount struct {
@@ -588,7 +594,11 @@ func (r *adminRepository) GetArchived(tenantID uint) ([]ArchivedEntry, error) {
 			u.name, u.email, COALESCE(u.avatar, '') as avatar,
 			COALESCE(owner.company_name, '-') as company, emp.company_id,
 			COALESCE(emp.job_title, '') as job_title,
-			COALESCE(emp.end_reason, '') as reason, emp.ended_at as archived_at
+			COALESCE(emp.end_reason, '') as reason, emp.ended_at as archived_at,
+			COALESCE((SELECT string_agg(COALESCE(NULLIF(c.company_name, ''), c.name), ', ' ORDER BY e2.started_at)
+				FROM employments e2 JOIN users c ON c.id = e2.company_id
+				WHERE e2.user_id = u.id AND e2.status = 'active' AND e2.deleted_at IS NULL), '') as current_company,
+			(u.deleted_at IS NOT NULL) as user_deleted
 		FROM employments emp
 		JOIN users u ON u.id = emp.user_id
 		JOIN users owner ON owner.id = emp.company_id
@@ -601,7 +611,7 @@ func (r *adminRepository) GetArchived(tenantID uint) ([]ArchivedEntry, error) {
 			u.name, u.email, COALESCE(u.avatar, '') as avatar,
 			COALESCE(owner.company_name, '-') as company, COALESCE(u.empleador_id, 0) as company_id,
 			COALESCE(u.job_title, '') as job_title,
-			'' as reason, u.updated_at as archived_at
+			'' as reason, u.updated_at as archived_at, '' as current_company, false as user_deleted
 		FROM users u
 		LEFT JOIN users owner ON owner.id = u.empleador_id
 		WHERE u.is_active = false AND u.deleted_at IS NULL

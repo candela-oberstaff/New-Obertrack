@@ -2078,7 +2078,7 @@ export default function TenantDetail() {
             ) : archivedError ? (
               <p className={styles.errorMsg}>No se pudieron cargar los archivados de esta empresa.</p>
             ) : (
-              <ArchivedList entries={archived} showCompany={false} />
+              <ArchivedList entries={archived} showCompany={false} onChanged={() => qc.invalidateQueries({ queryKey: ['tenant-archived', tenantId] })} />
             )
           )}
 

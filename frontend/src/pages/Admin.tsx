@@ -1331,7 +1331,7 @@ export default function Admin() {
                 Profesionales con empleo finalizado o cuenta desactivada. Puedes reactivarlos.
               </p>
             </div>
-            <ArchivedList entries={archived} showCompany />
+            <ArchivedList entries={archived} showCompany onChanged={loadArchived} />
           </div>
         )}
 

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserMinus, Ban, Eye, Archive, ChevronLeft, ChevronRight } from 'lucide-react'
+import { UserMinus, Ban, Eye, Archive, ChevronLeft, ChevronRight, Building2, ArrowRightLeft } from 'lucide-react'
 import Avatar from '../Common/Avatar'
+import { LinkCompanyModal } from './LinkCompanyModal'
 
 interface ArchivedEntry {
   kind: 'ended_employment' | 'deactivated_user'
@@ -15,12 +16,18 @@ interface ArchivedEntry {
   job_title?: string
   reason?: string
   archived_at: string
+  /** Empresas donde trabaja hoy. Vacío = sigue sin empresa. */
+  current_company?: string
+  /** Cuenta eliminada (anonimizada): solo historial, no se vincula. */
+  user_deleted?: boolean
 }
 
 interface ArchivedListProps {
   entries: ArchivedEntry[]
   // Mostrar la empresa de cada fila (útil en la vista global).
   showCompany?: boolean
+  /** Se llama tras vincular a alguien a otra empresa, para recargar la lista. */
+  onChanged?: () => void
 }
 
 const fmtDate = (v?: string) => {
@@ -31,9 +38,10 @@ const fmtDate = (v?: string) => {
 
 // Lista reutilizable de profesionales archivados (bajas de empleo + cuentas
 // desactivadas). Cada fila lleva al detalle de la persona, donde se reactiva.
-export function ArchivedList({ entries, showCompany = true }: ArchivedListProps) {
+export function ArchivedList({ entries, showCompany = true, onChanged }: ArchivedListProps) {
   const navigate = useNavigate()
   const [page, setPage] = useState(1)
+  const [linking, setLinking] = useState<ArchivedEntry | null>(null)
   const keyOf = (e: ArchivedEntry) => `${e.kind}-${e.user_id}-${e.employment_id}`
 
   if (entries.length === 0) {
@@ -77,6 +85,24 @@ export function ArchivedList({ entries, showCompany = true }: ArchivedListProps)
                 {ended && e.reason ? ` · ${e.reason}` : ''}
               </div>
             </div>
+            {/* Tras una baja, lo que importa es si ya tiene otro destino: si
+                lo tiene se dice dónde; si no, se ofrece vincularlo aquí mismo. */}
+            {ended && e.current_company ? (
+              <span
+                title={`Trabaja ahora en ${e.current_company}`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: 'rgba(16,185,129,0.12)', color: '#047857', fontWeight: 700, fontSize: '0.78rem', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                <Building2 size={13} /> Ahora en {e.current_company}
+              </span>
+            ) : ended && !e.user_deleted ? (
+              <button
+                type="button"
+                onClick={(ev) => { ev.stopPropagation(); setLinking(e) }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--primary)', background: '#fdf4ff', color: 'var(--primary)', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap', cursor: 'pointer', width: 'auto' }}
+              >
+                <ArrowRightLeft size={14} /> Vincular a otra empresa
+              </button>
+            ) : null}
             <span
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap' }}
             >
@@ -140,6 +166,16 @@ export function ArchivedList({ entries, showCompany = true }: ArchivedListProps)
           </div>
         </div>
       )}
+      <LinkCompanyModal
+        isOpen={!!linking}
+        userId={linking?.user_id ?? 0}
+        userName={linking?.name ?? ''}
+        excludeCompanyIds={linking ? [linking.company_id] : []}
+        defaultJobTitle={linking?.job_title ?? ''}
+        fromCompany={linking && linking.company !== '-' ? linking.company : undefined}
+        onClose={() => setLinking(null)}
+        onLinked={() => onChanged?.()}
+      />
     </div>
   )
 }

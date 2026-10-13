@@ -14,6 +14,7 @@ import Avatar from '../components/Common/Avatar'
 import { Skeleton } from '../components/ui'
 import { UserModal } from '../components/Admin/Modals/UserModal'
 import { ExpedienteModal } from '../components/Admin/ExpedienteModal'
+import { LinkCompanyModal } from '../components/Admin/LinkCompanyModal'
 import { ProfileChangeReviewPanel } from '../components/Admin/ProfileChangeReviewPanel'
 import { InductionStatusPanel } from '../components/Admin/InductionStatusPanel'
 import EmploymentManagersEditor from '../components/Admin/EmploymentManagersEditor'
@@ -101,6 +102,10 @@ export default function AdminUserDetail() {
   const [empError, setEmpError] = useState<string | null>(null)
   const [endingEmp, setEndingEmp] = useState<any | null>(null)
   const [endReason, setEndReason] = useState('')
+  // Qué pasa después de la baja. Si era su única empresa, por defecto se le
+  // busca otra: quedarse sin empresa activa lo deja sin poder operar.
+  const [relinkAfterEnd, setRelinkAfterEnd] = useState(true)
+  const [linkAfter, setLinkAfter] = useState<{ companyId: number; company: string; jobTitle: string } | null>(null)
   // Id del empleo cuya fecha de ingreso se está guardando (uno por fila) y lo
   // que el usuario acaba de escribir en él. El borrador existe para que el
   // input muestre lo elegido mientras viaja al servidor; al volver se borra, y
@@ -484,6 +489,9 @@ export default function AdminUserDetail() {
     setEmpBusy(true); setEmpError(null)
     try {
       await adminService.endUserEmployment(user.id, endingEmp.id, endReason)
+      if (relinkAfterEnd) {
+        setLinkAfter({ companyId: endingEmp.company_id, company: endingEmp.company_name, jobTitle: endingEmp.job_title ?? '' })
+      }
       setEndingEmp(null)
       await loadEmployments(user)
       await load()
@@ -1076,7 +1084,7 @@ export default function AdminUserDetail() {
                         <FileText size={14} /> Expediente
                       </button>
                       {canManage && !ended && (
-                        <button onClick={() => { setEndingEmp(emp); setEndReason(''); setEmpError(null) }} title="Finalizar empleo"
+                        <button onClick={() => { setEndingEmp(emp); setEndReason(''); setEmpError(null); setRelinkAfterEnd(employments.filter(x => x.status === 'active').length <= 1) }} title="Finalizar empleo"
                           style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 10px', borderRadius: '8px', border: '1px solid var(--border, #cbd5e1)', background: '#fff', color: '#b91c1c', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem' }}>
                           <LogOut size={14} /> Finalizar
                         </button>
@@ -1245,7 +1253,7 @@ export default function AdminUserDetail() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setEndingEmp(null)} disabled={empBusy}>Cancelar</Button>
-            <Button variant="danger" onClick={submitEndEmp} loading={empBusy}>Finalizar empleo</Button>
+            <Button variant="danger" onClick={submitEndEmp} loading={empBusy}>{relinkAfterEnd ? 'Finalizar y elegir empresa' : 'Finalizar empleo'}</Button>
           </>
         }
       >
@@ -1255,8 +1263,45 @@ export default function AdminUserDetail() {
         <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>Motivo de salida (opcional)</label>
         <input type="text" value={endReason} onChange={e => setEndReason(e.target.value)} placeholder="Ej: fin de contrato, renuncia..."
           style={{ width: '100%', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: '10px', fontSize: '14px' }} />
+
+        {/* La baja de una empresa no es la baja de Oberstaff: lo normal es
+            buscarle otra empresa, y se decide aquí mismo. */}
+        <div style={{ marginTop: '16px' }}>
+          <span style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>¿Y después?</span>
+          {[
+            { value: true, title: 'Vincularlo a otra empresa', hint: 'Al confirmar eliges la empresa nueva. Empieza con un expediente nuevo.' },
+            { value: false, title: 'Dejarlo sin empresa por ahora', hint: 'Queda en Archivados, desde donde puedes vincularlo cuando tengas destino.' },
+          ].map(opt => (
+            <label key={String(opt.value)} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', marginBottom: '6px', borderRadius: '10px', cursor: 'pointer', border: `1.5px solid ${relinkAfterEnd === opt.value ? 'var(--primary)' : '#e2e8f0'}`, background: relinkAfterEnd === opt.value ? '#fdf4ff' : '#fff' }}>
+              <input type="radio" name="after-end" checked={relinkAfterEnd === opt.value} onChange={() => setRelinkAfterEnd(opt.value)} style={{ marginTop: '3px', accentColor: 'var(--primary)' }} />
+              <span>
+                <strong style={{ display: 'block', fontSize: '0.85rem', color: '#0f172a' }}>{opt.title}</strong>
+                <small style={{ fontSize: '0.78rem', color: '#64748b' }}>{opt.hint}</small>
+              </span>
+            </label>
+          ))}
+          {!relinkAfterEnd && employments.filter(x => x.status === 'active').length <= 1 && (
+            <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '8px 10px' }}>
+              Es su única empresa: hasta que lo vincules a otra no podrá registrar horas ni ver tareas.
+            </p>
+          )}
+        </div>
         {empError && <p style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem', marginTop: '10px' }}>{empError}</p>}
       </Modal>
+
+      <LinkCompanyModal
+        isOpen={!!linkAfter}
+        userId={user.id}
+        userName={user.name}
+        excludeCompanyIds={[
+          ...(linkAfter ? [linkAfter.companyId] : []),
+          ...employments.filter(e => e.status === 'active').map(e => e.company_id),
+        ]}
+        defaultJobTitle={linkAfter?.jobTitle ?? ''}
+        fromCompany={linkAfter?.company}
+        onClose={() => setLinkAfter(null)}
+        onLinked={async () => { await loadEmployments(user); await load(); invalidateAdmin() }}
+      />
 
       <Modal
         isOpen={!!teamBlock}
