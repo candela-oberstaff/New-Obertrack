@@ -19,7 +19,7 @@ import Tooltip from '../components/Common/Tooltip'
 import { Select } from '../components/ui/Select'
 import { Skeleton } from '../components/ui'
 import { adminService, userService } from '../services/api'
-import { MONTHS_ES, parseLocalDate } from '../components/WorkHours/utils'
+import { MONTHS_ES, parseLocalDate, absenceHoursOf, JORNADA_COMPLETA } from '../components/WorkHours/utils'
 import { WorkHourCalendar } from '../components/WorkHours/WorkHourCalendar'
 import { WorkHourStats } from '../components/WorkHours/WorkHourStats'
 import { WorkHourList } from '../components/WorkHours/WorkHourList'
@@ -152,6 +152,11 @@ export default function WorkHours() {
   const [showRecoverModal, setShowRecoverModal] = useState(false)
   const [selectedWorkHour, setSelectedWorkHour] = useState<WorkHour | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  // Al editar, la jornada conserva la duración con la que se registró (la
+  // misma regla que aplica el servidor): si la persona cambió de media jornada
+  // a completa, sus días anteriores siguen valiendo lo que valían.
+  const [editingDayLength, setEditingDayLength] = useState<number | null>(null)
+  const dailyHours = user?.daily_hours || JORNADA_COMPLETA
   const [showMissingModal, setShowMissingModal] = useState(false)
   const [isMailing, setIsMailing] = useState(false)
   const [mailSuccess, setMailSuccess] = useState<string | null>(null)
@@ -224,7 +229,7 @@ export default function WorkHours() {
 
     const absences = monthHours
       .filter(wh => wh.work_type === 'absence')
-      .reduce((sum, wh) => sum + (wh.absence_hours || (8 - wh.hours_worked) || 0), 0)
+      .reduce((sum, wh) => sum + absenceHoursOf(wh), 0)
     
     const recovered = monthHours
       .filter(wh => wh.work_type === 'recover')
@@ -524,6 +529,7 @@ export default function WorkHours() {
       absence_hours: wh.absence_hours || 0,
       comments: wh.comments || '',
     })
+    setEditingDayLength(wh.work_type === 'recover' ? null : wh.hours_worked + absenceHoursOf(wh) || null)
     setEditingId(wh.id)
     setShowModal(true)
     setSelectedWorkHour(null)
@@ -870,6 +876,7 @@ export default function WorkHours() {
         onSubmit={handleSubmit}
         today={today}
         isSubmitting={isSavingWorkHour}
+        dailyHours={editingId && editingDayLength ? editingDayLength : dailyHours}
       />
 
       <WorkHourDetailModal
@@ -897,6 +904,7 @@ export default function WorkHours() {
         }}
         today={today}
         absenceHoursToRecover={totalAbsenceHoursToRecover}
+        dailyHours={dailyHours}
       />
 
       <MissingHoursModal

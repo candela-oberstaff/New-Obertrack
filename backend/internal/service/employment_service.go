@@ -166,6 +166,10 @@ type EmploymentService interface {
 	// ActiveCompanies lista las empresas donde el usuario tiene empleo activo
 	// (para el switcher multi-empresa).
 	ActiveCompanies(userID uint) ([]models.CompanyRef, error)
+	// SetScheduleType fija el tipo de jornada (Full-time / Part-time) del
+	// empleo activo del profesional en esa empresa. Es el mismo campo que se
+	// edita desde la pestaña Horarios de la empresa.
+	SetScheduleType(userID, companyID uint, scheduleType string) error
 	// SwitchActive cambia la empresa activa del usuario (empleador_id) a otra
 	// donde tenga empleo activo. Devuelve el usuario actualizado; el caller
 	// re-emite el JWT con el nuevo tenant.
@@ -480,10 +484,25 @@ func (s *employmentService) ActiveCompanies(userID uint) ([]models.CompanyRef, e
 				name = company.Name
 			}
 		}
-		refs = append(refs, models.CompanyRef{ID: e.CompanyID, Name: name})
+		refs = append(refs, models.CompanyRef{ID: e.CompanyID, Name: name, DailyHours: models.DailyHoursForSchedule(e.ScheduleType)})
 	}
 	return refs, nil
 }
+
+func (s *employmentService) SetScheduleType(userID, companyID uint, scheduleType string) error {
+	if scheduleType != models.ScheduleFullTime && scheduleType != models.SchedulePartTime {
+		return ErrInvalidScheduleType
+	}
+	emp, err := s.repo.GetActive(userID, companyID)
+	if err != nil || emp == nil {
+		return errors.New("El profesional no tiene un empleo activo en esa empresa")
+	}
+	return s.repo.Update(emp, map[string]interface{}{"schedule_type": scheduleType})
+}
+
+// ErrInvalidScheduleType se devuelve cuando el tipo de jornada no es uno de
+// los admitidos (jornada completa o media jornada).
+var ErrInvalidScheduleType = errors.New("Tipo de jornada inválido: usa jornada completa o media jornada")
 
 func (s *employmentService) SwitchActive(userID, companyID uint) (*models.User, error) {
 	user, err := s.userRepo.GetByID(userID)

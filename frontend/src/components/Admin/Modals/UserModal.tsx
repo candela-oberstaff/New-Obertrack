@@ -6,6 +6,7 @@ import { Modal, Button, DatePicker, toISODate } from '../../ui'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../../Auth/countries'
 import styles from '../Admin.module.css'
 import { HierarchyLevelSelector } from './HierarchyLevelSelector'
+import { WorkdayTypeSelector } from './WorkdayTypeSelector'
 
 interface UserModalProps {
   title: string
@@ -174,6 +175,14 @@ export function UserModal({
               options={employers.map(emp => ({ value: emp.id, label: emp.company_name || emp.name }))}
             />
           </div>
+        )}
+
+        {/* La jornada es del empleo: sin empresa no hay dónde guardarla. */}
+        {!employerMode && form.user_type === 'profesional' && !!form.empleador_id && (
+          <WorkdayTypeSelector
+            value={form.schedule_type}
+            onChange={v => setForm({ ...form, schedule_type: v })}
+          />
         )}
 
         {form.user_type === 'profesional' && (

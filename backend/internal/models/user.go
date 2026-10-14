@@ -123,10 +123,14 @@ type User struct {
 	// Companies son las empresas donde el profesional tiene un empleo ACTIVO
 	// (campo transitorio para el switcher multi-empresa). La activa es la que
 	// apunta empleador_id. Vacío/único = sin switcher.
-	Companies []CompanyRef   `gorm:"-" json:"companies,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	Companies  []CompanyRef   `gorm:"-" json:"companies,omitempty"`
+	// DailyHours es la duración de la jornada del profesional en su empresa
+	// activa (8h o media jornada de 4h), según el tipo de jornada del empleo.
+	// Campo transitorio: solo viaja en /auth/me y al cambiar de empresa.
+	DailyHours float64        `gorm:"-" json:"daily_hours,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 func (User) TableName() string {
@@ -151,8 +155,9 @@ func (u *User) CompanyDisplayName() string {
 
 // CompanyRef es una referencia ligera a una empresa (para el switcher).
 type CompanyRef struct {
-	ID   uint   `json:"id"`
-	Name string `json:"name"`
+	ID         uint    `json:"id"`
+	Name       string  `json:"name"`
+	DailyHours float64 `json:"daily_hours"`
 }
 
 func TenantForUser(user *User) uint {

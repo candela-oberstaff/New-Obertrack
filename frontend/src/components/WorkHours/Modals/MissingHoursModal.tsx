@@ -1,6 +1,6 @@
 import { Clock, AlertCircle } from 'lucide-react'
 import { Modal, Button } from '../../ui'
-import { parseLocalDate } from '../utils'
+import { parseLocalDate, absenceHoursOf } from '../utils'
 
 interface WorkHour {
   id: number
@@ -125,7 +125,7 @@ export function MissingHoursModal({
                         gap: '4px'
                       }}
                     >
-                      <Clock size={13} /> {wh.absence_hours || 8}h
+                      <Clock size={13} /> {absenceHoursOf(wh)}h
                     </span>
                   </td>
                   <td style={{ padding: '14px 8px', textTransform: 'capitalize' }}>

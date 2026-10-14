@@ -5,6 +5,7 @@ import type { User } from '../../types'
 import Tooltip from '../Common/Tooltip'
 import { Select } from '../ui/Select'
 import { COUNTRY_OPTIONS, getStatesForCountry } from '../Auth/countries'
+import { workdayLabel, SCHEDULE_FULL_TIME, SCHEDULE_PART_TIME } from '../Admin/Modals/WorkdayTypeSelector'
 import styles from '../../pages/Profile.module.css'
 
 interface ProfileFormProps {
@@ -104,7 +105,9 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
         identity_document: formData.identity_document,
       }
       const updatedUser = await userService.update(user.id, payload)
-      setUser(updatedUser)
+      // Se fusiona con el usuario de la sesión: la respuesta del update no trae
+      // los campos que solo viajan en /auth/me (jornada, empresas, permisos).
+      setUser({ ...user, ...updatedUser })
       setMessage({ type: 'success', text: 'Perfil actualizado correctamente' })
       setIsEditing(false)
     } catch (error) {
@@ -441,6 +444,14 @@ export function ProfileForm({ user, setUser, isEditing, setIsEditing }: ProfileF
             <span className={styles['info-label']}>Puesto</span>
             <span className={styles['info-value']}>{user.job_title || 'No registrado'}</span>
           </div>
+          {/* Duración de su jornada en la empresa activa: decide cuántas horas
+              vale cada día que registra en Horas. Solo para profesionales. */}
+          {user.user_type === 'profesional' && user.empleador_id && (
+            <div className={styles['info-item']}>
+              <span className={styles['info-label']}>Jornada</span>
+              <span className={styles['info-value']}>{workdayLabel(user.daily_hours === 4 ? SCHEDULE_PART_TIME : SCHEDULE_FULL_TIME)}</span>
+            </div>
+          )}
           <div className={styles['info-item']}>
             <span className={styles['info-label']}>Dirección</span>
             <span className={styles['info-value']}>{user.location || 'No registrada'}</span>

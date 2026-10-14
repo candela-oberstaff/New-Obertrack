@@ -58,7 +58,10 @@ export interface User {
   permissions?: Record<string, 'none' | 'view' | 'edit'>
   /** Empresas donde el profesional tiene empleo activo (switcher multi-empresa).
    * La activa es la que apunta empleador_id. */
-  companies?: { id: number; name: string }[]
+  companies?: { id: number; name: string; daily_hours?: number }[]
+  /** Duración de la jornada en la empresa activa: 8h, o 4h si es de media
+   *  jornada. Solo viaja en /auth/me. */
+  daily_hours?: number
 }
 
 export interface ProfileChangeRequest {

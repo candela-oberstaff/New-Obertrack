@@ -5,6 +5,7 @@ import { COUNTRY_OPTIONS, getStatesForCountry } from '../../Auth/countries'
 import { useCloseGuard } from '../../ui/useCloseGuard'
 import styles from '../Admin.module.css'
 import { HierarchyLevelSelector } from './HierarchyLevelSelector'
+import { WorkdayTypeSelector } from './WorkdayTypeSelector'
 
 export interface CreateUserForm {
   name: string
@@ -22,6 +23,8 @@ export interface CreateUserForm {
   // donde siempre debió haber uno, y la fuente de que medio equipo quedara sin nivel.
   isManager: boolean
   isSupervisor: boolean
+  // Tipo de jornada del profesional (Full-time / Part-time). Vacío = completa.
+  scheduleType: string
   companyName: string
   industry: string
   country: string
@@ -276,16 +279,22 @@ export function CreateUserModal({
                   />
                 </div>
               ) : (
-                <div>
-                  <label style={labelStyle}>Empresa a la que perteneces</label>
-                  <Select
-                    fullWidth
-                    value={form.selectedCompanyId}
-                    onChange={v => setForm(f => ({ ...f, selectedCompanyId: Number(v) || '' }))}
-                    placeholder="Selecciona una empresa..."
-                    options={publicCompanies.map(c => ({ value: c.id, label: c.name }))}
+                <>
+                  <div>
+                    <label style={labelStyle}>Empresa a la que perteneces</label>
+                    <Select
+                      fullWidth
+                      value={form.selectedCompanyId}
+                      onChange={v => setForm(f => ({ ...f, selectedCompanyId: Number(v) || '' }))}
+                      placeholder="Selecciona una empresa..."
+                      options={publicCompanies.map(c => ({ value: c.id, label: c.name }))}
+                    />
+                  </div>
+                  <WorkdayTypeSelector
+                    value={form.scheduleType}
+                    onChange={v => setForm(f => ({ ...f, scheduleType: v }))}
                   />
-                </div>
+                </>
               )}
             </div>
           )}

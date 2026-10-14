@@ -88,7 +88,7 @@ export function WorkHourStats({
               {isEmployer ? (
                 `${employerTodayActiveCount} ${employerTodayActiveCount === 1 ? 'activo' : 'activos'}`
               ) : todayWork ? (
-                todayWork.work_type === 'complete' || todayWork.hours_worked >= 8 ? (
+                todayWork.work_type === 'complete' ? (
                   <><CheckCircle2 size={14} /> Completa</>
                 ) : (
                   <><CheckCircle2 size={14} /> {todayWork.hours_worked}h</>

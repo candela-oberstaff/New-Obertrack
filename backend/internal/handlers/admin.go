@@ -268,10 +268,17 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		City            string  `json:"city"`
 		Location        string  `json:"location"`
 		Industry        string  `json:"industry"`
+		// ScheduleType es el tipo de jornada del profesional en su empresa
+		// (Full-time = 8h, Part-time = media jornada de 4h). Vacío = completa.
+		ScheduleType string `json:"schedule_type"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !validScheduleType(req.ScheduleType) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": service.ErrInvalidScheduleType.Error()})
 		return
 	}
 
@@ -326,6 +333,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 	if err := h.employmentSvc.SyncActiveForUser(user); err != nil {
 		log.Printf("[admin] no se pudo sincronizar la membresía del usuario %d: %v", user.ID, err)
 	}
+	h.applyScheduleType(user, req.ScheduleType)
 
 	c.JSON(http.StatusCreated, user)
 }
@@ -396,10 +404,17 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		ObervoicePrefix    string  `json:"obervoice_prefix"`
 		ObervoicePhone     string  `json:"obervoice_phone"`
 		ObervoiceQR        *string `json:"obervoice_qr"`
+		// ScheduleType: tipo de jornada del profesional en su empresa activa.
+		// Ausente = no tocar.
+		ScheduleType *string `json:"schedule_type"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.ScheduleType != nil && !validScheduleType(*req.ScheduleType) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": service.ErrInvalidScheduleType.Error()})
 		return
 	}
 
@@ -558,8 +573,29 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	if err := h.employmentSvc.SyncActiveForUser(user); err != nil {
 		log.Printf("[admin] no se pudo sincronizar la membresía del usuario %d: %v", user.ID, err)
 	}
+	if req.ScheduleType != nil {
+		h.applyScheduleType(user, *req.ScheduleType)
+	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+// validScheduleType acepta el vacío (no tocar / jornada completa) y los dos
+// tipos de jornada admitidos.
+func validScheduleType(t string) bool {
+	return t == "" || t == models.ScheduleFullTime || t == models.SchedulePartTime
+}
+
+// applyScheduleType guarda el tipo de jornada en el empleo activo. Solo aplica
+// a profesionales vinculados a una empresa: la media jornada no existe para los
+// demás roles. Best-effort, igual que el dual-write de la membresía.
+func (h *AdminHandler) applyScheduleType(user *models.User, scheduleType string) {
+	if user == nil || scheduleType == "" || user.UserType != models.UserTypeProfessional || user.EmpleadorID == nil {
+		return
+	}
+	if err := h.employmentSvc.SetScheduleType(user.ID, *user.EmpleadorID, scheduleType); err != nil {
+		log.Printf("[admin] no se pudo guardar el tipo de jornada del usuario %d: %v", user.ID, err)
+	}
 }
 
 // GetOrgChart devuelve el organigrama de una empresa: una fila por persona con

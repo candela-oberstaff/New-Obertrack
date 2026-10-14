@@ -174,28 +174,29 @@ var (
 	ErrDuplicateRecover  = errors.New("Ya existe una recuperación para esta fecha en esta empresa. Solo puedes registrar una recuperación por día.")
 )
 
-const standardWorkDay = 8.0
-
-// clampHours acota las horas a un rango válido [0,24]. Evita valores negativos
-// o desbordes de la columna decimal(5,2) y stats infladas por payloads del
-// cliente sin validar.
-func clampHours(h float64) float64 {
-	if h < 0 {
-		return 0
+// dailyHoursFor devuelve la duración de la jornada del profesional en esa
+// empresa según el tipo de jornada de su empleo activo (8h o media jornada de
+// 4h). Sin empleo activo se asume jornada completa.
+func (s *workHourService) dailyHoursFor(userID, tenantID uint) float64 {
+	if s.employmentRepo == nil || tenantID == 0 {
+		return models.FullWorkDayHours
 	}
-	if h > 24 {
-		return 24
+	emp, err := s.employmentRepo.GetActive(userID, tenantID)
+	if err != nil || emp == nil {
+		return models.FullWorkDayHours
 	}
-	return h
+	return models.DailyHoursForSchedule(emp.ScheduleType)
 }
 
-// clampAbsenceHours acota las horas de ausencia a una jornada laboral [0,8].
-func clampAbsenceHours(h float64) float64 {
+// clampToDay acota horas de ausencia o de recuperación a la duración de la
+// jornada del profesional [0,day]. Evita valores negativos, desbordes de la
+// columna decimal(5,2) y stats infladas por payloads del cliente sin validar.
+func clampToDay(h, day float64) float64 {
 	if h < 0 {
 		return 0
 	}
-	if h > standardWorkDay {
-		return standardWorkDay
+	if h > day {
+		return day
 	}
 	return h
 }
@@ -217,23 +218,25 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 
 	// Las horas son autoritativas en el servidor: no se confía en lo que mande
 	// el cliente para complete/absence; recover se acota a [0,24].
+	// La duración de la jornada (8h o media jornada de 4h) sale del empleo.
 	workTypeStr := s.parseStringVal(reqData["work_type"])
 	workType := models.WorkTypeComplete
-	absenceHours := clampAbsenceHours(s.parseFloatVal(reqData["absence_hours"]))
+	day := s.dailyHoursFor(userID, tenantID)
+	absenceHours := clampToDay(s.parseFloatVal(reqData["absence_hours"]), day)
 	var hoursWorked float64
 
 	switch workTypeStr {
 	case "absence":
 		workType = models.WorkTypeAbsence
-		hoursWorked = standardWorkDay - absenceHours
+		hoursWorked = day - absenceHours
 	case "recover":
 		workType = models.WorkTypeRecover
 		absenceHours = 0
-		hoursWorked = clampHours(s.parseFloatVal(reqData["hours_worked"]))
+		hoursWorked = clampToDay(s.parseFloatVal(reqData["hours_worked"]), day)
 	default:
 		workType = models.WorkTypeComplete
 		absenceHours = 0
-		hoursWorked = standardWorkDay
+		hoursWorked = day
 	}
 
 	isRecover := workType == models.WorkTypeRecover
@@ -342,6 +345,16 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 		}
 	}
 
+	// La duración de la jornada se toma del propio registro, no del empleo
+	// actual: si la persona pasa de media jornada a completa (o al revés), sus
+	// jornadas anteriores no se recalculan al editarlas.
+	day := s.dailyHoursFor(workHour.UserID, workHour.TenantID)
+	if workHour.WorkType != models.WorkTypeRecover {
+		if prev := workHour.HoursWorked + workHour.AbsenceHours; prev > 0 {
+			day = prev
+		}
+	}
+
 	workTypeStr := s.parseStringVal(reqData["work_type"])
 	if workTypeStr != "" {
 		workHour.WorkType = models.WorkType(workTypeStr)
@@ -351,7 +364,9 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 		workHour.AbsenceReason = s.parseStringVal(val)
 	}
 	if val, ok := reqData["absence_hours"]; ok {
-		workHour.AbsenceHours = clampAbsenceHours(s.parseFloatVal(val))
+		workHour.AbsenceHours = clampToDay(s.parseFloatVal(val), day)
+	} else {
+		workHour.AbsenceHours = clampToDay(workHour.AbsenceHours, day)
 	}
 
 	// Las horas se derivan del tipo de jornada en el servidor; solo recover
@@ -359,15 +374,15 @@ func (s *workHourService) Update(id, tenantID, userID uint, role string, isManag
 	// complete/absence.
 	switch workHour.WorkType {
 	case models.WorkTypeAbsence:
-		workHour.HoursWorked = standardWorkDay - workHour.AbsenceHours
+		workHour.HoursWorked = day - workHour.AbsenceHours
 	case models.WorkTypeRecover:
 		workHour.AbsenceReason = ""
 		workHour.AbsenceHours = 0
 		if val, ok := reqData["hours_worked"]; ok {
-			workHour.HoursWorked = clampHours(s.parseFloatVal(val))
+			workHour.HoursWorked = clampToDay(s.parseFloatVal(val), day)
 		}
 	default:
-		workHour.HoursWorked = standardWorkDay
+		workHour.HoursWorked = day
 		workHour.AbsenceReason = ""
 		workHour.AbsenceHours = 0
 	}

@@ -13,6 +13,7 @@ import type { User, CompanyRole, CompanyGroup } from '../types'
 import Avatar from '../components/Common/Avatar'
 import { Skeleton } from '../components/ui'
 import { UserModal } from '../components/Admin/Modals/UserModal'
+import { workdayLabel } from '../components/Admin/Modals/WorkdayTypeSelector'
 import { ExpedienteModal } from '../components/Admin/ExpedienteModal'
 import { LinkCompanyModal } from '../components/Admin/LinkCompanyModal'
 import { ProfileChangeReviewPanel } from '../components/Admin/ProfileChangeReviewPanel'
@@ -543,6 +544,11 @@ export default function AdminUserDetail() {
 
   const openEdit = async () => {
     if (!user) return
+    // El tipo de jornada vive en el empleo: se lee antes de abrir para que el
+    // modal no nazca "con cambios". null = no se pudo leer, y no se reenvía.
+    const scheduleType = user.user_type === 'profesional' && user.empleador_id
+      ? await adminService.getActiveScheduleType(user.id, user.empleador_id)
+      : null
     setEditForm({
       name: user.name || '',
       email: user.email || '',
@@ -562,6 +568,7 @@ export default function AdminUserDetail() {
       is_active: user.is_active,
       is_manager: user.is_manager,
       is_supervisor: !!user.is_supervisor,
+      schedule_type: scheduleType === null ? undefined : scheduleType || 'Full-time',
       // Obervoice — la contraseña nunca viene del backend, se deja en blanco
       // para que el campo vacío signifique "no cambiar".
       obervoice_username: user.obervoice_username || '',
@@ -758,6 +765,11 @@ export default function AdminUserDetail() {
     // asignarle manager desde la ficha aunque el backend ya lo admitía.
     specific = [
       { label: 'Empresa', value: empresaName || '—' },
+      // Cuántas horas vale su jornada en la empresa activa (8h o media de 4h).
+      // Sale del empleo, igual que en el panel de Horas.
+      ...(user.user_type === 'profesional' && activeEmployment
+        ? [{ label: 'Jornada', value: workdayLabel(activeEmployment.schedule_type) }]
+        : []),
       // Los dos datos que llegan de Obersuite en cada contratación. Estaban en
       // el formulario de edición y en ninguna pantalla: se guardaban a ciegas.
       {

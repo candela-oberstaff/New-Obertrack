@@ -62,7 +62,9 @@ export default function Profile() {
     try {
       const uploadResult = await uploadService.upload(file)
       const updatedUser = await userService.update(user.id, { avatar: uploadResult.url })
-      setUser(updatedUser)
+      // Se fusiona con el usuario de la sesión: la respuesta del update no trae
+      // los campos que solo viajan en /auth/me (jornada, empresas, permisos).
+      setUser({ ...user, ...updatedUser })
       setMessage({ type: 'success', text: 'Foto de perfil actualizada' })
     } catch (error) {
       setMessage({ type: 'error', text: 'Error al subir la imagen' })

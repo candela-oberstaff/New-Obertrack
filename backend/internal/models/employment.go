@@ -52,3 +52,25 @@ type Employment struct {
 func (Employment) TableName() string {
 	return "employments"
 }
+
+// Tipos de jornada del empleo (ScheduleType). Vacío equivale a jornada completa.
+const (
+	ScheduleFullTime = "Full-time"
+	SchedulePartTime = "Part-time"
+)
+
+// Duración, en horas, de cada tipo de jornada.
+const (
+	FullWorkDayHours = 8.0
+	HalfWorkDayHours = 4.0
+)
+
+// DailyHoursForSchedule devuelve cuántas horas dura la jornada de un empleo:
+// media jornada (Part-time) son 4h; cualquier otro valor, incluido el vacío,
+// es jornada completa de 8h para no cambiar a nadie que no lo tenga configurado.
+func DailyHoursForSchedule(scheduleType string) float64 {
+	if scheduleType == SchedulePartTime {
+		return HalfWorkDayHours
+	}
+	return FullWorkDayHours
+}

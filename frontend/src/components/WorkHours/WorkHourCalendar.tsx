@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { WorkHour } from '../../types'
 import { CheckCircle2, AlertTriangle } from 'lucide-react'
-import { DAYS_ES, JORNADA_COMPLETA, parseLocalDate } from './utils'
+import { DAYS_ES, parseLocalDate } from './utils'
 import styles from '../../pages/WorkHours.module.css'
 
 interface WorkHourCalendarProps {
@@ -33,7 +33,7 @@ export function WorkHourCalendar({
       const date = wh.work_date.split('T')[0]
       if (map[date]?.type === 'absence') return
       const isAbsence = wh.work_type === 'absence' || wh.hours_worked === 0
-      const isComplete = wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA
+      const isComplete = wh.work_type === 'complete'
       if (isAbsence) {
         map[date] = { type: 'absence' }
       } else if (isComplete) {

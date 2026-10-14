@@ -11,6 +11,8 @@ interface RecoverHoursModalProps {
   onSubmit: (date: string, hours: number, comments: string) => Promise<void>
   today: string
   absenceHoursToRecover: number
+  /** Tope de horas por recuperación: la duración de la jornada (8h o 4h). */
+  dailyHours?: number
 }
 
 export function RecoverHoursModal({
@@ -18,7 +20,8 @@ export function RecoverHoursModal({
   onClose,
   onSubmit,
   today,
-  absenceHoursToRecover
+  absenceHoursToRecover,
+  dailyHours = 8,
 }: RecoverHoursModalProps) {
   const [date, setDate] = useState(today)
   const [hours, setHours] = useState<number>(1)
@@ -95,7 +98,7 @@ export function RecoverHoursModal({
             required
             value={hours}
             onChange={(v) => { setHours(Number(v)); setError(null) }}
-            options={[1, 2, 3, 4, 5, 6, 7, 8].map(h => ({ value: h, label: `${h} ${h === 1 ? 'hora' : 'horas'}` }))}
+            options={Array.from({ length: Math.floor(dailyHours) }, (_, i) => i + 1).map(h => ({ value: h, label: `${h} ${h === 1 ? 'hora' : 'horas'}` }))}
           />
         </div>
 

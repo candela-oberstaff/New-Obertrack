@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Check, ClipboardList } from 'lucide-react'
 import Tooltip from '../Common/Tooltip'
 import type { WorkHour } from '../../types'
-import { MONTHS_ES, parseLocalDate, JORNADA_COMPLETA } from './utils'
+import { MONTHS_ES, parseLocalDate, absenceHoursOf, fullDayLabel } from './utils'
 import { formatHours } from '../../utils/formatHours'
 import { htmlToText } from '../../utils/sanitize'
 import styles from '../../pages/WorkHours.module.css'
@@ -69,7 +69,7 @@ export function WorkHourList({
           {filteredHours.map((wh) => (
             <div 
               key={wh.id} 
-              className={`${styles['hour-card']} ${wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA ? styles['complete'] : wh.work_type === 'recover' ? styles['recover'] : styles['absence']} ${styles['clickable']}`} 
+              className={`${styles['hour-card']} ${wh.work_type === 'complete' ? styles['complete'] : wh.work_type === 'recover' ? styles['recover'] : styles['absence']} ${styles['clickable']}`} 
               onClick={() => onItemClick(wh)}
             >
               <div className={styles['hour-date']}>
@@ -79,11 +79,11 @@ export function WorkHourList({
               <div className={styles['hour-info']}>
                 {canApprove && wh.user && <span className={styles['hours-user']}>{wh.user.name}</span>}
                 <span className={styles['hours-value']}>
-                  {wh.work_type === 'complete' || wh.hours_worked >= JORNADA_COMPLETA
-                    ? 'Jornada Completa'
+                  {wh.work_type === 'complete'
+                    ? fullDayLabel(wh)
                     : wh.work_type === 'recover'
                     ? `Recuperación (${wh.hours_worked}h)`
-                    : `Ausencia (${formatHours(wh.absence_hours != null ? wh.absence_hours : 8 - wh.hours_worked)})`}
+                    : `Ausencia (${formatHours(absenceHoursOf(wh))})`}
                 </span>
                 {/* Quitar las etiquetas a secas pegaba la última palabra de un
                     bloque con la primera del siguiente. */}

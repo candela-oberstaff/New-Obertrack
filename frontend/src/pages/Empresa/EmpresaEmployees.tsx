@@ -20,7 +20,7 @@ const EMPTY_CREATE_FORM: CreateUserForm = {
   name: '', email: '', password: '', userType: 'profesional',
   jobTitle: '', phoneNumber: '', birthDate: '', emergencyPhones: [''], selectedCompanyId: '', managerId: '',
   companyName: '', industry: '', country: '', province: '', city: '', location: '', address: '',
-  isManager: false, isSupervisor: false,
+  isManager: false, isSupervisor: false, scheduleType: '',
 }
 
 // Lista de profesionales para el EMPLEADOR (user_type === 'empleador'), acotada a

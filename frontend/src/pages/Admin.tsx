@@ -58,6 +58,7 @@ const EMPTY_CREATE_FORM = {
   managerId: '' as number | '',
   isManager: false,
   isSupervisor: false,
+  scheduleType: '',
   phoneNumber: '',
   birthDate: '',
   emergencyPhones: [''],
@@ -184,7 +185,7 @@ export default function Admin() {
     e.preventDefault()
     setCreateError('')
 
-    const { name, email, password, userType, companyName, industry, selectedCompanyId, phoneNumber, birthDate, emergencyPhones, country, province, city, location, address, jobTitle, isManager, isSupervisor } = createForm
+    const { name, email, password, userType, companyName, industry, selectedCompanyId, phoneNumber, birthDate, emergencyPhones, country, province, city, location, address, jobTitle, isManager, isSupervisor, scheduleType } = createForm
 
     if (userType === 'profesional') {
       if (!selectedCompanyId) { setCreateError('Debes seleccionar una empresa'); return }
@@ -225,6 +226,8 @@ export default function Admin() {
         // Supervisor implica manager, y el servidor lo vuelve a imponer.
         is_manager: userType === 'profesional' ? isManager || isSupervisor : undefined,
         is_supervisor: userType === 'profesional' ? isSupervisor : undefined,
+        // Media jornada (4h) o completa (8h): solo existe para profesionales.
+        schedule_type: userType === 'profesional' ? scheduleType || 'Full-time' : undefined,
       })
       setShowCreateModal(false)
     } catch (err: any) {
@@ -251,7 +254,12 @@ export default function Admin() {
     return (u.company_name || '').trim() || (u.empleador_id ? companyNameById.get(u.empleador_id) || '' : '')
   }
 
-  const openEdit = (u: any) => {
+  const openEdit = async (u: any) => {
+    // El tipo de jornada vive en el empleo, no en el usuario: se lee antes de
+    // abrir para que el modal no nazca "con cambios" al llegar después.
+    const scheduleType = u.user_type === 'profesional' && u.empleador_id
+      ? await adminService.getActiveScheduleType(u.id, u.empleador_id)
+      : null
     setEditId(u.id)
     setEditForm({
       name: u.name || '',
@@ -272,6 +280,8 @@ export default function Admin() {
       is_active: u.is_active,
       is_manager: u.is_manager,
       is_supervisor: !!u.is_supervisor,
+      // undefined = no se pudo leer: el selector no se envía y no pisa nada.
+      schedule_type: scheduleType === null ? undefined : scheduleType || 'Full-time',
     })
     setShowEditModal(true)
   }

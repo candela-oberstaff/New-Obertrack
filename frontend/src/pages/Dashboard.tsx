@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import Tooltip from '../components/Common/Tooltip'
 import { formatDateOnly } from '../utils/date'
+import { fullDayLabel } from '../components/WorkHours/utils'
 import { TeamPanel } from '../components/Profile/TeamPanel'
 import NovedadesCard from '../components/Tutorials/NovedadesCard'
 import { Skeleton } from '../components/ui'
@@ -231,7 +232,7 @@ export default function Dashboard() {
                   </div>
                   <div className={styles['hour-info']}>
                     <span className={styles['hours-value']}>
-                      {wh.hours_worked >= 8 ? 'Jornada completa' : wh.hours_worked > 0 ? `${wh.hours_worked}h` : 'Ausencia'}
+                      {wh.work_type === 'complete' ? fullDayLabel(wh) : wh.hours_worked > 0 ? `${wh.hours_worked}h` : 'Ausencia'}
                       {isEmployer && wh.user?.name && (
                         <span className={styles['hour-author']}> — {wh.user.name}</span>
                       )}

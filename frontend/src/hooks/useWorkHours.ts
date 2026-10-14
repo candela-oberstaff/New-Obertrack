@@ -58,8 +58,6 @@ interface UseWorkHoursReturn {
   canEditHours: boolean
 }
 
-const JORNADA_COMPLETA = 8
-
 interface UseWorkHoursOptions {
   // Superadmin scope: the company (tenant) and optional employee currently selected.
   companyId?: number | null
@@ -141,17 +139,13 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
   const fetchData = useCallback(async () => { await refetch() }, [refetch])
 
   const createWorkHour = useCallback(async (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours' | 'comments'> & { id?: number; absence_reason?: string; absence_hours?: number; comments?: string }) => {
-    const hoursWorked = data.work_type === 'recover'
-      ? (data as any).hours_worked || JORNADA_COMPLETA
-      : data.work_type === 'absence'
-      ? Math.max(0, JORNADA_COMPLETA - (data.absence_hours || 0))
-      : JORNADA_COMPLETA
-
+    // Las horas de complete/absence las calcula el servidor según la jornada
+    // del profesional (8h o media de 4h); solo la recuperación lleva las suyas.
     const payload = {
       work_date: data.work_date,
       work_type: data.work_type,
       activities: data.activities || undefined,
-      hours_worked: hoursWorked,
+      hours_worked: data.work_type === 'recover' ? (data as any).hours_worked : undefined,
       absence_reason: data.work_type === 'absence' ? data.absence_reason : undefined,
       absence_hours: data.work_type === 'absence' ? data.absence_hours : undefined,
       comments: data.work_type === 'absence' ? (data.comments || '') : undefined,

@@ -23,6 +23,8 @@ interface RegisterDayModalProps {
   onSubmit: (e: React.FormEvent) => void
   today: string
   isSubmitting?: boolean
+  /** Duración de la jornada del profesional: 8h, o 4h si es de media jornada. */
+  dailyHours?: number
 }
 
 export function RegisterDayModal({
@@ -32,8 +34,10 @@ export function RegisterDayModal({
   setFormData,
   onSubmit,
   today,
-  isSubmitting = false
+  isSubmitting = false,
+  dailyHours = 8,
 }: RegisterDayModalProps) {
+  const isHalfDay = dailyHours < 8
   const hasActivities = htmlToText(formData.activities).length > 0
 
   const needsJustification =
@@ -47,11 +51,11 @@ export function RegisterDayModal({
 
   const setAbsence = (hrs: number, mins: number) => {
     let total = hrs + mins / 60
-    if (total > 8) total = 8
+    if (total > dailyHours) total = dailyHours
     setFormData({ ...formData, absence_hours: Math.round(total * 100) / 100 })
   }
 
-  const hoursToRegister = formatHours(Math.max(0, 8 - absenceTotal))
+  const hoursToRegister = formatHours(Math.max(0, dailyHours - absenceTotal))
 
   return (
     <Modal
@@ -92,13 +96,13 @@ export function RegisterDayModal({
               onClick={() => setFormData({ ...formData, work_type: 'complete', absence_hours: 0 })}
             >
               <span className={styles['work-type-icon']}><Check size={20} /></span>
-              <span className={styles['work-type-label']}>Jornada Completa</span>
-              <span className={styles['work-type-hours']}>8h</span>
+              <span className={styles['work-type-label']}>{isHalfDay ? 'Media Jornada' : 'Jornada Completa'}</span>
+              <span className={styles['work-type-hours']}>{formatHours(dailyHours)}</span>
             </button>
             <button
               type="button"
               className={`${styles['work-type-btn']} ${formData.work_type === 'absence' ? styles['active'] : ''}`}
-              onClick={() => setFormData({ ...formData, work_type: 'absence', absence_hours: 8 })}
+              onClick={() => setFormData({ ...formData, work_type: 'absence', absence_hours: dailyHours })}
             >
               <span className={styles['work-type-icon']}><AlertCircle size={20} /></span>
               <span className={styles['work-type-label']}>Ausencia</span>
@@ -145,17 +149,10 @@ export function RegisterDayModal({
                   required
                   value={absenceHrs}
                   onChange={(v) => setAbsence(Number(v), absenceMins)}
-                  options={[
-                    { value: 0, label: '0 horas' },
-                    { value: 1, label: '1 hora' },
-                    { value: 2, label: '2 horas' },
-                    { value: 3, label: '3 horas' },
-                    { value: 4, label: '4 horas' },
-                    { value: 5, label: '5 horas' },
-                    { value: 6, label: '6 horas' },
-                    { value: 7, label: '7 horas' },
-                    { value: 8, label: '8 horas' },
-                  ]}
+                  options={Array.from({ length: Math.floor(dailyHours) + 1 }, (_, h) => ({
+                    value: h,
+                    label: `${h} ${h === 1 ? 'hora' : 'horas'}`,
+                  }))}
                 />
                 <Select
                   fullWidth

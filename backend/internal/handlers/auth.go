@@ -64,8 +64,15 @@ func (h *AuthHandler) attachContext(user *models.User) {
 	if perms, hasRoles, err := h.rbacSvc.EffectivePermissions(user.ID, models.TenantForUser(user)); err == nil && hasRoles {
 		user.Permissions = perms
 	}
+	user.DailyHours = models.FullWorkDayHours
 	if companies, err := h.employmentSvc.ActiveCompanies(user.ID); err == nil && len(companies) > 0 {
 		user.Companies = companies
+		tenantID := models.TenantForUser(user)
+		for _, c := range companies {
+			if c.ID == tenantID {
+				user.DailyHours = c.DailyHours
+			}
+		}
 	}
 }
 

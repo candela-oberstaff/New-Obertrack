@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Check, Pencil, XCircle } from 'lucide-react'
 import type { WorkHour } from '../../../types'
-import { parseLocalDate } from '../utils'
+import { parseLocalDate, absenceHoursOf, fullDayLabel } from '../utils'
 import { sanitizeHtml } from '../../../utils/sanitize'
 import { formatHours } from '../../../utils/formatHours'
 import { absenceReasonLabel } from '../../../utils/absenceReasons'
@@ -136,8 +136,8 @@ export function WorkHourDetailModal({
           <span className={`${styles['detail-type']} ${styles[workHour.work_type]}`}>
             {workHour.work_type === 'recover'
               ? `Horas Recuperadas (${workHour.hours_worked}h)`
-              : workHour.work_type === 'complete' || workHour.hours_worked >= 8
-              ? 'Jornada Completa' : `Ausencia (${formatHours(workHour.absence_hours != null ? workHour.absence_hours : 8 - workHour.hours_worked)})`}
+              : workHour.work_type === 'complete'
+              ? fullDayLabel(workHour) : `Ausencia (${formatHours(absenceHoursOf(workHour))})`}
           </span>
         </div>
         <div className={styles['detail-row']}>

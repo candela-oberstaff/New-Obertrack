@@ -288,6 +288,18 @@ export const adminService = {
     const { data } = await api.get<{ data: any[] }>(`/admin/users/${userId}/employments`)
     return data.data || []
   },
+  /** Tipo de jornada (Full-time / Part-time) del empleo activo del profesional
+   *  en esa empresa: '' si no lo tiene configurado, null si no se pudo leer
+   *  (y entonces no hay que reenviarlo, o se pisaría con el valor por defecto). */
+  getActiveScheduleType: async (userId: number, companyId: number): Promise<string | null> => {
+    try {
+      const { data } = await api.get<{ data: any[] }>(`/admin/users/${userId}/employments`)
+      const active = (data.data || []).find(e => e.company_id === companyId && e.status === 'active')
+      return active?.schedule_type || ''
+    } catch {
+      return null
+    }
+  },
   addUserEmployment: async (userId: number, payload: { company_id: number; job_title?: string; start_reason?: string; manager_id?: number }) => {
     const { data } = await api.post(`/admin/users/${userId}/employments`, payload)
     return data
