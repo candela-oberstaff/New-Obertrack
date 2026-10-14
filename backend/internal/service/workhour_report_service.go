@@ -166,7 +166,7 @@ func (s *workHourService) SendReportEmail(userID uint, role string, isSuperadmin
 	}
 
 	label := fmt.Sprintf("%s %d", monthName, year)
-	return s.sendReportWithAttachments(user, workHours, "Reporte Mensual de Jornadas", label)
+	return s.sendReportWithAttachments(user, workHours, "Reporte Mensual de Jornadas", label, nil)
 }
 
 // reportWorkHoursInRange trae las jornadas de una empresa en un rango de fechas
@@ -191,13 +191,60 @@ func (s *workHourService) SendPeriodReport(recipient *models.User, tenantID uint
 	if err != nil {
 		return err
 	}
-	return s.sendReportWithAttachments(recipient, workHours, periodTitle, periodLabel)
+	return s.sendReportWithAttachments(recipient, workHours, periodTitle, periodLabel, s.idleProfessionals(tenantID, workHours, end))
+}
+
+// idleProfessionals devuelve los nombres de los profesionales activos de la
+// empresa que no registraron NINGUNA jornada en el período. Quien entró después
+// de que el período cerrara no cuenta: no tenía nada que registrar. Best-effort:
+// si la consulta falla, el reporte sale igual, solo que sin esta lista.
+func (s *workHourService) idleProfessionals(tenantID uint, workHours []models.WorkHour, end time.Time) []string {
+	if s.employmentRepo == nil || tenantID == 0 {
+		return nil
+	}
+	members, err := s.employmentRepo.ListActiveProfessionals(tenantID)
+	if err != nil {
+		return nil
+	}
+	registered := make(map[uint]bool, len(workHours))
+	for _, wh := range workHours {
+		registered[wh.UserID] = true
+	}
+	periodEnd := time.Date(end.Year(), end.Month(), end.Day(), 23, 59, 59, 0, end.Location())
+	var idle []string
+	for _, m := range members {
+		if registered[m.UserID] || m.StartedAt.After(periodEnd) {
+			continue
+		}
+		name := strings.TrimSpace(m.Name)
+		if name == "" {
+			name = m.Email
+		}
+		idle = append(idle, name)
+	}
+	return idle
+}
+
+// idleListHTML pinta la lista de profesionales sin jornadas en el período.
+func idleListHTML(idle []string) string {
+	var b strings.Builder
+	b.WriteString(`<ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.7; color: #060b23; font-family: sans-serif;">`)
+	for _, name := range idle {
+		b.WriteString("<li>" + html.EscapeString(name) + "</li>")
+	}
+	b.WriteString("</ul>")
+	return b.String()
 }
 
 // sendReportWithAttachments arma el correo branded, genera PDF + Excel y envía.
 // periodTitle es el encabezado ("Reporte Diario de Jornadas") y periodLabel el
-// período legible ("08/07/2026", "Julio 2026").
-func (s *workHourService) sendReportWithAttachments(user *models.User, workHours []models.WorkHour, periodTitle, periodLabel string) error {
+// período legible ("08/07/2026", "Julio 2026"). idle son los profesionales
+// activos que no registraron nada en el período (nil si no se calculó).
+//
+// Un período sin ninguna jornada no manda el reporte con todo en 0 y adjuntos
+// vacíos, que el cliente leía como una avería: manda un aviso explícito de que
+// su equipo no registró horas, con quiénes son, y sin adjuntos.
+func (s *workHourService) sendReportWithAttachments(user *models.User, workHours []models.WorkHour, periodTitle, periodLabel string, idle []string) error {
 	var totalHours float64
 	var approvedHours float64
 	var totalAbsences int
@@ -214,25 +261,22 @@ func (s *workHourService) sendReportWithAttachments(user *models.User, workHours
 		}
 	}
 
-	htmlContent := fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head>
-	<meta charset="utf-8">
-</head>
-<body style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f2fb; margin: 0; padding: 20px; color: #060b23;">
-	<div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(6, 11, 35, 0.1), 0 4px 6px -2px rgba(6, 11, 35, 0.05); border: 1px solid #ddd9ef;">
-		
-		<!-- Banner Superior con Degradado de Obertrack (Prussian Blue a Orchid) -->
-		<div style="background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; color: #ffffff; text-align: center;">
-			<img src="https://obertrack.com/logos/Horizontal_Blanco.png" alt="Obertrack Logo" height="40" style="display: block; margin: 0 auto 12px auto; height: 40px; border: 0; outline: none;" />
-			<h1 style="font-size: 20px; font-weight: 700; opacity: 0.95; margin: 0; color: #ffffff; font-family: sans-serif; letter-spacing: -0.01em;">%s</h1>
-			<div style="font-size: 14px; opacity: 0.85; margin-top: 6px; color: #f5f2fb; font-family: sans-serif;">%s</div>
-		</div>
-
-		<!-- Contenido Principal -->
-		<div style="padding: 32px 24px;">
-			<p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px; color: #060b23; font-family: sans-serif;">Hola <strong>%s</strong>,</p>
+	empty := len(workHours) == 0
+	var body string
+	if empty {
+		body = fmt.Sprintf(`
+			<div style="background: #fffbeb; border: 1px solid #f59e0b; border-radius: 12px; padding: 20px; margin-bottom: 24px; font-family: sans-serif;">
+				<p style="font-size: 16px; font-weight: 700; margin: 0 0 8px 0; color: #b45309;">No hay jornadas registradas en %s</p>
+				<p style="font-size: 14px; line-height: 1.6; margin: 0; color: #92400e;">Tu equipo no registró horas en Obertrack durante este período, por eso este reporte no trae cifras ni archivos adjuntos.</p>
+			</div>`, periodLabel)
+		if len(idle) > 0 {
+			body += `
+			<p style="font-size: 14px; font-weight: 700; margin: 0 0 8px 0; color: #060b23; font-family: sans-serif;">Profesionales activos sin registros:</p>
+			` + idleListHTML(idle) + `
+			<p style="font-size: 14px; line-height: 1.6; margin: 20px 0 0 0; color: #5c5680; font-family: sans-serif;">Recuérdales que registren cada día desde la sección <strong>Horas</strong> de Obertrack. Si necesitan ayuda para empezar, nuestro equipo de soporte puede acompañarlos.</p>`
+		}
+	} else {
+		body = fmt.Sprintf(`
 			<p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #5c5680; font-family: sans-serif;">Aquí tienes el informe de horas y asistencia consolidado de tu equipo correspondiente a <strong>%s</strong>.</p>
 			
 			<!-- Rejilla de Estadísticas compatible con Outlook (Tablas) -->
@@ -254,8 +298,37 @@ func (s *workHourService) sendReportWithAttachments(user *models.User, workHours
 					</td>
 				</tr>
 			</table>
+`, periodLabel, totalHours, approvedHours, totalAbsences, totalAbsenceHours)
+		if len(idle) > 0 {
+			body += `
+			<p style="font-size: 14px; font-weight: 700; margin: 0 0 8px 0; color: #b45309; font-family: sans-serif;">Sin jornadas en este período:</p>
+			` + idleListHTML(idle) + `
+			<p style="font-size: 13px; line-height: 1.6; margin: 12px 0 24px 0; color: #8880a8; font-family: sans-serif;">Estos profesionales activos no registraron ningún día.</p>`
+		}
+		body += `
+			<p style="font-size: 13px; line-height: 1.6; margin: 0; color: #8880a8; font-family: sans-serif;">El detalle completo de actividades va en los archivos adjuntos (PDF y Excel).</p>`
+	}
 
-			<p style="font-size: 13px; line-height: 1.6; margin: 0; color: #8880a8; font-family: sans-serif;">El detalle completo de actividades va en los archivos adjuntos (PDF y Excel).</p>
+	htmlContent := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+</head>
+<body style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f2fb; margin: 0; padding: 20px; color: #060b23;">
+	<div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(6, 11, 35, 0.1), 0 4px 6px -2px rgba(6, 11, 35, 0.05); border: 1px solid #ddd9ef;">
+		
+		<!-- Banner Superior con Degradado de Obertrack (Prussian Blue a Orchid) -->
+		<div style="background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; color: #ffffff; text-align: center;">
+			<img src="https://obertrack.com/logos/Horizontal_Blanco.png" alt="Obertrack Logo" height="40" style="display: block; margin: 0 auto 12px auto; height: 40px; border: 0; outline: none;" />
+			<h1 style="font-size: 20px; font-weight: 700; opacity: 0.95; margin: 0; color: #ffffff; font-family: sans-serif; letter-spacing: -0.01em;">%s</h1>
+			<div style="font-size: 14px; opacity: 0.85; margin-top: 6px; color: #f5f2fb; font-family: sans-serif;">%s</div>
+		</div>
+
+		<!-- Contenido Principal -->
+		<div style="padding: 32px 24px;">
+			<p style="font-size: 16px; line-height: 1.6; margin-bottom: 24px; color: #060b23; font-family: sans-serif;">Hola <strong>%s</strong>,</p>
+%s
 		</div>
 
 		<!-- Footer con Estilos Inline de la Marca -->
@@ -265,7 +338,12 @@ func (s *workHourService) sendReportWithAttachments(user *models.User, workHours
 		</div>
 	</div>
 </body>
-</html>`, periodTitle, periodLabel, html.EscapeString(user.Name), periodLabel, totalHours, approvedHours, totalAbsences, totalAbsenceHours)
+</html>`, periodTitle, periodLabel, html.EscapeString(user.Name), body)
+
+	if empty {
+		subject := fmt.Sprintf("Obertrack - Sin jornadas registradas (%s)", periodLabel)
+		return s.brevoSvc.SendEmailKindWithAttachments(EmailKindWorkHourReport, user.Email, user.Name, subject, htmlContent, nil)
+	}
 
 	subject := fmt.Sprintf("Obertrack - Reporte de Jornadas (%s)", periodLabel)
 

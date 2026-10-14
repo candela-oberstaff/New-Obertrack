@@ -24,6 +24,9 @@ type EmploymentRepository interface {
 	ListByUser(userID uint) ([]models.Employment, error)
 	// ListActiveByUser lista solo las membresías activas de un usuario.
 	ListActiveByUser(userID uint) ([]models.Employment, error)
+	// ListActiveProfessionals lista los profesionales con empleo activo en una
+	// empresa (cuentas vivas y activas), con su fecha de ingreso.
+	ListActiveProfessionals(companyID uint) ([]ActiveProfessional, error)
 	// CountActiveByManager cuenta las membresías activas que tienen a managerID
 	// como manager (su equipo vigente). Sirve para impedir quitar el rol de
 	// manager mientras aún tenga profesionales a su cargo.
@@ -163,6 +166,27 @@ func (r *employmentRepository) ListActiveByUser(userID uint) ([]models.Employmen
 		Order("started_at DESC").
 		Find(&employments).Error
 	return employments, err
+}
+
+// ActiveProfessional es un profesional con empleo activo en una empresa.
+type ActiveProfessional struct {
+	UserID    uint      `json:"user_id"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	StartedAt time.Time `json:"started_at"`
+}
+
+func (r *employmentRepository) ListActiveProfessionals(companyID uint) ([]ActiveProfessional, error) {
+	var out []ActiveProfessional
+	err := r.db.Raw(`
+		SELECT u.id AS user_id, u.name, u.email, e.started_at
+		FROM employments e
+		JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL AND u.is_active = true
+		WHERE e.company_id = ? AND e.status = ? AND e.deleted_at IS NULL
+		  AND u.user_type = ?
+		ORDER BY u.name
+	`, companyID, models.EmploymentActive, models.UserTypeProfessional).Scan(&out).Error
+	return out, err
 }
 
 // joinLivingUser acota un conteo de empleos a los que pertenecen a un
