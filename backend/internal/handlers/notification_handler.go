@@ -73,6 +73,48 @@ func (h *NotificationHandler) UnsubscribePush(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Suscripción eliminada"})
 }
 
+type deviceRequest struct {
+	Token    string `json:"token" binding:"required,max=512"`
+	Platform string `json:"platform" binding:"max=16"`
+}
+
+// RegisterDevice registra el teléfono (token FCM) del usuario para recibir
+// notificaciones con la app cerrada.
+func (h *NotificationHandler) RegisterDevice(c *gin.Context) {
+	if h.pushSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Las notificaciones push no están disponibles"})
+		return
+	}
+	var req deviceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token de dispositivo inválido"})
+		return
+	}
+	if err := h.pushSvc.RegisterDevice(middleware.GetUserID(c), req.Token, req.Platform); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo registrar el dispositivo"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Dispositivo registrado"})
+}
+
+// UnregisterDevice da de baja el teléfono al cerrar sesión.
+func (h *NotificationHandler) UnregisterDevice(c *gin.Context) {
+	if h.pushSvc == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+		return
+	}
+	var req deviceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Falta el token"})
+		return
+	}
+	if err := h.pushSvc.UnregisterDevice(middleware.GetUserID(c), req.Token); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo dar de baja el dispositivo"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Dispositivo dado de baja"})
+}
+
 func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 

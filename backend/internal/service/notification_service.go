@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/obertrack/backend/internal/models"
@@ -143,6 +144,19 @@ func (s *notificationService) CreateNotificationChecked(userID uint, notifType, 
 		"message": message,
 		"data":    dataJSON,
 	})
+
+	// A los teléfonos sale siempre por FCM: con la app abierta Android no la
+	// muestra (ya entró por el WebSocket) y con la app cerrada es la única vía.
+	// El `data` lleva la notificación entera para que el toque abra su destino.
+	if s.pusher != nil {
+		go s.pusher.SendToDevices(userID, title, message, map[string]string{
+			"notification_id": strconv.FormatUint(uint64(notification.ID), 10),
+			"type":            notifType,
+			"title":           title,
+			"message":         message,
+			"data":            dataJSON,
+		})
+	}
 
 	// Sin la app abierta, el aviso sale por Web Push a sus navegadores
 	// suscritos (asíncrono: hace HTTP hacia los push services).

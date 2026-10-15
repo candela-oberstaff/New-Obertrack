@@ -53,6 +53,12 @@ services:
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Obertrack}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL:-noreply@obertrack.com}
       BREVO_WEBHOOK_TOKEN: ${BREVO_WEBHOOK_TOKEN}
+      # Push de la app móvil (Firebase Cloud Messaging, proyecto obertrack-7cfd4):
+      # el JSON de la cuenta de servicio. Sin él, el push móvil queda apagado y
+      # todo lo demás sigue igual. Alternativa: FIREBASE_CREDENTIALS_FILE con la
+      # ruta a un archivo montado en el contenedor.
+      FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON:-}
+      FIREBASE_CREDENTIALS_FILE: ${FIREBASE_CREDENTIALS_FILE:-}
       # WAHA (WhatsApp HTTP API): URL de la instancia, API key (X-Api-Key) y
       # nombre de la sesión. Sin WAHA_API_URL el backend intenta localhost:3000.
       # WAHA_SESSION debe coincidir con el nombre de la sesión creada en WAHA.

@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -26,10 +27,13 @@ type WebPushService struct {
 
 	mu   sync.Mutex
 	keys *models.WebPushKeys
+
+	// fcm envía a la app móvil. Nil si no hay cuenta de servicio de Firebase.
+	fcm *FCMSender
 }
 
 func NewWebPushService(repo repository.PushRepository) *WebPushService {
-	return &WebPushService{repo: repo}
+	return &WebPushService{repo: repo, fcm: NewFCMSenderFromEnv()}
 }
 
 // ensureKeys carga (o genera y persiste) el par VAPID. Perezoso y cacheado.
@@ -144,6 +148,44 @@ func (s *WebPushService) SendToUser(userID uint, title, body, link string) {
 				_ = s.repo.DeleteByEndpoint(sub.Endpoint)
 			}
 			resp.Body.Close()
+		}
+	}
+}
+
+// RegisterDevice guarda el token FCM del teléfono del usuario. Si el teléfono
+// era de otra persona, pasa a ser de quien acaba de iniciar sesión.
+func (s *WebPushService) RegisterDevice(userID uint, token, platform string) error {
+	return s.repo.UpsertDevice(&models.DeviceToken{
+		UserID:   userID,
+		Token:    token,
+		Platform: platform,
+	})
+}
+
+// UnregisterDevice deja de mandar avisos a ese teléfono (cierre de sesión).
+func (s *WebPushService) UnregisterDevice(userID uint, token string) error {
+	return s.repo.DeleteDevice(userID, token)
+}
+
+// SendToDevices empuja la notificación a todos los teléfonos del usuario.
+// Best-effort como el Web Push: los fallos se loguean y un token que FCM ya no
+// reconoce se borra. Pensado para una goroutine.
+func (s *WebPushService) SendToDevices(userID uint, title, body string, data map[string]string) {
+	if s.fcm == nil {
+		return
+	}
+	devices, err := s.repo.ListDevicesByUser(userID)
+	if err != nil || len(devices) == 0 {
+		return
+	}
+	for _, d := range devices {
+		err := s.fcm.Send(d.Token, title, body, data)
+		if errors.Is(err, ErrFCMTokenGone) {
+			_ = s.repo.DeleteDeviceByToken(d.Token)
+			continue
+		}
+		if err != nil {
+			log.Printf("[fcm] envío fallido a usuario %d: %v", userID, err)
 		}
 	}
 }

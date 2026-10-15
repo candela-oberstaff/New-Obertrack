@@ -23,6 +23,14 @@ type PushRepository interface {
 	// DeleteByEndpoint borra un endpoint muerto (el push service devolvió 404/410).
 	DeleteByEndpoint(endpoint string) error
 	ListSubscriptionsByUser(userID uint) ([]models.PushSubscription, error)
+
+	// UpsertDevice registra (o reasigna) el token FCM de un teléfono.
+	UpsertDevice(device *models.DeviceToken) error
+	// DeleteDevice borra el token de un usuario (cierre de sesión).
+	DeleteDevice(userID uint, token string) error
+	// DeleteDeviceByToken borra un token que FCM dio por inexistente.
+	DeleteDeviceByToken(token string) error
+	ListDevicesByUser(userID uint) ([]models.DeviceToken, error)
 }
 
 type pushRepository struct {
@@ -69,4 +77,26 @@ func (r *pushRepository) ListSubscriptionsByUser(userID uint) ([]models.PushSubs
 	var subs []models.PushSubscription
 	err := r.db.Where("user_id = ?", userID).Find(&subs).Error
 	return subs, err
+}
+
+func (r *pushRepository) UpsertDevice(device *models.DeviceToken) error {
+	return r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "token"}},
+		DoUpdates: clause.AssignmentColumns([]string{"user_id", "platform", "updated_at"}),
+	}).Create(device).Error
+}
+
+func (r *pushRepository) DeleteDevice(userID uint, token string) error {
+	return r.db.Where("user_id = ? AND token = ?", userID, token).
+		Delete(&models.DeviceToken{}).Error
+}
+
+func (r *pushRepository) DeleteDeviceByToken(token string) error {
+	return r.db.Where("token = ?", token).Delete(&models.DeviceToken{}).Error
+}
+
+func (r *pushRepository) ListDevicesByUser(userID uint) ([]models.DeviceToken, error) {
+	var devices []models.DeviceToken
+	err := r.db.Where("user_id = ?", userID).Find(&devices).Error
+	return devices, err
 }
