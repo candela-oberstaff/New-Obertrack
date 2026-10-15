@@ -3282,6 +3282,17 @@ func Run(db *gorm.DB) error {
 				return tx.Exec(`ALTER TABLE employments DROP COLUMN IF EXISTS removed_channels`).Error
 			},
 		},
+		{
+			// Push a la app móvil: token de Firebase Cloud Messaging por teléfono.
+			ID: "202610151200_device_tokens",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating device_tokens table...")
+				return tx.AutoMigrate(&models.DeviceToken{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(&models.DeviceToken{})
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

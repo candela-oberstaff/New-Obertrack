@@ -129,6 +129,12 @@ func (h *ChannelHandler) GetChannels(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch channels"})
 		return
 	}
+	// Sin canales, una lista vacía y no null: la app móvil leía el null como
+	// un error y le decía a quien aún no está en ningún chat que fallaron.
+	if channels == nil {
+		c.JSON(http.StatusOK, []any{})
+		return
+	}
 
 	c.JSON(http.StatusOK, channels)
 }

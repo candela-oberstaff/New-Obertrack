@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/obertrack/backend/internal/apperrors"
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/service"
 )
@@ -250,6 +251,8 @@ func (h *TaskHandler) Update(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if err.Error() == "Access denied" {
 			status = http.StatusForbidden
+		} else if errors.Is(err, apperrors.ErrInvalidInput) {
+			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return

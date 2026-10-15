@@ -368,6 +368,21 @@ func (h *InductionHandler) ProgramRecipients(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": recipients, "email_enabled": h.svc.InviteEmailEnabled()})
 }
 
+// ProgramSends devuelve las métricas de envío del programa y a quiénes llegó.
+func (h *InductionHandler) ProgramSends(c *gin.Context) {
+	id, ok := parseIDParam(c, "id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Programa inválido"})
+		return
+	}
+	view, err := h.svc.ProgramSends(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, view)
+}
+
 // SendProgram envía el programa ahora a los profesionales elegidos.
 func (h *InductionHandler) SendProgram(c *gin.Context) {
 	id, ok := parseIDParam(c, "id")

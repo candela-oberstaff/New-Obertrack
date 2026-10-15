@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/obertrack/backend/internal/apperrors"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/utils"
@@ -862,6 +863,40 @@ func (s *taskService) Create(userID uint, isSuperadmin bool, tenantID uint, titl
 	return finalTask, finalTask.Assignees, nil
 }
 
+// validateColumn exige que el estado nuevo sea una columna real del tablero.
+// Sin esto, un cliente desactualizado o una petición a mano dejaba la tarea en
+// un estado que ninguna columna pinta: desaparecía del tablero sin estar borrada.
+//
+// "finalizado" se admite siempre, igual que en ToggleCompletion: completar una
+// tarea tiene que poder hacerse aunque el tablero haya renombrado su última
+// columna. Un tablero sin fases (los antiguos) usa los estados de siempre y no
+// se valida.
+func (s *taskService) validateColumn(boardID uint, status string) error {
+	if status == string(models.TaskStatusDone) {
+		return nil
+	}
+	board, err := s.boardRepo.GetByID(boardID)
+	if err != nil || len(board.Phases) == 0 {
+		return nil
+	}
+	for _, p := range board.Phases {
+		if PhaseColumnID(p) == status {
+			return nil
+		}
+	}
+	return unknownColumnError{status: status}
+}
+
+// unknownColumnError lleva el mensaje en español para la pantalla y se reconoce
+// como apperrors.ErrInvalidInput (400) con errors.Is.
+type unknownColumnError struct{ status string }
+
+func (e unknownColumnError) Error() string {
+	return fmt.Sprintf("La columna %q no existe en este tablero", e.status)
+}
+
+func (e unknownColumnError) Unwrap() error { return apperrors.ErrInvalidInput }
+
 func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}, assignees *[]uint, gate map[string]any) (*models.Task, []models.User, error) {
 	task, err := s.authorizeTaskByID(id, tenantID, isSuperadmin)
 	if err != nil {
@@ -935,6 +970,9 @@ func (s *taskService) Update(id uint, tenantID uint, updaterUserID uint, role st
 	// convertiría la puerta en un castigo.
 	var gateResult *GateResult
 	if newStatus != oldStatus {
+		if err := s.validateColumn(task.BoardID, newStatus); err != nil {
+			return nil, nil, err
+		}
 		res, gerr := s.checkGate(task, newStatus, gate)
 		if gerr != nil {
 			return nil, nil, gerr

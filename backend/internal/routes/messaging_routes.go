@@ -32,6 +32,9 @@ func registerMessagingRoutes(api *gin.RouterGroup, d *deps) {
 		notifications.GET("/push/key", d.notification.GetPushKey)
 		notifications.POST("/push/subscriptions", d.notification.SubscribePush)
 		notifications.DELETE("/push/subscriptions", d.notification.UnsubscribePush)
+		// Push de la app móvil (FCM): alta y baja del teléfono.
+		notifications.POST("/push/devices", d.notification.RegisterDevice)
+		notifications.DELETE("/push/devices", d.notification.UnregisterDevice)
 	}
 
 	channels := api.Group("/channels")

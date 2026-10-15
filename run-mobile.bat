@@ -13,6 +13,8 @@ REM
 REM  Uso:
 REM     run-mobile.bat            -> arranque normal
 REM     run-mobile.bat build      -> reconstruye el backend (--build)
+REM     run-mobile.bat prod       -> la app contra PRODUCCION (obertrack.com):
+REM                                  no levanta Docker; datos y cuentas REALES.
 REM ============================================================
 
 REM ---- Config (solo hace falta tocarlo para FIJAR algo a mano) ----
@@ -22,6 +24,9 @@ REM esperando para siempre a un aparato que ya no existe.
 set "DEVICE_ID="
 set "WANTED=%DEVICE_ID%"
 set "BACKEND_PORT=8080"
+REM Puerto del frontend (Vite) para lo que la app abre en la web: induccion,
+REM firma de testimonio. Vite tiene que escuchar en la red (npm run dev -- --host).
+set "WEB_PORT=5173"
 set "API_IP=192.168.100.88"
 
 REM ---- Localizar adb: puede no estar en el PATH aunque Flutter si lo este ----
@@ -31,6 +36,9 @@ where adb >nul 2>&1 || set "ADB=%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.ex
 REM ---- Rebuild opcional del backend ----
 set "BUILD_FLAG="
 if /i "%~1"=="build" set "BUILD_FLAG=--build"
+set "PROD="
+if /i "%~1"=="prod" set "PROD=1"
+set "PROD_URL=https://obertrack.com"
 
 REM ---- Auto-detectar la IP LAN (192.168.x.x); si falla usa la de arriba ----
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4" ^| findstr /c:"192.168."') do (
@@ -44,9 +52,24 @@ if defined DETECTED (
 set "REPO_DIR=%~dp0"
 cd /d "%REPO_DIR%"
 
+if defined PROD (
+    echo ============================================
+    echo   Obertrack - app movil contra PRODUCCION
+    echo   API y web : %PROD_URL%
+    echo   OJO: lo que hagas toca datos y cuentas reales.
+    echo ============================================
+    echo.
+    set "API_URL=%PROD_URL%"
+    set "WEB_URL=%PROD_URL%"
+    goto waitphone_start
+)
+set "API_URL=http://!API_IP!:%BACKEND_PORT%"
+set "WEB_URL=http://!API_IP!:%WEB_PORT%"
+
 echo ============================================
 echo   Obertrack - arranque local
 echo   API      : http://!API_IP!:%BACKEND_PORT%
+echo   Web      : http://!API_IP!:%WEB_PORT%
 echo   Telefono : %DEVICE_ID%
 if defined BUILD_FLAG echo   Backend  : reconstruyendo (--build)
 echo ============================================
@@ -81,6 +104,7 @@ goto waitbackend
 echo       Backend OK.
 
 REM ---- 3) Esperar el telefono ----
+:waitphone_start
 echo.
 echo [3/3] Conecta el telefono por USB (con depuracion USB activada)...
 if defined DEVICE_ID (
@@ -122,8 +146,10 @@ echo       Telefono detectado: !DEVICE_ID!
 REM ---- 4) Lanzar la app ----
 echo.
 echo Lanzando la app en el telefono...
-echo (Si el login dice "No se pudo conectar", revisa que el telefono y la PC
-echo  esten en la misma Wi-Fi y que el Firewall de Windows permita el puerto %BACKEND_PORT%.)
+if not defined PROD (
+    echo (Si el login dice "No se pudo conectar", revisa que el telefono y la PC
+    echo  esten en la misma Wi-Fi y que el Firewall de Windows permita el puerto %BACKEND_PORT%.^)
+)
 echo.
 REM La app movil es un repo aparte (github.com/OsvellChacon/Obertrack-Mobile)
 REM y vive como carpeta hermana de este repo, no dentro de el.
@@ -138,7 +164,7 @@ cd /d "%MOBILE_DIR%"
 REM OJO: "flutter" en Windows es flutter.bat. Sin CALL, cmd transfiere el
 REM control a ese .bat y NO vuelve nunca: al terminar flutter se cierra la
 REM ventana entera y no se llega al pause de abajo.
-call flutter run -d !DEVICE_ID! --dart-define=API_BASE_URL=http://!API_IP!:%BACKEND_PORT%
+call flutter run -d !DEVICE_ID! --dart-define=API_BASE_URL=!API_URL! --dart-define=WEB_BASE_URL=!WEB_URL!
 
 echo.
 echo La app se cerro. Presiona una tecla para salir.

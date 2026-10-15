@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 	"sort"
+	"time"
 
 	"github.com/obertrack/backend/internal/models"
 	"gorm.io/gorm"
@@ -63,6 +64,9 @@ type InductionRepository interface {
 	// tenga otro programa en persona) y, si es el por defecto, los de empresas
 	// sin programa. Con su última invitación, para mostrar su estado.
 	ListProgramRecipients(programID uint, isDefault bool) ([]ProgramRecipient, error)
+	// ListProgramSends son las invitaciones emitidas con el programa, de la
+	// más reciente a la más antigua, con su avance por bloques.
+	ListProgramSends(programID uint) ([]ProgramSend, error)
 
 	// --- Invitaciones ---
 	CreateInvite(invite *models.InductionInvite, blocks []models.InductionInviteBlock) error
@@ -113,6 +117,24 @@ type ProgramRecipient struct {
 	// bloqueo). Enviarle otro programa la reemplaza; una capacitación en
 	// curso, en cambio, no se reemplaza.
 	PendingIngreso bool `json:"pending_ingreso"`
+}
+
+// ProgramSend es una invitación emitida con un programa: a quién se le envió,
+// cuándo y cómo va. Status: pending, passed, blocked o expired (pendiente con
+// el enlace vencido).
+type ProgramSend struct {
+	InviteID     uint       `json:"invite_id"`
+	UserID       uint       `json:"user_id"`
+	Name         string     `json:"name"`
+	Email        string     `json:"email"`
+	Company      string     `json:"company"`
+	Status       string     `json:"status"`
+	GatesAccess  bool       `json:"gates_access"`
+	SentAt       time.Time  `json:"sent_at"`
+	ExpiresAt    time.Time  `json:"expires_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	BlocksPassed int        `json:"blocks_passed"`
+	BlocksTotal  int        `json:"blocks_total"`
 }
 
 type inductionRepository struct {
@@ -282,6 +304,30 @@ func (r *inductionRepository) ListPrograms() ([]models.InductionProgram, error) 
 	for i := range programs {
 		if err := r.loadProgramDetail(&programs[i]); err != nil {
 			return nil, err
+		}
+	}
+	// A cuántas personas se les ha enviado cada programa y cuántas lo
+	// aprobaron, en una sola consulta para todos.
+	var counts []struct {
+		ProgramID uint
+		Sent      int
+		Passed    int
+	}
+	if err := r.db.Raw(`
+		SELECT program_id,
+			COUNT(DISTINCT user_id) AS sent,
+			COUNT(DISTINCT CASE WHEN status = ? THEN user_id END) AS passed
+		FROM induction_invites
+		WHERE deleted_at IS NULL AND program_id IS NOT NULL
+		GROUP BY program_id`, models.InductionPassed).Scan(&counts).Error; err != nil {
+		return nil, err
+	}
+	for i := range programs {
+		for _, c := range counts {
+			if c.ProgramID == programs[i].ID {
+				programs[i].SentCount = c.Sent
+				programs[i].PassedCount = c.Passed
+			}
 		}
 	}
 	return programs, nil
@@ -518,6 +564,34 @@ func (r *inductionRepository) ListProgramRecipients(programID uint, isDefault bo
 		recipients[i].PassedThis = passed[recipients[i].UserID]
 	}
 	return recipients, nil
+}
+
+func (r *inductionRepository) ListProgramSends(programID uint) ([]ProgramSend, error) {
+	sends := []ProgramSend{}
+	// El usuario puede estar borrado: el envío se sigue contando, con lo que
+	// quede de su nombre.
+	err := r.db.Raw(`
+		SELECT i.id AS invite_id, i.user_id, COALESCE(u.name, '') AS name, COALESCE(u.email, '') AS email,
+			COALESCE(NULLIF(c.company_name, ''), c.name, '') AS company,
+			i.status, i.gates_access, i.created_at AS sent_at, i.expires_at, i.completed_at,
+			(SELECT COUNT(*) FROM induction_invite_blocks b WHERE b.invite_id = i.id AND b.status = ?) AS blocks_passed,
+			(SELECT COUNT(*) FROM induction_invite_blocks b WHERE b.invite_id = i.id) AS blocks_total
+		FROM induction_invites i
+		LEFT JOIN users u ON u.id = i.user_id
+		LEFT JOIN users c ON c.id = u.empleador_id AND c.deleted_at IS NULL
+		WHERE i.program_id = ? AND i.deleted_at IS NULL
+		ORDER BY i.created_at DESC, i.id DESC`, models.InductionPassed, programID).
+		Scan(&sends).Error
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	for i := range sends {
+		if sends[i].Status == models.InductionPending && !sends[i].ExpiresAt.IsZero() && now.After(sends[i].ExpiresAt) {
+			sends[i].Status = "expired"
+		}
+	}
+	return sends, nil
 }
 
 func (r *inductionRepository) GetDefaultProgram() (*models.InductionProgram, error) {

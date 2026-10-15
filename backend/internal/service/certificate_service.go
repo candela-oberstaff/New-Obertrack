@@ -702,7 +702,6 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 			drawParagraph(pdf, f, data, font, pageW, pageH, tr)
 			continue
 		}
-		pdf.SetFont(font, style, f.Size)
 		if rgb, ok := hexToRGB(f.Color); ok {
 			pdf.SetTextColor(rgb[0], rgb[1], rgb[2])
 		} else {
@@ -712,19 +711,24 @@ func (s *certificateService) render(t *models.CertificateTemplate, data certific
 		if !utf8Fonts[font] {
 			txt = tr(text)
 		}
-		width := pdf.GetStringWidth(txt)
-		x := pageW * f.X / 100
-		y := pageH * f.Y / 100
-		switch f.Align {
-		case "C":
-			x -= width / 2
-		case "R":
-			x -= width
-		}
+		// Un texto largo (el nombre del programa) se achica o se parte para
+		// no salirse del diseño; el bloque queda centrado en (X, Y).
+		size, lines := fitSingleLine(pdf, font, style, f.Size, txt, singleLineMaxWidth(f, pageW))
 		// Alto de línea en mm (puntos × 0.3528) con un poco de aire.
-		lineH := f.Size * 0.3528 * 1.2
-		pdf.SetXY(x, y-lineH/2)
-		pdf.CellFormat(width+1, lineH, txt, "", 0, "L", false, 0, "")
+		lineH := size * 0.3528 * 1.2
+		top := pageH*f.Y/100 - lineH*float64(len(lines))/2
+		for i, line := range lines {
+			width := pdf.GetStringWidth(line)
+			x := pageW * f.X / 100
+			switch f.Align {
+			case "C":
+				x -= width / 2
+			case "R":
+				x -= width
+			}
+			pdf.SetXY(x, top+lineH*float64(i))
+			pdf.CellFormat(width+1, lineH, line, "", 0, "L", false, 0, "")
+		}
 	}
 	if pdf.Err() {
 		return nil, fmt.Errorf("no se pudo generar el certificado: %v", pdf.Error())

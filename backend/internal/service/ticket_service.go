@@ -1760,7 +1760,7 @@ func (s *ticketService) CreateObervoiceRequest(companyName, requesterEmail strin
 		subject := fmt.Sprintf("📞 SOLICITUD DE OBERVOICE: %s", companyName)
 		body := fmt.Sprintf(`
 			<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; color: #0f172a;">
-				<div style="background: linear-gradient(135deg, #cc33cc 0%%, #8a2be2 100%%); padding: 20px; border-radius: 12px; color: #ffffff; text-align: center; margin-bottom: 24px;">
+				<div style="background-color: #a32fd6; background: linear-gradient(135deg, #cc33cc 0%%, #8a2be2 100%%); padding: 20px; border-radius: 12px; color: #ffffff; text-align: center; margin-bottom: 24px;">
 					<h2 style="margin: 0; font-size: 20px;">📞 Nueva Solicitud de Contratación Obervoice</h2>
 				</div>
 				<p style="font-size: 15px; color: #334155;">Hola,</p>

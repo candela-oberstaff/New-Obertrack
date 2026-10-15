@@ -33,3 +33,20 @@ type WebPushKeys struct {
 func (WebPushKeys) TableName() string {
 	return "web_push_keys"
 }
+
+// DeviceToken es el token de Firebase Cloud Messaging de UN teléfono (app
+// móvil) de UN usuario. Como el endpoint del Web Push, el token identifica al
+// aparato: si otra persona inicia sesión en el mismo teléfono, la fila pasa a
+// ser suya.
+type DeviceToken struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"not null;index" json:"user_id"`
+	Token     string    `gorm:"size:512;uniqueIndex" json:"-"`
+	Platform  string    `gorm:"size:16" json:"platform"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (DeviceToken) TableName() string {
+	return "device_tokens"
+}

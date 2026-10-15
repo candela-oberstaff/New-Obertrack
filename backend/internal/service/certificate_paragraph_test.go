@@ -142,3 +142,38 @@ func TestDefaultCertificateFields_ProgramaComoTitulo(t *testing.T) {
 		t.Fatalf("el programa por defecto va en League Spartan, mayúsculas y negro: %+v", program)
 	}
 }
+
+// Un programa con nombre largo no se sale del diseño: primero se achica la
+// letra y, si no alcanza, se parte en varias líneas dentro de los márgenes.
+func TestFitSingleLine_NoSeSaleDelDiseno(t *testing.T) {
+	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf.AddPage()
+	pageW, _ := pdf.GetPageSize()
+	regular, bold := embeddedFontFiles("Spartan")
+	pdf.AddUTF8FontFromBytes("Spartan", "", regular)
+	pdf.AddUTF8FontFromBytes("Spartan", "B", bold)
+	f := models.CertificateField{Key: models.CertificateFieldProgram, X: 50, Size: 28, Align: "C"}
+	maxW := singleLineMaxWidth(f, pageW)
+
+	size, lines := fitSingleLine(pdf, "Spartan", "B", 28, "PRUEBA DE INDUCCIÓN", maxW)
+	if size != 28 || len(lines) != 1 {
+		t.Fatalf("un título corto queda igual: tamaño %.1f, %d líneas", size, len(lines))
+	}
+
+	long := "ENTRENAMIENTO AL PROFESIONAL REMOTO (EPR) | OBERSTAFF"
+	size, lines = fitSingleLine(pdf, "Spartan", "B", 28, long, maxW)
+	if size >= 28 || len(lines) != 1 || pdf.GetStringWidth(lines[0]) > maxW {
+		t.Fatalf("un título algo largo se achica en una línea: tamaño %.1f, líneas %q", size, lines)
+	}
+
+	longer := strings.Repeat(long+" ", 3)
+	size, lines = fitSingleLine(pdf, "Spartan", "B", 28, longer, maxW)
+	if size < 28*singleLineMinScale-0.01 || len(lines) < 2 {
+		t.Fatalf("uno muy largo se parte sin bajar del mínimo: tamaño %.1f, %d líneas", size, len(lines))
+	}
+	for _, ln := range lines {
+		if w := pdf.GetStringWidth(ln); w > maxW {
+			t.Errorf("la línea %q mide %.1f mm, más que %.1f", ln, w, maxW)
+		}
+	}
+}

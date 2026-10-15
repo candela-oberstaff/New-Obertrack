@@ -319,7 +319,7 @@ func (s *workHourService) sendReportWithAttachments(user *models.User, workHours
 	<div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(6, 11, 35, 0.1), 0 4px 6px -2px rgba(6, 11, 35, 0.05); border: 1px solid #ddd9ef;">
 		
 		<!-- Banner Superior con Degradado de Obertrack (Prussian Blue a Orchid) -->
-		<div style="background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; color: #ffffff; text-align: center;">
+		<div style="background-color: #691f77; background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; color: #ffffff; text-align: center;">
 			<img src="https://obertrack.com/logos/Horizontal_Blanco.png" alt="Obertrack Logo" height="40" style="display: block; margin: 0 auto 12px auto; height: 40px; border: 0; outline: none;" />
 			<h1 style="font-size: 20px; font-weight: 700; opacity: 0.95; margin: 0; color: #ffffff; font-family: sans-serif; letter-spacing: -0.01em;">%s</h1>
 			<div style="font-size: 14px; opacity: 0.85; margin-top: 6px; color: #f5f2fb; font-family: sans-serif;">%s</div>

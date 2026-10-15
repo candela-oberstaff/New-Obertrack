@@ -143,3 +143,30 @@ func TestCurrentBlock(t *testing.T) {
 		t.Fatalf("countCompleted = %d, esperaba 3", got)
 	}
 }
+
+func TestWrongQuestions(t *testing.T) {
+	questions := []models.SurveyQuestion{
+		q(1, "a", 1),
+		q(2, "b", 2),
+		{ID: 3, CorrectAnswer: "", Weight: 1}, // abierta: no puntúa
+		q(4, "Sí", 1),
+	}
+	answers := []SubmittedAnswer{
+		{QuestionID: 1, Value: "a"},
+		{QuestionID: 2, Value: "x"},
+		{QuestionID: 3, Value: "lo que sea"},
+		{QuestionID: 4, Value: "  sí "}, // mayúsculas y espacios no cuentan
+	}
+	got := wrongQuestions(questions, answers)
+	if len(got) != 1 || got[0] != 2 {
+		t.Fatalf("wrongQuestions() = %v, esperaba [2]", got)
+	}
+
+	// Sin responder también está mal, y la lista nunca es nil (viaja como []).
+	if got := wrongQuestions(questions, nil); len(got) != 3 {
+		t.Fatalf("sin respuestas = %v, esperaba 3 preguntas", got)
+	}
+	if got := wrongQuestions(nil, nil); got == nil {
+		t.Fatal("la lista vacía debe ser [] y no nil")
+	}
+}
