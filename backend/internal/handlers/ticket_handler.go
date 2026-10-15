@@ -750,6 +750,7 @@ func ticketDTOFromSupport(t models.SupportTicket) gin.H {
 		"status":             status,
 		"origin":             "support",
 		"user_id":            t.RequesterID,
+		"requester_name":     requesterName,
 		"professional_email": requesterEmail,
 		"professional_phone": "",
 		"company_name":       companyName,
