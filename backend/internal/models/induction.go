@@ -176,6 +176,10 @@ type InductionProgram struct {
 	BlockCount   int `gorm:"-" json:"block_count"`
 	CompanyCount int `gorm:"-" json:"company_count"`
 	UserCount    int `gorm:"-" json:"user_count"`
+	// SentCount y PassedCount: a cuántas personas se les ha enviado el
+	// programa y cuántas lo aprobaron. Solo los llena el listado.
+	SentCount   int `gorm:"-" json:"sent_count"`
+	PassedCount int `gorm:"-" json:"passed_count"`
 }
 
 func (InductionProgram) TableName() string {

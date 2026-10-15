@@ -199,6 +199,36 @@ export interface InductionProgram {
   block_count: number
   company_count: number
   user_count: number
+  /** A cuántas personas se les ha enviado y cuántas lo aprobaron (solo en el listado). */
+  sent_count?: number
+  passed_count?: number
+}
+
+/** Una invitación emitida con un programa: a quién, cuándo y cómo va. */
+export interface ProgramSend {
+  invite_id: number
+  user_id: number
+  name: string
+  email: string
+  company: string
+  status: 'pending' | 'passed' | 'blocked' | 'expired'
+  gates_access: boolean
+  sent_at: string
+  expires_at: string
+  completed_at?: string
+  blocks_passed: number
+  blocks_total: number
+}
+
+/** Métricas de envío: `sent` cuenta envíos; `people`, personas distintas. */
+export interface ProgramSendStats {
+  sent: number
+  people: number
+  pending: number
+  expired: number
+  passed: number
+  blocked: number
+  last_sent_at?: string
 }
 
 /** Profesional que recibe un programa, con el estado de su inducción. */
@@ -423,6 +453,14 @@ export const inductionService = {
       `/inductions/programs/${id}/recipients`
     )
     return { recipients: data.data, emailEnabled: data.email_enabled }
+  },
+
+  /** Métricas de envío del programa y a quiénes se les ha enviado. */
+  programSends: async (id: number) => {
+    const { data } = await api.get<{ stats: ProgramSendStats; sends: ProgramSend[] }>(
+      `/inductions/programs/${id}/sends`
+    )
+    return data
   },
 
   /** Envía el programa ahora, como capacitación, a los profesionales elegidos. */

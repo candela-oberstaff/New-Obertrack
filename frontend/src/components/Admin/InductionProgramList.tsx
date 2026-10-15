@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, Route, Building2, Layers, Star, Users, Send } from 'lucide-react'
+import { Plus, Pencil, Trash2, Route, Building2, Layers, Star, Users, Send, BarChart3 } from 'lucide-react'
 
 import { useConfirm } from '../ui/ConfirmProvider'
 import { useNotification } from '../../context/NotificationContext'
@@ -7,6 +7,7 @@ import { inductionService, type InductionBlock, type InductionProgram } from '..
 import type { TutorialAudienceOption } from '../../types/tutorials'
 import InductionProgramModal from './InductionProgramModal'
 import SendProgramModal from './SendProgramModal'
+import ProgramSendsModal from './ProgramSendsModal'
 import { draftFromProgram, programIssues } from './inductionReadiness'
 import { ReadinessBadge } from './ReadinessChecklist'
 import styles from './InductionSettings.module.css'
@@ -33,6 +34,8 @@ export default function InductionProgramList({ programs, library, companies, onC
   const [busyId, setBusyId] = useState<number | null>(null)
   // Programa que se está enviando ahora (abre la ventana de destinatarios).
   const [sending, setSending] = useState<InductionProgram | null>(null)
+  // Programa cuyas métricas de envío se están viendo.
+  const [viewingSends, setViewingSends] = useState<InductionProgram | null>(null)
 
   const handleDelete = async (program: InductionProgram) => {
     const ok = await confirm({
@@ -84,7 +87,17 @@ export default function InductionProgramList({ programs, library, companies, onC
 
   return (
     <div>
-      {sending && <SendProgramModal program={sending} onClose={() => setSending(null)} />}
+      {sending && (
+        <SendProgramModal
+          program={sending}
+          onClose={() => {
+            setSending(null)
+            // Refresca los contadores de envíos de la lista.
+            void onChanged()
+          }}
+        />
+      )}
+      {viewingSends && <ProgramSendsModal program={viewingSends} onClose={() => setViewingSends(null)} />}
       <div className={styles.toolbar}>
         <p className={styles.intro}>
           Un programa es la lista ordenada de bloques que recorre el profesional. Asigna programas
@@ -147,6 +160,19 @@ export default function InductionProgramList({ programs, library, companies, onC
                       {p.user_count} {p.user_count === 1 ? 'profesional' : 'profesionales'}
                     </span>
                   )}
+                  <button
+                    type="button"
+                    className={styles.sentTag}
+                    title="Ver a quiénes se les ha enviado y cómo va cada uno"
+                    onClick={() => setViewingSends(p)}
+                  >
+                    <BarChart3 size={12} />
+                    {(p.sent_count ?? 0) === 0
+                      ? 'Sin envíos'
+                      : `${p.sent_count} ${p.sent_count === 1 ? 'enviado' : 'enviados'} · ${p.passed_count ?? 0} ${
+                          p.passed_count === 1 ? 'aprobado' : 'aprobados'
+                        }`}
+                  </button>
                   <span>
                     Mínimo {p.default_passing_score}% · {p.max_attempts} intentos por bloque
                   </span>

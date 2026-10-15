@@ -54,6 +54,8 @@ type InductionService interface {
 	SetProgramUsers(id uint, userIDs []uint) (*models.InductionProgram, error)
 	// ProgramRecipients dice a quién le llega el programa y cómo va cada uno.
 	ProgramRecipients(id uint) ([]repository.ProgramRecipient, error)
+	// ProgramSends dice a quiénes y a cuántos se les ha enviado el programa.
+	ProgramSends(id uint) (*ProgramSendsView, error)
 	// InviteEmailEnabled dice si el correo de invitación está encendido en
 	// Configuración → Correos (si no, solo llega por la campanita).
 	InviteEmailEnabled() bool
@@ -835,6 +837,59 @@ func (s *inductionService) ProgramRecipients(id uint) ([]repository.ProgramRecip
 		return nil, errors.New("programa no encontrado")
 	}
 	return s.repo.ListProgramRecipients(program.ID, program.IsDefault)
+}
+
+// ProgramSendStats resume los envíos de un programa. Sent cuenta invitaciones
+// (una persona puede recibirlo más de una vez); People, personas distintas.
+type ProgramSendStats struct {
+	Sent       int        `json:"sent"`
+	People     int        `json:"people"`
+	Pending    int        `json:"pending"`
+	Expired    int        `json:"expired"`
+	Passed     int        `json:"passed"`
+	Blocked    int        `json:"blocked"`
+	LastSentAt *time.Time `json:"last_sent_at,omitempty"`
+}
+
+// ProgramSendsView son las métricas de envío de un programa y el detalle.
+type ProgramSendsView struct {
+	Stats ProgramSendStats         `json:"stats"`
+	Sends []repository.ProgramSend `json:"sends"`
+}
+
+func (s *inductionService) ProgramSends(id uint) (*ProgramSendsView, error) {
+	program, err := s.repo.GetProgram(id)
+	if err != nil {
+		return nil, errors.New("programa no encontrado")
+	}
+	sends, err := s.repo.ListProgramSends(program.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &ProgramSendsView{Stats: summarizeSends(sends), Sends: sends}, nil
+}
+
+func summarizeSends(sends []repository.ProgramSend) ProgramSendStats {
+	stats := ProgramSendStats{Sent: len(sends)}
+	people := map[uint]bool{}
+	for i, snd := range sends {
+		people[snd.UserID] = true
+		switch snd.Status {
+		case models.InductionPending:
+			stats.Pending++
+		case "expired":
+			stats.Expired++
+		case models.InductionPassed:
+			stats.Passed++
+		case models.InductionBlocked:
+			stats.Blocked++
+		}
+		if stats.LastSentAt == nil || snd.SentAt.After(*stats.LastSentAt) {
+			stats.LastSentAt = &sends[i].SentAt
+		}
+	}
+	stats.People = len(people)
+	return stats
 }
 
 // SendProgramResult resume un envío: a cuántos llegó y por qué no a los demás.
