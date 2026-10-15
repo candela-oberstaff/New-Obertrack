@@ -22,6 +22,9 @@ REM esperando para siempre a un aparato que ya no existe.
 set "DEVICE_ID="
 set "WANTED=%DEVICE_ID%"
 set "BACKEND_PORT=8080"
+REM Puerto del frontend (Vite) para lo que la app abre en la web: induccion,
+REM firma de testimonio. Vite tiene que escuchar en la red (npm run dev -- --host).
+set "WEB_PORT=5173"
 set "API_IP=192.168.100.88"
 
 REM ---- Localizar adb: puede no estar en el PATH aunque Flutter si lo este ----
@@ -47,6 +50,7 @@ cd /d "%REPO_DIR%"
 echo ============================================
 echo   Obertrack - arranque local
 echo   API      : http://!API_IP!:%BACKEND_PORT%
+echo   Web      : http://!API_IP!:%WEB_PORT%
 echo   Telefono : %DEVICE_ID%
 if defined BUILD_FLAG echo   Backend  : reconstruyendo (--build)
 echo ============================================
@@ -138,7 +142,7 @@ cd /d "%MOBILE_DIR%"
 REM OJO: "flutter" en Windows es flutter.bat. Sin CALL, cmd transfiere el
 REM control a ese .bat y NO vuelve nunca: al terminar flutter se cierra la
 REM ventana entera y no se llega al pause de abajo.
-call flutter run -d !DEVICE_ID! --dart-define=API_BASE_URL=http://!API_IP!:%BACKEND_PORT%
+call flutter run -d !DEVICE_ID! --dart-define=API_BASE_URL=http://!API_IP!:%BACKEND_PORT% --dart-define=WEB_BASE_URL=http://!API_IP!:%WEB_PORT%
 
 echo.
 echo La app se cerro. Presiona una tecla para salir.
