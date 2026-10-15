@@ -8,6 +8,7 @@ import (
 	"github.com/obertrack/backend/internal/handlers"
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
+	"github.com/obertrack/backend/internal/realtime"
 	"github.com/obertrack/backend/internal/repository"
 	"github.com/obertrack/backend/internal/service"
 	"github.com/obertrack/backend/internal/websocket"
@@ -137,6 +138,10 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	userSvc := service.NewUserService(userRepo, employmentRepo)
 	// Web Push del navegador: las campanitas también llegan con la pestaña
 	// cerrada, pero SOLO cuando el usuario no tiene la app abierta.
+	// Tiempo real: toda escritura en tareas, tableros, jornadas y empleos avisa
+	// por el socket de notificaciones a los conectados de esa empresa, y la web
+	// y la app recargan lo que tienen en pantalla.
+	realtime.Register(db, websocket.GlobalNotifHub)
 	webPushSvc := service.NewWebPushService(repository.NewPushRepository(db))
 	notifSvc := service.NewNotificationService(notifRepo, webPushSvc)
 	chatSvc := service.NewChatService(chatRepo)

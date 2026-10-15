@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { isEmbedMode } from '../embed/session'
 import { workHourService } from '../services/api'
@@ -137,6 +137,14 @@ export function useWorkHours(user: any, options: UseWorkHoursOptions = {}): UseW
   const summary = data?.summary ?? EMPTY_SUMMARY
 
   const fetchData = useCallback(async () => { await refetch() }, [refetch])
+
+  // Tiempo real: otra persona registró, aprobó o rechazó horas de la empresa
+  // (el aviso lo emite Notifications.tsx al llegar un data_changed).
+  useEffect(() => {
+    const handler = () => { void refetch() }
+    window.addEventListener('work-hours-changed', handler)
+    return () => window.removeEventListener('work-hours-changed', handler)
+  }, [refetch])
 
   const createWorkHour = useCallback(async (data: Omit<WorkHourFormData, 'absence_reason' | 'absence_hours' | 'comments'> & { id?: number; absence_reason?: string; absence_hours?: number; comments?: string }) => {
     // Las horas de complete/absence las calcula el servidor según la jornada

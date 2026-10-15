@@ -146,6 +146,18 @@ export default function Notifications() {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data)
+          // Tiempo real: alguien (o una automatización) tocó tareas, tableros o
+          // jornadas de la empresa. No es una notificación: solo se avisa a las
+          // pantallas abiertas para que recarguen (backend/internal/realtime).
+          if (message.type === 'data_changed') {
+            const entity = message.data?.entity
+            if (entity === 'task' || entity === 'board') {
+              window.dispatchEvent(new CustomEvent('tasks-changed'))
+            } else if (entity === 'work_hour') {
+              window.dispatchEvent(new CustomEvent('work-hours-changed'))
+            }
+            return
+          }
           if (LIVE_NOTIFICATION_TYPES.has(message.type)) {
             const newNotification: Notification = {
               id: message.data?.id || Date.now(),
