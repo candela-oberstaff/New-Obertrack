@@ -215,11 +215,11 @@ type LandingView struct {
 	ProgramName      string `json:"program_name"`
 	// GatesAccess: la landing adapta sus textos según si aprobar habilita el
 	// acceso (ingreso) o solo cierra una capacitación.
-	GatesAccess bool `json:"gates_access"`
-	MaxAttempts      int    `json:"max_attempts"`
-	TotalBlocks      int    `json:"total_blocks"`
-	CompletedBlocks  int    `json:"completed_blocks"`
-	Blocks           []LandingBlock `json:"blocks"`
+	GatesAccess     bool           `json:"gates_access"`
+	MaxAttempts     int            `json:"max_attempts"`
+	TotalBlocks     int            `json:"total_blocks"`
+	CompletedBlocks int            `json:"completed_blocks"`
+	Blocks          []LandingBlock `json:"blocks"`
 	// Current es nil cuando la inducción ya se resolvió (aprobada o bloqueada).
 	Current *LandingCurrentBlock `json:"current,omitempty"`
 	// Badges son las insignias que ya ganó, para mostrarlas en el panel.
@@ -257,6 +257,9 @@ type SubmitResult struct {
 	BadgesEarned []models.UserBadge `json:"badges_earned"`
 	// Certificate se emite al completar el programa, si tiene plantilla.
 	Certificate *CertificateSummary `json:"certificate,omitempty"`
+	// WrongQuestionIDs son las preguntas calificables que se respondieron mal,
+	// para que la persona sepa qué repasar. Nunca viaja la respuesta correcta.
+	WrongQuestionIDs []uint `json:"wrong_question_ids"`
 }
 
 // InductionBlockStatus resume un bloque de la invitación para Soporte.
@@ -653,14 +656,14 @@ func (s *inductionService) CreateProgram(actorID uint, in ProgramInput) (*models
 		return nil, err
 	}
 	program := &models.InductionProgram{
-		Name:                in.Name,
-		Description:         in.Description,
-		DefaultPassingScore: in.DefaultPassingScore,
-		MaxAttempts:         in.MaxAttempts,
-		IsActive:            in.IsActive,
-		BadgeTitle:          in.BadgeTitle,
-		BadgeIcon:           in.BadgeIcon,
-		BadgeColor:          in.BadgeColor,
+		Name:                  in.Name,
+		Description:           in.Description,
+		DefaultPassingScore:   in.DefaultPassingScore,
+		MaxAttempts:           in.MaxAttempts,
+		IsActive:              in.IsActive,
+		BadgeTitle:            in.BadgeTitle,
+		BadgeIcon:             in.BadgeIcon,
+		BadgeColor:            in.BadgeColor,
 		CertificateTemplateID: optionalID(in.CertificateTemplateID),
 		CreatedBy:             actorID,
 	}
@@ -701,14 +704,14 @@ func (s *inductionService) UpdateProgram(id uint, in ProgramInput) (*models.Indu
 		return nil, errors.New("el programa por defecto no se puede apagar; elige otro por defecto primero")
 	}
 	updates := map[string]interface{}{
-		"name":                  in.Name,
-		"description":           in.Description,
-		"default_passing_score": in.DefaultPassingScore,
-		"max_attempts":          in.MaxAttempts,
-		"is_active":             in.IsActive,
-		"badge_title":           in.BadgeTitle,
-		"badge_icon":            in.BadgeIcon,
-		"badge_color":           in.BadgeColor,
+		"name":                    in.Name,
+		"description":             in.Description,
+		"default_passing_score":   in.DefaultPassingScore,
+		"max_attempts":            in.MaxAttempts,
+		"is_active":               in.IsActive,
+		"badge_title":             in.BadgeTitle,
+		"badge_icon":              in.BadgeIcon,
+		"badge_color":             in.BadgeColor,
 		"certificate_template_id": optionalIDValue(in.CertificateTemplateID),
 	}
 	if err := s.repo.UpdateProgram(id, updates); err != nil {
@@ -1365,6 +1368,8 @@ func (s *inductionService) Submit(token string, blockID uint, answers []Submitte
 		Passed:       passed,
 		AttemptsLeft: invite.MaxAttempts - attempts,
 		BadgesEarned: []models.UserBadge{},
+
+		WrongQuestionIDs: wrongQuestions(survey.Questions, answers),
 	}
 	if result.AttemptsLeft < 0 {
 		result.AttemptsLeft = 0
@@ -1868,6 +1873,27 @@ func scoreAnswers(questions []models.SurveyQuestion, answers []SubmittedAnswer) 
 		return 100
 	}
 	return float64(earned) / float64(totalWeight) * 100
+}
+
+// wrongQuestions lista, en el orden del cuestionario, las preguntas
+// calificables cuya respuesta no coincide con la correcta. Las que no puntúan
+// (abiertas o sin respuesta correcta) nunca están mal.
+func wrongQuestions(questions []models.SurveyQuestion, answers []SubmittedAnswer) []uint {
+	given := make(map[uint]string, len(answers))
+	for _, a := range answers {
+		given[a.QuestionID] = a.Value
+	}
+	wrong := []uint{}
+	for i := range questions {
+		q := &questions[i]
+		if !q.IsScorable() {
+			continue
+		}
+		if normalizeAnswer(given[q.ID]) != normalizeAnswer(q.CorrectAnswer) {
+			wrong = append(wrong, q.ID)
+		}
+	}
+	return wrong
 }
 
 func normalizeAnswer(v string) string {
