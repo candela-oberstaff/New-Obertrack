@@ -35,7 +35,7 @@ func brandedEmailShell(heading, body string) string {
 <body style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: ` + emailBgColor + `; margin: 0; padding: 20px; color: ` + emailInkColor + `;">
 	<div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(6, 11, 35, 0.1), 0 4px 6px -2px rgba(6, 11, 35, 0.05); border: 1px solid ` + emailBorderColor + `;">
 
-		<div style="background: linear-gradient(135deg, ` + emailInkColor + ` 0%, #cc33cc 100%); padding: 32px 24px; color: #ffffff; text-align: center;">
+		<div style="background-color: #691f77; background: linear-gradient(135deg, ` + emailInkColor + ` 0%, #cc33cc 100%); padding: 32px 24px; color: #ffffff; text-align: center;">
 			<img src="` + emailLogoURL + `" alt="Obertrack" height="40" style="display: block; margin: 0 auto 12px auto; height: 40px; border: 0; outline: none;" />
 			<h1 style="font-size: 20px; font-weight: 700; opacity: 0.95; margin: 0; color: #ffffff; font-family: sans-serif;">` + heading + `</h1>
 		</div>
@@ -54,7 +54,7 @@ func brandedEmailShell(heading, body string) string {
 // emailButton es el botón de acción principal.
 func emailButton(label, href string) string {
 	return `<div style="text-align: center; margin: 32px 0;">
-		<a href="` + href + `" style="display: inline-block; background: linear-gradient(135deg, #cc33cc 0%, #8a2be2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 12px; font-size: 15px; font-weight: 700; font-family: sans-serif; box-shadow: 0 4px 16px rgba(204, 51, 204, 0.35);">` + label + `</a>
+		<a href="` + href + `" style="display: inline-block; background-color: #a32fd6; background: linear-gradient(135deg, #cc33cc 0%, #8a2be2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 12px; font-size: 15px; font-weight: 700; font-family: sans-serif; box-shadow: 0 4px 16px rgba(204, 51, 204, 0.35);">` + label + `</a>
 	</div>`
 }
 

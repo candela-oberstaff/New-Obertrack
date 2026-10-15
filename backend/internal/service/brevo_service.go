@@ -303,7 +303,7 @@ func wrapBrevoHTML(htmlContent string) string {
 		        (5000x1058): el proxy de imágenes de Gmail no sirve la versión
 		        grande y el correo llega con la imagen rota. Cualquier logo que se
 		        ponga aquí debe venir ya redimensionado para correo (~600 px). -->
-		<div style="background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; text-align: center;">
+		<div style="background-color: #691f77; background: linear-gradient(135deg, #060b23 0%%, #cc33cc 100%%); padding: 32px 24px; text-align: center;">
 			<img src="https://obertrack.com/logos/logo-oberstaff.png" alt="Oberstaff" height="40" style="display: block; margin: 0 auto; height: 40px; max-width: 260px; border: 0; outline: none;" />
 			<!-- Oberstaff Logo -->
 		</div>
