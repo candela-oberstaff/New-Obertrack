@@ -146,3 +146,25 @@ func TestFCMSinConfiguracionQuedaApagado(t *testing.T) {
 		t.Fatal("sin variables el push mÃ³vil debe quedar apagado (nil)")
 	}
 }
+
+func TestFCMJornadaNuevaVaSoloConDataParaLlevarBotones(t *testing.T) {
+	srv, _, sent := fakeFCMServer(t, http.StatusOK, `{"name":"projects/x/messages/2"}`)
+	s := newTestSender(t, srv)
+
+	data := map[string]string{"notification_id": "9", "type": "work_hour_created", "title": "Nueva jornada registrada"}
+	if err := s.Send("device-abc", "Nueva jornada registrada", "Ana registró una jornada", data); err != nil {
+		t.Fatalf("Send() = %v", err)
+	}
+	msg, _ := (*sent)["message"].(map[string]any)
+	if _, ok := msg["notification"]; ok {
+		t.Fatalf("una jornada nueva no debe llevar bloque notification: %v", msg)
+	}
+	got, _ := msg["data"].(map[string]any)
+	if got["type"] != "work_hour_created" || got["title"] != "Nueva jornada registrada" {
+		t.Fatalf("data = %v", got)
+	}
+	android, _ := msg["android"].(map[string]any)
+	if android["priority"] != "HIGH" {
+		t.Fatalf("android = %v", android)
+	}
+}

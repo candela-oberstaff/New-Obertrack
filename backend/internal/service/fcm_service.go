@@ -166,18 +166,22 @@ func (s *FCMSender) Send(deviceToken, title, body string, data map[string]string
 	if err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(map[string]any{
-		"message": map[string]any{
-			"token":        deviceToken,
-			"notification": map[string]string{"title": title, "body": body},
-			"data":         data,
-			"android": map[string]any{
-				"priority": "HIGH",
-				// Avisos que caducan: no tiene sentido entregar uno de hace días.
-				"ttl": "43200s",
-			},
+	message := map[string]any{
+		"token": deviceToken,
+		"data":  data,
+		"android": map[string]any{
+			"priority": "HIGH",
+			// Avisos que caducan: no tiene sentido entregar uno de hace días.
+			"ttl": "43200s",
 		},
-	})
+	}
+	// Los avisos con botones (aprobar una jornada desde la notificación) van
+	// solo con `data`: así los pinta la app, que es la que puede ponerles
+	// acciones. El título y el texto ya viajan dentro del `data`.
+	if !fcmActionable[data["type"]] {
+		message["notification"] = map[string]string{"title": title, "body": body}
+	}
+	payload, _ := json.Marshal(map[string]any{"message": message})
 	req, _ := http.NewRequest(http.MethodPost, s.sendURL, bytes.NewReader(payload))
 	req.Header.Set("Authorization", "Bearer "+access)
 	req.Header.Set("Content-Type", "application/json")
@@ -194,6 +198,14 @@ func (s *FCMSender) Send(deviceToken, title, body string, data map[string]string
 		return ErrFCMTokenGone
 	}
 	return fmt.Errorf("fcm %d: %s", resp.StatusCode, raw)
+}
+
+// fcmActionable son los tipos de notificación que la app muestra por su cuenta
+// con botones. Una app vieja que no los conozca no los enseña con la app
+// cerrada (le llegan igual por la bandeja y el WebSocket), así que la lista
+// crece solo cuando la app publicada ya sabe pintarlos.
+var fcmActionable = map[string]bool{
+	"work_hour_created": true,
 }
 
 // fcmTokenGone reconoce las respuestas de FCM que significan "este token no

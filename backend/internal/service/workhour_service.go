@@ -299,15 +299,15 @@ func (s *workHourService) Create(userID uint, reqData map[string]interface{}) (*
 					// Con el flag ON notificamos a TODOS los managers del empleo.
 					if managerIDs, err := s.employmentRepo.ListManagerIDs(finalWH.UserID, finalWH.TenantID); err == nil {
 						for _, managerID := range managerIDs {
-							_ = s.notifSvc.CreateNotification(managerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "link": "/work-hours"})
+							_ = s.notifSvc.CreateNotification(managerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "hours": finalWH.HoursWorked, "link": "/work-hours"})
 						}
 					}
 				} else if emp, err := s.employmentRepo.GetActive(finalWH.UserID, finalWH.TenantID); err == nil && emp != nil && emp.ManagerID != nil {
-					_ = s.notifSvc.CreateNotification(*emp.ManagerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "link": "/work-hours"})
+					_ = s.notifSvc.CreateNotification(*emp.ManagerID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "hours": finalWH.HoursWorked, "link": "/work-hours"})
 				}
 				// Notificar al Empleador
 				if user.EmpleadorID != nil {
-					_ = s.notifSvc.CreateNotification(*user.EmpleadorID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "link": "/work-hours"})
+					_ = s.notifSvc.CreateNotification(*user.EmpleadorID, "work_hour_created", "Nueva jornada registrada", fmt.Sprintf("%s registró una jornada para el %s", user.Name, finalWH.WorkDate.Format("02/01")), map[string]interface{}{"id": finalWH.ID, "hours": finalWH.HoursWorked, "link": "/work-hours"})
 				}
 			}
 		}()
