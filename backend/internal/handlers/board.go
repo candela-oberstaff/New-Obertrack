@@ -42,7 +42,8 @@ type UpdateBoardRequest struct {
 
 func boardMembershipStatus(err error) int {
 	switch {
-	case errors.Is(err, service.ErrBoardNotFound), errors.Is(err, service.ErrInvitationNotFound):
+	case errors.Is(err, service.ErrBoardNotFound), errors.Is(err, service.ErrInvitationNotFound),
+		errors.Is(err, service.ErrInvitationBoardGone):
 		return http.StatusNotFound
 	case errors.Is(err, service.ErrBoardAccessDenied):
 		return http.StatusForbidden
