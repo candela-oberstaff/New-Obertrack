@@ -156,10 +156,16 @@ func (r *boardRepository) HasPendingInvitation(boardID, userID uint) (bool, erro
 	return count > 0, err
 }
 
+// liveBoardInvitation descarta invitaciones cuyo tablero se eliminó (está en la
+// Papelera o ya no existe). No se cancelan al borrar el tablero para que vuelvan
+// a valer si se restaura; la purga de la Papelera las elimina del todo.
+const liveBoardInvitation = "EXISTS (SELECT 1 FROM boards b WHERE b.id = board_invitations.board_id AND b.deleted_at IS NULL)"
+
 func (r *boardRepository) ListPendingInvitationsForUser(userID uint) ([]models.BoardInvitation, error) {
 	var invs []models.BoardInvitation
 	err := r.db.
 		Where("user_id = ? AND kind = ? AND status = ?", userID, models.BoardInviteKindInvitation, models.BoardInviteStatusPending).
+		Where(liveBoardInvitation).
 		Preload("Board").Preload("Board.Creator").Preload("Inviter").
 		Order("created_at DESC").Find(&invs).Error
 	return invs, err
@@ -179,6 +185,7 @@ func (r *boardRepository) ListPendingBoardIDsForUser(userID uint) ([]uint, error
 	var ids []uint
 	err := r.db.Model(&models.BoardInvitation{}).
 		Where("user_id = ? AND status = ?", userID, models.BoardInviteStatusPending).
+		Where(liveBoardInvitation).
 		Pluck("board_id", &ids).Error
 	return ids, err
 }

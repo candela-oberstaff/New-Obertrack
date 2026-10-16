@@ -9,14 +9,15 @@ import (
 )
 
 var (
-	ErrBoardNotFound      = errors.New("Tablero no encontrado")
-	ErrBoardAccessDenied  = errors.New("Access denied")
-	ErrAlreadyBoardMember = errors.New("Ya eres miembro de este tablero")
-	ErrAlreadyPending     = errors.New("Ya existe una invitación o solicitud pendiente para este tablero")
-	ErrInvitationNotFound = errors.New("Invitación no encontrada")
-	ErrInvitationResolved = errors.New("Esta invitación ya fue resuelta")
-	ErrCreatorCannotLeave = errors.New("El creador no puede salir de su propio tablero")
-	ErrNotBoardMember     = errors.New("No eres miembro de este tablero")
+	ErrBoardNotFound       = errors.New("Tablero no encontrado")
+	ErrBoardAccessDenied   = errors.New("Access denied")
+	ErrAlreadyBoardMember  = errors.New("Ya eres miembro de este tablero")
+	ErrAlreadyPending      = errors.New("Ya existe una invitación o solicitud pendiente para este tablero")
+	ErrInvitationNotFound  = errors.New("Invitación no encontrada")
+	ErrInvitationResolved  = errors.New("Esta invitación ya fue resuelta")
+	ErrInvitationBoardGone = errors.New("El tablero de esta invitación ya fue eliminado")
+	ErrCreatorCannotLeave  = errors.New("El creador no puede salir de su propio tablero")
+	ErrNotBoardMember      = errors.New("No eres miembro de este tablero")
 )
 
 type BoardService interface {
@@ -589,7 +590,7 @@ func (s *boardService) ResolveInvitation(invID, userID uint, role string, isMana
 
 	board, err := s.repo.GetByID(inv.BoardID)
 	if err != nil {
-		return nil, ErrBoardNotFound
+		return nil, ErrInvitationBoardGone
 	}
 
 	switch inv.Kind {
@@ -666,7 +667,7 @@ func (s *boardService) CancelInvitation(invID, userID uint, role string, isManag
 
 	board, err := s.repo.GetByID(inv.BoardID)
 	if err != nil {
-		return ErrBoardNotFound
+		return ErrInvitationBoardGone
 	}
 
 	isOwnRequest := inv.Kind == models.BoardInviteKindRequest && inv.UserID == userID
