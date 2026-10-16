@@ -25,6 +25,10 @@ type WorkHourService interface {
 	Reject(ids []uint, userID uint, role string, isSuperadmin bool, isManager bool, tenantID uint, reason string) (int, int, error)
 	GetSummary(userID uint, role string, isSuperadmin, isManager bool, tenantID, companyFilter uint, userIDFilter string) (map[string]float64, error)
 	GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string) ([]models.WorkHour, error)
+	// GetPendingSince es GetPending desde una fecha dada en lugar del día 1 del
+	// mes en curso: lo usa quien aprueba para no dejar colgadas las jornadas
+	// de meses anteriores.
+	GetPendingSince(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string, since time.Time) ([]models.WorkHour, error)
 	SendReportEmail(userID uint, role string, isSuperadmin, isManager bool, tenantID uint, month int, year int, companyFilter uint) error
 	// SendPeriodReport envía el reporte de una empresa para un rango arbitrario
 	// de fechas. Lo usa el worker de envíos automáticos.
@@ -452,7 +456,7 @@ func (s *workHourService) Approve(ids []uint, userID uint, role string, isSupera
 		if isSuperadmin {
 			canApprove = true
 		} else if role == string(models.UserTypeEmployer) || role == "empleador" {
-			if wh.User.EmpleadorID != nil && *wh.User.EmpleadorID == userID {
+			if employerCanDecide(wh, userID) {
 				canApprove = true
 			}
 		} else if isManager {
@@ -581,7 +585,7 @@ func (s *workHourService) Reject(ids []uint, userID uint, role string, isSuperad
 		if isSuperadmin {
 			canReject = true
 		} else if role == string(models.UserTypeEmployer) || role == "empleador" {
-			if wh.User.EmpleadorID != nil && *wh.User.EmpleadorID == userID {
+			if employerCanDecide(wh, userID) {
 				canReject = true
 			}
 		} else if isManager {
@@ -731,15 +735,18 @@ func (s *workHourService) GetSummary(userID uint, role string, isSuperadmin, isM
 }
 
 func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string) ([]models.WorkHour, error) {
+	now := time.Now()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	return s.GetPendingSince(tenantID, userID, role, isSuperadmin, isManager, companyFilter, userIDFilter, startOfMonth)
+}
+
+func (s *workHourService) GetPendingSince(tenantID, userID uint, role string, isSuperadmin bool, isManager bool, companyFilter uint, userIDFilter string, since time.Time) ([]models.WorkHour, error) {
 	filters := make(map[string]interface{})
 	filters["approved"] = false
 	filters["rejected"] = false
 
-	// Filter to current month
-	now := time.Now()
-	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-	filters["start_date"] = startOfMonth
-	filters["end_date"] = now
+	filters["start_date"] = since
+	filters["end_date"] = time.Now()
 
 	if isSuperadmin {
 		// Superadmin must scope to a company; otherwise return nothing.
@@ -795,5 +802,31 @@ func (s *workHourService) GetPending(tenantID, userID uint, role string, isSuper
 	}
 
 	res, _, err := s.repo.FindAll(filters, 0, 1000)
-	return res, err
+	if err != nil || !isEmployerRole(role) {
+		return res, err
+	}
+	// La empresa no decide sus propias jornadas (ver employerCanDecide): si
+	// las listara quedarían en "por aprobar" sin que nadie pueda aprobarlas.
+	out := res[:0]
+	for _, wh := range res {
+		if wh.UserID != userID {
+			out = append(out, wh)
+		}
+	}
+	return out, nil
+}
+
+// employerCanDecide: la empresa aprueba o rechaza cualquier jornada de SU
+// empresa (la misma regla con la que lista los pendientes: tenant_id = la
+// empresa), salvo las propias. Antes exigía que la persona tuviera a esta
+// empresa como empleador principal (empleador_id), así que quien trabaja aquí
+// con otro empleo principal salía en la lista y al aprobarla daba 403.
+func employerCanDecide(wh models.WorkHour, employerID uint) bool {
+	if wh.UserID == employerID {
+		return false
+	}
+	if wh.TenantID == employerID {
+		return true
+	}
+	return wh.User.EmpleadorID != nil && *wh.User.EmpleadorID == employerID
 }

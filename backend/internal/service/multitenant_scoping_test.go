@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/repository"
@@ -489,5 +490,85 @@ func TestChannelUsers_NonSuperadmin_UsesOwnTenant(t *testing.T) {
 	}
 	if !repo.activeCalled || repo.activeTenant != 3 {
 		t.Fatalf("expected GetActiveUsers(3,...), tenant=%d", repo.activeTenant)
+	}
+}
+
+// Quien aprueba puede pedir pendientes desde una fecha anterior al mes en
+// curso; sin fecha sigue siendo el día 1 del mes.
+func TestWorkHoursPending_SinceDate(t *testing.T) {
+	repo := &fakeWHRepo{}
+	s := &workHourService{repo: repo}
+
+	since := time.Date(2026, 8, 1, 0, 0, 0, 0, time.Local)
+	if _, err := s.GetPendingSince(0, 1, "superadmin", true, false, 5, "", since); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := repo.findFilters["start_date"].(time.Time); !ok || !got.Equal(since) {
+		t.Fatalf("start_date: want %v, got %v", since, repo.findFilters["start_date"])
+	}
+
+	repo = &fakeWHRepo{}
+	s = &workHourService{repo: repo}
+	if _, err := s.GetPending(0, 1, "superadmin", true, false, 5, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := repo.findFilters["start_date"].(time.Time)
+	if got.Day() != 1 || got.Month() != time.Now().Month() {
+		t.Fatalf("sin fecha debe ser el día 1 del mes en curso, got %v", got)
+	}
+}
+
+// La empresa decide las jornadas de su empresa aunque la persona tenga otro
+// empleo principal, y nunca las suyas propias.
+func TestEmployerCanDecide(t *testing.T) {
+	const empresa uint = 2
+	otra := uint(9)
+	cases := []struct {
+		name string
+		wh   models.WorkHour
+		want bool
+	}{
+		{"de su empresa, empleo principal aquí",
+			models.WorkHour{UserID: 30, TenantID: empresa, User: models.User{EmpleadorID: &[]uint{empresa}[0]}}, true},
+		{"de su empresa, empleo principal en otra",
+			models.WorkHour{UserID: 31, TenantID: empresa, User: models.User{EmpleadorID: &otra}}, true},
+		{"de su empresa, sin usuario cargado",
+			models.WorkHour{UserID: 32, TenantID: empresa}, true},
+		{"propia de la cuenta de empresa",
+			models.WorkHour{UserID: empresa, TenantID: empresa}, false},
+		{"de otra empresa",
+			models.WorkHour{UserID: 33, TenantID: otra, User: models.User{EmpleadorID: &otra}}, false},
+	}
+	for _, c := range cases {
+		if got := employerCanDecide(c.wh, empresa); got != c.want {
+			t.Errorf("%s: want %v, got %v", c.name, c.want, got)
+		}
+	}
+}
+
+type fakeWHRepoRows struct {
+	fakeWHRepo
+	rows []models.WorkHour
+}
+
+func (f *fakeWHRepoRows) FindAll(filters map[string]interface{}, a, b int) ([]models.WorkHour, int64, error) {
+	_, _, _ = f.fakeWHRepo.FindAll(filters, a, b)
+	return f.rows, int64(len(f.rows)), nil
+}
+
+// Los pendientes de la empresa no incluyen sus propias jornadas: nadie podría
+// aprobarlas desde ahí y quedaban colgadas en la lista.
+func TestWorkHoursPending_EmployerSkipsOwn(t *testing.T) {
+	repo := &fakeWHRepoRows{rows: []models.WorkHour{
+		{ID: 1, UserID: 30, TenantID: 2},
+		{ID: 2, UserID: 2, TenantID: 2},
+	}}
+	s := &workHourService{repo: repo}
+	res, err := s.GetPending(2, 2, "empleador", false, false, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 || res[0].ID != 1 {
+		t.Fatalf("want only the team's row, got %+v", res)
 	}
 }
