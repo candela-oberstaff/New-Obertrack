@@ -60,6 +60,10 @@ export default defineConfig({
         target: 'http://localhost:8080',
         ws: true,
       },
+      // Metadata OAuth del MCP (asistentes de IA), servida por el backend.
+      '/.well-known/oauth-': {
+        target: 'http://localhost:8080',
+      },
     },
   },
 } as UserConfig & { test?: Record<string, any> })

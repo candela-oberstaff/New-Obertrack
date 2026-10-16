@@ -6,6 +6,7 @@ import (
 
 	"github.com/obertrack/backend/internal/config"
 	"github.com/obertrack/backend/internal/handlers"
+	"github.com/obertrack/backend/internal/mcp"
 	"github.com/obertrack/backend/internal/middleware"
 	"github.com/obertrack/backend/internal/models"
 	"github.com/obertrack/backend/internal/realtime"
@@ -72,6 +73,8 @@ type deps struct {
 	workflow              *handlers.WorkflowHandler
 	testimonial           *handlers.TestimonialHandler
 	crmSSO                *handlers.CrmSSOHandler
+	// mcp es el servidor MCP de solo lectura (asistentes de IA) y su OAuth.
+	mcp *mcp.Handler
 
 	// wahaSvc is needed by the /tickets/waha/status inline route.
 	wahaSvc *service.WahaService
@@ -325,10 +328,31 @@ func buildDeps(db *gorm.DB, cfg *config.Config) *deps {
 	adminSvc.SetRecruitmentAttachmentDeps(uploadSvc, companyThreadSvc)
 	obersuiteCompanyH.SetRecruitmentDeps(companyThreadSvc, os.Getenv("UPLOAD_PATH"))
 
+	tvGetter := func(userID uint) (int, error) { return authSvc.GetTokenVersion(userID) }
+
+	// MCP de solo lectura para asistentes de IA. Reutiliza el login (las
+	// mismas verificaciones de acceso), la auditoría, el RBAC y el alcance de
+	// equipo de la web; las consultas van por su propio pool READ ONLY.
+	mcpHandler := &mcp.Handler{
+		Svc: &mcp.Service{
+			DB:        db,
+			Users:     userRepo,
+			CanSignIn: authSvc.AssertCanSignIn,
+			Audit:     auditSvc,
+			Dev:       os.Getenv("GIN_MODE") != "release",
+		},
+		RO:        mcp.NewReadOnlyDB(db, mcp.DSNConfig{Host: cfg.DBHost, Port: cfg.DBPort, Name: cfg.DBName, SSLMode: cfg.DBSSLMode}),
+		ScopeDeps: mcp.ScopeDeps{UserRepo: userRepo, EmpRepo: employmentRepo, RBAC: rbacSvc},
+		JWTSecret: cfg.JWTSecret,
+		TVGetter:  tvGetter,
+		BaseURL:   service.FrontendBaseURL,
+	}
+
 	return &deps{
 		cfg: cfg,
 		// Session-revocation lookup used by the auth middleware (audit A-04).
-		tvGetter: func(userID uint) (int, error) { return authSvc.GetTokenVersion(userID) },
+		tvGetter: tvGetter,
+		mcp:      mcpHandler,
 
 		auth:             handlers.NewAuthHandler(authSvc, auditSvc, rbacSvc, employmentSvc),
 		user:             handlers.NewUserHandler(userSvc),

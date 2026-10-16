@@ -1640,6 +1640,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .blockPreviewLabel {
@@ -1710,6 +1711,12 @@
   border-top: 1px dashed #f0abfc;
   font-size: 13px;
   color: #475569;
+}
+
+/* Un título sin espacios no debe empujar el modal hacia los lados. */
+.blockPreviewBadge > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* --- Paso de video: lista a la izquierda, el elegido a la derecha --- */

@@ -4,6 +4,7 @@ import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 import styles from './Auth.module.css'
 import AuthLayout from '../components/layout/AuthLayout'
+import { currentReturnTo } from '../lib/returnTo'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -20,6 +21,13 @@ export default function Login() {
 
     try {
       await login(email, password)
+      // Si venía de autorizar un asistente de IA, vuelve a esa página (la
+      // sirve el backend, no la SPA: por eso es una navegación completa).
+      const returnTo = currentReturnTo()
+      if (returnTo) {
+        window.location.assign(returnTo)
+        return
+      }
       navigate('/dashboard')
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.status === 429) {

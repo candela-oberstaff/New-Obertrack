@@ -24,6 +24,7 @@ import type { Task, Board } from '../../../types'
 import type { ColumnType, Phase } from '../types'
 import { phaseStatusId } from '../phaseStatus'
 import { columnInViewOrder, moveCard } from './boardDrag'
+import type { TaskSortMode } from '../taskSort'
 import styles from '../../../pages/Tasks.module.css'
 
 const DEFAULT_PHASE_COLOR = '#6b7280'
@@ -106,6 +107,38 @@ export function TasksBoard({
       return next
     })
   }, [collapseStorageKey])
+
+  // Orden de cada columna (manual o por fecha de entrega), persistido por
+  // tablero como las colapsadas. Es solo una vista: no toca task.order.
+  const sortStorageKey = `columnSort:${selectedBoard?.id ?? 'default'}`
+  const [columnSort, setColumnSort] = useState<Record<string, TaskSortMode>>({})
+
+  useEffect(() => {
+    try {
+      setColumnSort(JSON.parse(localStorage.getItem(sortStorageKey) || '{}'))
+    } catch {
+      setColumnSort({})
+    }
+  }, [sortStorageKey])
+
+  const changeColumnSort = useCallback((columnId: string, mode: TaskSortMode) => {
+    setColumnSort((prev) => {
+      const next = { ...prev }
+      if (mode === 'manual') delete next[columnId]
+      else next[columnId] = mode
+      try {
+        localStorage.setItem(sortStorageKey, JSON.stringify(next))
+      } catch {
+        // Sin almacenamiento (modo privado): el orden vale solo esta sesión.
+      }
+      return next
+    })
+  }, [sortStorageKey])
+
+  // En una columna ordenada por fecha, arrastrar DENTRO de ella no reordena:
+  // la vista manda la fecha, y reescribir el orden manual a ciegas haría que
+  // al volver a "Manual" las tarjetas aparecieran en otro sitio.
+  const isSortedByDate = useCallback((status: string) => (columnSort[status] ?? 'manual') !== 'manual', [columnSort])
 
   // Inline "add phase" state
   const [addingPhase, setAddingPhase] = useState(false)
@@ -216,13 +249,14 @@ export function TasksBoard({
     // boardDrag.ts). Se mueve sobre la lista completa y la visible toma de ahí
     // las tarjetas actualizadas, para que las dos digan lo mismo.
     const overTaskId = typeof overId === 'string' ? null : Number(overId)
+    if (activeTaskObj.status === targetStatus && isSortedByDate(targetStatus)) return
     const base = localAllTasks.some((t) => t.id === activeId) ? localAllTasks : localTasks
     const next = moveCard(base, activeId, boardId, targetStatus, overTaskId)
     if (next === base) return
     const byId = new Map(next.map((t) => [t.id, t]))
     setLocalAllTasks(next)
     setLocalTasks((prev) => prev.map((t) => byId.get(t.id) ?? t))
-  }, [localTasks, localAllTasks, getCurrentColumns, selectedBoard?.id])
+  }, [localTasks, localAllTasks, getCurrentColumns, selectedBoard?.id, isSortedByDate])
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event
@@ -262,7 +296,7 @@ export function TasksBoard({
       const wasSameColumn = originalTaskObj && originalTaskObj.status === targetStatus
 
       if (wasSameColumn) {
-        if (!onReorderColumn) return
+        if (!onReorderColumn || isSortedByDate(targetStatus)) return
         await onReorderColumn(boardId, targetStatus, ids)
       } else if (onMoveTask) {
         await onMoveTask(activeId, boardId, targetStatus, ids)
@@ -281,7 +315,7 @@ export function TasksBoard({
         showError(backendMsg || 'No se pudo mover la tarea. Inténtalo de nuevo.')
       }
     }
-  }, [tasks, allTasks, localTasks, localAllTasks, selectedBoard, onUpdateTask, onMoveTask, onReorderColumn, showError])
+  }, [tasks, allTasks, localTasks, localAllTasks, selectedBoard, onUpdateTask, onMoveTask, onReorderColumn, showError, isSortedByDate])
 
   return (
     <DndContext
@@ -314,6 +348,8 @@ export function TasksBoard({
               isColumnDragOver={dragOverColIdx === idx && draggedColIdx !== idx}
               isCollapsed={collapsedColumns.includes(column.id)}
               onToggleCollapse={toggleCollapse}
+              sortMode={columnSort[column.id] ?? 'manual'}
+              onSortChange={(mode) => changeColumnSort(column.id, mode)}
               onColumnDragStart={handleColDragStart}
               onColumnDragEnter={handleColDragEnter}
               onColumnDrop={handleColDrop}

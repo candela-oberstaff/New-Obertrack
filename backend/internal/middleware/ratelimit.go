@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -166,6 +167,32 @@ func IntegrationRateLimitMiddleware() gin.HandlerFunc {
 				"error": "Demasiadas peticiones seguidas. Reintenta en un minuto.",
 			})
 			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+// KeyedRateLimit crea un limitador por IP propio, con su límite y su ventana,
+// para endpoints que necesitan un tope distinto del global (p. ej. el registro
+// de clientes OAuth del MCP: 20 por hora). Responde 429 con Retry-After.
+func KeyedRateLimit(prefix string, limit int, window time.Duration) gin.HandlerFunc {
+	rl := &rateLimiter{requests: make(map[string][]time.Time), limit: limit, window: window}
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			rl.cleanup()
+		}
+	}()
+	retryAfter := strconv.Itoa(int(window.Seconds()))
+	return func(c *gin.Context) {
+		if !rl.isAllowed(prefix + ":" + c.ClientIP()) {
+			c.Header("Retry-After", retryAfter)
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error":             "too_many_requests",
+				"error_description": "Demasiadas solicitudes. Inténtalo de nuevo más tarde.",
+			})
 			return
 		}
 		c.Next()

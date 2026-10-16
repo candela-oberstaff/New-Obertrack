@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/obertrack/backend/internal/middleware"
@@ -249,7 +250,22 @@ func (h *WorkHourHandler) GetPending(c *gin.Context) {
 	companyFilter := superadminCompanyFilter(c, isSuperadmin)
 	userIDFilter := c.Query("user_id")
 
-	pending, err := h.svc.GetPending(tenantID, userID, role, isSuperadmin, isManager, companyFilter, userIDFilter)
+	// Sin start_date, el mes en curso (lo de siempre). Con start_date
+	// (YYYY-MM-DD), desde esa fecha, hasta un año atrás como mucho: así quien
+	// aprueba ve también lo que quedó pendiente de meses anteriores.
+	since := time.Now()
+	since = time.Date(since.Year(), since.Month(), 1, 0, 0, 0, 0, since.Location())
+	if raw := c.Query("start_date"); raw != "" {
+		if d, err := time.ParseInLocation("2006-01-02", raw, time.Local); err == nil {
+			oldest := time.Now().AddDate(-1, 0, 0)
+			if d.Before(oldest) {
+				d = oldest
+			}
+			since = d
+		}
+	}
+
+	pending, err := h.svc.GetPendingSince(tenantID, userID, role, isSuperadmin, isManager, companyFilter, userIDFilter, since)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err.Error() == "Only employers can access this resource" {

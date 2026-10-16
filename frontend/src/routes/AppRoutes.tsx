@@ -26,6 +26,7 @@ const TenantDetail = lazy(() => import('../pages/Tenants/TenantDetail'))
 const EmployeeDetail = lazy(() => import('../pages/Tenants/EmployeeDetail'))
 const Tools = lazy(() => import('../components/Admin/Tools'))
 const Metrics = lazy(() => import('../pages/Metrics'))
+const Integraciones = lazy(() => import('../pages/Integraciones'))
 const AuditLogs = lazy(() => import('../pages/AuditLogs'))
 const Tutoriales = lazy(() => import('../pages/Tutoriales'))
 const Formaciones = lazy(() => import('../pages/Formaciones'))
@@ -133,6 +134,9 @@ export function AppRoutes() {
           <Route path="admin/metrics" element={<MetricsRoute><Metrics /></MetricsRoute>} />
           <Route path="admin/audit" element={<PlatformTechRoute><AuditLogs /></PlatformTechRoute>} />
           <Route path="admin/settings" element={<AdminRoute><AppSettings /></AdminRoute>} />
+          {/* Asistentes de IA (MCP). Cualquier sesión entra: la página muestra la
+              integración solo si el rol la tiene habilitada en "Uso de IA". */}
+          <Route path="integraciones" element={<Integraciones />} />
           <Route path="papelera" element={<AdminRoute><Papelera /></AdminRoute>} />
           <Route path="empresa" element={<EmployerRoute><EmpresaEmployees /></EmployerRoute>} />
           <Route path="organigrama" element={<OrgChartRoute><Organigrama /></OrgChartRoute>} />

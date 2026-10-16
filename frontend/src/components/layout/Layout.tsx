@@ -1,11 +1,12 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { authService } from '../../services/api'
 import Notifications from '../Notifications'
 import { NovedadAnnouncer } from '../Tutorials/NovedadAnnouncer'
 import { useState, useEffect } from 'react'
 import { channelService } from '../../services/api'
+import { MCP_STATUS_KEY, mcpService } from '../../services/mcp.service'
 import {
   LayoutDashboard,
   CheckSquare,
@@ -41,6 +42,7 @@ import {
   MessageSquareQuote,
   Gauge,
   Phone,
+  Plug,
 } from 'lucide-react'
 
 // Módulo de permisos (roles) que gobierna cada entrada del sidebar.
@@ -164,6 +166,14 @@ export default function Layout() {
   // Novedades sin abrir: contador junto al menú. El superadmin las publica y
   // CS / IT no tienen el módulo, así que para ellos no se pide nada.
   const { unseen: unseenNovedades } = useNovedadesFeed(!!user && !isSuper && !isCS && !isIT)
+  // Integraciones (asistentes de IA): el superadmin la ve siempre; el resto de
+  // roles, cuando se la habilitan desde el panel "Uso de IA".
+  const { data: mcpStatus } = useQuery({
+    queryKey: MCP_STATUS_KEY,
+    queryFn: mcpService.getStatus,
+    enabled: !!user && !isSuper,
+  })
+  const showIntegraciones = isSuper || !!mcpStatus?.enabled
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} />, show: !isIT },
@@ -196,6 +206,7 @@ export default function Layout() {
     { path: '/novedades', label: 'Novedades', icon: <Megaphone size={20} />, show: !isIT && !isCS },
     // Inducción y capacitaciones: su propia sección, solo superadmin.
     { path: '/formaciones', label: 'Formaciones', icon: <GraduationCap size={20} />, show: isSuper },
+    { path: '/integraciones', label: 'Integraciones', icon: <Plug size={20} />, show: showIntegraciones },
     { path: '/soporte', label: 'Soporte', icon: <LifeBuoy size={20} />, show: isEndUser },
     { path: '/obervoice', label: 'Obervoice', icon: <Phone size={20} />, show: true },
     { path: '/profile', label: 'Perfil', icon: <User size={20} />, show: true },

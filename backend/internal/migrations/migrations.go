@@ -3293,6 +3293,42 @@ func Run(db *gorm.DB) error {
 				return tx.Migrator().DropTable(&models.DeviceToken{})
 			},
 		},
+		{
+			// Servidor MCP de solo lectura para asistentes de IA (OAuth propio,
+			// cuotas, uso y alertas). Ver docs/features/mcp-asistentes-ia.md.
+			ID: "202610161200_mcp_tables",
+			Migrate: func(tx *gorm.DB) error {
+				log.Println("Creating MCP tables...")
+				if err := tx.AutoMigrate(
+					&models.MCPOAuthClient{}, &models.MCPAuthCode{}, &models.MCPConnection{},
+					&models.MCPToken{}, &models.MCPUsage{}, &models.MCPRoleQuota{},
+					&models.MCPSettings{}, &models.MCPAlert{},
+				); err != nil {
+					return err
+				}
+				// Solo el superadmin arranca con acceso; el resto de roles se
+				// habilita desde el panel "Uso de IA" sin tocar código.
+				if err := tx.Exec(`INSERT INTO mcp_role_quotas (role_name, enabled, daily_calls, max_rows, updated_at) VALUES
+					('superadmin', true, 1500, 50, NOW()),
+					('customer_success', false, 300, 50, NOW()),
+					('analista_it', false, 300, 50, NOW()),
+					('empleador', false, 1500, 50, NOW()),
+					('supervisor', false, 300, 50, NOW()),
+					('manager', false, 300, 50, NOW()),
+					('profesional', false, 300, 50, NOW())
+					ON CONFLICT (role_name) DO NOTHING`).Error; err != nil {
+					return err
+				}
+				return tx.Exec(`INSERT INTO mcp_settings (id, paused, minimal_data, extra_redirect_domains, updated_at)
+					VALUES (1, false, false, '', NOW()) ON CONFLICT (id) DO NOTHING`).Error
+			},
+			Rollback: func(tx *gorm.DB) error {
+				return tx.Migrator().DropTable(
+					&models.MCPAlert{}, &models.MCPSettings{}, &models.MCPRoleQuota{}, &models.MCPUsage{},
+					&models.MCPToken{}, &models.MCPConnection{}, &models.MCPAuthCode{}, &models.MCPOAuthClient{},
+				)
+			},
+		},
 	})
 
 	if err := m.Migrate(); err != nil {

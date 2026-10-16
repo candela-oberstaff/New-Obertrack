@@ -7,7 +7,7 @@ import { SortableTaskCard } from './TaskCard'
 import { TaskFilters, DEFAULT_FILTERS, type TaskFiltersState } from './components/TaskFilters'
 import type { Task } from '../../types'
 import { parseDateOnly } from '../../utils/date'
-import { compareTasks } from './taskSort'
+import { comparatorFor, type TaskSortMode } from './taskSort'
 import { ColumnType } from './types'
 import styles from '../../pages/Tasks.module.css'
 
@@ -25,6 +25,9 @@ interface ColumnProps {
   onColumnDragEnter?: (index: number) => void
   onColumnDrop?: (index: number) => void
   onColumnDragEnd?: () => void
+  /** Orden de la columna (manual por defecto); lo guarda TasksBoard por tablero. */
+  sortMode?: TaskSortMode
+  onSortChange?: (mode: TaskSortMode) => void
 }
 
 function filterByPriority(task: Task, priority: string) {
@@ -69,6 +72,8 @@ export function Column({
   onColumnDragEnter,
   onColumnDrop,
   onColumnDragEnd,
+  sortMode = 'manual',
+  onSortChange,
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
@@ -88,8 +93,8 @@ export function Column({
   const filteredSorted = useMemo(() => {
     return tasks
       .filter((t) => filterByPriority(t, filters.priority) && filterByDateRange(t, filters.dateFrom, filters.dateTo) && filterByDateStatus(t, filters.dateStatus))
-      .sort(compareTasks)
-  }, [tasks, filters])
+      .sort(comparatorFor(sortMode))
+  }, [tasks, filters, sortMode])
 
   const colDragHandlers = columnDraggable && typeof index === 'number'
     ? {
@@ -141,7 +146,7 @@ export function Column({
           <span>{column.title}</span>
         </div>
         <div className={styles['column-header-actions']}>
-          <TaskFilters filters={filters} onChange={setFilters} />
+          <TaskFilters filters={filters} onChange={setFilters} sortMode={sortMode} onSortChange={onSortChange} />
           <span className={styles['column-count']}>{filteredSorted.length}</span>
           {onToggleCollapse && (
             <button

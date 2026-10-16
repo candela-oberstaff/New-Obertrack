@@ -124,6 +124,12 @@ services:
       # Sin estas dos, la ficha abre igual y el bloque dice "no configurado".
       OBERSUITE_API_URL: ${OBERSUITE_API_URL:-}
       OBERSUITE_API_TOKEN: ${OBERSUITE_API_TOKEN:-}
+      # Servidor MCP de solo lectura (asistentes de IA, /api/mcp). FRONTEND_URL
+      # es su issuer OAuth. Con estas dos, las consultas de los tools usan el
+      # rol dedicado de backend/sql/mcp_readonly_role.sql; sin ellas, el pool
+      # general (siempre en transacciones READ ONLY).
+      MCP_DB_USER: ${MCP_DB_USER:-}
+      MCP_DB_PASSWORD: ${MCP_DB_PASSWORD:-}
       UPLOAD_PATH: "/app/uploads"
     # Backend not published directly; traffic flows through the frontend proxy.
     expose:

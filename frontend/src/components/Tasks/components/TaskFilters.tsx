@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { Filter, X, Calendar, ArrowUpDown, Clock, AlertTriangle } from 'lucide-react'
+import { Filter, X, Calendar, ArrowUpDown, Clock, AlertTriangle, ListOrdered } from 'lucide-react'
 import { DatePicker } from '../../ui'
 import styles from '../../../pages/Tasks.module.css'
 import { Select } from '../../ui/Select'
+import type { TaskSortMode } from '../taskSort'
 
 export interface TaskFiltersState {
   priority: string
@@ -14,7 +15,16 @@ export interface TaskFiltersState {
 interface TaskFiltersProps {
   filters: TaskFiltersState
   onChange: (filters: TaskFiltersState) => void
+  sortMode?: TaskSortMode
+  /** Sin él no se muestra la sección de orden. */
+  onSortChange?: (mode: TaskSortMode) => void
 }
+
+const SORT_OPTIONS: { value: TaskSortMode; label: string }[] = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'due_asc', label: 'Entrega más próxima' },
+  { value: 'due_desc', label: 'Entrega más lejana' },
+]
 
 const PRIORITY_OPTIONS = [
   { value: '', label: 'Todas' },
@@ -38,7 +48,7 @@ export const DEFAULT_FILTERS: TaskFiltersState = {
   dateStatus: '',
 }
 
-export function TaskFilters({ filters, onChange }: TaskFiltersProps) {
+export function TaskFilters({ filters, onChange, sortMode = 'manual', onSortChange }: TaskFiltersProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -54,8 +64,11 @@ export function TaskFilters({ filters, onChange }: TaskFiltersProps) {
 
   const hasActiveFilters = filters.priority !== '' || filters.dateFrom !== '' || filters.dateTo !== '' || filters.dateStatus !== ''
 
+  const isSorted = sortMode !== 'manual'
+
   const handleClear = () => {
     onChange(DEFAULT_FILTERS)
+    onSortChange?.('manual')
     setOpen(false)
   }
 
@@ -63,22 +76,50 @@ export function TaskFilters({ filters, onChange }: TaskFiltersProps) {
     <div className={styles['task-filters-wrapper']} ref={ref}>
       <button
         type="button"
-        className={`${styles['task-filters-toggle']} ${hasActiveFilters ? styles['task-filters-active'] : ''}`}
+        className={`${styles['task-filters-toggle']} ${hasActiveFilters || isSorted ? styles['task-filters-active'] : ''}`}
         onClick={() => setOpen(!open)}
-        title="Filtrar tareas"
+        title={isSorted ? 'Filtrar y ordenar (ordenada por fecha de entrega)' : 'Filtrar y ordenar tareas'}
+        aria-label="Filtrar y ordenar tareas"
       >
         <Filter size={14} />
-        {hasActiveFilters && <span className={styles['task-filters-badge']} />}
+        {(hasActiveFilters || isSorted) && <span className={styles['task-filters-badge']} />}
       </button>
 
       {open && (
         <div className={styles['task-filters-dropdown']}>
           <div className={styles['task-filters-header']}>
-            <span className={styles['task-filters-title']}>Filtros</span>
+            <span className={styles['task-filters-title']}>Filtros y orden</span>
             <button type="button" className={styles['task-filters-clear-btn']} onClick={handleClear}>
               <X size={14} /> Limpiar
             </button>
           </div>
+
+          {onSortChange && (
+            <div className={styles['task-filters-section']}>
+              <label className={styles['task-filters-label']}>
+                <ListOrdered size={13} /> Ordenar por
+              </label>
+              <div className={styles['task-filters-chip-row']} role="radiogroup" aria-label="Ordenar por">
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={sortMode === opt.value}
+                    className={`${styles['task-filters-chip']} ${sortMode === opt.value ? styles['task-filters-chip-active'] : ''}`}
+                    onClick={() => onSortChange(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {isSorted && (
+                <span className={styles['task-filters-date-label']} style={{ marginTop: 6, display: 'block' }}>
+                  Las tareas sin fecha van al final. Mientras esté así, arrastrar dentro de la columna no cambia el orden.
+                </span>
+              )}
+            </div>
+          )}
 
           <div className={styles['task-filters-section']}>
             <label className={styles['task-filters-label']}>
