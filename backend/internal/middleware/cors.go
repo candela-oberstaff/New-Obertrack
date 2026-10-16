@@ -30,6 +30,13 @@ func CORS() gin.HandlerFunc {
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
 		c.Header("Access-Control-Expose-Headers", "Content-Length")
 
+		// La metadata OAuth del MCP (/.well-known/oauth-*) es pública y la
+		// leen asistentes desde cualquier origen: CORS abierto solo ahí.
+		if strings.HasPrefix(c.Request.URL.Path, "/.well-known/oauth-") {
+			c.Header("Access-Control-Allow-Origin", "*")
+			c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, MCP-Protocol-Version")
+		}
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return

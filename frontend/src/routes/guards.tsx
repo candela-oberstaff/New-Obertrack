@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { AUTH_REDIRECT_PATH, ROUTES, UNAUTHORIZED_REDIRECT_PATH } from '../constants/routes'
 import { useAuth } from '../context/AuthContext'
+import { currentReturnTo } from '../lib/returnTo'
 import { LoadingScreen } from './LoadingScreen'
 
 type RouteGuardProps = {
@@ -253,6 +254,13 @@ export function AuthRoute({ children }: RouteGuardProps) {
   }
 
   if (user) {
+    // Con sesión ya abierta, una autorización de asistente de IA pendiente
+    // sigue su curso en vez de caer en el dashboard.
+    const returnTo = currentReturnTo()
+    if (returnTo) {
+      window.location.replace(returnTo)
+      return <LoadingScreen />
+    }
     return <Navigate to={AUTH_REDIRECT_PATH} replace />
   }
 

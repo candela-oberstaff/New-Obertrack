@@ -77,3 +77,28 @@ func supervisorTeamAndSelfIDs(
 	}
 	return append(ids, actorID), true, nil
 }
+
+// HoursTeamScope expone a otros paquetes (el MCP de solo lectura) el mismo
+// alcance de equipo que usa el listado de jornadas de un manager: el árbol si
+// es supervisor con el flag encendido (applied=true, ids incluye al actor), y
+// si no, el modo que el llamador debe aplicar: "links" con lecturas
+// multi-manager o "direct" (él + reportes directos). Así el asistente ve
+// exactamente lo que la pantalla de Horas.
+func HoursTeamScope(
+	userRepo repository.UserRepository,
+	empRepo repository.EmploymentRepository,
+	actorID, companyID uint,
+	isManager bool,
+) (mode string, ids []uint, err error) {
+	ids, applied, err := supervisorTeamAndSelfIDs(userRepo, empRepo, actorID, companyID, isManager)
+	if err != nil {
+		return "", nil, err
+	}
+	if applied {
+		return "tree", ids, nil
+	}
+	if MultiManagerReadsEnabled() {
+		return "links", nil, nil
+	}
+	return "direct", nil, nil
+}

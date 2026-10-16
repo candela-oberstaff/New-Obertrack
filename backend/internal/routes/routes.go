@@ -21,6 +21,8 @@ func mountRoutes(r *gin.Engine, d *deps) {
 	api := r.Group("/api")
 	{
 		registerPublicRoutes(api, d)
+		// MCP de solo lectura: su auth es el Bearer u OAuth, no la sesión.
+		registerMCPPublicRoutes(api, d)
 
 		api.Use(middleware.AuthMiddleware(d.cfg.JWTSecret, d.tvGetter))
 		// Sesiones acotadas (acceso embebido desde el CRM): solo su lista de
@@ -37,10 +39,12 @@ func mountRoutes(r *gin.Engine, d *deps) {
 			registerWorkRoutes(api, d)
 			registerMessagingRoutes(api, d)
 			registerPlatformRoutes(api, d)
+			registerMCPRoutes(api, d)
 		}
 	}
 
 	registerWebSocketRoutes(r, d)
+	registerMCPWellKnown(r, d)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})

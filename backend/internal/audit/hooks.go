@@ -36,6 +36,15 @@ var auditSkipTables = map[string]bool{
 	// diciendo "el contador subió", y la propia medición del uso se convertiría
 	// en la mayor fuente de ruido de la auditoría.
 	"user_activity_daily": true,
+	// Tablas del MCP de alto volumen o con hashes de credenciales: una fila por
+	// llamada de tool, por token emitido o por código de autorización. Los
+	// hechos relevantes (conectar, revocar, reuso) ya se auditan a mano con
+	// eventos mcp.* y security.*.
+	"mcp_usage":       true,
+	"mcp_tokens":      true,
+	"mcp_auth_codes":  true,
+	"mcp_connections": true,
+	"mcp_alerts":      true,
 }
 
 // redactKeys are masked in the changes JSON to avoid storing secrets.
