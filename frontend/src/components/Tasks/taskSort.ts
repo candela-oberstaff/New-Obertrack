@@ -20,3 +20,25 @@ export function compareTasks(a: Task, b: Task): number {
   }
   return a.id - b.id
 }
+
+/**
+ * Cómo se ordena una columna. "manual" es el orden de siempre (compareTasks);
+ * los otros dos son una VISTA por fecha de entrega: no cambian task.order, así
+ * que al volver a "manual" cada tarjeta sigue donde la dejó quien la arrastró.
+ */
+export type TaskSortMode = 'manual' | 'due_asc' | 'due_desc'
+
+/** Comparador de una columna según el modo elegido. */
+export function comparatorFor(mode: TaskSortMode): (a: Task, b: Task) => number {
+  if (mode === 'manual') return compareTasks
+  const dir = mode === 'due_asc' ? 1 : -1
+  return (a, b) => {
+    // Sin fecha de entrega, siempre al final: no son "lo próximo a entregar"
+    // ni "lo más lejano", simplemente no tienen fecha.
+    if (!a.end_date && !b.end_date) return compareTasks(a, b)
+    if (!a.end_date) return 1
+    if (!b.end_date) return -1
+    const diff = parseDateOnly(a.end_date).getTime() - parseDateOnly(b.end_date).getTime()
+    return diff !== 0 ? diff * dir : compareTasks(a, b)
+  }
+}
