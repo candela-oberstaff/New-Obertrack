@@ -103,6 +103,20 @@ func (h *UploadHandler) GetFile(c *gin.Context) {
 		return
 	}
 
+	// ?w=960: una copia reducida de la imagen (la app móvil no necesita el
+	// original para mostrarla en una pantalla de teléfono). Lo que no se puede
+	// reducir sale tal cual.
+	if w, _ := strconv.Atoi(c.Query("w")); w > 0 {
+		if thumb, err := service.ThumbnailPath(h.uploadPath, filename, service.ThumbWidthFor(w)); err == nil {
+			filePath = thumb
+		} else if err != service.ErrNotThumbnailable {
+			log.Printf("[uploads] no se pudo reducir %s: %v", filename, err)
+		}
+	}
+
+	// El nombre de cada archivo es único y nunca se reescribe: el cliente puede
+	// guardarlo sin volver a preguntar. Privado, porque exige sesión.
+	c.Header("Cache-Control", "private, max-age=2592000, immutable")
 	c.File(filePath)
 }
 
