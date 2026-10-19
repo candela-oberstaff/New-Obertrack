@@ -91,10 +91,26 @@
   --gray-400:       #8880a8;
   --gray-500:       #5c5680;
 
-  /* State colors */
+  /* Surfaces & text (slate). Varios componentes ya los usaban sin que
+     existieran; los valores son los respaldos que más se repetían. La app
+     móvil (lib/core/theme.dart) usa los mismos. */
+  --text-primary:   #0f172a;
+  --text-secondary: #64748b;
+  --border-color:   #e2e8f0;
+  --border:         #cbd5e1;
+  --bg-primary:     #ffffff;
+  --bg-card:        #ffffff;
+  --bg-secondary:   #f8fafc;
+  --bg-input:       #ffffff;
+
+  /* State colors: el tono base para íconos, puntos y fondos suaves; el
+     -text para texto, que sobre blanco sí llega a 4.5:1. */
   --success: #10b981;
   --warning: #f59e0b;
   --danger:  #ef4444;
+  --success-text: #15803d;
+  --warning-text: #b45309;
+  --danger-text:  #b91c1c;
 
   /* ── Glassmorphism ── */
   --glass-bg:          rgba(245, 242, 251, 0.65);
