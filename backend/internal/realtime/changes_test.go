@@ -166,3 +166,31 @@ func TestSinNadieConectadoNoConsulta(t *testing.T) {
 		t.Fatal("sin conectados no hace falta buscar destinatarios")
 	}
 }
+
+func TestJornadaDiceDeQuienEs(t *testing.T) {
+	db, hub, _ := setup(t)
+	db.Create(&models.WorkHour{UserID: 2, TenantID: 7})
+	db.Create(&models.WorkHour{UserID: 1, TenantID: 7})
+	got := waitEvents(t, hub)
+	if len(got) != 2 {
+		t.Fatalf("avisos = %d, esperaba 2", len(got))
+	}
+	ids, ok := got[0].data["user_ids"].([]uint)
+	if !ok || len(ids) != 2 || ids[0] != 1 || ids[1] != 2 {
+		t.Fatalf("user_ids = %v, esperaba [1 2]", got[0].data["user_ids"])
+	}
+}
+
+func TestLoteSinFilaNoDiceDeQuien(t *testing.T) {
+	db, hub, _ := setup(t)
+	// Una aprobación en lote no trae la fila: no se sabe de quién es y el
+	// aviso va sin user_ids (recargan todos, como antes).
+	db.Model(&models.WorkHour{}).Where("id IN ?", []uint{1, 2}).Update("approved", true)
+	got := waitEvents(t, hub)
+	if len(got) == 0 {
+		t.Fatal("sin avisos")
+	}
+	if _, ok := got[0].data["user_ids"]; ok {
+		t.Fatalf("payload = %v, no esperaba user_ids", got[0].data)
+	}
+}

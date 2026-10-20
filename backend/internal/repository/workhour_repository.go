@@ -247,6 +247,29 @@ func applyUserIDsFilter(query *gorm.DB, filters map[string]interface{}) *gorm.DB
 }
 
 func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, limit int) ([]models.WorkHour, int64, error) {
+	query := r.scoped(filters)
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var workHours []models.WorkHour
+	err := query.Preload("User").
+		Preload("ApprovedByUser").
+		Preload("RejectedByUser").
+		Offset(offset).
+		Limit(limit).
+		Order("work_date DESC").
+		Find(&workHours).Error
+
+	return workHours, total, err
+}
+
+// scoped arma la consulta de jornadas con los filtros de alcance (empresa,
+// equipo del manager, persona, fechas, estado). La comparten la lista paginada
+// y los totales (Stats), para que los dos vean exactamente las mismas filas.
+func (r *workHourRepository) scoped(filters map[string]interface{}) *gorm.DB {
 	query := r.db.Model(&models.WorkHour{})
 
 	if tenantID, ok := filters["tenant_id"].(uint); ok {
@@ -314,21 +337,7 @@ func (r *workHourRepository) FindAll(filters map[string]interface{}, offset, lim
 		query = query.Where("rejected = ?", rejected)
 	}
 
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	var workHours []models.WorkHour
-	err := query.Preload("User").
-		Preload("ApprovedByUser").
-		Preload("RejectedByUser").
-		Offset(offset).
-		Limit(limit).
-		Order("work_date DESC").
-		Find(&workHours).Error
-
-	return workHours, total, err
+	return query
 }
 
 func (r *workHourRepository) GetSummary(filters map[string]interface{}) (map[string]float64, error) {

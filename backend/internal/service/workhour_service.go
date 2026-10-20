@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 
 type WorkHourService interface {
 	GetAll(userID uint, role string, crossCompany, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error)
+	// GetStats: totales del período con el mismo alcance que GetAll.
+	GetStats(userID uint, role string, crossCompany, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate, today string) (*repository.WorkHourStats, error)
 	Create(userID uint, reqData map[string]interface{}) (*models.WorkHour, error)
 	Update(id, tenantID, userID uint, role string, isManager, isSuperadmin bool, reqData map[string]interface{}) (*models.WorkHour, error)
 	// Approve/Reject procesan las jornadas ELEGIBLES del lote y devuelven
@@ -111,13 +114,113 @@ func (s *workHourService) canManageWorkHourOf(targetUserID, companyID, actorID u
 // por tanto elige la empresa en vez de quedar atado a la suya. Es un permiso de
 // LECTURA; las escrituras siguen mirando isSuperadmin por separado.
 func (s *workHourService) GetAll(userID uint, role string, crossCompany, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string, offset, limit int) ([]models.WorkHour, int64, error) {
+	filters, empty, err := s.listFilters(userID, role, crossCompany, isManager, tenantID, companyFilter, userIDFilter, startDate, endDate)
+	if err != nil {
+		return nil, 0, err
+	}
+	if empty {
+		return []models.WorkHour{}, 0, nil
+	}
+	return s.repo.FindAll(filters, offset, limit)
+}
+
+// GetStats son los totales del período con el mismo alcance que GetAll: lo
+// que ve la lista es lo que suma el resumen. [today] (YYYY-MM-DD, opcional) es
+// el día del que se quiere saber quién registró; lo manda el cliente porque
+// "hoy" depende de su zona horaria.
+func (s *workHourService) GetStats(userID uint, role string, crossCompany, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate, today string) (*repository.WorkHourStats, error) {
+	filters, empty, err := s.listFilters(userID, role, crossCompany, isManager, tenantID, companyFilter, userIDFilter, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	if empty {
+		return &repository.WorkHourStats{
+			Daily: []repository.WorkHourDay{}, ByPerson: []repository.WorkHourPerson{},
+			TodayUserIDs: []uint{},
+		}, nil
+	}
+	var day *time.Time
+	if t, err := time.Parse("2006-01-02", today); err == nil {
+		day = &t
+	}
+	if sr, ok := s.repo.(repository.WorkHourStatsRepository); ok {
+		return sr.Stats(filters, day)
+	}
+	return s.statsFromList(filters, day)
+}
+
+// statsFromList suma sobre la lista cuando el repositorio no sabe agregar
+// (los dobles de los tests). Mismo resultado, más lento.
+func (s *workHourService) statsFromList(filters map[string]interface{}, today *time.Time) (*repository.WorkHourStats, error) {
+	out := &repository.WorkHourStats{
+		Daily: []repository.WorkHourDay{}, ByPerson: []repository.WorkHourPerson{},
+		TodayUserIDs: []uint{},
+	}
+	daily := map[string]float64{}
+	people := map[uint]*repository.WorkHourPerson{}
+	todaySeen := map[uint]bool{}
+	for offset := 0; ; offset += 1000 {
+		rows, _, err := s.repo.FindAll(filters, offset, 1000)
+		if err != nil {
+			return nil, err
+		}
+		for _, w := range rows {
+			out.TotalHours += w.HoursWorked
+			out.Entries++
+			switch {
+			case w.Approved:
+				out.ApprovedHours += w.HoursWorked
+			case w.Rejected:
+				out.RejectedHours += w.HoursWorked
+			default:
+				out.PendingEntries++
+			}
+			day := w.WorkDate.Format("2006-01-02")
+			daily[day] += w.HoursWorked
+			p := people[w.UserID]
+			if p == nil {
+				p = &repository.WorkHourPerson{UserID: w.UserID, Name: w.User.Name}
+				people[w.UserID] = p
+			}
+			p.Hours += w.HoursWorked
+			p.Entries++
+			if today != nil && day == today.Format("2006-01-02") && !todaySeen[w.UserID] {
+				todaySeen[w.UserID] = true
+				out.TodayUserIDs = append(out.TodayUserIDs, w.UserID)
+			}
+		}
+		if len(rows) < 1000 {
+			break
+		}
+	}
+	out.PendingHours = out.TotalHours - out.ApprovedHours - out.RejectedHours
+	if out.PendingHours < 0 {
+		out.PendingHours = 0
+	}
+	out.DaysWorked = int64(len(daily))
+	out.People = int64(len(people))
+	for d, h := range daily {
+		out.Daily = append(out.Daily, repository.WorkHourDay{Date: d, Hours: h})
+	}
+	sort.Slice(out.Daily, func(i, j int) bool { return out.Daily[i].Date < out.Daily[j].Date })
+	for _, p := range people {
+		out.ByPerson = append(out.ByPerson, *p)
+	}
+	sort.Slice(out.ByPerson, func(i, j int) bool { return out.ByPerson[i].Hours > out.ByPerson[j].Hours })
+	return out, nil
+}
+
+// listFilters traduce quién pide (rol, empresa, manager) y qué pide (persona,
+// fechas) a los filtros del repositorio. empty: no hay nada que devolver (un
+// superadmin sin empresa elegida).
+func (s *workHourService) listFilters(userID uint, role string, crossCompany, isManager bool, tenantID, companyFilter uint, userIDFilter, startDate, endDate string) (map[string]interface{}, bool, error) {
 	filters := make(map[string]interface{})
 
 	if crossCompany {
 		// Debe elegir empresa explícitamente. Sin eso no se devuelve nada, para
 		// no mezclar nunca horas de tenants distintos en la misma vista.
 		if companyFilter == 0 {
-			return []models.WorkHour{}, 0, nil
+			return nil, true, nil
 		}
 		filters["tenant_id"] = companyFilter
 	} else if isManager {
@@ -130,7 +233,7 @@ func (s *workHourService) GetAll(userID uint, role string, crossCompany, isManag
 		}
 		ids, applied, err := supervisorTeamAndSelfIDs(s.userRepo, s.employmentRepo, userID, tenantID, isManager)
 		if err != nil {
-			return nil, 0, err
+			return nil, false, err
 		}
 		if applied {
 			filters["user_ids"] = ids
@@ -166,7 +269,7 @@ func (s *workHourService) GetAll(userID uint, role string, crossCompany, isManag
 		}
 	}
 
-	return s.repo.FindAll(filters, offset, limit)
+	return filters, false, nil
 }
 
 // Errores tipados de la creación/edición de jornadas. El handler los mapea a

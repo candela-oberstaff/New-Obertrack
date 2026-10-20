@@ -75,6 +75,7 @@ var scopeAllowlist = middleware.ScopeAllowlist{
 		// Registros, resumen del mes y pendientes de aprobar.
 		"GET /api/work-hours",
 		"GET /api/work-hours/summary",
+		"GET /api/work-hours/stats",
 		"GET /api/work-hours/pending",
 
 		// Registrar, recuperar y editar una jornada.

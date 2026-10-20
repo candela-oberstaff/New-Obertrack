@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -275,7 +276,41 @@ func (h *WorkHourHandler) GetPending(c *gin.Context) {
 		return
 	}
 
+	// ?limit=N (opcional): solo las N más antiguas, con el total en
+	// X-Total-Count. Lo usa el Inicio de la app, que muestra unas pocas y
+	// cuántas son; sin limit, la lista entera como siempre (la web y "aprobar
+	// todas" la necesitan completa).
+	if limit, err := strconv.Atoi(c.Query("limit")); err == nil && limit > 0 {
+		sort.SliceStable(pending, func(i, j int) bool {
+			return pending[i].WorkDate.Before(pending[j].WorkDate)
+		})
+		c.Header("X-Total-Count", strconv.Itoa(len(pending)))
+		if limit < len(pending) {
+			pending = pending[:limit]
+		}
+	}
+
 	c.JSON(http.StatusOK, pending)
+}
+
+// GetStats: totales de un período (horas por estado, por día y por persona, y
+// quién registró [today]) con el mismo alcance que GET /work-hours. Las
+// tarjetas de resumen lo usan en vez de descargar cada jornada.
+func (h *WorkHourHandler) GetStats(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	role := middleware.GetUserRole(c)
+	isManager := middleware.IsManager(c)
+	tenantID := middleware.GetTenantID(c)
+	crossCompany := readsAcrossCompanies(c)
+	companyFilter := companyFilterFor(c, crossCompany)
+
+	stats, err := h.svc.GetStats(userID, role, crossCompany, isManager, tenantID, companyFilter,
+		c.Query("user_id"), c.Query("start_date"), c.Query("end_date"), c.Query("today"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo calcular el resumen"})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
 }
 
 func (h *WorkHourHandler) SendReport(c *gin.Context) {

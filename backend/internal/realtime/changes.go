@@ -12,6 +12,7 @@ package realtime
 import (
 	"context"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 
@@ -61,6 +62,9 @@ var watched = map[string]watch{
 type change struct {
 	entity   string
 	tenantID uint
+	// De quién es la jornada que cambió (solo work_hours). 0: no se sabe, p.
+	// ej. una aprobación en lote hecha con Where("id IN ?").
+	subject uint
 	// Cuando la fila no trae empresa, cómo buscarla al despachar.
 	lookupTable string
 	lookupID    uint
@@ -152,6 +156,15 @@ func (e *Emitter) observe(tx *gorm.DB) {
 				}
 			}
 		}
+		// Una jornada dice de quién es: así cada cliente sabe si le toca
+		// recargar sin pedir nada.
+		if w.entity == EntityWorkHour {
+			if f := st.Schema.LookUpField("UserID"); f != nil {
+				if v, zero := f.ValueOf(ctx, rv); !zero {
+					c.subject = toUint(v)
+				}
+			}
+		}
 		// Un empleo dice su empresa en company_id.
 		if c.tenantID == 0 && st.Schema.Table == "employments" {
 			if f := st.Schema.LookUpField("CompanyID"); f != nil {
@@ -192,25 +205,50 @@ func (e *Emitter) flush() {
 		entity string
 		tenant uint
 	}
-	seen := map[key]bool{}
+	// Por (entidad, empresa): de quiénes son las jornadas que cambiaron. Si
+	// alguna no se sabe, el aviso no lleva user_ids y recargan todos.
+	type group struct {
+		subjects map[uint]bool
+		unknown  bool
+	}
+	groups := map[key]*group{}
+	var order []key
 	for c := range batch {
 		tenant := c.tenantID
 		if tenant == 0 && c.lookupTable != "" && c.lookupID != 0 {
 			tenant = e.tenantOf(c.lookupTable, c.lookupID)
 		}
 		k := key{c.entity, tenant}
-		if seen[k] {
-			continue
+		g := groups[k]
+		if g == nil {
+			g = &group{subjects: map[uint]bool{}}
+			groups[k] = g
+			order = append(order, k)
 		}
-		seen[k] = true
+		if c.subject != 0 {
+			g.subjects[c.subject] = true
+		} else {
+			g.unknown = true
+		}
+	}
 
+	for _, k := range order {
+		g := groups[k]
 		recipients := online
-		if tenant != 0 {
-			recipients = e.membersOnline(tenant, online)
+		if k.tenant != 0 {
+			recipients = e.membersOnline(k.tenant, online)
 		}
-		payload := map[string]interface{}{"entity": c.entity}
-		if tenant != 0 {
-			payload["tenant_id"] = tenant
+		payload := map[string]interface{}{"entity": k.entity}
+		if k.tenant != 0 {
+			payload["tenant_id"] = k.tenant
+		}
+		if k.entity == EntityWorkHour && !g.unknown && len(g.subjects) > 0 {
+			ids := make([]uint, 0, len(g.subjects))
+			for id := range g.subjects {
+				ids = append(ids, id)
+			}
+			sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+			payload["user_ids"] = ids
 		}
 		for _, uid := range recipients {
 			e.hub.NotifyUser(uid, EventType, payload)
